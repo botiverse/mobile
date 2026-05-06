@@ -1,0 +1,46 @@
+package ai.slock.android.core.data.realtime
+
+import ai.slock.android.core.data.auth.AuthSessionStore
+import ai.slock.android.core.data.repository.DataResult
+import ai.slock.android.core.data.repository.RealtimeRepository
+import ai.slock.android.core.data.repository.RealtimeSubscription
+import ai.slock.android.core.model.ChannelId
+import ai.slock.android.core.model.RealtimeEvent
+import ai.slock.android.core.model.ServerId
+import ai.slock.android.core.state.PermissionBlocker
+
+class SessionRealtimeRepository(
+    private val store: AuthSessionStore,
+    private val client: SocketIoRealtimeClient
+) : RealtimeRepository {
+    override suspend fun connect(serverId: ServerId, lastSeq: Long): DataResult<Unit> {
+        val session = store.readSession()
+            ?: return DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+        val selectedServerId = session.currentServerId
+            ?: return DataResult.NoPermission(PermissionBlocker(code = "server_required", requiredCapability = "selected_server"))
+        if (selectedServerId != serverId.value) {
+            return DataResult.NoPermission(PermissionBlocker(code = "server_mismatch", requiredCapability = "selected_server"))
+        }
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(
+                    token = session.accessToken,
+                    serverId = serverId
+                ),
+                lastSeq = lastSeq
+            )
+        )
+        return DataResult.Content(Unit)
+    }
+
+    override fun disconnect() {
+        client.disconnect()
+    }
+
+    override fun joinChannel(channelId: ChannelId) {
+        client.joinChannel(channelId)
+    }
+
+    override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =
+        client.observeEvents(listener)
+}

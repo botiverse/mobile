@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+   Sample data extraction rules file; uncomment and customize as necessary.
+   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
+   for details.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Auth session values are encrypted with an Android Keystore key that is not backed up. -->
+        <exclude domain="sharedpref" path="slock_auth_session.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <!-- Keep encrypted session blobs out of device transfer without their Keystore key. -->
+        <exclude domain="sharedpref" path="slock_auth_session.xml" />
+    </device-transfer>
+</data-extraction-rules>
