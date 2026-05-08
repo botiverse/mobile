@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,14 +27,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import ai.slock.android.R
+import ai.slock.android.core.data.preferences.MyMessageAlignmentPreference
+import ai.slock.android.core.data.repository.SettingsComputerAgentSnapshot
+import ai.slock.android.core.data.repository.SettingsComputerDetailSnapshot
 import ai.slock.android.core.data.repository.SettingsComputerSnapshot
+import ai.slock.android.core.data.repository.SettingsComputerWorkspaceSnapshot
 import ai.slock.android.core.data.repository.SettingsComputersSnapshot
 import ai.slock.android.core.data.repository.SettingsMobileSnapshot
 import ai.slock.android.core.data.repository.SettingsMobileToggleSnapshot
+import ai.slock.android.core.data.repository.SettingsSectionErrorSnapshot
 import ai.slock.android.core.data.repository.SettingsSectionAvailability
 import ai.slock.android.core.data.repository.SettingsServerProfileSnapshot
 import ai.slock.android.core.data.repository.SettingsServerSectionSnapshot
@@ -42,6 +50,7 @@ import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.components.SlockSegmentOption
 import ai.slock.android.ui.components.SlockTextField
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockShadow
@@ -55,7 +64,8 @@ import ai.slock.android.ui.theme.slockHardShadow
 fun SettingsComputersScreen(
     snapshot: SettingsComputersSnapshot,
     modifier: Modifier = Modifier,
-    onAddComputer: () -> Unit = {}
+    onAddComputer: () -> Unit = {},
+    onOpenComputer: (String) -> Unit = {}
 ) {
     Column(
         modifier = modifier
@@ -65,35 +75,35 @@ fun SettingsComputersScreen(
             .padding(SlockSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
-        SlockButton(
-            text = "Add computer",
-            onClick = onAddComputer,
-            modifier = Modifier.fillMaxWidth(),
-            variant = SlockButtonVariant.Yellow,
-            enabled = snapshot.canAddComputer
-        )
-        snapshot.addComputerUnavailableReason?.let {
-            Text(
-                text = it,
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray
+        if (snapshot.canAddComputer) {
+            SlockButton(
+                text = stringResource(R.string.settings_computers_add),
+                onClick = onAddComputer,
+                modifier = Modifier.fillMaxWidth(),
+                variant = SlockButtonVariant.Yellow
             )
         }
         if (snapshot.computers.isEmpty()) {
             SlockEmptyState(
-                title = "No computers",
-                detail = "Connected machines will appear here after the device management API is wired."
+                title = stringResource(R.string.settings_computers_empty_title),
+                detail = stringResource(R.string.settings_computers_empty_detail)
             )
         } else {
             snapshot.computers.forEach { computer ->
-                ComputerCard(computer)
+                ComputerCard(
+                    computer = computer,
+                    onClick = { onOpenComputer(computer.id) }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun ComputerCard(computer: SettingsComputerSnapshot) {
+private fun ComputerCard(
+    computer: SettingsComputerSnapshot,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -101,7 +111,7 @@ private fun ComputerCard(computer: SettingsComputerSnapshot) {
             .slockHardShadow(SlockShadow.Small)
             .background(SlockColor.SurfaceWhite)
             .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .clickable(enabled = false, role = Role.Button, onClick = {})
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(SlockSpacing.Md),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
@@ -139,13 +149,217 @@ private fun ComputerCard(computer: SettingsComputerSnapshot) {
                 OnlineDot(online = computer.online)
             }
             Text(
-                text = computer.daemonVersion,
+                text = if (computer.daemonVersion == "daemon unavailable") {
+                    stringResource(R.string.settings_computers_daemon_unavailable)
+                } else {
+                    computer.daemonVersion
+                },
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+@Composable
+fun SettingsComputerDetailScreen(
+    snapshot: SettingsComputerDetailSnapshot,
+    modifier: Modifier = Modifier,
+    onRetryWorkspaces: () -> Unit = {},
+    onRetryAgents: () -> Unit = {}
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(SlockColor.SurfaceWhite)
+            .verticalScroll(rememberScrollState())
+            .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+    ) {
+        ComputerCard(computer = snapshot.computer, onClick = {})
+        SettingsSectionHeader(
+            iconBackground = SlockColor.BrandYellow,
+            label = stringResource(R.string.settings_computer_detail_info_section)
+        )
+        DetailRow(
+            label = stringResource(R.string.settings_computer_detail_platform),
+            value = snapshot.computer.platform ?: stringResource(R.string.settings_computer_detail_unknown)
+        )
+        DetailRow(
+            label = stringResource(R.string.settings_computer_detail_hostname),
+            value = snapshot.computer.hostname ?: snapshot.computer.name
+        )
+        DetailRow(
+            label = stringResource(R.string.settings_computer_detail_last_seen),
+            value = snapshot.computer.lastSeenLabel ?: stringResource(R.string.settings_computer_detail_unknown)
+        )
+        SettingsSectionHeader(
+            iconBackground = SlockColor.AccentLime,
+            label = stringResource(R.string.settings_computer_detail_workspaces_section)
+        )
+        if (snapshot.workspacesError != null) {
+            SettingsSectionInlineError(
+                title = stringResource(R.string.settings_computer_detail_workspaces_error_title),
+                error = snapshot.workspacesError,
+                onRetry = onRetryWorkspaces
+            )
+        } else if (snapshot.workspaces.isEmpty()) {
+            SlockEmptyState(
+                title = stringResource(R.string.settings_computer_detail_no_workspaces),
+                detail = stringResource(R.string.settings_computer_detail_no_workspaces_detail)
+            )
+        } else {
+            snapshot.workspaces.forEach { workspace ->
+                WorkspaceCard(workspace)
+            }
+        }
+        SettingsSectionHeader(
+            iconBackground = SlockColor.AccentOrange,
+            label = stringResource(R.string.settings_computer_detail_agents_section)
+        )
+        if (snapshot.agentsError != null) {
+            SettingsSectionInlineError(
+                title = stringResource(R.string.settings_computer_detail_agents_error_title),
+                error = snapshot.agentsError,
+                onRetry = onRetryAgents
+            )
+        } else if (snapshot.agents.isEmpty()) {
+            SlockEmptyState(
+                title = stringResource(R.string.settings_computer_detail_no_agents),
+                detail = stringResource(R.string.settings_computer_detail_no_agents_detail)
+            )
+        } else {
+            snapshot.agents.forEach { agent ->
+                AgentCard(agent)
+            }
+        }
+        snapshot.sections.filterVisibleSettingsSections().forEach { section ->
+            SettingsServerSectionCard(section)
+        }
+    }
+}
+
+@Composable
+private fun SettingsSectionInlineError(
+    title: String,
+    error: SettingsSectionErrorSnapshot,
+    onRetry: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Text(
+            text = title,
+            style = SlockType.Button.copy(fontWeight = FontWeight.Bold),
+            color = SlockColor.TextBlack
+        )
+        Text(
+            text = stringResource(R.string.settings_computer_detail_section_error_detail, error.code),
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray
+        )
+        SlockButton(
+            text = stringResource(R.string.settings_retry),
+            onClick = onRetry,
+            modifier = Modifier.fillMaxWidth(),
+            variant = SlockButtonVariant.Outline,
+            enabled = error.retryable
+        )
+    }
+}
+
+@Composable
+private fun DetailRow(
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(SlockSpacing.Md),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+    ) {
+        Text(
+            text = label,
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.weight(0.38f)
+        )
+        Text(
+            text = value,
+            style = SlockType.Caption,
+            color = SlockColor.TextBlack,
+            modifier = Modifier.weight(0.62f),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun WorkspaceCard(workspace: SettingsComputerWorkspaceSnapshot) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = workspace.name,
+            style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = workspace.path,
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        workspace.statusLabel?.let {
+            Text(text = it, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+        }
+    }
+}
+
+@Composable
+private fun AgentCard(agent: SettingsComputerAgentSnapshot) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = agent.name,
+            style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = listOfNotNull(agent.statusLabel, agent.ownerLabel).joinToString(" / ")
+                .ifBlank { stringResource(R.string.settings_computer_detail_unknown) },
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -178,13 +392,13 @@ fun SettingsServerManagementScreen(
     ) {
         SettingsSectionHeader(
             iconBackground = SlockColor.EmptyStateGray,
-            label = "PROFILE"
+            label = stringResource(R.string.settings_server_profile_section)
         )
         ServerProfileSection(
             profile = snapshot.profile,
             onSaveProfile = onSaveProfile
         )
-        snapshot.sections.forEach { section ->
+        snapshot.sections.filterVisibleSettingsSections().forEach { section ->
             SettingsServerSectionCard(section)
         }
     }
@@ -208,21 +422,21 @@ private fun ServerProfileSection(
         SlockTextField(
             value = profile.name,
             onValueChange = {},
-            label = "Name",
-            placeholder = "Server name",
+            label = stringResource(R.string.settings_server_name_label),
+            placeholder = stringResource(R.string.settings_server_name_placeholder),
             enabled = profile.canSave,
             reserveErrorSpace = false
         )
         SlockTextField(
             value = profile.slug,
             onValueChange = {},
-            label = "Slug",
-            placeholder = "server-slug",
+            label = stringResource(R.string.settings_server_slug_label),
+            placeholder = stringResource(R.string.settings_server_slug_placeholder),
             enabled = false,
             reserveErrorSpace = false
         )
         SlockButton(
-            text = "Save Profile",
+            text = stringResource(R.string.settings_server_save_profile),
             onClick = onSaveProfile,
             modifier = Modifier.fillMaxWidth(),
             variant = SlockButtonVariant.Pink,
@@ -247,7 +461,7 @@ private fun SettingsServerSectionCard(section: SettingsServerSectionSnapshot) {
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             Text(
-                text = section.title,
+                text = section.localizedTitle(),
                 style = SlockType.Button.copy(fontWeight = FontWeight.Bold),
                 color = SlockColor.TextBlack,
                 modifier = Modifier.weight(1f),
@@ -255,18 +469,18 @@ private fun SettingsServerSectionCard(section: SettingsServerSectionSnapshot) {
                 overflow = TextOverflow.Ellipsis
             )
             SettingsStatusBadge(
-                text = section.state.label,
+                text = stringResource(section.state.labelRes),
                 color = section.state.badgeColor
             )
         }
         Text(
-            text = section.detail,
+            text = section.localizedDetail(),
             style = SlockType.Body,
             color = SlockColor.TextMutedGray
         )
         if (section.key == "danger") {
             SlockButton(
-                text = "Delete Server",
+                text = stringResource(R.string.settings_server_delete),
                 onClick = {},
                 modifier = Modifier.fillMaxWidth(),
                 variant = SlockButtonVariant.Red,
@@ -282,7 +496,9 @@ fun SettingsMobileScreen(
     notificationPermissionGranted: Boolean,
     notificationPermissionAvailable: Boolean = true,
     modifier: Modifier = Modifier,
+    chatLayoutPreference: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Default,
     onRequestNotificationPermission: () -> Unit = {},
+    onChatLayoutPreferenceSelected: (MyMessageAlignmentPreference) -> Unit = {},
     onTogglePush: () -> Unit = {},
     onSendTest: () -> Unit = {},
     onOpenNotificationSettings: () -> Unit = {},
@@ -297,18 +513,42 @@ fun SettingsMobileScreen(
     var showSettingsAction by remember(snapshot) {
         mutableStateOf(false)
     }
+    val permissionGrantedFeedback = stringResource(R.string.settings_mobile_feedback_permission_granted)
+    val notificationsDisabledFeedback = stringResource(R.string.settings_mobile_feedback_notifications_disabled)
+    val requestingPermissionFeedback = stringResource(R.string.settings_mobile_feedback_requesting_permission)
+    val permissionRequiredSettingsFeedback = stringResource(R.string.settings_mobile_feedback_permission_required_settings)
+    val notificationsEnabledFeedback = stringResource(R.string.settings_mobile_feedback_notifications_enabled)
+    val permissionRequiredSendFeedback = stringResource(R.string.settings_mobile_feedback_permission_required_send)
+    val sendingTestFeedback = stringResource(R.string.settings_mobile_feedback_sending_test)
+    LaunchedEffect(notificationPermissionGranted) {
+        if (notificationPermissionGranted) {
+            pushEnabled = true
+            showSettingsAction = false
+            feedback = permissionGrantedFeedback
+        }
+    }
+    val pushEnabledDetail = stringResource(R.string.settings_mobile_push_enabled_detail)
+    val pushDisabledDetail = stringResource(R.string.settings_mobile_push_disabled_detail)
+    val muteToggle = snapshot.muteServer.copy(
+        statusLabel = if (snapshot.muteServer.enabled) {
+            stringResource(R.string.settings_mobile_mute_status_muted)
+        } else {
+            stringResource(R.string.settings_mobile_mute_status_not_muted)
+        },
+        detail = stringResource(R.string.settings_mobile_mute_detail)
+    )
     val pushToggle = snapshot.pushNotifications.copy(
         enabled = pushEnabled,
         available = true,
         statusLabel = when {
-            pushEnabled -> "Enabled"
-            !notificationPermissionGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> "Permission required"
-            else -> "Disabled"
+            pushEnabled -> stringResource(R.string.settings_mobile_status_enabled)
+            !notificationPermissionGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> stringResource(R.string.settings_mobile_status_permission_required)
+            else -> stringResource(R.string.settings_mobile_status_disabled)
         },
         detail = if (pushEnabled) {
-            "Android notification permission is enabled. Send Test Push will show a local test notification."
+            pushEnabledDetail
         } else {
-            snapshot.pushNotifications.detail
+            pushDisabledDetail
         }
     )
     Column(
@@ -320,38 +560,42 @@ fun SettingsMobileScreen(
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
         SettingsMobileCard(
-            title = "Push Notifications",
-            body = "DMs, direct mentions, and followed thread replies.",
+            title = stringResource(R.string.settings_mobile_push_title),
+            body = stringResource(R.string.settings_mobile_push_body),
             toggle = pushToggle,
-            primaryLabel = if (pushEnabled) "Disable Notifications" else "Enable Notifications",
+            primaryLabel = if (pushEnabled) {
+                stringResource(R.string.settings_mobile_disable_notifications)
+            } else {
+                stringResource(R.string.settings_mobile_enable_notifications)
+            },
             onPrimary = {
                 if (pushEnabled) {
                     pushEnabled = false
-                    feedback = "Notifications disabled for this local sample."
+                    feedback = notificationsDisabledFeedback
                 } else if (!notificationPermissionGranted) {
                     if (notificationPermissionAvailable) {
                         onRequestNotificationPermission()
-                        feedback = "Requesting Android notification permission."
+                        feedback = requestingPermissionFeedback
                     } else {
                         showSettingsAction = true
-                        feedback = "Notification permission required. Open Android settings, then try again."
+                        feedback = permissionRequiredSettingsFeedback
                     }
                 } else {
                     pushEnabled = true
-                    feedback = "Notifications enabled. Send Test Push can now show a local notification."
+                    feedback = notificationsEnabledFeedback
                 }
                 onTogglePush()
             }
         )
         SlockButton(
-            text = "Send Test Push",
+            text = stringResource(R.string.settings_mobile_send_test),
             onClick = {
                 if (!notificationPermissionGranted) {
                     showSettingsAction = true
-                    feedback = "Notification permission required before sending a test push."
+                    feedback = permissionRequiredSendFeedback
                 } else {
                     pushEnabled = true
-                    feedback = "Sending local test notification."
+                    feedback = sendingTestFeedback
                     onSendTest()
                 }
             },
@@ -362,19 +606,74 @@ fun SettingsMobileScreen(
         feedback?.let { SettingsSampleFeedback(it) }
         if (showSettingsAction) {
             SlockButton(
-                text = "Open System Settings",
+                text = stringResource(R.string.settings_mobile_open_system_settings),
                 onClick = onOpenNotificationSettings,
                 modifier = Modifier.fillMaxWidth(),
                 variant = SlockButtonVariant.Outline
             )
         }
-        SettingsMobileCard(
-            title = "Mute this server",
-            body = "Stops notifications from this server for your account. Other servers are unchanged.",
-            toggle = snapshot.muteServer,
-            primaryLabel = if (snapshot.muteServer.enabled) "Unmute Server" else "Mute Server",
-            onPrimary = onToggleMute
+        SettingsMobileChatLayoutPreference(
+            selected = chatLayoutPreference,
+            onSelected = onChatLayoutPreferenceSelected
         )
+        if (snapshot.muteServer.available) {
+            SettingsMobileCard(
+                title = stringResource(R.string.settings_mobile_mute_title),
+                body = stringResource(R.string.settings_mobile_mute_body),
+                toggle = muteToggle,
+                primaryLabel = if (snapshot.muteServer.enabled) {
+                    stringResource(R.string.settings_mobile_unmute_server)
+                } else {
+                    stringResource(R.string.settings_mobile_mute_server)
+                },
+                onPrimary = onToggleMute
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsMobileChatLayoutPreference(
+    selected: MyMessageAlignmentPreference,
+    onSelected: (MyMessageAlignmentPreference) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Text(
+            text = stringResource(R.string.settings_account_chat_layout_section).uppercase(),
+            style = SlockType.SectionLabel,
+            color = SlockColor.TextBlack
+        )
+        Text(
+            text = stringResource(R.string.settings_account_chat_layout_detail),
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            MyMessageAlignmentPreference.entries.forEach { option ->
+                SlockSegmentOption(
+                    text = when (option) {
+                        MyMessageAlignmentPreference.Left ->
+                            stringResource(R.string.settings_account_chat_layout_left)
+                        MyMessageAlignmentPreference.Right ->
+                            stringResource(R.string.settings_account_chat_layout_right)
+                    },
+                    selected = option == selected,
+                    onSelected = { onSelected(option) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
     }
 }
 
@@ -446,12 +745,43 @@ private fun SettingsMobileCard(
     }
 }
 
-private val SettingsSectionAvailability.label: String
+@Composable
+private fun SettingsServerSectionSnapshot.localizedTitle(): String =
+    when (key) {
+        "admins" -> stringResource(R.string.settings_server_admins_title)
+        "billing" -> stringResource(R.string.settings_server_billing_title)
+        "pending_invites" -> stringResource(R.string.settings_server_pending_invites_title)
+        "join_links" -> stringResource(R.string.settings_server_join_links_title)
+        "onboarding_agent" -> stringResource(R.string.settings_server_onboarding_agent_title)
+        "danger" -> stringResource(R.string.settings_server_danger_title)
+        else -> title
+    }
+
+@Composable
+private fun SettingsServerSectionSnapshot.localizedDetail(): String =
+    detail.takeIf { it.isNotBlank() } ?: when (key) {
+        "admins" -> stringResource(R.string.settings_server_admins_unavailable_detail)
+        "billing" -> stringResource(R.string.settings_server_billing_unavailable_detail)
+        "pending_invites" -> stringResource(R.string.settings_server_pending_invites_unavailable_detail)
+        "join_links" -> stringResource(R.string.settings_server_join_links_unavailable_detail)
+        "onboarding_agent" -> stringResource(R.string.settings_server_onboarding_agent_unavailable_detail)
+        "danger" -> stringResource(R.string.settings_server_danger_unavailable_detail)
+        else -> detail
+    }
+
+private fun List<SettingsServerSectionSnapshot>.filterVisibleSettingsSections(): List<SettingsServerSectionSnapshot> =
+    filter {
+        it.state != SettingsSectionAvailability.Unavailable &&
+            !it.key.equals("browser", ignoreCase = true) &&
+            !it.title.contains("browser", ignoreCase = true)
+    }
+
+private val SettingsSectionAvailability.labelRes: Int
     get() = when (this) {
-        SettingsSectionAvailability.Available -> "Available"
-        SettingsSectionAvailability.Empty -> "Empty"
-        SettingsSectionAvailability.Unavailable -> "Unavailable"
-        SettingsSectionAvailability.NoPermission -> "No permission"
+        SettingsSectionAvailability.Available -> R.string.settings_section_available
+        SettingsSectionAvailability.Empty -> R.string.settings_section_empty
+        SettingsSectionAvailability.Unavailable -> R.string.settings_section_unavailable
+        SettingsSectionAvailability.NoPermission -> R.string.settings_section_no_permission
     }
 
 private val SettingsSectionAvailability.badgeColor
@@ -468,7 +798,10 @@ private val settingsComputersPreview = SettingsComputersSnapshot(
             id = "mac",
             name = "Jiachengs-MacBook-Pro.local",
             daemonVersion = "daemon v0.44.2",
-            online = true
+            online = true,
+            hostname = "Jiachengs-MacBook-Pro.local",
+            platform = "macOS",
+            lastSeenLabel = "Active now"
         )
     ),
     addComputerUnavailableReason = "Computer management API is not wired on Android yet."

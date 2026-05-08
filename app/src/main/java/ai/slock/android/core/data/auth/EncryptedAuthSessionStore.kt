@@ -20,7 +20,7 @@ class EncryptedAuthSessionStore(context: Context) : AuthSessionStore {
         return runCatching {
             gson.fromJson(decrypt(encrypted), AuthSession::class.java)
         }.getOrElse {
-            Log.w(TAG, "Stored auth session could not be decrypted; clearing local session.")
+            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(TAG, "Stored auth session could not be decrypted; clearing local session.")
             clearSession()
             null
         }

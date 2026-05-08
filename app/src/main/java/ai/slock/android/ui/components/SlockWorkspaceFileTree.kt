@@ -2,13 +2,16 @@ package ai.slock.android.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -21,6 +24,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
@@ -28,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.mikepenz.markdown.m3.Markdown
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
 import ai.slock.android.ui.theme.SlockShadow
@@ -65,7 +71,17 @@ sealed interface SlockWorkspaceFilePreview {
     data class Image(
         val dimensions: String,
         val size: String,
+        val mimeType: String = "image/png",
+        val description: String = "Sample image preview",
         val accentColor: Color = SlockColor.AccentCyan
+    ) : SlockWorkspaceFilePreview
+
+    data class Loading(
+        val detail: String = "Fetching preview content."
+    ) : SlockWorkspaceFilePreview
+
+    data class Error(
+        val reason: String
     ) : SlockWorkspaceFilePreview
 
     data class Unsupported(
@@ -326,71 +342,84 @@ private fun SlockWorkspacePreview(
             .background(SlockColor.SurfaceWhite),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            SlockWorkspaceMiniAction(icon = SlockIcons.ArrowLeft, label = "Back to file tree", onClick = onBack)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = file?.name ?: "No file selected",
-                    style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = file?.meta ?: "Select a file to view",
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
+        SlockWorkspacePreviewHeader(file = file, onBack = onBack)
         when (val preview = file?.preview) {
             is SlockWorkspaceFilePreview.Markdown -> SlockWorkspaceMarkdownPreview(preview)
             is SlockWorkspaceFilePreview.Image -> SlockWorkspaceImagePreview(file = file, preview = preview)
+            is SlockWorkspaceFilePreview.Loading -> SlockWorkspacePreviewStatus(
+                icon = SlockIcons.RefreshCw,
+                title = "Loading preview",
+                detail = preview.detail
+            )
+            is SlockWorkspaceFilePreview.Error -> SlockWorkspacePreviewStatus(
+                icon = SlockIcons.X,
+                title = "Preview failed",
+                detail = preview.reason
+            )
             is SlockWorkspaceFilePreview.Unsupported -> SlockWorkspaceUnsupportedPreview(file = file, preview = preview)
             null -> SlockWorkspaceStateBlock(
                 title = "Select a file",
-                detail = "Markdown, image, and unsupported sample previews appear here."
+                detail = "Markdown, image, loading, failed, and unsupported sample previews appear here."
             )
         }
     }
 }
 
 @Composable
-private fun SlockWorkspaceMarkdownPreview(preview: SlockWorkspaceFilePreview.Markdown) {
-    Column(
+private fun SlockWorkspacePreviewHeader(
+    file: SlockWorkspaceNode?,
+    onBack: () -> Unit
+) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .border(SlockStroke.Thin, SlockColor.TextBlack.copy(alpha = 0.30f))
-            .padding(SlockSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            .padding(SlockSpacing.Sm),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        Text(
-            text = preview.title,
-            style = SlockType.PageTitle,
-            color = SlockColor.TextBlack
-        )
-        preview.paragraphs.forEach { paragraph ->
-            Text(text = paragraph, style = SlockType.Body, color = SlockColor.TextBlack)
+        SlockWorkspaceMiniAction(icon = SlockIcons.ArrowLeft, label = "Back to file tree", onClick = onBack)
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = file?.name ?: "No file selected",
+                style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = file?.path ?: "Select a file to view",
+                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (file != null) {
+                Text(
+                    text = listOf(file.kind.typeLabel, file.meta ?: file.preview.previewMeta).filterNotNull().joinToString(" · "),
+                    style = SlockType.Caption,
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
-        preview.bullets.forEach { bullet ->
-            Text(text = "- $bullet", style = SlockType.Body, color = SlockColor.TextBlack)
-        }
-        Text(
-            text = preview.code,
-            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace),
-            color = SlockColor.TextBlack,
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(SlockColor.EmptyStateGray)
-                .border(SlockStroke.Thin, SlockColor.TextBlack.copy(alpha = 0.30f))
-                .padding(SlockSpacing.Sm)
-        )
+    }
+}
+
+@Composable
+private fun SlockWorkspaceMarkdownPreview(preview: SlockWorkspaceFilePreview.Markdown) {
+    val content = preview.toMarkdownSource()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(SlockStroke.Thin, SlockColor.TextBlack.copy(alpha = 0.30f))
+            .padding(SlockSpacing.Md)
+    ) {
+        Markdown(content = content)
     }
 }
 
@@ -403,26 +432,71 @@ private fun SlockWorkspaceImagePreview(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(168.dp)
-                .background(preview.accentColor)
+                .aspectRatio(16f / 10f)
+                .background(SlockColor.AppBgLightBlue)
                 .border(SlockStroke.Default, SlockColor.BorderBlack),
             contentAlignment = Alignment.Center
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    imageVector = SlockIcons.Image,
-                    contentDescription = null,
-                    tint = SlockColor.TextBlack,
-                    modifier = Modifier.size(34.dp)
-                )
-                Text(
-                    text = "IMAGE PREVIEW",
-                    style = SlockType.SectionLabel,
-                    color = SlockColor.TextBlack
-                )
-            }
+            SlockWorkspaceSampleImage(accentColor = preview.accentColor)
+            Text(
+                text = preview.description,
+                style = SlockType.SectionLabel,
+                color = SlockColor.TextBlack,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Thin, SlockColor.TextBlack.copy(alpha = 0.30f))
+                    .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs)
+            )
         }
-        SlockWorkspaceFileMeta(file.name, "${preview.dimensions} · ${preview.size}")
+        SlockWorkspaceFileMeta(file.name, "${preview.mimeType} · ${preview.dimensions} · ${preview.size}")
+    }
+}
+
+@Composable
+private fun SlockWorkspaceSampleImage(accentColor: Color) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        drawRect(color = accentColor.copy(alpha = 0.22f), size = size)
+        drawCircle(
+            color = SlockColor.BrandYellow,
+            radius = size.minDimension * 0.10f,
+            center = Offset(size.width * 0.78f, size.height * 0.20f)
+        )
+        drawRect(
+            color = accentColor,
+            topLeft = Offset(size.width * 0.06f, size.height * 0.12f),
+            size = Size(size.width * 0.30f, size.height * 0.22f)
+        )
+        drawRect(
+            color = SlockColor.SurfaceWhite.copy(alpha = 0.88f),
+            topLeft = Offset(size.width * 0.10f, size.height * 0.18f),
+            size = Size(size.width * 0.22f, size.height * 0.04f)
+        )
+        drawRect(
+            color = SlockColor.TextBlack.copy(alpha = 0.10f),
+            topLeft = Offset(size.width * 0.10f, size.height * 0.26f),
+            size = Size(size.width * 0.18f, size.height * 0.03f)
+        )
+        drawRect(
+            color = SlockColor.AccentCyan,
+            topLeft = Offset(size.width * 0.0f, size.height * 0.64f),
+            size = Size(size.width, size.height * 0.36f)
+        )
+        drawRect(
+            color = SlockColor.TextBlack.copy(alpha = 0.12f),
+            topLeft = Offset(size.width * 0.52f, size.height * 0.38f),
+            size = Size(size.width * 0.36f, size.height * 0.18f)
+        )
+        drawRect(
+            color = SlockColor.SurfaceWhite.copy(alpha = 0.82f),
+            topLeft = Offset(size.width * 0.56f, size.height * 0.43f),
+            size = Size(size.width * 0.26f, size.height * 0.035f)
+        )
+        drawRect(
+            color = SlockColor.SurfaceWhite.copy(alpha = 0.72f),
+            topLeft = Offset(size.width * 0.56f, size.height * 0.50f),
+            size = Size(size.width * 0.20f, size.height * 0.03f)
+        )
     }
 }
 
@@ -446,6 +520,39 @@ private fun SlockWorkspaceUnsupportedPreview(
         )
         Text(
             text = preview.reason,
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray
+        )
+    }
+}
+
+@Composable
+private fun SlockWorkspacePreviewStatus(
+    icon: ImageVector,
+    title: String,
+    detail: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(SlockStroke.Thin, SlockColor.TextBlack.copy(alpha = 0.30f))
+            .padding(SlockSpacing.Md),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = SlockColor.TextBlack,
+            modifier = Modifier.size(28.dp)
+        )
+        Text(
+            text = title,
+            style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+            color = SlockColor.TextBlack
+        )
+        Text(
+            text = detail,
             style = SlockType.Caption,
             color = SlockColor.TextMutedGray
         )
@@ -514,6 +621,38 @@ private val SlockWorkspaceFileKind.icon: ImageVector
         SlockWorkspaceFileKind.Unsupported -> SlockIcons.Square
     }
 
+private val SlockWorkspaceFileKind.typeLabel: String
+    get() = when (this) {
+        SlockWorkspaceFileKind.Folder -> "Folder"
+        SlockWorkspaceFileKind.Markdown -> "Markdown"
+        SlockWorkspaceFileKind.Image -> "Image"
+        SlockWorkspaceFileKind.Unsupported -> "Unsupported"
+    }
+
+private val SlockWorkspaceFilePreview?.previewMeta: String?
+    get() = when (this) {
+        is SlockWorkspaceFilePreview.Image -> "$mimeType · $dimensions · $size"
+        is SlockWorkspaceFilePreview.Markdown -> "text/markdown"
+        is SlockWorkspaceFilePreview.Loading -> "Loading"
+        is SlockWorkspaceFilePreview.Error -> "Failed"
+        is SlockWorkspaceFilePreview.Unsupported -> "Unsupported"
+        null -> null
+    }
+
+private fun SlockWorkspaceFilePreview.Markdown.toMarkdownSource(): String = buildString {
+    append("# ").append(title).append("\n\n")
+    paragraphs.forEach { paragraph ->
+        append(paragraph).append("\n\n")
+    }
+    bullets.forEach { bullet ->
+        append("- ").append(bullet).append("\n")
+    }
+    if (bullets.isNotEmpty()) {
+        append("\n")
+    }
+    append("```kotlin\n").append(code).append("\n```")
+}
+
 @Preview(showBackground = true, widthDp = 360)
 @Composable
 private fun SlockWorkspaceFileTreePreview() {
@@ -531,6 +670,39 @@ private fun SlockWorkspacePreviewPanePreview() {
     SlockTheme {
         SlockWorkspaceFileTree(
             state = SlockWorkspaceSamples.markdownPreviewState,
+            modifier = Modifier.padding(SlockSpacing.Md)
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360)
+@Composable
+private fun SlockWorkspaceImagePreviewPanePreview() {
+    SlockTheme {
+        SlockWorkspaceFileTree(
+            state = SlockWorkspaceSamples.imagePreviewState,
+            modifier = Modifier.padding(SlockSpacing.Md)
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360)
+@Composable
+private fun SlockWorkspaceLoadingPreviewPanePreview() {
+    SlockTheme {
+        SlockWorkspaceFileTree(
+            state = SlockWorkspaceSamples.loadingPreviewState,
+            modifier = Modifier.padding(SlockSpacing.Md)
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360)
+@Composable
+private fun SlockWorkspaceFailedPreviewPanePreview() {
+    SlockTheme {
+        SlockWorkspaceFileTree(
+            state = SlockWorkspaceSamples.failedPreviewState,
             modifier = Modifier.padding(SlockSpacing.Md)
         )
     }
@@ -591,12 +763,29 @@ object SlockWorkspaceSamples {
                         name = "members-detail.png",
                         path = "~/.slock/agents/android-dev/assets/members-detail.png",
                         kind = SlockWorkspaceFileKind.Image,
-                        meta = "1440 x 900 · 248 KB",
+                        meta = "PNG · 1440 x 900 · 248 KB",
                         preview = SlockWorkspaceFilePreview.Image(
                             dimensions = "1440 x 900",
                             size = "248 KB",
+                            description = "members detail sample",
                             accentColor = SlockColor.AccentLavender
                         )
+                    ),
+                    SlockWorkspaceNode(
+                        id = "image-loading",
+                        name = "profile-banner.png",
+                        path = "~/.slock/agents/android-dev/assets/profile-banner.png",
+                        kind = SlockWorkspaceFileKind.Image,
+                        meta = "PNG · 2048 x 720 · 380 KB",
+                        preview = SlockWorkspaceFilePreview.Loading("Loading image preview from repository sample state.")
+                    ),
+                    SlockWorkspaceNode(
+                        id = "image-failed",
+                        name = "broken-preview.jpg",
+                        path = "~/.slock/agents/android-dev/assets/broken-preview.jpg",
+                        kind = SlockWorkspaceFileKind.Image,
+                        meta = "JPEG · 1600 x 900 · 510 KB",
+                        preview = SlockWorkspaceFilePreview.Error("Preview bytes are unavailable in the current sample contract.")
                     ),
                     SlockWorkspaceNode(
                         id = "archive",
@@ -641,6 +830,22 @@ object SlockWorkspaceSamples {
         root = root,
         expandedNodeIds = expandedIds,
         selectedFileId = "archive",
+        showPreview = true
+    )
+
+    val loadingPreviewState = SlockWorkspaceTreeState.Content(
+        rootPath = root.path,
+        root = root,
+        expandedNodeIds = expandedIds,
+        selectedFileId = "image-loading",
+        showPreview = true
+    )
+
+    val failedPreviewState = SlockWorkspaceTreeState.Content(
+        rootPath = root.path,
+        root = root,
+        expandedNodeIds = expandedIds,
+        selectedFileId = "image-failed",
         showPreview = true
     )
 }

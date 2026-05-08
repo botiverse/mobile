@@ -26,8 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -70,6 +70,72 @@ fun InboxScreen(
     onLoadMore: () -> Unit = {},
     onRetry: () -> Unit = {}
 ) {
+    val copy = InboxScreenCopy(
+        title = stringResource(R.string.inbox_title),
+        loadingTitle = stringResource(R.string.inbox_loading_title),
+        loadingDetail = stringResource(R.string.inbox_loading_detail),
+        emptyTitle = stringResource(R.string.inbox_empty_title),
+        emptyDetail = stringResource(R.string.inbox_empty_detail),
+        noPermissionTitle = stringResource(R.string.inbox_no_permission_title),
+        errorTitle = stringResource(R.string.inbox_error_title)
+    )
+    InboxListScreen(
+        state = state,
+        copy = copy,
+        showFilters = true,
+        onBack = onBack,
+        onOpenThread = onOpenThread,
+        modifier = modifier,
+        onFilterSelected = onFilterSelected,
+        onMarkAllRead = onMarkAllRead,
+        onLoadMore = onLoadMore,
+        onRetry = onRetry
+    )
+}
+
+@Composable
+fun SavedScreen(
+    state: InboxUiState,
+    onBack: () -> Unit,
+    onOpenThread: (InboxItem) -> Unit,
+    modifier: Modifier = Modifier,
+    onLoadMore: () -> Unit = {},
+    onRetry: () -> Unit = {}
+) {
+    val copy = InboxScreenCopy(
+        title = stringResource(R.string.saved_title),
+        loadingTitle = stringResource(R.string.saved_loading_title),
+        loadingDetail = stringResource(R.string.saved_loading_detail),
+        emptyTitle = stringResource(R.string.saved_empty_title),
+        emptyDetail = stringResource(R.string.saved_empty_detail),
+        noPermissionTitle = stringResource(R.string.saved_no_permission_title),
+        errorTitle = stringResource(R.string.saved_error_title)
+    )
+    InboxListScreen(
+        state = state,
+        copy = copy,
+        showFilters = false,
+        onBack = onBack,
+        onOpenThread = onOpenThread,
+        modifier = modifier,
+        onLoadMore = onLoadMore,
+        onRetry = onRetry
+    )
+}
+
+@Composable
+private fun InboxListScreen(
+    state: InboxUiState,
+    copy: InboxScreenCopy,
+    showFilters: Boolean,
+    onBack: () -> Unit,
+    onOpenThread: (InboxItem) -> Unit,
+    modifier: Modifier = Modifier,
+    onFilterSelected: (InboxFilter) -> Unit = {},
+    onMarkAllRead: () -> Unit = {},
+    onLoadMore: () -> Unit = {},
+    onRetry: () -> Unit = {}
+) {
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -77,13 +143,16 @@ fun InboxScreen(
     ) {
         when (val loadState = state.loadState) {
             ScreenLoadState.Loading -> InboxStateContent(
-                title = stringResource(R.string.inbox_loading_title),
-                detail = stringResource(R.string.inbox_loading_detail),
+                copy = copy,
+                title = copy.loadingTitle,
+                detail = copy.loadingDetail,
                 onBack = onBack
             )
             is ScreenLoadState.Content -> InboxLoadedContent(
                 state = state,
+                copy = copy,
                 content = loadState.data,
+                showFilters = showFilters,
                 onBack = onBack,
                 onOpenThread = onOpenThread,
                 onFilterSelected = onFilterSelected,
@@ -91,17 +160,20 @@ fun InboxScreen(
                 onLoadMore = onLoadMore
             )
             is ScreenLoadState.Empty -> InboxStateContent(
-                title = stringResource(R.string.inbox_empty_title),
-                detail = loadState.reason.name,
+                copy = copy,
+                title = copy.emptyTitle,
+                detail = copy.emptyDetail,
                 onBack = onBack
             )
             is ScreenLoadState.Error -> InboxErrorContent(
+                copy = copy,
                 error = loadState.error,
                 onBack = onBack,
                 onRetry = onRetry
             )
             is ScreenLoadState.NoPermission -> InboxStateContent(
-                title = stringResource(R.string.inbox_no_permission_title),
+                copy = copy,
+                title = copy.noPermissionTitle,
                 detail = loadState.blocker.requiredCapability ?: loadState.blocker.code,
                 onBack = onBack
             )
@@ -110,9 +182,151 @@ fun InboxScreen(
 }
 
 @Composable
-private fun InboxLoadedContent(
+fun FollowedThreadsScreen(
+    state: InboxUiState,
+    onBack: () -> Unit,
+    onOpenThread: (InboxItem) -> Unit,
+    modifier: Modifier = Modifier,
+    onRetry: () -> Unit = {}
+) {
+    val copy = InboxScreenCopy(
+        title = stringResource(R.string.followed_threads_title),
+        loadingTitle = stringResource(R.string.followed_threads_loading_title),
+        loadingDetail = stringResource(R.string.followed_threads_loading_detail),
+        emptyTitle = stringResource(R.string.followed_threads_empty_title),
+        emptyDetail = stringResource(R.string.followed_threads_empty_detail),
+        noPermissionTitle = stringResource(R.string.followed_threads_no_permission_title),
+        errorTitle = stringResource(R.string.followed_threads_error_title)
+    )
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(SlockColor.SurfaceWhite)
+    ) {
+        when (val loadState = state.loadState) {
+            ScreenLoadState.Loading -> InboxStateContent(
+                copy = copy,
+                title = copy.loadingTitle,
+                detail = copy.loadingDetail,
+                onBack = onBack
+            )
+            is ScreenLoadState.Content -> FollowedThreadsLoadedContent(
+                state = state,
+                content = loadState.data,
+                onBack = onBack,
+                onOpenThread = onOpenThread
+            )
+            is ScreenLoadState.Empty -> InboxStateContent(
+                copy = copy,
+                title = copy.emptyTitle,
+                detail = copy.emptyDetail,
+                onBack = onBack
+            )
+            is ScreenLoadState.Error -> InboxErrorContent(
+                copy = copy,
+                error = loadState.error,
+                onBack = onBack,
+                onRetry = onRetry
+            )
+            is ScreenLoadState.NoPermission -> InboxStateContent(
+                copy = copy,
+                title = copy.noPermissionTitle,
+                detail = loadState.blocker.requiredCapability ?: loadState.blocker.code,
+                onBack = onBack
+            )
+        }
+    }
+}
+
+@Composable
+private fun FollowedThreadsLoadedContent(
     state: InboxUiState,
     content: InboxContent,
+    onBack: () -> Unit,
+    onOpenThread: (InboxItem) -> Unit
+) {
+    FollowedThreadsHeader(content = content, onBack = onBack)
+    if (content.items.isEmpty()) {
+        InboxEmptyBody(
+            title = stringResource(R.string.followed_threads_empty_title),
+            detail = stringResource(R.string.followed_threads_empty_detail)
+        )
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            content.items.forEach { item ->
+                InboxFlatItem(
+                    item = item,
+                    focused = item.key == state.focusedItemKey,
+                    onClick = { onOpenThread(item) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FollowedThreadsHeader(
+    content: InboxContent,
+    onBack: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(width = SlockStroke.Default, color = Color.Transparent)
+            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+    ) {
+        SlockIconSquareButton(
+            icon = SlockIcons.ArrowLeft,
+            contentDescription = stringResource(R.string.inbox_back),
+            onClick = onBack,
+            modifier = Modifier.size(38.dp)
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.followed_threads_title),
+                style = SlockType.PageTitle,
+                color = SlockColor.TextBlack,
+                maxLines = 1
+            )
+            Text(
+                text = stringResource(
+                    R.string.inbox_active_unread_stats,
+                    content.totalCount,
+                    content.totalUnreadCount
+                ),
+                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(SlockStroke.Default)
+            .background(SlockColor.BorderBlack)
+    )
+}
+
+@Composable
+private fun InboxLoadedContent(
+    state: InboxUiState,
+    copy: InboxScreenCopy,
+    content: InboxContent,
+    showFilters: Boolean,
     onBack: () -> Unit,
     onOpenThread: (InboxItem) -> Unit,
     onFilterSelected: (InboxFilter) -> Unit,
@@ -125,25 +339,28 @@ private fun InboxLoadedContent(
     }
 
     InboxHeader(
+        title = copy.title,
         content = content,
         onBack = onBack
     )
-    InboxFilterRow(
-        selectedFilter = state.selectedFilter,
-        onFilterSelected = onFilterSelected,
-        onMarkAllRead = onMarkAllRead
-    )
+    if (showFilters) {
+        InboxFilterRow(
+            selectedFilter = state.selectedFilter,
+            onFilterSelected = onFilterSelected,
+            onMarkAllRead = onMarkAllRead
+        )
+    }
     if (visibleItems.isEmpty()) {
         InboxEmptyBody(
-            title = if (state.selectedFilter == InboxFilter.Unread) {
+            title = if (showFilters && state.selectedFilter == InboxFilter.Unread) {
                 stringResource(R.string.inbox_no_unread_title)
             } else {
-                stringResource(R.string.inbox_empty_title)
+                copy.emptyTitle
             },
-            detail = if (state.selectedFilter == InboxFilter.Unread) {
+            detail = if (showFilters && state.selectedFilter == InboxFilter.Unread) {
                 stringResource(R.string.inbox_no_unread_detail)
             } else {
-                stringResource(R.string.inbox_empty_detail)
+                copy.emptyDetail
             }
         )
     } else {
@@ -183,6 +400,7 @@ private fun InboxLoadedContent(
 
 @Composable
 private fun InboxHeader(
+    title: String,
     content: InboxContent,
     onBack: () -> Unit
 ) {
@@ -206,7 +424,7 @@ private fun InboxHeader(
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
-                text = stringResource(R.string.inbox_title),
+                text = title,
                 style = SlockType.PageTitle,
                 color = SlockColor.TextBlack,
                 maxLines = 1
@@ -327,6 +545,9 @@ private fun InboxFlatItem(
     onClick: () -> Unit
 ) {
     val unread = item.unreadCount > 0
+    val metadataDescription = item.metadataDescription()
+    val metadataTimestamp = item.metadataTimestamp()
+    val hasMetadata = !metadataDescription.isNullOrBlank() || !metadataTimestamp.isNullOrBlank()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -351,32 +572,46 @@ private fun InboxFlatItem(
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
             ) {
                 Text(
-                    text = item.metaText,
-                    style = SlockType.Caption.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = SlockColor.TextMutedGray,
+                    text = item.titleText,
+                    style = SlockType.Button.copy(fontWeight = FontWeight.Bold),
+                    color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
+                if (hasMetadata) {
+                    if (!metadataDescription.isNullOrBlank()) {
+                        Text(
+                            text = metadataDescription,
+                            style = SlockType.Caption,
+                            color = SlockColor.TextMutedGray,
+                            textAlign = TextAlign.End,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    if (!metadataTimestamp.isNullOrBlank()) {
+                        Text(
+                            text = metadataTimestamp,
+                            style = SlockType.Caption,
+                            color = SlockColor.TextMutedGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
             Text(
-                text = item.titleText,
-                style = SlockType.Button.copy(fontWeight = FontWeight.Bold),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
                 text = item.previewText(),
-                style = SlockType.Body.copy(fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal),
+                style = SlockType.Body,
                 color = SlockColor.TextBlack,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
-            InboxItemFooter(item = item, unread = unread)
+            if (unread || item.replyCount > 0) {
+                InboxItemFooter(item = item, unread = unread)
+            }
         }
         Box(modifier = Modifier.width(40.dp), contentAlignment = Alignment.TopEnd) {
             InboxItemCheckButton(onClick = onClick)
@@ -400,14 +635,6 @@ private fun InboxItemFooter(item: InboxItem, unread: Boolean) {
         item.replyCount.takeIf { it > 0 }?.let {
             InboxBadge(text = stringResource(R.string.inbox_reply_count, it), color = SlockColor.SurfaceWhite)
         }
-        Text(
-            text = item.activityText(),
-            style = SlockType.Caption,
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
     }
 }
 
@@ -475,11 +702,13 @@ private fun InboxBadge(
 
 @Composable
 private fun InboxStateContent(
+    copy: InboxScreenCopy,
     title: String,
     detail: String,
     onBack: () -> Unit
 ) {
     InboxHeader(
+        title = copy.title,
         content = InboxContent(
             server = ServerSummary(ServerId("state"), "Slock Android"),
             items = emptyList(),
@@ -493,11 +722,14 @@ private fun InboxStateContent(
 
 @Composable
 private fun InboxErrorContent(
+    copy: InboxScreenCopy,
     error: ScreenError,
+    title: String? = null,
     onBack: () -> Unit,
     onRetry: () -> Unit
 ) {
     InboxHeader(
+        title = copy.title,
         content = InboxContent(
             server = ServerSummary(ServerId("error"), "Slock Android"),
             items = emptyList(),
@@ -513,12 +745,22 @@ private fun InboxErrorContent(
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
         SlockErrorState(
-            title = stringResource(R.string.inbox_error_title),
+            title = title ?: copy.errorTitle,
             detail = stringResource(R.string.inbox_error_detail, error.code)
         )
         InboxMarkAllReadButton(onClick = onRetry)
     }
 }
+
+private data class InboxScreenCopy(
+    val title: String,
+    val loadingTitle: String,
+    val loadingDetail: String,
+    val emptyTitle: String,
+    val emptyDetail: String,
+    val noPermissionTitle: String,
+    val errorTitle: String
+)
 
 @Composable
 private fun InboxEmptyBody(
@@ -543,12 +785,6 @@ private val InboxItem.titleText: String
         InboxItemKind.Channel -> "#$channelName"
     }
 
-private val InboxItem.metaText: String
-    get() = listOfNotNull(
-        "#${parentChannelName ?: channelName}",
-        latestActivityAt ?: lastMessageAt
-    ).joinToString(" · ")
-
 @Composable
 private fun InboxItem.previewText(): String =
     latestActivityPreview
@@ -556,13 +792,15 @@ private fun InboxItem.previewText(): String =
         ?: parentMessagePreview
         ?: stringResource(R.string.inbox_no_preview)
 
-@Composable
-private fun InboxItem.activityText(): String =
+private fun InboxItem.metadataDescription(): String? =
     listOfNotNull(
         latestActivitySenderName ?: lastMessageSenderName,
         taskNumber?.let { "task #$it" },
         taskStatus?.name
-    ).joinToString(" · ").ifBlank { stringResource(R.string.inbox_read_item) }
+    ).joinToString(" · ").takeIf { it.isNotBlank() }
+
+private fun InboxItem.metadataTimestamp(): String? =
+    latestActivityAt ?: lastMessageAt
 
 @Preview(showBackground = true, widthDp = 360, heightDp = 800)
 @Composable
@@ -584,6 +822,8 @@ private fun InboxScreenStatesPreview() {
         key = "channel:read-item",
         unreadCount = 0,
         channelName = "resolved-updates-with-a-very-long-name-that-should-ellipsis",
+        lastMessageSenderName = "Product-UX-Designer-with-a-very-long-display-name-that-should-ellipsis",
+        lastMessageAt = "18:13",
         lastMessagePreview = "This read inbox item proves text truncates cleanly without pushing the chevron."
     )
     SlockTheme {

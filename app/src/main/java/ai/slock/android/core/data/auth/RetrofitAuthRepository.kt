@@ -13,7 +13,9 @@ import retrofit2.Retrofit
 
 class RetrofitAuthRepository(
     private val store: AuthSessionStore,
-    private val api: AuthApi = createAuthApi()
+    private val api: AuthApi = createAuthApi(),
+    private val logger: (String) -> Unit = { message -> ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(TAG, message) },
+    private val warningLogger: (String) -> Unit = { message -> ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(TAG, message) }
 ) : AuthRepository {
     private val gson = Gson()
 
@@ -41,18 +43,34 @@ class RetrofitAuthRepository(
     }
 
     override suspend fun restoreSession(): AuthResult<AuthSessionSummary> {
-        val session = store.readSession() ?: return AuthResult.Unauthenticated
+        val session = store.readSession()
+        if (session == null) {
+            warningLogger("restore_session_missing")
+            return AuthResult.Unauthenticated
+        }
+        logger(
+            "restore_session_found serverCount=${session.servers.size} selectedServer=${session.currentServerId != null}"
+        )
         return when (val result = currentUserWithSession(session)) {
-            is AuthResult.Success -> result
+            is AuthResult.Success -> {
+                logger("restore_current_user_success")
+                result
+            }
             AuthResult.Unauthenticated -> {
+                warningLogger("restore_current_user_unauthenticated_try_refresh")
                 val refreshed = refresh(session.refreshToken)
                 if (refreshed is AuthResult.Success) {
+                    logger("restore_refresh_success")
                     refreshed
                 } else {
+                    warningLogger("restore_refresh_failed_unauthenticated")
                     AuthResult.Unauthenticated
                 }
             }
-            is AuthResult.Failure -> result
+            is AuthResult.Failure -> {
+                warningLogger("restore_current_user_failure code=${result.code}")
+                result
+            }
         }
     }
 
@@ -70,6 +88,7 @@ class RetrofitAuthRepository(
         val current = store.readSession() ?: return AuthResult.Unauthenticated
         return executeAuthCall(
             onUnauthorized = {
+                warningLogger("restore_current_user_401_clearing_session")
                 store.clearSession()
                 AuthResult.Unauthenticated
             }

@@ -11,10 +11,17 @@ import ai.slock.android.core.data.repository.InboxSnapshot
 import ai.slock.android.core.data.repository.MemberSnapshot
 import ai.slock.android.core.data.repository.ServerListSnapshot
 import ai.slock.android.core.data.repository.SessionSettingsSnapshot
+import ai.slock.android.core.data.repository.SettingsBillingCurrentPlanSnapshot
+import ai.slock.android.core.data.repository.SettingsBillingPlanSnapshot
+import ai.slock.android.core.data.repository.SettingsBillingSnapshot
+import ai.slock.android.core.data.repository.SettingsComputerAgentSnapshot
+import ai.slock.android.core.data.repository.SettingsComputerDetailSnapshot
 import ai.slock.android.core.data.repository.SettingsComputerSnapshot
+import ai.slock.android.core.data.repository.SettingsComputerWorkspaceSnapshot
 import ai.slock.android.core.data.repository.SettingsComputersSnapshot
 import ai.slock.android.core.data.repository.SettingsMobileSnapshot
 import ai.slock.android.core.data.repository.SettingsMobileToggleSnapshot
+import ai.slock.android.core.data.repository.SettingsPlanUsageSnapshot
 import ai.slock.android.core.data.repository.SettingsSectionAvailability
 import ai.slock.android.core.data.repository.SettingsSnapshot
 import ai.slock.android.core.data.repository.SettingsServerProfileSnapshot
@@ -116,6 +123,7 @@ object MockSeedData {
             kind = ConversationKind.Channel,
             name = "release-readonly",
             subtitle = "Permission disabled sample",
+            joined = false,
             permissions = ConversationPermissions(canSend = false, canAttach = false, canCreateTask = false)
         )
     )
@@ -127,6 +135,7 @@ object MockSeedData {
             kind = ConversationKind.DirectMessage,
             name = "Android-Developer",
             subtitle = "Component/state integration",
+            avatarUrl = "pixel:diamond",
             lastMessageId = MessageId("message-dm-latest"),
             lastMessagePreview = "ThreadUiState sample provider is ready.",
             lastMessageAt = "Now",
@@ -180,6 +189,8 @@ object MockSeedData {
             status = TaskStatus.InProgress,
             taskNumber = 6,
             messageId = MessageId("message-task-6"),
+            channelId = ChannelId("channel-onboarding-artin"),
+            threadId = ThreadId("thread-onboarding-artin"),
             assignee = androidDeveloper,
             channelName = "onboarding-artin",
             updatedAtLabel = "13:55"
@@ -190,6 +201,8 @@ object MockSeedData {
             status = TaskStatus.InProgress,
             taskNumber = 9,
             messageId = MessageId("message-task-9"),
+            channelId = ChannelId("channel-onboarding-artin"),
+            threadId = ThreadId("thread-onboarding-artin"),
             assignee = apiDeveloper,
             channelName = "onboarding-artin",
             updatedAtLabel = "13:56"
@@ -199,6 +212,8 @@ object MockSeedData {
             title = "Review Home/sidebar preview against product sketch",
             status = TaskStatus.Todo,
             taskNumber = 12,
+            channelId = ChannelId("channel-onboarding-artin"),
+            threadId = ThreadId("thread-onboarding-artin"),
             assignee = null,
             channelName = "android-dev",
             updatedAtLabel = "Today",
@@ -370,10 +385,46 @@ object MockSeedData {
                 id = "computer-macbook",
                 name = "Jiachengs-MacBook-Pro.local",
                 daemonVersion = "daemon v0.44.2",
-                online = true
+                online = true,
+                hostname = "Jiachengs-MacBook-Pro.local",
+                platform = "macOS",
+                lastSeenLabel = "Active now"
             )
         ),
         addComputerUnavailableReason = "Computer management API is not wired on Android yet."
+    )
+
+    val settingsComputerDetailSnapshot = SettingsComputerDetailSnapshot(
+        computer = settingsComputersSnapshot.computers.first(),
+        workspaces = listOf(
+            SettingsComputerWorkspaceSnapshot(
+                id = "workspace-slock",
+                name = "Slock",
+                path = "~/AndroidStudioProjects/Slock",
+                statusLabel = "active",
+                lastActiveLabel = "Active now"
+            )
+        ),
+        agents = listOf(
+            SettingsComputerAgentSnapshot(
+                id = "agent-settings",
+                name = "Android-Settings-Integrator",
+                statusLabel = "active",
+                ownerLabel = "Settings"
+            )
+        ),
+        sections = listOf(
+            SettingsServerSectionSnapshot(
+                key = "machine_status_events",
+                title = "Status Events",
+                detail = "Realtime status events are available; REST history is unavailable."
+            ),
+            SettingsServerSectionSnapshot(
+                key = "machine_logs",
+                title = "Logs",
+                detail = "Machine logs endpoint is not confirmed."
+            )
+        )
     )
 
     val settingsServerSnapshot = SettingsServerSnapshot(
@@ -383,35 +434,47 @@ object MockSeedData {
         ),
         sections = listOf(
             SettingsServerSectionSnapshot(
-                key = "admins",
-                title = "Admins",
-                detail = "Admin management endpoint is not wired on Android yet."
-            ),
-            SettingsServerSectionSnapshot(
                 key = "billing",
                 title = "Plan & Billing",
-                detail = "Billing settings are unavailable until the contract is confirmed."
-            ),
-            SettingsServerSectionSnapshot(
-                key = "pending_invites",
-                title = "Pending Invites",
-                detail = "Invite listing is unavailable until the contract is confirmed."
-            ),
-            SettingsServerSectionSnapshot(
-                key = "join_links",
-                title = "Join Links",
-                detail = "Join link management is unavailable until the contract is confirmed."
-            ),
-            SettingsServerSectionSnapshot(
-                key = "onboarding_agent",
-                title = "Onboarding Agent",
-                detail = "Onboarding agent settings are not wired on Android yet."
+                detail = "Current plan: Hobby. Open Billing for readable plan and usage state.",
+                state = SettingsSectionAvailability.Available
             ),
             SettingsServerSectionSnapshot(
                 key = "danger",
                 title = "Danger Zone",
-                detail = "Delete Server remains disabled until endpoint and owner permission contracts are confirmed.",
+                detail = "Delete Server is disabled in this Android build.",
                 state = SettingsSectionAvailability.NoPermission
+            )
+        )
+    )
+
+    val settingsBillingSnapshot = SettingsBillingSnapshot(
+        currentPlan = SettingsBillingCurrentPlanSnapshot(
+            planName = "Hobby",
+            trialActive = true,
+            usageRows = listOf(
+                SettingsPlanUsageSnapshot("Messages", "4,120 / 10,000"),
+                SettingsPlanUsageSnapshot("Members", "8 / 20"),
+                SettingsPlanUsageSnapshot("AI agents", "5 active")
+            )
+        ),
+        plans = listOf(
+            SettingsBillingPlanSnapshot(
+                name = "Hobby",
+                price = "$0 / month",
+                features = listOf("Core chat and task workflows", "Up to 20 members", "Local Android preview support"),
+                current = true
+            ),
+            SettingsBillingPlanSnapshot(
+                name = "Team",
+                price = "$29 / month",
+                features = listOf("Shared team spaces", "More AI agent capacity", "Priority workspace controls")
+            ),
+            SettingsBillingPlanSnapshot(
+                name = "Business",
+                price = "Custom",
+                features = listOf("Advanced audit and billing controls", "Dedicated workspace support"),
+                comingSoon = true
             )
         )
     )

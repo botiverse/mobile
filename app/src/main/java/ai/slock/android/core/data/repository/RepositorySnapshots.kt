@@ -1,10 +1,15 @@
 package ai.slock.android.core.data.repository
 
 import ai.slock.android.core.model.AgentProfile
+import ai.slock.android.core.model.Attachment
+import ai.slock.android.core.model.AttachmentId
+import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationSummary
 import ai.slock.android.core.model.InboxItem
+import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Message
+import ai.slock.android.core.model.MessageId
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
 import ai.slock.android.core.model.SettingsSummary
@@ -27,12 +32,48 @@ data class ServerListSnapshot(
 data class ThreadSnapshot(
     val conversation: ConversationSummary,
     val messages: List<Message>,
+    val tasks: List<TaskSummary> = emptyList(),
     val canLoadMoreBefore: Boolean = false,
     val canLoadMoreAfter: Boolean = false,
     val hasGap: Boolean = false,
     val historyLimited: Boolean = false,
     val highlightedMessageId: ai.slock.android.core.model.MessageId? = null,
+    val newUpdateCount: Int = 0,
     val lastSeq: Long = messages.maxOfOrNull { it.seq ?: 0L } ?: 0L
+)
+
+data class ThreadListSnapshot(
+    val server: ServerSummary,
+    val threads: List<InboxItem>,
+    val totalCount: Int = threads.size,
+    val hasMore: Boolean = false,
+    val nextOffset: Int? = null
+)
+
+data class AttachmentUploadRequest(
+    val channelId: ChannelId,
+    val files: List<AttachmentUploadFile>
+)
+
+data class AttachmentUploadFile(
+    val id: String,
+    val fileName: String,
+    val mimeType: String? = null,
+    val sizeBytes: Long? = null,
+    val previewUri: String? = null,
+    val bytes: ByteArray
+)
+
+data class AttachmentUploadResult(
+    val attachments: List<Attachment>
+) {
+    val attachmentIds: List<AttachmentId> = attachments.map { it.id }
+}
+
+data class AttachmentOpenTarget(
+    val attachmentId: AttachmentId,
+    val url: String,
+    val expiresAt: String? = null
 )
 
 data class TaskSnapshot(
@@ -43,6 +84,62 @@ data class TaskSnapshot(
 data class MemberSnapshot(
     val server: ServerSummary,
     val members: List<MemberProfile>
+)
+
+data class AgentDetailSnapshot(
+    val agentId: MemberId,
+    val directMessages: List<AgentDmSummary>,
+    val reminders: List<AgentReminderSummary>,
+    val activity: List<AgentActivityEntry>
+)
+
+data class AgentDmSnapshot(
+    val agentId: MemberId,
+    val directMessages: List<AgentDmSummary>
+)
+
+data class AgentReminderSnapshot(
+    val agentId: MemberId,
+    val reminders: List<AgentReminderSummary>
+)
+
+data class AgentActivitySnapshot(
+    val agentId: MemberId,
+    val activity: List<AgentActivityEntry>
+)
+
+data class AgentDmSummary(
+    val id: String,
+    val peerId: String?,
+    val peerName: String,
+    val peerAvatarUrl: String? = null,
+    val lastMessageAt: String? = null,
+    val lastMessagePreview: String? = null
+)
+
+data class AgentReminderSummary(
+    val id: String,
+    val title: String,
+    val fireAt: String? = null,
+    val recurrenceDescription: String? = null,
+    val messageRef: String? = null,
+    val messagePermalink: String? = null,
+    val ownerAgentId: String? = null,
+    val status: String? = null
+)
+
+data class AgentActivityEntry(
+    val id: String,
+    val type: String,
+    val title: String,
+    val body: String? = null,
+    val timestamp: String? = null
+)
+
+data class ChannelMemberSnapshot(
+    val channelId: ChannelId,
+    val members: List<MemberProfile>,
+    val canAddMembers: Boolean = true
 )
 
 data class AgentSnapshot(
@@ -63,6 +160,31 @@ data class InboxSnapshot(
 data class ChannelSnapshot(
     val server: ServerSummary,
     val channels: List<ConversationSummary>
+)
+
+data class CreateChannelResult(
+    val channel: ConversationSummary,
+    val addedAgentMemberIds: List<String> = emptyList(),
+    val addedUserMemberIds: List<String> = emptyList()
+)
+
+data class ChannelJoinResult(
+    val channelId: ChannelId,
+    val joined: Boolean = true,
+    val channel: ConversationSummary? = null
+)
+
+data class ChannelUnreadSnapshot(
+    val server: ServerSummary,
+    val unreadCounts: Map<ChannelId, Int>,
+    val totalUnreadCount: Int = unreadCounts.values.sum()
+)
+
+data class ReadReceiptResult(
+    val channelId: ChannelId? = null,
+    val seq: Long? = null,
+    val unreadCount: Int = 0,
+    val changed: Boolean = true
 )
 
 data class DirectMessageSnapshot(
@@ -92,18 +214,15 @@ data class ServerUnreadSummarySnapshot(
     val summaries: List<ServerUnreadSummary>,
     val selectedServerSummary: ServerUnreadSummary?,
     val totalUnreadCount: Int,
-    val inboxUnreadCount: Int = selectedServerSummary?.inboxUnreadCount ?: 0,
-    val savedUnreadCount: Int = selectedServerSummary?.savedUnreadCount ?: 0,
+    val selectedServerUnreadCount: Int = selectedServerSummary?.totalUnreadCount ?: server.unreadCount,
     val mentionCount: Int = selectedServerSummary?.mentionCount ?: 0
 )
 
 data class ServerUnreadSummary(
     val serverId: ServerId,
     val totalUnreadCount: Int,
-    val inboxUnreadCount: Int = 0,
     val channelUnreadCount: Int = 0,
     val directMessageUnreadCount: Int = 0,
-    val savedUnreadCount: Int = 0,
     val mentionCount: Int = 0,
     val taskUnreadCount: Int = 0,
     val updatedAt: String? = null
@@ -163,6 +282,30 @@ data class SessionActionResult(
     val revoked: Boolean
 )
 
+data class SettingsBillingSnapshot(
+    val currentPlan: SettingsBillingCurrentPlanSnapshot,
+    val plans: List<SettingsBillingPlanSnapshot>
+)
+
+data class SettingsBillingCurrentPlanSnapshot(
+    val planName: String,
+    val usageRows: List<SettingsPlanUsageSnapshot>,
+    val trialActive: Boolean = false
+)
+
+data class SettingsPlanUsageSnapshot(
+    val label: String,
+    val value: String
+)
+
+data class SettingsBillingPlanSnapshot(
+    val name: String,
+    val price: String,
+    val features: List<String>,
+    val current: Boolean = false,
+    val comingSoon: Boolean = false
+)
+
 data class SettingsComputersSnapshot(
     val computers: List<SettingsComputerSnapshot>,
     val canAddComputer: Boolean = false,
@@ -173,7 +316,39 @@ data class SettingsComputerSnapshot(
     val id: String,
     val name: String,
     val daemonVersion: String,
-    val online: Boolean
+    val online: Boolean,
+    val hostname: String? = null,
+    val platform: String? = null,
+    val lastSeenLabel: String? = null
+)
+
+data class SettingsComputerDetailSnapshot(
+    val computer: SettingsComputerSnapshot,
+    val workspaces: List<SettingsComputerWorkspaceSnapshot>,
+    val agents: List<SettingsComputerAgentSnapshot>,
+    val sections: List<SettingsServerSectionSnapshot>,
+    val workspacesError: SettingsSectionErrorSnapshot? = null,
+    val agentsError: SettingsSectionErrorSnapshot? = null
+)
+
+data class SettingsSectionErrorSnapshot(
+    val code: String,
+    val retryable: Boolean = false
+)
+
+data class SettingsComputerWorkspaceSnapshot(
+    val id: String,
+    val name: String,
+    val path: String,
+    val statusLabel: String? = null,
+    val lastActiveLabel: String? = null
+)
+
+data class SettingsComputerAgentSnapshot(
+    val id: String,
+    val name: String,
+    val statusLabel: String? = null,
+    val ownerLabel: String? = null
 )
 
 data class SettingsServerSnapshot(
@@ -216,6 +391,13 @@ enum class SettingsSectionAvailability {
 
 data class SendMessageResult(
     val message: Message
+)
+
+data class ThreadActionResult(
+    val threadChannelId: ai.slock.android.core.model.ChannelId,
+    val changed: Boolean,
+    val parentMessageId: ai.slock.android.core.model.MessageId? = null,
+    val replyCount: Int = 0
 )
 
 data class TaskActionResult(

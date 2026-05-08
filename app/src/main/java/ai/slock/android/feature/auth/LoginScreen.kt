@@ -39,6 +39,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -88,85 +89,89 @@ fun LoginScreen(
             style = SlockType.PageTitle.copy(fontSize = 32.sp, lineHeight = 38.sp),
             color = SlockColor.TextBlack
         )
-        AuthTextField(
-            value = email,
-            onValueChange = { email = it },
-            label = stringResource(R.string.auth_email_label),
-            required = true,
-            enabled = !isSubmitting,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Email,
-                imeAction = ImeAction.Next
+        AuthFormColumn {
+            AuthTextField(
+                value = email,
+                onValueChange = { email = it },
+                label = stringResource(R.string.auth_email_label),
+                required = true,
+                enabled = !isSubmitting,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Email,
+                    imeAction = ImeAction.Next
+                )
             )
-        )
-        AuthTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = stringResource(R.string.auth_password_label),
-            required = true,
-            enabled = !isSubmitting,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Password,
-                imeAction = ImeAction.Done
-            ),
-            keyboardActions = KeyboardActions(onDone = { submitLogin() }),
-            onEnterKey = submitLogin,
-            visualTransformation = PasswordVisualTransformation()
-        )
-        if (!errorMessage.isNullOrBlank()) {
-            Text(
-                text = errorMessage,
-                style = SlockType.Body.copy(fontSize = 16.sp, lineHeight = 22.sp),
-                color = SlockColor.AccentRed
+            AuthTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = stringResource(R.string.auth_password_label),
+                required = true,
+                enabled = !isSubmitting,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(onDone = { submitLogin() }),
+                onEnterKey = submitLogin,
+                visualTransformation = PasswordVisualTransformation()
+            )
+            if (!errorMessage.isNullOrBlank()) {
+                Text(
+                    text = errorMessage,
+                    style = SlockType.Body.copy(fontSize = 16.sp, lineHeight = 22.sp),
+                    color = SlockColor.AccentRed
+                )
+            }
+            AuthActionButton(
+                text = if (isSubmitting) {
+                    stringResource(R.string.auth_signing_in)
+                } else {
+                    stringResource(R.string.auth_sign_in)
+                },
+                onClick = submitLogin,
+                background = SlockColor.AccentPink,
+                contentColor = SlockColor.TextBlack,
+                enabled = canSubmit,
+                loading = isSubmitting
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(SlockStroke.Default)
+                    .background(SlockColor.BorderBlack)
+            )
+            AuthActionButton(
+                text = stringResource(R.string.auth_continue_google),
+                onClick = { onAuthProviderUnavailable("Google") },
+                background = SlockColor.SurfaceWhite,
+                contentColor = SlockColor.TextBlack,
+                enabled = false,
+                preserveDisabledVisual = true,
+                leadingContent = {
+                    Image(
+                        painter = painterResource(R.drawable.ic_google),
+                        contentDescription = null,
+                        modifier = Modifier.height(18.dp)
+                    )
+                }
+            )
+            AuthActionButton(
+                text = stringResource(R.string.auth_continue_github),
+                onClick = { onAuthProviderUnavailable("GitHub") },
+                background = SlockColor.TextBlack,
+                contentColor = SlockColor.SurfaceWhite,
+                enabled = false,
+                preserveDisabledVisual = true,
+                leadingContent = {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_github),
+                        contentDescription = null,
+                        tint = SlockColor.SurfaceWhite,
+                        modifier = Modifier.height(18.dp)
+                    )
+                }
             )
         }
-        AuthActionButton(
-            text = if (isSubmitting) {
-                stringResource(R.string.auth_signing_in)
-            } else {
-                stringResource(R.string.auth_sign_in)
-            },
-            onClick = submitLogin,
-            background = SlockColor.AccentPink,
-            contentColor = SlockColor.TextBlack,
-            enabled = canSubmit,
-            loading = isSubmitting
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(SlockStroke.Default)
-                .background(SlockColor.BorderBlack)
-        )
-        AuthActionButton(
-            text = stringResource(R.string.auth_continue_google),
-            onClick = { onAuthProviderUnavailable("Google") },
-            background = SlockColor.SurfaceWhite,
-            contentColor = SlockColor.TextBlack,
-            enabled = !isSubmitting,
-            leadingContent = {
-                Image(
-                    painter = painterResource(R.drawable.ic_google),
-                    contentDescription = null,
-                    modifier = Modifier.height(20.dp)
-                )
-            }
-        )
-        AuthActionButton(
-            text = stringResource(R.string.auth_continue_github),
-            onClick = { onAuthProviderUnavailable("GitHub") },
-            background = SlockColor.TextBlack,
-            contentColor = SlockColor.SurfaceWhite,
-            enabled = !isSubmitting,
-            leadingContent = {
-                Icon(
-                    painter = painterResource(R.drawable.ic_github),
-                    contentDescription = null,
-                    tint = SlockColor.SurfaceWhite,
-                    modifier = Modifier.height(20.dp)
-                )
-            }
-        )
         Text(
             text = stringResource(R.string.auth_forgot_password),
             style = SlockType.Body.copy(
@@ -202,6 +207,22 @@ fun LoginScreen(
             )
         }
     }
+}
+
+@Composable
+private fun ColumnScope.AuthFormColumn(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = modifier
+            .align(Alignment.CenterHorizontally)
+            .fillMaxWidth()
+            .widthIn(max = 360.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.Start,
+        content = content
+    )
 }
 
 @Composable
@@ -300,6 +321,7 @@ fun AuthTextField(
     onEnterKey: (() -> Unit)? = null,
     visualTransformation: VisualTransformation = VisualTransformation.None
 ) {
+    var isFocused by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
@@ -309,27 +331,30 @@ fun AuthTextField(
             required = required,
             optional = optional
         )
-        val shadow = if (forceFocused && enabled) SlockShadow.Default else SlockShadow.Small
+        val focused = enabled && (isFocused || forceFocused)
+        val shadow = if (focused) SlockShadow.Default else SlockShadow.Small
+        val shadowPadding = if (focused) SlockShadow.Default else SlockShadow.Small
         val borderColor = if (isError) SlockColor.AccentRed else SlockColor.BorderBlack
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             enabled = enabled,
             singleLine = true,
-            textStyle = SlockType.Body.copy(fontSize = 18.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
+            textStyle = SlockType.Body.copy(fontSize = 16.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
             keyboardOptions = keyboardOptions,
             keyboardActions = keyboardActions,
             visualTransformation = visualTransformation,
             cursorBrush = SolidColor(SlockColor.TextBlack),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(end = SlockShadow.Small.offsetX, bottom = SlockShadow.Small.offsetY)
+                .padding(end = shadowPadding.offsetX, bottom = shadowPadding.offsetY)
                 .slockHardShadow(shadow)
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, borderColor)
                 .then(if (enabled) Modifier else Modifier.background(SlockColor.EmptyStateGray))
-                .defaultMinSize(minHeight = 56.dp)
-                .padding(horizontal = SlockSpacing.Md, vertical = 12.dp)
+                .onFocusChanged { isFocused = it.isFocused }
+                .defaultMinSize(minHeight = 48.dp)
+                .padding(horizontal = 14.dp, vertical = 8.dp)
                 .then(
                     if (onEnterKey == null) {
                         Modifier
@@ -352,7 +377,7 @@ fun AuthTextField(
                     if (value.isEmpty() && placeholder.isNotBlank()) {
                         Text(
                             text = placeholder,
-                            style = SlockType.Body.copy(fontSize = 18.sp, lineHeight = 24.sp),
+                            style = SlockType.Body.copy(fontSize = 16.sp, lineHeight = 20.sp),
                             color = SlockColor.TextMutedGray,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -386,13 +411,13 @@ fun AuthFieldLabel(
     ) {
         Text(
             text = label,
-            style = SlockType.Button.copy(fontSize = 18.sp, lineHeight = 24.sp),
+            style = SlockType.Button.copy(fontSize = 16.sp, lineHeight = 20.sp),
             color = SlockColor.TextBlack
         )
         if (required) {
             Text(
                 text = "*",
-                style = SlockType.Button.copy(fontSize = 18.sp, lineHeight = 24.sp),
+                style = SlockType.Button.copy(fontSize = 16.sp, lineHeight = 20.sp),
                 color = SlockColor.AccentPink
             )
         } else if (optional) {
@@ -414,9 +439,10 @@ fun AuthActionButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     loading: Boolean = false,
+    preserveDisabledVisual: Boolean = false,
     leadingContent: (@Composable () -> Unit)? = null
 ) {
-    val buttonBackground = if (enabled) background else SlockColor.EmptyStateGray
+    val buttonBackground = if (enabled || preserveDisabledVisual) background else SlockColor.EmptyStateGray
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -425,8 +451,8 @@ fun AuthActionButton(
             .background(buttonBackground)
             .border(SlockStroke.Default, SlockColor.BorderBlack)
             .clickable(enabled = enabled && !loading, onClick = onClick)
-            .defaultMinSize(minHeight = 54.dp)
-            .padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
+            .defaultMinSize(minHeight = 48.dp)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(
@@ -443,7 +469,7 @@ fun AuthActionButton(
             }
             Text(
                 text = if (loading && !text.endsWith("...")) "$text..." else text,
-                style = SlockType.Button.copy(fontSize = 18.sp, lineHeight = 24.sp),
+                style = SlockType.Button.copy(fontSize = 16.sp, lineHeight = 20.sp),
                 color = contentColor,
                 textAlign = TextAlign.Center
             )

@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
@@ -14,17 +15,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.pullToRefresh
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -36,6 +43,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
@@ -68,16 +76,26 @@ fun TasksScreen(
     state: TasksUiState,
     modifier: Modifier = Modifier,
     onFilterSelected: (TaskStatus?) -> Unit = {},
+    onTaskClick: (TaskSummary) -> Unit = {},
     onRetry: () -> Unit = {}
 ) {
     val copy = TasksScreenCopy.defaults()
+    var lastVisibleContent by remember { mutableStateOf<TasksContent?>(null) }
+    val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
+    if (currentContent != null) {
+        lastVisibleContent = currentContent
+    }
+    val displayState = when {
+        state.refreshing && lastVisibleContent != null -> ScreenLoadState.Content(lastVisibleContent!!)
+        else -> state.loadState
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
         SlockTitledPageHeader(title = copy.title)
-        when (val loadState = state.loadState) {
+        when (val loadState = displayState) {
             ScreenLoadState.Loading -> TasksStateBody(
                 title = copy.loadingTitle,
                 detail = copy.loadingDetail
@@ -86,7 +104,10 @@ fun TasksScreen(
                 state = state,
                 content = loadState.data,
                 copy = copy,
-                onFilterSelected = onFilterSelected
+                onFilterSelected = onFilterSelected,
+                onTaskClick = onTaskClick,
+                refreshing = state.refreshing,
+                onRefresh = onRetry
             )
             is ScreenLoadState.Empty -> TasksStateBody(
                 title = copy.emptyTitle,
@@ -110,7 +131,10 @@ private fun TasksLoadedBody(
     state: TasksUiState,
     content: TasksContent,
     copy: TasksScreenCopy,
-    onFilterSelected: (TaskStatus?) -> Unit
+    onFilterSelected: (TaskStatus?) -> Unit,
+    onTaskClick: (TaskSummary) -> Unit,
+    refreshing: Boolean,
+    onRefresh: () -> Unit
 ) {
     val channelOptions = content.tasks
         .mapNotNull { it.channelName }
@@ -134,37 +158,127 @@ private fun TasksLoadedBody(
     val filteredContent = channelScopedContent.copy(tasks = filteredTasks)
     var selectedMode by rememberSaveable { mutableStateOf(TasksViewMode.Board) }
 
+    TasksRefreshableContent(
+        refreshing = refreshing,
+        onRefresh = onRefresh,
+        modifier = Modifier.fillMaxSize()
+    ) { refreshOffset ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset(y = refreshOffset)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+        ) {
+            TasksSummaryBar(content = channelScopedContent, copy = copy)
+            state.navigationErrorCode?.let { code ->
+                TasksNavigationNotice(
+                    title = copy.navigationFailedTitle,
+                    detail = copy.navigationErrorDetail(code)
+                )
+            }
+            TasksToolbar(
+                state = state,
+                copy = copy,
+                channelOptions = channelOptions,
+                selectedChannelNames = selectedChannels,
+                channelSelectorExpanded = channelSelectorExpanded,
+                selectedMode = selectedMode,
+                onFilterSelected = onFilterSelected,
+                onChannelSelectorExpandedChange = { channelSelectorExpanded = it },
+                onChannelToggled = { channelName ->
+                    selectedChannelNames = if (channelName in selectedChannels) {
+                        selectedChannels - channelName
+                    } else {
+                        selectedChannels + channelName
+                    }
+                },
+                onClearChannels = { selectedChannelNames = emptySet() },
+                onModeSelected = { selectedMode = it }
+            )
+            when (selectedMode) {
+                TasksViewMode.Board -> TasksBoardSection(content = filteredContent, copy = copy, onTaskClick = onTaskClick)
+                TasksViewMode.List -> TasksListSection(tasks = filteredTasks, copy = copy, onTaskClick = onTaskClick)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TasksRefreshableContent(
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.(Dp) -> Unit
+) {
+    val refreshState = rememberPullToRefreshState()
+    Box(
+        modifier = modifier.pullToRefresh(
+            isRefreshing = refreshing,
+            state = refreshState,
+            enabled = true,
+            threshold = 120.dp,
+            onRefresh = {
+                if (!refreshing) {
+                    onRefresh()
+                }
+            }
+        )
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            val offset = if (refreshing) {
+                SlockSpacing.Xs
+            } else {
+                SlockSpacing.Xs * refreshState.distanceFraction.coerceIn(0f, 1f)
+            }
+            content(offset)
+        }
+        if (refreshing || refreshState.distanceFraction > 0.01f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = SlockSpacing.Sm),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = SlockColor.TextBlack,
+                    trackColor = SlockColor.BorderBlack.copy(alpha = 0.18f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TasksNavigationNotice(title: String, detail: String) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+            .fillMaxWidth()
+            .background(SlockColor.AccentRed.copy(alpha = 0.12f))
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        TasksSummaryBar(content = channelScopedContent, copy = copy)
-        TasksToolbar(
-            state = state,
-            copy = copy,
-            channelOptions = channelOptions,
-            selectedChannelNames = selectedChannels,
-            channelSelectorExpanded = channelSelectorExpanded,
-            selectedMode = selectedMode,
-            onFilterSelected = onFilterSelected,
-            onChannelSelectorExpandedChange = { channelSelectorExpanded = it },
-            onChannelToggled = { channelName ->
-                selectedChannelNames = if (channelName in selectedChannels) {
-                    selectedChannels - channelName
-                } else {
-                    selectedChannels + channelName
-                }
-            },
-            onClearChannels = { selectedChannelNames = emptySet() },
-            onModeSelected = { selectedMode = it }
+        Text(
+            text = title,
+            style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
-        when (selectedMode) {
-            TasksViewMode.Board -> TasksBoardSection(content = filteredContent, copy = copy)
-            TasksViewMode.List -> TasksListSection(tasks = filteredTasks, copy = copy)
-        }
+        Text(
+            text = detail,
+            style = SlockType.Caption,
+            color = SlockColor.AccentRed,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -613,15 +727,23 @@ private fun TasksCompactAction(
 }
 
 @Composable
-private fun TasksBoardSection(content: TasksContent, copy: TasksScreenCopy) {
+private fun TasksBoardSection(
+    content: TasksContent,
+    copy: TasksScreenCopy,
+    onTaskClick: (TaskSummary) -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
         TasksSectionHeader(title = copy.board, detail = copy.boardDetail)
-        SlockTaskBoard(columns = content.toTaskColumns(copy))
+        SlockTaskBoard(columns = content.toTaskColumns(copy, onTaskClick))
     }
 }
 
 @Composable
-private fun TasksListSection(tasks: List<TaskSummary>, copy: TasksScreenCopy) {
+private fun TasksListSection(
+    tasks: List<TaskSummary>,
+    copy: TasksScreenCopy,
+    onTaskClick: (TaskSummary) -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
         TasksSectionHeader(title = copy.list, detail = copy.visibleCount(tasks.size))
         if (tasks.isEmpty()) {
@@ -635,7 +757,7 @@ private fun TasksListSection(tasks: List<TaskSummary>, copy: TasksScreenCopy) {
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
                 tasks.forEach { task ->
-                    TasksListRow(task = task, copy = copy)
+                    TasksListRow(task = task, copy = copy, onClick = { onTaskClick(task) })
                 }
             }
         }
@@ -662,12 +784,17 @@ private fun TasksSectionHeader(title: String, detail: String) {
 }
 
 @Composable
-private fun TasksListRow(task: TaskSummary, copy: TasksScreenCopy) {
+private fun TasksListRow(
+    task: TaskSummary,
+    copy: TasksScreenCopy,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
             .border(SlockStroke.Thin, SlockColor.EmptyStateGray)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
@@ -706,6 +833,12 @@ private fun TasksListRow(task: TaskSummary, copy: TasksScreenCopy) {
                 .background(task.status.toSlockTaskStatus().statusColor)
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
                 .padding(horizontal = SlockSpacing.Sm, vertical = 2.dp)
+        )
+        Icon(
+            imageVector = SlockIcons.ChevronRight,
+            contentDescription = null,
+            tint = SlockColor.TextMutedGray,
+            modifier = Modifier.size(16.dp)
         )
     }
 }
@@ -749,19 +882,26 @@ private fun TasksScreenCopy.channelTriggerLabel(selectedChannelNames: Set<String
         else -> selectedChannelsCount(selectedChannelNames.size)
     }
 
-private fun TasksContent.toTaskColumns(copy: TasksScreenCopy): Map<SlockTaskStatus, List<SlockTaskCardData>> {
+private fun TasksContent.toTaskColumns(
+    copy: TasksScreenCopy,
+    onTaskClick: (TaskSummary) -> Unit
+): Map<SlockTaskStatus, List<SlockTaskCardData>> {
     return tasks
-        .map { it.toTaskCardData(copy) }
+        .map { it.toTaskCardData(copy, onTaskClick) }
         .groupBy { it.status }
 }
 
-private fun TaskSummary.toTaskCardData(copy: TasksScreenCopy): SlockTaskCardData {
+private fun TaskSummary.toTaskCardData(
+    copy: TasksScreenCopy,
+    onTaskClick: (TaskSummary) -> Unit
+): SlockTaskCardData {
     return SlockTaskCardData(
         title = if (taskNumber != null) "task #$taskNumber $title" else title,
         source = channelName?.let { "#$it" } ?: copy.sampleState,
         owner = assignee?.displayName ?: copy.unassigned,
         updatedAt = updatedAtLabel,
-        status = status.toSlockTaskStatus()
+        status = status.toSlockTaskStatus(),
+        onClick = { onTaskClick(this) }
     )
 }
 
@@ -804,10 +944,12 @@ private data class TasksScreenCopy(
     val noChannels: String,
     val expandChannels: String,
     val collapseChannels: String,
+    val navigationFailedTitle: String,
     val selectedChannelsCount: (Int) -> String,
     val tasksCount: (Int) -> String,
     val visibleCount: (Int) -> String,
     val errorDetail: (String) -> String,
+    val navigationErrorDetail: (String) -> String,
     val statusLabel: (TaskStatus) -> String
 ) {
     companion object {
@@ -844,12 +986,20 @@ private data class TasksScreenCopy(
                 noChannels = stringResource(R.string.tasks_no_channels),
                 expandChannels = stringResource(R.string.tasks_expand_channels),
                 collapseChannels = stringResource(R.string.tasks_collapse_channels),
+                navigationFailedTitle = "Cannot open task",
                 selectedChannelsCount = { count ->
                     String.format(Locale.getDefault(), selectedChannelsFormat, count)
                 },
                 tasksCount = { count -> String.format(Locale.getDefault(), tasksCountFormat, count) },
                 visibleCount = { count -> String.format(Locale.getDefault(), visibleCountFormat, count) },
                 errorDetail = { code -> String.format(Locale.getDefault(), errorDetailFormat, code) },
+                navigationErrorDetail = { code ->
+                    if (code == "missing_context") {
+                        "This task does not include a channel, thread, or message context."
+                    } else {
+                        "Task context could not be loaded: $code"
+                    }
+                },
                 statusLabel = { status ->
                     when (status) {
                         TaskStatus.Todo -> todo

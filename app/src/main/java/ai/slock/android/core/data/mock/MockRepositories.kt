@@ -2,23 +2,49 @@ package ai.slock.android.core.data.mock
 
 import ai.slock.android.core.data.repository.AuthSessionRepository
 import ai.slock.android.core.data.repository.AgentRepository
+import ai.slock.android.core.data.repository.AgentActivityEntry
+import ai.slock.android.core.data.repository.AgentActivitySnapshot
+import ai.slock.android.core.data.repository.AgentDetailSnapshot
+import ai.slock.android.core.data.repository.AgentDmSnapshot
+import ai.slock.android.core.data.repository.AgentDmSummary
 import ai.slock.android.core.data.repository.AgentSnapshot
 import ai.slock.android.core.data.repository.AccountProfileUpdateRequest
 import ai.slock.android.core.data.repository.AccountSettingsSnapshot
+import ai.slock.android.core.data.repository.AgentReminderSnapshot
+import ai.slock.android.core.data.repository.AgentReminderSummary
+import ai.slock.android.core.data.repository.AttachmentOpenTarget
+import ai.slock.android.core.data.repository.AttachmentUploadRequest
+import ai.slock.android.core.data.repository.AttachmentUploadResult
+import ai.slock.android.core.data.repository.AddChannelMemberRequest
+import ai.slock.android.core.data.repository.ChannelMemberActionResult
+import ai.slock.android.core.data.repository.ChannelMemberSnapshot
+import ai.slock.android.core.data.repository.ChannelJoinResult
 import ai.slock.android.core.data.repository.ChannelSnapshot
+import ai.slock.android.core.data.repository.ChannelUnreadSnapshot
 import ai.slock.android.core.data.repository.ConversationRepository
+import ai.slock.android.core.data.repository.CreateChannelRequest
+import ai.slock.android.core.data.repository.CreateChannelResult
 import ai.slock.android.core.data.repository.CreateServerRequest
 import ai.slock.android.core.data.repository.DataResult
+import ai.slock.android.core.data.repository.DirectMessageSnapshot
 import ai.slock.android.core.data.repository.HomeSnapshot
 import ai.slock.android.core.data.repository.InboxSnapshot
 import ai.slock.android.core.data.repository.MemberRepository
 import ai.slock.android.core.data.repository.MemberSnapshot
+import ai.slock.android.core.data.repository.ReadReceiptRepository
+import ai.slock.android.core.data.repository.ReadReceiptResult
+import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
 import ai.slock.android.core.data.repository.SendMessageResult
 import ai.slock.android.core.data.repository.ServerListSnapshot
 import ai.slock.android.core.data.repository.ServerRepository
 import ai.slock.android.core.data.repository.SessionActionResult
 import ai.slock.android.core.data.repository.SessionSettingsSnapshot
+import ai.slock.android.core.data.repository.SettingsComputerDetailSnapshot
 import ai.slock.android.core.data.repository.SettingsComputersSnapshot
+import ai.slock.android.core.data.repository.SettingsBillingCurrentPlanSnapshot
+import ai.slock.android.core.data.repository.SettingsBillingPlanSnapshot
+import ai.slock.android.core.data.repository.SettingsBillingSnapshot
+import ai.slock.android.core.data.repository.SettingsPlanUsageSnapshot
 import ai.slock.android.core.data.repository.SettingsMobileSnapshot
 import ai.slock.android.core.data.repository.SettingsRepository
 import ai.slock.android.core.data.repository.SettingsServerSnapshot
@@ -27,9 +53,15 @@ import ai.slock.android.core.data.repository.TaskActionResult
 import ai.slock.android.core.data.repository.TaskFilter
 import ai.slock.android.core.data.repository.TaskRepository
 import ai.slock.android.core.data.repository.TaskSnapshot
+import ai.slock.android.core.data.repository.ThreadActionResult
+import ai.slock.android.core.data.repository.ThreadListSnapshot
 import ai.slock.android.core.data.repository.ThreadSnapshot
+import ai.slock.android.core.model.Attachment
 import ai.slock.android.core.model.AttachmentId
 import ai.slock.android.core.model.ChannelId
+import ai.slock.android.core.model.InboxItemKind
+import ai.slock.android.core.model.MemberId
+import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageDeliveryState
 import ai.slock.android.core.model.MessageId
@@ -107,6 +139,46 @@ class MockSettingsRepository(
     override suspend fun getComputers(): DataResult<SettingsComputersSnapshot> =
         resultFor(scenario, EmptyReason.NoSettingsAvailable) { MockSeedData.settingsComputersSnapshot }
 
+    override suspend fun getComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            MockSeedData.settingsComputerDetailSnapshot.copy(
+                computer = MockSeedData.settingsComputerDetailSnapshot.computer.copy(id = machineId)
+            )
+        }
+
+    override suspend fun getBilling(): DataResult<SettingsBillingSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            SettingsBillingSnapshot(
+                currentPlan = SettingsBillingCurrentPlanSnapshot(
+                    planName = "Team",
+                    usageRows = listOf(
+                        SettingsPlanUsageSnapshot(label = "Active members", value = "12"),
+                        SettingsPlanUsageSnapshot(label = "Messages this month", value = "4.2k")
+                    ),
+                    trialActive = true
+                ),
+                plans = listOf(
+                    SettingsBillingPlanSnapshot(
+                        name = "Starter",
+                        price = "$0",
+                        features = listOf("Core chat", "Workspace members")
+                    ),
+                    SettingsBillingPlanSnapshot(
+                        name = "Team",
+                        price = "$12 / user",
+                        features = listOf("Advanced permissions", "Billing controls"),
+                        current = true
+                    ),
+                    SettingsBillingPlanSnapshot(
+                        name = "Enterprise",
+                        price = "Contact sales",
+                        features = listOf("SAML", "Audit log", "Priority support"),
+                        comingSoon = true
+                    )
+                )
+            )
+        }
+
     override suspend fun getServerSettings(): DataResult<SettingsServerSnapshot> =
         resultFor(scenario, EmptyReason.NoSettingsAvailable) { MockSeedData.settingsServerSnapshot }
 
@@ -135,6 +207,75 @@ class MockConversationRepository(
             MockSeedData.threadSnapshot.copy(canLoadMoreAfter = afterSeq < 1004)
         }
 
+    override suspend fun getChannelThreads(channelId: ChannelId, limit: Int): DataResult<ThreadListSnapshot> =
+        resultFor(scenario, EmptyReason.NoInboxItems) {
+            ThreadListSnapshot(
+                server = MockSeedData.server,
+                threads = MockSeedData.inboxItems.filter { it.kind == InboxItemKind.Thread }
+            )
+        }
+
+    override suspend fun getFollowedThreads(serverId: ServerId, limit: Int): DataResult<ThreadListSnapshot> =
+        resultFor(scenario, EmptyReason.NoInboxItems) {
+            ThreadListSnapshot(
+                server = MockSeedData.server,
+                threads = MockSeedData.inboxItems.filter { it.kind == InboxItemKind.Thread }
+            )
+        }
+
+    override suspend fun createOrOpenThread(
+        channelId: ChannelId,
+        parentMessageId: MessageId
+    ): DataResult<ThreadActionResult> =
+        threadAction(channelId, parentMessageId = parentMessageId, replyCount = 1)
+
+    override suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult> =
+        threadAction(ChannelId("thread-${parentMessageId.value}"), parentMessageId = parentMessageId, replyCount = 1)
+
+    override suspend fun followThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
+        threadAction(threadChannelId)
+
+    override suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
+        threadAction(threadChannelId)
+
+    override suspend fun markThreadDone(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
+        threadAction(threadChannelId)
+
+    override suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
+        threadAction(threadChannelId)
+
+    override suspend fun uploadAttachments(request: AttachmentUploadRequest): DataResult<AttachmentUploadResult> =
+        when {
+            scenario == MockScenario.NoPermission -> noPermissionResult()
+            scenario == MockScenario.Error -> errorResult("attachment_upload_failed")
+            request.files.isEmpty() -> DataResult.Empty(EmptyReason.NoMessages)
+            else -> DataResult.Content(
+                AttachmentUploadResult(
+                    request.files.mapIndexed { index, file ->
+                        Attachment(
+                            id = AttachmentId("attachment-local-${request.channelId.value}-$index"),
+                            name = file.fileName,
+                            mimeType = file.mimeType ?: "application/octet-stream",
+                            sizeLabel = file.sizeBytes?.let { "$it bytes" }.orEmpty()
+                        )
+                    }
+                )
+            )
+        }
+
+    override suspend fun getAttachmentOpenTarget(attachmentId: AttachmentId): DataResult<AttachmentOpenTarget> =
+        when (scenario) {
+            MockScenario.NoPermission -> noPermissionResult()
+            MockScenario.Error -> errorResult("attachment_open_failed")
+            MockScenario.Empty -> DataResult.Empty(EmptyReason.NoMessages)
+            MockScenario.Content -> DataResult.Content(
+                AttachmentOpenTarget(
+                    attachmentId = attachmentId,
+                    url = "https://example.invalid/attachments/${attachmentId.value}"
+                )
+            )
+        }
+
     override suspend fun sendMessage(
         threadId: ThreadId,
         body: String,
@@ -159,6 +300,65 @@ class MockConversationRepository(
                     )
                 )
             )
+        }
+
+    private fun threadAction(
+        threadChannelId: ChannelId,
+        parentMessageId: MessageId? = null,
+        replyCount: Int = 0
+    ): DataResult<ThreadActionResult> =
+        when (scenario) {
+            MockScenario.NoPermission -> noPermissionResult()
+            MockScenario.Error -> errorResult("thread_action_failed")
+            else -> DataResult.Content(
+                ThreadActionResult(
+                    threadChannelId = threadChannelId,
+                    changed = true,
+                    parentMessageId = parentMessageId,
+                    replyCount = replyCount
+                )
+            )
+        }
+}
+
+class MockReadReceiptRepository(
+    private val scenario: MockScenario = MockScenario.Content
+) : ReadReceiptRepository {
+    override suspend fun getUnreadCounts(serverId: ServerId): DataResult<ChannelUnreadSnapshot> =
+        resultFor(scenario, EmptyReason.NoInboxItems) {
+            ChannelUnreadSnapshot(
+                server = MockSeedData.server,
+                unreadCounts = (MockSeedData.homeSnapshot.channels + MockSeedData.homeSnapshot.directMessages)
+                    .mapNotNull { conversation ->
+                        val id = conversation.channelId ?: return@mapNotNull null
+                        id to conversation.unreadCount
+                    }
+                    .filter { it.second > 0 }
+                    .toMap()
+            )
+        }
+
+    override suspend fun markChannelReadToSeq(channelId: ChannelId, seq: Long): DataResult<ReadReceiptResult> =
+        readResult(channelId, seq)
+
+    override suspend fun markChannelReadAll(channelId: ChannelId): DataResult<ReadReceiptResult> =
+        readResult(channelId, seq = null)
+
+    override suspend fun markChannelUnread(channelId: ChannelId): DataResult<ReadReceiptResult> =
+        when (scenario) {
+            MockScenario.NoPermission -> noPermissionResult()
+            MockScenario.Error -> errorResult("read_receipt_failed")
+            else -> DataResult.Content(ReadReceiptResult(channelId = channelId, unreadCount = 1, changed = true))
+        }
+
+    override suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult> =
+        readResult(channelId = null, seq = null)
+
+    private fun readResult(channelId: ChannelId?, seq: Long?): DataResult<ReadReceiptResult> =
+        when (scenario) {
+            MockScenario.NoPermission -> noPermissionResult()
+            MockScenario.Error -> errorResult("read_receipt_failed")
+            else -> DataResult.Content(ReadReceiptResult(channelId = channelId, seq = seq, unreadCount = 0, changed = true))
         }
 }
 
@@ -191,6 +391,140 @@ class MockMemberRepository(
 ) : MemberRepository {
     override suspend fun getMembers(serverId: ServerId): DataResult<MemberSnapshot> =
         resultFor(scenario, EmptyReason.NoMembers) { MockSeedData.memberSnapshot }
+
+    override suspend fun getMemberProfile(memberId: MemberId): DataResult<MemberProfile> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            MockSeedData.memberSnapshot.members.firstOrNull { it.id == memberId }
+                ?: MockSeedData.memberSnapshot.members.first()
+        }
+
+    override suspend fun getAgentDetail(agentId: MemberId): DataResult<AgentDetailSnapshot> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            AgentDetailSnapshot(
+                agentId = agentId,
+                directMessages = mockAgentDms,
+                reminders = mockAgentReminders,
+                activity = mockAgentActivity
+            )
+        }
+
+    override suspend fun getAgentDirectMessages(agentId: MemberId): DataResult<AgentDmSnapshot> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            AgentDmSnapshot(agentId = agentId, directMessages = mockAgentDms)
+        }
+
+    override suspend fun getAgentReminders(agentId: MemberId): DataResult<AgentReminderSnapshot> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            AgentReminderSnapshot(agentId = agentId, reminders = mockAgentReminders)
+        }
+
+    override suspend fun getAgentActivity(agentId: MemberId): DataResult<AgentActivitySnapshot> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            AgentActivitySnapshot(agentId = agentId, activity = mockAgentActivity)
+        }
+
+    override suspend fun getChannelMembers(channelId: ChannelId): DataResult<ChannelMemberSnapshot> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            ChannelMemberSnapshot(
+                channelId = channelId,
+                members = MockSeedData.memberSnapshot.members,
+                canAddMembers = true
+            )
+        }
+
+    override suspend fun addChannelMember(
+        request: AddChannelMemberRequest
+    ): DataResult<ChannelMemberActionResult> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            val member = MockSeedData.memberSnapshot.members
+                .firstOrNull { it.id == request.memberId }
+            ChannelMemberActionResult(
+                channelId = request.channelId,
+                memberId = request.memberId,
+                member = member,
+                added = true
+            )
+        }
+
+    override suspend fun removeChannelMember(
+        request: RemoveChannelMemberRequest
+    ): DataResult<ChannelMemberActionResult> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            val member = MockSeedData.memberSnapshot.members
+                .firstOrNull { it.id == request.memberId }
+            ChannelMemberActionResult(
+                channelId = request.channelId,
+                memberId = request.memberId,
+                member = member,
+                added = false
+            )
+        }
+
+    private val mockAgentDms = listOf(
+        AgentDmSummary(
+            id = "agent-dm-1",
+            peerId = "user-1",
+            peerName = "Artin",
+            lastMessageAt = "14:20",
+            lastMessagePreview = "Latest handoff is ready."
+        )
+    )
+
+    private val mockAgentReminders = listOf(
+        AgentReminderSummary(
+            id = "reminder-1",
+            title = "Follow up on Android QA",
+            fireAt = "Tomorrow 09:00",
+            recurrenceDescription = "One time",
+            status = "scheduled"
+        )
+    )
+
+    private val mockAgentActivity = listOf(
+        AgentActivityEntry(
+            id = "activity-1",
+            type = "thinking",
+            title = "Thinking",
+            body = "Reviewing recent Android blockers.",
+            timestamp = "14:22"
+        )
+    )
+}
+
+class MockChannelRepository(
+    private val scenario: MockScenario = MockScenario.Content
+) : ai.slock.android.core.data.repository.ChannelRepository {
+    override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> =
+        resultFor(scenario, EmptyReason.NoChannels) { MockSeedData.homeSnapshot }
+
+    override suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot> =
+        resultFor(scenario, EmptyReason.NoChannels) { MockSeedData.channelSnapshot }
+
+    override suspend fun getDirectMessages(serverId: ServerId): DataResult<DirectMessageSnapshot> =
+        resultFor(scenario, EmptyReason.NoChannels) {
+            DirectMessageSnapshot(server = MockSeedData.server, directMessages = MockSeedData.directMessages)
+        }
+
+    override suspend fun createChannel(request: CreateChannelRequest): DataResult<CreateChannelResult> =
+        resultFor(scenario, EmptyReason.NoChannels) {
+            val channel = MockSeedData.channelSnapshot.channels.first().copy(
+                name = request.name,
+                subtitle = request.description
+            )
+            CreateChannelResult(
+                channel = channel,
+                addedAgentMemberIds = request.agentMemberIds,
+                addedUserMemberIds = request.userMemberIds
+            )
+        }
+
+    override suspend fun joinChannel(channelId: ChannelId): DataResult<ChannelJoinResult> =
+        resultFor(scenario, EmptyReason.NoChannels) {
+            val channel = MockSeedData.channelSnapshot.channels
+                .firstOrNull { it.channelId == channelId }
+                ?.copy(joined = true)
+            ChannelJoinResult(channelId = channelId, joined = true, channel = channel)
+        }
 }
 
 class MockAgentRepository(

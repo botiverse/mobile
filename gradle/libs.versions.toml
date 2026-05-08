@@ -12,6 +12,7 @@ retrofit = "3.0.0"
 okhttp = "4.12.0"
 gson = "2.11.0"
 socketIoClient = "2.1.2"
+markdownRenderer = "0.33.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -33,6 +34,8 @@ retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = 
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 socket-io-client = { group = "io.socket", name = "socket.io-client", version.ref = "socketIoClient" }
+markdown-renderer-android = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-android", version.ref = "markdownRenderer" }
+markdown-renderer-m3-android = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-m3-android", version.ref = "markdownRenderer" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

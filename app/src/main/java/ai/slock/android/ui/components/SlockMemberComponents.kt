@@ -77,7 +77,9 @@ fun SlockMemberRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                PresenceBadge(presence = presence)
+                if (kind != SlockMemberKind.Human) {
+                    PresenceBadge(presence = presence)
+                }
             }
             Text(
                 text = "${kind.displayLabel} · $role",

@@ -2,45 +2,100 @@ package ai.slock.android.core.data.network
 
 import android.util.Log
 import ai.slock.android.core.data.auth.AuthHeaderInterceptor
+import ai.slock.android.core.data.auth.AuthRefreshInterceptor
 import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthSessionStore
+import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.auth.RetrofitAuthRepository
+import ai.slock.android.core.data.repository.AgentActivityEntry
+import ai.slock.android.core.data.repository.AgentActivitySnapshot
+import ai.slock.android.core.data.repository.AgentDetailSnapshot
+import ai.slock.android.core.data.repository.AgentDmSnapshot
+import ai.slock.android.core.data.repository.AgentDmSummary
+import ai.slock.android.core.data.repository.AgentReminderSnapshot
+import ai.slock.android.core.data.repository.AgentReminderSummary
+import ai.slock.android.core.data.repository.AttachmentUploadFile
+import ai.slock.android.core.data.repository.AttachmentOpenTarget
+import ai.slock.android.core.data.repository.AttachmentUploadRequest
+import ai.slock.android.core.data.repository.AttachmentUploadResult
+import ai.slock.android.core.data.repository.AddChannelMemberRequest
+import ai.slock.android.core.data.repository.ChannelMemberActionResult
+import ai.slock.android.core.data.repository.ChannelMemberSnapshot
 import ai.slock.android.core.data.repository.ChannelRepository
+import ai.slock.android.core.data.repository.ChannelJoinResult
 import ai.slock.android.core.data.repository.ChannelSnapshot
+import ai.slock.android.core.data.repository.ChannelUnreadSnapshot
+import ai.slock.android.core.data.repository.ConversationRepository
+import ai.slock.android.core.data.repository.CreateChannelRequest
+import ai.slock.android.core.data.repository.CreateChannelResult
 import ai.slock.android.core.data.repository.DataResult
 import ai.slock.android.core.data.repository.DirectMessageSnapshot
 import ai.slock.android.core.data.repository.HomeSnapshot
 import ai.slock.android.core.data.repository.InboxFilter
 import ai.slock.android.core.data.repository.InboxRepository
 import ai.slock.android.core.data.repository.InboxSnapshot
+import ai.slock.android.core.data.repository.MemberRepository
+import ai.slock.android.core.data.repository.MemberSnapshot
+import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
 import ai.slock.android.core.data.repository.SavedRepository
 import ai.slock.android.core.data.repository.SavedSnapshot
 import ai.slock.android.core.data.repository.SearchRepository
 import ai.slock.android.core.data.repository.SearchSnapshot
+import ai.slock.android.core.data.repository.SendMessageResult
+import ai.slock.android.core.data.repository.TaskActionResult
+import ai.slock.android.core.data.repository.TaskFilter
+import ai.slock.android.core.data.repository.TaskRepository
+import ai.slock.android.core.data.repository.TaskSnapshot
+import ai.slock.android.core.data.repository.ReadReceiptRepository
+import ai.slock.android.core.data.repository.ReadReceiptResult
 import ai.slock.android.core.data.repository.ServerUnreadRepository
 import ai.slock.android.core.data.repository.ServerUnreadSummary
 import ai.slock.android.core.data.repository.ServerUnreadSummarySnapshot
+import ai.slock.android.core.data.repository.ThreadActionResult
+import ai.slock.android.core.data.repository.ThreadListSnapshot
+import ai.slock.android.core.data.repository.ThreadSnapshot
+import ai.slock.android.core.model.Attachment
+import ai.slock.android.core.model.AttachmentId
+import ai.slock.android.core.model.AvatarReference
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationKind
+import ai.slock.android.core.model.ConversationPermissions
 import ai.slock.android.core.model.ConversationSummary
 import ai.slock.android.core.model.InboxItem
 import ai.slock.android.core.model.InboxItemKind
 import ai.slock.android.core.model.MemberId
+import ai.slock.android.core.model.MemberKind
+import ai.slock.android.core.model.MemberProfile
+import ai.slock.android.core.model.Message
+import ai.slock.android.core.model.MessageDeliveryState
 import ai.slock.android.core.model.MessageId
+import ai.slock.android.core.model.MessageType
+import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
+import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.TaskStatus
+import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
+import ai.slock.android.core.model.toGravatarAvatarReference
 import ai.slock.android.core.state.EmptyReason
+import com.google.gson.Gson
 import com.google.gson.JsonObject
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
+import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Retrofit
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 class RealChannelRepository(
     private val store: AuthSessionStore,
-    private val api: SlockApi
+    private val api: SlockApi,
+    private val warningLogger: (String) -> Unit = { message -> ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w("SlockHomeData", message) }
 ) : ChannelRepository {
     override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> {
         val context = serverContext(serverId) ?: return authRequired()
@@ -75,15 +130,112 @@ class RealChannelRepository(
         return fetchDirectMessages(context)
     }
 
+    override suspend fun createChannel(request: CreateChannelRequest): DataResult<CreateChannelResult> {
+        val context = currentContext() ?: return authRequired()
+        val name = request.name.trim()
+        if (name.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
+        val createResult = execute(
+            emptyReason = EmptyReason.NoChannels,
+            block = {
+                api.createChannel(
+                    mapOf(
+                        "name" to name,
+                        "description" to request.description?.trim()?.takeIf { it.isNotBlank() }
+                    ).toJsonBody()
+                )
+            },
+            source = "channel_create",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                val channel = json.unwrap("channel", "data").toConversation(ConversationKind.Channel)
+                CreateChannelResult(channel = channel)
+            }
+        )
+        if (createResult !is DataResult.Content) return createResult
+        val channelId = createResult.data.channel.channelId ?: ChannelId(createResult.data.channel.threadId.value)
+        val addedAgents = mutableListOf<String>()
+        val addedUsers = mutableListOf<String>()
+        for (agentId in request.agentMemberIds.distinct().filter { it.isNotBlank() }) {
+            when (val result = addChannelMember(channelId, "agentId", agentId, source = "channel_member_add_agent")) {
+                is DataResult.Content -> addedAgents += agentId
+                else -> return result.mapError()
+            }
+        }
+        for (userId in request.userMemberIds.distinct().filter { it.isNotBlank() }) {
+            when (val result = addChannelMember(channelId, "userId", userId, source = "channel_member_add_user")) {
+                is DataResult.Content -> addedUsers += userId
+                else -> return result.mapError()
+            }
+        }
+        return DataResult.Content(
+            createResult.data.copy(
+                addedAgentMemberIds = addedAgents,
+                addedUserMemberIds = addedUsers
+            )
+        )
+    }
+
+    override suspend fun joinChannel(channelId: ChannelId): DataResult<ChannelJoinResult> {
+        currentContext() ?: return authRequired()
+        if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
+        return execute(
+            emptyReason = EmptyReason.NoChannels,
+            block = { api.joinChannel(channelId.value) },
+            source = "channel_join",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                val channel = json.joinedChannelOrNull(channelId)
+                ChannelJoinResult(
+                    channelId = channelId,
+                    joined = channel?.joined ?: true,
+                    channel = channel
+                )
+            }
+        )
+    }
+
+    private suspend fun addChannelMember(
+        channelId: ChannelId,
+        fieldName: String,
+        memberId: String,
+        source: String
+    ): DataResult<Unit> =
+        execute(
+            emptyReason = EmptyReason.NoMembers,
+            block = { api.addChannelMember(channelId.value, mapOf(fieldName to memberId).toJsonBody()) },
+            source = source,
+            warningLogger = warningLogger,
+            mapper = { Unit }
+        )
+
     private suspend fun fetchChannels(context: NetworkServerContext): DataResult<ChannelSnapshot> =
         execute(
             emptyReason = EmptyReason.NoChannels,
             block = { api.channels() },
             emptyWhen = { it.channels.isEmpty() },
+            source = "home_channels",
+            warningLogger = warningLogger,
             mapper = { json ->
+                val channelItems = json.homeConversationItems(
+                    source = "home_channels",
+                    names = arrayOf("channels", "items", "data"),
+                    warningLogger = warningLogger
+                )
                 ChannelSnapshot(
                     server = context.server,
-                    channels = json.items("channels").map { it.asObject().toConversation(ConversationKind.Channel) }
+                    channels = channelItems.mapNotNull { item ->
+                        val itemObject = item.asObjectOrNull()
+                        if (itemObject == null) {
+                            warningLogger("skip_item source=home_channels stage=item_map fieldPath=item reason=non_object")
+                            null
+                        } else {
+                            itemObject.toConversationOrNull(
+                                kind = ConversationKind.Channel,
+                                source = "home_channels",
+                                warningLogger = warningLogger
+                            )
+                        }
+                    }
                 )
             }
         )
@@ -93,17 +245,421 @@ class RealChannelRepository(
             emptyReason = EmptyReason.NoChannels,
             block = { api.directMessages() },
             emptyWhen = { it.directMessages.isEmpty() },
+            source = "home_direct_messages",
+            warningLogger = warningLogger,
             mapper = { json ->
+                val directMessageItems = json.homeConversationItems(
+                    source = "home_direct_messages",
+                    names = arrayOf("directMessages", "dmChannels", "dms", "channels", "items", "data"),
+                    warningLogger = warningLogger
+                )
                 DirectMessageSnapshot(
                     server = context.server,
-                    directMessages = json.items("directMessages", "dmChannels", "channels")
-                        .map { it.asObject().toConversation(ConversationKind.DirectMessage) }
+                    directMessages = directMessageItems.mapNotNull { item ->
+                        val itemObject = item.asObjectOrNull()
+                        if (itemObject == null) {
+                            warningLogger("skip_item source=home_direct_messages stage=item_map fieldPath=item reason=non_object")
+                            null
+                        } else {
+                            itemObject.toConversationOrNull(
+                                kind = ConversationKind.DirectMessage,
+                                source = "home_direct_messages",
+                                warningLogger = warningLogger
+                            )
+                        }
+                    }
                 )
             }
         )
 
     private suspend fun serverContext(serverId: ServerId): NetworkServerContext? =
         store.readSession()?.toNetworkServerContext(serverId)
+
+    private suspend fun currentContext(): NetworkServerContext? {
+        val session = store.readSession() ?: return null
+        val selectedId = session.currentServerId ?: return null
+        return session.toNetworkServerContext(ServerId(selectedId))
+    }
+}
+
+class RealReadReceiptRepository(
+    private val store: AuthSessionStore,
+    private val api: SlockApi,
+    private val warningLogger: (String) -> Unit = { message -> ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w("SlockRead", message) }
+) : ReadReceiptRepository {
+    override suspend fun getUnreadCounts(serverId: ServerId): DataResult<ChannelUnreadSnapshot> {
+        val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = { api.channelUnreadCounts() },
+            source = "read_unread_counts",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                val unreadCounts = json.toChannelUnreadCounts()
+                ChannelUnreadSnapshot(
+                    server = context.server.copy(unreadCount = unreadCounts.values.sum()),
+                    unreadCounts = unreadCounts
+                )
+            }
+        )
+    }
+
+    override suspend fun markChannelReadToSeq(channelId: ChannelId, seq: Long): DataResult<ReadReceiptResult> {
+        currentContext() ?: return authRequired()
+        if (seq <= 0L) return DataResult.Empty(EmptyReason.NoMessages)
+        return execute(
+            emptyReason = EmptyReason.NoMessages,
+            block = { api.markChannelReadToSeq(channelId.value, mapOf("seq" to seq).toJsonBody()) },
+            source = "read_channel_seq",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                json.toReadReceiptResult(fallbackChannelId = channelId, fallbackSeq = seq)
+            }
+        )
+    }
+
+    override suspend fun markChannelReadAll(channelId: ChannelId): DataResult<ReadReceiptResult> {
+        currentContext() ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoMessages,
+            block = { api.markChannelReadAll(channelId.value) },
+            source = "read_channel_all",
+            warningLogger = warningLogger,
+            mapper = { json -> json.toReadReceiptResult(fallbackChannelId = channelId) }
+        )
+    }
+
+    override suspend fun markChannelUnread(channelId: ChannelId): DataResult<ReadReceiptResult> {
+        currentContext() ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoMessages,
+            block = { api.markChannelUnread(channelId.value) },
+            source = "read_channel_unread",
+            warningLogger = warningLogger,
+            mapper = { json -> json.toReadReceiptResult(fallbackChannelId = channelId) }
+        )
+    }
+
+    override suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult> {
+        store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = { api.markInboxReadAll() },
+            source = "read_inbox_all",
+            warningLogger = warningLogger,
+            mapper = { json -> json.toReadReceiptResult() }
+        )
+    }
+
+    private suspend fun currentContext(): NetworkServerContext? {
+        val session = store.readSession() ?: return null
+        val selectedId = session.currentServerId ?: return null
+        return session.toNetworkServerContext(ServerId(selectedId))
+    }
+}
+
+class RealTaskRepository(
+    private val store: AuthSessionStore,
+    private val api: SlockApi,
+    private val warningLogger: (String) -> Unit = { message -> ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w("SlockTasks", message) }
+) : TaskRepository {
+    override suspend fun getTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot> {
+        val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoTasks,
+            block = { api.serverTasks() },
+            emptyWhen = { it.tasks.isEmpty() },
+            source = "tasks_server",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                json.toTaskSnapshot()
+                    .filteredBy(filter, currentUserId = context.session.user.id)
+            }
+        )
+    }
+
+    override suspend fun claimTask(taskId: TaskId): DataResult<TaskActionResult> {
+        currentContext() ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoTasks,
+            block = { api.claimTask(taskId.value) },
+            source = "tasks_claim",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                val task = json.unwrap("task", "data").toTaskSummary()
+                    ?: throw IllegalStateException("Task action response missing task")
+                TaskActionResult(task)
+            }
+        )
+    }
+
+    private suspend fun currentContext(): NetworkServerContext? {
+        val session = store.readSession() ?: return null
+        val selectedId = session.currentServerId ?: return null
+        return session.toNetworkServerContext(ServerId(selectedId))
+    }
+}
+
+class RealMemberRepository(
+    private val store: AuthSessionStore,
+    private val api: SlockApi,
+    private val warningLogger: (String) -> Unit = { message -> ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w("SlockMembers", message) },
+    private val logger: (String) -> Unit = {}
+) : MemberRepository {
+    override suspend fun getMembers(serverId: ServerId): DataResult<MemberSnapshot> {
+        val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
+        val result = execute(
+            emptyReason = EmptyReason.NoMembers,
+            block = { api.serverMembers(serverId.value) },
+            source = "server_members",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                MemberSnapshot(
+                    server = context.server,
+                    members = json.memberItems()
+                )
+            }
+        )
+        val agentResult = execute(
+            emptyReason = EmptyReason.NoMembers,
+            block = { api.settingsAgents() },
+            source = "server_agents",
+            warningLogger = warningLogger,
+            mapper = { json -> json.agentMemberItems() }
+        )
+        val mergedResult = when (result) {
+            is DataResult.Content -> {
+                val agents = (agentResult as? DataResult.Content)?.data.orEmpty()
+                val humans = enrichHumanProfiles(result.data.members, source = "server_members_profile")
+                val mergedMembers = (humans + agents)
+                    .distinctBy { it.id }
+                if (mergedMembers.isEmpty()) {
+                    DataResult.Empty(EmptyReason.NoMembers)
+                } else {
+                    DataResult.Content(result.data.copy(members = mergedMembers))
+                }
+            }
+            else -> result
+        }
+        mergedResult.logMemberCounts(source = "server_members", serverId = serverId.value, logger = logger)
+        logger(
+            "repository_agents_merge source=server_agents serverId=${serverId.value} result=${agentResult.memberResultName()} " +
+                "agentsCount=${(agentResult as? DataResult.Content)?.data?.count { it.kind == MemberKind.Agent } ?: 0}"
+        )
+        return mergedResult
+    }
+
+    override suspend fun getMemberProfile(memberId: MemberId): DataResult<MemberProfile> {
+        currentContext() ?: return authRequired()
+        return getHumanProfile(memberId, source = "member_profile")
+    }
+
+    override suspend fun getAgentDetail(agentId: MemberId): DataResult<AgentDetailSnapshot> {
+        currentContext() ?: return authRequired()
+        val directMessages = getAgentDirectMessages(agentId)
+        val reminders = getAgentReminders(agentId)
+        val activity = getAgentActivity(agentId)
+        return when {
+            directMessages is DataResult.Content &&
+                reminders is DataResult.Content &&
+                activity is DataResult.Content ->
+                DataResult.Content(
+                    AgentDetailSnapshot(
+                        agentId = agentId,
+                        directMessages = directMessages.data.directMessages,
+                        reminders = reminders.data.reminders,
+                        activity = activity.data.activity
+                    )
+                )
+            directMessages is DataResult.NoPermission -> directMessages
+            reminders is DataResult.NoPermission -> reminders
+            activity is DataResult.NoPermission -> activity
+            directMessages is DataResult.Error -> directMessages
+            reminders is DataResult.Error -> reminders
+            activity is DataResult.Error -> activity
+            directMessages is DataResult.Empty &&
+                reminders is DataResult.Empty &&
+                activity is DataResult.Empty ->
+                DataResult.Empty(EmptyReason.NoMembers)
+            else -> DataResult.Empty(EmptyReason.NoMembers)
+        }
+    }
+
+    override suspend fun getAgentDirectMessages(agentId: MemberId): DataResult<AgentDmSnapshot> {
+        currentContext() ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoMembers,
+            block = { api.agentDirectMessages(agentId.value) },
+            source = "agent_direct_messages",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                val items = json.items("directMessages", "dms", "items", "data")
+                    .mapNotNull { it.asObjectOrNull()?.toAgentDmSummary() }
+                AgentDmSnapshot(agentId = agentId, directMessages = items)
+            }
+        )
+    }
+
+    override suspend fun getAgentReminders(agentId: MemberId): DataResult<AgentReminderSnapshot> {
+        currentContext() ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoMembers,
+            block = { api.reminders(agentId.value) },
+            source = "agent_reminders",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                val items = json.items("reminders", "items", "data")
+                    .mapNotNull { it.asObjectOrNull()?.toAgentReminderSummary() }
+                AgentReminderSnapshot(agentId = agentId, reminders = items)
+            }
+        )
+    }
+
+    override suspend fun getAgentActivity(agentId: MemberId): DataResult<AgentActivitySnapshot> {
+        currentContext() ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoMembers,
+            block = { api.trajectoryLogs(agentId.value) },
+            source = "agent_activity",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                val items = json.items("trajectoryLogs", "logs", "items", "entries", "data")
+                    .mapNotNull { it.asObjectOrNull()?.toAgentActivityEntry() }
+                AgentActivitySnapshot(agentId = agentId, activity = items)
+            }
+        )
+    }
+
+    override suspend fun getChannelMembers(channelId: ChannelId): DataResult<ChannelMemberSnapshot> {
+        currentContext() ?: return authRequired()
+        val result = execute(
+            emptyReason = EmptyReason.NoMembers,
+            block = { api.channelMembers(channelId.value) },
+            emptyWhen = { it.members.isEmpty() },
+            source = "channel_members",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                val root = json.unwrap("data", "channel")
+                ChannelMemberSnapshot(
+                    channelId = channelId,
+                    members = json.memberItems(),
+                    canAddMembers = root.boolean("canAddMembers", "canAddMember", "canInviteMember") ?: true
+                )
+            }
+        )
+        val enrichedResult = when (result) {
+            is DataResult.Content -> DataResult.Content(
+                result.data.copy(
+                    members = enrichHumanProfiles(result.data.members, source = "channel_members_profile")
+                )
+            )
+            else -> result
+        }
+        enrichedResult.logChannelMemberCounts(source = "channel_members", channelId = channelId.value, logger = logger)
+        return enrichedResult
+    }
+
+    override suspend fun addChannelMember(
+        request: AddChannelMemberRequest
+    ): DataResult<ChannelMemberActionResult> {
+        currentContext() ?: return authRequired()
+        val fieldName = if (request.kind == MemberKind.Agent) "agentId" else "userId"
+        return execute(
+            emptyReason = EmptyReason.NoMembers,
+            block = {
+                api.addChannelMember(
+                    request.channelId.value,
+                    mapOf(fieldName to request.memberId.value).toJsonBody()
+                )
+            },
+            source = "channel_member_add",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                val member = json.firstObject("member", "user", "agent", "data")
+                    ?.toChannelMemberProfile()
+                    ?: json.toChannelMemberProfile()
+                ChannelMemberActionResult(
+                    channelId = request.channelId,
+                    memberId = member?.id ?: request.memberId,
+                    member = member,
+                    added = json.boolean("added", "ok", "success") ?: true
+                )
+            }
+        )
+    }
+
+    override suspend fun removeChannelMember(
+        request: RemoveChannelMemberRequest
+    ): DataResult<ChannelMemberActionResult> {
+        currentContext() ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoMembers,
+            block = {
+                api.removeChannelMember(
+                    channelId = request.channelId.value,
+                    memberId = request.memberId.value,
+                    kind = request.kind.name.lowercase()
+                )
+            },
+            source = "channel_member_remove",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                val member = json.firstObject("member", "user", "agent", "data")
+                    ?.toChannelMemberProfile()
+                    ?: json.toChannelMemberProfile()
+                ChannelMemberActionResult(
+                    channelId = request.channelId,
+                    memberId = member?.id ?: request.memberId,
+                    member = member,
+                    added = false
+                )
+            }
+        )
+    }
+
+    private suspend fun currentContext(): NetworkServerContext? {
+        val session = store.readSession() ?: return null
+        val selectedId = session.currentServerId ?: return null
+        return session.toNetworkServerContext(ServerId(selectedId))
+    }
+
+    private suspend fun enrichHumanProfiles(
+        members: List<MemberProfile>,
+        source: String
+    ): List<MemberProfile> {
+        if (members.none { it.kind == MemberKind.Human }) return members
+        return members.map { member ->
+            if (member.kind != MemberKind.Human) {
+                member
+            } else {
+                val profileResult = getHumanProfile(member.id, source = source)
+                val profile = (profileResult as? DataResult.Content)?.data
+                logger(
+                    "human_profile_merge source=$source memberId=${member.id.value} " +
+                        "result=${profileResult.memberResultName()}"
+                )
+                profile?.let { member.withHumanProfile(it) } ?: member
+            }
+        }
+    }
+
+    private suspend fun getHumanProfile(
+        memberId: MemberId,
+        source: String
+    ): DataResult<MemberProfile> =
+        execute(
+            emptyReason = EmptyReason.NoMembers,
+            block = { api.memberProfile(memberId.value) },
+            source = source,
+            warningLogger = warningLogger,
+            mapper = { json ->
+                val profile = json.firstObject("profile", "member", "user", "data")
+                    ?.toMemberProfile()
+                    ?: json.toMemberProfile()
+                    ?: throw IllegalStateException("Member profile response missing member")
+                profile.copy(kind = MemberKind.Human)
+            }
+        )
 }
 
 class RealInboxRepository(
@@ -135,7 +691,9 @@ class RealInboxRepository(
             block = { api.inbox(filter.wireValue, limit, offset) },
             emptyWhen = { it.items.isEmpty() },
             mapper = { json ->
-                val items = json.items("items").map { it.asObject().toInboxItem() }.distinctBy { it.key }
+                val items = json.items("items", "messages", "results", "data")
+                    .mapNotNull { it.asObjectOrNull()?.toInboxItem() }
+                    .distinctBy { it.key }
                 InboxSnapshot(
                     server = context.server,
                     items = items,
@@ -162,7 +720,7 @@ class RealSavedRepository(
     private suspend fun load(serverId: ServerId, limit: Int, offset: Int): DataResult<SavedSnapshot> {
         val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
         return execute(
-            emptyReason = EmptyReason.NoSearchResults,
+            emptyReason = EmptyReason.NoInboxItems,
             block = { api.saved(limit, offset) },
             emptyWhen = { it.items.isEmpty() },
             mapper = { json ->
@@ -214,13 +772,313 @@ class RealSearchRepository(
     }
 }
 
+class RealConversationRepository(
+    private val store: AuthSessionStore,
+    private val api: SlockApi,
+    private val warningLogger: (String) -> Unit = { message -> ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w("SlockConversation", message) }
+) : ConversationRepository {
+    override suspend fun getThread(threadId: ThreadId): DataResult<ThreadSnapshot> {
+        val context = currentContext() ?: return authRequired()
+        return loadChannelMessages(
+            context = context,
+            threadId = threadId,
+            block = { api.channelMessages(threadId.value, MESSAGE_PAGE_LIMIT) },
+            source = "messages_channel"
+        )
+    }
+
+    override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> {
+        val context = currentContext() ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoMessages,
+            block = { api.messageContext(messageId.value) },
+            emptyWhen = { it.messages.isEmpty() },
+            source = "messages_context",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                json.toThreadSnapshot(
+                    context = context,
+                    fallbackThreadId = ThreadId(json.string("threadId", "threadChannelId", "channelId") ?: messageId.value),
+                    highlightedMessageId = messageId
+                )
+            }
+        )
+    }
+
+    override suspend fun loadOlderMessages(threadId: ThreadId, beforeSeq: Long): DataResult<ThreadSnapshot> {
+        val context = currentContext() ?: return authRequired()
+        return loadChannelMessages(
+            context = context,
+            threadId = threadId,
+            block = { api.channelMessages(threadId.value, MESSAGE_PAGE_LIMIT, beforeSeq = beforeSeq) },
+            source = "messages_channel_older"
+        )
+    }
+
+    override suspend fun loadNewerMessages(threadId: ThreadId, afterSeq: Long): DataResult<ThreadSnapshot> {
+        val context = currentContext() ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoMessages,
+            block = { api.messageSync(sinceSeq = afterSeq, limit = SYNC_PAGE_LIMIT, channelId = threadId.value) },
+            emptyWhen = { it.messages.isEmpty() },
+            source = "messages_sync",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                json.toThreadSnapshot(
+                    context = context,
+                    fallbackThreadId = threadId,
+                    fallbackConversationName = "Messages"
+                )
+            }
+        )
+    }
+
+    override suspend fun getChannelThreads(channelId: ChannelId, limit: Int): DataResult<ThreadListSnapshot> {
+        val context = currentContext() ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = { api.channelThreads(channelId.value, limit) },
+            emptyWhen = { it.threads.isEmpty() },
+            source = "channel_threads",
+            warningLogger = warningLogger,
+            mapper = { json -> json.toThreadListSnapshot(context) }
+        )
+    }
+
+    override suspend fun getFollowedThreads(serverId: ServerId, limit: Int): DataResult<ThreadListSnapshot> {
+        val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = { api.followedThreads(limit) },
+            emptyWhen = { it.threads.isEmpty() },
+            source = "followed_threads",
+            warningLogger = warningLogger,
+            mapper = { json -> json.toThreadListSnapshot(context) }
+        )
+    }
+
+    override suspend fun createOrOpenThread(
+        channelId: ChannelId,
+        parentMessageId: MessageId
+    ): DataResult<ThreadActionResult> =
+        threadAction(
+            fallbackThreadChannelId = channelId,
+            fallbackParentMessageId = parentMessageId,
+            source = "thread_create_or_open"
+        ) {
+            api.createOrOpenThread(
+                channelId.value,
+                parentMessageId.toParentMessageThreadBody()
+            )
+        }
+
+    override suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult> =
+        threadAction(
+            fallbackThreadChannelId = ChannelId(parentMessageId.value),
+            fallbackParentMessageId = parentMessageId,
+            source = "thread_follow_parent"
+        ) {
+            api.followThread(parentMessageId.toParentMessageThreadBody())
+        }
+
+    override suspend fun followThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
+        threadAction(threadChannelId, source = "thread_follow") { api.followThread(threadChannelId.toThreadActionBody()) }
+
+    override suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
+        threadAction(threadChannelId, source = "thread_unfollow") { api.unfollowThread(threadChannelId.toThreadActionBody()) }
+
+    override suspend fun markThreadDone(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
+        threadAction(threadChannelId, source = "thread_done") { api.markThreadDone(threadChannelId.toThreadActionBody()) }
+
+    override suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
+        threadAction(threadChannelId, source = "thread_undone") { api.markThreadUndone(threadChannelId.toThreadActionBody()) }
+
+    override suspend fun uploadAttachments(request: AttachmentUploadRequest): DataResult<AttachmentUploadResult> {
+        currentContext() ?: return authRequired()
+        if (request.files.isEmpty()) return DataResult.Empty(EmptyReason.NoMessages)
+        return execute(
+            emptyReason = EmptyReason.NoMessages,
+            block = {
+                api.uploadAttachments(
+                    channelId = request.channelId.value.toRequestBody(textMediaType),
+                    files = request.files.map { it.toMultipartPart() }
+                )
+            },
+            source = "attachments_upload",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                AttachmentUploadResult(
+                    attachments = json.items("attachments", "files", "items", "data")
+                        .mapNotNull { it.asObjectOrNull()?.toAttachment() }
+                )
+            },
+            emptyWhen = { it.attachments.isEmpty() }
+        )
+    }
+
+    override suspend fun getAttachmentOpenTarget(attachmentId: AttachmentId): DataResult<AttachmentOpenTarget> {
+        currentContext() ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoMessages,
+            block = { api.attachmentUrl(attachmentId.value) },
+            source = "attachment_open_url",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                AttachmentOpenTarget(
+                    attachmentId = attachmentId,
+                    url = json.string("url", "href", "downloadUrl") ?: "",
+                    expiresAt = json.string("expiresAt", "expires_at")
+                )
+            },
+            emptyWhen = { it.url.isBlank() }
+        )
+    }
+
+    override suspend fun sendMessage(
+        threadId: ThreadId,
+        body: String,
+        attachmentIds: List<AttachmentId>,
+        asTask: Boolean
+    ): DataResult<SendMessageResult> {
+        val context = currentContext() ?: return authRequired()
+        if (body.isBlank() && attachmentIds.isEmpty()) return DataResult.Empty(EmptyReason.NoMessages)
+        return execute(
+            emptyReason = EmptyReason.NoMessages,
+            block = { api.sendMessage(sendMessageBody(threadId, body, attachmentIds, asTask)) },
+            source = "messages_send",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                val message = json.unwrap("message", "data").toMessage(fallbackThreadId = threadId)
+                    ?: json.toMessage(fallbackThreadId = threadId)
+                    ?: Message(
+                        id = MessageId(json.string("id", "messageId") ?: "message-sent"),
+                        threadId = threadId,
+                        channelId = ChannelId(threadId.value),
+                        author = context.session.user.toMemberProfile(),
+                        timestampLabel = json.string("createdAt", "timestampLabel") ?: "",
+                        body = body,
+                        deliveryState = MessageDeliveryState.Sent
+                    )
+                SendMessageResult(message)
+            }
+        )
+    }
+
+    private suspend fun loadChannelMessages(
+        context: NetworkServerContext,
+        threadId: ThreadId,
+        block: suspend () -> retrofit2.Response<okhttp3.ResponseBody>,
+        source: String
+    ): DataResult<ThreadSnapshot> {
+        val messagesResult = execute(
+            emptyReason = EmptyReason.NoMessages,
+            block = block,
+            emptyWhen = { it.messages.isEmpty() },
+            source = source,
+            warningLogger = warningLogger,
+            mapper = { json ->
+                json.toThreadSnapshot(
+                    context = context,
+                    fallbackThreadId = threadId,
+                    fallbackConversationName = "Messages"
+                )
+            }
+        )
+        if (messagesResult !is DataResult.Content) return messagesResult
+        val threadSummaries = execute(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = { api.channelThreads(threadId.value, MESSAGE_PAGE_LIMIT) },
+            emptyWhen = { false },
+            source = "${source}_thread_summaries",
+            warningLogger = warningLogger,
+            mapper = { json -> json.toThreadListSnapshot(context) }
+        )
+        return when (threadSummaries) {
+            is DataResult.Content -> DataResult.Content(
+                messagesResult.data.withReplySummaries(threadSummaries.data.threads, warningLogger)
+            )
+            else -> messagesResult
+        }
+    }
+
+    private suspend fun threadAction(
+        threadChannelId: ChannelId,
+        source: String,
+        block: suspend () -> retrofit2.Response<okhttp3.ResponseBody>
+    ): DataResult<ThreadActionResult> =
+        threadAction(
+            fallbackThreadChannelId = threadChannelId,
+            fallbackParentMessageId = null,
+            source = source,
+            block = block
+        )
+
+    private suspend fun threadAction(
+        fallbackThreadChannelId: ChannelId,
+        fallbackParentMessageId: MessageId?,
+        source: String,
+        block: suspend () -> retrofit2.Response<okhttp3.ResponseBody>
+    ): DataResult<ThreadActionResult> {
+        currentContext() ?: return authRequired()
+        return execute(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = block,
+            source = source,
+            warningLogger = warningLogger,
+            mapper = { json ->
+                val unwrapped = json.unwrap("thread", "summary", "data")
+                ThreadActionResult(
+                    threadChannelId = ChannelId(
+                        unwrapped.string(
+                            "threadChannelId",
+                            "replyThreadChannelId",
+                            "replyChannelId",
+                            "replyThreadId",
+                            "channelId",
+                            "id"
+                        )
+                            ?: json.string(
+                                "threadChannelId",
+                                "replyThreadChannelId",
+                                "replyChannelId",
+                                "replyThreadId",
+                                "channelId",
+                                "id"
+                            )
+                            ?: fallbackThreadChannelId.value
+                    ),
+                    changed = unwrapped.boolean("changed", "ok", "success")
+                        ?: json.boolean("changed", "ok", "success")
+                        ?: true,
+                    parentMessageId = unwrapped.string("parentMessageId", "parentId", "rootMessageId")
+                        ?.let(::MessageId)
+                        ?: json.string("parentMessageId", "parentId", "rootMessageId")?.let(::MessageId)
+                        ?: fallbackParentMessageId,
+                    replyCount = unwrapped.replyCountFromAliases() ?: json.replyCountFromAliases() ?: 0
+                )
+            }
+        )
+    }
+
+    private suspend fun currentContext(): NetworkServerContext? {
+        val session = store.readSession() ?: return null
+        val selectedId = session.currentServerId ?: return null
+        return session.toNetworkServerContext(ServerId(selectedId))
+    }
+
+    private companion object {
+        const val MESSAGE_PAGE_LIMIT = 50
+        const val SYNC_PAGE_LIMIT = 200
+    }
+}
+
 class RealServerUnreadRepository(
     private val store: AuthSessionStore,
     private val api: SlockApi,
     private val throttleWindowMillis: Long = 5_000L,
     private val clockMillis: () -> Long = { System.currentTimeMillis() },
-    private val logger: (String) -> Unit = { message -> Log.d("SlockUnread", message) },
-    private val warningLogger: (String) -> Unit = { message -> Log.w("SlockUnread", message) }
+    private val logger: (String) -> Unit = { message -> ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d("SlockUnread", message) },
+    private val warningLogger: (String) -> Unit = { message -> ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w("SlockUnread", message) }
 ) : ServerUnreadRepository {
     private val throttleMutex = Mutex()
     private var cachedSummary: ThrottledUnreadSummary? = null
@@ -254,7 +1112,7 @@ class RealServerUnreadRepository(
             when (result) {
                 is DataResult.Content -> {
                     logger(
-                        "repository_fetch_success serverId=${serverId.value} total=${result.data.totalUnreadCount} inbox=${result.data.inboxUnreadCount} saved=${result.data.savedUnreadCount}"
+                        "repository_fetch_success serverId=${serverId.value} total=${result.data.totalUnreadCount} selectedServerUnread=${result.data.selectedServerUnreadCount}"
                     )
                 }
                 is DataResult.Empty -> {
@@ -297,6 +1155,27 @@ object RealSlockApiFactory {
             )
             .build()
             .create(SlockApi::class.java)
+
+    fun create(
+        store: AuthSessionStore,
+        baseUrl: String = RetrofitAuthRepository.BASE_URL,
+        tokenRefresher: AuthTokenRefresher = AuthTokenRefresher(
+            store = store,
+            api = RetrofitAuthRepository.createAuthApi(baseUrl)
+        )
+    ): SlockApi {
+        val sessionProvider = { runBlocking { store.readSession() } }
+        return Retrofit.Builder()
+            .baseUrl(baseUrl)
+            .client(
+                OkHttpClient.Builder()
+                    .addInterceptor(AuthHeaderInterceptor(sessionProvider))
+                    .addInterceptor(AuthRefreshInterceptor(sessionProvider, tokenRefresher))
+                    .build()
+            )
+            .build()
+            .create(SlockApi::class.java)
+    }
 }
 
 private data class NetworkServerContext(
@@ -322,16 +1201,49 @@ private fun <T> DataResult<*>.mapError(): DataResult<T> =
         is DataResult.Content -> error("Cannot map content as error.")
     }
 
+private fun JsonObject.homeConversationItems(
+    source: String,
+    names: Array<String>,
+    warningLogger: (String) -> Unit
+): List<com.google.gson.JsonElement> {
+    val items = items(*names)
+    if (items.isNotEmpty()) return items
+    warningLogger("empty_items source=$source stage=list_extract fieldPath=${names.joinToString("|")}")
+    return emptyList()
+}
+
+private fun JsonObject.toConversationOrNull(
+    kind: ConversationKind,
+    source: String,
+    warningLogger: (String) -> Unit
+): ConversationSummary? {
+    val id = string("id", "channelId", "threadChannelId", "_id")
+    if (id == null) {
+        warningLogger("skip_item source=$source stage=item_map fieldPath=id|channelId|threadChannelId|_id reason=missing_id")
+        return null
+    }
+    return toConversation(kind, id)
+}
+
 private fun JsonObject.toConversation(kind: ConversationKind): ConversationSummary {
-    val id = string("id", "channelId", "threadChannelId") ?: "unknown-channel"
+    val id = string("id", "channelId", "threadChannelId", "_id") ?: "unknown-channel"
+    return toConversation(kind, id)
+}
+
+private fun JsonObject.toConversation(kind: ConversationKind, id: String): ConversationSummary {
     val name = string("name", "channelName", "peerDisplayName", "peerName", "title")
         ?: if (kind == ConversationKind.DirectMessage) "Direct message" else "channel"
+    val joined = if (kind == ConversationKind.DirectMessage) true else channelJoined()
+    val canSend = boolean("canSend", "canWrite", "canMessage") ?: joined
+    val avatarWireValue = conversationAvatarWireValue()
     return ConversationSummary(
         threadId = ThreadId(string("threadId", "threadChannelId", "id") ?: id),
         channelId = ChannelId(id),
         kind = kind,
         name = name,
         subtitle = string("description", "topic", "purpose", "peerDescription"),
+        avatarUrl = avatarWireValue,
+        avatar = AvatarReference.fromWireValue(avatarWireValue),
         unreadCount = int("unreadCount", "unread") ?: 0,
         mentionCount = int("mentionCount", "mentions") ?: 0,
         lastMessageId = string("lastMessageId", "latestMessageId")?.let(::MessageId),
@@ -339,8 +1251,59 @@ private fun JsonObject.toConversation(kind: ConversationKind): ConversationSumma
         lastMessagePreview = string("lastMessagePreview", "preview", "latestActivityPreview", "content"),
         lastMessageAt = string("lastMessageAt", "updatedAt", "latestActivityAt", "createdAt"),
         lastMessageSenderName = string("lastMessageSenderName", "senderName", "authorName"),
-        archived = boolean("archived", "isArchived") ?: false
+        presence = string("presence", "status", "activity", "peerPresence", "peerStatus").toPresenceOrNull(),
+        presenceMemberId = string(
+            "presenceMemberId",
+            "peerMemberId",
+            "peerId",
+            "memberId",
+            "agentId",
+            "userId"
+        )?.let(::MemberId),
+        joined = joined,
+        archived = boolean("archived", "isArchived") ?: false,
+        permissions = ConversationPermissions(
+            canRead = boolean("canRead") ?: true,
+            canSend = canSend,
+            canAttach = boolean("canAttach", "canUpload") ?: canSend,
+            canCreateTask = boolean("canCreateTask", "canCreateTasks") ?: canSend
+        )
     )
+}
+
+private fun JsonObject.conversationAvatarWireValue(): String? =
+    avatarWireValue(
+        "avatarUrl",
+        "avatar",
+        "avatar_url",
+        "imageUrl",
+        "profileImageUrl",
+        "peerAvatarUrl",
+        "peerAvatar",
+        "peerAvatar_url",
+        "agentAvatarUrl",
+        "agentAvatar",
+        "userAvatarUrl",
+        "userAvatar"
+    )
+        ?: firstObject("peer", "agent", "user", "member", "profile")
+            ?.avatarWireValue("avatarUrl", "avatar", "avatar_url", "imageUrl", "profileImageUrl")
+
+private fun JsonObject.channelJoined(): Boolean {
+    boolean("joined", "isJoined", "isMember", "member")?.let { return it }
+    return when (string("membership", "membershipStatus", "memberStatus", "joinStatus")?.lowercase()) {
+        "joined", "member", "active", "owner", "admin" -> true
+        "left", "unjoined", "not_joined", "not-member", "not_member", "none", "removed" -> false
+        else -> true
+    }
+}
+
+private fun JsonObject.joinedChannelOrNull(channelId: ChannelId): ConversationSummary? {
+    val channelObject = firstObject("channel", "data") ?: this
+    val hasChannelShape = channelObject.string("id", "channelId", "threadChannelId", "_id") != null ||
+        channelObject.string("name", "channelName", "title") != null
+    if (!hasChannelShape) return null
+    return channelObject.toConversation(ConversationKind.Channel, channelId.value).copy(joined = true)
 }
 
 private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxItem {
@@ -373,19 +1336,836 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
         parentChannelKind = string("parentChannelKind")?.let {
             if (it == "dm") ConversationKind.DirectMessage else ConversationKind.Channel
         },
-        parentMessageId = string("parentMessageId")?.let(::MessageId),
+        parentMessageId = string("parentMessageId", "parentId", "rootMessageId", "messageId")?.let(::MessageId),
         parentMessagePreview = string("parentMessagePreview"),
         latestActivityMessageId = string("latestActivityMessageId")?.let(::MessageId),
         latestActivityPreview = string("latestActivityPreview"),
         latestActivityAt = string("latestActivityAt"),
         latestActivitySenderName = string("latestActivitySenderName"),
-        replyCount = int("replyCount", "replies") ?: 0,
+        replyCount = replyCountFromAliases() ?: 0,
         participantIds = stringList("participantIds", "participants").map(::MemberId),
         taskNumber = int("taskNumber"),
         taskStatus = string("taskStatus")?.toTaskStatus(),
         taskClaimedByName = string("taskClaimedByName", "claimedByName")
     )
 }
+
+private fun JsonObject.replyCountFromAliases(): Int? {
+    int(
+        "replyCount",
+        "reply_count",
+        "replies",
+        "replies_count",
+        "threadReplyCount",
+        "thread_reply_count",
+        "repliesCount",
+        "threadRepliesCount",
+        "thread_replies_count",
+        "commentsCount",
+        "comments_count",
+        "childCount",
+        "child_count"
+    )?.let { return it }
+    for (objectName in listOf("thread", "replyThread", "messageThread", "repliesThread", "summary", "data", "meta")) {
+        firstObject(objectName)?.replyCountFromAliases()?.let { return it }
+    }
+    return null
+}
+
+private fun JsonObject.toThreadSnapshot(
+    context: NetworkServerContext,
+    fallbackThreadId: ThreadId,
+    fallbackConversationName: String? = null,
+    highlightedMessageId: MessageId? = null
+): ThreadSnapshot {
+    val messages = messageItems().mapNotNull { it.asObjectOrNull()?.toMessage(fallbackThreadId) }
+        .distinctBy { it.id }
+        .sortedWith(compareBy<Message> { it.seq ?: Long.MAX_VALUE }.thenBy { it.timestampLabel })
+    val conversation = unwrap("conversation", "channel", "thread").toConversationOrDefault(
+        threadId = fallbackThreadId,
+        name = fallbackConversationName ?: messages.firstOrNull()?.threadId?.value ?: "Messages"
+    )
+    return ThreadSnapshot(
+        conversation = conversation,
+        messages = messages,
+        canLoadMoreBefore = canLoadMoreBefore(),
+        canLoadMoreAfter = canLoadMoreAfter(),
+        hasGap = boolean("hasGap", "gap") ?: false,
+        historyLimited = boolean("historyLimited", "limited") ?: false,
+        highlightedMessageId = highlightedMessageId ?: string("highlightedMessageId", "messageId")?.let(::MessageId)
+    )
+}
+
+private fun JsonObject.canLoadMoreBefore(): Boolean {
+    val candidates = listOfNotNull(
+        this,
+        firstObject("data", "context")
+    ).distinct()
+    candidates.forEach { candidate ->
+        val direct = candidate.boolean(
+            "hasMoreBefore",
+            "has_more_before",
+            "hasMore",
+            "has_more",
+            "canLoadMoreBefore",
+            "can_load_more_before",
+            "hasPrevious",
+            "has_previous",
+            "hasPrev",
+            "has_prev"
+        )
+        if (direct != null) return direct
+        for (objectName in listOf("pagination", "pageInfo", "paging", "meta")) {
+            val nested = candidate.firstObject(objectName)?.boolean(
+                "hasMoreBefore",
+                "has_more_before",
+                "hasMore",
+                "has_more",
+                "canLoadMoreBefore",
+                "can_load_more_before",
+                "hasPrevious",
+                "has_previous",
+                "hasPrev",
+                "has_prev"
+            )
+            if (nested != null) return nested
+        }
+    }
+    return candidates.any { candidate ->
+        candidate.hasNonBlankString(
+            "previousCursor",
+            "previous_cursor",
+            "prevCursor",
+            "prev_cursor",
+            "beforeCursor",
+            "before_cursor"
+        ) ||
+            listOf("pagination", "pageInfo", "paging", "meta").any { objectName ->
+                candidate.firstObject(objectName)?.hasNonBlankString(
+                    "previousCursor",
+                    "previous_cursor",
+                    "prevCursor",
+                    "prev_cursor",
+                    "beforeCursor",
+                    "before_cursor"
+                ) == true
+            }
+    }
+}
+
+private fun JsonObject.canLoadMoreAfter(): Boolean {
+    val candidates = listOfNotNull(
+        this,
+        firstObject("data", "context")
+    ).distinct()
+    candidates.forEach { candidate ->
+        val direct = candidate.boolean(
+            "hasMoreAfter",
+            "has_more_after",
+            "canLoadMoreAfter",
+            "can_load_more_after"
+        )
+        if (direct != null) return direct
+        for (objectName in listOf("pagination", "pageInfo", "paging", "meta")) {
+            val nested = candidate.firstObject(objectName)?.boolean(
+                "hasMoreAfter",
+                "has_more_after",
+                "canLoadMoreAfter",
+                "can_load_more_after"
+            )
+            if (nested != null) return nested
+        }
+    }
+    return candidates.any { candidate ->
+        candidate.hasNonBlankString("nextCursor", "next_cursor", "afterCursor", "after_cursor") ||
+            listOf("pagination", "pageInfo", "paging", "meta").any { objectName ->
+                candidate.firstObject(objectName)?.hasNonBlankString(
+                    "nextCursor",
+                    "next_cursor",
+                    "afterCursor",
+                    "after_cursor"
+                ) == true
+            }
+    }
+}
+
+private fun JsonObject.hasNonBlankString(vararg names: String): Boolean =
+    names.any { name -> string(name)?.isNotBlank() == true }
+
+private fun JsonObject.toThreadListSnapshot(context: NetworkServerContext): ThreadListSnapshot {
+    val threads = items("threads", "items", "data").mapNotNull { element ->
+        element.asObjectOrNull()?.toInboxItem(defaultKind = InboxItemKind.Thread)
+    }.distinctBy { it.key }
+    return ThreadListSnapshot(
+        server = context.server,
+        threads = threads,
+        totalCount = int("totalCount", "count") ?: threads.size,
+        hasMore = boolean("hasMore") ?: false,
+        nextOffset = int("nextOffset", "offset")
+    )
+}
+
+private fun ThreadSnapshot.withReplySummaries(
+    threads: List<InboxItem>,
+    logger: (String) -> Unit
+): ThreadSnapshot {
+    if (threads.isEmpty()) return this
+    val updatedMessages = messages.map { message ->
+        val summary = threads.firstOrNull { thread -> thread.matchesParentMessage(message.id) }
+            ?: return@map message
+        val summaryThreadChannelId = summary.threadChannelId ?: summary.channelId
+        logger(
+            "summary_join parentMessageId=${message.id.value} " +
+                "channelId=${message.channelId?.value.orEmpty()} " +
+                "threadChannelId=${summaryThreadChannelId.value} " +
+                "replyCount=${maxOf(message.replyCount, summary.replyCount)} " +
+                "source=channel_threads"
+        )
+        message.copy(
+            threadChannelId = message.threadChannelId ?: summaryThreadChannelId,
+            replyCount = maxOf(message.replyCount, summary.replyCount)
+        )
+    }
+    return copy(messages = updatedMessages)
+}
+
+private fun InboxItem.matchesParentMessage(messageId: MessageId): Boolean {
+    val candidateIds = listOfNotNull(
+        parentMessageId?.value,
+        lastMessageId?.value,
+        latestActivityMessageId?.value,
+        parentMessagePreview?.extractSlockMessageReferenceId(),
+        latestActivityPreview?.extractSlockMessageReferenceId(),
+        lastMessagePreview?.extractSlockMessageReferenceId(),
+        threadChannelId?.value,
+        channelId.value,
+        key.removePrefix("thread:").takeIf { it != key }
+    )
+    return candidateIds.any { candidate -> messageId.value.matchesThreadSummaryId(candidate) }
+}
+
+private fun String.extractSlockMessageReferenceId(): String? =
+    Regex("#[A-Za-z0-9_-]+:([A-Fa-f0-9]{8})(?:[A-Fa-f0-9-]{0,28})?").find(this)
+        ?.groupValues
+        ?.getOrNull(1)
+
+private fun String.matchesThreadSummaryId(candidate: String): Boolean {
+    if (equals(candidate, ignoreCase = true)) return true
+    val parentShortId = take(8)
+    val candidateShortId = candidate.take(8)
+    return parentShortId.length == 8 &&
+        candidateShortId.length == 8 &&
+        parentShortId.equals(candidateShortId, ignoreCase = true)
+}
+
+private fun JsonObject.messageItems(): List<com.google.gson.JsonElement> {
+    val unwrapped = unwrap("data", "context")
+    val direct = unwrapped.items("messages", "items", "results")
+    if (direct.isNotEmpty()) return direct
+    val before = unwrapped.items("before", "previous")
+    val after = unwrapped.items("after", "next")
+    val current = unwrapped.get("message")?.let(::listOf).orEmpty()
+    return before + current + after
+}
+
+private fun JsonObject.toMessage(fallbackThreadId: ThreadId): Message? {
+    val id = string("id", "messageId", "_id") ?: return null
+    val rawThreadId = string("threadId", "thread_id")
+        ?: firstObject("thread", "replyThread", "messageThread", "repliesThread")
+            ?.string("id", "threadId", "thread_id", "channelId", "channel_id")
+    val rawChannelId = string("channelId", "channel_id")
+        ?: firstObject("channel", "parentChannel")
+            ?.string("id", "channelId", "channel_id")
+    val explicitThreadChannelId = string(
+        "threadChannelId",
+        "thread_channel_id",
+        "replyThreadChannelId",
+        "reply_thread_channel_id",
+        "repliesThreadChannelId",
+        "replies_thread_channel_id",
+        "childThreadChannelId",
+        "child_thread_channel_id",
+        "threadChannel",
+        "thread_channel",
+        "replyChannelId",
+        "reply_channel_id",
+        "replyThreadId",
+        "reply_thread_id",
+        "commentsThreadChannelId",
+        "comments_thread_channel_id"
+    )
+    val parentMessageId = string(
+        "parentMessageId",
+        "parent_message_id",
+        "parentId",
+        "parent_id",
+        "rootMessageId",
+        "root_message_id"
+    )?.let(::MessageId)
+    val replyCount = int(
+        "replyCount",
+        "reply_count",
+        "replies",
+        "threadReplyCount",
+        "thread_reply_count",
+        "repliesCount",
+        "replies_count",
+        "threadRepliesCount",
+        "thread_replies_count",
+        "commentsCount",
+        "comments_count",
+        "childCount",
+        "child_count"
+    )
+        ?: firstObject("thread", "replyThread", "messageThread", "repliesThread")?.int(
+            "replyCount",
+            "reply_count",
+            "replies",
+            "repliesCount",
+            "replies_count",
+            "childCount",
+            "child_count"
+        )
+        ?: 0
+    val topLevelReplyThreadId = rawThreadId
+        ?.takeIf { parentMessageId == null && explicitThreadChannelId == null }
+        ?.takeIf { replyCount > 0 }
+        ?.takeIf { it != rawChannelId && it != fallbackThreadId.value }
+    val threadId = ThreadId(
+        when {
+            topLevelReplyThreadId != null -> rawChannelId ?: fallbackThreadId.value
+            else -> rawThreadId ?: rawChannelId ?: explicitThreadChannelId ?: fallbackThreadId.value
+        }
+    )
+    val body = string("body", "content", "text", "message") ?: ""
+    val author = firstObject("author", "sender", "user", "createdBy", "createdByUser", "senderUser", "agent", "authorAgent")
+        ?.toMemberProfile()
+        ?: toMessageAuthorProfile()
+    return Message(
+        id = MessageId(id),
+        threadId = threadId,
+        channelId = string("channelId", "channel_id", "threadChannelId", "thread_channel_id")?.let(::ChannelId),
+        threadChannelId = (explicitThreadChannelId ?: topLevelReplyThreadId)?.let(::ChannelId),
+        seq = long(
+            "seq",
+            "sequence",
+            "sequenceNumber",
+            "sequence_number",
+            "messageSeq",
+            "message_seq",
+            "serverSeq",
+            "server_seq",
+            "createdSeq",
+            "created_seq"
+        ),
+        author = author,
+        timestampLabel = string("timestampLabel", "createdAt", "created_at", "updatedAt") ?: "",
+        body = body,
+        messageType = toMessageType(),
+        systemEventType = systemEventType(),
+        metadata = systemMetadata(),
+        attachments = items("attachments").mapNotNull { it.asObjectOrNull()?.toAttachment() },
+        deliveryState = MessageDeliveryState.Sent,
+        task = unwrap("task").toTaskSummary(),
+        replyCount = replyCount,
+        parentMessageId = parentMessageId,
+        updatedAtLabel = string("updatedAt")
+    )
+}
+
+private fun JsonObject.toMemberProfile(): MemberProfile? {
+    val id = memberId() ?: return null
+    val displayName = memberDisplayName() ?: id
+    val avatarUrl = memberAvatarUrl()
+    val gravatarHash = memberGravatarHash()
+    return MemberProfile(
+        id = MemberId(id),
+        displayName = displayName,
+        handle = memberHandle(displayName),
+        kind = memberKind(),
+        roleDescription = memberRoleDescription(),
+        avatarUrl = avatarUrl,
+        gravatarHash = gravatarHash,
+        avatarLabel = displayName.take(1).uppercase(),
+        presence = memberPresence()
+    )
+}
+
+private fun JsonObject.toAgentDmSummary(): AgentDmSummary? {
+    val id = string("id", "dmId", "channelId", "threadId") ?: return null
+    val peer = firstObject("peer", "user", "member", "profile")
+    val peerName = string("peerName", "peerDisplayName", "displayName", "name")
+        ?: peer?.string("displayName", "name", "username", "email")
+        ?: "Unknown"
+    return AgentDmSummary(
+        id = id,
+        peerId = string("peerId", "peerUserId", "memberId", "userId")
+            ?: peer?.string("id", "userId", "memberId"),
+        peerName = peerName,
+        peerAvatarUrl = avatarWireValue("peerAvatarUrl", "peerAvatar", "avatarUrl", "avatar")
+            ?: peer?.avatarWireValue("avatarUrl", "avatar", "profileAvatar", "imageUrl"),
+        lastMessageAt = string("lastMessageAt", "createdAt", "updatedAt"),
+        lastMessagePreview = string("lastMessagePreview", "preview", "body", "content", "text")
+    )
+}
+
+private fun JsonObject.toAgentReminderSummary(): AgentReminderSummary? {
+    val id = string("reminderId", "id", "_id") ?: return null
+    val recurrence = firstObject("recurrence")
+    return AgentReminderSummary(
+        id = id,
+        title = string("title", "body", "text", "content") ?: "Reminder",
+        fireAt = string("fireAt", "fire_at", "scheduledAt", "scheduled_at"),
+        recurrenceDescription = string("recurrenceDescription", "recurrence_description")
+            ?: recurrence?.string("description", "label"),
+        messageRef = string("msgRef", "messageRef", "messageId"),
+        messagePermalink = string("msgPermalink", "permalink", "messagePermalink"),
+        ownerAgentId = string("ownerAgentId", "agentId"),
+        status = string("status")
+    )
+}
+
+private fun JsonObject.toAgentActivityEntry(): AgentActivityEntry? {
+    val type = string("type", "eventType", "kind")?.lowercase() ?: return null
+    val title = when (type) {
+        "thinking" -> "Thinking"
+        "tool_start" -> "Tool started"
+        "text" -> "Text"
+        "system" -> "System"
+        "status" -> "Status"
+        "compaction_started" -> "Compaction started"
+        "compaction_finished" -> "Compaction finished"
+        else -> return null
+    }
+    val id = string("id", "entryId", "eventId")
+        ?: listOfNotNull(type, string("timestamp", "createdAt", "time")).joinToString(":")
+            .ifBlank { type }
+    return AgentActivityEntry(
+        id = id,
+        type = type,
+        title = string("title", "label") ?: title,
+        body = string("body", "text", "content", "message", "status"),
+        timestamp = string("timestamp", "createdAt", "created_at", "time")
+    )
+}
+
+private fun MemberProfile.withHumanProfile(profile: MemberProfile): MemberProfile {
+    val mergedAvatarUrl = profile.avatarUrl ?: avatarUrl
+    val mergedGravatarHash = profile.gravatarHash ?: gravatarHash
+    return copy(
+        displayName = profile.displayName.takeUnless { it.isBlank() || it == profile.id.value } ?: displayName,
+        handle = profile.handle.takeUnless { it.isBlank() || it == profile.id.value } ?: handle,
+        kind = MemberKind.Human,
+        roleDescription = profile.roleDescription ?: roleDescription,
+        avatarUrl = mergedAvatarUrl,
+        gravatarHash = mergedGravatarHash,
+        avatar = profile.avatar
+            ?: avatar
+            ?: AvatarReference.fromWireValue(mergedAvatarUrl)
+            ?: mergedGravatarHash?.toGravatarAvatarReference(),
+        avatarLabel = profile.avatarLabel.takeIf { it.isNotBlank() } ?: avatarLabel,
+        presence = profile.presence,
+        permissionBadges = if (profile.permissionBadges.isNotEmpty()) profile.permissionBadges else permissionBadges
+    )
+}
+
+private fun JsonObject.memberId(): String? =
+    string("id", "_id", "userId", "memberId", "agentId")
+        ?: nestedMemberObject()?.memberId()
+
+private fun JsonObject.memberDisplayName(): String? =
+    string(
+        "displayName",
+        "display_name",
+        "name",
+        "username",
+        "title",
+        "label",
+        "handle",
+        "email"
+    )
+        ?: nestedMemberObject()?.memberDisplayName()
+        ?: firstObject("metadata", "meta")?.string(
+            "displayName",
+            "display_name",
+            "name",
+            "username",
+            "title",
+            "label"
+        )
+
+private fun JsonObject.memberHandle(displayName: String): String =
+    string("handle", "username", "email")
+        ?: nestedMemberObject()?.string("handle", "username", "email")
+        ?: displayName
+
+private fun JsonObject.memberRoleDescription(): String? =
+    string("description", "roleDescription", "role")
+        ?: nestedMemberObject()?.string("description", "roleDescription", "role")
+
+private fun JsonObject.memberAvatarUrl(): String? =
+    avatarWireValue("avatarUrl", "avatar", "avatar_url", "imageUrl", "profileImageUrl", "profileAvatar")
+        ?: nestedMemberObject()?.memberAvatarUrl()
+
+private fun JsonObject.memberGravatarHash(): String? =
+    string("gravatarHash", "gravatar_hash", "gravatar", "gravatarMd5", "gravatar_md5")
+        ?: nestedMemberObject()?.memberGravatarHash()
+
+private fun JsonObject.memberPresence(): Presence =
+    string("presence", "status", "activity", "availability").toPresenceOrNull()
+        ?: nestedMemberObject()?.memberPresence()
+        ?: Presence.Offline
+
+private fun JsonObject.memberKind(): MemberKind =
+    explicitMemberKindOrNull()
+        ?: nestedMemberObject()?.explicitMemberKindOrNull()
+        ?: MemberKind.Human
+
+private fun JsonObject.explicitMemberKindOrNull(): MemberKind? {
+    val kindValue = string("kind", "type", "memberType")?.lowercase()
+    return when {
+        boolean("isAgent") == true || kindValue == "agent" || string("agentId") != null || firstObject("agent") != null ->
+            MemberKind.Agent
+        kindValue == "human" || kindValue == "user" || string("userId") != null || firstObject("user", "member") != null ->
+            MemberKind.Human
+        else -> null
+    }
+}
+
+private fun JsonObject.nestedMemberObject(): JsonObject? =
+    firstObject("profile", "user", "account", "member", "agent")
+
+private fun JsonObject.toChannelMemberProfile(defaultKind: MemberKind? = null): MemberProfile? {
+    val profileObject = firstObject("member", "user", "agent", "profile") ?: this
+    val profile = profileObject.toMemberProfile() ?: toMemberProfile() ?: return null
+    val role = string("role", "channelRole", "memberRole", "roleDescription") ?: profile.roleDescription
+    val presence = string("presence", "status", "availability").toPresence(profile.presence)
+    val badges = listOfNotNull(role).filter { it.isNotBlank() }
+    return profile.copy(
+        kind = defaultKind ?: explicitMemberKindOrNull() ?: profile.kind,
+        roleDescription = role,
+        presence = presence,
+        permissionBadges = if (badges.isNotEmpty()) badges else profile.permissionBadges
+    )
+}
+
+private fun JsonObject.memberItems(): List<MemberProfile> {
+    val root = unwrap("data")
+    val direct = root.items("members", "items")
+    val users = root.items("users")
+    val agents = root.items("agents")
+    val fallback = root.items("data")
+    val directMembers = direct.mapNotNull { it.asObjectOrNull()?.toChannelMemberProfile() }
+    val splitMembers =
+        users.mapNotNull { it.asObjectOrNull()?.toChannelMemberProfile(MemberKind.Human) } +
+            agents.mapNotNull { it.asObjectOrNull()?.toChannelMemberProfile(MemberKind.Agent) }
+    val members = when {
+        directMembers.isNotEmpty() || splitMembers.isNotEmpty() -> directMembers + splitMembers
+        else -> fallback.mapNotNull { it.asObjectOrNull()?.toChannelMemberProfile() }
+    }
+    return members
+        .distinctBy { it.id }
+}
+
+private fun JsonObject.agentMemberItems(): List<MemberProfile> {
+    val root = unwrap("data")
+    val agents = root.items("agents", "items", "nodes", "records", "rows", "list", "results", "data")
+    return agents
+        .mapNotNull { it.asObjectOrNull()?.toChannelMemberProfile(MemberKind.Agent) }
+        .distinctBy { it.id }
+}
+
+private fun DataResult<MemberSnapshot>.logMemberCounts(
+    source: String,
+    serverId: String,
+    logger: (String) -> Unit
+) {
+    val members = (this as? DataResult.Content)?.data?.members.orEmpty()
+    logger(
+        "members_count source=$source serverId=$serverId result=${memberResultName()} " +
+            "agentsCount=${members.count { it.kind == MemberKind.Agent }} humansCount=${members.count { it.kind == MemberKind.Human }}"
+    )
+}
+
+private fun DataResult<ChannelMemberSnapshot>.logChannelMemberCounts(
+    source: String,
+    channelId: String,
+    logger: (String) -> Unit
+) {
+    val members = (this as? DataResult.Content)?.data?.members.orEmpty()
+    logger(
+        "members_count source=$source channelId=$channelId result=${memberResultName()} " +
+            "agentsCount=${members.count { it.kind == MemberKind.Agent }} humansCount=${members.count { it.kind == MemberKind.Human }}"
+    )
+}
+
+private fun DataResult<*>.memberResultName(): String =
+    when (this) {
+        is DataResult.Content -> "content"
+        is DataResult.Empty -> "empty"
+        is DataResult.Error -> "error:${error.code}"
+        is DataResult.NoPermission -> "noPermission:${blocker.code}"
+    }
+
+private fun String?.toPresence(fallback: Presence = Presence.Offline): Presence =
+    toPresenceOrNull() ?: fallback
+
+private fun String?.toPresenceOrNull(): Presence? =
+    when (this?.lowercase()) {
+        "active", "online", "working", "available" -> Presence.Active
+        "away", "idle", "busy" -> Presence.Away
+        "offline", "inactive" -> Presence.Offline
+        else -> null
+    }
+
+private fun JsonObject.toMessageAuthorProfile(): MemberProfile {
+    val nestedAuthor = firstObject("author", "sender", "user", "createdBy", "createdByUser", "senderUser", "agent", "authorAgent")
+        ?.toMemberProfile()
+    val authorId = string(
+        "authorId",
+        "senderId",
+        "userId",
+        "createdById",
+        "createdByUserId",
+        "senderUserId",
+        "agentId",
+        "authorAgentId",
+        "agentUserId"
+    ) ?: nestedAuthor?.id?.value ?: "unknown-author"
+    val displayName = string(
+        "authorDisplayName",
+        "authorName",
+        "senderDisplayName",
+        "senderName",
+        "userDisplayName",
+        "userName",
+        "createdByName",
+        "createdByDisplayName",
+        "createdByUsername",
+        "createdByUserDisplayName",
+        "agentName",
+        "agentDisplayName",
+        "agentUsername",
+        "agentTitle",
+        "authorAgentName",
+        "authorAgentDisplayName",
+        "senderAgentName",
+        "senderAgentDisplayName",
+        "profileDisplayName",
+        "profileName",
+        "authorHandle",
+        "senderHandle",
+        "email"
+    ) ?: nestedAuthor?.displayName ?: authorId
+    val handle = string(
+        "authorHandle",
+        "senderHandle",
+        "userHandle",
+        "agentHandle",
+        "agentUsername",
+        "handle",
+        "email"
+    ) ?: nestedAuthor?.handle ?: displayName
+    val isAgent = boolean("authorIsAgent", "senderIsAgent", "isAgent") == true ||
+        string("authorKind", "senderKind", "kind", "type") == "agent" ||
+        string("agentId", "authorAgentId", "agentUserId") != null ||
+        nestedAuthor?.kind == MemberKind.Agent
+    return MemberProfile(
+        id = MemberId(authorId),
+        displayName = displayName,
+        handle = handle,
+        kind = if (isAgent) MemberKind.Agent else MemberKind.Human,
+        roleDescription = string("authorDescription", "senderDescription", "agentDescription", "roleDescription")
+            ?: nestedAuthor?.roleDescription,
+        avatarUrl = avatarWireValue(
+            "authorAvatarUrl",
+            "authorAvatar",
+            "senderAvatarUrl",
+            "senderAvatar",
+            "agentAvatarUrl",
+            "agentAvatar",
+            "authorAgentAvatarUrl",
+            "authorAgentAvatar",
+            "senderAgentAvatarUrl",
+            "senderAgentAvatar",
+            "profileAvatar",
+            "avatarUrl",
+            "avatar"
+        )
+            ?: nestedAuthor?.avatarUrl,
+        avatarLabel = displayName.take(1).uppercase(),
+        presence = string("authorPresence", "senderPresence", "agentPresence", "presence", "status", "activity").toPresence(
+            nestedAuthor?.presence ?: Presence.Offline
+        )
+    )
+}
+
+private fun JsonObject.toTaskSummary(): TaskSummary? {
+    val id = string("id", "taskId") ?: return null
+    val title = string("title", "body", "content") ?: return null
+    val assignee = firstObject("assignee", "claimedBy", "assignedTo", "assigneeUser", "claimedByUser", "claimedByAgent")
+        ?.toMemberProfile()
+        ?: claimedByFallback()
+    return TaskSummary(
+        id = TaskId(id),
+        title = title,
+        status = string("status", "taskStatus")?.toTaskStatus() ?: TaskStatus.Todo,
+        taskNumber = int("taskNumber", "number"),
+        messageId = string("messageId")?.let(::MessageId),
+        channelId = string("channelId", "threadChannelId")?.let(::ChannelId)
+            ?: firstObject("channel", "thread")?.string("id", "channelId", "threadChannelId")?.let(::ChannelId),
+        threadId = string("threadId", "threadChannelId", "channelId")?.let(::ThreadId)
+            ?: firstObject("thread", "channel")?.string("threadId", "threadChannelId", "id", "channelId")?.let(::ThreadId),
+        assignee = assignee,
+        channelName = string("channelName") ?: firstObject("channel")?.string("name", "slug"),
+        updatedAtLabel = string("updatedAt", "createdAt") ?: "",
+        canClaim = boolean("canClaim") ?: true
+    )
+}
+
+private fun JsonObject.toTaskSnapshot(): TaskSnapshot {
+    val tasks = items("tasks", "items", "data")
+        .mapNotNull { it.asObjectOrNull()?.toTaskSummary() }
+    return TaskSnapshot(
+        tasks = tasks,
+        summaryCounts = taskSummaryCounts(tasks)
+    )
+}
+
+private fun TaskSnapshot.filteredBy(filter: TaskFilter, currentUserId: String): TaskSnapshot {
+    val filteredTasks = tasks.filter { task ->
+        (filter.statuses.isEmpty() || task.status in filter.statuses) &&
+            (!filter.assignedToMeOnly || task.assignee?.id?.value == currentUserId)
+    }
+    return copy(
+        tasks = filteredTasks,
+        summaryCounts = taskSummaryCounts(filteredTasks)
+    )
+}
+
+private fun taskSummaryCounts(tasks: List<TaskSummary>): Map<TaskStatus, Int> =
+    TaskStatus.entries.associateWith { status -> tasks.count { it.status == status } }
+
+private fun JsonObject.claimedByFallback(): MemberProfile? {
+    val claimedById = string("claimedById", "assigneeId", "assignedToId") ?: return null
+    val claimedByType = string("claimedByType", "assigneeType", "assignedToType")
+    val label = string("claimedByName", "assigneeName", "assignedToName", "claimedByHandle")
+        ?: claimedById
+    return MemberProfile(
+        id = MemberId(claimedById),
+        displayName = label,
+        handle = string("claimedByHandle", "assigneeHandle", "assignedToHandle") ?: label,
+        kind = if (claimedByType == "agent") MemberKind.Agent else MemberKind.Human,
+        avatarLabel = label.take(1).uppercase(),
+        presence = Presence.Offline
+    )
+}
+
+private fun JsonObject.toAttachment(): Attachment? {
+    val id = string("id", "attachmentId") ?: return null
+    return Attachment(
+        id = AttachmentId(id),
+        name = string("name", "fileName", "filename") ?: "Attachment",
+        mimeType = string("mimeType", "type") ?: "application/octet-stream",
+        sizeLabel = string("sizeLabel", "size") ?: ""
+    )
+}
+
+private fun JsonObject.toMessageType(): MessageType {
+    val type = string("type", "messageType", "kind", "messageKind")?.lowercase()
+    return if (type == "system" || type == "event" || systemEventType() != null) {
+        MessageType.System
+    } else {
+        MessageType.Chat
+    }
+}
+
+private fun JsonObject.systemEventType(): String? =
+    string(
+        "systemEventType",
+        "system_event_type",
+        "eventType",
+        "event_type",
+        "systemType",
+        "subtype",
+        "action"
+    ) ?: firstObject("systemEvent", "event")?.string("type", "eventType", "name", "action")
+
+private fun JsonObject.systemMetadata(): Map<String, String> {
+    val metadataObject = firstObject("metadata", "meta", "data", "payload") ?: return emptyMap()
+    return metadataObject.entrySet().mapNotNull { (key, value) ->
+        val stringValue = when {
+            value.isJsonPrimitive -> value.asJsonPrimitive.asString
+            value.isJsonObject -> value.asJsonObject.string("id", "name", "label", "value")
+            else -> null
+        }?.takeIf { it.isNotBlank() }
+        stringValue?.let { key to it }
+    }.toMap()
+}
+
+private fun JsonObject.toConversationOrDefault(
+    threadId: ThreadId,
+    name: String
+): ConversationSummary =
+    if (entrySet().isEmpty()) {
+        ConversationSummary(
+            threadId = threadId,
+            channelId = ChannelId(threadId.value),
+            kind = ConversationKind.Channel,
+            name = name
+        )
+    } else {
+        toConversation(ConversationKind.Channel)
+    }
+
+private fun JsonObject.unwrap(vararg names: String): JsonObject {
+    for (name in names) {
+        val value = get(name)
+        if (value != null && value.isJsonObject) return value.asJsonObject
+    }
+    return this
+}
+
+private fun JsonObject.firstObject(vararg names: String): JsonObject? {
+    for (name in names) {
+        val value = get(name)
+        if (value != null && value.isJsonObject) return value.asJsonObject
+    }
+    return null
+}
+
+private fun ChannelId.toThreadActionBody(): RequestBody =
+    mapOf(
+        "threadChannelId" to value,
+        "channelId" to value
+    ).toJsonBody()
+
+private fun MessageId.toParentMessageThreadBody(): RequestBody =
+    mapOf("parentMessageId" to value).toJsonBody()
+
+private fun sendMessageBody(
+    threadId: ThreadId,
+    body: String,
+    attachmentIds: List<AttachmentId>,
+    asTask: Boolean
+): RequestBody =
+    mapOf(
+        "channelId" to threadId.value,
+        "content" to body,
+        "attachmentIds" to attachmentIds.map { it.value },
+        "asTask" to asTask
+    ).toJsonBody()
+
+private fun AttachmentUploadFile.toMultipartPart(): MultipartBody.Part {
+    val body = bytes.toRequestBody((mimeType ?: "application/octet-stream").toMediaTypeOrNull())
+    return MultipartBody.Part.createFormData("files", fileName, body)
+}
+
+private fun Map<String, Any?>.toJsonBody(): RequestBody =
+    Gson().toJson(this).toRequestBody(jsonMediaType)
+
+private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+private val textMediaType = "text/plain; charset=utf-8".toMediaType()
 
 private fun JsonObject.toServerUnreadSummarySnapshot(selectedServer: ServerSummary): ServerUnreadSummarySnapshot {
     val summaries = items("servers", "items", "summaries").mapNotNull { it.asObject().toServerUnreadSummary() }
@@ -394,43 +2174,65 @@ private fun JsonObject.toServerUnreadSummarySnapshot(selectedServer: ServerSumma
     val totalUnread = int("totalUnreadCount", "totalUnread", "unreadTotal", "unreadCount")
         ?: selectedSummary?.totalUnreadCount
         ?: summaries.sumOf { it.totalUnreadCount }
-    val inboxUnread = int("totalInboxUnreadCount", "inboxUnreadCount", "inboxUnread")
-        ?: selectedSummary?.inboxUnreadCount
-        ?: 0
-    val savedUnread = int("totalSavedUnreadCount", "savedUnreadCount", "savedUnread")
-        ?: selectedSummary?.savedUnreadCount
-        ?: 0
     return ServerUnreadSummarySnapshot(
         server = selectedServer.copy(unreadCount = selectedSummary?.totalUnreadCount ?: totalUnread),
         summaries = summaries.ifEmpty { selectedSummary?.let(::listOf).orEmpty() },
         selectedServerSummary = selectedSummary,
         totalUnreadCount = totalUnread,
-        inboxUnreadCount = inboxUnread,
-        savedUnreadCount = savedUnread,
         mentionCount = int("mentionCount", "mentions") ?: selectedSummary?.mentionCount ?: 0
     )
 }
 
 private fun JsonObject.toServerUnreadSummary(defaultServerId: ServerId? = null): ServerUnreadSummary? {
     val serverId = string("serverId", "id")?.let(::ServerId) ?: defaultServerId ?: return null
-    val inboxUnread = int("inboxUnreadCount", "inboxUnread", "inbox") ?: 0
     val channelUnread = int("channelUnreadCount", "channelsUnread", "channels") ?: 0
     val dmUnread = int("directMessageUnreadCount", "dmUnreadCount", "directMessagesUnread", "dms") ?: 0
-    val savedUnread = int("savedUnreadCount", "savedUnread", "saved") ?: 0
     val mentionCount = int("mentionCount", "mentions") ?: 0
     val taskUnread = int("taskUnreadCount", "tasksUnread", "tasks") ?: 0
     val total = int("totalUnreadCount", "totalUnread", "unreadTotal", "unreadCount")
-        ?: (inboxUnread + channelUnread + dmUnread + savedUnread + mentionCount + taskUnread)
+        ?: (channelUnread + dmUnread + mentionCount + taskUnread)
     return ServerUnreadSummary(
         serverId = serverId,
         totalUnreadCount = total,
-        inboxUnreadCount = inboxUnread,
         channelUnreadCount = channelUnread,
         directMessageUnreadCount = dmUnread,
-        savedUnreadCount = savedUnread,
         mentionCount = mentionCount,
         taskUnreadCount = taskUnread,
         updatedAt = string("updatedAt", "lastActivityAt")
+    )
+}
+
+private fun JsonObject.toChannelUnreadCounts(): Map<ChannelId, Int> {
+    val unwrapped = unwrap("data", "unreadCounts", "counts")
+    val directEntries = unwrapped.entrySet().mapNotNull { (key, value) ->
+        val count = when {
+            value.isJsonPrimitive -> value.asJsonPrimitive.asString.toIntOrNull()
+            value.isJsonObject -> value.asJsonObject.int("unreadCount", "unread", "count")
+            else -> null
+        }
+        if (count == null) null else ChannelId(key) to count
+    }
+    if (directEntries.isNotEmpty()) return directEntries.toMap()
+    return unwrapped.items("channels", "items", "counts").mapNotNull { element ->
+        val item = element.asObjectOrNull() ?: return@mapNotNull null
+        val channelId = item.string("channelId", "id", "threadChannelId") ?: return@mapNotNull null
+        val count = item.int("unreadCount", "unread", "count") ?: 0
+        ChannelId(channelId) to count
+    }.toMap()
+}
+
+private fun JsonObject.toReadReceiptResult(
+    fallbackChannelId: ChannelId? = null,
+    fallbackSeq: Long? = null
+): ReadReceiptResult {
+    val unwrapped = unwrap("data", "result")
+    return ReadReceiptResult(
+        channelId = unwrapped.string("channelId", "id")
+            ?.let(::ChannelId)
+            ?: fallbackChannelId,
+        seq = unwrapped.long("seq", "readSeq", "lastReadSeq") ?: fallbackSeq,
+        unreadCount = unwrapped.int("unreadCount", "unread", "count") ?: 0,
+        changed = unwrapped.boolean("changed", "ok", "success") ?: true
     )
 }
 

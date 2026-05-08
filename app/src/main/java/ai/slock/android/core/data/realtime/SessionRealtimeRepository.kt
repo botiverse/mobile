@@ -1,6 +1,7 @@
 package ai.slock.android.core.data.realtime
 
 import ai.slock.android.core.data.auth.AuthSessionStore
+import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.repository.DataResult
 import ai.slock.android.core.data.repository.RealtimeRepository
 import ai.slock.android.core.data.repository.RealtimeSubscription
@@ -11,11 +12,19 @@ import ai.slock.android.core.state.PermissionBlocker
 
 class SessionRealtimeRepository(
     private val store: AuthSessionStore,
-    private val client: SocketIoRealtimeClient
+    private val client: SocketIoRealtimeClient,
+    private val tokenRefresher: AuthTokenRefresher? = null
 ) : RealtimeRepository {
     override suspend fun connect(serverId: ServerId, lastSeq: Long): DataResult<Unit> {
-        val session = store.readSession()
-            ?: return DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+        val session = if (tokenRefresher != null) {
+            store.readSession()
+                ?: return DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+            tokenRefresher.refreshIfExpiringSoon()
+                ?: return DataResult.NoPermission(PermissionBlocker(code = "auth_refresh_failed", requiredCapability = "auth_session"))
+        } else {
+            store.readSession()
+                ?: return DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+        }
         val selectedServerId = session.currentServerId
             ?: return DataResult.NoPermission(PermissionBlocker(code = "server_required", requiredCapability = "selected_server"))
         if (selectedServerId != serverId.value) {

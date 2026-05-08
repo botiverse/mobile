@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
@@ -51,8 +53,12 @@ fun SlockTextField(
     maxLines: Int = if (singleLine) 1 else 4,
     forceFocused: Boolean = false,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    inputModifier: Modifier = Modifier,
     visualTransformation: VisualTransformation = VisualTransformation.None,
-    trailingContent: (@Composable () -> Unit)? = null
+    trailingContent: (@Composable () -> Unit)? = null,
+    minContentHeight: Dp = 48.dp,
+    contentPaddingVertical: Dp = 12.dp,
 ) {
     var focused by remember { mutableStateOf(false) }
     val focusedVisual = (focused || forceFocused) && enabled
@@ -80,6 +86,7 @@ fun SlockTextField(
                 fontWeight = FontWeight.Medium
             ),
             keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
             visualTransformation = visualTransformation,
             cursorBrush = SolidColor(SlockColor.TextBlack),
             interactionSource = remember { MutableInteractionSource() },
@@ -90,12 +97,13 @@ fun SlockTextField(
                 .background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
                 .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Xs))
                 .alpha(if (enabled) 1f else 0.45f)
-                .onFocusChanged { focused = it.isFocused },
+                .onFocusChanged { focused = it.isFocused }
+                .then(inputModifier),
             decorationBox = { innerTextField ->
                 Row(
-                    modifier = Modifier
-                        .defaultMinSize(minHeight = 48.dp)
-                        .padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
+                modifier = Modifier
+                        .defaultMinSize(minHeight = minContentHeight)
+                        .padding(horizontal = SlockSpacing.Md, vertical = contentPaddingVertical),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(modifier = Modifier.weight(1f)) {

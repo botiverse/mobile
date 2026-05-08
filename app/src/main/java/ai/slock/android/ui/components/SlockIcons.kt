@@ -45,6 +45,53 @@ object SlockIcons {
         lineTo(5f, 12f)
     }
 
+    val Search: ImageVector = strokeIcon("LucideSearch") {
+        moveTo(21f, 21f)
+        lineTo(16.66f, 16.66f)
+        moveTo(19f, 11f)
+        curveTo(19f, 15.4183f, 15.4183f, 19f, 11f, 19f)
+        curveTo(6.5817f, 19f, 3f, 15.4183f, 3f, 11f)
+        curveTo(3f, 6.5817f, 6.5817f, 3f, 11f, 3f)
+        curveTo(15.4183f, 3f, 19f, 6.5817f, 19f, 11f)
+        close()
+    }
+
+    val Inbox: ImageVector = strokeIcon("LucideInbox") {
+        moveTo(22f, 12f)
+        lineTo(16f, 12f)
+        lineTo(14f, 15f)
+        lineTo(10f, 15f)
+        lineTo(8f, 12f)
+        lineTo(2f, 12f)
+        moveTo(5.45f, 5.11f)
+        lineTo(2f, 12f)
+        lineTo(2f, 18f)
+        curveTo(2f, 19.1046f, 2.8954f, 20f, 4f, 20f)
+        lineTo(20f, 20f)
+        curveTo(21.1046f, 20f, 22f, 19.1046f, 22f, 18f)
+        lineTo(22f, 12f)
+        lineTo(18.55f, 5.11f)
+        curveTo(18.213f, 4.441f, 17.529f, 4f, 16.76f, 4f)
+        lineTo(7.24f, 4f)
+        curveTo(6.471f, 4f, 5.787f, 4.441f, 5.45f, 5.11f)
+    }
+
+    val Bookmark: ImageVector = strokeIcon("LucideBookmark") {
+        moveTo(17f, 3f)
+        curveTo(18.1046f, 3f, 19f, 3.8954f, 19f, 5f)
+        lineTo(19f, 20f)
+        curveTo(19f, 20.3565f, 18.8101f, 20.686f, 18.5019f, 20.865f)
+        curveTo(18.1937f, 21.044f, 17.8135f, 21.0452f, 17.504f, 20.868f)
+        lineTo(12.992f, 18.29f)
+        curveTo(12.377f, 17.939f, 11.623f, 17.939f, 11.008f, 18.29f)
+        lineTo(6.496f, 20.868f)
+        curveTo(6.1865f, 21.0452f, 5.8063f, 21.044f, 5.4981f, 20.865f)
+        curveTo(5.1899f, 20.686f, 5f, 20.3565f, 5f, 20f)
+        lineTo(5f, 5f)
+        curveTo(5f, 3.8954f, 5.8954f, 3f, 7f, 3f)
+        close()
+    }
+
     val Hash: ImageVector = strokeIcon("LucideHash") {
         moveTo(4f, 9f)
         lineTo(20f, 9f)
@@ -172,6 +219,20 @@ object SlockIcons {
         lineTo(3f, 5f)
         curveTo(3f, 3.9f, 3.9f, 3f, 5f, 3f)
         lineTo(9f, 3f)
+    }
+
+    val LogIn: ImageVector = strokeIcon("LucideLogIn") {
+        moveTo(10f, 17f)
+        lineTo(15f, 12f)
+        lineTo(10f, 7f)
+        moveTo(15f, 12f)
+        lineTo(3f, 12f)
+        moveTo(15f, 3f)
+        lineTo(19f, 3f)
+        curveTo(20.1f, 3f, 21f, 3.9f, 21f, 5f)
+        lineTo(21f, 19f)
+        curveTo(21f, 20.1f, 20.1f, 21f, 19f, 21f)
+        lineTo(15f, 21f)
     }
 
     val Users: ImageVector = strokeIcon("LucideUsers") {

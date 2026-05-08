@@ -1,5 +1,6 @@
 package ai.slock.android.feature.members
 
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,6 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -38,12 +40,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import ai.slock.android.core.data.repository.AgentActivitySnapshot
+import ai.slock.android.core.data.repository.AgentDmSnapshot
+import ai.slock.android.core.data.repository.AgentReminderSnapshot
 import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
+import ai.slock.android.core.model.toGravatarAvatarUrl
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenError
@@ -51,6 +57,7 @@ import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.sample.SlockStateSamples
 import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
+import ai.slock.android.ui.components.SlockAvatar
 import ai.slock.android.ui.components.SlockIconSquareButton
 import ai.slock.android.ui.components.SlockIcons
 import ai.slock.android.ui.components.SlockPageDivider
@@ -124,13 +131,22 @@ fun MembersPageShell(
 fun MembersRouteScreen(
     state: MembersUiState,
     modifier: Modifier = Modifier,
+    initialSelectedMemberId: String? = null,
     onBack: () -> Unit = {},
     onDetailVisibleChange: (Boolean) -> Unit = {},
+    onOpenMemberProfile: (MemberProfile) -> Unit = {},
     onAddHuman: () -> Unit = {},
     onRetry: () -> Unit = {}
 ) {
-    var selectedMemberId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedMemberId by rememberSaveable { mutableStateOf(initialSelectedMemberId) }
     var selectedDetailTab by rememberSaveable { mutableStateOf(MemberDetailTab.Profile.name) }
+    LaunchedEffect(initialSelectedMemberId) {
+        if (initialSelectedMemberId != null) {
+            selectedMemberId = initialSelectedMemberId
+            selectedDetailTab = MemberDetailTab.Profile.name
+            onDetailVisibleChange(true)
+        }
+    }
     val selectedMember = (state.loadState as? ScreenLoadState.Content)
         ?.data
         ?.members
@@ -138,16 +154,30 @@ fun MembersRouteScreen(
 
     if (selectedMember != null) {
         BackHandler { selectedMemberId = null }
-        MemberDetailScreen(
-            member = selectedMember,
-            selectedTab = MemberDetailTab.valueOf(selectedDetailTab),
-            onTabSelected = { selectedDetailTab = it.name },
-            onBack = {
-                selectedMemberId = null
-                onDetailVisibleChange(false)
-            },
-            modifier = modifier
-        )
+        if (selectedMember.kind == MemberKind.Human) {
+            HumanMemberDetailScreen(
+                member = selectedMember,
+                onBack = {
+                    selectedMemberId = null
+                    onDetailVisibleChange(false)
+                },
+                modifier = modifier
+            )
+        } else {
+            MemberDetailScreen(
+                member = selectedMember,
+                selectedTab = MemberDetailTab.valueOf(selectedDetailTab),
+                onTabSelected = { selectedDetailTab = it.name },
+                agentDmsState = state.selectedAgentDmsState,
+                agentRemindersState = state.selectedAgentRemindersState,
+                agentActivityState = state.selectedAgentActivityState,
+                onBack = {
+                    selectedMemberId = null
+                    onDetailVisibleChange(false)
+                },
+                modifier = modifier
+            )
+        }
     } else {
         onDetailVisibleChange(false)
         MembersPageShell(
@@ -158,6 +188,7 @@ fun MembersRouteScreen(
                 selectedMemberId = member.id.value
                 selectedDetailTab = MemberDetailTab.Profile.name
                 onDetailVisibleChange(true)
+                onOpenMemberProfile(member)
             },
             onAddHuman = onAddHuman,
             onRetry = onRetry
@@ -179,6 +210,13 @@ private fun MembersContentView(
     onAddHuman: () -> Unit,
     onMemberClick: (MemberProfile) -> Unit
 ) {
+    LaunchedEffect(content.server.id, content.members) {
+        ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+            "SlockMembers",
+            "render_count source=members_page serverId=${content.server.id.value} " +
+                "agentsCount=${content.members.count { it.kind == MemberKind.Agent }} humansCount=${content.members.count { it.kind == MemberKind.Human }}"
+        )
+    }
     val grouped = content.members.groupBy {
         when (it.kind) {
             MemberKind.Human -> MemberSection.Humans
@@ -331,7 +369,9 @@ fun MemberFlatRow(
                 modifier = Modifier.weight(1f)
             )
         }
-        MemberPresenceDot(presence = member.presence)
+        if (member.kind != MemberKind.Human) {
+            MemberPresenceDot(presence = member.presence)
+        }
     }
 }
 
@@ -343,21 +383,22 @@ private fun MemberFlatAvatar(member: MemberProfile) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(member.kind.avatarColor)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = member.avatarLabel.take(2).uppercase(),
-                style = SlockType.Button,
-                color = SlockColor.TextBlack,
-                maxLines = 1
+            SlockAvatar(
+                avatarUrl = member.avatarUrl,
+                avatar = member.avatar,
+                label = member.avatarLabel,
+                size = MemberAvatarSize,
+                fontSize = SlockType.Button.fontSize,
+                fallbackColor = member.kind.avatarColor
             )
         }
-        MemberPresenceDot(
-            presence = member.presence,
-            modifier = Modifier.align(Alignment.BottomEnd)
-        )
+        if (member.kind != MemberKind.Human) {
+            MemberPresenceDot(
+                presence = member.presence,
+                modifier = Modifier.align(Alignment.BottomEnd)
+            )
+        }
     }
 }
 
@@ -436,10 +477,37 @@ private fun MembersStateHeader(onBack: () -> Unit) {
 }
 
 @Composable
+private fun HumanMemberDetailScreen(
+    member: MemberProfile,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(SlockColor.SurfaceWhite)
+    ) {
+        MemberDetailHeader(member = member, onBack = onBack)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            HumanMemberProfileDetail(member = member)
+            Spacer(modifier = Modifier.height(180.dp))
+        }
+    }
+}
+
+@Composable
 private fun MemberDetailScreen(
     member: MemberProfile,
     selectedTab: MemberDetailTab,
     onTabSelected: (MemberDetailTab) -> Unit,
+    agentDmsState: ScreenLoadState<AgentDmSnapshot>,
+    agentRemindersState: ScreenLoadState<AgentReminderSnapshot>,
+    agentActivityState: ScreenLoadState<AgentActivitySnapshot>,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -462,21 +530,8 @@ private fun MemberDetailScreen(
         ) {
             when (selectedTab) {
                 MemberDetailTab.Profile -> MemberProfileDetail(member = member)
-                MemberDetailTab.AgentDms -> MemberDetailSamplePanel(
-                    title = "Agent DMs",
-                    rows = listOf(
-                        "Recent direct threads with ${member.displayName}",
-                        "No pinned direct messages in sample state",
-                        "Open a DM from real data after API integration"
-                    )
-                )
-                MemberDetailTab.Reminders -> MemberDetailSamplePanel(
-                    title = "Reminders",
-                    rows = listOf(
-                        "No active reminders for this member",
-                        "Reminder creation is sample-only in this shell"
-                    )
-                )
+                MemberDetailTab.AgentDms -> AgentDirectMessagesPanel(state = agentDmsState)
+                MemberDetailTab.Reminders -> AgentRemindersPanel(state = agentRemindersState)
                 MemberDetailTab.Workspace -> MemberWorkspaceDetail(
                     expandedIds = workspaceExpandedIds.toSet(),
                     selectedFileId = workspaceSelectedFileId,
@@ -494,14 +549,7 @@ private fun MemberDetailScreen(
                     },
                     onBackToTree = { workspacePreviewVisible = false }
                 )
-                MemberDetailTab.Activity -> MemberDetailSamplePanel(
-                    title = "Activity",
-                    rows = listOf(
-                        "Last active: just now",
-                        "Recent task updates and messages will appear here",
-                        "Sample activity stream is intentionally local"
-                    )
-                )
+                MemberDetailTab.Activity -> AgentActivityPanel(state = agentActivityState)
             }
             Spacer(modifier = Modifier.height(180.dp))
         }
@@ -869,21 +917,278 @@ private fun MemberDetailAvatar(member: MemberProfile) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(member.kind.avatarColor)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = member.avatarLabel.take(2).uppercase(),
-                style = SlockType.PageTitle,
-                color = SlockColor.TextBlack
+            SlockAvatar(
+                avatarUrl = member.avatarUrl,
+                avatar = member.avatar,
+                label = member.avatarLabel,
+                size = 64.dp,
+                fontSize = SlockType.PageTitle.fontSize,
+                fallbackColor = member.kind.avatarColor
             )
         }
-        MemberPresenceDot(
-            presence = member.presence,
-            modifier = Modifier.align(Alignment.BottomEnd)
+    }
+}
+
+@Composable
+private fun HumanMemberDetailAvatar(member: MemberProfile) {
+    val avatarUrl = member.avatarUrl ?: member.gravatarHash?.toGravatarAvatarUrl()
+    Box(modifier = Modifier.size(64.dp)) {
+        if (avatarUrl != null || member.avatar != null) {
+            SlockAvatar(
+                avatarUrl = avatarUrl,
+                avatar = member.avatar,
+                label = member.avatarLabel,
+                size = 64.dp,
+                fontSize = SlockType.PageTitle.fontSize,
+                fallbackColor = member.kind.avatarColor
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Thin, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = SlockIcons.User,
+                    contentDescription = null,
+                    tint = SlockColor.TextBlack,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+        if (member.kind != MemberKind.Human) {
+            MemberPresenceDot(
+                presence = member.presence,
+                modifier = Modifier.align(Alignment.BottomEnd)
+            )
+        }
+    }
+}
+
+@Composable
+private fun AgentDirectMessagesPanel(
+    state: ScreenLoadState<AgentDmSnapshot>
+) {
+    AgentDetailListPanel(
+        title = "Agent DMs",
+        state = state,
+        emptyTitle = "No agent DMs",
+        emptyDetail = "This agent has no direct threads in the current workspace.",
+        errorTitle = "Agent DMs failed to load",
+        noPermissionTitle = "Agent DMs unavailable",
+        noPermissionDetail = "agent_dms access denied"
+    ) { snapshot ->
+        snapshot.directMessages.forEach { dm ->
+            AgentDetailCard(
+                title = dm.peerName,
+                subtitle = dm.lastMessagePreview ?: "No recent message",
+                meta = listOfNotNull(dm.peerId, dm.lastMessageAt).joinToString(" · ")
+            )
+        }
+    }
+}
+
+@Composable
+private fun AgentRemindersPanel(
+    state: ScreenLoadState<AgentReminderSnapshot>
+) {
+    AgentDetailListPanel(
+        title = "Reminders",
+        state = state,
+        emptyTitle = "No scheduled reminders",
+        emptyDetail = "This agent has no scheduled reminders.",
+        errorTitle = "Reminders failed to load",
+        noPermissionTitle = "Reminders unavailable",
+        noPermissionDetail = "reminders access denied"
+    ) { snapshot ->
+        snapshot.reminders.forEach { reminder ->
+            AgentDetailCard(
+                title = reminder.title,
+                subtitle = reminder.fireAt ?: "No scheduled time",
+                meta = listOfNotNull(reminder.recurrenceDescription, reminder.status).joinToString(" · ")
+            )
+        }
+    }
+}
+
+@Composable
+private fun AgentActivityPanel(
+    state: ScreenLoadState<AgentActivitySnapshot>
+) {
+    AgentDetailListPanel(
+        title = "Activity",
+        state = state,
+        emptyTitle = "No agent activity",
+        emptyDetail = "No recent activity entries are available.",
+        errorTitle = "Activity failed to load",
+        noPermissionTitle = "Activity unavailable",
+        noPermissionDetail = "activity access denied"
+    ) { snapshot ->
+        snapshot.activity.forEach { activity ->
+            AgentDetailCard(
+                title = activity.title,
+                subtitle = activity.body ?: activity.type,
+                meta = activity.timestamp.orEmpty()
+            )
+        }
+    }
+}
+
+@Composable
+private fun <T> AgentDetailListPanel(
+    title: String,
+    state: ScreenLoadState<T>,
+    emptyTitle: String,
+    emptyDetail: String,
+    errorTitle: String,
+    noPermissionTitle: String,
+    noPermissionDetail: String,
+    content: @Composable ColumnScope.(T) -> Unit
+) {
+    MemberDetailPanel(title = title) {
+        when (state) {
+            ScreenLoadState.Loading -> AgentDetailStateCard("Loading", "Fetching real data…")
+            is ScreenLoadState.Content -> content(state.data)
+            is ScreenLoadState.Empty -> AgentDetailStateCard(emptyTitle, emptyDetail)
+            is ScreenLoadState.Error -> AgentDetailStateCard(errorTitle, state.error.code)
+            is ScreenLoadState.NoPermission -> AgentDetailStateCard(noPermissionTitle, noPermissionDetail)
+        }
+    }
+}
+
+@Composable
+private fun AgentDetailCard(
+    title: String,
+    subtitle: String,
+    meta: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(SlockStroke.Thin, SlockColor.EmptyStateGray)
+            .padding(SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = title,
+            style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = subtitle,
+            style = SlockType.Body,
+            color = SlockColor.TextBlack,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (meta.isNotBlank()) {
+            Text(
+                text = meta,
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun AgentDetailStateCard(
+    title: String,
+    detail: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(SlockStroke.Thin, SlockColor.EmptyStateGray)
+            .padding(SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = title,
+            style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+            color = SlockColor.TextBlack
+        )
+        Text(
+            text = detail,
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray
         )
     }
+}
+
+@Composable
+private fun HumanMemberProfileDetail(member: MemberProfile) {
+    MemberDetailPanel {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+        ) {
+            HumanMemberDetailAvatar(member = member)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            ) {
+                Text(
+                    text = member.displayName,
+                    style = SlockType.PageTitle,
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = member.handle,
+                    style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (!member.roleDescription.isNullOrBlank()) {
+                    Text(
+                        text = member.roleDescription,
+                        style = SlockType.Body,
+                        color = SlockColor.TextBlack
+                    )
+                }
+            }
+        }
+    }
+    MemberDetailSection(title = "Profile") {
+        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+            MemberDetailLabeledValue("Display Name", member.displayName)
+            MemberDetailLabeledValue("Handle", member.handle)
+            MemberDetailLabeledValue("Role", member.roleDescription ?: "No profile description")
+        }
+    }
+    MemberDetailSection(title = "Avatar") {
+        MemberDetailValue(member.humanAvatarSourceLabel())
+    }
+}
+
+private fun MemberProfile.humanAvatarSourceLabel(): String =
+    avatarUrl
+        ?: gravatarHash?.let { "gravatar:$it" }
+        ?: avatar?.wireValue
+        ?: "Default user icon"
+
+@Composable
+private fun MemberPresenceBadge(presence: Presence) {
+    Text(
+        text = presence.name.uppercase(),
+        style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+        color = SlockColor.TextBlack,
+        modifier = Modifier
+            .background(presence.color, RoundedCornerShape(SlockRadius.Xs))
+            .border(SlockStroke.Thin, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Xs))
+            .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp)
+    )
 }
 
 @Composable
@@ -1067,11 +1372,11 @@ private val Presence.color: Color
         Presence.Offline -> SlockColor.EmptyStateGray
     }
 
-private val Presence.label: String
+private val Presence.readableLabel: String
     get() = when (this) {
-        Presence.Active -> "online"
-        Presence.Away -> "away"
-        Presence.Offline -> "offline"
+        Presence.Active -> "Active"
+        Presence.Away -> "Away"
+        Presence.Offline -> "Offline"
     }
 
 private val MemberProfile.inlineDescription: String
@@ -1088,6 +1393,7 @@ private val membersPageSample = MembersUiState(
                     handle = "Onboarding Assistant",
                     kind = MemberKind.Agent,
                     roleDescription = "Onboarding Assistant",
+                    avatarUrl = "pixel:heart",
                     avatarLabel = "C",
                     presence = Presence.Active
                 ),
@@ -1097,6 +1403,7 @@ private val membersPageSample = MembersUiState(
                     handle = "负责把 @artin 的想法、截图和反馈整理成可执行的产品方案与交互设计",
                     kind = MemberKind.Agent,
                     roleDescription = "负责把 @artin 的想法、截图...",
+                    avatarUrl = "random:product-ux-designer",
                     avatarLabel = "P",
                     presence = Presence.Away
                 ),
@@ -1106,6 +1413,7 @@ private val membersPageSample = MembersUiState(
                     handle = "负责在 ~/AndroidStudioProjects/Slock 中实现 Android app",
                     kind = MemberKind.Agent,
                     roleDescription = "负责在 ~/AndroidStudioProjec...",
+                    avatarUrl = "pixel:diamond",
                     avatarLabel = "A",
                     presence = Presence.Active
                 ),
@@ -1115,6 +1423,7 @@ private val membersPageSample = MembersUiState(
                     handle = "负责为 Android 多 agent 聊天 app 制定和执行测试",
                     kind = MemberKind.Agent,
                     roleDescription = "负责为 Android 多 agent 聊天 app 制定和...",
+                    avatarUrl = "pixel:star",
                     avatarLabel = "Q",
                     presence = Presence.Active
                 ),
@@ -1124,6 +1433,7 @@ private val membersPageSample = MembersUiState(
                     handle = "负责 Slock Android 的数据与接口层开发",
                     kind = MemberKind.Agent,
                     roleDescription = "负责 Slock Android 的...",
+                    avatarUrl = "random:api-integration-developer",
                     avatarLabel = "AI",
                     presence = Presence.Active
                 ),
@@ -1133,6 +1443,7 @@ private val membersPageSample = MembersUiState(
                     handle = "负责 Slock Android 的真实 app 集成层",
                     kind = MemberKind.Agent,
                     roleDescription = "负责 Slock Android 的真...",
+                    avatarUrl = "pixel:robot",
                     avatarLabel = "AP",
                     presence = Presence.Away
                 ),
@@ -1142,6 +1453,7 @@ private val membersPageSample = MembersUiState(
                     handle = "@artin",
                     kind = MemberKind.Human,
                     roleDescription = null,
+                    avatarUrl = "https://cdn.example.com/artin.png",
                     avatarLabel = "人",
                     presence = Presence.Offline
                 )
@@ -1175,6 +1487,7 @@ private fun MembersPageStatesPreview() {
                     handle = "A very long role line should ellipsis before the status dot",
                     kind = MemberKind.Agent,
                     roleDescription = "Long role description with 中文 and English text that should truncate",
+                    avatarUrl = "random:long-agent",
                     avatarLabel = "L",
                     presence = Presence.Active
                 )

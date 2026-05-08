@@ -14,6 +14,7 @@ data class SlockHardShadow(
 )
 
 object SlockShadow {
+    val None = SlockHardShadow(offsetX = 0.dp, offsetY = 0.dp, color = Color.Transparent)
     val Small = SlockHardShadow(offsetX = 2.dp, offsetY = 2.dp)
     val Default = SlockHardShadow(offsetX = 4.dp, offsetY = 4.dp)
     val Large = SlockHardShadow(offsetX = 6.dp, offsetY = 6.dp)

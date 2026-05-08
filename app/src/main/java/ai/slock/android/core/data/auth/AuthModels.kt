@@ -6,6 +6,7 @@ import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
+import ai.slock.android.core.model.toGravatarAvatarReference
 import com.google.gson.annotations.SerializedName
 
 data class AuthUser(
@@ -15,6 +16,7 @@ data class AuthUser(
     val displayName: String?,
     val description: String?,
     val avatarUrl: String?,
+    val gravatarHash: String? = null,
     val emailVerified: Boolean?
 ) {
     val bestDisplayName: String
@@ -29,6 +31,10 @@ data class AuthUser(
             handle = email,
             kind = MemberKind.Human,
             roleDescription = description,
+            avatarUrl = avatarUrl,
+            gravatarHash = gravatarHash,
+            avatar = avatarUrl?.let { ai.slock.android.core.model.AvatarReference.fromWireValue(it) }
+                ?: gravatarHash?.toGravatarAvatarReference(),
             avatarLabel = bestDisplayName.take(1).uppercase(),
             presence = Presence.Active
         )

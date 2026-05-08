@@ -2,6 +2,7 @@ package ai.slock.android.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
@@ -30,18 +31,19 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -57,6 +59,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import ai.slock.android.R
+import ai.slock.android.core.model.AvatarReference
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockShadow
 import ai.slock.android.ui.theme.SlockSpacing
@@ -65,37 +68,46 @@ import ai.slock.android.ui.theme.SlockTheme
 import ai.slock.android.ui.theme.SlockType
 import ai.slock.android.ui.theme.slockHardShadow
 
-private val SidebarActionIconSize = 20.dp
+private val SidebarActionIconSize = 14.dp
+private val SidebarActionIconBoxSize = 24.dp
 private val SidebarActionRowHeight = 46.dp
 private val SidebarRowHorizontalPadding = 12.dp
-private val SidebarActionLabelGap = 16.dp
+private val SidebarActionLabelGap = 14.dp
 private val ChannelSymbolWidth = 24.dp
-private val ChannelSymbolFontSize = 18.sp
-private val ChannelAvatarSize = 24.dp
+private val ChannelSymbolFontSize = 17.sp
+private val ChannelAvatarSize = 22.dp
 private val ChannelAvatarFontSize = 11.sp
-private val ChannelRowHeight = 42.dp
-private val ChannelRowHorizontalPadding = SidebarRowHorizontalPadding
+private val ChannelRowHeight = 36.dp
+private val ChannelRowHorizontalPadding = 10.dp
 private val SectionChevronSize = 14.dp
 private val MiniActionSize = 36.dp
 private val MiniActionIconSize = 18.dp
-private val CountPillMinHeight = 22.dp
+private val CountPillMinWidth = 20.dp
+private val CountPillHeight = 18.dp
+private val HomePullRefreshThreshold = 120.dp
 
 data class SlockServerSwitcherItem(
     val id: String,
     val name: String,
-    val slug: String
+    val slug: String,
+    val unreadCount: Int = 0
 )
 
 data class SlockHomeConversationItem(
     val id: String,
     val name: String,
     val unreadCount: Int = 0,
-    val avatarLabel: String = name.take(2).uppercase()
+    val avatarLabel: String = name.take(2).uppercase(),
+    val avatarUrl: String? = null,
+    val avatar: AvatarReference? = AvatarReference.fromWireValue(avatarUrl),
+    val presence: SlockPresence? = null,
+    val joined: Boolean = true
 )
 
 data class SlockHomeShellLabels(
     val search: String,
     val inbox: String,
+    val followedThreads: String,
     val saved: String,
     val channels: String,
     val directMessages: String,
@@ -109,6 +121,7 @@ data class SlockHomeShellLabels(
             SlockHomeShellLabels(
                 search = stringResource(R.string.home_search),
                 inbox = stringResource(R.string.home_inbox),
+                followedThreads = stringResource(R.string.home_followed_threads),
                 saved = stringResource(R.string.home_saved),
                 channels = stringResource(R.string.home_channels).uppercase(),
                 directMessages = stringResource(R.string.home_direct_messages).uppercase(),
@@ -143,8 +156,7 @@ fun SlockStructuralHomeShell(
     channels: List<SlockHomeConversationItem> = defaultChannelItems,
     directMessages: List<SlockHomeConversationItem> = emptyList(),
     selectedChannelId: String? = "android-dev",
-    inboxUnreadCount: Int = 5,
-    savedUnreadCount: Int = 0,
+    serverUnreadCount: Int = 5,
     serverSwitcherExpanded: Boolean = false,
     contentRefreshing: Boolean = false,
     contentRefreshEnabled: Boolean = true,
@@ -155,8 +167,10 @@ fun SlockStructuralHomeShell(
     onServerBadgeClick: () -> Unit = {},
     onServerSelected: (String) -> Unit = {},
     onCreateServerClick: () -> Unit = {},
+    onCreateChannelClick: () -> Unit = {},
     onTabSelected: (String) -> Unit = {},
     onInboxClick: () -> Unit = {},
+    onFollowedThreadsClick: () -> Unit = {},
     onSavedClick: () -> Unit = {},
     onSearchClick: () -> Unit = {},
     onChannelClick: (String) -> Unit = {}
@@ -176,6 +190,7 @@ fun SlockStructuralHomeShell(
         ) {
             HomeWorkspaceHeader(
                 serverName = currentServerName,
+                serverUnreadCount = serverUnreadCount,
                 onServerBadgeClick = onServerBadgeClick
             )
             HomeRefreshableContent(
@@ -195,20 +210,18 @@ fun SlockStructuralHomeShell(
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
                 ) {
                     SidebarActionRow(
-                        icon = Icons.Outlined.Search,
+                        icon = SlockIcons.Search,
                         label = labels.search,
                         onClick = onSearchClick
                     )
                     SidebarActionRow(
-                        icon = Icons.Outlined.Person,
+                        icon = SlockIcons.Inbox,
                         label = labels.inbox,
-                        badge = inboxUnreadCount.takeIf { it > 0 }?.toString(),
                         onClick = onInboxClick
                     )
                     SidebarActionRow(
-                        icon = Icons.Outlined.Home,
+                        icon = SlockIcons.Bookmark,
                         label = labels.saved,
-                        badge = savedUnreadCount.takeIf { it > 0 }?.toString(),
                         onClick = onSavedClick
                     )
                     Spacer(modifier = Modifier.height(SlockSpacing.Xs))
@@ -219,13 +232,14 @@ fun SlockStructuralHomeShell(
                             MiniSquareIcon(
                                 icon = Icons.Outlined.Add,
                                 contentDescription = labels.addChannel,
-                                onClick = onCreateServerClick
+                                onClick = onCreateChannelClick
                             )
                         }
                     ) {
                         channels.forEach { channel ->
                             ChannelRow(
                                 name = channel.name,
+                                joined = channel.joined,
                                 badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
                                 interactionState = if (channel.id == selectedChannelId) {
                                     ChannelRowInteractionState.Selected
@@ -244,6 +258,9 @@ fun SlockStructuralHomeShell(
                             ChannelRow(
                                 name = directMessage.name,
                                 avatarLabel = directMessage.avatarLabel,
+                                avatarUrl = directMessage.avatarUrl,
+                                avatar = directMessage.avatar,
+                                presence = directMessage.presence,
                                 badge = directMessage.unreadCount.takeIf { it > 0 }?.toString(),
                                 onClick = { onChannelClick(directMessage.id) }
                             )
@@ -301,29 +318,38 @@ private fun HomeRefreshableContent(
     content: @Composable BoxScope.(Dp) -> Unit
 ) {
     val refreshState = rememberPullToRefreshState()
-    PullToRefreshBox(
-        isRefreshing = refreshing,
-        onRefresh = {
-            if (refreshEnabled && !refreshing) {
-                onRefresh()
+    Box(
+        modifier = modifier.pullToRefresh(
+            isRefreshing = refreshing,
+            state = refreshState,
+            enabled = refreshEnabled,
+            threshold = HomePullRefreshThreshold,
+            onRefresh = {
+                if (refreshEnabled && !refreshing) {
+                    onRefresh()
+                }
             }
-        },
-        state = refreshState,
-        modifier = modifier,
-        indicator = {
+        )
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            val offset = if (refreshing) {
+                SlockSpacing.Xl
+            } else {
+                SlockSpacing.Xl * refreshState.distanceFraction.coerceIn(0f, 1f)
+            }
+            content(offset)
+        }
+        Box(
+            modifier = Modifier.fillMaxSize()
+        ) {
             HomeSlockRefreshIndicator(
                 refreshing = refreshing,
                 progress = refreshState.distanceFraction,
                 modifier = Modifier.align(Alignment.TopCenter)
             )
         }
-    ) {
-        val offset = if (refreshing) {
-            SlockSpacing.Xl
-        } else {
-            SlockSpacing.Xl * refreshState.distanceFraction.coerceIn(0f, 1f)
-        }
-        content(offset)
     }
 }
 
@@ -353,7 +379,7 @@ private fun HomeSlockRefreshIndicator(
     Box(
         modifier = modifier
             .offset(y = SlockSpacing.Xs * bounce)
-            .padding(top = SlockSpacing.Sm),
+            .padding(top = SlockSpacing.Lg),
         contentAlignment = Alignment.Center
     ) {
         SlockLogoBadge(
@@ -372,6 +398,7 @@ private fun HomeSlockRefreshIndicator(
 @Composable
 private fun HomeWorkspaceHeader(
     serverName: String,
+    serverUnreadCount: Int,
     onServerBadgeClick: () -> Unit
 ) {
     Row(
@@ -396,6 +423,16 @@ private fun HomeWorkspaceHeader(
                 variant = SlockLogoBadgeVariant.Large,
                 showDropdown = true
             )
+            if (serverUnreadCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 3.dp, y = (-3).dp)
+                        .size(9.dp)
+                        .background(SlockColor.AccentRed)
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                )
+            }
         }
     }
 }
@@ -509,6 +546,9 @@ private fun ServerSwitcherRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
+        if (server.unreadCount > 0) {
+            CountPill(text = server.unreadCount.toString(), color = SlockColor.AccentPink)
+        }
     }
 }
 
@@ -528,12 +568,17 @@ private fun SidebarActionRow(
             .padding(horizontal = SidebarRowHorizontalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = SlockColor.TextBlack,
-            modifier = Modifier.size(SidebarActionIconSize)
-        )
+        Box(
+            modifier = Modifier.size(SidebarActionIconBoxSize),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = SlockColor.TextBlack,
+                modifier = Modifier.size(SidebarActionIconSize)
+            )
+        }
         Text(
             text = label,
             style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
@@ -560,7 +605,7 @@ private fun SectionBlock(
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         SidebarSectionHeader(
             label = label,
@@ -614,12 +659,16 @@ private fun ChannelRow(
     modifier: Modifier = Modifier,
     symbol: String = "#",
     avatarLabel: String? = null,
+    avatarUrl: String? = null,
+    avatar: AvatarReference? = AvatarReference.fromWireValue(avatarUrl),
+    presence: SlockPresence? = null,
     badge: String? = null,
+    joined: Boolean = true,
     interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default,
     onClick: (() -> Unit)? = null
 ) {
     val rowBackground = when (interactionState) {
-        ChannelRowInteractionState.Default -> Color.Transparent
+        ChannelRowInteractionState.Default -> if (joined) Color.Transparent else SlockColor.EmptyStateGray.copy(alpha = 0.36f)
         ChannelRowInteractionState.Selected -> SlockColor.BrandYellow
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
@@ -654,12 +703,12 @@ private fun ChannelRow(
                 contentAlignment = Alignment.Center
             ) {
                 if (avatarLabel != null) {
-                    ChannelAvatar(label = avatarLabel)
+                    ChannelAvatar(avatarUrl = avatarUrl, avatar = avatar, label = avatarLabel, presence = presence)
                 } else {
                     Text(
                         text = symbol,
                         style = SlockType.Body.copy(fontWeight = FontWeight.Normal, fontSize = ChannelSymbolFontSize),
-                        color = SlockColor.TextBlack.copy(alpha = 0.62f),
+                        color = SlockColor.TextBlack.copy(alpha = if (joined) 0.62f else 0.32f),
                         textAlign = TextAlign.Center
                     )
                 }
@@ -667,7 +716,7 @@ private fun ChannelRow(
             Text(
                 text = name,
                 style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
-                color = SlockColor.TextBlack,
+                color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f),
                 modifier = Modifier
                     .padding(start = SidebarActionLabelGap)
                     .weight(1f),
@@ -683,7 +732,75 @@ private fun ChannelRow(
 }
 
 @Composable
-private fun ChannelAvatar(label: String) {
+private fun ChannelAvatar(
+    avatarUrl: String?,
+    avatar: AvatarReference? = AvatarReference.fromWireValue(avatarUrl),
+    label: String,
+    presence: SlockPresence? = null
+) {
+    Box(modifier = Modifier.size(ChannelAvatarSize)) {
+        SlockAvatar(
+            avatarUrl = avatarUrl,
+            avatar = avatar,
+            label = label,
+            size = ChannelAvatarSize,
+            fontSize = ChannelAvatarFontSize
+        )
+        if (presence != null) {
+            PresenceDot(
+                presence = presence,
+                modifier = Modifier.align(Alignment.BottomEnd)
+            )
+        }
+    }
+}
+
+@Composable
+private fun PresenceDot(
+    presence: SlockPresence,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .size(8.dp)
+            .background(presence.homeRowColor)
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+    )
+}
+
+private val SlockPresence.homeRowColor: Color
+    get() = when (this) {
+        SlockPresence.Online -> SlockColor.AccentLime
+        SlockPresence.Offline -> SlockColor.EmptyStateGray
+        SlockPresence.Unknown -> SlockColor.BrandYellow
+    }
+
+@Composable
+private fun PixelAvatar(spec: PixelAvatarSpec) {
+    Canvas(
+        modifier = Modifier
+            .size(ChannelAvatarSize)
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+    ) {
+        val cellSize = size.width / PixelAvatarGridSize
+        drawRect(spec.background)
+        spec.grid.forEachIndexed { rowIndex, row ->
+            row.forEachIndexed { columnIndex, key ->
+                val color = PixelAvatarPalette[key] ?: Color.Transparent
+                if (color != Color.Transparent) {
+                    drawRect(
+                        color = color,
+                        topLeft = Offset(columnIndex * cellSize, rowIndex * cellSize),
+                        size = Size(cellSize, cellSize)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InitialsAvatar(label: String) {
     Box(
         modifier = Modifier
             .size(ChannelAvatarSize)
@@ -697,6 +814,302 @@ private fun ChannelAvatar(label: String) {
             color = SlockColor.TextBlack,
             maxLines = 1
         )
+    }
+}
+
+private data class PixelAvatarSpec(
+    val background: Color,
+    val grid: List<String>
+)
+
+private const val PixelAvatarGridSize = 8f
+private const val PixelAvatarProtocolPrefix = "pixel:"
+private const val PixelAvatarRandomPrefix = "random:"
+private const val PixelAvatarDefaultKey = "robot"
+
+private val PixelAvatarPalette = mapOf(
+    '_' to Color.Transparent,
+    'K' to Color(0xFF141111),
+    'W' to Color(0xFFFFFFFF),
+    'P' to Color(0xFFFE7DA8),
+    'O' to Color(0xFFF8A16F),
+    'Y' to Color(0xFFFFD440),
+    'L' to Color(0xFFA9D877),
+    'C' to Color(0xFF27CCF3),
+    'V' to Color(0xFFBBAFE6),
+    'B' to Color(0xFF576574),
+    'R' to Color(0xFFF97264),
+    'G' to Color(0xFF9DCAAA)
+)
+
+private val PixelAvatarFixedSpecs = mapOf(
+    "robot" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('C'),
+        grid = listOf(
+            "_KKKKKK_",
+            "KCKWWKCK",
+            "KWKWWKWK",
+            "KKKKKKKK",
+            "_KWKKWK_",
+            "_KKKKKK_",
+            "_KK__KK_",
+            "_KK__KK_"
+        )
+    ),
+    "cat" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('Y'),
+        grid = listOf(
+            "K______K",
+            "KK____KK",
+            "KYKYYKYK",
+            "KYYYYYYK",
+            "KYKYYKYK",
+            "_KYYYYK_",
+            "__KYYK__",
+            "___KK___"
+        )
+    ),
+    "ghost" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('V'),
+        grid = listOf(
+            "__KKKK__",
+            "_KWWWWK_",
+            "KWKWWKWK",
+            "KWWWWWWK",
+            "KWWWWWWK",
+            "KWWKKWWK",
+            "KWKWWKWK",
+            "K_K__K_K"
+        )
+    ),
+    "skull" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('O'),
+        grid = listOf(
+            "_KKKKKK_",
+            "KWWWWWWK",
+            "KWKWWKWK",
+            "KWWWWWWK",
+            "_KWWWWK_",
+            "_KWKWKK_",
+            "__KKKK__",
+            "___KK___"
+        )
+    ),
+    "alien" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('L'),
+        grid = listOf(
+            "_KKKKKK_",
+            "KGGGGGGK",
+            "KGKKKKGK",
+            "KGGGGGGK",
+            "_KGGGGK_",
+            "__KGGK__",
+            "__KGGK__",
+            "_KK__KK_"
+        )
+    ),
+    "heart" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('P'),
+        grid = listOf(
+            "________",
+            "_KK__KK_",
+            "KRRKKRRK",
+            "KRRRRRRK",
+            "KRRRRRRK",
+            "_KRRRRK_",
+            "__KRRK__",
+            "___KK___"
+        )
+    ),
+    "star" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('Y'),
+        grid = listOf(
+            "___KK___",
+            "___KK___",
+            "KKKKKKKK",
+            "_KYYYYK_",
+            "__KYYK__",
+            "_KYKKYK_",
+            "KYK__KYK",
+            "KK____KK"
+        )
+    ),
+    "flame" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('O'),
+        grid = listOf(
+            "___K____",
+            "__KRK___",
+            "__KRKK__",
+            "_KORRRK_",
+            "_KOORRK_",
+            "KYOOORK_",
+            "KYYOOK__",
+            "_KKKK___"
+        )
+    ),
+    "diamond" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('C'),
+        grid = listOf(
+            "___KK___",
+            "__KCCK__",
+            "_KCWCCK_",
+            "KCWCCCCK",
+            "KCCCCCCK",
+            "_KCCCCK_",
+            "__KCCK__",
+            "___KK___"
+        )
+    ),
+    "mushroom" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('P'),
+        grid = listOf(
+            "__KKKK__",
+            "_KRWWRK_",
+            "KRRWWRRK",
+            "KRRRRRRK",
+            "_KKKKKK_",
+            "__KWWK__",
+            "__KWWK__",
+            "_KKKKKK_"
+        )
+    ),
+    "eye" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('V'),
+        grid = listOf(
+            "________",
+            "__KKKK__",
+            "_KWWWWK_",
+            "KWWKKWWK",
+            "KWWKKWWK",
+            "_KWWWWK_",
+            "__KKKK__",
+            "________"
+        )
+    ),
+    "crown" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('Y'),
+        grid = listOf(
+            "________",
+            "_K_KK_K_",
+            "_KKKKKK_",
+            "_KYYYYK_",
+            "_KYYYYK_",
+            "KKKKKKKK",
+            "KYYYYYYK",
+            "KKKKKKKK"
+        )
+    ),
+    "cloud" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('C'),
+        grid = listOf(
+            "________",
+            "__KK____",
+            "_KWWKK__",
+            "KWWWWWK_",
+            "KWWWWWWK",
+            "KWWWWWWK",
+            "_KKKKKK_",
+            "________"
+        )
+    ),
+    "sun" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('R'),
+        grid = listOf(
+            "_K_KK_K_",
+            "K_KYYK_K",
+            "_KYYYYK_",
+            "KYYYYYYK",
+            "KYYYYYYK",
+            "_KYYYYK_",
+            "K_KYYK_K",
+            "_K_KK_K_"
+        )
+    ),
+    "bell" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('B'),
+        grid = listOf(
+            "___KK___",
+            "__KYYK__",
+            "_KYYYYK_",
+            "_KYYYYK_",
+            "_KYYYYK_",
+            "KYYYYYYK",
+            "KKKKKKKK",
+            "___KK___"
+        )
+    ),
+    "tree" to PixelAvatarSpec(
+        background = PixelAvatarPalette.getValue('L'),
+        grid = listOf(
+            "___KK___",
+            "__KGGK__",
+            "_KGGGGK_",
+            "KGGGGGGK",
+            "KGGGGGGK",
+            "_KKGGKK_",
+            "__KOOK__",
+            "___KK___"
+        )
+    )
+)
+
+private val PixelAvatarRandomOptions = listOf(
+    PixelAvatarPalette.getValue('C') to 'K',
+    PixelAvatarPalette.getValue('Y') to 'K',
+    PixelAvatarPalette.getValue('L') to 'K',
+    PixelAvatarPalette.getValue('P') to 'W',
+    PixelAvatarPalette.getValue('V') to 'K',
+    Color(0xFF1E1E1C) to 'C',
+    Color(0xFF1E1E1C) to 'G',
+    Color(0xFF1E1E1C) to 'P',
+    Color(0xFF1E1E1C) to 'Y',
+    Color(0xFF1E1E1C) to 'V',
+    PixelAvatarPalette.getValue('O') to 'K',
+    PixelAvatarPalette.getValue('C') to 'W'
+)
+
+private fun String.toPixelAvatarSpec(): PixelAvatarSpec? {
+    val pixelKey = removePrefixOrNull(PixelAvatarProtocolPrefix)
+    if (pixelKey != null) {
+        return PixelAvatarFixedSpecs[pixelKey] ?: PixelAvatarFixedSpecs.getValue(PixelAvatarDefaultKey)
+    }
+    val randomSeed = removePrefixOrNull(PixelAvatarRandomPrefix)
+    if (randomSeed != null) {
+        return randomPixelAvatar(randomSeed)
+    }
+    return null
+}
+
+private fun String.removePrefixOrNull(prefix: String): String? =
+    takeIf { it.startsWith(prefix) }?.substring(prefix.length)
+
+private fun randomPixelAvatar(seed: String): PixelAvatarSpec {
+    val random = PixelAvatarRandom(pixelHash(seed))
+    val (background, fill) = PixelAvatarRandomOptions[(random.next() * PixelAvatarRandomOptions.size).toInt()]
+    val grid = List(8) {
+        val left = List(4) { if (random.next() < 0.45) fill else '_' }
+        (left + left.asReversed()).joinToString(separator = "")
+    }
+    return PixelAvatarSpec(background = background, grid = grid)
+}
+
+private fun pixelHash(value: String): Int {
+    var hash = 0
+    value.forEach { char ->
+        hash = (hash shl 5) - hash + char.code
+    }
+    return hash
+}
+
+private class PixelAvatarRandom(seed: Int) {
+    private var value = seed
+
+    fun next(): Double {
+        value += 1831565813
+        var mixed = (value xor (value ushr 15)) * (1 or value)
+        mixed = (mixed + ((mixed xor (mixed ushr 7)) * (61 or mixed))) xor mixed
+        val unsigned = (mixed xor (mixed ushr 14)).toLong() and 0xffffffffL
+        return unsigned.toDouble() / 4294967296.0
     }
 }
 
@@ -749,7 +1162,14 @@ private fun ChannelRowStatesPreview() {
             ChannelRow(
                 name = "artin",
                 avatarLabel = "AR",
+                avatarUrl = "pixel:diamond",
                 badge = "2",
+                onClick = {}
+            )
+            ChannelRow(
+                name = "random-seed",
+                avatarLabel = "RS",
+                avatarUrl = "random:random-seed",
                 onClick = {}
             )
         }
@@ -761,16 +1181,23 @@ private fun CountPill(
     text: String,
     color: Color
 ) {
-    Text(
-        text = text,
-        style = SlockType.Caption,
-        color = SlockColor.SurfaceWhite,
+    Box(
         modifier = Modifier
             .background(color)
             .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .heightIn(min = CountPillMinHeight)
-            .padding(horizontal = SlockSpacing.Sm, vertical = 1.dp)
-    )
+            .height(CountPillHeight)
+            .widthIn(min = CountPillMinWidth)
+            .padding(horizontal = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = SlockType.Caption.copy(lineHeight = 14.sp),
+            color = SlockColor.SurfaceWhite,
+            maxLines = 1,
+            textAlign = TextAlign.Center
+        )
+    }
 }
 
 @Composable

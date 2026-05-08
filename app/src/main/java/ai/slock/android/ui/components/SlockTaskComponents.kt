@@ -2,6 +2,7 @@ package ai.slock.android.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,7 +42,8 @@ data class SlockTaskCardData(
     val source: String,
     val owner: String,
     val updatedAt: String,
-    val status: SlockTaskStatus
+    val status: SlockTaskStatus,
+    val onClick: (() -> Unit)? = null
 )
 
 @Composable
@@ -114,6 +117,7 @@ fun SlockTaskCard(
             .slockHardShadow(SlockShadow.Small)
             .background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
             .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Xs))
+            .then(task.onClick?.let { Modifier.clickable(role = Role.Button, onClick = it) } ?: Modifier)
             .padding(SlockSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {

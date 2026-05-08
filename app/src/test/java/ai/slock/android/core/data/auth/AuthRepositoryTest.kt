@@ -5,6 +5,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
+import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -14,7 +15,7 @@ class AuthRepositoryTest {
     @Test
     fun loginStoresSessionAndReturnsUserSummary() {
         val store = InMemoryAuthSessionStore()
-        val repository = RetrofitAuthRepository(store, FakeAuthApi())
+        val repository = testAuthRepository(store, FakeAuthApi())
 
         val result = runSuspend {
             repository.login(" user@slock.ai ", "password")
@@ -30,8 +31,31 @@ class AuthRepositoryTest {
     }
 
     @Test
+    fun loginStoresSessionWhenEmailIsUnverified() {
+        val store = InMemoryAuthSessionStore()
+        val repository = testAuthRepository(
+            store,
+            FakeAuthApi(
+                loginResponse = Response.success(
+                    """{"user":${sampleUserJson(emailVerified = false)},"accessToken":"access-token","refreshToken":"refresh-token"}""".jsonBody()
+                )
+            )
+        )
+
+        val result = runSuspend {
+            repository.login("user@slock.ai", "password")
+        }
+
+        assertTrue(result is AuthResult.Success<*>)
+        val summary = (result as AuthResult.Success).data
+        assertEquals(false, summary.user.emailVerified)
+        assertEquals("access-token", store.session?.accessToken)
+        assertEquals("server-1", summary.selectedServerId)
+    }
+
+    @Test
     fun wrongCredentialsMapToInvalidCredentials() {
-        val repository = RetrofitAuthRepository(
+        val repository = testAuthRepository(
             InMemoryAuthSessionStore(),
             FakeAuthApi(loginResponse = Response.error(401, """{"error":"Invalid credentials"}""".jsonBody()))
         )
@@ -53,7 +77,7 @@ class AuthRepositoryTest {
                 refreshToken = "refresh-token"
             )
         )
-        val repository = RetrofitAuthRepository(store, FakeAuthApi())
+        val repository = testAuthRepository(store, FakeAuthApi())
 
         val result = runSuspend {
             repository.logout()
@@ -75,7 +99,7 @@ class AuthRepositoryTest {
                 servers = emptyList()
             )
         )
-        val repository = RetrofitAuthRepository(
+        val repository = testAuthRepository(
             store,
             FakeAuthApi(
                 currentUserResponse = Response.success("""{"user":$sampleUserJson}""".jsonBody()),
@@ -91,6 +115,108 @@ class AuthRepositoryTest {
         assertEquals("server-1", summary.selectedServerId)
         assertEquals("slock-android", store.session?.selectedServerSlug)
         assertEquals(1, store.session?.servers?.size)
+    }
+
+    @Test
+    fun tokenRefresherStoresNewTokens() {
+        val store = InMemoryAuthSessionStore(
+            AuthSession(
+                user = sampleUser,
+                accessToken = "expired-access",
+                refreshToken = "refresh-token"
+            )
+        )
+        val api = FakeAuthApi()
+        val refresher = testTokenRefresher(store, api)
+
+        val session = runSuspend { refresher.refreshIfCurrent("expired-access") }
+
+        assertEquals("new-access", session?.accessToken)
+        assertEquals("new-refresh", session?.refreshToken)
+        assertEquals("new-access", store.session?.accessToken)
+        assertEquals(1, api.refreshCallCount)
+    }
+
+    @Test
+    fun tokenRefresherSkipsWhenAnotherRequestAlreadyRefreshed() {
+        val store = InMemoryAuthSessionStore(
+            AuthSession(
+                user = sampleUser,
+                accessToken = "newer-access",
+                refreshToken = "newer-refresh"
+            )
+        )
+        val api = FakeAuthApi()
+        val refresher = testTokenRefresher(store, api)
+
+        val session = runSuspend { refresher.refreshIfCurrent("expired-access") }
+
+        assertEquals("newer-access", session?.accessToken)
+        assertEquals(0, api.refreshCallCount)
+    }
+
+    @Test
+    fun tokenRefresherClearsSessionWhenRefreshIsUnauthorized() {
+        val store = InMemoryAuthSessionStore(
+            AuthSession(
+                user = sampleUser,
+                accessToken = "expired-access",
+                refreshToken = "refresh-token"
+            )
+        )
+        val api = FakeAuthApi(
+            refreshResponse = Response.error(401, """{"error":"expired"}""".jsonBody())
+        )
+        val refresher = testTokenRefresher(store, api)
+
+        val session = runSuspend { refresher.refreshIfCurrent("expired-access") }
+
+        assertEquals(null, session)
+        assertEquals(null, store.session)
+        assertEquals(1, api.refreshCallCount)
+    }
+
+    @Test
+    fun tokenRefresherProactivelyRefreshesMissingExpToken() {
+        val store = InMemoryAuthSessionStore(
+            AuthSession(
+                user = sampleUser,
+                accessToken = "opaque-access",
+                refreshToken = "refresh-token"
+            )
+        )
+        val api = FakeAuthApi()
+        val refresher = testTokenRefresher(store, api)
+
+        val session = runSuspend { refresher.refreshIfExpiringSoon() }
+
+        assertEquals("new-access", session?.accessToken)
+        assertEquals(1, api.refreshCallCount)
+    }
+
+    @Test
+    fun tokenRefresherRethrowsCancellationWithoutClearingSession() {
+        val store = InMemoryAuthSessionStore(
+            AuthSession(
+                user = sampleUser,
+                accessToken = "expired-access",
+                refreshToken = "refresh-token"
+            )
+        )
+        val api = FakeAuthApi(refreshFailure = CancellationException("cancelled"))
+        val refresher = testTokenRefresher(store, api)
+        var cancelled = false
+
+        try {
+            runSuspend { refresher.refreshIfCurrent("expired-access") }
+        } catch (_: CancellationException) {
+            cancelled = true
+        }
+
+        assertTrue(cancelled)
+        assertEquals("expired-access", store.session?.accessToken)
+        assertEquals("refresh-token", store.session?.refreshToken)
+        assertEquals(1, api.refreshCallCount)
     }
 
     private class InMemoryAuthSessionStore(
@@ -115,20 +241,50 @@ class AuthRepositoryTest {
         }
     }
 
+    private fun testAuthRepository(
+        store: AuthSessionStore,
+        api: AuthApi
+    ) = RetrofitAuthRepository(
+        store = store,
+        api = api,
+        logger = {},
+        warningLogger = {}
+    )
+
+    private fun testTokenRefresher(
+        store: AuthSessionStore,
+        api: AuthApi
+    ) = AuthTokenRefresher(
+        store = store,
+        api = api,
+        logger = {},
+        warningLogger = {}
+    )
+
     private class FakeAuthApi(
         private val loginResponse: Response<okhttp3.ResponseBody> = Response.success(
             """{"user":$sampleUserJson,"accessToken":"access-token","refreshToken":"refresh-token"}""".jsonBody()
         ),
         private val currentUserResponse: Response<okhttp3.ResponseBody> = Response.success(sampleUserJson.jsonBody()),
-        private val serversResponse: Response<okhttp3.ResponseBody> = Response.success("""[$sampleServerJson]""".jsonBody())
+        private val serversResponse: Response<okhttp3.ResponseBody> = Response.success("""[$sampleServerJson]""".jsonBody()),
+        private val refreshResponse: Response<okhttp3.ResponseBody> = Response.success(
+            """{"accessToken":"new-access","refreshToken":"new-refresh"}""".jsonBody()
+        ),
+        private val refreshFailure: Throwable? = null
     ) : AuthApi {
+        var refreshCallCount: Int = 0
+            private set
+
         override suspend fun login(body: okhttp3.RequestBody): Response<okhttp3.ResponseBody> = loginResponse
 
         override suspend fun currentUser(authorization: String): Response<okhttp3.ResponseBody> =
             currentUserResponse
 
-        override suspend fun refresh(body: okhttp3.RequestBody): Response<okhttp3.ResponseBody> =
-            Response.success("""{"accessToken":"new-access","refreshToken":"new-refresh"}""".jsonBody())
+        override suspend fun refresh(body: okhttp3.RequestBody): Response<okhttp3.ResponseBody> {
+            refreshCallCount += 1
+            refreshFailure?.let { throw it }
+            return refreshResponse
+        }
 
         override suspend fun logout(body: okhttp3.RequestBody): Response<okhttp3.ResponseBody> =
             Response.success("""{"ok":true}""".jsonBody())
@@ -158,6 +314,9 @@ class AuthRepositoryTest {
 
         private const val sampleUserJson =
             """{"id":"user-1","email":"user@slock.ai","name":"User","displayName":"Slock User","description":null,"avatarUrl":null,"emailVerified":true}"""
+
+        private fun sampleUserJson(emailVerified: Boolean): String =
+            """{"id":"user-1","email":"user@slock.ai","name":"User","displayName":"Slock User","description":null,"avatarUrl":null,"emailVerified":$emailVerified}"""
 
         private const val sampleServerJson =
             """{"id":"server-1","name":"Slock Android","slug":"slock-android","ownerId":"user-1","onboardingAgentId":null,"plan":"trial","planDowngradedAt":null,"role":"owner","createdAt":"2026-05-06T00:00:00Z"}"""

@@ -55,6 +55,8 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.gson)
     implementation(libs.socket.io.client)
+    implementation(libs.markdown.renderer.android)
+    implementation(libs.markdown.renderer.m3.android)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

@@ -9,6 +9,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import okhttp3.ResponseBody
 import retrofit2.Response
 
@@ -16,10 +17,14 @@ internal suspend fun <T> execute(
     emptyReason: EmptyReason,
     block: suspend () -> Response<ResponseBody>,
     emptyWhen: (T) -> Boolean = { false },
+    source: String? = null,
+    warningLogger: (String) -> Unit = {},
     mapper: (JsonObject) -> T
 ): DataResult<T> {
+    var statusCode: Int? = null
     return try {
         val response = block()
+        statusCode = response.code()
         if (!response.isSuccessful) return response.toDataError()
         val body = response.body()?.string().orEmpty()
         if (body.isBlank()) return DataResult.Empty(emptyReason)
@@ -32,9 +37,16 @@ internal suspend fun <T> execute(
         }
         val result = mapper(root)
         if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
+    } catch (exception: CancellationException) {
+        throw exception
     } catch (_: IOException) {
         DataResult.Error(ScreenError(code = "network_unavailable", retryable = true))
-    } catch (_: Exception) {
+    } catch (exception: Exception) {
+        if (source != null) {
+            warningLogger(
+                "parse_failed source=$source stage=response_or_mapper status=${statusCode ?: "unknown"} exception=${exception::class.java.simpleName}"
+            )
+        }
         DataResult.Error(ScreenError(code = "network_parse_failed", retryable = true))
     }
 }
@@ -53,11 +65,18 @@ internal fun <T> authRequired(): DataResult<T> =
 internal fun JsonElement.asObject(): JsonObject =
     if (isJsonObject) asJsonObject else JsonObject()
 
+internal fun JsonElement.asObjectOrNull(): JsonObject? =
+    if (isJsonObject) asJsonObject else null
+
 internal fun JsonObject.items(vararg names: String = arrayOf("items")): List<JsonElement> {
     if (entrySet().size == 1 && has("items") && get("items").isJsonArray) return getAsJsonArray("items").toList()
     for (name in names) {
         val value = get(name)
         if (value != null && value.isJsonArray) return value.asJsonArray.toList()
+        if (value != null && value.isJsonObject) {
+            val nestedItems = value.asJsonObject.items("items", "data", *names)
+            if (nestedItems.isNotEmpty()) return nestedItems
+        }
     }
     val data = get("data")
     if (data != null) {
@@ -80,11 +99,69 @@ internal fun JsonObject.string(vararg names: String): String? {
     return null
 }
 
+internal fun JsonObject.avatarWireValue(vararg names: String): String? {
+    for (name in names) {
+        val value = get(name)?.toAvatarWireValue()
+        if (!value.isNullOrBlank()) return value
+    }
+    return null
+}
+
+private fun JsonElement.toAvatarWireValue(): String? {
+    if (isJsonPrimitive && asJsonPrimitive.isString) {
+        return asString.takeIf { it.isNotBlank() }
+    }
+    if (!isJsonObject) return null
+    val avatarObject = asJsonObject
+    avatarObject.string(
+        "wireValue",
+        "value",
+        "url",
+        "href",
+        "src",
+        "avatarUrl",
+        "avatar_url",
+        "imageUrl",
+        "profileImageUrl"
+    )?.let { return it }
+    avatarObject.avatarWireValue("data", "profile")?.let { return it }
+    avatarObject.string("pixel", "pixelKey", "key", "icon")?.let { key ->
+        return "pixel:${key.removePrefix("pixel:")}"
+    }
+    avatarObject.string("random", "randomSeed", "seed")?.let { seed ->
+        return "random:${seed.removePrefix("random:")}"
+    }
+    val type = avatarObject.string("type", "kind", "mode")?.lowercase()
+    val typedValue = avatarObject.string("id", "name", "slug")
+    return when (type) {
+        "pixel" -> "pixel:${typedValue?.removePrefix("pixel:") ?: "robot"}"
+        "random" -> "random:${typedValue?.removePrefix("random:") ?: "default"}"
+        "url", "image", "photo" -> typedValue
+        else -> null
+    }
+}
+
 internal fun JsonObject.int(vararg names: String): Int? {
     for (name in names) {
         val value = get(name)
-        if (value != null && value.isJsonPrimitive && value.asJsonPrimitive.isNumber) {
-            return value.asInt
+        if (value != null && value.isJsonPrimitive) {
+            val primitive = value.asJsonPrimitive
+            if (primitive.isNumber || primitive.isString) {
+                return primitive.asString.toIntOrNull()
+            }
+        }
+    }
+    return null
+}
+
+internal fun JsonObject.long(vararg names: String): Long? {
+    for (name in names) {
+        val value = get(name)
+        if (value != null && value.isJsonPrimitive) {
+            val primitive = value.asJsonPrimitive
+            if (primitive.isNumber || primitive.isString) {
+                return primitive.asString.toLongOrNull()
+            }
         }
     }
     return null

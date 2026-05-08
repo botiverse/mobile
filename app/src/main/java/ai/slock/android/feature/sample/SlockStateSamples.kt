@@ -295,6 +295,7 @@ object SlockStateSamples {
                         handle = "@artin",
                         kind = MemberKind.Human,
                         roleDescription = "Product owner",
+                        avatarUrl = "https://cdn.example.com/artin.png",
                         avatarLabel = "A",
                         presence = Presence.Active
                     )

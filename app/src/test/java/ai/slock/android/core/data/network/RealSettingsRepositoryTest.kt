@@ -10,6 +10,7 @@ import ai.slock.android.core.data.repository.DataResult
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
+import ai.slock.android.core.data.repository.SettingsSectionAvailability
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
@@ -106,6 +107,36 @@ class RealSettingsRepositoryTest {
     }
 
     @Test
+    fun billingMapsReadablePlanStateAndRequiresOwnerPermission() {
+        val billing = runSuspend {
+            RealSettingsRepository(
+                store = InMemoryAuthSessionStore(sampleSession),
+                api = FakeSlockApi()
+            ).getBilling()
+        }
+        val denied = runSuspend {
+            RealSettingsRepository(
+                store = InMemoryAuthSessionStore(
+                    sampleSession.copy(
+                        servers = sampleSession.servers.map { it.copy(role = "member") }
+                    )
+                ),
+                api = FakeSlockApi()
+            ).getBilling()
+        }
+
+        assertTrue(billing is DataResult.Content)
+        val billingSnapshot = (billing as DataResult.Content).data
+        assertEquals("Team", billingSnapshot.currentPlan.planName)
+        assertEquals(3, billingSnapshot.currentPlan.usageRows.size)
+        assertTrue(billingSnapshot.plans.any { it.current })
+        assertTrue(billingSnapshot.plans.any { it.comingSoon })
+
+        assertTrue(denied is DataResult.NoPermission)
+        assertEquals("billing_owner_required", (denied as DataResult.NoPermission).blocker.code)
+    }
+
+    @Test
     fun settingsRepositoryMapsAuthPermissionAndServerErrors() {
         val noSession = runSuspend {
             RealSettingsRepository(InMemoryAuthSessionStore(null), FakeSlockApi()).getAccount()
@@ -162,17 +193,16 @@ class RealSettingsRepositoryTest {
         val server = runSuspend { repository.getServerSettings() }
         val mobile = runSuspend { repository.getMobileSettings() }
 
-        assertTrue(computers is DataResult.Content)
-        val computerSnapshot = (computers as DataResult.Content).data
-        assertEquals(1, computerSnapshot.computers.size)
-        assertEquals(false, computerSnapshot.canAddComputer)
-        assertEquals("daemon unavailable", computerSnapshot.computers.first().daemonVersion)
+        assertTrue(computers is DataResult.Error)
+        assertEquals("settings_machines_contract_mismatch", (computers as DataResult.Error).error.code)
+        assertEquals(false, computers.error.retryable)
 
         assertTrue(server is DataResult.Content)
         val serverSnapshot = (server as DataResult.Content).data
         assertEquals("Slock Android", serverSnapshot.profile.name)
         assertEquals(false, serverSnapshot.profile.canSave)
-        assertTrue(serverSnapshot.sections.any { it.key == "danger" })
+        assertEquals(listOf("billing", "danger"), serverSnapshot.sections.map { it.key })
+        assertTrue(serverSnapshot.sections.all { it.state != SettingsSectionAvailability.Unavailable })
 
         assertTrue(mobile is DataResult.Content)
         val mobileSnapshot = (mobile as DataResult.Content).data
@@ -181,12 +211,152 @@ class RealSettingsRepositoryTest {
         assertEquals(true, mobileSnapshot.sendTestEnabled)
     }
 
+    @Test
+    fun computersUseSelectedServerMachinesEndpointAndMapWrappers() {
+        val logs = mutableListOf<String>()
+        val api = FakeSlockApi(
+            machinesJson = """
+                {
+                  "machines": [
+                    {"id":"machine-1","hostname":"Jiachengs-MacBook-Pro","daemonVersion":"1.4.2","status":"online"},
+                    {"machineId":"machine-2","displayName":"Build host","version":"1.3.0","online":false}
+                  ],
+                  "canAddComputer": true
+                }
+            """.trimIndent()
+        )
+        val repository = RealSettingsRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            logger = logs::add,
+            warningLogger = logs::add
+        )
+
+        val result = runSuspend { repository.getComputers() }
+
+        assertTrue(result is DataResult.Content)
+        val snapshot = (result as DataResult.Content).data
+        assertEquals("server-1", api.machinesServerId)
+        assertEquals(true, snapshot.canAddComputer)
+        assertEquals(2, snapshot.computers.size)
+        assertEquals("Jiachengs-MacBook-Pro", snapshot.computers[0].name)
+        assertEquals("1.4.2", snapshot.computers[0].daemonVersion)
+        assertEquals(true, snapshot.computers[0].online)
+        assertEquals("machine-2", snapshot.computers[1].id)
+        assertEquals(false, snapshot.computers[1].online)
+        assertTrue(logs.any { it == "machines_fetch_start serverId=server-1" })
+        assertTrue(logs.any { it == "machines_fetch_content serverId=server-1 count=2 canAdd=true" })
+        assertTrue(logs.none { it.contains("Bearer") || it.contains("token", ignoreCase = true) })
+    }
+
+    @Test
+    fun computersMapArrayNestedNodesAndMissingServer() {
+        val arrayResult = runSuspend {
+            RealSettingsRepository(
+                store = InMemoryAuthSessionStore(sampleSession),
+                api = FakeSlockApi(
+                    machinesJson = """{"data":{"nodes":[{"id":"machine-1","name":"Desktop","is_online":true}]}}"""
+                )
+            ).getComputers()
+        }
+        val missingServer = runSuspend {
+            RealSettingsRepository(
+                store = InMemoryAuthSessionStore(sampleSession.copy(selectedServerId = null, servers = emptyList())),
+                api = FakeSlockApi()
+            ).getComputers()
+        }
+
+        assertTrue(arrayResult is DataResult.Content)
+        val computers = (arrayResult as DataResult.Content).data.computers
+        assertEquals(1, computers.size)
+        assertEquals("Desktop", computers.first().name)
+        assertEquals(true, computers.first().online)
+        assertTrue(missingServer is DataResult.NoPermission)
+        assertEquals("server_required", (missingServer as DataResult.NoPermission).blocker.code)
+    }
+
+    @Test
+    fun computerDetailCombinesMachineWorkspacesAndAgents() {
+        val api = FakeSlockApi(
+            machinesJson = """
+                {"machines":[{"id":"machine-1","name":"MacBook","hostname":"mac.local","os":"macOS","daemonVersion":"1.4.2","status":"online","lastSeenAt":"2026-05-07T01:00:00Z"}]}
+            """.trimIndent(),
+            workspacesJson = """
+                {"workspaces":[{"directoryName":"Slock","path":"~/AndroidStudioProjects/Slock","status":"active","lastActivityAt":"2026-05-07T01:01:00Z"}]}
+            """.trimIndent(),
+            agentsJson = """
+                {"agents":[
+                  {"id":"agent-1","name":"Settings Integrator","machineId":"machine-1","status":"active","ownerName":"Android"},
+                  {"id":"agent-2","name":"Other Agent","machineId":"machine-2","status":"active"}
+                ]}
+            """.trimIndent()
+        )
+        val repository = RealSettingsRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api
+        )
+
+        val result = runSuspend { repository.getComputerDetail("machine-1") }
+
+        assertTrue(result is DataResult.Content)
+        val detail = (result as DataResult.Content).data
+        assertEquals("machine-1", api.workspacesMachineId)
+        assertEquals("MacBook", detail.computer.name)
+        assertEquals("macOS", detail.computer.platform)
+        assertEquals(1, detail.workspaces.size)
+        assertEquals("Slock", detail.workspaces.first().name)
+        assertEquals(1, detail.agents.size)
+        assertEquals("Settings Integrator", detail.agents.first().name)
+        assertTrue(detail.sections.any { it.key == "machine_status_events" })
+    }
+
+    @Test
+    fun computerDetailKeepsMachineVisibleWhenWorkspaceOrAgentSectionsFail() {
+        val logs = mutableListOf<String>()
+        val api = FakeSlockApi(
+            machinesJson = """{"machines":[{"id":"machine-1","name":"MacBook","daemonVersion":"1.4.2","status":"online"}]}""",
+            workspacesResponseCode = 503,
+            agentsResponseCode = 403
+        )
+        val repository = RealSettingsRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            logger = logs::add,
+            warningLogger = logs::add
+        )
+
+        val result = runSuspend { repository.getComputerDetail("machine-1") }
+
+        assertTrue(result is DataResult.Content)
+        val detail = (result as DataResult.Content).data
+        assertEquals("MacBook", detail.computer.name)
+        assertTrue(detail.workspaces.isEmpty())
+        assertEquals("server_unavailable", detail.workspacesError?.code)
+        assertEquals(true, detail.workspacesError?.retryable)
+        assertEquals("server_forbidden", detail.agentsError?.code)
+        assertEquals(false, detail.agentsError?.retryable)
+        assertTrue(logs.any { it.contains("section=workspaces result=error code=server_unavailable") })
+        assertTrue(logs.any { it.contains("section=agents result=noPermission code=server_forbidden") })
+        assertTrue(logs.none { it.contains("Bearer") || it.contains("token", ignoreCase = true) })
+    }
+
     private class FakeSlockApi(
         private val accountJson: String = """{"user":{"id":"user-1","email":"user@slock.ai","displayName":"Slock User"}}""",
         private val sessionsJson: String = """{"sessions":[]}""",
         private val revokeJson: String = """{"ok":true}""",
+        private val machinesJson: String = """{"machines":[]}""",
+        private val workspacesJson: String = """{"workspaces":[]}""",
+        private val agentsJson: String = """{"agents":[]}""",
+        private val machinesResponseCode: Int? = null,
+        private val workspacesResponseCode: Int? = null,
+        private val agentsResponseCode: Int? = null,
         private val responseCode: Int = 200
     ) : SlockApi {
+        var machinesServerId: String? = null
+            private set
+        var workspacesMachineId: String? = null
+            private set
+
         override suspend fun settingsAccount(): Response<ResponseBody> = response(accountJson)
 
         override suspend fun updateSettingsAccount(body: RequestBody): Response<ResponseBody> = response(accountJson)
@@ -195,25 +365,142 @@ class RealSettingsRepositoryTest {
 
         override suspend fun revokeSettingsSession(sessionId: String): Response<ResponseBody> = response(revokeJson)
 
+        override suspend fun settingsMachines(serverId: String): Response<ResponseBody> {
+            machinesServerId = serverId
+            return response(machinesJson, machinesResponseCode ?: responseCode)
+        }
+
+        override suspend fun settingsMachineWorkspaces(
+            serverId: String,
+            machineId: String
+        ): Response<ResponseBody> {
+            workspacesMachineId = machineId
+            return response(workspacesJson, workspacesResponseCode ?: responseCode)
+        }
+
+        override suspend fun settingsAgents(): Response<ResponseBody> =
+            response(agentsJson, agentsResponseCode ?: responseCode)
+
         override suspend fun channels(archived: String): Response<ResponseBody> = response("""{"channels":[]}""")
+
+        override suspend fun createChannel(body: RequestBody): Response<ResponseBody> =
+            response("""{"id":"channel-1","name":"android-dev"}""")
+
+        override suspend fun joinChannel(channelId: String): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
+        override suspend fun serverMembers(serverId: String): Response<ResponseBody> =
+            response("""{"members":[]}""")
+
+        override suspend fun memberProfile(memberId: String): Response<ResponseBody> =
+            response("""{"profile":{"id":"$memberId","displayName":"Member","presence":"offline"}}""")
+
+        override suspend fun agentDirectMessages(agentId: String): Response<ResponseBody> =
+            response("""{"directMessages":[]}""")
+
+        override suspend fun reminders(ownerAgentId: String, status: String): Response<ResponseBody> =
+            response("""{"reminders":[]}""")
+
+        override suspend fun trajectoryLogs(agentId: String): Response<ResponseBody> =
+            response("""{"trajectoryLogs":[]}""")
+
+        override suspend fun channelMembers(channelId: String): Response<ResponseBody> =
+            response("""{"members":[]}""")
+
+        override suspend fun addChannelMember(channelId: String, body: RequestBody): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
+        override suspend fun removeChannelMember(
+            channelId: String,
+            memberId: String,
+            kind: String
+        ): Response<ResponseBody> =
+            response("""{"ok":true,"removed":{"id":"$memberId","kind":"$kind"}}""")
 
         override suspend fun directMessages(): Response<ResponseBody> = response("""[]""")
 
+        override suspend fun channelUnreadCounts(): Response<ResponseBody> = response("""{}""")
+
+        override suspend fun markChannelReadToSeq(channelId: String, body: RequestBody): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
+        override suspend fun markChannelReadAll(channelId: String): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
+        override suspend fun markChannelUnread(channelId: String): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
         override suspend fun inbox(filter: String, limit: Int, offset: Int): Response<ResponseBody> =
             response("""{"items":[]}""")
+
+        override suspend fun markInboxReadAll(): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
+        override suspend fun serverTasks(): Response<ResponseBody> =
+            response("""{"tasks":[]}""")
+
+        override suspend fun claimTask(taskId: String): Response<ResponseBody> =
+            response("""{"task":{}}""")
 
         override suspend fun saved(limit: Int, offset: Int): Response<ResponseBody> = response("""{"items":[]}""")
 
         override suspend fun searchMessages(query: String, limit: Int, offset: Int): Response<ResponseBody> =
             response("""{"results":[]}""")
 
+        override suspend fun channelMessages(
+            channelId: String,
+            limit: Int,
+            beforeSeq: Long?
+        ): Response<ResponseBody> = response("""{"messages":[]}""")
+
+        override suspend fun messageContext(messageId: String): Response<ResponseBody> =
+            response("""{"messages":[]}""")
+
+        override suspend fun messageSync(
+            sinceSeq: Long,
+            limit: Int,
+            channelId: String?
+        ): Response<ResponseBody> = response("""{"messages":[]}""")
+
+        override suspend fun sendMessage(body: RequestBody): Response<ResponseBody> =
+            response("""{"message":{}}""")
+
+        override suspend fun uploadAttachments(
+            channelId: RequestBody,
+            files: List<okhttp3.MultipartBody.Part>
+        ): Response<ResponseBody> = response("""{"attachments":[]}""")
+
+        override suspend fun attachmentUrl(attachmentId: String): Response<ResponseBody> =
+            response("""{"url":"https://example.invalid/attachments/$attachmentId"}""")
+
+        override suspend fun channelThreads(channelId: String, limit: Int): Response<ResponseBody> =
+            response("""{"threads":[]}""")
+
+        override suspend fun createOrOpenThread(channelId: String, body: RequestBody): Response<ResponseBody> =
+            response("""{"threadChannelId":"thread-1","replyCount":1}""")
+
+        override suspend fun followedThreads(limit: Int): Response<ResponseBody> =
+            response("""{"threads":[]}""")
+
+        override suspend fun followThread(body: RequestBody): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
+        override suspend fun unfollowThread(body: RequestBody): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
+        override suspend fun markThreadDone(body: RequestBody): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
+        override suspend fun markThreadUndone(body: RequestBody): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
         override suspend fun serverUnreadSummary(): Response<ResponseBody> = response("""{"unreadCount":0}""")
 
-        private fun response(json: String): Response<ResponseBody> =
-            if (responseCode in 200..299) {
+        private fun response(json: String, code: Int = responseCode): Response<ResponseBody> =
+            if (code in 200..299) {
                 Response.success(json.jsonBody())
             } else {
-                Response.error(responseCode, """{"error":"failed"}""".jsonBody())
+                Response.error(code, """{"error":"failed"}""".jsonBody())
             }
     }
 

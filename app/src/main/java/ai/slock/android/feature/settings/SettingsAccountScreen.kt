@@ -3,6 +3,9 @@ package ai.slock.android.feature.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,15 +17,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -67,7 +76,8 @@ fun SettingsAccountScreen(
     profile: SettingsAccountProfile,
     connectedAccounts: List<SettingsConnectedAccount>,
     modifier: Modifier = Modifier,
-    showOuterBorder: Boolean = true
+    showOuterBorder: Boolean = true,
+    onLogout: () -> Unit = {}
 ) {
     Column(
         modifier = modifier
@@ -89,9 +99,62 @@ fun SettingsAccountScreen(
         SettingsConnectedAccounts(accounts = connectedAccounts)
         SettingsDisclosureRow(
             icon = SlockIcons.Key,
-            title = "Change password",
-            subtitle = "Update your password and keep active sessions secure"
+            title = stringResource(R.string.settings_account_change_password),
+            subtitle = stringResource(R.string.settings_account_change_password_subtitle)
         )
+        SettingsLogoutAction(onLogout = onLogout)
+    }
+}
+
+@Composable
+private fun SettingsLogoutAction(
+    onLogout: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val shadow = if (pressed) SlockShadow.None else SlockShadow.Small
+    val background = if (pressed) SlockColor.AccentOrange else SlockColor.AccentRed
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Text(
+            text = stringResource(R.string.settings_account_logout_detail),
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(end = SlockShadow.Small.offsetX, bottom = SlockShadow.Small.offsetY)
+                .slockHardShadow(shadow)
+                .background(background, RoundedCornerShape(SlockRadius.Xs))
+                .border(
+                    SlockStroke.Default,
+                    SlockColor.BorderBlack,
+                    RoundedCornerShape(SlockRadius.Xs)
+                )
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    role = Role.Button,
+                    onClick = onLogout
+                )
+                .heightIn(min = 48.dp)
+                .padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = stringResource(R.string.settings_account_logout),
+                color = SlockColor.TextBlack,
+                style = SlockType.Button.copy(fontWeight = FontWeight.Bold),
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
@@ -130,7 +193,7 @@ fun SettingsAccountHeader(
                 )
                 if (profile.verified) {
                     SettingsStatusBadge(
-                        text = "Verified",
+                        text = stringResource(R.string.settings_account_verified),
                         color = SlockColor.AccentLime,
                         icon = SlockIcons.ShieldCheck
                     )
@@ -249,38 +312,54 @@ fun SettingsProfileFields(
             .padding(SlockSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        SettingsSectionLabel("Profile")
+        SettingsSectionLabel(stringResource(R.string.settings_account_profile_section))
         SlockTextField(
             value = profile.displayName,
             onValueChange = {},
-            label = "Display name",
-            placeholder = "Your public name",
+            label = stringResource(R.string.settings_account_display_name_label),
+            placeholder = stringResource(R.string.settings_account_display_name_placeholder),
             enabled = fieldEnabled,
             forceFocused = focusedField == "displayName",
             isError = errorField == "displayName",
-            errorText = if (errorField == "displayName") "Display name is required" else null
+            errorText = if (errorField == "displayName") {
+                stringResource(R.string.settings_account_display_name_required)
+            } else {
+                null
+            }
         )
         SlockTextField(
             value = profile.handle,
             onValueChange = {},
-            label = "Handle",
+            label = stringResource(R.string.settings_account_handle_label),
             placeholder = "@handle",
             enabled = fieldEnabled,
             forceFocused = focusedField == "handle",
             isError = errorField == "handle",
-            errorText = if (errorField == "handle") "Handle is already taken" else null
+            errorText = if (errorField == "handle") {
+                stringResource(R.string.settings_account_handle_taken)
+            } else {
+                null
+            }
         )
         SlockTextField(
             value = profile.email,
             onValueChange = {},
-            label = "Email",
+            label = stringResource(R.string.settings_account_email_label),
             placeholder = "you@example.com",
             enabled = fieldEnabled,
             forceFocused = focusedField == "email",
             isError = errorField == "email",
-            errorText = if (errorField == "email") "Enter a valid email address" else null,
+            errorText = if (errorField == "email") {
+                stringResource(R.string.settings_account_email_invalid)
+            } else {
+                null
+            },
             trailingContent = {
-                SettingsStatusBadge("Verified", SlockColor.AccentLime, icon = SlockIcons.Check)
+                SettingsStatusBadge(
+                    stringResource(R.string.settings_account_verified),
+                    SlockColor.AccentLime,
+                    icon = SlockIcons.Check
+                )
             }
         )
         Row(
@@ -288,7 +367,11 @@ fun SettingsProfileFields(
             verticalAlignment = Alignment.CenterVertically
         ) {
             SlockButton(
-                text = if (saving) "Saving" else "Save changes",
+                text = if (saving) {
+                    stringResource(R.string.settings_account_saving)
+                } else {
+                    stringResource(R.string.settings_account_save_changes)
+                },
                 onClick = {},
                 modifier = Modifier.weight(1f),
                 variant = SlockButtonVariant.Pink,
@@ -296,7 +379,7 @@ fun SettingsProfileFields(
                 loading = saving
             )
             SlockButton(
-                text = "Cancel",
+                text = stringResource(R.string.settings_account_cancel),
                 onClick = {},
                 modifier = Modifier.weight(1f),
                 variant = SlockButtonVariant.Outline,
@@ -315,7 +398,7 @@ fun SettingsConnectedAccounts(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        SettingsSectionLabel("Connected accounts")
+        SettingsSectionLabel(stringResource(R.string.settings_account_connected_accounts))
         accounts.forEach { account ->
             SettingsConnectedAccountRow(account = account)
         }
@@ -406,10 +489,26 @@ private fun SettingsConnectedAccountIcon(
 @Composable
 private fun SettingsConnectedStatusBadge(status: SettingsConnectedAccountStatus) {
     val (text, color, icon) = when (status) {
-        SettingsConnectedAccountStatus.Connected -> Triple("Connected", SlockColor.AccentCyan, SlockIcons.Link)
-        SettingsConnectedAccountStatus.NotConnected -> Triple("Connect", SlockColor.SurfaceWhite, null)
-        SettingsConnectedAccountStatus.Loading -> Triple("Connecting", SlockColor.BrandYellow, SlockIcons.Link)
-        SettingsConnectedAccountStatus.Failed -> Triple("Failed", SlockColor.AccentPink, null)
+        SettingsConnectedAccountStatus.Connected -> Triple(
+            stringResource(R.string.settings_account_connected),
+            SlockColor.AccentCyan,
+            SlockIcons.Link
+        )
+        SettingsConnectedAccountStatus.NotConnected -> Triple(
+            stringResource(R.string.settings_account_connect),
+            SlockColor.SurfaceWhite,
+            null
+        )
+        SettingsConnectedAccountStatus.Loading -> Triple(
+            stringResource(R.string.settings_account_connecting),
+            SlockColor.BrandYellow,
+            SlockIcons.Link
+        )
+        SettingsConnectedAccountStatus.Failed -> Triple(
+            stringResource(R.string.settings_account_failed),
+            SlockColor.AccentPink,
+            null
+        )
     }
 
     SettingsStatusBadge(
