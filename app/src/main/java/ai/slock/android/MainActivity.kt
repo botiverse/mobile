@@ -227,6 +227,7 @@ import android.os.LocaleList
 import android.provider.OpenableColumns
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.setContent
@@ -278,6 +279,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -344,7 +346,16 @@ class MainActivity : ComponentActivity() {
                 "SlockBoot",
                 "main_activity_on_create buildMarker=auth-unread-diagnostics-v2"
         )
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+                statusBarStyle = SystemBarStyle.light(
+                        SlockColor.BrandYellow.toArgb(),
+                        SlockColor.BrandYellow.toArgb()
+                ),
+                navigationBarStyle = SystemBarStyle.light(
+                        SlockColor.SurfaceWhite.toArgb(),
+                        SlockColor.SurfaceWhite.toArgb()
+                )
+        )
         setContent {
             SlockTheme {
                 SlockTestBuildFrame(show = BuildConfig.SHOW_TEST_BUILD_BADGE) {
