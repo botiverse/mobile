@@ -237,7 +237,6 @@ fun ThreadScreen(
         onOpenMemberProfile: (MemberProfile) -> Unit = {},
         onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit = {},
         onOpenTask: (TaskSummary) -> Unit = {},
-        onMarkTaskDone: (TaskSummary) -> Unit = {},
         onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit = { _, _ -> },
         onRetryTasks: () -> Unit = {},
         attachmentOpenStates: Map<AttachmentId, AttachmentOpenUiState> = emptyMap(),
@@ -432,7 +431,7 @@ fun ThreadScreen(
                                     onOpenMemberProfile = onOpenMemberProfile,
                                     onOpenMarkdownTag = onOpenMarkdownTag,
                                     onOpenTask = onOpenTask,
-                                    onMarkTaskDone = onMarkTaskDone,
+                                    onTaskStatusChange = onTaskStatusChange,
                                     onRetryThreadLoad = onRetryThreadLoad,
                                     attachmentOpenStates = attachmentOpenStates,
                                     onOpenAttachment = onOpenAttachment,
@@ -2231,7 +2230,7 @@ private fun ThreadMessageList(
         onOpenMemberProfile: (MemberProfile) -> Unit,
         onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
         onOpenTask: (TaskSummary) -> Unit,
-        onMarkTaskDone: (TaskSummary) -> Unit,
+        onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
         onRetryThreadLoad: () -> Unit,
         attachmentOpenStates: Map<AttachmentId, AttachmentOpenUiState>,
         onOpenAttachment: (Attachment) -> Unit,
@@ -2620,7 +2619,7 @@ private fun ThreadMessageList(
                                         },
                                 onOpenAuthorProfile = { onOpenMemberProfile(message.author) },
                                 onOpenTask = { onOpenTask(it) },
-                                onMarkTaskDone = onMarkTaskDone,
+                                onTaskStatusChange = onTaskStatusChange,
                                 onOpenMarkdownTag = onOpenMarkdownTag,
                                 resolveMemberName = resolveMemberName
                         )
@@ -2901,7 +2900,7 @@ fun ThreadMessageItem(
         onOpenThread: (() -> Unit)? = null,
         onOpenAuthorProfile: (() -> Unit)? = null,
         onOpenTask: ((TaskSummary) -> Unit)? = null,
-        onMarkTaskDone: (TaskSummary) -> Unit = {},
+        onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit = { _, _ -> },
         onShareMessage: (Message) -> Unit = {},
         onCopyMessageLink: (Message) -> Unit = {},
         onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit = {},
@@ -3122,8 +3121,8 @@ fun ThreadMessageItem(
                             onShareMessage(message)
                             showMessageActions = false
                         },
-                        onMarkDone = {
-                            message.task?.let(onMarkTaskDone)
+                        onTaskStatusChange = { nextStatus ->
+                            message.task?.let { task -> onTaskStatusChange(task, nextStatus) }
                             showMessageActions = false
                         }
                 )
@@ -3210,7 +3209,7 @@ private fun ThreadMessageActionsPopup(
         onCopyLink: () -> Unit,
         onSave: () -> Unit,
         onShare: () -> Unit,
-        onMarkDone: () -> Unit
+        onTaskStatusChange: (TaskStatus) -> Unit
 ) {
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
@@ -3320,12 +3319,27 @@ private fun ThreadMessageActionsPopup(
                             onClick = onReply
                     )
                 }
-                if (message.task != null && message.task.status != TaskStatus.Done) {
+                message.task?.let { task ->
+                    val actionStatus =
+                            when (task.status) {
+                                TaskStatus.Done, TaskStatus.Closed -> TaskStatus.InProgress
+                                else -> TaskStatus.Done
+                            }
+                    val actionLabel =
+                            when (task.status) {
+                                TaskStatus.Done, TaskStatus.Closed -> "Reopen task"
+                                else -> "Mark done"
+                            }
+                    val actionIcon =
+                            when (task.status) {
+                                TaskStatus.Done, TaskStatus.Closed -> SlockIcons.RefreshCw
+                                else -> SlockIcons.CircleCheckBig
+                            }
                     ThreadMessageActionDivider()
                     ThreadMessageActionMenuItem(
-                            label = "Reopen task",
-                            icon = SlockIcons.RefreshCw,
-                            onClick = onMarkDone
+                            label = actionLabel,
+                            icon = actionIcon,
+                            onClick = { onTaskStatusChange(actionStatus) }
                     )
                 }
             }

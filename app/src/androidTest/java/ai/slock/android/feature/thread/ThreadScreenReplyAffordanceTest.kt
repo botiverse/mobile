@@ -178,7 +178,7 @@ class ThreadScreenReplyAffordanceTest {
 
     @Test
     fun messageBodyClickShowsActionOverlayAndCanMarkTaskDone() {
-        var markedDoneTaskId: TaskId? = null
+        var statusChange: Pair<TaskId, TaskStatus>? = null
         val task = TaskSummary(
             id = TaskId("task-message-action"),
             title = "Finish action menu",
@@ -191,7 +191,9 @@ class ThreadScreenReplyAffordanceTest {
                 ThreadMessageItem(
                     message = message(replyCount = 0).copy(task = task),
                     onOpenThread = {},
-                    onMarkTaskDone = { markedDoneTaskId = it.id }
+                    onTaskStatusChange = { changedTask, status ->
+                        statusChange = changedTask.id to status
+                    }
                 )
             }
         }
@@ -201,16 +203,16 @@ class ThreadScreenReplyAffordanceTest {
         composeRule.onNodeWithText("Reply").assertIsDisplayed()
         composeRule.onNodeWithText("Copy markdown").assertIsDisplayed()
         composeRule.onNodeWithText("Save message").assertIsDisplayed()
-        composeRule.onNodeWithText("Reopen task").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Mark done").assertIsDisplayed().performClick()
 
         composeRule.runOnIdle {
-            assertEquals(TaskId("task-message-action"), markedDoneTaskId)
+            assertEquals(TaskId("task-message-action") to TaskStatus.Done, statusChange)
         }
     }
 
     @Test
     fun markDoneActionDoesNotRemoveMessageAttachmentUi() {
-        var markedDoneTaskId: TaskId? = null
+        var statusChange: Pair<TaskId, TaskStatus>? = null
         val task = TaskSummary(
             id = TaskId("task-message-action-attachment"),
             title = "Finish action menu",
@@ -232,7 +234,9 @@ class ThreadScreenReplyAffordanceTest {
                         task = task,
                         attachments = listOf(attachment)
                     ),
-                    onMarkTaskDone = { markedDoneTaskId = it.id }
+                    onTaskStatusChange = { changedTask, status ->
+                        statusChange = changedTask.id to status
+                    }
                 )
             }
         }
@@ -240,11 +244,41 @@ class ThreadScreenReplyAffordanceTest {
         composeRule.onNodeWithText("preview.png").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Message actions")
             .performSemanticsAction(SemanticsActions.OnClick)
-        composeRule.onNodeWithText("Reopen task").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Mark done").assertIsDisplayed().performClick()
 
         composeRule.onNodeWithText("preview.png").assertIsDisplayed()
         composeRule.runOnIdle {
-            assertEquals(TaskId("task-message-action-attachment"), markedDoneTaskId)
+            assertEquals(TaskId("task-message-action-attachment") to TaskStatus.Done, statusChange)
+        }
+    }
+
+    @Test
+    fun doneTaskActionShowsReopenAndMovesBackToInProgress() {
+        var statusChange: Pair<TaskId, TaskStatus>? = null
+        val task = TaskSummary(
+            id = TaskId("task-message-action-reopen"),
+            title = "Reopen action menu",
+            status = TaskStatus.Done,
+            updatedAtLabel = "Now"
+        )
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadMessageItem(
+                    message = message(replyCount = 0).copy(task = task),
+                    onTaskStatusChange = { changedTask, status ->
+                        statusChange = changedTask.id to status
+                    }
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Message actions")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNodeWithText("Reopen task").assertIsDisplayed().performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(TaskId("task-message-action-reopen") to TaskStatus.InProgress, statusChange)
         }
     }
 
@@ -383,7 +417,7 @@ class ThreadScreenReplyAffordanceTest {
                 .assertIsDisplayed()
                 .getUnclippedBoundsInRoot()
 
-        composeRule.onNodeWithText("Reopen task").assertIsDisplayed()
+        composeRule.onNodeWithText("Mark done").assertIsDisplayed()
         val rootBottom = composeRule.onNodeWithTag("thread-action-bottom-anchor")
             .getUnclippedBoundsInRoot()
             .bottom

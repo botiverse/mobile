@@ -3261,9 +3261,6 @@ private fun SlockAppContent(
                                     onOpenMemberProfile = { member -> openMemberProfile(member) },
                                     onOpenMarkdownTag = { tag -> openMarkdownTag(tag) },
                                     onOpenTask = { task -> openTaskContext(task) },
-                                    onMarkTaskDone = { task ->
-                                        updateTaskStatus(task, TaskStatus.Done)
-                                    },
                                     onTaskStatusChange = ::updateTaskStatus,
                                     onRetryThreadTasks = {
                                         refreshSelectedThreadTasks(reason = "retry")
@@ -4874,7 +4871,6 @@ private fun HomeRouteScreen(
         onOpenMemberProfile: (MemberProfile) -> Unit,
         onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
         onOpenTask: (TaskSummary) -> Unit,
-        onMarkTaskDone: (TaskSummary) -> Unit,
         onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
         onRetryThreadTasks: () -> Unit,
         onThreadBack: () -> Boolean,
@@ -5061,7 +5057,6 @@ private fun HomeRouteScreen(
                     onOpenMemberProfile = onOpenMemberProfile,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenTask = onOpenTask,
-                    onMarkTaskDone = onMarkTaskDone,
                     onTaskStatusChange = onTaskStatusChange,
                     onRetryTasks = onRetryThreadTasks,
                     attachmentOpenStates = attachmentOpenStates,
