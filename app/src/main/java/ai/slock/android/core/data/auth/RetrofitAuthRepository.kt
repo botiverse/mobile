@@ -51,7 +51,7 @@ class RetrofitAuthRepository(
         logger(
             "restore_session_found serverCount=${session.servers.size} selectedServer=${session.currentServerId != null}"
         )
-        return when (val result = currentUserWithSession(session)) {
+        return when (val result = currentUserWithSession(session, clearOnUnauthorized = false)) {
             is AuthResult.Success -> {
                 logger("restore_current_user_success")
                 result
@@ -61,7 +61,13 @@ class RetrofitAuthRepository(
                 val refreshed = refresh(session.refreshToken)
                 if (refreshed is AuthResult.Success) {
                     logger("restore_refresh_success")
-                    refreshed
+                    val updated = store.readSession()
+                    if (updated == null) {
+                        warningLogger("restore_refresh_missing_session")
+                        AuthResult.Unauthenticated
+                    } else {
+                        currentUserWithSession(updated, clearOnUnauthorized = true)
+                    }
                 } else {
                     warningLogger("restore_refresh_failed_unauthenticated")
                     AuthResult.Unauthenticated
@@ -115,10 +121,15 @@ class RetrofitAuthRepository(
         return AuthResult.Success(Unit)
     }
 
-    private suspend fun currentUserWithSession(session: AuthSession): AuthResult<AuthSessionSummary> =
+    private suspend fun currentUserWithSession(
+        session: AuthSession,
+        clearOnUnauthorized: Boolean = true
+    ): AuthResult<AuthSessionSummary> =
         executeAuthCall(
             onUnauthorized = {
-                store.clearSession()
+                if (clearOnUnauthorized) {
+                    store.clearSession()
+                }
                 AuthResult.Unauthenticated
             }
         ) {

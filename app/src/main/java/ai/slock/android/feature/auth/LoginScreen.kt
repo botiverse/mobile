@@ -51,6 +51,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -77,9 +78,11 @@ fun LoginScreen(
 ) {
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
+    val focusManager = LocalFocusManager.current
     val canSubmit = email.isNotBlank() && password.isNotBlank() && !isSubmitting
     val submitLogin = {
         if (canSubmit) {
+            focusManager.clearFocus(force = true)
             onLogin(email, password)
         }
     }

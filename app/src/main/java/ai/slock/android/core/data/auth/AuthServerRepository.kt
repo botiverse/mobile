@@ -116,7 +116,7 @@ class AuthServerRepository(
         val summaries = servers.map { it.toServerSummary() }
         return ServerListSnapshot(
             servers = summaries,
-            selectedServer = summaries.firstOrNull { it.id.value == currentServerId }
+            selectedServer = summaries.firstOrNull { it.id.value == selectedServerId }
         )
     }
 

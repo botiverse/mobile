@@ -17,9 +17,13 @@ import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
+import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.sample.SlockStateSamples
+import ai.slock.android.feature.tasks.TasksContent
+import ai.slock.android.feature.tasks.TasksPanel
+import ai.slock.android.feature.tasks.TasksUiState
 import ai.slock.android.ui.components.SlockAvatar
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
@@ -36,7 +40,7 @@ import ai.slock.android.ui.components.SlockModalActionStyle
 import ai.slock.android.ui.components.SlockModalTextField
 import ai.slock.android.ui.components.SlockTextField
 import ai.slock.android.ui.theme.SlockColor
-import ai.slock.android.ui.theme.SlockLightFontFamily
+import ai.slock.android.ui.theme.SlockNormalFontFamily
 import ai.slock.android.ui.theme.SlockRadius
 import ai.slock.android.ui.theme.SlockShadow
 import ai.slock.android.ui.theme.SlockSize
@@ -45,6 +49,9 @@ import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
 import ai.slock.android.ui.theme.SlockType
 import ai.slock.android.ui.theme.slockHardShadow
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.Rect as AndroidRect
 import android.net.Uri
@@ -60,6 +67,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -78,6 +86,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -92,6 +103,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -128,7 +142,9 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
@@ -144,17 +160,33 @@ import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
@@ -167,10 +199,20 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
+
+val ThreadMessageBodyTextStyle: TextStyle
+    get() =
+            SlockType.Body.copy(
+                    fontWeight = FontWeight.Normal,
+                    fontFamily = SlockNormalFontFamily,
+                    fontSize = 15.sp,
+                    lineHeight = 21.sp
+            )
 
 @Composable
 fun ThreadScreen(
@@ -195,6 +237,9 @@ fun ThreadScreen(
         onOpenMemberProfile: (MemberProfile) -> Unit = {},
         onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit = {},
         onOpenTask: (TaskSummary) -> Unit = {},
+        onMarkTaskDone: (TaskSummary) -> Unit = {},
+        onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit = { _, _ -> },
+        onRetryTasks: () -> Unit = {},
         attachmentOpenStates: Map<AttachmentId, AttachmentOpenUiState> = emptyMap(),
         attachmentPreviewState: AttachmentPreviewUiState? = null,
         onOpenAttachment: (Attachment) -> Unit = {},
@@ -208,7 +253,9 @@ fun ThreadScreen(
         myMessageAlignment: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Default,
         replyHeaderContext: ThreadReplyHeaderContext? = null,
         parentJumpTarget: ThreadParentJumpTarget? = null,
-        onOpenParentMessage: (ThreadParentJumpTarget) -> Unit = {}
+        onOpenParentMessage: (ThreadParentJumpTarget) -> Unit = {},
+        onRetryThreadLoad: () -> Unit = {},
+        channelSuggestions: List<ConversationSummary> = emptyList()
 ) {
     var showMembersModal by rememberSaveable { mutableStateOf(false) }
     var showSettingsModal by rememberSaveable { mutableStateOf(false) }
@@ -244,6 +291,7 @@ fun ThreadScreen(
     }
 
     Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite).imePadding()) {
+        val showModeTabs = replyHeaderContext == null
         Column(
                 modifier =
                         Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).drawBehind {
@@ -269,12 +317,14 @@ fun ThreadScreen(
                             parentJumpTarget = parentJumpTarget,
                             onOpenParentMessage = onOpenParentMessage
                     )
-                    ThreadModeTabs(
-                            selectedTab = state.selectedTab,
-                            onModeSelected = onModeSelected,
-                            modifier =
-                                    Modifier.dismissKeyboardOnPointerDown(dismissComposerKeyboard)
-                    )
+                    if (showModeTabs) {
+                        ThreadModeTabs(
+                                selectedTab = state.selectedTab,
+                                onModeSelected = onModeSelected,
+                                modifier =
+                                        Modifier.dismissKeyboardOnPointerDown(dismissComposerKeyboard)
+                        )
+                    }
                     Box(
                             modifier =
                                     Modifier.weight(1f)
@@ -317,36 +367,51 @@ fun ThreadScreen(
                             parentJumpTarget = parentJumpTarget,
                             onOpenParentMessage = onOpenParentMessage
                     )
-                    ThreadModeTabs(
-                            selectedTab = state.selectedTab,
-                            onModeSelected = onModeSelected,
-                            modifier =
-                                    Modifier.dismissKeyboardOnPointerDown(dismissComposerKeyboard)
-                    )
-                    ThreadRefreshBanner(
-                            status = loadState.data.refreshStatus,
-                            errorCode = loadState.data.refreshErrorCode,
-                            onRetry = onRefreshThread
-                    )
+                    if (showModeTabs) {
+                        ThreadModeTabs(
+                                selectedTab = state.selectedTab,
+                                onModeSelected = onModeSelected,
+                                modifier =
+                                        Modifier.dismissKeyboardOnPointerDown(dismissComposerKeyboard)
+                        )
+                    }
+                    if (replyHeaderContext == null) {
+                        ThreadRefreshBanner(
+                                status = loadState.data.refreshStatus,
+                                errorCode = loadState.data.refreshErrorCode,
+                                onRetry = onRefreshThread
+                        )
+                    }
                     if (state.selectedTab == ThreadTab.Tasks) {
-                        Column(
+                        TasksPanel(
+                                state = state.tasksState
+                                        ?: loadState.data.tasks.toThreadTasksUiState(),
+                                showChannelFilter = false,
+                                onTaskClick = onOpenTask,
+                                onTaskStatusChange = onTaskStatusChange,
+                                onRetry = onRetryTasks,
                                 modifier =
                                         Modifier.weight(1f)
                                                 .fillMaxWidth()
                                                 .dismissKeyboardOnPointerDown(
                                                         dismissComposerKeyboard
                                                 )
-                                                .verticalScroll(rememberScrollState())
-                                                .padding(
-                                                        horizontal = SlockSpacing.Md,
-                                                        vertical = SlockSpacing.Lg
-                                                ),
-                                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Lg)
-                        ) { ThreadTaskSummary(tasks = loadState.data.tasks) }
+                        )
                     } else {
                         Column(
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                         ) {
+                            if (replyHeaderContext != null) {
+                                ThreadOriginPanel(
+                                        context = replyHeaderContext,
+                                        parentJumpTarget = parentJumpTarget,
+                                        onOpenParentMessage = onOpenParentMessage,
+                                        modifier =
+                                                Modifier.dismissKeyboardOnPointerDown(
+                                                        dismissComposerKeyboard
+                                                )
+                                )
+                            }
                             ThreadMessageList(
                                     content = loadState.data,
                                     threadId = header.threadId.value,
@@ -367,8 +432,12 @@ fun ThreadScreen(
                                     onOpenMemberProfile = onOpenMemberProfile,
                                     onOpenMarkdownTag = onOpenMarkdownTag,
                                     onOpenTask = onOpenTask,
+                                    onMarkTaskDone = onMarkTaskDone,
+                                    onRetryThreadLoad = onRetryThreadLoad,
                                     attachmentOpenStates = attachmentOpenStates,
                                     onOpenAttachment = onOpenAttachment,
+                                    showOlderPageState = replyHeaderContext == null,
+                                    showReplyAction = replyHeaderContext == null,
                                     resolveMemberName = { id ->
                                         (membersPanelState.loadState as? ScreenLoadState.Content)
                                             ?.data?.members
@@ -386,6 +455,9 @@ fun ThreadScreen(
                                 onJoin = { onJoinChannel(header) }
                         )
                     } else {
+                        val memberSuggestions =
+                                (membersPanelState.loadState as? ScreenLoadState.Content)
+                                        ?.data?.members.orEmpty()
                         ThreadComposerBar(
                                 composerState = composerState,
                                 placeholder = "Message #${header.name}",
@@ -395,7 +467,9 @@ fun ThreadScreen(
                                 onAttachFile = onAttachFile,
                                 onRemoveAttachment = onRemoveAttachment,
                                 onRetryAttachment = onRetryAttachment,
-                                onSend = onSend
+                                onSend = onSend,
+                                memberSuggestions = memberSuggestions,
+                                channelSuggestions = channelSuggestions
                         )
                     }
                 }
@@ -411,12 +485,14 @@ fun ThreadScreen(
                             parentJumpTarget = parentJumpTarget,
                             onOpenParentMessage = onOpenParentMessage
                     )
-                    ThreadModeTabs(
-                            selectedTab = state.selectedTab,
-                            onModeSelected = onModeSelected,
-                            modifier =
-                                    Modifier.dismissKeyboardOnPointerDown(dismissComposerKeyboard)
-                    )
+                    if (showModeTabs) {
+                        ThreadModeTabs(
+                                selectedTab = state.selectedTab,
+                                onModeSelected = onModeSelected,
+                                modifier =
+                                        Modifier.dismissKeyboardOnPointerDown(dismissComposerKeyboard)
+                        )
+                    }
                     Box(
                             modifier =
                                     Modifier.weight(1f)
@@ -454,12 +530,14 @@ fun ThreadScreen(
                             parentJumpTarget = parentJumpTarget,
                             onOpenParentMessage = onOpenParentMessage
                     )
-                    ThreadModeTabs(
-                            selectedTab = state.selectedTab,
-                            onModeSelected = onModeSelected,
-                            modifier =
-                                    Modifier.dismissKeyboardOnPointerDown(dismissComposerKeyboard)
-                    )
+                    if (showModeTabs) {
+                        ThreadModeTabs(
+                                selectedTab = state.selectedTab,
+                                onModeSelected = onModeSelected,
+                                modifier =
+                                        Modifier.dismissKeyboardOnPointerDown(dismissComposerKeyboard)
+                        )
+                    }
                     Box(
                             modifier =
                                     Modifier.weight(1f)
@@ -471,7 +549,7 @@ fun ThreadScreen(
                         SlockErrorState(
                                 title = "Thread failed to load",
                                 detail = "Error code: ${loadState.error.code}",
-                                onRetry = {}
+                                onRetry = onRetryThreadLoad
                         )
                     }
                     ThreadComposerBar(
@@ -498,12 +576,14 @@ fun ThreadScreen(
                             parentJumpTarget = parentJumpTarget,
                             onOpenParentMessage = onOpenParentMessage
                     )
-                    ThreadModeTabs(
-                            selectedTab = state.selectedTab,
-                            onModeSelected = onModeSelected,
-                            modifier =
-                                    Modifier.dismissKeyboardOnPointerDown(dismissComposerKeyboard)
-                    )
+                    if (showModeTabs) {
+                        ThreadModeTabs(
+                                selectedTab = state.selectedTab,
+                                onModeSelected = onModeSelected,
+                                modifier =
+                                        Modifier.dismissKeyboardOnPointerDown(dismissComposerKeyboard)
+                        )
+                    }
                     Box(
                             modifier =
                                     Modifier.weight(1f)
@@ -568,7 +648,6 @@ fun ThreadScreen(
                         onMemberClick = { member ->
                             selectedChannelMemberDetailId = member.id.value
                         },
-                        onRemoveMemberClick = onRemoveChannelMember,
                         onAddMemberClick = { showAddMember = true },
                         onDismiss = {
                             showMembersModal = false
@@ -880,6 +959,89 @@ private fun ThreadReplyHeaderContext.replyHeaderSubtitle(): String? {
                 it.isNotBlank()
             }
     return origin?.let { "Origin: $it" }
+}
+
+@Composable
+private fun ThreadOriginPanel(
+        context: ThreadReplyHeaderContext,
+        parentJumpTarget: ThreadParentJumpTarget?,
+        onOpenParentMessage: (ThreadParentJumpTarget) -> Unit,
+        modifier: Modifier = Modifier
+) {
+    Column(
+            modifier =
+                    modifier.fillMaxWidth()
+                            .background(SlockColor.SurfaceWhite)
+                            .drawBehind {
+                                val stroke = SlockStroke.Default.toPx()
+                                drawLine(
+                                        color = SlockColor.BorderBlack,
+                                        start = Offset(0f, size.height - stroke / 2f),
+                                        end = Offset(size.width, size.height - stroke / 2f),
+                                        strokeWidth = stroke
+                                )
+                            }
+                            .padding(
+                                    horizontal = threadHorizontalPadding(),
+                                    vertical = SlockSpacing.Md
+                            ),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        val parentMessage = context.parentMessage
+        if (parentMessage != null) {
+            ThreadMessageItem(
+                    message = parentMessage,
+                    onOpenThread =
+                            parentJumpTarget?.let {
+                                { onOpenParentMessage(it) }
+                            },
+                    onOpenAuthorProfile = null
+            )
+        } else {
+            ThreadOriginFallbackMessage(
+                    context = context,
+                    parentJumpTarget = parentJumpTarget,
+                    onOpenParentMessage = onOpenParentMessage
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadOriginFallbackMessage(
+        context: ThreadReplyHeaderContext,
+        parentJumpTarget: ThreadParentJumpTarget?,
+        onOpenParentMessage: (ThreadParentJumpTarget) -> Unit
+) {
+    val preview = context.parentMessagePreview?.takeIf { it.isNotBlank() } ?: "Original message"
+    val channelName =
+            context.parentChannelName
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { name -> if (name.startsWith("#")) name else "#$name" }
+    val fallbackAuthor =
+            MemberProfile(
+                    id = MemberId("thread-origin-fallback"),
+                    displayName = channelName ?: "Thread origin",
+                    handle = "thread-origin",
+                    kind = MemberKind.Agent,
+                    roleDescription = "Original message"
+            )
+    val fallbackMessage =
+            Message(
+                    id = parentJumpTarget?.parentMessageId ?: MessageId("thread-origin-fallback"),
+                    threadId = ThreadId("thread-origin-fallback"),
+                    author = fallbackAuthor,
+                    timestampLabel = "",
+                    body = preview
+            )
+    ThreadMessageItem(
+            message = fallbackMessage,
+            onOpenThread =
+                    parentJumpTarget?.let {
+                        { onOpenParentMessage(it) }
+                    },
+            onOpenAuthorProfile = null
+    )
 }
 
 private data class ThreadMemberModalItem(
@@ -1216,7 +1378,6 @@ private fun ThreadMembersModal(
         removingMemberId: MemberId? = null,
         removeErrorCode: String? = null,
         onMemberClick: (MemberProfile) -> Unit = {},
-        onRemoveMemberClick: (MemberProfile) -> Unit = {},
         onAddMemberClick: () -> Unit,
         onDismiss: () -> Unit,
         enabled: Boolean = true,
@@ -1260,8 +1421,7 @@ private fun ThreadMembersModal(
                 ThreadMembersList(
                         members = members,
                         membersLoading = membersLoading,
-                        onMemberClick = onMemberClick,
-                        onRemoveMemberClick = onRemoveMemberClick
+                        onMemberClick = onMemberClick
                 )
             }
             SlockButton(
@@ -1373,8 +1533,7 @@ private fun ThreadAddMemberModal(
 private fun ThreadMembersList(
         members: List<ThreadMemberModalItem>,
         membersLoading: Boolean,
-        onMemberClick: (MemberProfile) -> Unit,
-        onRemoveMemberClick: (MemberProfile) -> Unit
+        onMemberClick: (MemberProfile) -> Unit
 ) {
     when {
         membersLoading -> {
@@ -1401,16 +1560,14 @@ private fun ThreadMembersList(
                     ThreadMemberSection(
                             label = "AGENTS",
                             members = members.filter { it.kind == MemberKind.Agent },
-                            onMemberClick = onMemberClick,
-                            onRemoveMemberClick = onRemoveMemberClick
+                            onMemberClick = onMemberClick
                     )
                 }
                 item(key = "humans") {
                     ThreadMemberSection(
                             label = "HUMANS",
                             members = members.filter { it.kind == MemberKind.Human },
-                            onMemberClick = onMemberClick,
-                            onRemoveMemberClick = onRemoveMemberClick
+                            onMemberClick = onMemberClick
                     )
                 }
             }
@@ -1730,8 +1887,7 @@ private fun ThreadMemberPickerRow(
 private fun ThreadMemberSection(
         label: String,
         members: List<ThreadMemberModalItem>,
-        onMemberClick: (MemberProfile) -> Unit = {},
-        onRemoveMemberClick: (MemberProfile) -> Unit = {}
+        onMemberClick: (MemberProfile) -> Unit = {}
 ) {
     Column(
             modifier = Modifier.fillMaxWidth(),
@@ -1744,13 +1900,7 @@ private fun ThreadMemberSection(
             members.forEach { member ->
                 ThreadMemberRow(
                         member = member,
-                        onClick = { onMemberClick(member.profile) },
-                        onRemoveClick =
-                                if (member.kind == MemberKind.Agent) {
-                                    { onRemoveMemberClick(member.profile) }
-                                } else {
-                                    null
-                                }
+                        onClick = { onMemberClick(member.profile) }
                 )
             }
         }
@@ -1760,8 +1910,7 @@ private fun ThreadMemberSection(
 @Composable
 private fun ThreadMemberRow(
         member: ThreadMemberModalItem,
-        onClick: () -> Unit = {},
-        onRemoveClick: (() -> Unit)? = null
+        onClick: () -> Unit = {}
 ) {
     Row(
             modifier =
@@ -1814,14 +1963,6 @@ private fun ThreadMemberRow(
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
-            )
-        }
-        if (onRemoveClick != null && member.kind == MemberKind.Agent) {
-            Text(
-                    text = "Remove",
-                    style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
-                    color = SlockColor.AccentRed,
-                    modifier = Modifier.clickable(role = Role.Button, onClick = onRemoveClick)
             )
         }
     }
@@ -1973,62 +2114,63 @@ fun ThreadModeTabs(
     val tabWidth = 116.dp
     val tabHeight = 38.dp
     val tabBorderWidth = SlockStroke.Default
-    Row(
+    Column(
             modifier =
-                    modifier.fillMaxWidth()
+                    modifier
+                            .fillMaxWidth()
                             .height(tabHeight)
                             .background(SlockColor.SurfaceWhite)
-                            .drawWithContent {
-                                drawContent()
-                                val stroke = tabBorderWidth.toPx()
-                                val dividerX = tabWidth.toPx()
-                                drawLine(
-                                        color = SlockColor.BorderBlack,
-                                        start = Offset(0f, size.height - stroke),
-                                        end = Offset(size.width, size.height - stroke),
-                                        strokeWidth = stroke
-                                )
-                                drawLine(
-                                        color = SlockColor.BorderBlack,
-                                        start = Offset(dividerX, 0f),
-                                        end = Offset(dividerX, size.height),
-                                        strokeWidth = stroke
-                                )
-                            }
     ) {
-        ThreadTab.entries.forEach { mode ->
-            val selected = selectedTab == mode
-            Row(
+        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            ThreadTab.entries.forEachIndexed { index, mode ->
+                val selected = selectedTab == mode
+                Row(
+                        modifier =
+                                Modifier.width(tabWidth)
+                                        .fillMaxHeight()
+                                        .background(
+                                                if (selected) SlockColor.BrandYellow
+                                                else SlockColor.SurfaceWhite
+                                        )
+                                        .clickable(role = Role.Tab) { onModeSelected(mode) }
+                                        .padding(
+                                                horizontal = SlockSpacing.Md,
+                                                vertical = SlockSpacing.Xs
+                                        ),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement =
+                                Arrangement.spacedBy(SlockSpacing.Sm, Alignment.CenterHorizontally)
+                ) {
+                    Icon(
+                            imageVector =
+                                    if (mode == ThreadTab.Chat) SlockIcons.MessageSquare
+                                    else SlockIcons.ListTodo,
+                            contentDescription = null,
+                            tint = SlockColor.TextBlack,
+                            modifier = Modifier.size(18.dp)
+                    )
+                    Text(mode.name.uppercase(), style = SlockType.Button, color = SlockColor.TextBlack)
+                }
+                Box(
+                        modifier =
+                                Modifier.height(tabHeight - tabBorderWidth)
+                                        .width(tabBorderWidth)
+                                        .background(SlockColor.BorderBlack)
+                )
+            }
+            Box(
                     modifier =
-                            Modifier.width(tabWidth)
+                            Modifier.weight(1f)
                                     .fillMaxHeight()
                                     .background(SlockColor.SurfaceWhite)
-                                    .clickable(role = Role.Tab) { onModeSelected(mode) }
-                                    .padding(bottom = tabBorderWidth)
-                                    .background(
-                                            if (selected) SlockColor.BrandYellow
-                                            else SlockColor.SurfaceWhite
-                                    )
-                                    .padding(
-                                            horizontal = SlockSpacing.Md,
-                                            vertical = SlockSpacing.Xs
-                                    ),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement =
-                            Arrangement.spacedBy(SlockSpacing.Sm, Alignment.CenterHorizontally)
-            ) {
-                Icon(
-                        imageVector =
-                                if (mode == ThreadTab.Chat) SlockIcons.MessageSquare
-                                else SlockIcons.ListTodo,
-                        contentDescription = null,
-                        tint = SlockColor.TextBlack,
-                        modifier = Modifier.size(18.dp)
-                )
-                Text(mode.name.uppercase(), style = SlockType.Button, color = SlockColor.TextBlack)
-            }
+            )
         }
-        Spacer(modifier = Modifier.weight(1f))
+        Box(
+                modifier =
+                        Modifier.fillMaxWidth()
+                                .height(tabBorderWidth)
+                                .background(SlockColor.BorderBlack)
+        )
     }
 }
 
@@ -2047,6 +2189,33 @@ private fun ThreadContextNotice(text: String) {
 }
 
 @Composable
+private fun ThreadInlineRetryNotice(
+        text: String,
+        retryLabel: String,
+        onRetry: () -> Unit
+) {
+    Row(
+            modifier =
+                    Modifier.fillMaxWidth()
+                            .background(SlockColor.SurfaceCream)
+                            .border(SlockStroke.Thin, SlockColor.TextMutedGray)
+                            .padding(SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Text(
+                text = text,
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray,
+                modifier = Modifier.weight(1f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+        )
+        SlockButton(text = retryLabel, onClick = onRetry, variant = SlockButtonVariant.Outline)
+    }
+}
+
+@Composable
 private fun ThreadMessageList(
         content: ThreadContent,
         threadId: String,
@@ -2062,12 +2231,16 @@ private fun ThreadMessageList(
         onOpenMemberProfile: (MemberProfile) -> Unit,
         onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
         onOpenTask: (TaskSummary) -> Unit,
+        onMarkTaskDone: (TaskSummary) -> Unit,
+        onRetryThreadLoad: () -> Unit,
         attachmentOpenStates: Map<AttachmentId, AttachmentOpenUiState>,
         onOpenAttachment: (Attachment) -> Unit,
+        showOlderPageState: Boolean = true,
+        showReplyAction: Boolean = true,
         resolveMemberName: (MemberId) -> String? = { null }
 ) {
     val horizontalPadding = threadHorizontalPadding()
-    val showOlderPageState = content.shouldShowOlderPageState
+    val showOlderPageState = showOlderPageState && content.shouldShowOlderPageState
     val beforeSeq = content.messages.mapNotNull { it.seq }.minOrNull()
     val isLoadingOlder = content.olderMessagesStatus == MessagePageStatus.Loading
     val leadingItemCount =
@@ -2247,8 +2420,12 @@ private fun ThreadMessageList(
         if (!initialPositionApplied && targetListIndex != null) {
             yield()
             yield()
-            val initialScrollOffset = if (content.highlightedMessageId == null) Int.MAX_VALUE else 0
+            val initialScrollOffset = 0
             listState.scrollToItem(targetListIndex, initialScrollOffset)
+            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                    "SlockThreadScroll",
+                    "initial_scroll threadId=$threadId targetListIndex=$targetListIndex latestListIndex=${latestMessageListIndex ?: -1} messageCount=${content.messages.size} highlighted=${content.highlightedMessageId?.value.orEmpty()} offset=$initialScrollOffset"
+            )
             initialPositionApplied = true
             observedLastMessageId = lastMessageId
             followNewMessages = content.highlightedMessageId == null
@@ -2275,9 +2452,68 @@ private fun ThreadMessageList(
     val keyboardBottomPx = WindowInsets.ime.getBottom(density)
     LaunchedEffect(keyboardBottomPx) {
         if (initialPositionApplied && followNewMessages && latestMessageListIndex != null) {
-            yield()
-            yield()
-            listState.scrollToItem(latestMessageListIndex, Int.MAX_VALUE)
+            scrollThreadListToBottom(
+                    listState = listState,
+                    lastIndex = latestMessageListIndex,
+                    threadId = threadId,
+                    reason = "keyboard_inset"
+            )
+        }
+    }
+    LaunchedEffect(
+            content.messages.size,
+            latestMessageListIndex,
+            initialPositionApplied,
+            followNewMessages
+    ) {
+        if (initialPositionApplied && followNewMessages && latestMessageListIndex != null) {
+            scrollThreadListToBottom(
+                    listState = listState,
+                    lastIndex = latestMessageListIndex,
+                    threadId = threadId,
+                    reason = "message_count_changed",
+                    messageCount = content.messages.size
+            )
+        }
+    }
+    LaunchedEffect(latestMessageListIndex, initialPositionApplied, followNewMessages) {
+        if (!initialPositionApplied || !followNewMessages || latestMessageListIndex == null) {
+            return@LaunchedEffect
+        }
+        var firstVisibleItemIndex = listState.firstVisibleItemIndex
+        var firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
+        repeat(8) {
+            delay(80)
+            if (!followNewMessages) return@LaunchedEffect
+            val currentFirstVisibleItemIndex = listState.firstVisibleItemIndex
+            val currentFirstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
+            val userMovedAwayFromBottom =
+                    currentFirstVisibleItemIndex < firstVisibleItemIndex ||
+                            (currentFirstVisibleItemIndex == firstVisibleItemIndex &&
+                                    currentFirstVisibleItemScrollOffset >
+                                            firstVisibleItemScrollOffset + 24)
+            if (userMovedAwayFromBottom) {
+                ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                        "SlockThreadScroll",
+                        "initial_layout_settle_stop threadId=$threadId reason=user_moved firstVisible=$currentFirstVisibleItemIndex firstOffset=$currentFirstVisibleItemScrollOffset previousFirstVisible=$firstVisibleItemIndex previousFirstOffset=$firstVisibleItemScrollOffset"
+                )
+                return@LaunchedEffect
+            }
+            val targetAtBottom = listState.isTargetItemAtBottom(latestMessageListIndex)
+            if (!targetAtBottom) {
+                scrollThreadListToBottom(
+                        listState = listState,
+                        lastIndex = latestMessageListIndex,
+                        threadId = threadId,
+                        reason = "initial_layout_settle",
+                        messageCount = content.messages.size
+                )
+                firstVisibleItemIndex = listState.firstVisibleItemIndex
+                firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
+            } else {
+                firstVisibleItemIndex = currentFirstVisibleItemIndex
+                firstVisibleItemScrollOffset = currentFirstVisibleItemScrollOffset
+            }
         }
     }
     LaunchedEffect(lastMessageId, latestMessageListIndex) {
@@ -2288,8 +2524,13 @@ private fun ThreadMessageList(
         ) {
             val shouldFollow = followNewMessages
             if (shouldFollow) {
-                yield()
-                listState.scrollToItem(latestMessageListIndex, Int.MAX_VALUE)
+                scrollThreadListToBottom(
+                        listState = listState,
+                        lastIndex = latestMessageListIndex,
+                        threadId = threadId,
+                        reason = "last_message_changed",
+                        messageCount = content.messages.size
+                )
             }
             observedLastMessageId = lastMessageId
             followNewMessages = shouldFollow
@@ -2309,9 +2550,9 @@ private fun ThreadMessageList(
                 contentPadding =
                         androidx.compose.foundation.layout.PaddingValues(
                                 horizontal = horizontalPadding,
-                                vertical = SlockSpacing.Lg
+                                vertical = SlockSpacing.Md
                         ),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Lg)
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             if (showOlderPageState) {
                 item(key = "older-page-state") {
@@ -2340,20 +2581,27 @@ private fun ThreadMessageList(
             }
             if (content.replyActionErrorCode != null) {
                 item(key = "reply-action-error") {
-                    ThreadContextNotice(
-                            text =
-                                    "Reply thread failed: ${content.replyActionErrorCode}. Try Reply again."
+                    ThreadInlineRetryNotice(
+                            text = "Reply thread failed: ${content.replyActionErrorCode}",
+                            retryLabel = "Retry",
+                            onRetry = onRetryThreadLoad
                     )
                 }
             }
             itemsIndexed(items = content.messages, key = { _, message -> message.id.value }) {
                     index,
                     message ->
-                Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Lg)) {
+                Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
                     if (message.messageType == MessageType.System) {
                         ThreadSystemMessageItem(
                                 message = message,
-                                highlighted = message.id == content.highlightedMessageId
+                                highlighted = message.id == content.highlightedMessageId,
+                                onOpenThread =
+                                        if (showReplyAction) {
+                                            { onOpenMessageThread(message) }
+                                        } else {
+                                            null
+                                        }
                         )
                     } else {
                         ThreadMessageItem(
@@ -2364,9 +2612,15 @@ private fun ThreadMessageList(
                                 highlighted = message.id == content.highlightedMessageId,
                                 attachmentOpenStates = attachmentOpenStates,
                                 onOpenAttachment = onOpenAttachment,
-                                onOpenThread = { onOpenMessageThread(message) },
+                                onOpenThread =
+                                        if (showReplyAction) {
+                                            { onOpenMessageThread(message) }
+                                        } else {
+                                            null
+                                        },
                                 onOpenAuthorProfile = { onOpenMemberProfile(message.author) },
                                 onOpenTask = { onOpenTask(it) },
+                                onMarkTaskDone = onMarkTaskDone,
                                 onOpenMarkdownTag = onOpenMarkdownTag,
                                 resolveMemberName = resolveMemberName
                         )
@@ -2399,11 +2653,46 @@ private fun ThreadMessageList(
                                         ?: (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(
                                                 0
                                         )
-                        coroutineScope.launch { listState.scrollToItem(lastIndex, Int.MAX_VALUE) }
+                        coroutineScope.launch {
+                            scrollThreadListToBottom(
+                                    listState = listState,
+                                    lastIndex = lastIndex,
+                                    threadId = threadId,
+                                    reason = "back_to_bottom_click",
+                                    messageCount = content.messages.size
+                            )
+                        }
                     }
             )
         }
     }
+}
+
+private suspend fun scrollThreadListToBottom(
+        listState: LazyListState,
+        lastIndex: Int,
+        threadId: String,
+        reason: String,
+        messageCount: Int? = null
+) {
+    yield()
+    listState.scrollToItem(lastIndex, 0)
+    yield()
+    listState.scrollToItem(lastIndex, 0)
+    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+            "SlockThreadScroll",
+            "scroll_to_bottom reason=$reason threadId=$threadId lastIndex=$lastIndex messageCount=${messageCount ?: -1} firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} totalItems=${listState.layoutInfo.totalItemsCount}"
+    )
+}
+
+private fun LazyListState.isTargetItemAtBottom(targetIndex: Int): Boolean {
+    val layoutInfo = layoutInfo
+    val targetItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
+    val lastItem = layoutInfo.visibleItemsInfo.lastOrNull()
+    return targetItem != null &&
+            lastItem != null &&
+            lastItem.index >= targetIndex &&
+            targetItem.offset + targetItem.size <= layoutInfo.viewportEndOffset + 24
 }
 
 private data class OlderTopProbe(
@@ -2523,6 +2812,23 @@ private val ThreadContent.shouldShowOlderPageState: Boolean
 internal const val THREAD_MESSAGE_LIST_TAG = "thread-message-list"
 internal const val THREAD_BACK_TO_BOTTOM_TAG = "thread-back-to-bottom"
 
+private fun List<TaskSummary>.toThreadTasksUiState(): TasksUiState =
+        if (isEmpty()) {
+            TasksUiState(ScreenLoadState.Empty(EmptyReason.NoTasks))
+        } else {
+            TasksUiState(
+                    ScreenLoadState.Content(
+                            TasksContent(
+                                    summaryCounts = summaryCounts(),
+                                    tasks = this
+                            )
+                    )
+            )
+        }
+
+private fun List<TaskSummary>.summaryCounts(): Map<TaskStatus, Int> =
+        TaskStatus.entries.associateWith { status -> count { it.status == status } }
+
 @Composable
 private fun ThreadTaskSummary(tasks: List<TaskSummary>) {
     Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
@@ -2595,9 +2901,35 @@ fun ThreadMessageItem(
         onOpenThread: (() -> Unit)? = null,
         onOpenAuthorProfile: (() -> Unit)? = null,
         onOpenTask: ((TaskSummary) -> Unit)? = null,
+        onMarkTaskDone: (TaskSummary) -> Unit = {},
+        onShareMessage: (Message) -> Unit = {},
+        onCopyMessageLink: (Message) -> Unit = {},
         onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit = {},
         resolveMemberName: (MemberId) -> String? = { null }
 ) {
+    val context = LocalContext.current
+    var showMessageActions by remember(message.id.value) { mutableStateOf(false) }
+    var messageActionAnchor by remember(message.id.value) { mutableStateOf(IntOffset.Zero) }
+    var messageActionAreaOffset by remember(message.id.value) { mutableStateOf(IntOffset.Zero) }
+    var messageBodyOffset by remember(message.id.value) { mutableStateOf(IntOffset.Zero) }
+    fun openMessageActions(anchor: IntOffset) {
+        messageActionAnchor = anchor
+        showMessageActions = true
+    }
+    fun toggleMessageActions(anchor: IntOffset) {
+        if (showMessageActions) {
+            showMessageActions = false
+        } else {
+            openMessageActions(anchor)
+        }
+    }
+    var saveFeedbackVisible by remember(message.id.value) { mutableStateOf(false) }
+    LaunchedEffect(saveFeedbackVisible) {
+        if (saveFeedbackVisible) {
+            delay(1_800)
+            saveFeedbackVisible = false
+        }
+    }
     val horizontalPadding = threadHorizontalPadding()
     val alignCurrentUserRight =
             isCurrentUserMessage && myMessageAlignment == MyMessageAlignmentPreference.Right
@@ -2616,7 +2948,7 @@ fun ThreadMessageItem(
                                             if (highlighted) SlockColor.BorderBlack
                                             else Color.Transparent
                             )
-                            .padding(horizontal = horizontalPadding, vertical = SlockSpacing.Sm),
+                            .padding(horizontal = horizontalPadding, vertical = 6.dp),
             horizontalArrangement =
                     if (alignCurrentUserRight) {
                         Arrangement.spacedBy(SlockSpacing.Md, Alignment.End)
@@ -2628,7 +2960,33 @@ fun ThreadMessageItem(
             ThreadAvatar(message.author, onClick = onOpenAuthorProfile)
         }
         Column(
-                modifier = Modifier.weight(1f),
+                modifier =
+                        Modifier.weight(1f)
+                                .onGloballyPositioned { coordinates ->
+                                    val bounds = coordinates.boundsInRoot()
+                                    messageActionAreaOffset =
+                                            IntOffset(
+                                                    bounds.left.roundToInt(),
+                                                    bounds.top.roundToInt()
+                                            )
+                                }
+                                .messageActionsTrigger(
+                                        enabled =
+                                                message.body.isNotBlank() ||
+                                                        message.attachments.isNotEmpty() ||
+                                                        message.replyCount > 0 ||
+                                                        message.task != null,
+                                        rootOffsetProvider = { messageActionAreaOffset },
+                                        onOpen = ::toggleMessageActions,
+                                        onDismiss = { showMessageActions = false }
+                                )
+                                .semantics {
+                                    contentDescription = "Message actions"
+                                    onClick(label = "Message actions") {
+                                        showMessageActions = !showMessageActions
+                                        true
+                                    }
+                                },
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                 horizontalAlignment = if (alignCurrentUserRight) Alignment.End else Alignment.Start
         ) {
@@ -2688,17 +3046,33 @@ fun ThreadMessageItem(
                     )
                 }
             }
-            ThreadMarkdownBody(
-                    body = message.body,
+            Box(
                     modifier =
                             Modifier.messageContentWidth(
-                                    maxWidthFraction = messageMaxWidthFraction,
-                                    fill = bodyFillWidth,
-                                    alignment = Alignment.End
-                            ),
-                    textAlign = if (alignCurrentUserRight) TextAlign.End else TextAlign.Start,
-                    onTagClick = onOpenMarkdownTag
-            )
+                                            maxWidthFraction = messageMaxWidthFraction,
+                                            fill = bodyFillWidth,
+                                            alignment = Alignment.End
+                                    )
+                                    .onGloballyPositioned { coordinates ->
+                                        val bounds = coordinates.boundsInRoot()
+                                        messageBodyOffset =
+                                                IntOffset(
+                                                        bounds.left.roundToInt(),
+                                                        bounds.top.roundToInt()
+                                                )
+                                    }
+            ) {
+                SelectionContainer {
+                    ThreadMarkdownBody(
+                            body = message.body,
+                            textAlign = if (alignCurrentUserRight) TextAlign.End else TextAlign.Start,
+                            onTagClick = onOpenMarkdownTag
+                    )
+                }
+            }
+            if (saveFeedbackVisible) {
+                ThreadContextNotice("Saved locally")
+            }
             if (message.attachments.isNotEmpty()) {
                 ThreadMessageAttachments(
                         attachments = message.attachments,
@@ -2707,64 +3081,52 @@ fun ThreadMessageItem(
                         modifier = Modifier.messageContentWidth(messageMaxWidthFraction)
                 )
             }
-            val replyLabel = message.replyCount.takeIf { it > 0 }?.let { "$it replies" }
-            val taskChip = message.task
-            val showActionRow = replyLabel != null || taskChip != null
-            if (showActionRow) {
-                Row(
-                        modifier = Modifier.messageContentWidth(messageMaxWidthFraction),
-                        horizontalArrangement =
-                                if (alignCurrentUserRight) {
-                                    Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End)
+            if (message.task != null || message.replyCount > 0) {
+                ThreadMessageFooterMeta(
+                        message = message,
+                        onOpenThread = onOpenThread,
+                        alignEnd = alignCurrentUserRight,
+                        modifier = Modifier.messageContentWidth(messageMaxWidthFraction)
+                )
+            }
+            if (showMessageActions) {
+                ThreadMessageActionsPopup(
+                        message = message,
+                        anchor =
+                                if (messageActionAnchor == IntOffset.Zero) {
+                                    messageActionAreaOffset
                                 } else {
-                                    Arrangement.spacedBy(SlockSpacing.Sm)
-                                }
-                ) {
-                    if (taskChip != null) {
-                        val taskLabel =
-                                buildString {
-                                            taskChip.taskNumber?.let { append("#$it ") }
-                                            taskChip.assignee?.let { m ->
-                                                val name = resolveMemberName(m.id) ?: m.displayName
-                                                append("@$name")
-                                            }
-                                        }
-                                        .trim()
-                        ThreadChip(
-                                label = taskLabel.ifBlank { taskChip.title.take(24) },
-                                color = taskChip.status.threadColor,
-                                icon = SlockIcons.ListTodo,
-                                onClick = onOpenTask?.let { cb -> { cb(taskChip) } }
-                        )
-                    }
-                    if (replyLabel != null) {
-                        LaunchedEffect(
-                                message.id,
-                                message.threadChannelId,
-                                message.replyCount,
-                                replyLabel
-                        ) {
-                            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
-                                    "SlockThreadReplies",
-                                    "render_affordance parentMessageId=${message.id.value} " +
-                                            "channelId=${message.channelId?.value.orEmpty()} " +
-                                            "threadChannelId=${message.threadChannelId?.value.orEmpty()} " +
-                                            "replyCount=${message.replyCount} taskNumber=${message.task?.taskNumber ?: 0} " +
-                                            "renderedAffordance=$replyLabel source=thread_message_item"
-                            )
+                                    messageActionAnchor
+                                },
+                        onDismiss = { showMessageActions = false },
+                        onReply =
+                                onOpenThread?.let { openThread ->
+                                    {
+                                        openThread()
+                                        showMessageActions = false
+                                    }
+                                },
+                        onCopy = {
+                            context.copyThreadMessageBody(message.body)
+                            showMessageActions = false
+                        },
+                        onCopyLink = {
+                            onCopyMessageLink(message)
+                            showMessageActions = false
+                        },
+                        onSave = {
+                            saveFeedbackVisible = true
+                            showMessageActions = false
+                        },
+                        onShare = {
+                            onShareMessage(message)
+                            showMessageActions = false
+                        },
+                        onMarkDone = {
+                            message.task?.let(onMarkTaskDone)
+                            showMessageActions = false
                         }
-                        ThreadChip(
-                                label = replyLabel,
-                                color = SlockColor.AppBgLightBlue,
-                                icon = SlockIcons.MessageSquare,
-                                onClick = onOpenThread
-                        )
-                    }
-                    when (message.deliveryState) {
-                        MessageDeliveryState.Sent -> Unit
-                        MessageDeliveryState.Sending, MessageDeliveryState.Failed -> Unit
-                    }
-                }
+                )
             }
         }
         if (alignCurrentUserRight) {
@@ -2777,6 +3139,322 @@ private fun Message.isCurrentUserMessage(currentMemberId: MemberId?): Boolean =
         author.id == currentMemberId || author.id.value == LocalComposerAuthorId
 
 private const val LocalComposerAuthorId = "local-current-user"
+internal const val THREAD_MESSAGE_ACTION_MENU_TAG = "thread-message-action-menu"
+private val THREAD_MESSAGE_ACTION_MENU_WIDTH = 208.dp
+
+private fun Modifier.messageActionsTrigger(
+        enabled: Boolean,
+        rootOffsetProvider: () -> IntOffset,
+        onOpen: (IntOffset) -> Unit,
+        onDismiss: () -> Unit
+): Modifier =
+        if (!enabled) {
+            this
+        } else {
+            this.clickable(role = Role.Button, onClickLabel = "Message actions") {
+                        onOpen(rootOffsetProvider())
+                    }.pointerInput(onOpen, onDismiss) {
+                        awaitEachGesture {
+                            val down =
+                                    awaitFirstDown(
+                                            requireUnconsumed = false,
+                                            pass = PointerEventPass.Initial
+                                    )
+                            val pointerId = down.id
+                            val rootOffset = rootOffsetProvider()
+                            var totalPositionChange = androidx.compose.ui.geometry.Offset.Zero
+                            var lastPosition = down.position
+                            var wasDragDismissed = false
+                            do {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                event.changes
+                                        .firstOrNull { it.id == pointerId }
+                                        ?.let { change ->
+                                            totalPositionChange += change.positionChange()
+                                            lastPosition = change.position
+                                            if (event.type == PointerEventType.Release &&
+                                                            !wasDragDismissed
+                                            ) {
+                                                change.consume()
+                                            }
+                                        }
+                                if (event.changes.any {
+                                                it.id == pointerId &&
+                                                        it.pressed &&
+                                                        totalPositionChange.getDistance() > 6f
+                                        }
+                                ) {
+                                    wasDragDismissed = true
+                                    onDismiss()
+                                }
+                            } while (event.changes.any { it.id == pointerId && it.pressed })
+                            if (!wasDragDismissed) {
+                                onOpen(
+                                        IntOffset(
+                                                rootOffset.x + lastPosition.x.roundToInt(),
+                                                rootOffset.y + lastPosition.y.roundToInt()
+                                        )
+                                )
+                            }
+                        }
+                    }
+        }
+
+@Composable
+private fun ThreadMessageActionsPopup(
+        message: Message,
+        anchor: IntOffset,
+        onDismiss: () -> Unit,
+        onReply: (() -> Unit)?,
+        onCopy: () -> Unit,
+        onCopyLink: () -> Unit,
+        onSave: () -> Unit,
+        onShare: () -> Unit,
+        onMarkDone: () -> Unit
+) {
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val navigationBottomPx = WindowInsets.navigationBars.getBottom(density)
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
+    var menuSize by remember { mutableStateOf(IntSize.Zero) }
+    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.roundToPx() }
+    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.roundToPx() }
+    val bottomInsetPx = maxOf(navigationBottomPx, imeBottomPx)
+    val menuWidthPx =
+            menuSize.width.takeIf { it > 0 }
+                    ?: with(density) { THREAD_MESSAGE_ACTION_MENU_WIDTH.roundToPx() }
+    val menuHeightPx = menuSize.height
+    val menuOffset =
+            remember(anchor, screenWidthPx, screenHeightPx, bottomInsetPx, menuWidthPx, menuHeightPx) {
+                val gapPx = with(density) { SlockSpacing.Sm.roundToPx() }
+                val bottomLimit = (screenHeightPx - bottomInsetPx - gapPx).coerceAtLeast(gapPx)
+                val x = anchor.x.coerceIn(gapPx, (screenWidthPx - menuWidthPx - gapPx).coerceAtLeast(gapPx))
+                val preferredBelowY = anchor.y + gapPx
+                val preferredAboveY = anchor.y - menuHeightPx - gapPx
+                val maxTopY = (bottomLimit - menuHeightPx).coerceAtLeast(gapPx)
+                val y =
+                        if (menuHeightPx > 0 && preferredBelowY + menuHeightPx > bottomLimit) {
+                            if (preferredAboveY >= gapPx) {
+                                preferredAboveY
+                            } else {
+                                maxTopY
+                            }
+                        } else {
+                            preferredBelowY.coerceIn(
+                                    gapPx,
+                                    maxTopY
+                            )
+                        }
+                IntOffset(x, y)
+            }
+    Popup(
+            alignment = Alignment.TopStart,
+            onDismissRequest = onDismiss,
+            properties =
+                    PopupProperties(
+                            focusable = false,
+                            dismissOnBackPress = true,
+                            dismissOnClickOutside = true
+                    )
+    ) {
+        Box(
+                modifier =
+                        Modifier.size(
+                                width = configuration.screenWidthDp.dp,
+                                height = configuration.screenHeightDp.dp
+                        )
+        ) {
+            Box(
+                    modifier =
+                            Modifier.fillMaxSize()
+                                    .clickable(
+                                            indication = null,
+                                            interactionSource = remember {
+                                                MutableInteractionSource()
+                                            },
+                                            onClick = onDismiss
+                                    )
+            )
+            Column(
+                    modifier =
+                            Modifier.offset { menuOffset }
+                                    .padding(
+                                            end = SlockShadow.Default.offsetX,
+                                            bottom = SlockShadow.Default.offsetY
+                                    )
+                                    .slockHardShadow(SlockShadow.Default)
+                                    .width(THREAD_MESSAGE_ACTION_MENU_WIDTH)
+                                    .onGloballyPositioned { coordinates ->
+                                        menuSize = coordinates.size
+                                    }
+                                    .testTag(THREAD_MESSAGE_ACTION_MENU_TAG)
+                                    .background(SlockColor.SurfaceWhite)
+                                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+            ) {
+                ThreadMessageActionMenuItem(
+                        label = "Share messages...",
+                        icon = SlockIcons.Share2,
+                        onClick = onShare
+                )
+                ThreadMessageActionDivider()
+                ThreadMessageActionMenuItem(
+                        label = "Copy link",
+                        icon = SlockIcons.Link,
+                        onClick = onCopyLink
+                )
+                ThreadMessageActionMenuItem(
+                        label = "Copy markdown",
+                        icon = SlockIcons.Copy,
+                        onClick = onCopy
+                )
+                ThreadMessageActionDivider()
+                ThreadMessageActionMenuItem(
+                        label = "Save message",
+                        icon = SlockIcons.Bookmark,
+                        onClick = onSave
+                )
+                if (onReply != null) {
+                    ThreadMessageActionMenuItem(
+                            label = "Reply",
+                            icon = SlockIcons.MessageSquare,
+                            onClick = onReply
+                    )
+                }
+                if (message.task != null && message.task.status != TaskStatus.Done) {
+                    ThreadMessageActionDivider()
+                    ThreadMessageActionMenuItem(
+                            label = "Reopen task",
+                            icon = SlockIcons.RefreshCw,
+                            onClick = onMarkDone
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadMessageActionMenuItem(
+        label: String,
+        icon: androidx.compose.ui.graphics.vector.ImageVector,
+        onClick: () -> Unit
+) {
+    Row(
+            modifier =
+                    Modifier.fillMaxWidth()
+                            .defaultMinSize(minHeight = 46.dp)
+                            .background(SlockColor.SurfaceWhite)
+                            .clickable(role = Role.Button, onClick = onClick)
+                            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = SlockColor.TextBlack,
+                modifier = Modifier.size(20.dp)
+        )
+        Text(
+                text = label,
+                style = SlockType.Body.copy(fontWeight = FontWeight.Normal),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun ThreadMessageActionDivider() {
+    Box(
+            modifier =
+                    Modifier.fillMaxWidth()
+                            .height(SlockStroke.Default)
+                            .background(SlockColor.BorderBlack)
+    )
+}
+
+private fun Context.copyThreadMessageBody(body: String) {
+    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("Slock message", body))
+}
+
+internal const val THREAD_MESSAGE_FOOTER_META_TAG = "thread-message-footer-meta"
+internal const val THREAD_MESSAGE_FOOTER_ASSIGNEE_TAG = "thread-message-footer-assignee"
+internal const val THREAD_MESSAGE_FOOTER_REPLIES_TAG = "thread-message-footer-replies"
+
+@Composable
+private fun ThreadMessageFooterMeta(
+        message: Message,
+        onOpenThread: (() -> Unit)?,
+        alignEnd: Boolean,
+        modifier: Modifier = Modifier
+) {
+    val task = message.task
+    val replyLabel = message.replyCount.takeIf { it > 0 }?.let { "$it replies" }
+    if (task == null && replyLabel == null) return
+    if (replyLabel != null) {
+        LaunchedEffect(message.id, message.threadChannelId, message.replyCount, replyLabel) {
+            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                    "SlockThreadReplies",
+                    "render_affordance parentMessageId=${message.id.value} " +
+                            "channelId=${message.channelId?.value.orEmpty()} " +
+                            "threadChannelId=${message.threadChannelId?.value.orEmpty()} " +
+                            "replyCount=${message.replyCount} taskNumber=${message.task?.taskNumber ?: 0} " +
+                            "renderedAffordance=$replyLabel source=thread_message_item"
+            )
+        }
+    }
+    Row(
+            modifier =
+                    modifier.testTag(THREAD_MESSAGE_FOOTER_META_TAG),
+            horizontalArrangement =
+                    if (alignEnd) {
+                        Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End)
+                    } else {
+                        Arrangement.spacedBy(SlockSpacing.Sm)
+                    },
+            verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (task != null) {
+            val taskLabel = task.taskNumber?.let { "#$it" } ?: "Task"
+            val assigneeName = task.assignee?.resolvedFooterDisplayName()
+            val taskMetaLabel =
+                    listOfNotNull(taskLabel, assigneeName?.let { "@$it" }).joinToString(" ")
+            ThreadChip(
+                    label = taskMetaLabel,
+                    color = task.status.threadColor,
+                    icon = task.status.threadIcon,
+                    modifier =
+                            Modifier.weight(1f, fill = false)
+                                    .widthIn(max = 260.dp)
+                                    .testTag(THREAD_MESSAGE_FOOTER_ASSIGNEE_TAG),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (replyLabel != null) {
+            ThreadChip(
+                    label = replyLabel,
+                    color = SlockColor.AppBgLightBlue,
+                    icon = SlockIcons.MessageSquare,
+                    onClick = onOpenThread,
+                    modifier =
+                            Modifier.widthIn(max = 132.dp)
+                                    .testTag(THREAD_MESSAGE_FOOTER_REPLIES_TAG)
+            )
+        }
+    }
+}
+
+private fun MemberProfile.resolvedFooterDisplayName(): String? {
+    val display = displayName.trim().takeIf { it.isNotBlank() && it != id.value }
+    if (display != null) return display.removePrefix("@")
+    return handle.trim()
+            .removePrefix("@")
+            .takeIf { it.isNotBlank() && it != id.value }
+}
 
 private fun Modifier.messageContentWidth(
         maxWidthFraction: Float,
@@ -2824,9 +3502,9 @@ private fun ThreadAttachmentCard(
             } else {
                 SlockColor.BorderBlack
             }
-    Row(
+    Box(
             modifier =
-                    Modifier.fillMaxWidth()
+                    Modifier.size(92.dp)
                             .background(
                                     SlockColor.EmptyStateGray.copy(alpha = 0.22f),
                                     RoundedCornerShape(SlockRadius.Xs)
@@ -2837,56 +3515,24 @@ private fun ThreadAttachmentCard(
                                     RoundedCornerShape(SlockRadius.Xs)
                             )
                             .clickable(enabled = !isLoading, role = Role.Button, onClick = onOpen)
-                            .padding(SlockSpacing.Sm),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                            .clip(RoundedCornerShape(SlockRadius.Xs)),
+            contentAlignment = Alignment.Center
     ) {
         ThreadAttachmentThumbnail(
                 thumbnailUrl = thumbnailUrl,
                 isImage = isImage,
                 isLoading = isLoading
         )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                    text = attachment.name,
-                    style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                    text = attachment.displayMeta(state),
-                    style = SlockType.Caption,
-                    color =
-                            if (state.status == AttachmentOpenStatus.Error) {
-                                SlockColor.AccentRed
-                            } else {
-                                SlockColor.TextMutedGray
-                            },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-            )
-        }
-        Text(
-                text =
+        ThreadAttachmentTileLabel(
+                label =
                         when (state.status) {
-                            AttachmentOpenStatus.Loading -> "Opening"
-                            AttachmentOpenStatus.Error -> "Retry"
-                            AttachmentOpenStatus.Idle -> if (isImage) "Preview" else "Open"
+                            AttachmentOpenStatus.Loading -> "Opening..."
+                            AttachmentOpenStatus.Error ->
+                                    state.errorCode?.takeIf { it.isNotBlank() } ?: "Retry"
+                            AttachmentOpenStatus.Idle -> attachment.name
                         },
-                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
-                color = if (isLoading) SlockColor.TextMutedGray else SlockColor.TextBlack,
-                modifier =
-                        Modifier.background(
-                                        SlockColor.SurfaceWhite,
-                                        RoundedCornerShape(SlockRadius.Xs)
-                                )
-                                .border(
-                                        SlockStroke.Thin,
-                                        SlockColor.BorderBlack,
-                                        RoundedCornerShape(SlockRadius.Xs)
-                                )
-                                .padding(horizontal = SlockSpacing.Sm, vertical = 3.dp)
+                isError = state.status == AttachmentOpenStatus.Error,
+                modifier = Modifier.align(Alignment.BottomStart)
         )
     }
 }
@@ -2916,16 +3562,11 @@ private fun ThreadAttachmentThumbnail(
             }
     Box(
                 modifier =
-                        Modifier.size(if (imageBitmap != null) 52.dp else 36.dp)
+                        Modifier.fillMaxSize()
                                 .background(
                                         if (imageBitmap != null) SlockColor.SurfaceWhite
                                         else if (isImage) SlockColor.AccentPink
                                         else SlockColor.SurfaceWhite,
-                                        RoundedCornerShape(SlockRadius.Xs)
-                                )
-                                .border(
-                                        SlockStroke.Default,
-                                        SlockColor.BorderBlack,
                                         RoundedCornerShape(SlockRadius.Xs)
                 ),
                 contentAlignment = Alignment.Center
@@ -2949,30 +3590,37 @@ private fun ThreadAttachmentThumbnail(
                         imageVector = if (isImage) SlockIcons.Image else SlockIcons.FileText,
                         contentDescription = null,
                         tint = SlockColor.TextBlack,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(24.dp)
                 )
             }
         }
 }
 
-private fun Attachment.displayMeta(state: AttachmentOpenUiState): String =
-        when (state.status) {
-            AttachmentOpenStatus.Loading -> "Opening..."
-            AttachmentOpenStatus.Error ->
-                    listOfNotNull("Open failed", state.errorCode?.takeIf { it.isNotBlank() })
-                            .joinToString(": ")
-            AttachmentOpenStatus.Idle ->
-                    listOf(mimeType, sizeLabel)
-                            .filter { it.isNotBlank() }
-                            .joinToString(" · ")
-                            .ifBlank { "Attachment" }
-        }
+@Composable
+private fun ThreadAttachmentTileLabel(
+        label: String,
+        isError: Boolean,
+        modifier: Modifier = Modifier
+) {
+    Text(
+            text = label,
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+            color = if (isError) SlockColor.AccentRed else SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier =
+                    modifier.fillMaxWidth()
+                            .background(SlockColor.SurfaceWhite.copy(alpha = 0.92f))
+                            .padding(horizontal = SlockSpacing.Xs, vertical = 3.dp)
+    )
+}
 
 @Composable
-private fun ThreadSystemMessageItem(
+internal fun ThreadSystemMessageItem(
         message: Message,
         modifier: Modifier = Modifier,
-        highlighted: Boolean = false
+        highlighted: Boolean = false,
+        onOpenThread: (() -> Unit)? = null
 ) {
     val timestamp = message.timestampLabel.toThreadTimestampLabel()
     var expanded by rememberSaveable(message.id.value) { mutableStateOf(false) }
@@ -3011,6 +3659,14 @@ private fun ThreadSystemMessageItem(
         }
         if (expanded) {
             ThreadSystemMessageExpandedContent(message)
+        }
+        if (message.task != null || message.replyCount > 0) {
+            ThreadMessageFooterMeta(
+                    message = message,
+                    onOpenThread = onOpenThread,
+                    alignEnd = false,
+                    modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
@@ -3086,38 +3742,92 @@ enum class ThreadMarkdownTagKind {
     UserMention
 }
 
-private sealed interface InlineBodyPart {
-    data class PlainText(val text: String) : InlineBodyPart
-    data class Tag(val tag: ThreadMarkdownTag) : InlineBodyPart
+internal fun threadMarkdownTaskReferenceKey(label: String): String =
+        label.removePrefix("#").trim().lowercase()
+
+internal fun threadMarkdownTagDisplayLabel(label: String): String {
+    val trimmed = label.trim()
+    if (trimmed.isEmpty()) return trimmed
+    val prefix = if (trimmed.startsWith("@")) "@" else if (trimmed.startsWith("#")) "#" else ""
+    if (prefix.isEmpty()) return trimmed
+    return prefix + trimmed.dropWhile { it == prefix.first() }
 }
 
-private fun String.splitInlineBodyParts(): List<InlineBodyPart> {
+private fun threadInlineTagPlaceholderWidthDp(
+        label: String,
+        hasIcon: Boolean,
+        density: Density,
+        textMeasurer: TextMeasurer
+): Dp {
+    val horizontalPadding = SlockSpacing.Sm * 2
+    val iconWidth = if (hasIcon) 12.dp + SlockSpacing.Xs else 0.dp
+    return with(density) {
+        textMeasurer.measure(text = label, style = SlockType.Caption).size.width.toDp()
+    } + horizontalPadding + iconWidth + 2.dp
+}
+
+private fun threadInlineCodePlaceholderWidthDp(
+        code: String,
+        density: Density,
+        textMeasurer: TextMeasurer
+): Dp =
+        with(density) {
+            textMeasurer.measure(
+                    text = code,
+                    style =
+                            SlockType.Caption.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Normal,
+                                    fontSize = 13.sp
+                            )
+            ).size.width.toDp()
+        } + SlockSpacing.Sm * 2 + 2.dp
+
+internal fun threadInlineTagEstimatedWidthSp(label: String, hasIcon: Boolean): Float {
+    val iconWidth = if (hasIcon) 16f else 0f
+    return 18f + iconWidth + label.length * 8f
+}
+
+internal fun threadInlineCodeEstimatedWidthSp(code: String): Float {
+    return 14f + code.length * 9f
+}
+
+internal sealed interface InlineBodyPart {
+    data class PlainText(val text: String) : InlineBodyPart
+    data class Tag(val tag: ThreadMarkdownTag) : InlineBodyPart
+    data class Code(val code: String) : InlineBodyPart
+}
+
+internal fun String.splitInlineBodyParts(): List<InlineBodyPart> {
     val parts = mutableListOf<InlineBodyPart>()
-    val masked = maskMarkdownCodeRanges()
+    // Inline code (backtick span) is matched first so tags inside code are not parsed as tags
     val combined =
             Regex(
-                    """(?<!\w)@[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}|(?<![\w/])#[A-Za-z0-9][A-Za-z0-9_-]{0,63}"""
+                    """`([^`\n]+)`|(?<![\p{L}\p{N}_])@[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}|(?<![\p{L}\p{N}_])#\d+|(?<![\p{L}\p{N}_])#[\p{L}][\p{L}\p{N}_-]{0,63}"""
             )
     var cursor = 0
-    for (match in combined.findAll(masked)) {
+    for (match in combined.findAll(this)) {
         if (match.range.first > cursor) {
             parts.add(InlineBodyPart.PlainText(this.substring(cursor, match.range.first)))
         }
-        val token = this.substring(match.range)
-        val tag =
-                when {
-                    token.startsWith('@') ->
-                            ThreadMarkdownTag(token, ThreadMarkdownTagKind.UserMention)
-                    token.drop(1).all { it.isDigit() } ->
-                            ThreadMarkdownTag(token, ThreadMarkdownTagKind.Task)
-                    token.equals("#task", ignoreCase = true) -> {
-                        parts.add(InlineBodyPart.PlainText(token))
-                        cursor = match.range.last + 1
-                        continue
-                    }
-                    else -> ThreadMarkdownTag(token, ThreadMarkdownTagKind.Channel)
-                }
-        parts.add(InlineBodyPart.Tag(tag))
+        val fullMatch = match.value
+        when {
+            fullMatch.startsWith('`') -> {
+                parts.add(InlineBodyPart.Code(match.groupValues[1]))
+            }
+            fullMatch.startsWith('@') -> {
+                parts.add(InlineBodyPart.Tag(ThreadMarkdownTag(fullMatch, ThreadMarkdownTagKind.UserMention)))
+            }
+            fullMatch.drop(1).all { it.isDigit() } -> {
+                parts.add(InlineBodyPart.Tag(ThreadMarkdownTag(fullMatch, ThreadMarkdownTagKind.Task)))
+            }
+            fullMatch.equals("#task", ignoreCase = true) -> {
+                parts.add(InlineBodyPart.PlainText(fullMatch))
+            }
+            else -> {
+                parts.add(InlineBodyPart.Tag(ThreadMarkdownTag(fullMatch, ThreadMarkdownTagKind.Channel)))
+            }
+        }
         cursor = match.range.last + 1
     }
     if (cursor < length) parts.add(InlineBodyPart.PlainText(this.substring(cursor)))
@@ -3132,46 +3842,164 @@ private fun ThreadInlineTagsBody(
         modifier: Modifier = Modifier,
         onTagClick: (ThreadMarkdownTag) -> Unit
 ) {
-    Row(
-            modifier = modifier,
-            horizontalArrangement = Arrangement.spacedBy(0.dp),
-            verticalAlignment = Alignment.CenterVertically
-    ) {
-        parts.forEach { part ->
-            when (part) {
-                is InlineBodyPart.PlainText ->
-                        if (part.text.isNotEmpty()) {
-                            Text(
-                                    text = part.text,
-                                    style = style,
-                                    textAlign = textAlign,
-                                    color = SlockColor.TextBlack
-                            )
-                        }
-                is InlineBodyPart.Tag -> {
-                    val tag = part.tag
-                    ThreadChip(
-                            label = tag.label,
-                            color =
-                                    when (tag.kind) {
-                                        ThreadMarkdownTagKind.Channel -> SlockColor.AccentCyan
-                                        ThreadMarkdownTagKind.Task -> SlockColor.AccentOrange
-                                        ThreadMarkdownTagKind.UserMention ->
-                                                SlockColor.AccentLavender
-                                    },
-                            icon =
-                                    when (tag.kind) {
-                                        ThreadMarkdownTagKind.Channel -> SlockIcons.Hash
-                                        ThreadMarkdownTagKind.Task -> SlockIcons.ListTodo
-                                        ThreadMarkdownTagKind.UserMention -> SlockIcons.User
-                                    },
-                            onClick = { onTagClick(tag) }
-                    )
+    val density = LocalDensity.current
+    val fontScale = density.fontScale
+    val textMeasurer = rememberTextMeasurer()
+    var textLayoutResult by remember(parts) { mutableStateOf<TextLayoutResult?>(null) }
+
+    val annotatedString = remember(parts) {
+        buildAnnotatedString {
+            parts.forEachIndexed { index, part ->
+                when (part) {
+                    is InlineBodyPart.PlainText -> append(part.text)
+                    is InlineBodyPart.Tag -> {
+                        pushStringAnnotation(ThreadInlineTagAnnotation, index.toString())
+                        appendInlineContent("slock:$index", part.tag.label)
+                        pop()
+                    }
+                    is InlineBodyPart.Code -> appendInlineContent("slock-code:$index", part.code)
                 }
             }
         }
     }
+
+    val inlineContent: Map<String, InlineTextContent> = remember(parts, fontScale, textMeasurer) {
+        buildMap {
+            parts.forEachIndexed { index, part ->
+                when (part) {
+                    is InlineBodyPart.Tag -> {
+                        val tag = part.tag
+                        val label = threadMarkdownTagDisplayLabel(tag.label)
+                        val icon =
+                                when (tag.kind) {
+                                    ThreadMarkdownTagKind.Channel -> null
+                                    ThreadMarkdownTagKind.Task -> null
+                                    ThreadMarkdownTagKind.UserMention -> SlockIcons.User
+                                }
+                        val width =
+                                with(density) {
+                                    threadInlineTagPlaceholderWidthDp(
+                                            label = label,
+                                            hasIcon = icon != null,
+                                            density = density,
+                                            textMeasurer = textMeasurer
+                                    ).toSp()
+                                }
+                        val heightSp = 16f + 6f / fontScale
+                        put(
+                                "slock:$index",
+                                InlineTextContent(
+                                        Placeholder(
+                                                width = width,
+                                                height = heightSp.sp,
+                                                placeholderVerticalAlign =
+                                                        PlaceholderVerticalAlign.Center
+                                        )
+                                ) {
+                                    ThreadChip(
+                                            label = label,
+                                            color =
+                                                    when (tag.kind) {
+                                                        ThreadMarkdownTagKind.Channel ->
+                                                                SlockColor.AccentCyan
+                                                        ThreadMarkdownTagKind.Task ->
+                                                                SlockColor.AccentOrange
+                                                        ThreadMarkdownTagKind.UserMention ->
+                                                                SlockColor.AccentLavender
+                                                    },
+                                            icon = icon,
+                                            onClick = { onTagClick(tag) }
+                                    )
+                                }
+                        )
+                    }
+                    is InlineBodyPart.Code -> {
+                        val code = part.code
+                        val width =
+                                with(density) {
+                                    threadInlineCodePlaceholderWidthDp(
+                                            code = code,
+                                            density = density,
+                                            textMeasurer = textMeasurer
+                                    ).toSp()
+                                }
+                        val heightSp = 18f + 6f / fontScale
+                        put(
+                                "slock-code:$index",
+                                InlineTextContent(
+                                        Placeholder(
+                                                width = width,
+                                                height = heightSp.sp,
+                                                placeholderVerticalAlign =
+                                                        PlaceholderVerticalAlign.Center
+                                        )
+                                ) {
+                                    Box(
+                                            modifier =
+                                                    Modifier.fillMaxSize()
+                                                            .background(
+                                                                    SlockColor.BrandYellow.copy(
+                                                                            alpha = 0.42f
+                                                                    )
+                                                            )
+                                                            .border(
+                                                                    SlockStroke.Thin,
+                                                                    SlockColor.BorderBlack
+                                                            )
+                                                            .padding(horizontal = SlockSpacing.Sm),
+                                            contentAlignment = Alignment.CenterStart
+                                    ) {
+                                        Text(
+                                                text = code,
+                                                style =
+                                                        SlockType.Caption.copy(
+                                                                fontFamily = FontFamily.Monospace,
+                                                                fontWeight = FontWeight.Normal,
+                                                                fontSize = 13.sp
+                                                ),
+                                                color = SlockColor.TextBlack,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Visible
+                                        )
+                                    }
+                                }
+                        )
+                    }
+                    is InlineBodyPart.PlainText -> Unit
+                }
+            }
+        }
+    }
+
+    Text(
+            text = annotatedString,
+            style = style.copy(textAlign = textAlign),
+            color = SlockColor.TextBlack,
+            modifier = modifier,
+            onTextLayout = { textLayoutResult = it },
+            inlineContent = inlineContent
+    )
 }
+
+private fun androidx.compose.ui.text.AnnotatedString.threadTagAtOffset(
+        offset: Int,
+        parts: List<InlineBodyPart>
+): ThreadMarkdownTag? =
+        listOf(offset, offset - 1, offset + 1)
+                .asSequence()
+                .filter { it >= 0 && it <= length }
+                .mapNotNull { probe ->
+                    getStringAnnotations(ThreadInlineTagAnnotation, probe, probe)
+                            .firstOrNull()
+                            ?.item
+                            ?.toIntOrNull()
+                            ?.let { index ->
+                                (parts.getOrNull(index) as? InlineBodyPart.Tag)?.tag
+                            }
+                }
+                .firstOrNull()
+
+private const val ThreadInlineTagAnnotation = "thread_tag"
 
 private fun String.maskMarkdownCodeRanges(): String {
     val chars = toCharArray()
@@ -3212,14 +4040,7 @@ private fun ThreadMarkdownBody(
             remember(body, onTagClick) {
                 onTagClick != null && (body.contains('@') || body.contains('#'))
             }
-    val bodyTypography =
-            SlockType.Body.copy(
-                    fontWeight = FontWeight.Light,
-                    fontFamily = SlockLightFontFamily,
-                    fontSize = 15.sp,
-                    lineHeight = 21.sp,
-                    textAlign = textAlign
-            )
+    val bodyTypography = ThreadMessageBodyTextStyle.copy(textAlign = textAlign)
     val codeTypography =
             bodyTypography.copy(
                     fontFamily = FontFamily.Monospace,
@@ -3296,8 +4117,8 @@ private fun ThreadMarkdownBody(
 @Composable
 private fun ThreadMarkdownContent(
         body: String,
-        bodyTypography: androidx.compose.ui.text.TextStyle,
-        codeTypography: androidx.compose.ui.text.TextStyle
+        bodyTypography: TextStyle,
+        codeTypography: TextStyle
 ) {
     Markdown(
             content = body,
@@ -3470,10 +4291,20 @@ private val ThreadCompactTimeFormatter: DateTimeFormatter = DateTimeFormatter.of
 
 private fun String.toThreadZonedDateTime(zoneId: ZoneId): ZonedDateTime? {
     val trimmed = trim()
+    val isoLikeTrimmed = trimmed.replace(' ', 'T')
     return parseOrNull { Instant.parse(trimmed).atZone(zoneId) }
             ?: parseOrNull { OffsetDateTime.parse(trimmed).toZonedDateTime() }
                     ?: parseOrNull { ZonedDateTime.parse(trimmed) }
                     ?: parseOrNull { LocalDateTime.parse(trimmed).atZone(zoneId) }
+                            ?: parseOrNull { Instant.parse(isoLikeTrimmed).atZone(zoneId) }
+                                    ?: parseOrNull {
+                                        OffsetDateTime.parse(isoLikeTrimmed).toZonedDateTime()
+                                    }
+                                            ?: parseOrNull { ZonedDateTime.parse(isoLikeTrimmed) }
+                                                    ?: parseOrNull {
+                                                        LocalDateTime.parse(isoLikeTrimmed)
+                                                                .atZone(zoneId)
+                                                    }
 }
 
 private inline fun <T> parseOrNull(block: () -> T): T? =
@@ -3488,10 +4319,14 @@ private fun ThreadChip(
         label: String,
         color: Color,
         icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
-        onClick: (() -> Unit)? = null
+        onClick: (() -> Unit)? = null,
+        modifier: Modifier = Modifier,
+        maxLines: Int = 2,
+        overflow: TextOverflow = TextOverflow.Clip
 ) {
     val chipModifier =
-            Modifier.background(color)
+            modifier
+                    .background(color)
                     .border(SlockStroke.Thin, SlockColor.BorderBlack)
                     .then(
                             if (onClick != null)
@@ -3512,7 +4347,13 @@ private fun ThreadChip(
                     modifier = Modifier.size(12.dp)
             )
         }
-        Text(label, style = SlockType.Caption, color = SlockColor.TextBlack, maxLines = 2)
+        Text(
+                label,
+                style = SlockType.Caption,
+                color = SlockColor.TextBlack,
+                maxLines = maxLines,
+                overflow = overflow
+        )
     }
 }
 
@@ -3527,7 +4368,9 @@ fun ThreadComposerBar(
         onRemoveAttachment: (String) -> Unit = {},
         onRetryAttachment: () -> Unit = {},
         onSend: () -> Unit,
-        modifier: Modifier = Modifier
+        modifier: Modifier = Modifier,
+        memberSuggestions: List<MemberProfile> = emptyList(),
+        channelSuggestions: List<ConversationSummary> = emptyList()
 ) {
     var composerFieldValue by remember { mutableStateOf(TextFieldValue(composerState.value)) }
     if (composerFieldValue.text != composerState.value) {
@@ -3546,7 +4389,6 @@ fun ThreadComposerBar(
     val composerSectionSpacing = SlockSpacing.Sm
     val composerTextFieldMinHeight = 48.dp
     val composerTextFieldVerticalPadding = 12.dp
-    val composerSendButtonCompact = false
     val enabled =
             composerState.enabled &&
                     composerState.status != ComposerStatus.NoPermission &&
@@ -3565,109 +4407,352 @@ fun ThreadComposerBar(
                         "sendRowVisible=true status=${composerState.status}"
         )
     }
-    Column(
-            modifier =
-                    modifier.fillMaxWidth()
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .onGloballyPositioned { coordinates ->
-                                val position = coordinates.positionInWindow()
-                                recordImeDiagnostic(
-                                        diagnosticFields(
-                                                source = "composer_bounds",
-                                                topPx = position.y.toInt(),
-                                                bottomPx =
-                                                        (position.y + coordinates.size.height)
-                                                                .toInt(),
-                                                heightPx = coordinates.size.height
-                                        )
-                                )
-                            }
-                            .padding(
-                                    start = horizontalPadding,
-                                    top = composerTopPadding,
-                                    end = horizontalPadding,
-                                    bottom = bottomPadding
-                            ),
-            verticalArrangement = Arrangement.spacedBy(composerSectionSpacing)
-    ) {
-        val statusLabel = composerState.statusLabel
-        if (statusLabel != null) {
-            Text(
-                    text = statusLabel,
-                    style = SlockType.Caption,
-                    color =
-                            if (composerState.status == ComposerStatus.Failed) {
-                                SlockColor.AccentRed
-                            } else {
-                                SlockColor.TextMutedGray
-                            }
-            )
-        }
-        if (composerState.pendingAttachments.isNotEmpty()) {
-            PendingAttachmentTray(
-                    attachments = composerState.pendingAttachments,
-                    enabled = enabled,
-                    onRemoveAttachment = onRemoveAttachment,
-                    onRetryAttachment = onRetryAttachment
-            )
-        }
     val composerValueProvider = { composerFieldValue }
     val handleComposerFieldValueChange = { nextValue: TextFieldValue ->
         composerFieldValue = nextValue
         onComposerChange(nextValue.text)
     }
-        val insertComposerNewline = {
-            handleComposerFieldValueChange(composerFieldValue.insertTextAtSelection("\n"))
+    val suggestionTrigger = remember(composerFieldValue) {
+        detectComposerSuggestionTrigger(composerFieldValue)
+    }
+    val filteredMemberSuggestions = remember(suggestionTrigger, memberSuggestions) {
+        when (val trigger = suggestionTrigger) {
+            is ComposerSuggestionTrigger.MemberTrigger ->
+                memberSuggestions.filter { member ->
+                    val q = trigger.query.lowercase()
+                    member.displayName.lowercase().contains(q) ||
+                            member.handle.lowercase().contains(q)
+                }.take(6)
+            else -> emptyList()
         }
-        val textToolbar = rememberComposerTextToolbar(onInsertNewline = insertComposerNewline)
-        CompositionLocalProvider(LocalTextToolbar provides textToolbar) {
-            SlockTextField(
-                value = composerState.value,
-                onValueChange = onComposerChange,
-                fieldValue = composerFieldValue,
-                onFieldValueChange = handleComposerFieldValueChange,
-                placeholder = placeholder,
-                enabled = enabled,
-                singleLine = false,
-                minLines = 1,
-                maxLines = 4,
-                reserveErrorSpace = false,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions =
-                        KeyboardActions(
-                                onSend = {
-                                    if (composerState.canSend) {
-                                        onSend()
-                                    }
-                                }
-                        ),
-                inputModifier =
-                        Modifier.threadComposerNewlineInput(
-                                composerValueProvider,
-                                handleComposerFieldValueChange
-                        ),
-                minContentHeight = composerTextFieldMinHeight,
-                contentPaddingVertical = composerTextFieldVerticalPadding,
-                inputFontWeight = FontWeight.Light,
-                inputFontFamily = SlockLightFontFamily
-            )
+    }
+    val filteredChannelSuggestions = remember(suggestionTrigger, channelSuggestions) {
+        when (val trigger = suggestionTrigger) {
+            is ComposerSuggestionTrigger.ChannelTrigger ->
+                channelSuggestions.filter { channel ->
+                    val q = trigger.query.lowercase()
+                    channel.name.lowercase().contains(q)
+                }.take(6)
+            else -> emptyList()
         }
-        Row(
-                modifier =
-                        Modifier.fillMaxWidth().onGloballyPositioned { coordinates ->
-                            val position = coordinates.positionInWindow()
-                            recordImeDiagnostic(
-                                    diagnosticFields(
-                                            source = "send_row_bounds",
-                                            topPx = position.y.toInt(),
-                                            bottomPx =
-                                                    (position.y + coordinates.size.height).toInt(),
-                                            heightPx = coordinates.size.height
+    }
+    Column(modifier = modifier.fillMaxWidth().navigationBarsPadding()) {
+        if (filteredMemberSuggestions.isNotEmpty()) {
+            ComposerMemberSuggestionDropdown(
+                    members = filteredMemberSuggestions,
+                    onSelect = { member ->
+                        (suggestionTrigger as? ComposerSuggestionTrigger.MemberTrigger)?.let { trigger ->
+                            handleComposerFieldValueChange(
+                                    composerFieldValue.replaceTriggerWith(
+                                            trigger.triggerStart,
+                                            "@${member.handle} "
                                     )
                             )
-                        },
-                verticalAlignment = Alignment.CenterVertically
+                        }
+                    }
+            )
+        }
+        if (filteredChannelSuggestions.isNotEmpty()) {
+            ComposerChannelSuggestionDropdown(
+                    channels = filteredChannelSuggestions,
+                    onSelect = { channel ->
+                        (suggestionTrigger as? ComposerSuggestionTrigger.ChannelTrigger)?.let { trigger ->
+                            handleComposerFieldValueChange(
+                                    composerFieldValue.replaceTriggerWith(
+                                            trigger.triggerStart,
+                                            "#${channel.name} "
+                                    )
+                            )
+                        }
+                    }
+            )
+        }
+        Column(
+                modifier =
+                        Modifier.fillMaxWidth()
+                                .background(SlockColor.SurfaceWhite)
+                                .drawBehind {
+                                    val stroke = SlockStroke.Default.toPx()
+                                    drawLine(
+                                            color = SlockColor.BorderBlack,
+                                            start = Offset(0f, stroke / 2f),
+                                            end = Offset(size.width, stroke / 2f),
+                                            strokeWidth = stroke
+                                    )
+                                }
+                                .onGloballyPositioned { coordinates ->
+                                    val position = coordinates.positionInWindow()
+                                    recordImeDiagnostic(
+                                            diagnosticFields(
+                                                    source = "composer_bounds",
+                                                    topPx = position.y.toInt(),
+                                                    bottomPx =
+                                                            (position.y + coordinates.size.height)
+                                                                    .toInt(),
+                                                    heightPx = coordinates.size.height
+                                            )
+                                    )
+                                }
+                                .padding(
+                                        start = horizontalPadding,
+                                        top = composerTopPadding,
+                                        end = horizontalPadding,
+                                        bottom = bottomPadding
+                                ),
+                verticalArrangement = Arrangement.spacedBy(composerSectionSpacing)
+        ) {
+            val statusLabel = composerState.statusLabel
+            if (statusLabel != null) {
+                Text(
+                        text = statusLabel,
+                        style = SlockType.Caption,
+                        color =
+                                if (composerState.status == ComposerStatus.Failed) {
+                                    SlockColor.AccentRed
+                                } else {
+                                    SlockColor.TextMutedGray
+                                }
+                )
+            }
+            if (composerState.pendingAttachments.isNotEmpty()) {
+                PendingAttachmentTray(
+                        attachments = composerState.pendingAttachments,
+                        enabled = enabled,
+                        onRemoveAttachment = onRemoveAttachment,
+                        onRetryAttachment = onRetryAttachment
+                )
+            }
+            val insertComposerNewline = {
+                handleComposerFieldValueChange(composerFieldValue.insertTextAtSelection("\n"))
+            }
+            val textToolbar = rememberComposerTextToolbar(onInsertNewline = insertComposerNewline)
+            CompositionLocalProvider(LocalTextToolbar provides textToolbar) {
+                SlockTextField(
+                    value = composerState.value,
+                    onValueChange = onComposerChange,
+                    fieldValue = composerFieldValue,
+                    onFieldValueChange = handleComposerFieldValueChange,
+                    placeholder = placeholder,
+                    enabled = enabled,
+                    singleLine = false,
+                    minLines = 1,
+                    maxLines = 4,
+                    reserveErrorSpace = false,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions =
+                            KeyboardActions(
+                                    onSend = {
+                                        if (composerState.canSend) {
+                                            onSend()
+                                        }
+                                    }
+                            ),
+                    inputModifier =
+                            Modifier.threadComposerNewlineInput(
+                                    composerValueProvider,
+                                    handleComposerFieldValueChange
+                            ),
+                    bottomContent = {
+                        ThreadComposerInlineActions(
+                                composerState = composerState,
+                                enabled = enabled,
+                                onAttachImage = onAttachImage,
+                                onAttachFile = onAttachFile,
+                                onAsTaskChange = onAsTaskChange,
+                                onSend = onSend
+                        )
+                    },
+                    minContentHeight = composerTextFieldMinHeight,
+                    contentPaddingVertical = composerTextFieldVerticalPadding,
+                    inputFontWeight = FontWeight.Normal,
+                    inputFontFamily = SlockNormalFontFamily
+                )
+            }
+            if (composerState.attachmentIds.isNotEmpty() && composerState.pendingAttachments.isEmpty()) {
+                Text(
+                        text = "${composerState.attachmentIds.size} files",
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun threadComposerBottomPadding(): Dp = SlockSpacing.Xs
+
+private sealed class ComposerSuggestionTrigger {
+    data class MemberTrigger(val query: String, val triggerStart: Int) : ComposerSuggestionTrigger()
+    data class ChannelTrigger(val query: String, val triggerStart: Int) : ComposerSuggestionTrigger()
+    object None : ComposerSuggestionTrigger()
+}
+
+private fun detectComposerSuggestionTrigger(fieldValue: TextFieldValue): ComposerSuggestionTrigger {
+    val text = fieldValue.text
+    val cursor = fieldValue.selection.min.coerceIn(0, text.length)
+    val textBeforeCursor = text.substring(0, cursor)
+    var triggerIndex = -1
+    var triggerChar = ' '
+    for (i in textBeforeCursor.indices.reversed()) {
+        val c = textBeforeCursor[i]
+        if (c.isWhitespace()) break
+        if (c == '@' || c == '#') {
+            if (i == 0 || textBeforeCursor[i - 1].isWhitespace()) {
+                triggerIndex = i
+                triggerChar = c
+            }
+            break
+        }
+    }
+    if (triggerIndex < 0) return ComposerSuggestionTrigger.None
+    val query = textBeforeCursor.substring(triggerIndex + 1)
+    return when (triggerChar) {
+        '@' -> ComposerSuggestionTrigger.MemberTrigger(query, triggerIndex)
+        '#' -> ComposerSuggestionTrigger.ChannelTrigger(query, triggerIndex)
+        else -> ComposerSuggestionTrigger.None
+    }
+}
+
+private fun TextFieldValue.replaceTriggerWith(triggerStart: Int, replacement: String): TextFieldValue {
+    val end = selection.min.coerceIn(0, text.length)
+    val nextText = text.replaceRange(triggerStart, end, replacement)
+    val nextCursor = triggerStart + replacement.length
+    return copy(text = nextText, selection = TextRange(nextCursor))
+}
+
+@Composable
+private fun ComposerMemberSuggestionDropdown(
+        members: List<MemberProfile>,
+        onSelect: (MemberProfile) -> Unit
+) {
+    Column(
+            modifier =
+                    Modifier.fillMaxWidth()
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+    ) {
+        Text(
+                text = "IN THIS CHANNEL",
+                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                color = SlockColor.TextMutedGray,
+                modifier = Modifier.padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs)
+        )
+        members.forEach { member ->
+            Row(
+                    modifier =
+                            Modifier.fillMaxWidth()
+                                    .clickable { onSelect(member) }
+                                    .background(SlockColor.SurfaceWhite)
+                                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                                    .padding(SlockSpacing.Sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                Box(modifier = Modifier.size(32.dp)) {
+                    SlockAvatar(
+                            avatarUrl = member.avatarUrl,
+                            avatar = member.avatar,
+                            label = member.avatarLabel,
+                            modifier = Modifier.fillMaxSize(),
+                            size = 32.dp
+                    )
+                }
+                Text(
+                        text = member.displayName,
+                        style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                        color = SlockColor.TextBlack,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                        text = "@${member.handle}",
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComposerChannelSuggestionDropdown(
+        channels: List<ConversationSummary>,
+        onSelect: (ConversationSummary) -> Unit
+) {
+    Column(
+            modifier =
+                    Modifier.fillMaxWidth()
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+    ) {
+        channels.forEach { channel ->
+            Row(
+                    modifier =
+                            Modifier.fillMaxWidth()
+                                    .clickable { onSelect(channel) }
+                                    .background(SlockColor.SurfaceWhite)
+                                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                                    .padding(SlockSpacing.Sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                Box(
+                        modifier =
+                                Modifier.size(32.dp)
+                                        .background(SlockColor.BrandYellow)
+                                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                        contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                            text = "#",
+                            style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                            color = SlockColor.TextBlack
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                            text = channel.name,
+                            style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                    )
+                    if (!channel.subtitle.isNullOrBlank()) {
+                        Text(
+                                text = channel.subtitle,
+                                style = SlockType.Caption,
+                                color = SlockColor.TextMutedGray,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun ThreadComposerInlineActions(
+        composerState: ComposerState,
+        enabled: Boolean,
+        onAttachImage: () -> Unit,
+        onAttachFile: () -> Unit,
+        onAsTaskChange: (Boolean) -> Unit,
+        onSend: () -> Unit
+) {
+    Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             CompactIconButton(
                     SlockIcons.ImagePlus,
@@ -3675,41 +4760,31 @@ fun ThreadComposerBar(
                     enabled = enabled,
                     onClick = onAttachImage
             )
-            Spacer(modifier = Modifier.width(SlockSpacing.Sm))
             CompactIconButton(
                     SlockIcons.Paperclip,
                     "Attach file",
                     enabled = enabled,
                     onClick = onAttachFile
             )
-            Spacer(modifier = Modifier.weight(1f))
-            if (composerState.attachmentIds.isNotEmpty() &&
-                            composerState.pendingAttachments.isEmpty()
-            ) {
-                Text(
-                        text = "${composerState.attachmentIds.size} files",
-                        style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray
-                )
-                Spacer(modifier = Modifier.width(SlockSpacing.Md))
-            }
-            AsTaskToggle(
+        }
+        Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            SlockLabeledCheckbox(
+                    label = "As Task",
                     checked = composerState.asTask,
-                    enabled = enabled,
                     onCheckedChange = onAsTaskChange,
-                    compact = composerSendButtonCompact
+                    enabled = enabled,
+                    size = 18.dp
             )
-            Spacer(modifier = Modifier.width(SlockSpacing.Md))
             ThreadSendButton(
                     state = composerState.sendVisualState,
-                    onClick = onSend,
-                    compact = composerSendButtonCompact
+                    onClick = onSend
             )
         }
     }
 }
-
-@Composable private fun threadComposerBottomPadding(): Dp = SlockSpacing.Md
 
 private fun Modifier.threadComposerNewlineInput(
         valueProvider: () -> TextFieldValue,
@@ -4037,16 +5112,12 @@ private val PendingAttachment.displayMeta: String
 @Composable
 private fun ThreadSendButton(
         state: ComposerSendVisualState,
-        onClick: () -> Unit,
-        compact: Boolean = false
+        onClick: () -> Unit
 ) {
     val enabled = state == ComposerSendVisualState.Ready || state == ComposerSendVisualState.Failed
-    val minHeight = if (compact) 20.dp else 24.dp
-    val horizontalPadding = if (compact) SlockSpacing.Xs else SlockSpacing.Sm
-    val verticalPadding = if (compact) 1.dp else 2.dp
-    Row(
+    Box(
             modifier =
-                    Modifier.heightIn(min = minHeight)
+                    Modifier.size(28.dp)
                             .background(SlockColor.AccentPink, RoundedCornerShape(SlockRadius.Xs))
                             .border(
                                     SlockStroke.Default,
@@ -4054,39 +5125,16 @@ private fun ThreadSendButton(
                                     RoundedCornerShape(SlockRadius.Xs)
                             )
                             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-                            .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                            .padding(5.dp),
+            contentAlignment = Alignment.Center
     ) {
-        Text(
-                text = state.label,
-                style = SlockType.Caption,
-                color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                textAlign = TextAlign.Center
-        )
         Icon(
                 imageVector = SlockIcons.Send,
-                contentDescription = null,
+                contentDescription = state.label,
                 tint = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                modifier = Modifier.size(12.dp)
+                modifier = Modifier.size(16.dp)
         )
     }
-}
-
-@Composable
-private fun AsTaskToggle(
-        checked: Boolean,
-        enabled: Boolean,
-        onCheckedChange: (Boolean) -> Unit,
-        compact: Boolean = false
-) {
-    SlockLabeledCheckbox(
-            label = "As Task",
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            enabled = enabled,
-            size = if (compact) 16.dp else 18.dp
-    )
 }
 
 private enum class ComposerSendVisualState(val label: String) {
@@ -4241,9 +5289,19 @@ private val TaskStatus.threadColor: Color
             when (this) {
                 TaskStatus.Todo -> SlockColor.AccentOrange
                 TaskStatus.InProgress -> SlockColor.AccentCyan
-                TaskStatus.InReview -> SlockColor.BrandYellow
+                TaskStatus.InReview -> SlockColor.AccentLavender
                 TaskStatus.Done -> SlockColor.AccentLime
-                TaskStatus.Closed -> SlockColor.TextMutedGray
+                TaskStatus.Closed -> SlockColor.AccentRed
+            }
+
+private val TaskStatus.threadIcon: androidx.compose.ui.graphics.vector.ImageVector
+    get() =
+            when (this) {
+                TaskStatus.Todo -> SlockIcons.Circle
+                TaskStatus.InProgress -> SlockIcons.Play
+                TaskStatus.InReview -> SlockIcons.Eye
+                TaskStatus.Done -> SlockIcons.CircleCheckBig
+                TaskStatus.Closed -> SlockIcons.Ban
             }
 
 private val TaskStatus.threadLabel: String
@@ -4274,6 +5332,33 @@ private fun ThreadScreenStatesPreview() {
                     modifier = Modifier.heightIn(min = 520.dp)
             )
         }
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360)
+@Composable
+private fun ThreadInlineTagsPreview() {
+    SlockTheme {
+        ThreadMessageItem(
+                message =
+                        Message(
+                                id = MessageId("inline-tags-preview-message"),
+                                threadId = ThreadId("inline-tags-preview-thread"),
+                                channelId = ChannelId("inline-tags-preview-channel"),
+                                author =
+                                        MemberProfile(
+                                                id = MemberId("inline-tags-preview-author"),
+                                                displayName = "Artin",
+                                                handle = "artin",
+                                                kind = MemberKind.Human,
+                                                roleDescription = "Owner"
+                                        ),
+                                timestampLabel = "Now",
+                                body =
+                                        "Please review #22 and also check `#22` in `inline code` — the code should stay yellow, not become a task chip. Also ping @alice and visit #general.",
+                                replyCount = 0
+                        )
+        )
     }
 }
 

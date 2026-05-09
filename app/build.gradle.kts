@@ -9,6 +9,7 @@ android {
     compileSdk {
         version = release(36)
     }
+    testBuildType = "connectedTest"
 
     defaultConfig {
         applicationId = "ai.slock.android"
@@ -18,9 +19,16 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "false")
     }
 
     buildTypes {
+        create("connectedTest") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".test"
+            buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
+            matchingFallbacks += listOf("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -38,6 +46,12 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+    sourceSets {
+        getByName("connectedTest") {
+            res.srcDir("src/connectedTest/res")
+        }
     }
 }
 
@@ -64,4 +78,6 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    "connectedTestImplementation"(libs.androidx.compose.ui.tooling)
+    "connectedTestImplementation"(libs.androidx.compose.ui.test.manifest)
 }

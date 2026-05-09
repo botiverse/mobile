@@ -92,6 +92,47 @@ object SlockIcons {
         close()
     }
 
+    val Share2: ImageVector = strokeIcon("LucideShare2") {
+        moveTo(18f, 8f)
+        curveTo(19.6569f, 8f, 21f, 6.6569f, 21f, 5f)
+        curveTo(21f, 3.3431f, 19.6569f, 2f, 18f, 2f)
+        curveTo(16.3431f, 2f, 15f, 3.3431f, 15f, 5f)
+        curveTo(15f, 6.6569f, 16.3431f, 8f, 18f, 8f)
+        close()
+        moveTo(6f, 15f)
+        curveTo(7.6569f, 15f, 9f, 13.6569f, 9f, 12f)
+        curveTo(9f, 10.3431f, 7.6569f, 9f, 6f, 9f)
+        curveTo(4.3431f, 9f, 3f, 10.3431f, 3f, 12f)
+        curveTo(3f, 13.6569f, 4.3431f, 15f, 6f, 15f)
+        close()
+        moveTo(18f, 22f)
+        curveTo(19.6569f, 22f, 21f, 20.6569f, 21f, 19f)
+        curveTo(21f, 17.3431f, 19.6569f, 16f, 18f, 16f)
+        curveTo(16.3431f, 16f, 15f, 17.3431f, 15f, 19f)
+        curveTo(15f, 20.6569f, 16.3431f, 22f, 18f, 22f)
+        close()
+        moveTo(8.59f, 13.51f)
+        lineTo(15.42f, 17.49f)
+        moveTo(15.41f, 6.51f)
+        lineTo(8.59f, 10.49f)
+    }
+
+    val Pencil: ImageVector = strokeIcon("LucidePencil") {
+        moveTo(21.174f, 6.812f)
+        curveTo(21.548f, 6.438f, 21.758f, 5.931f, 21.758f, 5.402f)
+        curveTo(21.758f, 4.873f, 21.548f, 4.366f, 21.174f, 3.992f)
+        lineTo(20.008f, 2.826f)
+        curveTo(19.634f, 2.452f, 19.127f, 2.242f, 18.598f, 2.242f)
+        curveTo(18.069f, 2.242f, 17.562f, 2.452f, 17.188f, 2.826f)
+        lineTo(3f, 17.014f)
+        lineTo(2f, 22f)
+        lineTo(6.986f, 21f)
+        lineTo(21.174f, 6.812f)
+        close()
+        moveTo(15f, 5f)
+        lineTo(19f, 9f)
+    }
+
     val Hash: ImageVector = strokeIcon("LucideHash") {
         moveTo(4f, 9f)
         lineTo(20f, 9f)
@@ -114,6 +155,65 @@ object SlockIcons {
         curveTo(2f, 3.9f, 2.9f, 3f, 4f, 3f)
         lineTo(20f, 3f)
         curveTo(21.1f, 3f, 22f, 3.9f, 22f, 5f)
+        close()
+    }
+
+    val Circle: ImageVector = strokeIcon("LucideCircle") {
+        moveTo(22f, 12f)
+        curveTo(22f, 17.5228f, 17.5228f, 22f, 12f, 22f)
+        curveTo(6.4772f, 22f, 2f, 17.5228f, 2f, 12f)
+        curveTo(2f, 6.4772f, 6.4772f, 2f, 12f, 2f)
+        curveTo(17.5228f, 2f, 22f, 6.4772f, 22f, 12f)
+        close()
+    }
+
+    val Play: ImageVector = strokeIcon("LucidePlay") {
+        moveTo(5f, 5f)
+        curveTo(5f, 3.46f, 6.67f, 2.5f, 8.01f, 3.27f)
+        lineTo(20.01f, 10.27f)
+        curveTo(21.34f, 11.04f, 21.34f, 12.96f, 20.01f, 13.73f)
+        lineTo(8f, 20.73f)
+        curveTo(6.67f, 21.5f, 5f, 20.54f, 5f, 19f)
+        close()
+    }
+
+    val Eye: ImageVector = strokeIcon("LucideEye") {
+        moveTo(2.06f, 12.35f)
+        curveTo(1.98f, 12.12f, 1.98f, 11.88f, 2.06f, 11.65f)
+        curveTo(3.42f, 7.3f, 7.52f, 4f, 12f, 4f)
+        curveTo(16.48f, 4f, 20.58f, 7.3f, 21.94f, 11.65f)
+        curveTo(22.02f, 11.88f, 22.02f, 12.12f, 21.94f, 12.35f)
+        curveTo(20.58f, 16.7f, 16.48f, 20f, 12f, 20f)
+        curveTo(7.52f, 20f, 3.42f, 16.7f, 2.06f, 12.35f)
+        close()
+        moveTo(12f, 15f)
+        curveTo(13.6569f, 15f, 15f, 13.6569f, 15f, 12f)
+        curveTo(15f, 10.3431f, 13.6569f, 9f, 12f, 9f)
+        curveTo(10.3431f, 9f, 9f, 10.3431f, 9f, 12f)
+        curveTo(9f, 13.6569f, 10.3431f, 15f, 12f, 15f)
+        close()
+    }
+
+    val CircleCheckBig: ImageVector = strokeIcon("LucideCircleCheckBig") {
+        moveTo(21.8f, 10f)
+        curveTo(21.9f, 10.65f, 21.9f, 11.34f, 21.8f, 12f)
+        curveTo(21.8f, 17.52f, 17.52f, 22f, 12f, 22f)
+        curveTo(6.48f, 22f, 2f, 17.52f, 2f, 12f)
+        curveTo(2f, 6.48f, 6.48f, 2f, 12f, 2f)
+        curveTo(13.85f, 2f, 15.59f, 2.5f, 17.08f, 3.38f)
+        moveTo(9f, 11f)
+        lineTo(12f, 14f)
+        lineTo(22f, 4f)
+    }
+
+    val Ban: ImageVector = strokeIcon("LucideBan") {
+        moveTo(4.93f, 4.93f)
+        lineTo(19.07f, 19.07f)
+        moveTo(22f, 12f)
+        curveTo(22f, 17.5228f, 17.5228f, 22f, 12f, 22f)
+        curveTo(6.4772f, 22f, 2f, 17.5228f, 2f, 12f)
+        curveTo(2f, 6.4772f, 6.4772f, 2f, 12f, 2f)
+        curveTo(17.5228f, 2f, 22f, 6.4772f, 22f, 12f)
         close()
     }
 
@@ -190,6 +290,21 @@ object SlockIcons {
         lineTo(16f, 21f)
         moveTo(12f, 19f)
         lineTo(12f, 21f)
+    }
+
+    val Smartphone: ImageVector = strokeIcon("LucideSmartphone") {
+        moveTo(7f, 2f)
+        lineTo(17f, 2f)
+        curveTo(18.1046f, 2f, 19f, 2.8954f, 19f, 4f)
+        lineTo(19f, 20f)
+        curveTo(19f, 21.1046f, 18.1046f, 22f, 17f, 22f)
+        lineTo(7f, 22f)
+        curveTo(5.8954f, 22f, 5f, 21.1046f, 5f, 20f)
+        lineTo(5f, 4f)
+        curveTo(5f, 2.8954f, 5.8954f, 2f, 7f, 2f)
+        close()
+        moveTo(12f, 18f)
+        lineTo(12.01f, 18f)
     }
 
     val Check: ImageVector = strokeIcon("LucideCheck") {
@@ -444,24 +559,15 @@ object SlockIcons {
     }
 
     val Copy: ImageVector = strokeIcon("LucideCopy") {
-        moveTo(16f, 4f)
-        lineTo(18f, 4f)
-        curveTo(19.1f, 4f, 20f, 4.9f, 20f, 6f)
-        lineTo(20f, 18f)
-        curveTo(20f, 19.1f, 19.1f, 20f, 18f, 20f)
-        lineTo(6f, 20f)
-        curveTo(4.9f, 20f, 4f, 19.1f, 4f, 18f)
-        lineTo(4f, 16f)
-        moveTo(8f, 4f)
+        roundRectPath(x = 8f, y = 8f, width = 12f, height = 12f, radius = 2f)
+        moveTo(16f, 8f)
+        lineTo(16f, 6f)
+        curveTo(16f, 4.8954f, 15.1046f, 4f, 14f, 4f)
         lineTo(6f, 4f)
-        curveTo(4.9f, 4f, 4f, 4.9f, 4f, 6f)
-        lineTo(4f, 12f)
-        curveTo(4f, 13.1f, 4.9f, 14f, 6f, 14f)
-        lineTo(12f, 14f)
-        curveTo(13.1f, 14f, 14f, 13.1f, 14f, 12f)
-        lineTo(14f, 6f)
-        curveTo(14f, 4.9f, 13.1f, 4f, 12f, 4f)
-        lineTo(8f, 4f)
+        curveTo(4.8954f, 4f, 4f, 4.8954f, 4f, 6f)
+        lineTo(4f, 14f)
+        curveTo(4f, 15.1046f, 4.8954f, 16f, 6f, 16f)
+        lineTo(8f, 16f)
     }
 
     val Activity: ImageVector = strokeIcon("LucideActivity") {
@@ -647,4 +753,24 @@ private fun androidx.compose.ui.graphics.vector.PathBuilder.pathDataArcGlobe() {
     moveTo(12f, 2f)
     curveTo(9.5f, 4.7f, 8f, 8.2f, 8f, 12f)
     curveTo(8f, 15.8f, 9.5f, 19.3f, 12f, 22f)
+}
+
+private fun androidx.compose.ui.graphics.vector.PathBuilder.roundRectPath(
+    x: Float,
+    y: Float,
+    width: Float,
+    height: Float,
+    radius: Float
+) {
+    val right = x + width
+    val bottom = y + height
+    moveTo(x + radius, y)
+    lineTo(right - radius, y)
+    curveTo(right - radius / 2f, y, right, y + radius / 2f, right, y + radius)
+    lineTo(right, bottom - radius)
+    curveTo(right, bottom - radius / 2f, right - radius / 2f, bottom, right - radius, bottom)
+    lineTo(x + radius, bottom)
+    curveTo(x + radius / 2f, bottom, x, bottom - radius / 2f, x, bottom - radius)
+    lineTo(x, y + radius)
+    curveTo(x, y + radius / 2f, x + radius / 2f, y, x + radius, y)
 }

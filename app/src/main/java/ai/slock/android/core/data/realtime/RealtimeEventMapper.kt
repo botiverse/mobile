@@ -28,8 +28,12 @@ class RealtimeEventMapper(
     fun map(eventName: String, payload: Any?): RealtimeEvent? {
         val root = payload.toJsonObject()
         return when (eventName) {
-            RealtimeSocketEvents.MessageNew,
-            RealtimeSocketEvents.DirectMessageNew -> root.unwrap("message").toMessage()?.let(RealtimeEvent::MessageNew)
+            RealtimeSocketEvents.MessageNew -> root.unwrap("message").toMessage()?.let(RealtimeEvent::MessageNew)
+            RealtimeSocketEvents.DirectMessageNew ->
+                root.unwrap("message").toMessage()?.let(RealtimeEvent::MessageNew)
+                    ?: root.string("channelId", "channel_id", "id")?.let {
+                        RealtimeEvent.DirectMessageCreated(ChannelId(it))
+                    }
             RealtimeSocketEvents.MessageUpdated -> root.unwrap("message").toMessage()?.let(RealtimeEvent::MessageUpdated)
             RealtimeSocketEvents.ThreadUpdated -> root.toThreadUpdated()
             RealtimeSocketEvents.TaskCreated -> root.toTasksCreated()
@@ -408,8 +412,21 @@ private fun JsonObject.toMemberProfile(): MemberProfile? {
 }
 
 private fun JsonObject.memberId(): String? =
-    string("id", "_id", "userId", "memberId", "agentId")
-        ?: nestedMemberObject()?.memberId()
+    memberKind().let { kind ->
+        when (kind) {
+            MemberKind.Agent ->
+                string("agentId")
+                    ?: nestedMemberObject()?.memberId()
+                    ?: string("id", "_id", "memberId", "userId")
+            MemberKind.Human ->
+                string("userId", "memberId")
+                    ?: nestedMemberObject()?.memberId()
+                    ?: string("id", "_id")
+            MemberKind.System ->
+                string("id", "_id", "userId", "memberId", "agentId")
+                    ?: nestedMemberObject()?.memberId()
+        }
+    }
 
 private fun JsonObject.memberDisplayName(): String? =
     string(

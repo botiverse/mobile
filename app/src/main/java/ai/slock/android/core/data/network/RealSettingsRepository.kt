@@ -24,11 +24,15 @@ import ai.slock.android.core.data.repository.SessionSettingsSnapshot
 import ai.slock.android.core.data.repository.SettingsRepository
 import ai.slock.android.core.data.repository.SettingsSectionErrorSnapshot
 import ai.slock.android.core.data.repository.SettingsSectionAvailability
+import ai.slock.android.core.data.repository.SettingsServerActionResult
 import ai.slock.android.core.data.repository.SettingsServerAdminSnapshot
+import ai.slock.android.core.data.repository.SettingsServerDeleteRequest
+import ai.slock.android.core.data.repository.SettingsServerInviteCreateRequest
 import ai.slock.android.core.data.repository.SettingsServerInviteSnapshot
 import ai.slock.android.core.data.repository.SettingsServerJoinLinkSnapshot
 import ai.slock.android.core.data.repository.SettingsServerOnboardingSnapshot
 import ai.slock.android.core.data.repository.SettingsServerProfileSnapshot
+import ai.slock.android.core.data.repository.SettingsServerProfileUpdateRequest
 import ai.slock.android.core.data.repository.SettingsServerSectionSnapshot
 import ai.slock.android.core.data.repository.SettingsServerSnapshot
 import ai.slock.android.core.data.repository.SettingsSessionSnapshot
@@ -451,6 +455,106 @@ class RealSettingsRepository(
             addAll(usage)
         }
 
+    override suspend fun updateServerProfile(
+        request: SettingsServerProfileUpdateRequest
+    ): DataResult<SettingsServerSnapshot> {
+        val session = store.readSession() ?: return authRequired()
+        val server = session.servers.firstOrNull { it.id == session.currentServerId }
+            ?: return DataResult.NoPermission(
+                PermissionBlocker(code = "server_required", requiredCapability = "selected_server")
+            )
+        if (server.role != "owner" && server.role != "admin") {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_server")
+            )
+        }
+        val name = request.name.trim()
+        if (name.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        val update =
+            execute(
+                emptyReason = EmptyReason.NoSettingsAvailable,
+                block = {
+                    api.updateSettingsServerProfile(
+                        server.id,
+                        mapOf("name" to name).toJsonBody()
+                    )
+                },
+                source = "settings_server_profile_update",
+                warningLogger = warningLogger,
+                mapper = { Unit }
+            ).mapSettingsContractMismatch("settings_server_profile_contract_mismatch")
+        return when (update) {
+            is DataResult.Content -> getServerSettings()
+            is DataResult.Empty -> DataResult.Empty(update.reason)
+            is DataResult.Error -> DataResult.Error(update.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(update.blocker)
+        }
+    }
+
+    override suspend fun createServerInvite(
+        request: SettingsServerInviteCreateRequest
+    ): DataResult<SettingsServerActionResult> {
+        val session = store.readSession() ?: return authRequired()
+        val server = session.servers.firstOrNull { it.id == session.currentServerId }
+            ?: return DataResult.NoPermission(
+                PermissionBlocker(code = "server_required", requiredCapability = "selected_server")
+            )
+        if (server.role != "owner" && server.role != "admin") {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_invites")
+            )
+        }
+        val email = request.email.trim()
+        if (email.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return execute(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            block = {
+                api.createSettingsServerInvite(
+                    server.id,
+                    mapOf("email" to email).toJsonBody()
+                )
+            },
+            source = "settings_server_invite_create",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                SettingsServerActionResult(
+                    success = json.boolean("ok", "success", "sent") ?: true,
+                    message = json.string("message", "status")
+                )
+            }
+        ).mapSettingsContractMismatch("settings_server_invite_contract_mismatch")
+    }
+
+    override suspend fun deleteServer(
+        request: SettingsServerDeleteRequest
+    ): DataResult<SettingsServerActionResult> {
+        val session = store.readSession() ?: return authRequired()
+        val server = session.servers.firstOrNull { it.id == session.currentServerId }
+            ?: return DataResult.NoPermission(
+                PermissionBlocker(code = "server_required", requiredCapability = "selected_server")
+            )
+        if (server.role != "owner") {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_owner_required", requiredCapability = "delete_server")
+            )
+        }
+        if (request.confirmationName.trim() != server.name) {
+            return DataResult.Error(ScreenError(code = "server_delete_confirmation_mismatch", retryable = false))
+        }
+        return execute(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            block = { api.deleteSettingsServer(server.id) },
+            source = "settings_server_delete",
+            warningLogger = warningLogger,
+            mapper = { json ->
+                SettingsServerActionResult(
+                    success = json.boolean("ok", "success", "deleted") ?: true,
+                    message = json.string("message", "status")
+                )
+            }
+        ).mapSettingsContractMismatch("settings_server_delete_contract_mismatch")
+    }
+
     override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> {
         store.readSession() ?: return authRequired()
         return DataResult.Content(
@@ -504,6 +608,9 @@ private fun AccountProfileUpdateRequest.toJsonBody() =
             "email" to email
         )
     ).toRequestBody(jsonMediaType)
+
+private fun Map<String, Any?>.toJsonBody() =
+    Gson().toJson(this).toRequestBody(jsonMediaType)
 
 private fun JsonObject.toAccountSettingsSnapshot(session: AuthSession): AccountSettingsSnapshot {
     val user = objectValue("user", "account", "profile") ?: this

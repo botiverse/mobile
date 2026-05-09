@@ -1,6 +1,8 @@
 package ai.slock.android.feature.settings
 
 import ai.slock.android.R
+import ai.slock.android.core.data.locale.AppLocale
+import ai.slock.android.core.data.locale.LocaleSnapshot
 import ai.slock.android.core.data.preferences.MyMessageAlignmentPreference
 import ai.slock.android.core.data.repository.SettingsComputerAgentSnapshot
 import ai.slock.android.core.data.repository.SettingsComputerDetailSnapshot
@@ -39,9 +41,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -52,15 +56,21 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.zIndex
 
 @Composable
 fun SettingsComputersScreen(
@@ -385,7 +395,11 @@ private fun OnlineDot(online: Boolean) {
 fun SettingsServerManagementScreen(
         snapshot: SettingsServerSnapshot,
         modifier: Modifier = Modifier,
-        onSaveProfile: () -> Unit = {}
+        onSaveProfile: (String) -> Unit = {},
+        onSendInvite: (String) -> Unit = {},
+        onDeleteServer: (String) -> Unit = {},
+        actionFeedback: String? = null,
+        actionInProgress: Boolean = false
 ) {
     Column(
             modifier =
@@ -401,12 +415,17 @@ fun SettingsServerManagementScreen(
                 label = stringResource(R.string.settings_server_profile_section)
         )
         ServerProfileSection(profile = snapshot.profile, onSaveProfile = onSaveProfile)
+        actionFeedback?.let { SettingsSampleFeedback(it) }
         snapshot.sections.filterVisibleSettingsSections().forEach { section ->
             SettingsServerSectionCard(
                     section = section,
+                    serverName = snapshot.profile.name,
                     admins = snapshot.admins,
                     usageRows = snapshot.usageRows,
-                    onboardingStatus = snapshot.onboarding?.statusLabel
+                    onboardingStatus = snapshot.onboarding?.statusLabel,
+                    onSendInvite = onSendInvite,
+                    onDeleteServer = onDeleteServer,
+                    actionInProgress = actionInProgress
             )
         }
     }
@@ -415,8 +434,9 @@ fun SettingsServerManagementScreen(
 @Composable
 private fun ServerProfileSection(
         profile: SettingsServerProfileSnapshot,
-        onSaveProfile: () -> Unit
+        onSaveProfile: (String) -> Unit
 ) {
+    var name by remember(profile.name) { mutableStateOf(profile.name) }
     Column(
             modifier =
                     Modifier.fillMaxWidth()
@@ -431,8 +451,8 @@ private fun ServerProfileSection(
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         SlockTextField(
-                value = profile.name,
-                onValueChange = {},
+                value = name,
+                onValueChange = { name = it },
                 label = stringResource(R.string.settings_server_name_label),
                 placeholder = stringResource(R.string.settings_server_name_placeholder),
                 enabled = profile.canSave,
@@ -448,10 +468,10 @@ private fun ServerProfileSection(
         )
         SlockButton(
                 text = stringResource(R.string.settings_server_save_profile),
-                onClick = onSaveProfile,
+                onClick = { onSaveProfile(name) },
                 modifier = Modifier.fillMaxWidth(),
                 variant = SlockButtonVariant.Pink,
-                enabled = profile.canSave
+                enabled = profile.canSave && name.isNotBlank() && name != profile.name
         )
     }
 }
@@ -459,9 +479,13 @@ private fun ServerProfileSection(
 @Composable
 private fun SettingsServerSectionCard(
         section: SettingsServerSectionSnapshot,
+        serverName: String = "",
         admins: List<SettingsServerAdminSnapshot> = emptyList(),
         usageRows: List<SettingsPlanUsageSnapshot> = emptyList(),
-        onboardingStatus: String? = null
+        onboardingStatus: String? = null,
+        onSendInvite: (String) -> Unit = {},
+        onDeleteServer: (String) -> Unit = {},
+        actionInProgress: Boolean = false
 ) {
     Column(
             modifier =
@@ -497,37 +521,110 @@ private fun SettingsServerSectionCard(
         when (section.key) {
             "admins" -> SettingsServerAdminRows(admins)
             "billing" -> SettingsServerUsageRows(usageRows)
-            "pending_invites" ->
-                    if (section.state == SettingsSectionAvailability.Empty) {
-                        Text(
-                                text = stringResource(R.string.settings_server_no_pending_invites),
-                                style = SlockType.Caption,
-                                color = SlockColor.TextMutedGray
-                        )
-                    }
-            "join_links" ->
-                    if (section.state == SettingsSectionAvailability.Empty) {
-                        Text(
-                                text = stringResource(R.string.settings_server_join_links_not_confirmed),
-                                style = SlockType.Caption,
-                                color = SlockColor.TextMutedGray
-                        )
-                    }
+            "pending_invites" -> SettingsServerInviteForm(
+                    enabled = section.state != SettingsSectionAvailability.NoPermission && !actionInProgress,
+                    onSendInvite = onSendInvite
+            )
+            "join_links" -> SettingsServerJoinLinkForm()
             "onboarding_agent" ->
                     onboardingStatus?.let {
                         SettingsStatusBadge(text = it, color = SlockColor.AppBgLightBlue)
                     }
-        }
-        if (section.key == "danger") {
-            SlockButton(
-                    text = stringResource(R.string.settings_server_delete),
-                    onClick = {},
-                    modifier = Modifier.fillMaxWidth(),
-                    variant = SlockButtonVariant.Red,
-                    enabled = false
+            "danger" -> SettingsServerDeleteForm(
+                    serverName = serverName,
+                    enabled = !actionInProgress,
+                    onDeleteServer = onDeleteServer
             )
         }
     }
+}
+
+@Composable
+private fun SettingsServerInviteForm(
+        enabled: Boolean,
+        onSendInvite: (String) -> Unit
+) {
+    var email by remember { mutableStateOf("") }
+    Text(
+            text = stringResource(R.string.settings_server_no_pending_invites),
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray
+    )
+    SlockTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = stringResource(R.string.settings_server_invite_email_label),
+            placeholder = stringResource(R.string.settings_server_invite_email_placeholder),
+            enabled = enabled,
+            reserveErrorSpace = false,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = KeyboardType.Email
+            )
+    )
+    SlockButton(
+            text = stringResource(R.string.settings_server_send_invite),
+            onClick = { onSendInvite(email) },
+            modifier = Modifier.fillMaxWidth(),
+            variant = SlockButtonVariant.Yellow,
+            enabled = enabled && email.isNotBlank()
+    )
+}
+
+@Composable
+private fun SettingsServerJoinLinkForm() {
+    var name by remember { mutableStateOf("") }
+    var maxUses by remember { mutableStateOf("") }
+    SlockTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = stringResource(R.string.settings_server_join_link_name_label),
+            placeholder = stringResource(R.string.settings_server_join_link_name_placeholder),
+            reserveErrorSpace = false
+    )
+    SlockTextField(
+            value = maxUses,
+            onValueChange = { maxUses = it },
+            label = stringResource(R.string.settings_server_join_link_max_uses_label),
+            placeholder = stringResource(R.string.settings_server_join_link_max_uses_placeholder),
+            reserveErrorSpace = false,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = KeyboardType.Number
+            )
+    )
+    Text(
+            text = stringResource(R.string.settings_server_join_link_endpoint_missing),
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray
+    )
+}
+
+@Composable
+private fun SettingsServerDeleteForm(
+        serverName: String,
+        enabled: Boolean,
+        onDeleteServer: (String) -> Unit
+) {
+    var confirmation by remember(serverName) { mutableStateOf("") }
+    Text(
+            text = stringResource(R.string.settings_server_delete_confirm_detail),
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray
+    )
+    SlockTextField(
+            value = confirmation,
+            onValueChange = { confirmation = it },
+            label = stringResource(R.string.settings_server_delete_confirm_label),
+            placeholder = stringResource(R.string.settings_server_delete_confirm_placeholder),
+            enabled = enabled,
+            reserveErrorSpace = false
+    )
+    SlockButton(
+            text = stringResource(R.string.settings_server_delete),
+            onClick = { onDeleteServer(confirmation) },
+            modifier = Modifier.fillMaxWidth(),
+            variant = SlockButtonVariant.Red,
+            enabled = enabled && confirmation == serverName
+    )
 }
 
 @Composable
@@ -599,8 +696,10 @@ fun SettingsMobileScreen(
         notificationPermissionAvailable: Boolean = true,
         modifier: Modifier = Modifier,
         chatLayoutPreference: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Default,
+        localeSnapshot: LocaleSnapshot = LocaleSnapshot(current = AppLocale.Default),
         onRequestNotificationPermission: () -> Unit = {},
         onChatLayoutPreferenceSelected: (MyMessageAlignmentPreference) -> Unit = {},
+        onLocaleSelected: (AppLocale) -> Unit = {},
         onTogglePush: () -> Unit = {},
         onSendTest: () -> Unit = {},
         onOpenNotificationSettings: () -> Unit = {},
@@ -732,6 +831,10 @@ fun SettingsMobileScreen(
                 selected = chatLayoutPreference,
                 onSelected = onChatLayoutPreferenceSelected
         )
+        SettingsMobileLanguagePreference(
+                localeSnapshot = localeSnapshot,
+                onLocaleSelected = onLocaleSelected
+        )
         if (snapshot.muteServer.available) {
             SettingsMobileCard(
                     title = stringResource(R.string.settings_mobile_mute_title),
@@ -744,6 +847,176 @@ fun SettingsMobileScreen(
                                 stringResource(R.string.settings_mobile_mute_server)
                             },
                     onPrimary = onToggleMute
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsMobileLanguagePreference(
+        localeSnapshot: LocaleSnapshot,
+        onLocaleSelected: (AppLocale) -> Unit,
+        modifier: Modifier = Modifier
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val selectedLocale = localeSnapshot.current
+
+    Column(
+            modifier =
+                    modifier.fillMaxWidth()
+                            .zIndex(if (expanded) 2f else 0f)
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .padding(SlockSpacing.Md),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Text(
+                text = stringResource(R.string.settings_language_section).uppercase(),
+                style = SlockType.SectionLabel,
+                color = SlockColor.TextBlack
+        )
+        Text(
+                text = stringResource(R.string.settings_language_restart_hint),
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray
+        )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            SettingsLanguageDropdownButton(
+                    label = selectedLocale.nativeLabel,
+                    detail = selectedLocale.englishLabel,
+                    expanded = expanded,
+                    onClick = { expanded = !expanded }
+            )
+            if (expanded) {
+                Popup(
+                        alignment = Alignment.TopStart,
+                        offset = IntOffset(0, 54),
+                        onDismissRequest = { expanded = false },
+                        properties = PopupProperties(focusable = true)
+                ) {
+                    Column(
+                            modifier =
+                                    Modifier.widthIn(min = 260.dp, max = 328.dp)
+                                            .padding(
+                                                    end = SlockShadow.Small.offsetX,
+                                                    bottom = SlockShadow.Small.offsetY
+                                            )
+                                            .slockHardShadow(SlockShadow.Small)
+                                            .background(SlockColor.SurfaceWhite)
+                                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    ) {
+                        localeSnapshot.supported.forEach { locale ->
+                            SettingsLanguageDropdownRow(
+                                    locale = locale,
+                                    selected = locale == selectedLocale,
+                                    onClick = {
+                                        expanded = false
+                                        onLocaleSelected(locale)
+                                    }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsLanguageDropdownButton(
+        label: String,
+        detail: String,
+        expanded: Boolean,
+        onClick: () -> Unit
+) {
+    Row(
+            modifier =
+                    Modifier.fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .clickable(role = Role.Button, onClick = onClick)
+                            .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Icon(
+                imageVector = SlockIcons.Globe,
+                contentDescription = null,
+                tint = SlockColor.TextBlack,
+                modifier = Modifier.size(18.dp)
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(
+                    text = label,
+                    style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                    text = detail,
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+            )
+        }
+        Icon(
+                imageVector = SlockIcons.ChevronDown,
+                contentDescription =
+                        if (expanded) {
+                            stringResource(R.string.settings_language_collapse)
+                        } else {
+                            stringResource(R.string.settings_language_expand)
+                        },
+                tint = SlockColor.TextBlack,
+                modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+@Composable
+private fun SettingsLanguageDropdownRow(
+        locale: AppLocale,
+        selected: Boolean,
+        onClick: () -> Unit
+) {
+    Row(
+            modifier =
+                    Modifier.fillMaxWidth()
+                            .heightIn(min = 46.dp)
+                            .background(
+                                    if (selected) SlockColor.AppBgLightBlue
+                                    else SlockColor.SurfaceWhite
+                            )
+                            .clickable(role = Role.Button, onClick = onClick)
+                            .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(
+                    text = locale.nativeLabel,
+                    style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                    text = locale.englishLabel,
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (selected) {
+            Icon(
+                    imageVector = SlockIcons.Check,
+                    contentDescription = stringResource(R.string.settings_locale_selected),
+                    tint = SlockColor.TextBlack,
+                    modifier = Modifier.size(16.dp)
             )
         }
     }
@@ -1001,7 +1274,8 @@ private fun SettingsMobileScreenPreview() {
     SlockTheme {
         SettingsMobileScreen(
                 snapshot = settingsMobilePreview,
-                notificationPermissionGranted = false
+                notificationPermissionGranted = false,
+                localeSnapshot = LocaleSnapshot(current = AppLocale.Default)
         )
     }
 }

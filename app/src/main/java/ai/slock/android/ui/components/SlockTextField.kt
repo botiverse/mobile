@@ -6,6 +6,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -61,6 +62,7 @@ fun SlockTextField(
     inputModifier: Modifier = Modifier,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailingContent: (@Composable () -> Unit)? = null,
+    bottomContent: (@Composable () -> Unit)? = null,
     minContentHeight: Dp = 48.dp,
     contentPaddingVertical: Dp = 12.dp,
     inputFontWeight: FontWeight = FontWeight.Medium,
@@ -86,28 +88,33 @@ fun SlockTextField(
         fontFamily = inputFontFamily ?: SlockType.Body.fontFamily
     )
     val decorationBox: @Composable (@Composable () -> Unit) -> Unit = { innerTextField ->
-        Row(
+        Column(
             modifier = Modifier
                 .defaultMinSize(minHeight = minContentHeight)
                 .padding(horizontal = SlockSpacing.Md, vertical = contentPaddingVertical),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            Box(modifier = Modifier.weight(1f)) {
-                if (displayValue.isEmpty() && placeholder.isNotEmpty()) {
-                    Text(
-                        text = placeholder,
-                        style = SlockType.Body.copy(fontWeight = inputFontWeight, fontFamily = inputFontFamily ?: SlockType.Body.fontFamily),
-                        color = SlockColor.TextMutedGray,
-                        maxLines = if (singleLine) 1 else maxLines,
-                        overflow = TextOverflow.Ellipsis
-                    )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.weight(1f)) {
+                    if (displayValue.isEmpty() && placeholder.isNotEmpty()) {
+                        Text(
+                            text = placeholder,
+                            style = SlockType.Body.copy(fontWeight = inputFontWeight, fontFamily = inputFontFamily ?: SlockType.Body.fontFamily),
+                            color = SlockColor.TextMutedGray,
+                            maxLines = if (singleLine) 1 else maxLines,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    innerTextField()
                 }
-                innerTextField()
+                if (trailingContent != null) {
+                    Box(modifier = Modifier.padding(start = SlockSpacing.Sm)) {
+                        trailingContent()
+                    }
+                }
             }
-            if (trailingContent != null) {
-                Box(modifier = Modifier.padding(start = SlockSpacing.Sm)) {
-                    trailingContent()
-                }
+            if (bottomContent != null) {
+                bottomContent()
             }
         }
     }

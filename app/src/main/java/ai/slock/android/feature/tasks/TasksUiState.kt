@@ -35,6 +35,12 @@ fun TasksUiState.withLoading(filter: TaskStatus? = selectedFilter): TasksUiState
         )
     }
 
+fun TasksUiState.withRefreshFailure(errorCode: String): TasksUiState =
+    copy(
+        refreshing = false,
+        statusUpdateErrorCode = errorCode
+    )
+
 fun TasksUiState.withTaskStatusUpdating(
     taskId: String,
     nextStatus: TaskStatus

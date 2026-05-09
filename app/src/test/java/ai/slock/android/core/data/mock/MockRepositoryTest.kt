@@ -6,6 +6,7 @@ import ai.slock.android.core.data.repository.MemberRepository
 import ai.slock.android.core.data.repository.ServerRepository
 import ai.slock.android.core.data.repository.TaskFilter
 import ai.slock.android.core.data.repository.TaskRepository
+import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ThreadId
 import kotlin.coroutines.Continuation
@@ -61,6 +62,15 @@ class MockRepositoryTest {
     @Test
     fun taskRepositoryExposesTaskBranches() {
         assertTrue(runSuspend { taskRepo(MockScenario.Content).getTasks(serverId, TaskFilter()) } is DataResult.Content)
+        assertTrue(
+            runSuspend {
+                taskRepo(MockScenario.Content).getChannelTasks(
+                    serverId,
+                    ChannelId("channel-onboarding-artin"),
+                    TaskFilter()
+                )
+            } is DataResult.Content
+        )
         assertTrue(runSuspend { taskRepo(MockScenario.Empty).getTasks(serverId, TaskFilter()) } is DataResult.Empty)
         assertTrue(runSuspend { taskRepo(MockScenario.Error).getTasks(serverId, TaskFilter()) } is DataResult.Error)
         assertTrue(runSuspend { taskRepo(MockScenario.NoPermission).getTasks(serverId, TaskFilter()) } is DataResult.NoPermission)

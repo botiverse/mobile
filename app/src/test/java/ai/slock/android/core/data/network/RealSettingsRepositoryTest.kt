@@ -466,7 +466,7 @@ class RealSettingsRepositoryTest {
         override suspend fun reminders(ownerAgentId: String, status: String): Response<ResponseBody> =
             response("""{"reminders":[]}""")
 
-        override suspend fun trajectoryLogs(agentId: String): Response<ResponseBody> =
+        override suspend fun agentActivityLog(agentId: String, limit: Int): Response<ResponseBody> =
             response("""{"trajectoryLogs":[]}""")
 
         override suspend fun channelMembers(channelId: String): Response<ResponseBody> =
@@ -483,6 +483,9 @@ class RealSettingsRepositoryTest {
             response("""{"ok":true,"removed":{"id":"$memberId","kind":"$kind"}}""")
 
         override suspend fun directMessages(): Response<ResponseBody> = response("""[]""")
+
+        override suspend fun openDirectMessage(body: RequestBody): Response<ResponseBody> =
+            response("""{"channel":{"id":"dm-1","name":"Direct message","type":"dm"}}""")
 
         override suspend fun channelUnreadCounts(): Response<ResponseBody> = response("""{}""")
 
@@ -502,6 +505,9 @@ class RealSettingsRepositoryTest {
             response("""{"ok":true}""")
 
         override suspend fun serverTasks(): Response<ResponseBody> =
+            response("""{"tasks":[]}""")
+
+        override suspend fun channelTasks(channelId: String): Response<ResponseBody> =
             response("""{"tasks":[]}""")
 
         override suspend fun claimTask(taskId: String): Response<ResponseBody> =

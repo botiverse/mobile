@@ -21,7 +21,7 @@ class AuthTokenRefresher(
     private val gson = Gson()
     private val mutex = Mutex()
 
-    suspend fun refreshIfExpiringSoon(): AuthSession? {
+    suspend fun refreshIfExpiringSoon(clearOnUnauthorized: Boolean = true): AuthSession? {
         val current = store.readSession() ?: return null
         val expiresAt = current.accessToken.jwtExpiresAtMillis()
         val shouldRefresh = expiresAt == null || expiresAt - clockMillis() <= refreshSoonThresholdMillis
@@ -29,10 +29,13 @@ class AuthTokenRefresher(
         logger(
             "refresh_proactive_start reason=${if (expiresAt == null) "missing_exp" else "near_expiry"}"
         )
-        return refreshIfCurrent(current.accessToken)
+        return refreshIfCurrent(current.accessToken, clearOnUnauthorized = clearOnUnauthorized)
     }
 
-    suspend fun refreshIfCurrent(failedAccessToken: String?): AuthSession? =
+    suspend fun refreshIfCurrent(
+        failedAccessToken: String?,
+        clearOnUnauthorized: Boolean = true
+    ): AuthSession? =
         mutex.withLock {
             val current = store.readSession() ?: return@withLock null
             if (
@@ -56,7 +59,11 @@ class AuthTokenRefresher(
                     val code = response.code()
                     warningLogger("refresh_failed status=$code")
                     if (code == 401 || code == 403) {
-                        store.clearSession()
+                        if (clearOnUnauthorized) {
+                            store.clearSession()
+                        } else {
+                            warningLogger("refresh_unauthorized_session_preserved")
+                        }
                     }
                     return@withLock null
                 }

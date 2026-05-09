@@ -54,6 +54,41 @@ class AuthRepositoryTest {
     }
 
     @Test
+    fun loginMapsAvatarAliasesToSessionUser() {
+        val store = InMemoryAuthSessionStore()
+        val repository = testAuthRepository(
+            store,
+            FakeAuthApi(
+                loginResponse = Response.success(
+                    """
+                    {
+                      "user":{
+                        "id":"user-1",
+                        "email":"user@slock.ai",
+                        "name":"artin",
+                        "displayName":"artin",
+                        "description":null,
+                        "profileAvatar":"pixel:diamond",
+                        "gravatar":"abc123",
+                        "emailVerified":true
+                      },
+                      "accessToken":"access-token",
+                      "refreshToken":"refresh-token"
+                    }
+                    """.trimIndent().jsonBody()
+                )
+            )
+        )
+
+        val result = runSuspend { repository.login("user@slock.ai", "password") }
+
+        assertTrue(result is AuthResult.Success<*>)
+        assertEquals("pixel:diamond", store.session?.user?.avatarUrl)
+        assertEquals("abc123", store.session?.user?.gravatarHash)
+        assertEquals("pixel:diamond", store.session?.user?.toMemberProfile()?.avatar?.wireValue)
+    }
+
+    @Test
     fun wrongCredentialsMapToInvalidCredentials() {
         val repository = testAuthRepository(
             InMemoryAuthSessionStore(),
@@ -118,6 +153,62 @@ class AuthRepositoryTest {
     }
 
     @Test
+    fun restoreSessionRefreshesExpiredAccessTokenBeforeClearingSession() {
+        val store = InMemoryAuthSessionStore(
+            AuthSession(
+                user = sampleUser,
+                accessToken = "expired-access",
+                refreshToken = "refresh-token",
+                selectedServerId = "server-1",
+                selectedServerSlug = "old-slug",
+                servers = emptyList()
+            )
+        )
+        val api = FakeAuthApi(
+            currentUserResponses = listOf(
+                Response.error(401, """{"error":"expired"}""".jsonBody()),
+                Response.success("""{"user":$sampleUserJson}""".jsonBody())
+            ),
+            serversResponse = Response.success("""{"servers":[$sampleServerJson]}""".jsonBody())
+        )
+        val repository = testAuthRepository(store, api)
+
+        val result = runSuspend { repository.restoreSession() }
+
+        assertTrue(result is AuthResult.Success<*>)
+        val summary = (result as AuthResult.Success).data
+        assertEquals("user-1", summary.user.id)
+        assertEquals("new-access", store.session?.accessToken)
+        assertEquals("new-refresh", store.session?.refreshToken)
+        assertEquals("slock-android", store.session?.selectedServerSlug)
+        assertEquals(2, api.currentUserCallCount)
+        assertEquals(1, api.refreshCallCount)
+    }
+
+    @Test
+    fun restoreSessionClearsSessionWhenRefreshTokenIsUnauthorized() {
+        val store = InMemoryAuthSessionStore(
+            AuthSession(
+                user = sampleUser,
+                accessToken = "expired-access",
+                refreshToken = "refresh-token"
+            )
+        )
+        val api = FakeAuthApi(
+            currentUserResponse = Response.error(401, """{"error":"expired"}""".jsonBody()),
+            refreshResponse = Response.error(401, """{"error":"refresh expired"}""".jsonBody())
+        )
+        val repository = testAuthRepository(store, api)
+
+        val result = runSuspend { repository.restoreSession() }
+
+        assertEquals(AuthResult.Unauthenticated, result)
+        assertEquals(null, store.session)
+        assertEquals(1, api.currentUserCallCount)
+        assertEquals(1, api.refreshCallCount)
+    }
+
+    @Test
     fun tokenRefresherStoresNewTokens() {
         val store = InMemoryAuthSessionStore(
             AuthSession(
@@ -173,6 +264,33 @@ class AuthRepositoryTest {
 
         assertEquals(null, session)
         assertEquals(null, store.session)
+        assertEquals(1, api.refreshCallCount)
+    }
+
+    @Test
+    fun tokenRefresherCanPreserveSessionWhenProactiveRefreshIsUnauthorized() {
+        val store = InMemoryAuthSessionStore(
+            AuthSession(
+                user = sampleUser,
+                accessToken = "expired-access",
+                refreshToken = "refresh-token"
+            )
+        )
+        val api = FakeAuthApi(
+            refreshResponse = Response.error(401, """{"error":"expired"}""".jsonBody())
+        )
+        val refresher = testTokenRefresher(store, api)
+
+        val session = runSuspend {
+            refresher.refreshIfCurrent(
+                failedAccessToken = "expired-access",
+                clearOnUnauthorized = false
+            )
+        }
+
+        assertEquals(null, session)
+        assertEquals("expired-access", store.session?.accessToken)
+        assertEquals("refresh-token", store.session?.refreshToken)
         assertEquals(1, api.refreshCallCount)
     }
 
@@ -266,19 +384,26 @@ class AuthRepositoryTest {
             """{"user":$sampleUserJson,"accessToken":"access-token","refreshToken":"refresh-token"}""".jsonBody()
         ),
         private val currentUserResponse: Response<okhttp3.ResponseBody> = Response.success(sampleUserJson.jsonBody()),
+        private val currentUserResponses: List<Response<okhttp3.ResponseBody>> = emptyList(),
         private val serversResponse: Response<okhttp3.ResponseBody> = Response.success("""[$sampleServerJson]""".jsonBody()),
         private val refreshResponse: Response<okhttp3.ResponseBody> = Response.success(
             """{"accessToken":"new-access","refreshToken":"new-refresh"}""".jsonBody()
         ),
         private val refreshFailure: Throwable? = null
     ) : AuthApi {
+        var currentUserCallCount: Int = 0
+            private set
+
         var refreshCallCount: Int = 0
             private set
 
         override suspend fun login(body: okhttp3.RequestBody): Response<okhttp3.ResponseBody> = loginResponse
 
-        override suspend fun currentUser(authorization: String): Response<okhttp3.ResponseBody> =
-            currentUserResponse
+        override suspend fun currentUser(authorization: String): Response<okhttp3.ResponseBody> {
+            val response = currentUserResponses.getOrNull(currentUserCallCount) ?: currentUserResponse
+            currentUserCallCount += 1
+            return response
+        }
 
         override suspend fun refresh(body: okhttp3.RequestBody): Response<okhttp3.ResponseBody> {
             refreshCallCount += 1

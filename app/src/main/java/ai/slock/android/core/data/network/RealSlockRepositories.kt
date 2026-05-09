@@ -35,6 +35,7 @@ import ai.slock.android.core.data.repository.InboxRepository
 import ai.slock.android.core.data.repository.InboxSnapshot
 import ai.slock.android.core.data.repository.MemberRepository
 import ai.slock.android.core.data.repository.MemberSnapshot
+import ai.slock.android.core.data.repository.OpenDirectMessageResult
 import ai.slock.android.core.data.repository.ReadReceiptRepository
 import ai.slock.android.core.data.repository.ReadReceiptResult
 import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
@@ -80,6 +81,8 @@ import ai.slock.android.core.model.toGravatarAvatarReference
 import ai.slock.android.core.state.EmptyReason
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -101,6 +104,9 @@ class RealChannelRepository(
             )
         }
 ) : ChannelRepository {
+    private val directMessageCacheMutex = Mutex()
+    private var directMessageCache: CachedDirectMessages? = null
+
     override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> {
         val context = serverContext(serverId) ?: return authRequired()
         val channels = fetchChannels(context)
@@ -138,6 +144,16 @@ class RealChannelRepository(
         val context = serverContext(serverId) ?: return authRequired()
         return fetchDirectMessages(context)
     }
+
+    override suspend fun openAgentDirectMessage(
+            agentId: MemberId
+    ): DataResult<OpenDirectMessageResult> =
+            openDirectMessage(memberId = agentId, fieldName = "agentId", source = "dm_open_agent")
+
+    override suspend fun openUserDirectMessage(
+            userId: MemberId
+    ): DataResult<OpenDirectMessageResult> =
+            openDirectMessage(memberId = userId, fieldName = "userId", source = "dm_open_user")
 
     override suspend fun createChannel(
             request: CreateChannelRequest
@@ -286,48 +302,123 @@ class RealChannelRepository(
     private suspend fun fetchDirectMessages(
             context: NetworkServerContext
     ): DataResult<DirectMessageSnapshot> =
-            execute(
-                    emptyReason = EmptyReason.NoChannels,
-                    block = { api.directMessages() },
-                    emptyWhen = { it.directMessages.isEmpty() },
-                    source = "home_direct_messages",
-                    warningLogger = warningLogger,
-                    mapper = { json ->
-                        val directMessageItems =
-                                json.homeConversationItems(
-                                        source = "home_direct_messages",
-                                        names =
-                                                arrayOf(
-                                                        "directMessages",
-                                                        "dmChannels",
-                                                        "dms",
-                                                        "channels",
-                                                        "items",
-                                                        "data"
-                                                ),
-                                        warningLogger = warningLogger
-                                )
-                        DirectMessageSnapshot(
-                                server = context.server,
-                                directMessages =
-                                        directMessageItems.mapNotNull { item ->
-                                            val itemObject = item.asObjectOrNull()
-                                            if (itemObject == null) {
-                                                warningLogger(
-                                                        "skip_item source=home_direct_messages stage=item_map fieldPath=item reason=non_object"
-                                                )
-                                                null
-                                            } else {
-                                                itemObject.toConversationOrNull(
-                                                        kind = ConversationKind.DirectMessage,
+            when (
+                    val result =
+                            execute(
+                                    emptyReason = EmptyReason.NoChannels,
+                                    block = { api.directMessages() },
+                                    emptyWhen = { it.directMessages.isEmpty() },
+                                    source = "home_direct_messages",
+                                    warningLogger = warningLogger,
+                                    mapper = { json ->
+                                        val directMessageItems =
+                                                json.homeConversationItems(
                                                         source = "home_direct_messages",
+                                                        names =
+                                                                arrayOf(
+                                                                        "directMessages",
+                                                                        "dmChannels",
+                                                                        "dms",
+                                                                        "channels",
+                                                                        "items",
+                                                                        "data"
+                                                                ),
                                                         warningLogger = warningLogger
                                                 )
-                                            }
-                                        }
+                                        DirectMessageSnapshot(
+                                                server = context.server,
+                                                directMessages =
+                                                        directMessageItems.mapNotNull { item ->
+                                                            val itemObject = item.asObjectOrNull()
+                                                            if (itemObject == null) {
+                                                                warningLogger(
+                                                                        "skip_item source=home_direct_messages stage=item_map fieldPath=item reason=non_object"
+                                                                )
+                                                                null
+                                                            } else {
+                                                                itemObject.toConversationOrNull(
+                                                                        kind =
+                                                                                ConversationKind
+                                                                                        .DirectMessage,
+                                                                        source =
+                                                                                "home_direct_messages",
+                                                                        warningLogger =
+                                                                                warningLogger
+                                                                )
+                                                            }
+                                                        }
+                                        )
+                                    }
+                            )
+            ) {
+                is DataResult.Content -> {
+                    val merged =
+                            mergeDirectMessageCache(
+                                    context.server.id,
+                                    result.data.directMessages
+                                )
+                    DataResult.Content(result.data.copy(directMessages = merged))
+                }
+                else -> result
+            }
+
+    private suspend fun openDirectMessage(
+            memberId: MemberId,
+            fieldName: String,
+            source: String
+    ): DataResult<OpenDirectMessageResult> {
+        val context = currentContext() ?: return authRequired()
+        if (memberId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
+        val result =
+                execute(
+                        emptyReason = EmptyReason.NoChannels,
+                        block = {
+                            api.openDirectMessage(mapOf(fieldName to memberId.value).toJsonBody())
+                        },
+                        source = source,
+                        warningLogger = warningLogger,
+                        mapper = { json ->
+                            val conversationRoot =
+                                    json.firstObject("channel", "dm", "directMessage")
+                                            ?: json.firstObject("data")
+                                                    ?.firstObject("channel", "dm", "directMessage")
+                                            ?: json.unwrap("data")
+                            val conversation =
+                                    conversationRoot
+                                            .toConversation(
+                                                    kind = ConversationKind.DirectMessage
+                                            )
+                            OpenDirectMessageResult(
+                                    conversation = conversation,
+                                    directMessages = emptyList()
+                            )
+                        }
+                )
+        return when (result) {
+            is DataResult.Content -> {
+                val merged =
+                        mergeDirectMessageCache(
+                                context.server.id,
+                                listOf(result.data.conversation)
                         )
-                    }
-            )
+                DataResult.Content(result.data.copy(directMessages = merged))
+            }
+            else -> result
+        }
+    }
+
+    private suspend fun mergeDirectMessageCache(
+            serverId: ServerId,
+            incoming: List<ConversationSummary>
+    ): List<ConversationSummary> =
+            directMessageCacheMutex.withLock {
+                val existing =
+                        directMessageCache?.takeIf { it.serverId == serverId }?.directMessages
+                                .orEmpty()
+                val merged = mergeDirectMessages(existing, incoming)
+                directMessageCache = CachedDirectMessages(serverId, merged)
+                merged
+            }
 
     private suspend fun serverContext(serverId: ServerId): NetworkServerContext? =
             store.readSession()?.toNetworkServerContext(serverId)
@@ -337,6 +428,11 @@ class RealChannelRepository(
         val selectedId = session.currentServerId ?: return null
         return session.toNetworkServerContext(ServerId(selectedId))
     }
+
+    private data class CachedDirectMessages(
+            val serverId: ServerId,
+            val directMessages: List<ConversationSummary>
+    )
 }
 
 class RealReadReceiptRepository(
@@ -447,6 +543,25 @@ class RealTaskRepository(
         )
     }
 
+    override suspend fun getChannelTasks(
+            serverId: ServerId,
+            channelId: ChannelId,
+            filter: TaskFilter
+    ): DataResult<TaskSnapshot> {
+        val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
+        return execute(
+                emptyReason = EmptyReason.NoTasks,
+                block = { api.channelTasks(channelId.value) },
+                emptyWhen = { it.tasks.isEmpty() },
+                source = "tasks_channel",
+                warningLogger = warningLogger,
+                mapper = { json ->
+                    json.toTaskSnapshot()
+                            .filteredBy(filter, currentUserId = context.session.user.id)
+                }
+        )
+    }
+
     override suspend fun claimTask(taskId: TaskId): DataResult<TaskActionResult> {
         currentContext() ?: return authRequired()
         return execute(
@@ -498,6 +613,9 @@ class RealMemberRepository(
         },
         private val logger: (String) -> Unit = {}
 ) : MemberRepository {
+    private val agentActivityCacheMutex = Mutex()
+    private val agentActivityCache = mutableMapOf<MemberId, List<AgentActivityEntry>>()
+
     override suspend fun getMembers(serverId: ServerId): DataResult<MemberSnapshot> {
         val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
         val result =
@@ -619,18 +737,56 @@ class RealMemberRepository(
 
     override suspend fun getAgentActivity(agentId: MemberId): DataResult<AgentActivitySnapshot> {
         currentContext() ?: return authRequired()
-        return execute(
-                emptyReason = EmptyReason.NoMembers,
-                block = { api.trajectoryLogs(agentId.value) },
-                source = "agent_activity",
-                warningLogger = warningLogger,
-                mapper = { json ->
-                    val items =
-                            json.items("trajectoryLogs", "logs", "items", "entries", "data")
-                                    .mapNotNull { it.asObjectOrNull()?.toAgentActivityEntry() }
-                    AgentActivitySnapshot(agentId = agentId, activity = items)
+        val logResult =
+                execute(
+                        emptyReason = EmptyReason.NoMembers,
+                        block = { api.agentActivityLog(agentId.value, limit = 50) },
+                        source = "agent_activity",
+                        warningLogger = warningLogger,
+                        mapper = { json ->
+                            val items =
+                                    json.items(
+                                                    "activityLog",
+                                                    "activity",
+                                                    "trajectoryLogs",
+                                                    "logs",
+                                                    "items",
+                                                    "entries",
+                                                    "data"
+                                            )
+                                            .mapNotNull {
+                                                it.asObjectOrNull()?.toAgentActivityEntry()
+                                            }
+                            logger(
+                                    "agent_activity_log_fetch agentId=${agentId.value} mappedCount=${items.size}"
+                            )
+                            AgentActivitySnapshot(agentId = agentId, activity = items)
+                        }
+                )
+        val fallbackEntries = fetchAgentCurrentActivityFallback(agentId)
+        return when (logResult) {
+            is DataResult.Content -> {
+                val mergedInput = fallbackEntries + logResult.data.activity
+                DataResult.Content(
+                        logResult.data.copy(
+                                activity = mergeAgentActivity(agentId, mergedInput)
+                        )
+                )
+            }
+            is DataResult.Empty -> {
+                if (fallbackEntries.isNotEmpty()) {
+                    DataResult.Content(
+                            AgentActivitySnapshot(
+                                    agentId = agentId,
+                                    activity = mergeAgentActivity(agentId, fallbackEntries)
+                            )
+                    )
+                } else {
+                    logResult
                 }
-        )
+            }
+            else -> logResult
+        }
     }
 
     override suspend fun getChannelMembers(
@@ -749,6 +905,41 @@ class RealMemberRepository(
         val session = store.readSession() ?: return null
         val selectedId = session.currentServerId ?: return null
         return session.toNetworkServerContext(ServerId(selectedId))
+    }
+
+    private suspend fun mergeAgentActivity(
+            agentId: MemberId,
+            incoming: List<AgentActivityEntry>
+    ): List<AgentActivityEntry> =
+            agentActivityCacheMutex.withLock {
+                val merged = mergeAgentActivityEntries(agentActivityCache[agentId].orEmpty(), incoming)
+                agentActivityCache[agentId] = merged
+                merged
+            }
+
+    private suspend fun fetchAgentCurrentActivityFallback(
+            agentId: MemberId
+    ): List<AgentActivityEntry> {
+        val result =
+                execute<List<AgentActivityEntry>>(
+                        emptyReason = EmptyReason.NoMembers,
+                        block = { api.settingsAgents() },
+                        source = "agent_activity_current_fallback",
+                        warningLogger = warningLogger,
+                        mapper = { json ->
+                            val entries =
+                                    json.agentObjects().mapNotNull { agent ->
+                                        agent.takeIf {
+                                            it.string("id", "agentId", "_id") == agentId.value
+                                        }?.toCurrentAgentActivityEntry()
+                                    }
+                            logger(
+                                    "agent_activity_fallback_fetch agentId=${agentId.value} mappedCount=${entries.size}"
+                            )
+                            entries
+                        }
+                )
+        return (result as? DataResult.Content)?.data.orEmpty()
     }
 
     private suspend fun enrichHumanProfiles(
@@ -1042,7 +1233,7 @@ class RealConversationRepository(
             parentMessageId: MessageId
     ): DataResult<ThreadActionResult> =
             threadAction(
-                    fallbackThreadChannelId = channelId,
+                    fallbackThreadChannelId = null,
                     fallbackParentMessageId = parentMessageId,
                     source = "thread_create_or_open"
             ) {
@@ -1051,7 +1242,7 @@ class RealConversationRepository(
 
     override suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult> =
             threadAction(
-                    fallbackThreadChannelId = ChannelId(parentMessageId.value),
+                    fallbackThreadChannelId = null,
                     fallbackParentMessageId = parentMessageId,
                     source = "thread_follow_parent"
             ) { api.followThread(parentMessageId.toParentMessageThreadBody()) }
@@ -1172,57 +1363,85 @@ class RealConversationRepository(
             threadId: ThreadId,
             block: suspend () -> retrofit2.Response<okhttp3.ResponseBody>,
             source: String
-    ): DataResult<ThreadSnapshot> {
-        val messagesResult =
-                execute(
-                        emptyReason = EmptyReason.NoMessages,
-                        block = block,
-                        emptyWhen = { it.messages.isEmpty() },
-                        source = source,
-                        warningLogger = warningLogger,
-                        mapper = { json ->
-                            json.toThreadSnapshot(
-                                    context = context,
-                                    fallbackThreadId = threadId,
-                                    fallbackConversationName = "Messages"
-                            )
-                        }
-                )
-        if (messagesResult !is DataResult.Content) return messagesResult
-        val threadSummaries =
-                execute(
-                        emptyReason = EmptyReason.NoInboxItems,
-                        block = { api.channelThreads(threadId.value, MESSAGE_PAGE_LIMIT) },
-                        emptyWhen = { false },
-                        source = "${source}_thread_summaries",
-                        warningLogger = warningLogger,
-                        mapper = { json -> json.toThreadListSnapshot(context) }
-                )
-        return when (threadSummaries) {
-            is DataResult.Content -> {
-                val threads = threadSummaries.data.threads
+    ): DataResult<ThreadSnapshot> = coroutineScope {
+        val messagesDeferred =
+                async {
+                    execute(
+                            emptyReason = EmptyReason.NoMessages,
+                            block = block,
+                            emptyWhen = { it.messages.isEmpty() },
+                            source = source,
+                            warningLogger = warningLogger,
+                            mapper = { json ->
+                                json.toThreadSnapshot(
+                                        context = context,
+                                        fallbackThreadId = threadId,
+                                        fallbackConversationName = "Messages"
+                                )
+                            }
+                    )
+                }
+        val threadSummariesDeferred =
+                async {
+                    execute(
+                            emptyReason = EmptyReason.NoInboxItems,
+                            block = { api.channelThreads(threadId.value, MESSAGE_PAGE_LIMIT) },
+                            emptyWhen = { false },
+                            source = "${source}_thread_summaries",
+                            warningLogger = warningLogger,
+                            mapper = { json -> json.toThreadListSnapshot(context) }
+                    )
+                }
+        val followedSummariesDeferred =
+                async {
+                    execute(
+                            emptyReason = EmptyReason.NoInboxItems,
+                            block = { api.followedThreads(MESSAGE_PAGE_LIMIT) },
+                            emptyWhen = { false },
+                            source = "${source}_followed_summaries",
+                            warningLogger = warningLogger,
+                            mapper = { json -> json.toThreadListSnapshot(context) }
+                    )
+                }
+        val messagesResult = messagesDeferred.await()
+        val threadSummaries = threadSummariesDeferred.await()
+        val followedSummaries = followedSummariesDeferred.await()
+        if (messagesResult !is DataResult.Content) {
+            messagesResult
+        } else {
+            val channelThreads =
+                    if (threadSummaries is DataResult.Content) threadSummaries.data.threads
+                    else emptyList()
+            val followedForChannel =
+                    if (followedSummaries is DataResult.Content)
+                            followedSummaries.data.threads.filter {
+                                it.parentChannelId?.value == threadId.value
+                            }
+                    else emptyList()
+            val mergedThreads =
+                    (channelThreads + followedForChannel).distinctBy { it.key }
+            if (threadSummaries is DataResult.Error && followedSummaries is DataResult.Error) {
                 warningLogger(
-                        "thread_summaries_loaded source=$source count=${threads.size} " +
-                                "candidateIds=${threads.take(3).joinToString { t ->
+                        "thread_summaries_error source=$source " +
+                                "channel_code=${threadSummaries.error.code} " +
+                                "followed_code=${followedSummaries.error.code}"
+                )
+                messagesResult
+            } else {
+                warningLogger(
+                        "thread_summaries_loaded source=$source " +
+                                "channel=${channelThreads.size} followed_filtered=${followedForChannel.size} " +
+                                "merged=${mergedThreads.size} " +
+                                "candidateIds=${mergedThreads.take(3).joinToString { t ->
                                     "${t.channelId.value.take(8)}/" +
                                             "${t.threadChannelId?.value?.take(8) ?: "null"}/" +
                                             "${t.parentMessageId?.value?.take(8) ?: "null"}"
                                 }}"
                 )
                 DataResult.Content(
-                        messagesResult.data.withReplySummaries(threads, warningLogger)
+                        messagesResult.data.withReplySummaries(mergedThreads, warningLogger)
                 )
             }
-            is DataResult.Error ->
-                    messagesResult.also {
-                        warningLogger(
-                                "thread_summaries_error source=$source code=${threadSummaries.error.code}"
-                        )
-                    }
-            else ->
-                    messagesResult.also {
-                        warningLogger("thread_summaries_non_content source=$source result=$threadSummaries")
-                    }
         }
     }
 
@@ -1239,7 +1458,7 @@ class RealConversationRepository(
             )
 
     private suspend fun threadAction(
-            fallbackThreadChannelId: ChannelId,
+            fallbackThreadChannelId: ChannelId?,
             fallbackParentMessageId: MessageId?,
             source: String,
             block: suspend () -> retrofit2.Response<okhttp3.ResponseBody>
@@ -1252,27 +1471,21 @@ class RealConversationRepository(
                 warningLogger = warningLogger,
                 mapper = { json ->
                     val unwrapped = json.unwrap("thread", "summary", "data")
+                    val parsedThreadChannelId =
+                            unwrapped.threadActionThreadChannelId()
+                                    ?: json.threadActionThreadChannelId()
+                                    ?: fallbackThreadChannelId?.value
+                                    ?: error("thread action response missing thread channel id")
+                    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                            "SlockThreadReplies",
+                            "thread_action_result source=$source " +
+                                    "threadChannelId=$parsedThreadChannelId " +
+                                    "fallback=${fallbackThreadChannelId?.value.orEmpty()} " +
+                                    "parentMessageId=${fallbackParentMessageId?.value.orEmpty()} " +
+                                    "replyCount=${unwrapped.replyCountFromAliases() ?: json.replyCountFromAliases() ?: 0}"
+                    )
                     ThreadActionResult(
-                            threadChannelId =
-                                    ChannelId(
-                                            unwrapped.string(
-                                                    "threadChannelId",
-                                                    "replyThreadChannelId",
-                                                    "replyChannelId",
-                                                    "replyThreadId",
-                                                    "channelId",
-                                                    "id"
-                                            )
-                                                    ?: json.string(
-                                                            "threadChannelId",
-                                                            "replyThreadChannelId",
-                                                            "replyChannelId",
-                                                            "replyThreadId",
-                                                            "channelId",
-                                                            "id"
-                                                    )
-                                                            ?: fallbackThreadChannelId.value
-                                    ),
+                            threadChannelId = ChannelId(parsedThreadChannelId),
                             changed = unwrapped.boolean("changed", "ok", "success")
                                             ?: json.boolean("changed", "ok", "success") ?: true,
                             parentMessageId =
@@ -1485,14 +1698,56 @@ private fun JsonObject.toConversation(kind: ConversationKind): ConversationSumma
 
 private fun JsonObject.toConversation(kind: ConversationKind, id: String): ConversationSummary {
     val presenceSource = firstObject("peer", "agent", "user", "member", "profile")
+    val presenceMemberKind =
+            explicitMemberKindOrNull() ?: presenceSource?.explicitMemberKindOrNull()
     val name =
-            string("name", "channelName", "peerDisplayName", "peerName", "title")
+            string(
+                            "name",
+                            "channelName",
+                            "peerDisplayName",
+                            "peerName",
+                            "agentName",
+                            "agentDisplayName",
+                            "agentUsername",
+                            "userDisplayName",
+                            "username",
+                            "title"
+                    )
                     ?: presenceSource?.string("displayName", "name", "username", "email")
                             ?: if (kind == ConversationKind.DirectMessage) "Direct message"
                     else "channel"
     val joined = if (kind == ConversationKind.DirectMessage) true else channelJoined()
     val canSend = boolean("canSend", "canWrite", "canMessage") ?: joined
     val avatarWireValue = conversationAvatarWireValue()
+    val presence =
+            string(
+                            "presence",
+                            "status",
+                            "activity",
+                            "availability",
+                            "onlineStatus",
+                            "connectionStatus",
+                            "state",
+                            "peerPresence",
+                            "peerStatus",
+                            "peerAvailability",
+                            "agentPresence",
+                            "agentStatus",
+                            "userPresence",
+                            "userStatus"
+                    )
+                    .toPresenceOrNull()
+                    ?: presenceSource
+                            ?.string(
+                                    "presence",
+                                    "status",
+                                    "activity",
+                                    "availability",
+                                    "onlineStatus",
+                                    "connectionStatus",
+                                    "state"
+                            )
+                            .toPresenceOrNull()
     return ConversationSummary(
             threadId = ThreadId(string("threadId", "threadChannelId", "id") ?: id),
             channelId = ChannelId(id),
@@ -1510,11 +1765,10 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
             lastMessageAt = string("lastMessageAt", "updatedAt", "latestActivityAt", "createdAt"),
             lastMessageSenderName = string("lastMessageSenderName", "senderName", "authorName"),
             presence =
-                    string("presence", "status", "activity", "peerPresence", "peerStatus")
-                            .toPresenceOrNull()
-                            ?: presenceSource
-                                    ?.string("presence", "status", "activity", "availability")
-                                    .toPresenceOrNull(),
+                    presence.takeIf {
+                        kind != ConversationKind.DirectMessage ||
+                                presenceMemberKind == MemberKind.Agent
+                    },
             presenceMemberId =
                     (string(
                                     "presenceMemberId",
@@ -1545,6 +1799,52 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
                     )
     )
 }
+
+private fun mergeDirectMessages(
+        existing: List<ConversationSummary>,
+        incoming: List<ConversationSummary>
+): List<ConversationSummary> {
+    val merged = LinkedHashMap<String, ConversationSummary>()
+    for (conversation in existing) {
+        merged[conversation.conversationCacheKey] = conversation
+    }
+    for (conversation in incoming) {
+        val key = conversation.conversationCacheKey
+        val previous = merged[key]
+        merged.remove(key)
+        merged[key] =
+                if (previous == null) {
+                    conversation
+                } else {
+                    conversation.withDirectMessageFallback(previous)
+                }
+    }
+    return merged.values.toList()
+}
+
+private val ConversationSummary.conversationCacheKey: String
+    get() = channelId?.value ?: threadId.value
+
+private fun ConversationSummary.withDirectMessageFallback(
+        previous: ConversationSummary
+): ConversationSummary =
+        copy(
+                name = name.takeUnless { it.isBlank() || it == "Direct message" } ?: previous.name,
+                subtitle = subtitle ?: previous.subtitle,
+                avatarUrl = avatarUrl ?: previous.avatarUrl,
+                avatar = avatar ?: previous.avatar,
+                unreadCount = maxOf(unreadCount, previous.unreadCount),
+                mentionCount = maxOf(mentionCount, previous.mentionCount),
+                lastMessageId = lastMessageId ?: previous.lastMessageId,
+                firstUnreadMessageId = firstUnreadMessageId ?: previous.firstUnreadMessageId,
+                lastMessagePreview = lastMessagePreview ?: previous.lastMessagePreview,
+                lastMessageAt = lastMessageAt ?: previous.lastMessageAt,
+                lastMessageSenderName = lastMessageSenderName ?: previous.lastMessageSenderName,
+                presence = presence ?: previous.presence,
+                presenceMemberId = presenceMemberId ?: previous.presenceMemberId,
+                joined = joined || previous.joined,
+                archived = archived || previous.archived
+        )
 
 private fun JsonObject.conversationAvatarWireValue(): String? =
         avatarWireValue(
@@ -1694,6 +1994,15 @@ private fun JsonObject.toThreadSnapshot(
         fallbackConversationName: String? = null,
         highlightedMessageId: MessageId? = null
 ): ThreadSnapshot {
+    val parentMessage =
+            firstObject(
+                            "parentMessage",
+                            "parent",
+                            "rootMessage",
+                            "originMessage",
+                            "threadParentMessage"
+                    )
+                    ?.toMessage(fallbackThreadId)
     val messages =
             messageItems()
                     .mapNotNull { it.asObjectOrNull()?.toMessage(fallbackThreadId) }
@@ -1713,6 +2022,9 @@ private fun JsonObject.toThreadSnapshot(
     return ThreadSnapshot(
             conversation = conversation,
             messages = messages,
+            parentMessage = parentMessage ?: messages.firstOrNull { message ->
+                message.id == highlightedMessageId
+            },
             canLoadMoreBefore = canLoadMoreBefore(),
             canLoadMoreAfter = canLoadMoreAfter(),
             hasGap = boolean("hasGap", "gap") ?: false,
@@ -2175,31 +2487,87 @@ private fun JsonObject.toAgentReminderSummary(): AgentReminderSummary? {
 }
 
 private fun JsonObject.toAgentActivityEntry(): AgentActivityEntry? {
-    val type = string("type", "eventType", "kind")?.lowercase() ?: return null
-    val title =
-            when (type) {
-                "thinking" -> "Thinking"
-                "tool_start" -> "Tool started"
-                "text" -> "Text"
-                "system" -> "System"
-                "status" -> "Status"
-                "compaction_started" -> "Compaction started"
-                "compaction_finished" -> "Compaction finished"
-                else -> return null
-            }
+    val entry = firstObject("entry", "activity", "event", "data") ?: this
+    val type =
+            entry.string("type", "eventType", "kind", "activity")
+                    ?.lowercase()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: entry.string("status")?.lowercase()
+                    ?: "status"
+    val title = entry.string("title", "label") ?: type.toAgentActivityTitle()
     val id =
-            string("id", "entryId", "eventId")
-                    ?: listOfNotNull(type, string("timestamp", "createdAt", "time"))
+            entry.string("id", "entryId", "eventId")
+                    ?: string("id", "entryId", "eventId")
+                    ?: listOfNotNull(type, agentActivityTimestamp())
                             .joinToString(":")
                             .ifBlank { type }
     return AgentActivityEntry(
             id = id,
             type = type,
-            title = string("title", "label") ?: title,
-            body = string("body", "text", "content", "message", "status"),
-            timestamp = string("timestamp", "createdAt", "created_at", "time")
+            title = title,
+            body = entry.string("body", "text", "content", "message", "detail", "activityDetail")
+                            ?: entry.string("status", "activity")
+                            ?: string("detail", "activityDetail"),
+            timestamp = agentActivityTimestamp()
     )
 }
+
+private fun JsonObject.toCurrentAgentActivityEntry(): AgentActivityEntry? {
+    val type = string("activity", "status").toAgentActivityTypeOrNull() ?: return null
+    val detail = string("activityDetail", "detail", "statusLabel", "status")
+    return AgentActivityEntry(
+            id = listOfNotNull("current", string("id", "agentId", "_id"), type, detail).joinToString(":"),
+            type = type,
+            title = type.toAgentActivityTitle(),
+            body = detail,
+            timestamp = string("updatedAt", "lastActivityAt", "lastSeenAt")
+    )
+}
+
+private fun JsonObject.agentActivityTimestamp(): String? =
+        string("timestamp", "createdAt", "created_at", "time")
+                ?: long("timestamp", "createdAt", "created_at", "time")?.toString()
+
+private fun String?.toAgentActivityTypeOrNull(): String? =
+        when (val normalized = this?.lowercase()) {
+            null, "", "unknown" -> null
+            "active", "online", "working", "thinking", "error", "offline", "idle" -> normalized
+            else -> normalized
+        }
+
+private fun String.toAgentActivityTitle(): String =
+        when (this) {
+            "thinking" -> "Thinking"
+            "tool_start" -> "Tool started"
+            "text" -> "Text"
+            "system" -> "System"
+            "status" -> "Status"
+            "working" -> "Working"
+            "online", "active" -> "Online"
+            "offline" -> "Offline"
+            "idle" -> "Idle"
+            "error" -> "Error"
+            "compaction_started" -> "Compaction started"
+            "compaction_finished" -> "Compaction finished"
+            else -> replace('_', ' ').replaceFirstChar { it.uppercase() }
+        }
+
+private fun mergeAgentActivityEntries(
+        existing: List<AgentActivityEntry>,
+        incoming: List<AgentActivityEntry>
+): List<AgentActivityEntry> {
+    val merged = LinkedHashMap<String, AgentActivityEntry>()
+    for (entry in existing) {
+        merged[entry.activityCacheKey] = entry
+    }
+    for (entry in incoming) {
+        merged[entry.activityCacheKey] = entry
+    }
+    return merged.values.sortedWith(compareBy<AgentActivityEntry> { it.timestamp.orEmpty() }.thenBy { it.id })
+}
+
+private val AgentActivityEntry.activityCacheKey: String
+    get() = id.ifBlank { listOf(type, timestamp.orEmpty(), body.orEmpty()).joinToString(":") }
 
 private fun MemberProfile.withHumanProfile(profile: MemberProfile): MemberProfile {
     val mergedAvatarUrl = profile.avatarUrl ?: avatarUrl
@@ -2224,7 +2592,23 @@ private fun MemberProfile.withHumanProfile(profile: MemberProfile): MemberProfil
 }
 
 private fun JsonObject.memberId(): String? =
-        string("id", "_id", "userId", "memberId", "agentId") ?: nestedMemberObject()?.memberId()
+        explicitMemberKindOrNull()?.let { kind ->
+            when (kind) {
+                MemberKind.Agent ->
+                        string("agentId")
+                                ?: nestedMemberObject()?.memberId()
+                                ?: string("id", "_id", "memberId", "userId")
+                MemberKind.Human ->
+                        string("userId", "memberId")
+                                ?: nestedMemberObject()?.memberId()
+                                ?: string("id", "_id")
+                MemberKind.System ->
+                        string("id", "_id", "userId", "memberId", "agentId")
+                                ?: nestedMemberObject()?.memberId()
+            }
+        }
+                ?: nestedMemberObject()?.memberId()
+                ?: string("userId", "memberId", "agentId", "id", "_id")
 
 private fun JsonObject.memberDisplayName(): String? =
         string(
@@ -2343,39 +2727,34 @@ private fun JsonObject.memberItems(): List<MemberProfile> {
 }
 
 private fun JsonObject.agentMemberItems(): List<MemberProfile> {
-    val root = unwrap("data")
-    val agentContainers = root.directArrayItems("agents")
+    val agentContainers = agentObjects()
     if (agentContainers.isNotEmpty()) {
         return agentContainers
-                .mapNotNull { element ->
-                    val item = element.asObjectOrNull() ?: return@mapNotNull null
-                    if (item.isExplicitHumanMember()) null else item.toChannelMemberProfile(MemberKind.Agent)
-                }
+                .filterNot { it.isExplicitHumanMember() }
+                .mapNotNull { it.toChannelMemberProfile(MemberKind.Agent) }
                 .distinctBy { it.memberKey }
+    }
+    return emptyList()
+}
+
+private fun JsonObject.agentObjects(): List<JsonObject> {
+    val root = unwrap("data")
+    val agentContainers = root.directArrayItems("agents").mapNotNull { it.asObjectOrNull() }
+    if (agentContainers.isNotEmpty()) {
+        return agentContainers
     }
     val explicitAgents =
             root.get("agents")
                     ?.takeIf { it.isJsonArray }
                     ?.asJsonArray
                     ?.toList()
-                    ?.filterNot { it.asObjectOrNull()?.isExplicitHumanMember() == true }
+                    ?.mapNotNull { it.asObjectOrNull() }
                     .orEmpty()
     if (explicitAgents.isNotEmpty()) {
         return explicitAgents
-                .mapNotNull { it.asObjectOrNull()?.toChannelMemberProfile(MemberKind.Agent) }
-                .distinctBy { it.memberKey }
     }
-    val agents = root.items("items", "nodes", "records", "rows", "list", "results")
-    return agents
-            .mapNotNull { element ->
-                val item = element.asObjectOrNull() ?: return@mapNotNull null
-                if (!item.isExplicitHumanMember()) {
-                    item.toChannelMemberProfile(MemberKind.Agent)
-                } else {
-                    null
-                }
-            }
-            .distinctBy { it.memberKey }
+    return root.items("items", "nodes", "records", "rows", "list", "results")
+            .mapNotNull { it.asObjectOrNull() }
 }
 
 private fun JsonObject.isExplicitHumanMember(): Boolean =
@@ -2542,6 +2921,19 @@ private fun JsonObject.toMessageAuthorProfile(): MemberProfile {
                             "avatar"
                     )
                             ?: nestedAuthor?.avatarUrl,
+            gravatarHash =
+                    string(
+                            "authorGravatarHash",
+                            "authorGravatar",
+                            "senderGravatarHash",
+                            "senderGravatar",
+                            "userGravatarHash",
+                            "userGravatar",
+                            "gravatarHash",
+                            "gravatar_hash",
+                            "gravatar"
+                    )
+                            ?: nestedAuthor?.gravatarHash,
             avatarLabel = displayName.take(1).uppercase(),
             presence =
                     string(
@@ -2795,6 +3187,33 @@ private fun JsonObject.firstObject(vararg names: String): JsonObject? {
     }
     return null
 }
+
+private fun JsonObject.threadActionThreadChannelId(): String? =
+        string(
+                        "threadChannelId",
+                        "thread_channel_id",
+                        "replyThreadChannelId",
+                        "reply_thread_channel_id",
+                        "repliesThreadChannelId",
+                        "replies_thread_channel_id",
+                        "childThreadChannelId",
+                        "child_thread_channel_id",
+                        "replyChannelId",
+                        "reply_channel_id",
+                        "replyThreadId",
+                        "reply_thread_id",
+                        "commentsThreadChannelId",
+                        "comments_thread_channel_id"
+                )
+                ?: firstObject("channel", "threadChannel", "replyThread", "thread")
+                        ?.string(
+                                "threadChannelId",
+                                "thread_channel_id",
+                                "channelId",
+                                "channel_id",
+                                "id",
+                                "_id"
+                        )
 
 private fun ChannelId.toThreadActionBody(): RequestBody =
         mapOf("threadChannelId" to value, "channelId" to value).toJsonBody()

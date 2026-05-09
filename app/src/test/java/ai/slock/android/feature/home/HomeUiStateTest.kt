@@ -110,6 +110,95 @@ class HomeUiStateTest {
         assertEquals(0, merged.unreadTotal)
     }
 
+    @Test
+    fun withAgentDirectMessagePresenceFillsMissingAgentPresence() {
+        val content = homeContent(
+            channels = emptyList(),
+            directMessages = listOf(
+                directMessage(
+                    id = "dm-1",
+                    threadId = "dm-thread-1",
+                    name = "Android-Developer",
+                    presenceMemberId = MemberId("agent-android")
+                )
+            ),
+            unreadTotal = 0
+        )
+        val members = listOf(
+            MemberProfile(
+                id = MemberId("agent-android"),
+                displayName = "Android-Developer",
+                handle = "Android-Developer",
+                kind = MemberKind.Agent,
+                avatarUrl = null,
+                presence = Presence.Active
+            ),
+            MemberProfile(
+                id = MemberId("human-1"),
+                displayName = "Human",
+                handle = "human",
+                kind = MemberKind.Human,
+                avatarUrl = null,
+                presence = Presence.Offline
+            )
+        )
+
+        val merged = content.withAgentDirectMessagePresence(members)
+
+        assertEquals(Presence.Active, merged.directMessages.single().presence)
+        assertEquals("agent-android", merged.directMessages.single().presenceMemberId?.value)
+    }
+
+    @Test
+    fun withDraftIndicatorsMarksChannelsAndDirectMessagesByThreadId() {
+        val content = homeContent(
+            channels = listOf(
+                unreadChannel(id = "channel-1", threadId = "thread-1", unreadCount = 0),
+                unreadChannel(id = "channel-2", threadId = "thread-2", unreadCount = 3)
+            ),
+            directMessages = listOf(
+                directMessage(
+                    id = "dm-1",
+                    threadId = "dm-thread-1",
+                    name = "Agent",
+                    presenceMemberId = null
+                )
+            ),
+            unreadTotal = 3
+        )
+
+        val marked = content.withDraftIndicators(setOf("thread-1", "dm-thread-1"))
+
+        assertEquals(true, marked.channels[0].hasDraft)
+        assertEquals(false, marked.channels[1].hasDraft)
+        assertEquals(true, marked.directMessages.single().hasDraft)
+        assertEquals(3, marked.channels[1].unreadCount)
+    }
+
+    @Test
+    fun withDraftIndicatorsClearsStaleDraftFlagsWhenNoDraftsRemain() {
+        val content = homeContent(
+            channels = listOf(
+                unreadChannel(id = "channel-1", threadId = "thread-1", unreadCount = 0)
+                    .copy(hasDraft = true)
+            ),
+            directMessages = listOf(
+                directMessage(
+                    id = "dm-1",
+                    threadId = "dm-thread-1",
+                    name = "Agent",
+                    presenceMemberId = null
+                ).copy(hasDraft = true)
+            ),
+            unreadTotal = 0
+        )
+
+        val marked = content.withDraftIndicators(emptySet())
+
+        assertEquals(false, marked.channels.single().hasDraft)
+        assertEquals(false, marked.directMessages.single().hasDraft)
+    }
+
     private fun homeContent(
         channels: List<ConversationSummary>,
         directMessages: List<ConversationSummary>,
@@ -139,6 +228,21 @@ class HomeUiStateTest {
             name = id,
             unreadCount = unreadCount,
             firstUnreadMessageId = if (unreadCount > 0) MessageId("message-1") else null,
+            permissions = ConversationPermissions(canRead = true, canSend = true)
+        )
+
+    private fun directMessage(
+        id: String,
+        threadId: String,
+        name: String,
+        presenceMemberId: MemberId?
+    ): ConversationSummary =
+        ConversationSummary(
+            threadId = ThreadId(threadId),
+            channelId = ChannelId(id),
+            kind = ConversationKind.DirectMessage,
+            name = name,
+            presenceMemberId = presenceMemberId,
             permissions = ConversationPermissions(canRead = true, canSend = true)
         )
 }

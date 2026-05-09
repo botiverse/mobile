@@ -6,16 +6,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -25,9 +24,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.pulltorefresh.pullToRefresh
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,7 +40,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
@@ -84,22 +79,85 @@ fun TasksScreen(
     onRetry: () -> Unit = {}
 ) {
     val copy = TasksScreenCopy.defaults()
-    var lastVisibleContent by remember { mutableStateOf<TasksContent?>(null) }
-    val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
-    if (currentContent != null) {
-        lastVisibleContent = currentContent
-    }
-    val displayState = when {
-        state.refreshing && lastVisibleContent != null -> ScreenLoadState.Content(lastVisibleContent!!)
-        else -> state.loadState
-    }
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
         SlockTitledPageHeader(title = copy.title)
-        when (val loadState = displayState) {
+        TasksPanel(
+            state = state,
+            showChannelFilter = true,
+            onFilterSelected = onFilterSelected,
+            onTaskClick = onTaskClick,
+            onTaskStatusChange = onTaskStatusChange,
+            onRetry = onRetry
+        )
+    }
+}
+
+@Composable
+fun TasksPanel(
+    state: TasksUiState,
+    modifier: Modifier = Modifier,
+    showChannelFilter: Boolean = true,
+    onFilterSelected: (TaskStatus?) -> Unit = {},
+    onTaskClick: (TaskSummary) -> Unit = {},
+    onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit = { _, _ -> },
+    onRetry: () -> Unit = {}
+) {
+    val copy = TasksScreenCopy.defaults()
+    var lastVisibleContent by remember { mutableStateOf<TasksContent?>(null) }
+    var localSelectedFilter by rememberSaveable { mutableStateOf<TaskStatus?>(null) }
+    LaunchedEffect(state.selectedFilter) {
+        if (showChannelFilter) {
+            localSelectedFilter = state.selectedFilter
+        }
+    }
+    val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
+    if (currentContent != null) {
+        lastVisibleContent = currentContent
+    }
+    val effectiveSelectedFilter =
+        if (showChannelFilter) state.selectedFilter else localSelectedFilter
+    val displayUiState = state.copy(selectedFilter = effectiveSelectedFilter)
+    val displayState = when {
+        state.refreshing && lastVisibleContent != null -> ScreenLoadState.Content(lastVisibleContent!!)
+        else -> state.loadState
+    }
+    TasksPanel(
+        state = displayUiState,
+        copy = copy,
+        lastVisibleContent = displayState,
+        showChannelFilter = showChannelFilter,
+        modifier = modifier,
+        onFilterSelected = { filter ->
+            if (showChannelFilter) {
+                onFilterSelected(filter)
+            } else {
+                localSelectedFilter = filter
+            }
+        },
+        onTaskClick = onTaskClick,
+        onTaskStatusChange = onTaskStatusChange,
+        onRetry = onRetry
+    )
+}
+
+@Composable
+private fun TasksPanel(
+    state: TasksUiState,
+    copy: TasksScreenCopy,
+    lastVisibleContent: ScreenLoadState<TasksContent>,
+    showChannelFilter: Boolean,
+    modifier: Modifier = Modifier,
+    onFilterSelected: (TaskStatus?) -> Unit,
+    onTaskClick: (TaskSummary) -> Unit,
+    onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
+    onRetry: () -> Unit
+) {
+    Column(modifier = modifier.fillMaxSize()) {
+        when (val loadState = lastVisibleContent) {
             ScreenLoadState.Loading -> TasksStateBody(
                 title = copy.loadingTitle,
                 detail = copy.loadingDetail
@@ -111,8 +169,8 @@ fun TasksScreen(
                 onFilterSelected = onFilterSelected,
                 onTaskClick = onTaskClick,
                 onTaskStatusChange = onTaskStatusChange,
-                refreshing = state.refreshing,
-                onRefresh = onRetry
+                showChannelFilter = showChannelFilter,
+                refreshing = state.refreshing
             )
             is ScreenLoadState.Empty -> TasksStateBody(
                 title = copy.emptyTitle,
@@ -139,8 +197,8 @@ private fun TasksLoadedBody(
     onFilterSelected: (TaskStatus?) -> Unit,
     onTaskClick: (TaskSummary) -> Unit,
     onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
-    refreshing: Boolean,
-    onRefresh: () -> Unit
+    showChannelFilter: Boolean,
+    refreshing: Boolean
 ) {
     val channelOptions = content.tasks
         .mapNotNull { it.channelName }
@@ -148,7 +206,12 @@ private fun TasksLoadedBody(
         .sorted()
     var selectedChannelNames by rememberSaveable { mutableStateOf(emptySet<String>()) }
     var channelSelectorExpanded by rememberSaveable { mutableStateOf(false) }
-    val selectedChannels = selectedChannelNames.filter { it in channelOptions }.toSet()
+    val selectedChannels =
+        if (showChannelFilter) {
+            selectedChannelNames.filter { it in channelOptions }.toSet()
+        } else {
+            emptySet()
+        }
     val channelScopedTasks = content.tasks.filter { task ->
         selectedChannels.isEmpty() || task.channelName in selectedChannels
     }
@@ -172,118 +235,66 @@ private fun TasksLoadedBody(
     }
     val modeSwitching = renderedMode != selectedMode
 
-    TasksRefreshableContent(
-        refreshing = refreshing,
-        onRefresh = onRefresh,
-        modifier = Modifier.fillMaxSize()
-    ) { refreshOffset ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .offset(y = refreshOffset)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-        ) {
-            TasksSummaryBar(content = channelScopedContent, copy = copy)
-            state.navigationErrorCode?.let { code ->
-                TasksNavigationNotice(
-                    title = copy.navigationFailedTitle,
-                    detail = copy.navigationErrorDetail(code)
-                )
-            }
-            state.statusUpdateErrorCode?.let { code ->
-                TasksNavigationNotice(
-                    title = copy.statusUpdateFailedTitle,
-                    detail = copy.statusUpdateErrorDetail(code)
-                )
-            }
-            TasksToolbar(
-                state = state,
-                copy = copy,
-                channelOptions = channelOptions,
-                selectedChannelNames = selectedChannels,
-                channelSelectorExpanded = channelSelectorExpanded,
-                selectedMode = selectedMode,
-                onFilterSelected = onFilterSelected,
-                onChannelSelectorExpandedChange = { channelSelectorExpanded = it },
-                onChannelToggled = { channelName ->
-                    selectedChannelNames = if (channelName in selectedChannels) {
-                        selectedChannels - channelName
-                    } else {
-                        selectedChannels + channelName
-                    }
-                },
-                onClearChannels = { selectedChannelNames = emptySet() },
-                onModeSelected = { selectedMode = it }
-            )
-            if (refreshing || modeSwitching) {
-                TasksContentLoadingSection(mode = selectedMode, copy = copy)
-            } else {
-                when (renderedMode) {
-                    TasksViewMode.Board ->
-                        TasksBoardSection(
-                            content = filteredContent,
-                            copy = copy,
-                            onTaskClick = onTaskClick,
-                            onTaskStatusChange = onTaskStatusChange,
-                            updatingTaskId = state.statusUpdatingTaskId
-                        )
-                    TasksViewMode.List ->
-                        TasksListSection(
-                            tasks = filteredTasks,
-                            copy = copy,
-                            onTaskClick = onTaskClick,
-                            onTaskStatusChange = onTaskStatusChange,
-                            updatingTaskId = state.statusUpdatingTaskId
-                        )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TasksRefreshableContent(
-    refreshing: Boolean,
-    onRefresh: () -> Unit,
-    modifier: Modifier = Modifier,
-    content: @Composable BoxScope.(Dp) -> Unit
-) {
-    val refreshState = rememberPullToRefreshState()
-    Box(
-        modifier = modifier.pullToRefresh(
-            isRefreshing = refreshing,
-            state = refreshState,
-            enabled = true,
-            threshold = 120.dp,
-            onRefresh = {
-                if (!refreshing) {
-                    onRefresh()
-                }
-            }
-        )
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            val offset = SlockSpacing.Xs * refreshState.distanceFraction.coerceIn(0f, 1f)
-            content(offset)
+        TasksSummaryBar(content = channelScopedContent, copy = copy)
+        state.navigationErrorCode?.let { code ->
+            TasksNavigationNotice(
+                title = copy.navigationFailedTitle,
+                detail = copy.navigationErrorDetail(code)
+            )
         }
-        if (refreshState.distanceFraction > 0.01f) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = SlockSpacing.Sm),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                    color = SlockColor.TextBlack,
-                    trackColor = SlockColor.BorderBlack.copy(alpha = 0.18f)
-                )
+        state.statusUpdateErrorCode?.let { code ->
+            TasksNavigationNotice(
+                title = copy.statusUpdateFailedTitle,
+                detail = copy.statusUpdateErrorDetail(code)
+            )
+        }
+        TasksToolbar(
+            state = state,
+            copy = copy,
+            channelOptions = channelOptions,
+            selectedChannelNames = selectedChannels,
+            channelSelectorExpanded = channelSelectorExpanded,
+            selectedMode = selectedMode,
+            showChannelFilter = showChannelFilter,
+            onFilterSelected = onFilterSelected,
+            onChannelSelectorExpandedChange = { channelSelectorExpanded = it },
+            onChannelToggled = { channelName ->
+                selectedChannelNames = if (channelName in selectedChannels) {
+                    selectedChannels - channelName
+                } else {
+                    selectedChannels + channelName
+                }
+            },
+            onClearChannels = { selectedChannelNames = emptySet() },
+            onModeSelected = { selectedMode = it }
+        )
+        if (refreshing || modeSwitching) {
+            TasksContentLoadingSection(mode = selectedMode, copy = copy)
+        } else {
+            when (renderedMode) {
+                TasksViewMode.Board ->
+                    TasksBoardSection(
+                        content = filteredContent,
+                        copy = copy,
+                        onTaskClick = onTaskClick,
+                        onTaskStatusChange = onTaskStatusChange,
+                        updatingTaskId = state.statusUpdatingTaskId
+                    )
+                TasksViewMode.List ->
+                    TasksListSection(
+                        tasks = filteredTasks,
+                        copy = copy,
+                        onTaskClick = onTaskClick,
+                        onTaskStatusChange = onTaskStatusChange,
+                        updatingTaskId = state.statusUpdatingTaskId
+                    )
             }
         }
     }
@@ -351,6 +362,7 @@ private fun TasksToolbar(
     selectedChannelNames: Set<String>,
     channelSelectorExpanded: Boolean,
     selectedMode: TasksViewMode,
+    showChannelFilter: Boolean,
     onFilterSelected: (TaskStatus?) -> Unit,
     onChannelSelectorExpandedChange: (Boolean) -> Unit,
     onChannelToggled: (String) -> Unit,
@@ -366,6 +378,7 @@ private fun TasksToolbar(
             selectedChannelNames = selectedChannelNames,
             channelSelectorExpanded = channelSelectorExpanded,
             selectedMode = selectedMode,
+            showChannelFilter = showChannelFilter,
             copy = copy,
             onChannelSelectorExpandedChange = onChannelSelectorExpandedChange,
             onChannelToggled = onChannelToggled,
@@ -403,6 +416,7 @@ private fun TasksFilterBar(
     selectedChannelNames: Set<String>,
     channelSelectorExpanded: Boolean,
     selectedMode: TasksViewMode,
+    showChannelFilter: Boolean,
     copy: TasksScreenCopy,
     onChannelSelectorExpandedChange: (Boolean) -> Unit,
     onChannelToggled: (String) -> Unit,
@@ -421,16 +435,20 @@ private fun TasksFilterBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            TasksChannelSelector(
-                channels = channels,
-                selectedChannelNames = selectedChannelNames,
-                expanded = channelSelectorExpanded,
-                copy = copy,
-                onExpandedChange = onChannelSelectorExpandedChange,
-                onChannelToggled = onChannelToggled,
-                onClearChannels = onClearChannels,
-                modifier = Modifier.weight(1f)
-            )
+            if (showChannelFilter) {
+                TasksChannelSelector(
+                    channels = channels,
+                    selectedChannelNames = selectedChannelNames,
+                    expanded = channelSelectorExpanded,
+                    copy = copy,
+                    onExpandedChange = onChannelSelectorExpandedChange,
+                    onChannelToggled = onChannelToggled,
+                    onClearChannels = onClearChannels,
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                Spacer(modifier = Modifier.weight(1f))
+            }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically

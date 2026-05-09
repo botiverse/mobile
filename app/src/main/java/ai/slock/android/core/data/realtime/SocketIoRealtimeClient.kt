@@ -143,6 +143,7 @@ class SocketIoRealtimeClient(
 private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is RealtimeEvent.MessageNew -> "message_new"
     is RealtimeEvent.MessageUpdated -> "message_updated"
+    is RealtimeEvent.DirectMessageCreated -> "direct_message_created"
     is RealtimeEvent.ThreadUpdated -> "thread_updated"
     is RealtimeEvent.TaskCreated -> "task_created"
     is RealtimeEvent.TaskUpdated -> "task_updated"
@@ -157,6 +158,7 @@ private fun RealtimeEvent.realtimeDiagnosticFields(): String = when (this) {
         "threadId=${message.threadId.value} channelId=${message.channelId?.value.orEmpty()} messageId=${message.id.value} seq=${message.seq ?: 0}"
     is RealtimeEvent.MessageUpdated ->
         "threadId=${message.threadId.value} channelId=${message.channelId?.value.orEmpty()} messageId=${message.id.value} seq=${message.seq ?: 0}"
+    is RealtimeEvent.DirectMessageCreated -> "channelId=${channelId.value}"
     is RealtimeEvent.ThreadUpdated ->
         "threadId=${threadChannelId?.value.orEmpty()} messageId=${parentMessageId?.value.orEmpty()} replyCount=$replyCount"
     is RealtimeEvent.TaskCreated -> "tasks=${tasks.size}"

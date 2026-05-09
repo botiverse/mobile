@@ -44,6 +44,8 @@ import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenError
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.sample.SlockStateSamples
+import ai.slock.android.feature.thread.ThreadMessageBodyTextStyle
+import ai.slock.android.feature.thread.toThreadTimestampLabel
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
@@ -560,7 +562,7 @@ private fun InboxFlatItem(
 ) {
     val unread = item.unreadCount > 0
     val metadataDescription = item.metadataDescription()
-    val metadataTimestamp = item.metadataTimestamp()
+    val metadataTimestamp = item.metadataTimestamp()?.toThreadTimestampLabel()
     val hasMetadata = !metadataDescription.isNullOrBlank() || !metadataTimestamp.isNullOrBlank()
     Row(
         modifier = Modifier
@@ -618,7 +620,7 @@ private fun InboxFlatItem(
             }
             Text(
                 text = item.previewText(),
-                style = SlockType.Body,
+                style = ThreadMessageBodyTextStyle,
                 color = SlockColor.TextBlack,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis

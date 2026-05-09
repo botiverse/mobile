@@ -18,6 +18,10 @@ val SlockLightFontFamily = FontFamily(
     Font(R.font.space_grotesk_light, FontWeight.Light)
 )
 
+val SlockNormalFontFamily = FontFamily(
+    Font(R.font.space_grotesk_regular, FontWeight.Normal)
+)
+
 object SlockType {
     val PageTitle = TextStyle(
         fontFamily = SlockDisplayFontFamily,

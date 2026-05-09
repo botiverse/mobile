@@ -28,6 +28,7 @@ The reply count can be sourced from the initial REST snapshot or from the thread
 - `GET /messages/channel/{channelId}`
 - `GET /messages/context/{messageId}`
 - `GET /channels/{channelId}/threads`
+- `GET /channels/threads/followed` ← **new (2026-05-09)**: supplementary join source; always includes `parentMessageId`
 - `POST /messages`
 - `POST /channels/{channelId}/threads`
 
@@ -52,16 +53,34 @@ The REST sources above may return reply-count data directly on the message objec
 `RealSlockRepositories.kt`:
 
 - `toThreadSnapshot()` builds the visible thread message list from the REST message snapshot
-- `withReplySummaries()` merges `/channels/{channelId}/threads` results back into visible message rows
+- `withReplySummaries()` merges the combined thread-summary list back into visible message rows
 - merge rule: preserve the larger value with `maxOf(message.replyCount, summary.replyCount)`
-- **Matching logic (updated 2026-05-09)**: a summary row is joined to a message if any of the following match:
-  1. `InboxItem.matchesParentMessage(message.id)` — checks `parentMessageId`, `lastMessageId`, `latestActivityMessageId`, preview text references, and 8-char prefix of `channelId`/`key`
-  2. `summary.channelId == message.threadChannelId` — direct channel-ID match for cases where the backend doesn't populate `parentMessageId` on the summary row
-  3. `summary.threadChannelId == message.threadChannelId` — same, via the explicit thread-channel field
-- Unmatched messages with `replyCount == 0` emit a `summary_join_miss` diagnostic log (tag `SlockConversation`) to aid backend debugging
-- Loaded summary count and candidate IDs are logged at `thread_summaries_loaded` on every REST load
 
-This means the `/channels/{channelId}/threads` mapper must recognize the same reply-count aliases as the message mapper, otherwise a summary payload with a different alias will backfill as `0`.
+#### Dual-source join (updated 2026-05-09)
+
+`loadChannelMessages()` now fetches **two** thread-summary sources on every initial channel load:
+
+1. `GET /channels/{channelId}/threads` → `channelThreads` — all threads for the channel
+2. `GET /channels/threads/followed` → filter by `parentChannelId == channelId` → `followedForChannel` — user's followed threads that belong to this channel
+3. Merged list: `(channelThreads + followedForChannel).distinctBy { it.key }`
+4. Merged list is passed to `withReplySummaries()`
+
+Rationale: `/channels/{channelId}/threads` does not always include `parentMessageId` in its response, making the ID-based join unreliable. `/channels/threads/followed` **always** includes `parentMessageId`, so filtering it by `parentChannelId` provides the reliable join source. The merge step ensures no duplicate rows if a thread appears in both sources.
+
+Diagnostic log: `thread_summaries_loaded source=... channel=N followed_filtered=M merged=P candidateIds=[...]`
+
+Graceful degradation: if both API calls fail, messages are returned without reply counts (no crash, no retry loop).
+
+#### Matching logic
+
+A summary row is joined to a message if any of the following match:
+1. `InboxItem.matchesParentMessage(message.id)` — checks `parentMessageId`, `lastMessageId`, `latestActivityMessageId`, preview text references, and 8-char prefix of `channelId`/`key`
+2. `summary.channelId == message.threadChannelId` — direct channel-ID match
+3. `summary.threadChannelId == message.threadChannelId` — same, via the explicit thread-channel field
+
+Unmatched messages with `replyCount == 0` emit a `summary_join_miss` diagnostic log (tag `SlockConversation`).
+
+This means both summary endpoints' mappers must recognize the same reply-count aliases as the message mapper, otherwise a summary payload with a different alias will backfill as `0`.
 
 ## Accepted reply-count aliases
 
@@ -103,7 +122,7 @@ Realtime message mapping currently uses the same top-level alias set for `replyC
 ## Merge rules
 
 - REST first load seeds the message/thread snapshot.
-- `/channels/{channelId}/threads` thread-summary rows backfill the visible message rows.
+- `/channels/{channelId}/threads` + `/channels/threads/followed` (filtered by `parentChannelId`) are both fetched and merged; the combined list backfills the visible message rows.
 - Realtime `message:new` / `message:updated` update the same message model. **`message:updated` must not wipe `replyCount`**: use `maxOf(existing.replyCount, incoming.replyCount)` and preserve `threadChannelId` if the incoming event omits it. Backend edit events frequently omit reply-count fields entirely.
 - Realtime `thread:updated` is the primary real-time path for updating the reply count affordance. It fires every time a reply is added and carries `parentMessageId` + `threadChannelId` + `replyCount`. Merge with `maxOf(old, event.replyCount)` to avoid regressions.
 - Channel list rows and thread rows consume the mapped count directly; no UI layer should try to infer reply counts from raw payloads.

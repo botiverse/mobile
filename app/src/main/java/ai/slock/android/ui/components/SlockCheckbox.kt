@@ -5,6 +5,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
@@ -22,6 +26,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
 import ai.slock.android.ui.theme.SlockSpacing
@@ -45,10 +50,14 @@ fun SlockCheckbox(
     Box(
         modifier = modifier
             .size(size)
-            .background(backgroundColor)
-            .border(SlockStroke.Default, borderColor),
+            .background(borderColor),
         contentAlignment = Alignment.Center
     ) {
+        Box(
+            modifier = Modifier
+                .size(size - SlockStroke.Default * 2)
+                .background(backgroundColor)
+        )
         if (checked) {
             Icon(
                 imageVector = SlockIcons.Check,
@@ -87,7 +96,7 @@ fun SlockLabeledCheckbox(
         )
         Text(
             text = label,
-            style = SlockType.Button,
+            style = SlockType.Button.copy(fontSize = 16.sp, lineHeight = 20.sp),
             color = if (enabled) SlockColor.TextMutedGray else SlockColor.TextMutedGray.copy(alpha = 0.6f)
         )
     }

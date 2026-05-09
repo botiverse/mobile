@@ -35,9 +35,11 @@ Realtime events observed in the Web app:
 Implemented the minimum real data boundary required for the Android Tasks tab:
 
 - `SlockApi.serverTasks()` -> `GET /tasks/server`
+- `SlockApi.channelTasks(channelId)` -> `GET /tasks/channel/{channelId}`
 - `SlockApi.claimTask(taskId)` -> `PATCH /tasks/{taskId}/claim`
 - `SlockApi.updateTaskStatus(taskId, body)` -> `PATCH /tasks/{taskId}/status` with JSON body `{ "status": "todo" | "in_progress" | "in_review" | "done" | "closed" }`.
 - `RealTaskRepository.getTasks(serverId, filter)` maps server tasks into `TaskSnapshot`.
+- `RealTaskRepository.getChannelTasks(serverId, channelId, filter)` maps channel-scoped tasks into the same `TaskSnapshot` model so channel/thread surfaces can reuse the same Tasks panel interactions.
 - `RealTaskRepository.claimTask(taskId)` maps `{ task }` into `TaskActionResult`.
 - `RealTaskRepository.updateTaskStatus(taskId, status)` maps `{ task }` into `TaskActionResult`.
 - Mapper accepts top-level array, `{ tasks: [...] }`, `{ items: [...] }`, and nested `data` shapes via existing JSON helpers.
@@ -70,10 +72,11 @@ Implemented the minimum real data boundary required for the Android Tasks tab:
 - Auth and selected server remain owned by `AuthSessionStore` and the shared API client/interceptors.
 - #182 can use `TaskRepository.getTasks(selectedServerId, TaskFilter(...))` for Board/List data and `claimTask(taskId)` for claim action.
 - Task status changes are now wired for the Android Tasks page through `TaskRepository.updateTaskStatus`; Compose must not call the endpoint directly or provide raw auth/server headers.
+- Channel/thread task panels should call `TaskRepository.getChannelTasks(...)` and feed the same `TasksUiState` / reusable Tasks panel UI. They should hide redundant channel filtering when the API is already channel-scoped.
 - Create task, unclaim, delete, and convert-message are confirmed Web endpoints but are intentionally not wired in #181 unless a UI task requests them.
 
 ## Error and Security
 
 - No session or selected-server mismatch returns `auth_required` / no-permission style `DataResult`.
 - Empty task list maps to `EmptyReason.NoTasks`.
-- Parse diagnostics use `source=tasks_server` / `source=tasks_claim` / `source=tasks_status`; logs must not include raw body, task content dumps, Authorization, X-Server-Id, or token values.
+- Parse diagnostics use `source=tasks_server` / `source=tasks_channel` / `source=tasks_claim` / `source=tasks_status`; logs must not include raw body, task content dumps, Authorization, X-Server-Id, or token values.

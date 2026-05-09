@@ -25,9 +25,7 @@ import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.ThreadId
 import kotlinx.coroutines.CancellationException
-import kotlin.coroutines.Continuation
-import kotlin.coroutines.EmptyCoroutineContext
-import kotlin.coroutines.startCoroutine
+import kotlinx.coroutines.runBlocking
 import okhttp3.RequestBody
 import okio.Buffer
 import okhttp3.MediaType.Companion.toMediaType
@@ -99,6 +97,67 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
+    fun channelRepositoryMapsAgentPresenceAliasesForHomeDirectMessages() {
+        val repository = RealChannelRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = FakeSlockApi(
+                channelsJson = """{"channels":[]}""",
+                directMessagesJson = """
+                    {
+                      "directMessages": [
+                        {
+                          "id": "dm-agent-2",
+                          "agentId": "agent-2",
+                          "agentName": "QA-Tester",
+                          "agentStatus": "busy",
+                          "avatar": "random:qa"
+                        }
+                      ]
+                    }
+                """.trimIndent()
+            )
+        )
+
+        val result = runSuspend { repository.getHome(ServerId("server-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val directMessage = (result as DataResult.Content).data.directMessages.single()
+        assertEquals("QA-Tester", directMessage.name)
+        assertEquals(Presence.Away, directMessage.presence)
+        assertEquals("agent-2", directMessage.presenceMemberId?.value)
+    }
+
+    @Test
+    fun channelRepositoryDoesNotExposeHumanPresenceForHomeDirectMessages() {
+        val repository = RealChannelRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = FakeSlockApi(
+                channelsJson = """{"channels":[]}""",
+                directMessagesJson = """
+                    {
+                      "directMessages": [
+                        {
+                          "id": "dm-human-1",
+                          "userId": "user-2",
+                          "userDisplayName": "Human User",
+                          "userPresence": "online"
+                        }
+                      ]
+                    }
+                """.trimIndent()
+            )
+        )
+
+        val result = runSuspend { repository.getHome(ServerId("server-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val directMessage = (result as DataResult.Content).data.directMessages.single()
+        assertEquals("Human User", directMessage.name)
+        assertEquals(null, directMessage.presence)
+        assertEquals("user-2", directMessage.presenceMemberId?.value)
+    }
+
+    @Test
     fun channelRepositoryToleratesWrappedHomeResponseShapesAndBadItems() {
         val warnings = mutableListOf<String>()
         val repository = RealChannelRepository(
@@ -165,6 +224,61 @@ class RealSlockRepositoriesTest {
         }
 
         throw AssertionError("Expected CancellationException to be rethrown.")
+    }
+
+    @Test
+    fun channelRepositoryOpensAgentDirectMessageAndMergesCache() {
+        val api = FakeSlockApi(
+            directMessagesJson = """
+                {"directMessages":[{"id":"dm-existing","agentId":"agent-existing","agentName":"Existing Agent"}]}
+            """.trimIndent(),
+            openDirectMessageJson = """
+                {"channel":{"id":"dm-agent-1","agentId":"agent-1","agentName":"API Agent","agentStatus":"active","lastMessagePreview":"Created"}}
+            """.trimIndent()
+        )
+        val repository = RealChannelRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val opened = runSuspend { repository.openAgentDirectMessage(MemberId("agent-1")) }
+        val directMessages = runSuspend { repository.getDirectMessages(ServerId("server-1")) }
+
+        assertTrue(opened is DataResult.Content)
+        val openedContent = (opened as DataResult.Content).data
+        assertEquals("""{"agentId":"agent-1"}""", api.openDirectMessageBodies.single())
+        assertEquals("dm-agent-1", openedContent.conversation.channelId?.value)
+        assertEquals(Presence.Active, openedContent.conversation.presence)
+        assertEquals(1, openedContent.directMessages.count { it.channelId?.value == "dm-agent-1" })
+        assertTrue(directMessages is DataResult.Content)
+        val merged = (directMessages as DataResult.Content).data.directMessages
+        assertEquals(2, merged.size)
+        assertEquals(1, merged.count { it.channelId?.value == "dm-agent-1" })
+        assertEquals("Created", merged.first { it.channelId?.value == "dm-agent-1" }.lastMessagePreview)
+    }
+
+    @Test
+    fun channelRepositoryOpensUserDirectMessageWithUserIdBody() {
+        val api = FakeSlockApi(
+            openDirectMessageJson = """
+                {"dm":{"channelId":"dm-user-2","userId":"user-2","userDisplayName":"Artin"}}
+            """.trimIndent()
+        )
+        val repository = RealChannelRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val opened = runSuspend { repository.openUserDirectMessage(MemberId("user-2")) }
+
+        assertTrue(opened is DataResult.Content)
+        assertEquals("""{"userId":"user-2"}""", api.openDirectMessageBodies.single())
+        val conversation = (opened as DataResult.Content).data.conversation
+        assertEquals("dm-user-2", conversation.channelId?.value)
+        assertEquals("Artin", conversation.name)
+        assertEquals(null, conversation.presence)
     }
 
     @Test
@@ -540,6 +654,37 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
+    fun conversationRepositoryMapsAuthorGravatarHash() {
+        val repository = RealConversationRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = FakeSlockApi(
+                channelMessagesJson = """
+                    {
+                      "messages": [
+                        {
+                          "id": "message-human-gravatar",
+                          "channelId": "channel-1",
+                          "content": "Human avatar",
+                          "senderId": "user-1",
+                          "senderName": "artin",
+                          "senderGravatarHash": "abc123"
+                        }
+                      ]
+                    }
+                """.trimIndent()
+            ),
+            warningLogger = {}
+        )
+
+        val result = runSuspend { repository.getThread(ThreadId("channel-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val author = (result as DataResult.Content).data.messages.single().author
+        assertEquals("abc123", author.gravatarHash)
+        assertEquals("https://www.gravatar.com/avatar/abc123?s=52&d=404", author.avatar?.wireValue)
+    }
+
+    @Test
     fun conversationRepositoryMapsContextSyncSendAndThreads() {
         val api = FakeSlockApi(
             messageContextJson = """
@@ -776,6 +921,49 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
+    fun taskRepositoryMapsChannelScopedTasks() {
+        val api = FakeSlockApi(
+            channelTasksJson = """
+                {
+                  "tasks": [
+                    {
+                      "id": "task-channel-1",
+                      "title": "Channel task",
+                      "status": "todo",
+                      "taskNumber": 24,
+                      "channelId": "channel-1",
+                      "channelName": "android-dev",
+                      "updatedAt": "2026-05-09T20:55:00+08:00"
+                    }
+                  ]
+                }
+            """.trimIndent()
+        )
+        val repository = RealTaskRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val tasks = runSuspend {
+            repository.getChannelTasks(
+                serverId = ServerId("server-1"),
+                channelId = ChannelId("channel-1"),
+                filter = TaskFilter(statuses = setOf(TaskStatus.Todo))
+            )
+        }
+
+        assertTrue(tasks is DataResult.Content)
+        val snapshot = (tasks as DataResult.Content).data
+        assertEquals(1, snapshot.tasks.size)
+        assertEquals("Channel task", snapshot.tasks.single().title)
+        assertEquals("android-dev", snapshot.tasks.single().channelName)
+        assertEquals(TaskStatus.Todo, snapshot.tasks.single().status)
+        assertEquals(1, snapshot.summaryCounts[TaskStatus.Todo])
+        assertEquals(listOf("channel-1"), api.channelTaskCalls)
+    }
+
+    @Test
     fun taskRepositoryMapsRealServerTaskShapeForThreadNavigation() {
         val api = FakeSlockApi(
             serverTasksJson = """
@@ -992,6 +1180,88 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
+    fun memberRepositoryUsesUserIdForHumanProfileEnrichmentWhenMembershipIdIsPresent() {
+        val api = FakeSlockApi(
+            serverMembersJson = """
+                {
+                  "members": [
+                    {
+                      "id": "membership-1",
+                      "userId": "user-1",
+                      "displayName": "artin",
+                      "kind": "user"
+                    }
+                  ]
+                }
+            """.trimIndent(),
+            memberProfileJson = """
+                {
+                  "profile": {
+                    "id":"user-1",
+                    "displayName":"artin",
+                    "avatar":"pixel:diamond"
+                  }
+                }
+            """.trimIndent()
+        )
+        val repository = RealMemberRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val result = runSuspend { repository.getMembers(ServerId("server-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val human = (result as DataResult.Content).data.members.single { it.kind == MemberKind.Human }
+        assertEquals("user-1", human.id.value)
+        assertEquals("pixel:diamond", human.avatar?.wireValue)
+        assertEquals(listOf("user-1"), api.memberProfileCalls)
+    }
+
+    @Test
+    fun memberRepositoryUsesNestedUserIdBeforeMembershipWrapperId() {
+        val api = FakeSlockApi(
+            serverMembersJson = """
+                {
+                  "members": [
+                    {
+                      "id": "membership-1",
+                      "kind": "user",
+                      "user": {
+                        "id": "user-1",
+                        "displayName": "artin"
+                      }
+                    }
+                  ]
+                }
+            """.trimIndent(),
+            memberProfileJson = """
+                {
+                  "profile": {
+                    "id":"user-1",
+                    "displayName":"artin",
+                    "avatar":"pixel:diamond"
+                  }
+                }
+            """.trimIndent()
+        )
+        val repository = RealMemberRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val result = runSuspend { repository.getMembers(ServerId("server-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val human = (result as DataResult.Content).data.members.single { it.kind == MemberKind.Human }
+        assertEquals("user-1", human.id.value)
+        assertEquals("pixel:diamond", human.avatar?.wireValue)
+        assertEquals(listOf("user-1"), api.memberProfileCalls)
+    }
+
+    @Test
     fun memberRepositoryDoesNotTreatFallbackHumansAsAgents() {
         val api = FakeSlockApi(
             serverMembersJson = """
@@ -1042,6 +1312,68 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
+    fun memberRepositoryUsesActivityLogEndpointAndMergesCachedActivity() {
+        val api = FakeSlockApi(
+            agentActivityLogJson = """
+                {"activityLog":[
+                  {"timestamp":1715216400000,"entry":{"id":"activity-1","type":"thinking","message":"Old body"}},
+                  {"id":"activity-2","type":"tool_start","body":"Tool started","timestamp":"2026-05-09T02:00:00Z"}
+                ]}
+            """.trimIndent()
+        )
+        val repository = RealMemberRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val first = runSuspend { repository.getAgentActivity(MemberId("agent-1")) }
+        api.agentActivityLogJson = """
+            {"items":[
+              {"id":"activity-2","type":"tool_start","body":"Tool updated","timestamp":"2026-05-09T02:00:00Z"},
+              {"id":"activity-3","type":"text","body":"New text","timestamp":"2026-05-09T03:00:00Z"}
+            ]}
+        """.trimIndent()
+        val second = runSuspend { repository.getAgentActivity(MemberId("agent-1")) }
+
+        assertTrue(first is DataResult.Content)
+        assertTrue(second is DataResult.Content)
+        assertEquals(listOf("agent-1:50", "agent-1:50"), api.agentActivityLogCalls)
+        val activity = (second as DataResult.Content).data.activity
+        assertEquals(3, activity.size)
+        assertEquals("Old body", activity.first { it.id == "activity-1" }.body)
+        assertEquals("1715216400000", activity.first { it.id == "activity-1" }.timestamp)
+        assertEquals("Tool updated", activity.first { it.id == "activity-2" }.body)
+        assertEquals("New text", activity.last().body)
+    }
+
+    @Test
+    fun memberRepositoryFallsBackToAgentListCurrentActivityWhenActivityLogIsEmpty() {
+        val api = FakeSlockApi(
+            settingsAgentsJson = """
+                {"agents":[
+                  {"id":"agent-1","name":"API Agent","activity":"thinking","activityDetail":"Reading server logs","status":"active"}
+                ]}
+            """.trimIndent(),
+            agentActivityLogJson = """[]"""
+        )
+        val repository = RealMemberRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val result = runSuspend { repository.getAgentActivity(MemberId("agent-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val activity = (result as DataResult.Content).data.activity.single()
+        assertEquals("thinking", activity.type)
+        assertEquals("Thinking", activity.title)
+        assertEquals("Reading server logs", activity.body)
+        assertEquals(listOf("agent-1:50"), api.agentActivityLogCalls)
+    }
+
+    @Test
     fun conversationRepositoryCreatesOrOpensThreadFromParentMessage() {
         val api = FakeSlockApi(
             createThreadJson = """{"thread":{"replyThreadChannelId":"thread-parent-1","rootMessageId":"parent-1","repliesCount":3}}""",
@@ -1072,6 +1404,70 @@ class RealSlockRepositoriesTest {
         assertEquals("""{"parentMessageId":"parent-1"}""", api.followThreadBodies.single())
     }
 
+    @Test
+    fun conversationRepositoryMapsMessageContextChannelForThreadCreation() {
+        val api =
+                FakeSlockApi(
+                        messageContextJson =
+                                """
+                                {
+                                  "conversation": {"id":"parent-channel-1","name":"android-dev"},
+                                  "message": {
+                                    "id":"parent-1",
+                                    "channelId":"parent-channel-1",
+                                    "threadId":"parent-channel-1",
+                                    "content":"Start a thread"
+                                  }
+                                }
+                                """
+                                        .trimIndent()
+                )
+        val repository =
+                RealConversationRepository(
+                        store = InMemoryAuthSessionStore(sampleSession),
+                        api = api,
+                        warningLogger = {}
+                )
+
+        val result = runSuspend { repository.getMessageContext(MessageId("parent-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val snapshot = (result as DataResult.Content).data
+        assertEquals("parent-channel-1", snapshot.conversation.channelId?.value)
+        assertEquals("parent-channel-1", snapshot.messages.single().channelId?.value)
+        assertEquals(MessageId("parent-1"), snapshot.parentMessage?.id)
+    }
+
+    @Test
+    fun conversationRepositoryDoesNotUseGenericActionIdAsThreadChannelId() {
+        val api = FakeSlockApi(
+            createThreadJson =
+                    """{"thread":{"id":"thread-row-1","threadChannelId":"thread-channel-1","rootMessageId":"parent-1","repliesCount":1}}""",
+            threadActionJson =
+                    """{"data":{"id":"follow-row-1","threadChannel":{"id":"follow-thread-channel-1"},"parentId":"parent-1","childCount":1}}"""
+        )
+        val repository = RealConversationRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val opened = runSuspend {
+            repository.createOrOpenThread(ChannelId("parent-channel-1"), MessageId("parent-1"))
+        }
+        val followed = runSuspend {
+            repository.followThread(MessageId("parent-1"))
+        }
+
+        assertTrue(opened is DataResult.Content)
+        assertEquals("thread-channel-1", (opened as DataResult.Content).data.threadChannelId.value)
+        assertTrue(followed is DataResult.Content)
+        assertEquals(
+                "follow-thread-channel-1",
+                (followed as DataResult.Content).data.threadChannelId.value
+        )
+    }
+
     private class FakeSlockApi(
         private val settingsAccountJson: String = """{}""",
         private val settingsSessionsJson: String = """{"sessions":[]}""",
@@ -1086,9 +1482,12 @@ class RealSlockRepositoriesTest {
         private val addChannelMemberJson: String = """{"ok":true}""",
         private val directMessagesJson: String = """[]""",
         private val directMessagesFailure: Exception? = null,
+        private val openDirectMessageJson: String = """{"channel":{"id":"dm-1","name":"Direct message","type":"dm"}}""",
+        var agentActivityLogJson: String = """{"activityLog":[]}""",
         private val unreadCountsJson: String = """{}""",
         private val readReceiptJson: String = """{"ok":true}""",
         private val serverTasksJson: String = """{"tasks":[]}""",
+        private val channelTasksJson: String = """{"tasks":[]}""",
         private val claimTaskJson: String = """{"task":{}}""",
         private val updateTaskStatusJson: String = """{"task":{}}""",
         private val inboxJson: String = """{"items":[]}""",
@@ -1115,7 +1514,11 @@ class RealSlockRepositoriesTest {
         val readAllRequests = mutableListOf<String>()
         val createThreadBodies = mutableListOf<String>()
         val followThreadBodies = mutableListOf<String>()
+        val openDirectMessageBodies = mutableListOf<String>()
+        val agentActivityLogCalls = mutableListOf<String>()
+        val memberProfileCalls = mutableListOf<String>()
         val claimedTaskIds = mutableListOf<String>()
+        val channelTaskCalls = mutableListOf<String>()
         val updatedTaskStatusBodies = mutableListOf<String>()
         val channelMessagesBeforeSeqCalls = mutableListOf<Long?>()
         var inboxReadAllCallCount = 0
@@ -1190,8 +1593,10 @@ class RealSlockRepositoriesTest {
         override suspend fun deleteSettingsServer(serverId: String): Response<ResponseBody> =
             response("""{"ok":true}""")
 
-        override suspend fun memberProfile(memberId: String): Response<ResponseBody> =
-            response(memberProfileJson)
+        override suspend fun memberProfile(memberId: String): Response<ResponseBody> {
+            memberProfileCalls += memberId
+            return response(memberProfileJson)
+        }
 
         override suspend fun agentDirectMessages(agentId: String): Response<ResponseBody> =
             response("""{"directMessages":[]}""")
@@ -1199,8 +1604,8 @@ class RealSlockRepositoriesTest {
         override suspend fun reminders(ownerAgentId: String, status: String): Response<ResponseBody> =
             response("""{"reminders":[]}""")
 
-        override suspend fun trajectoryLogs(agentId: String): Response<ResponseBody> =
-            response("""{"trajectoryLogs":[]}""")
+        override suspend fun agentActivityLog(agentId: String, limit: Int): Response<ResponseBody> =
+            response(agentActivityLogJson).also { agentActivityLogCalls += "$agentId:$limit" }
 
         override suspend fun channelMembers(channelId: String): Response<ResponseBody> =
             response(channelMembersJson)
@@ -1222,6 +1627,11 @@ class RealSlockRepositoriesTest {
         override suspend fun directMessages(): Response<ResponseBody> =
             directMessagesFailure?.let { throw it } ?:
             response(directMessagesJson)
+
+        override suspend fun openDirectMessage(body: RequestBody): Response<ResponseBody> {
+            openDirectMessageBodies += body.bodyAsString()
+            return response(openDirectMessageJson)
+        }
 
         override suspend fun channelUnreadCounts(): Response<ResponseBody> =
             response(unreadCountsJson)
@@ -1247,6 +1657,11 @@ class RealSlockRepositoriesTest {
 
         override suspend fun serverTasks(): Response<ResponseBody> =
             response(serverTasksJson)
+
+        override suspend fun channelTasks(channelId: String): Response<ResponseBody> {
+            channelTaskCalls += channelId
+            return response(channelTasksJson)
+        }
 
         override suspend fun claimTask(taskId: String): Response<ResponseBody> {
             claimedTaskIds += taskId
@@ -1397,20 +1812,4 @@ class RealSlockRepositoriesTest {
     }
 }
 
-private fun <T> runSuspend(block: suspend () -> T): T {
-    var value: T? = null
-    var failure: Throwable? = null
-    block.startCoroutine(
-        object : Continuation<T> {
-            override val context = EmptyCoroutineContext
-
-            override fun resumeWith(result: Result<T>) {
-                result.onSuccess { value = it }
-                result.onFailure { failure = it }
-            }
-        }
-    )
-    failure?.let { throw it }
-    @Suppress("UNCHECKED_CAST")
-    return value as T
-}
+private fun <T> runSuspend(block: suspend () -> T): T = runBlocking { block() }

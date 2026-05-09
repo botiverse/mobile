@@ -19,7 +19,7 @@ class SessionRealtimeRepository(
         val session = if (tokenRefresher != null) {
             store.readSession()
                 ?: return DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
-            tokenRefresher.refreshIfExpiringSoon()
+            tokenRefresher.refreshIfExpiringSoon(clearOnUnauthorized = false)
                 ?: return DataResult.NoPermission(PermissionBlocker(code = "auth_refresh_failed", requiredCapability = "auth_session"))
         } else {
             store.readSession()

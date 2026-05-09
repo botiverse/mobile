@@ -32,6 +32,7 @@ data class ServerListSnapshot(
 data class ThreadSnapshot(
     val conversation: ConversationSummary,
     val messages: List<Message>,
+    val parentMessage: Message? = null,
     val tasks: List<TaskSummary> = emptyList(),
     val canLoadMoreBefore: Boolean = false,
     val canLoadMoreAfter: Boolean = false,
@@ -189,6 +190,11 @@ data class ReadReceiptResult(
 
 data class DirectMessageSnapshot(
     val server: ServerSummary,
+    val directMessages: List<ConversationSummary>
+)
+
+data class OpenDirectMessageResult(
+    val conversation: ConversationSummary,
     val directMessages: List<ConversationSummary>
 )
 

@@ -1,10 +1,11 @@
 package ai.slock.android.ui.components
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,47 +51,68 @@ fun SlockBottomTabBar(
         fontWeight = FontWeight.Bold
     )
 
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .height(SlockSize.BottomBarHeight)
             .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
     ) {
-        items.forEachIndexed { index, item ->
-            val selected = item.key == selectedKey
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                    .clickable { onSelected(item.key) }
-                    .padding(horizontal = SlockSpacing.Xs, vertical = SlockSpacing.Sm),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
-            ) {
-                Icon(
-                    imageVector = item.icon,
-                    contentDescription = item.contentDescription,
-                    tint = SlockColor.TextBlack,
-                    modifier = Modifier.size(18.dp)
-                )
-                Text(
-                    text = item.label.uppercase(),
-                    style = tabLabelStyle,
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (index < items.lastIndex) {
-                Box(
+        Row(modifier = Modifier.matchParentSize()) {
+            items.forEachIndexed { index, item ->
+                val selected = item.key == selectedKey
+                Column(
                     modifier = Modifier
+                        .weight(1f)
                         .fillMaxHeight()
-                        .width(SlockStroke.Default)
-                        .background(SlockColor.BorderBlack)
-                )
+                        .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                        .clickable { onSelected(item.key) }
+                        .padding(horizontal = SlockSpacing.Xs, vertical = SlockSpacing.Sm),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
+                ) {
+                    Icon(
+                        imageVector = item.icon,
+                        contentDescription = item.contentDescription,
+                        tint = SlockColor.TextBlack,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = item.label.uppercase(),
+                        style = tabLabelStyle,
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (index < items.lastIndex) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(SlockStroke.Default)
+                            .background(SlockColor.BorderBlack)
+                    )
+                }
             }
         }
+        SlockBottomTabFrame(modifier = Modifier.matchParentSize())
+    }
+}
+
+@Composable
+fun SlockBottomTabFrame(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val stroke = SlockStroke.Default.toPx()
+        drawLine(
+            color = SlockColor.BorderBlack,
+            start = Offset(0f, stroke / 2f),
+            end = Offset(size.width, stroke / 2f),
+            strokeWidth = stroke
+        )
+        drawLine(
+            color = SlockColor.BorderBlack,
+            start = Offset(0f, size.height - stroke / 2f),
+            end = Offset(size.width, size.height - stroke / 2f),
+            strokeWidth = stroke
+        )
     }
 }

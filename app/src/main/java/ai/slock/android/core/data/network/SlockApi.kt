@@ -104,9 +104,10 @@ interface SlockApi {
         @Query("status") status: String = "scheduled"
     ): Response<ResponseBody>
 
-    @GET("trajectoryLogs/{agentId}")
-    suspend fun trajectoryLogs(
-        @Path("agentId") agentId: String
+    @GET("agents/{agentId}/activity-log")
+    suspend fun agentActivityLog(
+        @Path("agentId") agentId: String,
+        @Query("limit") limit: Int = 50
     ): Response<ResponseBody>
 
     @GET("channels/{channelId}/members")
@@ -137,6 +138,9 @@ interface SlockApi {
 
     @GET("channels/dm")
     suspend fun directMessages(): Response<ResponseBody>
+
+    @POST("channels/dm")
+    suspend fun openDirectMessage(@Body body: RequestBody): Response<ResponseBody>
 
     @GET("channels/unread")
     suspend fun channelUnreadCounts(): Response<ResponseBody>
@@ -169,6 +173,11 @@ interface SlockApi {
 
     @GET("tasks/server")
     suspend fun serverTasks(): Response<ResponseBody>
+
+    @GET("tasks/channel/{channelId}")
+    suspend fun channelTasks(
+        @Path("channelId") channelId: String
+    ): Response<ResponseBody>
 
     @PATCH("tasks/{taskId}/claim")
     suspend fun claimTask(

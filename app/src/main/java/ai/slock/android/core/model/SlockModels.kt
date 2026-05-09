@@ -48,6 +48,7 @@ data class ConversationSummary(
     val lastMessageSenderName: String? = null,
     val presence: Presence? = null,
     val presenceMemberId: MemberId? = null,
+    val hasDraft: Boolean = false,
     val joined: Boolean = true,
     val archived: Boolean = false,
     val permissions: ConversationPermissions = ConversationPermissions()
@@ -256,6 +257,7 @@ data class InboxItem(
 sealed interface RealtimeEvent {
     data class MessageNew(val message: Message) : RealtimeEvent
     data class MessageUpdated(val message: Message) : RealtimeEvent
+    data class DirectMessageCreated(val channelId: ChannelId) : RealtimeEvent
     data class ThreadUpdated(
         val parentMessageId: MessageId,
         val threadChannelId: ChannelId,

@@ -31,6 +31,7 @@ import ai.slock.android.core.data.repository.HomeSnapshot
 import ai.slock.android.core.data.repository.InboxSnapshot
 import ai.slock.android.core.data.repository.MemberRepository
 import ai.slock.android.core.data.repository.MemberSnapshot
+import ai.slock.android.core.data.repository.OpenDirectMessageResult
 import ai.slock.android.core.data.repository.ReadReceiptRepository
 import ai.slock.android.core.data.repository.ReadReceiptResult
 import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
@@ -47,6 +48,10 @@ import ai.slock.android.core.data.repository.SettingsBillingSnapshot
 import ai.slock.android.core.data.repository.SettingsPlanUsageSnapshot
 import ai.slock.android.core.data.repository.SettingsMobileSnapshot
 import ai.slock.android.core.data.repository.SettingsRepository
+import ai.slock.android.core.data.repository.SettingsServerActionResult
+import ai.slock.android.core.data.repository.SettingsServerDeleteRequest
+import ai.slock.android.core.data.repository.SettingsServerInviteCreateRequest
+import ai.slock.android.core.data.repository.SettingsServerProfileUpdateRequest
 import ai.slock.android.core.data.repository.SettingsServerSnapshot
 import ai.slock.android.core.data.repository.SettingsSnapshot
 import ai.slock.android.core.data.repository.TaskActionResult
@@ -181,6 +186,29 @@ class MockSettingsRepository(
 
     override suspend fun getServerSettings(): DataResult<SettingsServerSnapshot> =
         resultFor(scenario, EmptyReason.NoSettingsAvailable) { MockSeedData.settingsServerSnapshot }
+
+    override suspend fun updateServerProfile(
+        request: SettingsServerProfileUpdateRequest
+    ): DataResult<SettingsServerSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            MockSeedData.settingsServerSnapshot.copy(
+                profile = MockSeedData.settingsServerSnapshot.profile.copy(name = request.name)
+            )
+        }
+
+    override suspend fun createServerInvite(
+        request: SettingsServerInviteCreateRequest
+    ): DataResult<SettingsServerActionResult> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            SettingsServerActionResult(success = true, message = request.email)
+        }
+
+    override suspend fun deleteServer(
+        request: SettingsServerDeleteRequest
+    ): DataResult<SettingsServerActionResult> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            SettingsServerActionResult(success = request.confirmationName.isNotBlank())
+        }
 
     override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> =
         resultFor(scenario, EmptyReason.NoSettingsAvailable) { MockSeedData.settingsMobileSnapshot }
@@ -378,6 +406,25 @@ class MockTaskRepository(
         return resultFor(scenario, EmptyReason.NoTasks) { snapshot }
     }
 
+    override suspend fun getChannelTasks(
+        serverId: ServerId,
+        channelId: ChannelId,
+        filter: TaskFilter
+    ): DataResult<TaskSnapshot> {
+        val snapshot = MockSeedData.taskSnapshot
+        val tasks = snapshot.tasks.filter { task ->
+            task.channelId == channelId && (filter.statuses.isEmpty() || task.status in filter.statuses)
+        }
+        return resultFor(scenario, EmptyReason.NoTasks) {
+            TaskSnapshot(
+                tasks = tasks,
+                summaryCounts = TaskStatus.entries.associateWith { status ->
+                    tasks.count { it.status == status }
+                }
+            )
+        }
+    }
+
     override suspend fun claimTask(taskId: TaskId): DataResult<TaskActionResult> =
         resultFor(scenario, EmptyReason.NoTasks) {
             TaskActionResult(
@@ -514,6 +561,12 @@ class MockChannelRepository(
             DirectMessageSnapshot(server = MockSeedData.server, directMessages = MockSeedData.directMessages)
         }
 
+    override suspend fun openAgentDirectMessage(agentId: MemberId): DataResult<OpenDirectMessageResult> =
+        openMockDirectMessage()
+
+    override suspend fun openUserDirectMessage(userId: MemberId): DataResult<OpenDirectMessageResult> =
+        openMockDirectMessage()
+
     override suspend fun createChannel(request: CreateChannelRequest): DataResult<CreateChannelResult> =
         resultFor(scenario, EmptyReason.NoChannels) {
             val channel = MockSeedData.channelSnapshot.channels.first().copy(
@@ -533,6 +586,15 @@ class MockChannelRepository(
                 .firstOrNull { it.channelId == channelId }
                 ?.copy(joined = true)
             ChannelJoinResult(channelId = channelId, joined = true, channel = channel)
+        }
+
+    private fun openMockDirectMessage(): DataResult<OpenDirectMessageResult> =
+        resultFor(scenario, EmptyReason.NoChannels) {
+            val directMessages = MockSeedData.directMessages
+            OpenDirectMessageResult(
+                conversation = directMessages.first(),
+                directMessages = directMessages
+            )
         }
 }
 

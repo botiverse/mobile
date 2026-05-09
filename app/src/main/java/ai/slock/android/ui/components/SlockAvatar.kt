@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -55,13 +56,7 @@ fun SlockAvatar(
             fontSize = fontSize,
             fallbackColor = fallbackColor
         )
-        else -> InitialsAvatar(
-            label = label,
-            modifier = modifier,
-            size = size,
-            fontSize = fontSize,
-            fallbackColor = fallbackColor
-        )
+        else -> DefaultUserAvatar(modifier = modifier, size = size, fallbackColor = fallbackColor)
     }
 }
 
@@ -97,13 +92,7 @@ private fun UrlAvatar(
             )
         }
     } else {
-        InitialsAvatar(
-            label = label,
-            modifier = modifier,
-            size = size,
-            fontSize = fontSize,
-            fallbackColor = fallbackColor
-        )
+        DefaultUserAvatar(modifier = modifier, size = size, fallbackColor = fallbackColor)
     }
 }
 
@@ -155,6 +144,28 @@ private fun InitialsAvatar(
             style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = fontSize),
             color = SlockColor.TextBlack,
             maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun DefaultUserAvatar(
+    modifier: Modifier,
+    size: Dp,
+    fallbackColor: Color
+) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .background(fallbackColor)
+            .border(SlockStroke.Thin, SlockColor.BorderBlack),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = SlockIcons.User,
+            contentDescription = null,
+            tint = SlockColor.TextBlack,
+            modifier = Modifier.size(size * 0.56f)
         )
     }
 }

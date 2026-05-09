@@ -136,6 +136,7 @@ fun MembersRouteScreen(
     onDetailBack: () -> Unit = {},
     onDetailVisibleChange: (Boolean) -> Unit = {},
     onOpenMemberProfile: (MemberProfile) -> Unit = {},
+    onOpenAgentDirectMessage: (MemberProfile) -> Unit = {},
     onAddHuman: () -> Unit = {},
     onRetry: () -> Unit = {}
 ) {
@@ -175,6 +176,7 @@ fun MembersRouteScreen(
                 agentRemindersState = state.selectedAgentRemindersState,
                 agentActivityState = state.selectedAgentActivityState,
                 onBack = closeDetail,
+                onOpenAgentDirectMessage = { onOpenAgentDirectMessage(selectedMember) },
                 modifier = modifier
             )
         }
@@ -509,6 +511,7 @@ private fun MemberDetailScreen(
     agentRemindersState: ScreenLoadState<AgentReminderSnapshot>,
     agentActivityState: ScreenLoadState<AgentActivitySnapshot>,
     onBack: () -> Unit,
+    onOpenAgentDirectMessage: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var workspaceExpandedIds by rememberSaveable { mutableStateOf(SlockWorkspaceSamples.expandedIds.toList()) }
@@ -530,7 +533,10 @@ private fun MemberDetailScreen(
         ) {
             when (selectedTab) {
                 MemberDetailTab.Profile -> MemberProfileDetail(member = member)
-                MemberDetailTab.AgentDms -> AgentDirectMessagesPanel(state = agentDmsState)
+                MemberDetailTab.AgentDms -> AgentDirectMessagesPanel(
+                    state = agentDmsState,
+                    onOpenAgentDirectMessage = onOpenAgentDirectMessage
+                )
                 MemberDetailTab.Reminders -> AgentRemindersPanel(state = agentRemindersState)
                 MemberDetailTab.Workspace -> MemberWorkspaceDetail(
                     expandedIds = workspaceExpandedIds.toSet(),
@@ -970,7 +976,8 @@ private fun HumanMemberDetailAvatar(member: MemberProfile) {
 
 @Composable
 private fun AgentDirectMessagesPanel(
-    state: ScreenLoadState<AgentDmSnapshot>
+    state: ScreenLoadState<AgentDmSnapshot>,
+    onOpenAgentDirectMessage: () -> Unit
 ) {
     AgentDetailListPanel(
         title = "Agent DMs",
@@ -979,13 +986,21 @@ private fun AgentDirectMessagesPanel(
         emptyDetail = "This agent has no direct threads in the current workspace.",
         errorTitle = "Agent DMs failed to load",
         noPermissionTitle = "Agent DMs unavailable",
-        noPermissionDetail = "agent_dms access denied"
+        noPermissionDetail = "agent_dms access denied",
+        isContentEmpty = { it.directMessages.isEmpty() }
     ) { snapshot ->
+        MemberDetailActionButton(
+            text = "Open direct message",
+            color = SlockColor.BrandYellow,
+            icon = SlockIcons.MessageSquare,
+            onClick = onOpenAgentDirectMessage
+        )
         snapshot.directMessages.forEach { dm ->
             AgentDetailCard(
                 title = dm.peerName,
                 subtitle = dm.lastMessagePreview ?: "No recent message",
-                meta = listOfNotNull(dm.peerId, dm.lastMessageAt).joinToString(" · ")
+                meta = listOfNotNull(dm.peerId, dm.lastMessageAt).joinToString(" · "),
+                onClick = onOpenAgentDirectMessage
             )
         }
     }
@@ -1002,7 +1017,8 @@ private fun AgentRemindersPanel(
         emptyDetail = "This agent has no scheduled reminders.",
         errorTitle = "Reminders failed to load",
         noPermissionTitle = "Reminders unavailable",
-        noPermissionDetail = "reminders access denied"
+        noPermissionDetail = "reminders access denied",
+        isContentEmpty = { it.reminders.isEmpty() }
     ) { snapshot ->
         snapshot.reminders.forEach { reminder ->
             AgentDetailCard(
@@ -1025,7 +1041,8 @@ private fun AgentActivityPanel(
         emptyDetail = "No recent activity entries are available.",
         errorTitle = "Activity failed to load",
         noPermissionTitle = "Activity unavailable",
-        noPermissionDetail = "activity access denied"
+        noPermissionDetail = "activity access denied",
+        isContentEmpty = { it.activity.isEmpty() }
     ) { snapshot ->
         snapshot.activity.forEach { activity ->
             AgentDetailCard(
@@ -1046,12 +1063,19 @@ private fun <T> AgentDetailListPanel(
     errorTitle: String,
     noPermissionTitle: String,
     noPermissionDetail: String,
+    isContentEmpty: (T) -> Boolean = { false },
     content: @Composable ColumnScope.(T) -> Unit
 ) {
     MemberDetailPanel(title = title) {
         when (state) {
             ScreenLoadState.Loading -> AgentDetailStateCard("Loading", "Fetching real data…")
-            is ScreenLoadState.Content -> content(state.data)
+            is ScreenLoadState.Content -> {
+                if (isContentEmpty(state.data)) {
+                    AgentDetailStateCard(emptyTitle, emptyDetail)
+                } else {
+                    content(state.data)
+                }
+            }
             is ScreenLoadState.Empty -> AgentDetailStateCard(emptyTitle, emptyDetail)
             is ScreenLoadState.Error -> AgentDetailStateCard(errorTitle, state.error.code)
             is ScreenLoadState.NoPermission -> AgentDetailStateCard(noPermissionTitle, noPermissionDetail)
@@ -1063,12 +1087,19 @@ private fun <T> AgentDetailListPanel(
 private fun AgentDetailCard(
     title: String,
     subtitle: String,
-    meta: String
+    meta: String,
+    onClick: (() -> Unit)? = null
 ) {
+    val clickModifier = if (onClick != null) {
+        Modifier.clickable(role = Role.Button, onClick = onClick)
+    } else {
+        Modifier
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .border(SlockStroke.Thin, SlockColor.EmptyStateGray)
+            .then(clickModifier)
             .padding(SlockSpacing.Sm),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
@@ -1303,7 +1334,8 @@ private fun MemberDetailChip(
 private fun MemberDetailActionButton(
     text: String,
     color: Color,
-    icon: ImageVector = SlockIcons.Square
+    icon: ImageVector = SlockIcons.Square,
+    onClick: () -> Unit = {}
 ) {
     val shadow = SlockShadow.Default
     Row(
@@ -1313,7 +1345,7 @@ private fun MemberDetailActionButton(
             .slockHardShadow(shadow)
             .background(color, RoundedCornerShape(SlockRadius.Xs))
             .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Xs))
-            .clickable(role = Role.Button, onClick = {})
+            .clickable(role = Role.Button, onClick = onClick)
             .heightIn(min = 54.dp)
             .padding(horizontal = SlockSpacing.Lg, vertical = SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,

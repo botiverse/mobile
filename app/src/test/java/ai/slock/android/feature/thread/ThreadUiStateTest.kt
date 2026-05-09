@@ -10,8 +10,13 @@ import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageId
+import ai.slock.android.core.model.RealtimeEvent
+import ai.slock.android.core.model.TaskId
+import ai.slock.android.core.model.TaskStatus
+import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.state.ScreenLoadState
+import ai.slock.android.mergeRealtimeUpdate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -128,6 +133,109 @@ class ThreadUiStateTest {
         assertEquals(true, content.canLoadMoreAfter)
         assertEquals(listOf("message-1", "message-2", "message-3"), content.messages.map { it.id.value })
         assertEquals("edited", content.messages.first { it.id.value == "message-2" }.body)
+    }
+
+    @Test
+    fun realtimeTaskCreatedMergesIntoVisibleThreadMessage() {
+        val message = message("message-task-parent", seq = 20)
+        val task =
+            TaskSummary(
+                id = TaskId("task-1"),
+                title = "Assigned from socket",
+                status = TaskStatus.InProgress,
+                taskNumber = 382,
+                messageId = message.id,
+                assignee =
+                    MemberProfile(
+                        id = MemberId("agent-1"),
+                        displayName = "Cindy",
+                        handle = "cindy",
+                        kind = MemberKind.Agent
+                    ),
+                updatedAtLabel = "Now"
+            )
+        val state =
+            ThreadUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        ThreadContent(header = conversation("thread-1"), messages = listOf(message))
+                    )
+            )
+
+        val merged = state.mergeRealtimeTaskEvent(RealtimeEvent.TaskCreated(listOf(task)))
+        val content = (merged.loadState as ScreenLoadState.Content).data
+
+        assertEquals(382, content.messages.single().task?.taskNumber)
+        assertEquals("Cindy", content.messages.single().task?.assignee?.displayName)
+    }
+
+    @Test
+    fun realtimeTaskCreatedDoesNotAttachToEveryMessageInSameThread() {
+        val targetMessage = message("message-task-parent", seq = 20).copy(
+            threadChannelId = ChannelId("reply-thread-1")
+        )
+        val siblingMessage = message("message-sibling", seq = 21).copy(
+            threadChannelId = ChannelId("reply-thread-1")
+        )
+        val task =
+            TaskSummary(
+                id = TaskId("task-1"),
+                title = "Assigned from socket",
+                status = TaskStatus.InProgress,
+                taskNumber = 382,
+                messageId = targetMessage.id,
+                threadId = ThreadId("reply-thread-1"),
+                updatedAtLabel = "Now"
+            )
+        val state =
+            ThreadUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        ThreadContent(
+                            header = conversation("thread-1"),
+                            messages = listOf(targetMessage, siblingMessage)
+                        )
+                    )
+            )
+
+        val merged = state.mergeRealtimeTaskEvent(RealtimeEvent.TaskCreated(listOf(task)))
+        val content = (merged.loadState as ScreenLoadState.Content).data
+
+        assertEquals(382, content.messages.first { it.id == targetMessage.id }.task?.taskNumber)
+        assertNull(content.messages.first { it.id == siblingMessage.id }.task)
+    }
+
+    @Test
+    fun realtimeMessageUpdateDoesNotClearExistingAuthorAvatar() {
+        val existing =
+            message("message-avatar", seq = 20).copy(
+                author =
+                    MemberProfile(
+                        id = MemberId("user-1"),
+                        displayName = "artin",
+                        handle = "artin",
+                        kind = MemberKind.Human,
+                        avatarUrl = "pixel:diamond",
+                        gravatarHash = "abc123"
+                    )
+            )
+        val update =
+            message("message-avatar", seq = 21, body = "Edited").copy(
+                author =
+                    MemberProfile(
+                        id = MemberId("user-1"),
+                        displayName = "artin",
+                        handle = "artin",
+                        kind = MemberKind.Human
+                    )
+            )
+
+        val merged = existing.mergeRealtimeUpdate(update)
+
+        assertEquals("Edited", merged.body)
+        assertEquals("pixel:diamond", merged.author.avatarUrl)
+        assertEquals("abc123", merged.author.gravatarHash)
+        assertEquals("pixel:diamond", merged.author.avatar?.wireValue)
     }
 
     private fun conversation(

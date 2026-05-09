@@ -8,7 +8,9 @@ import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageId
+import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.data.repository.ThreadSnapshot
+import ai.slock.android.feature.tasks.TasksUiState
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.state.ScreenLoadState
 
@@ -16,6 +18,7 @@ data class ThreadUiState(
     val loadState: ScreenLoadState<ThreadContent>,
     val composerState: ComposerState = ComposerState(),
     val selectedTab: ThreadTab = ThreadTab.Chat,
+    val tasksState: TasksUiState? = null,
     val channelJoinStatus: ChannelJoinStatus = ChannelJoinStatus.Idle,
     val channelJoinErrorCode: String? = null
 )
@@ -38,7 +41,8 @@ data class ThreadContent(
     val anchorMessageId: MessageId? = null,
     val anchorOffset: Int = 0,
     val refreshStatus: ThreadRefreshStatus = ThreadRefreshStatus.Idle,
-    val refreshErrorCode: String? = null
+    val refreshErrorCode: String? = null,
+    val parentMessage: Message? = null
 )
 
 fun ThreadUiState.withThreadRefreshStatus(
@@ -92,13 +96,54 @@ fun ThreadContent.mergeRefreshedThreadSnapshot(next: ThreadSnapshot): ThreadCont
         anchorMessageId = anchorMessageId,
         anchorOffset = anchorOffset,
         refreshStatus = ThreadRefreshStatus.Idle,
-        refreshErrorCode = null
+        refreshErrorCode = null,
+        parentMessage = next.parentMessage ?: parentMessage
     )
 }
 
+fun ThreadUiState.mergeRealtimeTaskEvent(event: RealtimeEvent): ThreadUiState =
+    when (event) {
+        is RealtimeEvent.TaskCreated -> mergeRealtimeTasks(event.tasks)
+        is RealtimeEvent.TaskUpdated -> mergeRealtimeTasks(listOf(event.task))
+        else -> this
+    }
+
+private fun ThreadUiState.mergeRealtimeTasks(tasks: List<TaskSummary>): ThreadUiState {
+    if (tasks.isEmpty()) return this
+    val contentState = loadState as? ScreenLoadState.Content ?: return this
+    val content = contentState.data
+    val updatedMessages = content.messages.map { message -> message.withRealtimeTask(tasks) }
+    val updatedParentMessage = content.parentMessage?.withRealtimeTask(tasks)
+    val updatedTasks =
+        (content.tasks + tasks)
+            .distinctBy { it.id }
+            .sortedWith(compareBy(nullsLast<Int>()) { it.taskNumber })
+    return copy(
+        loadState =
+            ScreenLoadState.Content(
+                content.copy(
+                    messages = updatedMessages,
+                    tasks = updatedTasks,
+                    parentMessage = updatedParentMessage
+                )
+            )
+    )
+}
+
+private fun Message.withRealtimeTask(tasks: List<TaskSummary>): Message {
+    val task = tasks.firstOrNull { it.matchesMessage(this) } ?: return this
+    return copy(task = task)
+}
+
+private fun TaskSummary.matchesMessage(message: Message): Boolean =
+    messageId == message.id ||
+        parentMessageId == message.id ||
+        id == message.task?.id
+
 data class ThreadReplyHeaderContext(
     val parentChannelName: String?,
-    val parentMessagePreview: String?
+    val parentMessagePreview: String?,
+    val parentMessage: Message? = null
 )
 
 data class ThreadParentJumpTarget(

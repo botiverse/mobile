@@ -66,53 +66,42 @@ fun SettingsBillingScreen(
     currentPlan: SettingsCurrentPlanState,
     plans: List<SettingsPlanCardState>,
     modifier: Modifier = Modifier,
-    onBack: () -> Unit = {},
     onChoosePlan: (String) -> Unit = {}
 ) {
     Column(
         modifier = modifier
-            .fillMaxSize()
+            .fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
-        SettingsDetailHeader(
-            title = stringResource(R.string.settings_billing_title),
-            onBack = onBack
-        )
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(SlockSpacing.Md),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-        ) {
-            when {
-                currentPlan.loading -> SettingsBillingStatusPanel(
-                    title = stringResource(R.string.settings_billing_loading)
+        when {
+            currentPlan.loading -> SettingsBillingStatusPanel(
+                title = stringResource(R.string.settings_billing_loading)
+            )
+            currentPlan.error -> SlockErrorState(
+                title = stringResource(R.string.settings_billing_error),
+                detail = stringResource(R.string.settings_billing_trial_detail),
+                retryLabel = stringResource(R.string.settings_billing_choose_plan),
+                onRetry = {}
+            )
+            currentPlan.noPermission -> SettingsBillingStatusPanel(
+                title = stringResource(R.string.settings_billing_no_permission)
+            )
+            else -> {
+                if (currentPlan.trialActive) {
+                    PlanTrialBanner()
+                }
+                CurrentPlanCard(currentPlan = currentPlan)
+                SettingsSectionHeader(
+                    iconBackground = SlockColor.EmptyStateGray,
+                    label = stringResource(R.string.settings_billing_current_plan)
                 )
-                currentPlan.error -> SlockErrorState(
-                    title = stringResource(R.string.settings_billing_error),
-                    detail = stringResource(R.string.settings_billing_trial_detail),
-                    retryLabel = stringResource(R.string.settings_billing_choose_plan),
-                    onRetry = {}
-                )
-                currentPlan.noPermission -> SettingsBillingStatusPanel(
-                    title = stringResource(R.string.settings_billing_no_permission)
-                )
-                else -> {
-                    if (currentPlan.trialActive) {
-                        PlanTrialBanner()
-                    }
-                    CurrentPlanCard(currentPlan = currentPlan)
-                    SettingsSectionHeader(
-                        iconBackground = SlockColor.EmptyStateGray,
-                        label = stringResource(R.string.settings_billing_current_plan)
+                plans.forEach { plan ->
+                    PlanCard(
+                        plan = plan,
+                        onChoosePlan = { onChoosePlan(plan.name) }
                     )
-                    plans.forEach { plan ->
-                        PlanCard(
-                            plan = plan,
-                            onChoosePlan = { onChoosePlan(plan.name) }
-                        )
-                    }
                 }
             }
         }

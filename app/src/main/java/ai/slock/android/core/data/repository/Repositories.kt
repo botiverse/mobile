@@ -32,6 +32,9 @@ interface SettingsRepository {
     suspend fun getComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot>
     suspend fun getBilling(): DataResult<SettingsBillingSnapshot>
     suspend fun getServerSettings(): DataResult<SettingsServerSnapshot>
+    suspend fun updateServerProfile(request: SettingsServerProfileUpdateRequest): DataResult<SettingsServerSnapshot>
+    suspend fun createServerInvite(request: SettingsServerInviteCreateRequest): DataResult<SettingsServerActionResult>
+    suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult>
     suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot>
 }
 
@@ -62,6 +65,11 @@ interface ConversationRepository {
 
 interface TaskRepository {
     suspend fun getTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot>
+    suspend fun getChannelTasks(
+        serverId: ServerId,
+        channelId: ChannelId,
+        filter: TaskFilter
+    ): DataResult<TaskSnapshot>
     suspend fun claimTask(taskId: TaskId): DataResult<TaskActionResult>
     suspend fun updateTaskStatus(
         taskId: TaskId,
@@ -89,6 +97,8 @@ interface ChannelRepository {
     suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot>
     suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot>
     suspend fun getDirectMessages(serverId: ServerId): DataResult<DirectMessageSnapshot>
+    suspend fun openAgentDirectMessage(agentId: MemberId): DataResult<OpenDirectMessageResult>
+    suspend fun openUserDirectMessage(userId: MemberId): DataResult<OpenDirectMessageResult>
     suspend fun createChannel(request: CreateChannelRequest): DataResult<CreateChannelResult>
     suspend fun joinChannel(channelId: ChannelId): DataResult<ChannelJoinResult>
 }
@@ -175,6 +185,23 @@ data class AccountProfileUpdateRequest(
     val displayName: String,
     val handle: String,
     val email: String
+)
+
+data class SettingsServerProfileUpdateRequest(
+    val name: String
+)
+
+data class SettingsServerInviteCreateRequest(
+    val email: String
+)
+
+data class SettingsServerDeleteRequest(
+    val confirmationName: String
+)
+
+data class SettingsServerActionResult(
+    val success: Boolean,
+    val message: String? = null
 )
 
 data class CreateServerRequest(

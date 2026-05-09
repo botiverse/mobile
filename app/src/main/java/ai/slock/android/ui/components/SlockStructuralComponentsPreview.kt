@@ -101,6 +101,7 @@ data class SlockHomeConversationItem(
     val avatarUrl: String? = null,
     val avatar: AvatarReference? = AvatarReference.fromWireValue(avatarUrl),
     val presence: SlockPresence? = null,
+    val hasDraft: Boolean = false,
     val joined: Boolean = true
 )
 
@@ -144,6 +145,33 @@ private enum class ChannelRowInteractionState {
 private fun SlockStructuralComponentsPreview() {
     SlockTheme {
         SlockStructuralHomeShell(servers = defaultServerSwitcherItems)
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 120)
+@Composable
+private fun SlockBottomTabBarFramePreview() {
+    SlockTheme {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceWhite)
+                    .padding(vertical = SlockSpacing.Xl)
+        ) {
+            SlockBottomTabBar(
+                items =
+                    listOf(
+                        SlockBottomTabItem("home", "HOME", Icons.Outlined.Home),
+                        SlockBottomTabItem("tasks", "TASKS", SlockIcons.ListTodo),
+                        SlockBottomTabItem("members", "MEMBERS", Icons.Outlined.Person),
+                        SlockBottomTabItem("settings", "SETTINGS", Icons.Outlined.Settings)
+                    ),
+                selectedKey = "tasks",
+                onSelected = {},
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
     }
 }
 
@@ -240,6 +268,7 @@ fun SlockStructuralHomeShell(
                             ChannelRow(
                                 name = channel.name,
                                 joined = channel.joined,
+                                hasDraft = channel.hasDraft,
                                 badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
                                 interactionState = if (channel.id == selectedChannelId) {
                                     ChannelRowInteractionState.Selected
@@ -261,6 +290,7 @@ fun SlockStructuralHomeShell(
                                 avatarUrl = directMessage.avatarUrl,
                                 avatar = directMessage.avatar,
                                 presence = directMessage.presence,
+                                hasDraft = directMessage.hasDraft,
                                 badge = directMessage.unreadCount.takeIf { it > 0 }?.toString(),
                                 onClick = { onChannelClick(directMessage.id) }
                             )
@@ -663,6 +693,7 @@ private fun ChannelRow(
     avatar: AvatarReference? = AvatarReference.fromWireValue(avatarUrl),
     presence: SlockPresence? = null,
     badge: String? = null,
+    hasDraft: Boolean = false,
     joined: Boolean = true,
     interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default,
     onClick: (() -> Unit)? = null
@@ -725,6 +756,21 @@ private fun ChannelRow(
             )
             if (badge != null) {
                 Spacer(modifier = Modifier.width(SlockSpacing.Sm))
+            } else if (hasDraft) {
+                Spacer(modifier = Modifier.width(SlockSpacing.Xs))
+            }
+            if (hasDraft) {
+                Icon(
+                    imageVector = SlockIcons.Pencil,
+                    contentDescription = "Unsent draft",
+                    tint = SlockColor.TextMutedGray,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+            if (badge != null) {
+                if (hasDraft) {
+                    Spacer(modifier = Modifier.width(SlockSpacing.Xs))
+                }
                 CountPill(text = badge, color = SlockColor.AccentPink)
             }
         }

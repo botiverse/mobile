@@ -46,6 +46,24 @@ class AuthServerRepositoryTest {
     }
 
     @Test
+    fun getServersDoesNotAutoSelectWhenSessionHasNoSelectedServer() {
+        val sessionWithoutSelection =
+            sampleSession.copy(selectedServerId = null, selectedServerSlug = null)
+        val store = InMemoryAuthSessionStore(sessionWithoutSelection)
+        val repository = AuthServerRepository(
+            store,
+            FakeAuthRepository(sessionWithoutSelection)
+        )
+
+        val result = runSuspend { repository.getServers() }
+
+        assertTrue(result is DataResult.Content)
+        val snapshot = (result as DataResult.Content).data
+        assertEquals(2, snapshot.servers.size)
+        assertEquals(null, snapshot.selectedServer)
+    }
+
+    @Test
     fun missingSessionMapsToNoPermission() {
         val repository = AuthServerRepository(InMemoryAuthSessionStore(null), FakeAuthRepository())
 
@@ -98,7 +116,9 @@ class AuthServerRepositoryTest {
         }
     }
 
-    private class FakeAuthRepository : AuthRepository {
+    private class FakeAuthRepository(
+        private val session: AuthSession = sampleSession
+    ) : AuthRepository {
         override suspend fun login(email: String, password: String): AuthResult<AuthSessionSummary> =
             AuthResult.Failure(AuthErrorCode.Validation, "Not used in this test.")
 
@@ -106,7 +126,7 @@ class AuthServerRepositoryTest {
             AuthResult.Failure(AuthErrorCode.Validation, "Not used in this test.")
 
         override suspend fun currentUser(): AuthResult<AuthSessionSummary> =
-            AuthResult.Success(sampleSession.summary())
+            AuthResult.Success(session.summary())
 
         override suspend fun refresh(refreshToken: String): AuthResult<AuthSessionSummary> =
             AuthResult.Failure(AuthErrorCode.Validation, "Not used in this test.")
