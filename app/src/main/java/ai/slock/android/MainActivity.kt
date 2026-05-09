@@ -1829,6 +1829,7 @@ private fun SlockAppContent(
                     previousHomeRoute =
                             if (threadReturnHomeRoute == HomeRoute.Thread) null else HomeRoute.Shell
                     homeRoute = HomeRoute.Thread
+                    threadTab = ThreadTab.Chat
                     selectedThreadId = result.data.conversation.threadId.value
                     selectedThreadState = result.toThreadUiState(fallbackHeader)
                     localComposerMessages = emptyList()
