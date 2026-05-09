@@ -60,6 +60,26 @@ class ThreadScreenReplyAffordanceTest {
     }
 
     @Test
+    fun footerRepliesClickOpensThreadWithoutShowingActionOverlay() {
+        var openedThread = false
+        composeRule.setContent {
+            SlockTheme {
+                ThreadMessageItem(
+                    message = message(replyCount = 4),
+                    onOpenThread = { openedThread = true }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("4 replies").assertIsDisplayed().performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(true, openedThread)
+        }
+        composeRule.onAllNodesWithText("Copy markdown").assertCountEquals(0)
+    }
+
+    @Test
     fun systemMessageRowShowsReplyCountAffordanceWhenRepliesExist() {
         var openedThread = false
         composeRule.setContent {

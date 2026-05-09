@@ -2911,6 +2911,7 @@ fun ThreadMessageItem(
     var messageActionAnchor by remember(message.id.value) { mutableStateOf(IntOffset.Zero) }
     var messageActionAreaOffset by remember(message.id.value) { mutableStateOf(IntOffset.Zero) }
     var messageBodyOffset by remember(message.id.value) { mutableStateOf(IntOffset.Zero) }
+    var messageInteractiveAreaBounds by remember(message.id.value) { mutableStateOf<List<Rect>>(emptyList()) }
     fun openMessageActions(anchor: IntOffset) {
         messageActionAnchor = anchor
         showMessageActions = true
@@ -2973,9 +2974,9 @@ fun ThreadMessageItem(
                                         enabled =
                                                 message.body.isNotBlank() ||
                                                         message.attachments.isNotEmpty() ||
-                                                        message.replyCount > 0 ||
                                                         message.task != null,
                                         rootOffsetProvider = { messageActionAreaOffset },
+                                        interactiveBoundsProvider = { messageInteractiveAreaBounds },
                                         onOpen = ::toggleMessageActions,
                                         onDismiss = { showMessageActions = false }
                                 )
@@ -3085,8 +3086,15 @@ fun ThreadMessageItem(
                         message = message,
                         onOpenThread = onOpenThread,
                         alignEnd = alignCurrentUserRight,
-                        modifier = Modifier.messageContentWidth(messageMaxWidthFraction)
+                        modifier =
+                                Modifier.messageContentWidth(messageMaxWidthFraction)
+                                        .onGloballyPositioned { coordinates ->
+                                            messageInteractiveAreaBounds =
+                                                    listOf(coordinates.boundsInRoot())
+                                        }
                 )
+            } else if (messageInteractiveAreaBounds.isNotEmpty()) {
+                messageInteractiveAreaBounds = emptyList()
             }
             if (showMessageActions) {
                 ThreadMessageActionsPopup(
@@ -3144,6 +3152,7 @@ private val THREAD_MESSAGE_ACTION_MENU_WIDTH = 208.dp
 private fun Modifier.messageActionsTrigger(
         enabled: Boolean,
         rootOffsetProvider: () -> IntOffset,
+        interactiveBoundsProvider: () -> List<Rect>,
         onOpen: (IntOffset) -> Unit,
         onDismiss: () -> Unit
 ): Modifier =
@@ -3159,8 +3168,22 @@ private fun Modifier.messageActionsTrigger(
                                             requireUnconsumed = false,
                                             pass = PointerEventPass.Initial
                                     )
-                            val pointerId = down.id
                             val rootOffset = rootOffsetProvider()
+                            val downInRoot =
+                                    Offset(
+                                            rootOffset.x + down.position.x,
+                                            rootOffset.y + down.position.y
+                                    )
+                            if (interactiveBoundsProvider().any { bounds ->
+                                            downInRoot.x >= bounds.left &&
+                                                    downInRoot.x <= bounds.right &&
+                                                    downInRoot.y >= bounds.top &&
+                                                    downInRoot.y <= bounds.bottom
+                                    }
+                            ) {
+                                return@awaitEachGesture
+                            }
+                            val pointerId = down.id
                             var totalPositionChange = androidx.compose.ui.geometry.Offset.Zero
                             var lastPosition = down.position
                             var wasDragDismissed = false
