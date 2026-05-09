@@ -38,8 +38,34 @@ Mapped now:
 - `task:created` -> `RealtimeEvent.TaskCreated`
 - `task:updated` -> `RealtimeEvent.TaskUpdated`
 - `task:deleted` -> `RealtimeEvent.TaskDeleted`
+- `agent:activity` -> `RealtimeEvent.MemberPresenceUpdated` (kind=Agent) — fires at high frequency (~multiple/sec per agent); deduplicated in `SocketIoRealtimeClient` before dispatch
+- `server:member-added` / `server:member-updated` / `server:member:left` / `server:member-removed` -> `RealtimeEvent.MemberPresenceUpdated`
 - `sync:resume:response` -> `RealtimeEvent.SyncResumeResponse`
 - `heartbeat` -> `RealtimeEvent.Heartbeat`
+
+### `task:created` / `task:updated`
+
+- Mapper landing point: `RealtimeEventMapper.toTaskSummary()`
+- Realtime task payloads should mirror the REST task item shape accepted by `GET /tasks/server`:
+  - `id`, `taskNumber`, `title` / `content`
+  - `status` / `taskStatus`
+  - `channelType`
+  - `channelId`, `channelName`
+  - `messageId`
+  - `threadId` or explicit thread aliases (`threadChannelId`, `replyThreadChannelId`, `replyThreadId`)
+  - `claimedById`, `claimedByName`, `claimedByType`
+- If a task has `messageId + threadId` but no `parentMessageId`, Android maps `parentMessageId = messageId` locally so Tasks can open the actual replies/thread surface and still offer an original-message jump.
+- `closed` is a separate status from `done`.
+
+### `agent:activity` deduplication
+
+`agent:activity` arrives multiple times per second per agent (observed: 4+ events in ~100ms, all identical). Without deduplication this causes:
+
+- 4–5 `MemberPresenceUpdated` dispatches per agent per second
+- Each triggers `withThreadAuthorProfiles()` rebuild in `ThreadContent`
+- Results in unnecessary recompositions while the user is reading
+
+Fix: `SocketIoRealtimeClient` tracks the last dispatched `(presence, kind)` per `memberId`. If the incoming event carries the same value, dispatch is skipped and a `event_dedup` log line is emitted instead. The cache is cleared on `disconnect()` so stale presence does not carry over to a new server connection.
 
 ## Payload Aliases And Semantics
 
@@ -72,9 +98,23 @@ Mapped now:
 - Mapper landing point: `RealtimeEventMapper.toThreadUpdated()`
 - Relevant model: `RealtimeEvent.ThreadUpdated.replyCount`
 - Accepted reply-count aliases mirror the message mapping set above
+- **Observed production payload shape (2026-05-09)**:
+  ```json
+  {
+    "parentMessageId": "6fc1a24d-2cea-41d2-8f62-143f47703722",
+    "threadChannelId": "1a20853e-106a-4bed-b587-c33f4aca6374",
+    "replyCount": 8,
+    "lastReplyAt": "2026-05-08 18:59:02.316841+00",
+    "participantIds": ["8ce087db-...", "a09a2cd2-...", "d571ebe7-..."]
+  }
+  ```
+  - `parentMessageId`: ID of the top-level message that has replies
+  - `threadChannelId`: channel where thread replies live; note this **may be the same UUID** as the parent's `channelId` in some server configurations
+  - Fired by the server every time a new reply is added to a thread (accompanies the `message:new` for the reply)
 - Semantics:
-  - `0` means no replies
-  - missing / null falls back to `0`
+  - `0` means no replies; missing / null falls back to `0`
+  - merge rule: `maxOf(existing.replyCount, event.replyCount)` — never decrease
+  - matching: find the parent message by `message.id == event.parentMessageId` OR `message.threadChannelId == event.threadChannelId`
   - realtime thread summaries should merge into existing REST-loaded thread rows rather than replace the whole conversation object
 
 Boundary-only / lifecycle events:
@@ -95,6 +135,7 @@ Boundary-only / lifecycle events:
 - REST first load provides the initial message/thread snapshot.
 - Realtime events update the same mapped models and should be merged into the existing list/state.
 - `message:new` and `message:updated` should map into the same `Message` model; updates should preserve existing message fields unless the realtime payload explicitly replaces them.
+- **`message:updated` must preserve `replyCount` and `threadChannelId`**: the backend often omits these fields on edit events (e.g. body edit). App wiring must merge with `maxOf(existing.replyCount, incoming.replyCount)` and `incoming.threadChannelId ?: existing.threadChannelId` to prevent the reply affordance from disappearing after a message is edited.
 - `thread:updated` should merge into existing thread/message rows, updating `replyCount`, `lastReplyAt`, and participant ids without requiring a full thread reopen.
 - For thread summary rows, realtime reply-count updates should refresh the row affordance without requiring a full thread reopen.
 - Attachment/media payloads are preserved by the message mapper; realtime should not strip them when a message is updated.

@@ -24,6 +24,10 @@ import ai.slock.android.core.data.repository.SessionSettingsSnapshot
 import ai.slock.android.core.data.repository.SettingsRepository
 import ai.slock.android.core.data.repository.SettingsSectionErrorSnapshot
 import ai.slock.android.core.data.repository.SettingsSectionAvailability
+import ai.slock.android.core.data.repository.SettingsServerAdminSnapshot
+import ai.slock.android.core.data.repository.SettingsServerInviteSnapshot
+import ai.slock.android.core.data.repository.SettingsServerJoinLinkSnapshot
+import ai.slock.android.core.data.repository.SettingsServerOnboardingSnapshot
 import ai.slock.android.core.data.repository.SettingsServerProfileSnapshot
 import ai.slock.android.core.data.repository.SettingsServerSectionSnapshot
 import ai.slock.android.core.data.repository.SettingsServerSnapshot
@@ -251,31 +255,201 @@ class RealSettingsRepository(
     override suspend fun getServerSettings(): DataResult<SettingsServerSnapshot> {
         val session = store.readSession() ?: return authRequired()
         val server = session.servers.firstOrNull { it.id == session.currentServerId }
-        val name = server?.name ?: "Slock"
+            ?: return DataResult.NoPermission(
+                PermissionBlocker(code = "server_required", requiredCapability = "selected_server")
+            )
+        val serverId = server.id
+        val canManageServer = server.role == "owner" || server.role == "admin"
+        logger("server_settings_fetch_start serverId=$serverId")
+
+        val members = fetchServerMembers(serverId)
+        val usage = fetchServerUsage(serverId)
+        val billing = fetchServerBilling()
+        val onboarding =
+            if (server.role == "owner") {
+                fetchServerOnboarding(serverId)
+            } else {
+                DataResult.NoPermission(
+                    PermissionBlocker(
+                        code = "server_owner_required",
+                        requiredCapability = "manage_onboarding"
+                    )
+                )
+            }
+
+        val admins = (members as? DataResult.Content)?.data.orEmpty()
+        val usageRows = mergeServerUsageRows(
+            usage = (usage as? DataResult.Content)?.data.orEmpty(),
+            billing = (billing as? DataResult.Content)?.data
+        )
+        val onboardingSnapshot = (onboarding as? DataResult.Content)?.data
+        val sections = listOf(
+            SettingsServerSectionSnapshot(
+                key = "admins",
+                title = "Admins",
+                detail = adminsSectionDetail(members, admins.size),
+                state = members.sectionState(admins.isEmpty())
+            ),
+            SettingsServerSectionSnapshot(
+                key = "billing",
+                title = "Plan & Billing",
+                detail = billingSectionDetail(server.plan, billing, usageRows.size),
+                state = combineSectionState(billing, usage, usageRows.isEmpty())
+            ),
+            SettingsServerSectionSnapshot(
+                key = "pending_invites",
+                title = "Pending Invites",
+                detail = "Invite creation is confirmed; pending invite listing is not exposed by the Web bundle.",
+                state = if (canManageServer) SettingsSectionAvailability.Empty else SettingsSectionAvailability.NoPermission
+            ),
+            SettingsServerSectionSnapshot(
+                key = "join_links",
+                title = "Join Links",
+                detail = "Web accepts join-link tokens, but no Settings join-link management endpoint is confirmed.",
+                state = SettingsSectionAvailability.Empty
+            ),
+            SettingsServerSectionSnapshot(
+                key = "onboarding_agent",
+                title = "Onboarding Agent",
+                detail = onboardingSectionDetail(onboarding, onboardingSnapshot),
+                state = onboarding.sectionState(onboardingSnapshot == null)
+            ),
+            SettingsServerSectionSnapshot(
+                key = "danger",
+                title = "Danger Zone",
+                detail = if (server.role == "owner") {
+                    "Delete Server endpoint is confirmed, but Android keeps the action disabled until confirmation UI is added."
+                } else {
+                    "Only server owners can delete this server."
+                },
+                state = SettingsSectionAvailability.NoPermission
+            )
+        )
+        logger(
+            "server_settings_fetch_content serverId=$serverId admins=${admins.size} usageRows=${usageRows.size} onboarding=${onboardingSnapshot != null}"
+        )
         return DataResult.Content(
             SettingsServerSnapshot(
                 profile = SettingsServerProfileSnapshot(
-                    name = name,
-                    slug = name.toSettingsSlug(),
-                    canSave = false
+                    name = server.name,
+                    slug = server.slug ?: server.name.toSettingsSlug(),
+                    canSave = canManageServer
                 ),
-                sections = listOf(
-                    SettingsServerSectionSnapshot(
-                        key = "billing",
-                        title = "Plan & Billing",
-                        detail = "Current plan: ${server?.plan.toPlanDisplayName()}. Open Billing for readable plan and usage state.",
-                        state = SettingsSectionAvailability.Available
-                    ),
-                    SettingsServerSectionSnapshot(
-                        key = "danger",
-                        title = "Danger Zone",
-                        detail = "Delete Server is disabled in this Android build.",
-                        state = SettingsSectionAvailability.NoPermission
-                    )
-                )
+                sections = sections,
+                admins = admins,
+                usageRows = usageRows,
+                pendingInvites = emptyList(),
+                joinLinks = emptyList(),
+                onboarding = onboardingSnapshot
             )
         )
     }
+
+    private suspend fun fetchServerMembers(
+        serverId: String
+    ): DataResult<List<SettingsServerAdminSnapshot>> =
+        execute(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            block = { api.serverMembers(serverId) },
+            source = "settings_server_members",
+            warningLogger = warningLogger,
+            mapper = { json -> json.toSettingsServerAdmins() }
+        ).mapSettingsContractMismatch("settings_server_members_contract_mismatch")
+
+    private suspend fun fetchServerUsage(serverId: String): DataResult<List<SettingsPlanUsageSnapshot>> =
+        execute(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            block = { api.settingsServerUsage(serverId) },
+            source = "settings_server_usage",
+            warningLogger = warningLogger,
+            mapper = { json -> json.toSettingsServerUsageRows() }
+        ).mapSettingsContractMismatch("settings_server_usage_contract_mismatch")
+
+    private suspend fun fetchServerBilling(): DataResult<String?> =
+        execute(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            block = { api.settingsBillingSubscription() },
+            source = "settings_server_billing_subscription",
+            warningLogger = warningLogger,
+            mapper = { json -> json.toSettingsServerBillingPlanName() }
+        ).mapSettingsContractMismatch("settings_billing_subscription_contract_mismatch")
+
+    private suspend fun fetchServerOnboarding(
+        serverId: String
+    ): DataResult<SettingsServerOnboardingSnapshot> =
+        execute(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            block = { api.settingsServerOnboardingSettings(serverId) },
+            source = "settings_server_onboarding_settings",
+            warningLogger = warningLogger,
+            mapper = { json -> json.toSettingsServerOnboardingSnapshot() }
+        ).mapSettingsContractMismatch("settings_server_onboarding_contract_mismatch")
+
+    private fun adminsSectionDetail(result: DataResult<List<SettingsServerAdminSnapshot>>, count: Int): String =
+        when (result) {
+            is DataResult.Content -> if (count == 0) "No admins yet." else "$count admin${if (count == 1) "" else "s"}"
+            is DataResult.Empty -> "No admins yet."
+            is DataResult.NoPermission -> "You do not have permission to view server members."
+            is DataResult.Error -> "Admin list failed to load: ${result.error.code}"
+        }
+
+    private fun billingSectionDetail(
+        sessionPlan: String?,
+        billing: DataResult<String?>,
+        usageRowCount: Int
+    ): String {
+        val plan = (billing as? DataResult.Content)?.data ?: sessionPlan.toPlanDisplayName()
+        val usage = if (usageRowCount > 0) " Usage rows: $usageRowCount." else ""
+        return when (billing) {
+            is DataResult.NoPermission -> "Billing requires owner/admin permission."
+            is DataResult.Error -> "Current plan: $plan. Billing subscription failed: ${billing.error.code}.$usage"
+            else -> "Current plan: $plan.$usage"
+        }
+    }
+
+    private fun onboardingSectionDetail(
+        result: DataResult<SettingsServerOnboardingSnapshot>,
+        onboarding: SettingsServerOnboardingSnapshot?
+    ): String =
+        when (result) {
+            is DataResult.Content -> onboarding?.detail ?: "Onboarding preference loaded."
+            is DataResult.Empty -> "No onboarding preference was returned."
+            is DataResult.NoPermission -> "Only server owners can update onboarding reminder settings."
+            is DataResult.Error -> "Onboarding settings failed to load: ${result.error.code}"
+        }
+
+    private fun <T> DataResult<T>.sectionState(empty: Boolean): SettingsSectionAvailability =
+        when (this) {
+            is DataResult.Content -> if (empty) SettingsSectionAvailability.Empty else SettingsSectionAvailability.Available
+            is DataResult.Empty -> SettingsSectionAvailability.Empty
+            is DataResult.NoPermission -> SettingsSectionAvailability.NoPermission
+            is DataResult.Error -> SettingsSectionAvailability.Unavailable
+        }
+
+    private fun combineSectionState(
+        billing: DataResult<String?>,
+        usage: DataResult<List<SettingsPlanUsageSnapshot>>,
+        empty: Boolean
+    ): SettingsSectionAvailability =
+        when {
+            billing is DataResult.NoPermission || usage is DataResult.NoPermission ->
+                SettingsSectionAvailability.NoPermission
+            billing is DataResult.Content || usage is DataResult.Content ->
+                if (empty) SettingsSectionAvailability.Empty else SettingsSectionAvailability.Available
+            billing is DataResult.Empty || usage is DataResult.Empty -> SettingsSectionAvailability.Empty
+            else -> SettingsSectionAvailability.Unavailable
+        }
+
+    private fun mergeServerUsageRows(
+        usage: List<SettingsPlanUsageSnapshot>,
+        billing: String?
+    ): List<SettingsPlanUsageSnapshot> =
+        buildList {
+            if (!billing.isNullOrBlank()) {
+                add(SettingsPlanUsageSnapshot(label = "Plan", value = billing))
+            }
+            addAll(usage)
+        }
 
     override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> {
         store.readSession() ?: return authRequired()
@@ -497,6 +671,86 @@ private fun JsonObject.toSettingsComputerAgentSnapshot(): SettingsComputerAgentS
         name = name,
         statusLabel = string("status", "activity", "state"),
         ownerLabel = string("ownerName", "assigneeName", "userName", "createdByName")
+    )
+}
+
+private fun JsonObject.toSettingsServerAdmins(): List<SettingsServerAdminSnapshot> =
+    items("members", "users", "items", "nodes", "records", "rows", "list", "results", "data")
+        .map { it.asObject() }
+        .filter { it.string("role")?.lowercase() == "admin" }
+        .map { it.toSettingsServerAdminSnapshot() }
+
+private fun JsonObject.toSettingsServerAdminSnapshot(): SettingsServerAdminSnapshot {
+    val id = string("userId", "id", "memberId") ?: ""
+    val name = string("displayName", "name", "username", "email") ?: id.ifBlank { "Admin" }
+    return SettingsServerAdminSnapshot(
+        id = id.ifBlank { name },
+        name = name,
+        detail = string("email", "handle", "username"),
+        role = string("role")?.toRoleLabel()
+    )
+}
+
+private fun JsonObject.toSettingsServerUsageRows(): List<SettingsPlanUsageSnapshot> {
+    val explicitRows = items("usageRows", "usage", "rows", "items", "data")
+        .mapNotNull { element ->
+            val row = element.asObject()
+            val label = row.string("label", "name", "key", "metric") ?: return@mapNotNull null
+            val value = row.string("value", "displayValue", "current", "count")
+                ?: row.int("value", "current", "count")?.toString()
+                ?: return@mapNotNull null
+            val limit = row.string("limit", "max", "quota")
+                ?: row.int("limit", "max", "quota")?.takeIf { it >= 0 }?.toString()
+            SettingsPlanUsageSnapshot(
+                label = label.toSettingsUsageLabel(),
+                value = if (limit.isNullOrBlank()) value else "$value / $limit"
+            )
+        }
+    if (explicitRows.isNotEmpty()) return explicitRows
+
+    val source = objectValue("usage") ?: this
+    return listOfNotNull(
+        source.toUsageRow("Computers", "computers", "machineCount", "machines", "computerCount"),
+        source.toUsageRow("Agents", "agents", "agentCount", "activeAgents"),
+        source.toUsageRow("Channels", "channels", "channelCount"),
+        source.toUsageRow("Members", "members", "memberCount"),
+        source.toUsageRow("History", "history", "historyDays", "historyLimit")
+    )
+}
+
+private fun JsonObject.toUsageRow(label: String, vararg names: String): SettingsPlanUsageSnapshot? {
+    val value = string(*names) ?: int(*names)?.toString() ?: return null
+    val limit = string("${names.first()}Limit", "max${label}", "${names.first()}Max")
+        ?: int("${names.first()}Limit", "max${label}", "${names.first()}Max")?.takeIf { it >= 0 }?.toString()
+    return SettingsPlanUsageSnapshot(
+        label = label,
+        value = if (limit.isNullOrBlank()) value else "$value / $limit"
+    )
+}
+
+private fun String.toSettingsUsageLabel(): String =
+    replace("_", " ")
+        .replace("-", " ")
+        .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+private fun JsonObject.toSettingsServerBillingPlanName(): String? {
+    val source = objectValue("subscription", "billing", "plan") ?: this
+    return source.string("planName", "plan", "name", "tier", "currentPlan")?.toPlanDisplayName()
+}
+
+private fun JsonObject.toSettingsServerOnboardingSnapshot(): SettingsServerOnboardingSnapshot {
+    val source = objectValue("settings", "onboarding") ?: this
+    val optOut =
+        source.boolean("setupModalReminderOptOut", "onboardingReminderOptOut", "reminderOptOut")
+            ?: false
+    return SettingsServerOnboardingSnapshot(
+        setupModalReminderOptOut = optOut,
+        statusLabel = if (optOut) "Reminder muted" else "Reminder active",
+        detail = if (optOut) {
+            "The onboarding setup reminder is muted for this server."
+        } else {
+            "The onboarding setup reminder can appear when the server has no computer or agent."
+        }
     )
 }
 

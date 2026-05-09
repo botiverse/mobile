@@ -57,6 +57,8 @@
     <string name="settings_server_add_admin_placeholder">Select a teammate</string>
     <string name="settings_server_add_admin">Add Admin</string>
     <string name="settings_server_no_admins">No admins yet.</string>
+    <string name="settings_server_no_pending_invites">No pending invites.</string>
+    <string name="settings_server_join_links_not_confirmed">Join-link creation and listing stay disabled until the Settings endpoint is confirmed.</string>
     <string name="settings_billing_title">Plan &amp; Billing</string>
     <string name="settings_billing_trial_active">Free Trial Active</string>
     <string name="settings_billing_trial_detail">Your workspace can keep testing Slock with all core collaboration features enabled.</string>
@@ -276,6 +278,8 @@
     <string name="inbox_unread_count">%1$d unread</string>
     <string name="inbox_reply_count">%1$d replies</string>
     <string name="inbox_error_title">Inbox failed to load</string>
+    <string name="inbox_loading_body">Loading...</string>
+    <string name="inbox_refreshing_body">Refreshing...</string>
     <string name="inbox_error_detail">Error code: %1$s</string>
     <string name="inbox_no_preview">No preview available.</string>
     <string name="inbox_read_item">Read item</string>
@@ -322,6 +326,7 @@
     <string name="tasks_status_in_progress">In progress</string>
     <string name="tasks_status_in_review">In review</string>
     <string name="tasks_status_done">Done</string>
+    <string name="tasks_status_closed">Closed</string>
     <string name="tasks_empty_column_title">No %1$s tasks</string>
     <string name="tasks_empty_column_detail">Drop a task here when the state changes.</string>
     <string name="common_loading">Loading</string>

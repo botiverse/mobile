@@ -384,6 +384,15 @@ class MockTaskRepository(
                 MockSeedData.tasks.firstOrNull { it.id == taskId } ?: MockSeedData.tasks.first()
             )
         }
+
+    override suspend fun updateTaskStatus(
+        taskId: TaskId,
+        status: TaskStatus
+    ): DataResult<TaskActionResult> =
+        resultFor(scenario, EmptyReason.NoTasks) {
+            val task = MockSeedData.tasks.firstOrNull { it.id == taskId } ?: MockSeedData.tasks.first()
+            TaskActionResult(task.copy(status = status))
+        }
 }
 
 class MockMemberRepository(

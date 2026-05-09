@@ -35,7 +35,6 @@ fun SlockMessageItem(
     body: String,
     modifier: Modifier = Modifier,
     avatarLabel: String = authorName.take(1).uppercase(),
-    taskLabel: String? = null,
     attachmentLabel: String? = null,
     state: SlockMessageState = SlockMessageState.Sent
 ) {
@@ -81,14 +80,8 @@ fun SlockMessageItem(
                 style = SlockType.Body,
                 color = SlockColor.TextBlack
             )
-            if (taskLabel != null || attachmentLabel != null || state != SlockMessageState.Sent) {
+            if (attachmentLabel != null || state != SlockMessageState.Sent) {
                 Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-                    if (taskLabel != null) {
-                        MessageBadge(
-                            label = taskLabel,
-                            color = SlockColor.AccentCyan
-                        )
-                    }
                     if (attachmentLabel != null) {
                         MessageBadge(
                             label = attachmentLabel,

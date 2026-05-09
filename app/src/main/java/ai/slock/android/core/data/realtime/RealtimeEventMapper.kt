@@ -296,7 +296,26 @@ private fun JsonObject.toAttachment(): Attachment? {
             ?: nested?.string("sizeLabel", "size_label", "size", "fileSize", "file_size")
             ?: sizeNumberLabel()
             ?: nested?.sizeNumberLabel()
-            ?: ""
+            ?: "",
+        thumbnailUrl = string(
+            "thumbnailUrl",
+            "thumbnail_url",
+            "thumbUrl",
+            "thumb_url",
+            "previewUrl",
+            "preview_url",
+            "imageUrl",
+            "image_url"
+        ) ?: nested?.string(
+            "thumbnailUrl",
+            "thumbnail_url",
+            "thumbUrl",
+            "thumb_url",
+            "previewUrl",
+            "preview_url",
+            "imageUrl",
+            "image_url"
+        )
     )
 }
 
@@ -307,16 +326,68 @@ private fun JsonObject.sizeNumberLabel(): String? =
 private fun JsonObject.toTaskSummary(): TaskSummary? {
     val id = string("id", "taskId") ?: return null
     val title = string("title", "body", "content") ?: return null
+    val messageId = string("messageId")?.let(::MessageId)
+    val explicitThreadId = string(
+        "threadChannelId",
+        "replyThreadChannelId",
+        "replyThreadId",
+        "repliesThreadChannelId",
+        "childThreadChannelId",
+        "commentsThreadChannelId"
+    )
+    val nestedThreadId = firstObject("thread", "replyThread", "messageThread", "repliesThread")
+        ?.string(
+            "threadChannelId",
+            "replyThreadChannelId",
+            "replyThreadId",
+            "id",
+            "channelId"
+        )
+    val fallbackThreadId = string("threadId") ?: nestedThreadId
+    val channelType = string("channelType", "type", "kind")?.lowercase()
+    val channelId = string("channelId", "parentChannelId")
+        ?: firstObject("channel", "parentChannel", "conversation")
+            ?.string("id", "channelId", "parentChannelId")
+        ?: if (channelType == "channel") fallbackThreadId else null
+    val taskThreadId = explicitThreadId ?: fallbackThreadId
+    val parentMessageId =
+        string("parentMessageId", "parentId", "rootMessageId", "threadParentMessageId")
+            ?.let(::MessageId) ?: if (taskThreadId != null) messageId else null
     return TaskSummary(
         id = TaskId(id),
         title = title,
         status = string("status", "taskStatus")?.toTaskStatus() ?: TaskStatus.Todo,
         taskNumber = int("taskNumber", "number"),
-        messageId = string("messageId")?.let(::MessageId),
-        assignee = unwrap("assignee", "claimedBy").toMemberProfile(),
+        messageId = messageId,
+        parentMessageId = parentMessageId,
+        channelId = channelId?.let(::ChannelId),
+        threadId = taskThreadId?.let(::ThreadId),
+        isThreadTask =
+            parentMessageId != null ||
+                explicitThreadId != null ||
+                (channelType == "thread" && fallbackThreadId != null),
+        assignee = firstObject("assignee", "claimedBy", "assignedTo")?.toMemberProfile()
+            ?: claimedByFallback(),
         channelName = string("channelName"),
         updatedAtLabel = string("updatedAt", "createdAt") ?: "",
         canClaim = boolean("canClaim") ?: true
+    )
+}
+
+private fun JsonObject.claimedByFallback(): MemberProfile? {
+    val claimedById = string("claimedById", "assigneeId", "assignedToId", "taskAssigneeId")
+        ?: return null
+    val claimedByType =
+        string("claimedByType", "assigneeType", "assignedToType", "taskAssigneeType")
+    val label = string("claimedByName", "assigneeName", "assignedToName", "claimedByHandle")
+        ?: claimedById
+    return MemberProfile(
+        id = MemberId(claimedById),
+        displayName = label,
+        handle = string("claimedByHandle", "assigneeHandle", "assignedToHandle") ?: label,
+        kind = if (claimedByType == "agent") MemberKind.Agent else MemberKind.Human,
+        avatarLabel = label.take(1).uppercase(),
+        presence = Presence.Offline
     )
 }
 
@@ -651,6 +722,7 @@ private fun String.toTaskStatus(): TaskStatus? =
         "todo", "to_do", "open" -> TaskStatus.Todo
         "in_progress", "inprogress", "progress" -> TaskStatus.InProgress
         "in_review", "inreview", "review" -> TaskStatus.InReview
-        "done", "closed", "complete", "completed" -> TaskStatus.Done
+        "done", "complete", "completed" -> TaskStatus.Done
+        "closed" -> TaskStatus.Closed
         else -> null
     }

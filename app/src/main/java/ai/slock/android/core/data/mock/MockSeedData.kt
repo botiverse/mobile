@@ -24,6 +24,8 @@ import ai.slock.android.core.data.repository.SettingsMobileToggleSnapshot
 import ai.slock.android.core.data.repository.SettingsPlanUsageSnapshot
 import ai.slock.android.core.data.repository.SettingsSectionAvailability
 import ai.slock.android.core.data.repository.SettingsSnapshot
+import ai.slock.android.core.data.repository.SettingsServerAdminSnapshot
+import ai.slock.android.core.data.repository.SettingsServerOnboardingSnapshot
 import ai.slock.android.core.data.repository.SettingsServerProfileSnapshot
 import ai.slock.android.core.data.repository.SettingsServerSectionSnapshot
 import ai.slock.android.core.data.repository.SettingsServerSnapshot
@@ -434,9 +436,33 @@ object MockSeedData {
         ),
         sections = listOf(
             SettingsServerSectionSnapshot(
+                key = "admins",
+                title = "Admins",
+                detail = "1 admin",
+                state = SettingsSectionAvailability.Available
+            ),
+            SettingsServerSectionSnapshot(
                 key = "billing",
                 title = "Plan & Billing",
-                detail = "Current plan: Hobby. Open Billing for readable plan and usage state.",
+                detail = "Current plan: Hobby. Usage rows: 3.",
+                state = SettingsSectionAvailability.Available
+            ),
+            SettingsServerSectionSnapshot(
+                key = "pending_invites",
+                title = "Pending Invites",
+                detail = "Invite creation is confirmed; pending invite listing is not exposed by the Web bundle.",
+                state = SettingsSectionAvailability.Empty
+            ),
+            SettingsServerSectionSnapshot(
+                key = "join_links",
+                title = "Join Links",
+                detail = "Web accepts join-link tokens, but no Settings join-link management endpoint is confirmed.",
+                state = SettingsSectionAvailability.Empty
+            ),
+            SettingsServerSectionSnapshot(
+                key = "onboarding_agent",
+                title = "Onboarding Agent",
+                detail = "The onboarding setup reminder can appear when the server has no computer or agent.",
                 state = SettingsSectionAvailability.Available
             ),
             SettingsServerSectionSnapshot(
@@ -445,6 +471,24 @@ object MockSeedData {
                 detail = "Delete Server is disabled in this Android build.",
                 state = SettingsSectionAvailability.NoPermission
             )
+        ),
+        admins = listOf(
+            SettingsServerAdminSnapshot(
+                id = "admin-1",
+                name = "Slock Admin",
+                detail = "admin@slock.ai",
+                role = "Admin"
+            )
+        ),
+        usageRows = listOf(
+            SettingsPlanUsageSnapshot("Computers", "1 / Unlimited"),
+            SettingsPlanUsageSnapshot("Agents", "10 / Unlimited"),
+            SettingsPlanUsageSnapshot("Channels", "12 / Unlimited")
+        ),
+        onboarding = SettingsServerOnboardingSnapshot(
+            setupModalReminderOptOut = false,
+            statusLabel = "Reminder active",
+            detail = "The onboarding setup reminder can appear when the server has no computer or agent."
         )
     )
 

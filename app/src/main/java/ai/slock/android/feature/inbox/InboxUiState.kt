@@ -9,7 +9,8 @@ data class InboxUiState(
     val selectedFilter: InboxFilter = InboxFilter.All,
     val focusedItemKey: String? = null,
     val loadingMore: Boolean = false,
-    val nextOffset: Int? = null
+    val nextOffset: Int? = null,
+    val previousContent: InboxContent? = null
 )
 
 data class InboxContent(
@@ -24,3 +25,20 @@ enum class InboxFilter {
     All,
     Unread
 }
+
+fun InboxUiState.withFilterLoading(filter: InboxFilter): InboxUiState =
+    copy(
+        loadState = ScreenLoadState.Loading,
+        selectedFilter = filter,
+        focusedItemKey = null,
+        loadingMore = false,
+        nextOffset = null,
+        previousContent = (loadState as? ScreenLoadState.Content)?.data ?: previousContent
+    )
+
+fun InboxUiState.withBodyLoading(filter: InboxFilter = selectedFilter): InboxUiState =
+    InboxUiState(
+        loadState = ScreenLoadState.Loading,
+        selectedFilter = filter,
+        previousContent = (loadState as? ScreenLoadState.Content)?.data ?: previousContent
+    )

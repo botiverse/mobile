@@ -14,6 +14,10 @@ class SocketIoRealtimeClient(
     private val joinedChannels = linkedSetOf<ChannelId>()
     private var lastSeq: Long = 0
     private var connectedServerId: String? = null
+    // Deduplicate MemberPresenceUpdated: agent:activity fires multiple times per second for the
+    // same agent. Skip dispatch when presence+kind is unchanged to avoid redundant recompositions.
+    private val lastPresenceByMember =
+            mutableMapOf<String, Pair<ai.slock.android.core.model.Presence, ai.slock.android.core.model.MemberKind?>>()
     var state: RealtimeConnectionState = RealtimeConnectionState.Disconnected
         private set
 
@@ -38,6 +42,7 @@ class SocketIoRealtimeClient(
         logger("client_disconnect serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size}")
         transport.disconnect()
         state = RealtimeConnectionState.Disconnected
+        lastPresenceByMember.clear()
     }
 
     fun joinChannel(channelId: ChannelId) {
@@ -100,6 +105,15 @@ class SocketIoRealtimeClient(
     private fun dispatch(event: RealtimeEvent) {
         if (event is RealtimeEvent.Heartbeat) lastSeq = maxOf(lastSeq, event.seq)
         if (event is RealtimeEvent.SyncResumeResponse) lastSeq = maxOf(lastSeq, event.currentSeq)
+        if (event is RealtimeEvent.MemberPresenceUpdated) {
+            val key = event.memberId.value
+            val next = event.presence to event.kind
+            if (lastPresenceByMember[key] == next) {
+                logger("event_dedup type=member_presence_updated memberId=$key presence=${event.presence} kind=${event.kind?.name.orEmpty()}")
+                return
+            }
+            lastPresenceByMember[key] = next
+        }
         logger("event_dispatch type=${event.realtimeDiagnosticName()} seq=$lastSeq listeners=${listeners.size}")
         listeners.toList().forEach { it(event) }
     }

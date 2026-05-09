@@ -18,6 +18,7 @@ import ai.slock.android.core.model.MessageType
 import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ServerId
+import ai.slock.android.core.model.TaskStatus
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
@@ -254,6 +255,39 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun mapperHandlesRealServerTaskShapeInRealtimeTaskEvents() {
+        val mapper = RealtimeEventMapper()
+
+        val task = mapper.map(
+            RealtimeSocketEvents.TaskUpdated,
+            mapOf(
+                "task" to mapOf(
+                    "id" to "message-task-1",
+                    "title" to "Open replies from Tasks",
+                    "status" to "closed",
+                    "channelType" to "channel",
+                    "channelId" to "parent-channel-1",
+                    "messageId" to "parent-message-1",
+                    "threadId" to "reply-thread-1",
+                    "claimedById" to "agent-1",
+                    "claimedByName" to "Android-App-Integrator",
+                    "claimedByType" to "agent"
+                )
+            )
+        )
+
+        assertTrue(task is RealtimeEvent.TaskUpdated)
+        val summary = (task as RealtimeEvent.TaskUpdated).task
+        assertEquals(TaskStatus.Closed, summary.status)
+        assertEquals("parent-channel-1", summary.channelId?.value)
+        assertEquals("parent-message-1", summary.messageId?.value)
+        assertEquals("parent-message-1", summary.parentMessageId?.value)
+        assertEquals("reply-thread-1", summary.threadId?.value)
+        assertTrue(summary.isThreadTask)
+        assertEquals(MemberKind.Agent, summary.assignee?.kind)
+    }
+
+    @Test
     fun mapperHandlesMemberPresenceEvents() {
         val mapper = RealtimeEventMapper()
 
@@ -339,7 +373,8 @@ class RealtimeRepositoryTest {
                         "attachment_id": "image-1",
                         "filename": "preview.png",
                         "mime_type": "image/png",
-                        "sizeLabel": "42 KB"
+                        "sizeLabel": "42 KB",
+                        "thumbnailUrl": "https://cdn.example/thumbs/image-1.png"
                       },
                       {
                         "file": {
@@ -363,6 +398,7 @@ class RealtimeRepositoryTest {
         assertEquals("preview.png", message.attachments[0].name)
         assertEquals("image/png", message.attachments[0].mimeType)
         assertEquals("42 KB", message.attachments[0].sizeLabel)
+        assertEquals("https://cdn.example/thumbs/image-1.png", message.attachments[0].thumbnailUrl)
         assertEquals("file-1", message.attachments[1].id.value)
         assertEquals("report.pdf", message.attachments[1].name)
         assertEquals("application/pdf", message.attachments[1].mimeType)

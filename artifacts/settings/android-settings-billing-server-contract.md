@@ -1,6 +1,6 @@
 # Android Settings Billing And Server Sections Contract
 
-Task: #388
+Task: #388, #1 in `#设置项专修`
 Referenced by: #383
 
 ## Scope
@@ -15,8 +15,11 @@ surface only.
 
 ## Source Of Truth
 
-- Web parity reference: `/Users/artin/Downloads/Data/Slock.html`, saved from
-  `https://app.slock.ai/s/slock-android/settings/server`.
+- Web parity reference:
+  - `/Users/artin/Downloads/Data/Slock.html`, saved from
+    `https://app.slock.ai/s/slock-android/settings/server`
+  - `/Users/artin/Downloads/Data/Server.html`
+  - `/Users/artin/Downloads/Data/Server_files/index-BaD09UKb.js`
 - Android repository boundary:
   - `SettingsRepository.getBilling()`
   - `SettingsRepository.getServerSettings()`
@@ -117,14 +120,26 @@ contract from this Web page.
 
 ### Current Android Source
 
-No dedicated Server Settings REST endpoint is confirmed in `SlockApi` yet. The
-current Android server snapshot is derived from the persisted auth session and
-selected server metadata:
+No single dedicated Server Settings REST endpoint is confirmed. Android now
+builds the Server snapshot from selected-server session metadata plus the
+individual Web-confirmed endpoints below:
 
 - `AuthSession.currentServerId`
 - matching `AuthServer` from `AuthSession.servers`
 - `AuthServer.name`
 - `AuthServer.plan`
+- `PATCH /servers/{serverId}` for profile save, exposed in `SlockApi` but UI
+  save remains disabled until editable state wiring is added
+- `GET /servers/{serverId}/members`
+- `GET /servers/{serverId}/usage`
+- `GET /billing/subscription`
+- `POST /servers/{serverId}/invites`, exposed in `SlockApi` but not surfaced
+  as a send action yet
+- `GET /servers/{serverId}/onboarding-settings`
+- `PATCH /servers/{serverId}/onboarding-settings`, exposed in `SlockApi` but
+  not surfaced as a toggle action yet
+- `DELETE /servers/{serverId}`, exposed in `SlockApi` but Android keeps the
+  destructive button disabled pending confirmation UI
 
 Mapped model: `SettingsServerSnapshot`.
 
@@ -132,23 +147,29 @@ Mapped model: `SettingsServerSnapshot`.
 
 `SettingsServerProfileSnapshot`:
 
-- `name`: selected `AuthServer.name`; missing server falls back to `Slock`
-- `slug`: derived locally from `name.toSettingsSlug()`
-- `canSave`: currently `false`
+- `name`: selected `AuthServer.name`
+- `slug`: selected `AuthServer.slug`; missing slug falls back to
+  `name.toSettingsSlug()`
+- `canSave`: `true` for selected server `owner` or `admin`
 
-There is no confirmed Android endpoint for saving server profile changes in
-this phase. The Save Profile action remains disabled until that endpoint and
-permission contract are documented.
+Profile save endpoint is confirmed as `PATCH /servers/{serverId}`, but the
+current Android UI still renders read-only text fields. Follow-up editable state
+must keep mutation inside `SettingsRepository` and must not expose raw responses
+to Compose.
 
 ### Section Mapping
 
-Current Android `RealSettingsRepository.getServerSettings()` emits only the
-server sections that are confirmed for this mobile slice:
+Current Android `RealSettingsRepository.getServerSettings()` emits the Web
+sections below:
 
 | key | title | state | semantics |
 | --- | --- | --- | --- |
-| `billing` | `Plan & Billing` | `Available` | Opens the readable Billing surface; detail includes the selected server plan display name. |
-| `danger` | `Danger Zone` | `NoPermission` | Delete Server is visible but disabled; endpoint and owner permission contract are not confirmed. |
+| `admins` | `Admins` | `Available` / `Empty` / `NoPermission` / hidden on error | Loaded from `GET /servers/{serverId}/members`, filtered to `role == admin`. Owners are not duplicated as admins. |
+| `billing` | `Plan & Billing` | `Available` / `Empty` / `NoPermission` / hidden on total error | Combines `GET /billing/subscription` plan and `GET /servers/{serverId}/usage` rows. Falls back to selected server plan when subscription fails. |
+| `pending_invites` | `Pending Invites` | `Empty` / `NoPermission` | Web confirms invite creation by `POST /servers/{serverId}/invites`, but no pending invite list endpoint is present in the saved bundle. Android displays the empty state and does not send invites yet. |
+| `join_links` | `Join Links` | `Empty` | Web accepts join-link tokens through auth invite flow, but no Settings join-link management endpoint is present in the saved bundle. Android displays disabled/empty state and does not guess an endpoint. |
+| `onboarding_agent` | `Onboarding Agent` | `Available` / `NoPermission` / hidden on error | Loads `GET /servers/{serverId}/onboarding-settings`; owner-only settings map `setupModalReminderOptOut` / `onboardingReminderOptOut` to a readable status. |
+| `danger` | `Danger Zone` | `NoPermission` | `DELETE /servers/{serverId}` is confirmed, but Android keeps the button disabled until explicit confirmation UI is added. |
 
 Section availability values:
 
@@ -159,43 +180,65 @@ Section availability values:
 - `NoPermission`: action exists in the IA but cannot be performed by this
   Android build/user.
 
-### Deferred Section Contracts
+### Field Alias Semantics
 
-These Web-confirmed server sections are not wired as Android API contracts in
-this slice:
+Admins:
 
-- `Admins`
-- `Pending Invites`
-- `Join Links`
-- `Onboarding Agent`
+- List wrappers: `members`, `users`, `items`, `nodes`, `records`, `rows`,
+  `list`, `results`, `data`
+- Row id aliases: `userId`, `id`, `memberId`
+- Name aliases: `displayName`, `name`, `username`, `email`
+- Detail aliases: `email`, `handle`, `username`
+- Only `role == admin` rows render in the Admins section.
 
-Do not invent Android endpoints for these sections. When a section is wired,
-create or update a contract doc with endpoint, aliases, null/missing/0
-semantics, permissions, mapper landing point, and tests.
+Usage:
+
+- Row wrappers: `usageRows`, `usage`, `rows`, `items`, `data`
+- Explicit row aliases: `label` / `name` / `key` / `metric` and `value` /
+  `displayValue` / `current` / `count`
+- Object counters: `computers`, `machineCount`, `machines`, `computerCount`,
+  `agents`, `agentCount`, `activeAgents`, `channels`, `channelCount`,
+  `members`, `memberCount`, `history`, `historyDays`, `historyLimit`
+- Limits support `*Limit`, `max*`, and `*Max`; missing limits render just the
+  value, and explicit `Unlimited` string is preserved.
+
+Billing subscription:
+
+- Source objects: `subscription`, `billing`, `plan`, or root
+- Plan aliases: `planName`, `plan`, `name`, `tier`, `currentPlan`
+- Values pass through `toPlanDisplayName()`.
+
+Onboarding:
+
+- Source objects: `settings`, `onboarding`, or root
+- Boolean aliases: `setupModalReminderOptOut`, `onboardingReminderOptOut`,
+  `reminderOptOut`
+- Missing boolean defaults to `false`, meaning reminder active.
 
 ## REST Versus Realtime
 
-Settings Billing and Server sections currently have no realtime delta contract.
-The first Android load is derived from the persisted auth/session server list.
-If future REST endpoints or realtime settings events are added, they must merge
-into the same `SettingsBillingSnapshot` and `SettingsServerSnapshot` boundaries
-instead of letting UI read raw payloads.
+The Web bundle listens for `server:plan-updated` and reloads server data.
+Android Settings Server currently refreshes from REST when the Settings Server
+screen loads; no Settings-specific realtime delta is wired yet. Future realtime
+events must merge into `SettingsServerSnapshot` rather than letting UI read raw
+payloads.
 
 ## Regression Coverage
 
 - `app/src/test/java/ai/slock/android/core/data/network/RealSettingsRepositoryTest.kt`
   - `billingMapsReadablePlanStateAndRequiresOwnerPermission`
-  - `computersServerAndMobileReturnUnavailableSnapshotsWithoutGuessingEndpoints`
+  - `serverSettingsMapsWebConfirmedSectionsWithoutGuessingJoinLinks`
+  - `computersAndMobileKeepExistingSettingsContracts`
 
 These tests lock the current owner/admin Billing permission, readable plan
-mapping, `billing_owner_required`, and the mobile Server section keys
-`billing` / `danger`.
+mapping, `billing_owner_required`, Server section keys, admin filtering,
+usage/billing merge, onboarding mapping, and join-link disabled semantics.
 
 ## Follow-up Gaps
 
-- Dedicated Billing REST endpoint, if one exists, is not confirmed.
-- Server profile save endpoint is not confirmed.
-- Delete Server endpoint and owner permission contract are not confirmed.
-- Admins, Pending Invites, Join Links, and Onboarding Agent endpoints are not
-  confirmed for Android.
+- Pending invite listing endpoint is not confirmed.
+- Join-link management endpoints are not confirmed.
+- Profile save, invite create, onboarding update, and delete server are exposed
+  on `SlockApi`, but Android does not yet surface those mutations as enabled
+  UI actions.
 - Any future contract update must also update `artifacts/api-contract-index.md`.

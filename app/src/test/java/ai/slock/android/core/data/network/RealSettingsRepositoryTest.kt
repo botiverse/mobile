@@ -183,26 +183,55 @@ class RealSettingsRepositoryTest {
     }
 
     @Test
-    fun computersServerAndMobileReturnUnavailableSnapshotsWithoutGuessingEndpoints() {
+    fun serverSettingsMapsWebConfirmedSectionsWithoutGuessingJoinLinks() {
+        val repository = RealSettingsRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = FakeSlockApi(
+                membersJson = """
+                    {"members":[
+                      {"userId":"user-1","displayName":"Owner","email":"owner@slock.ai","role":"owner"},
+                      {"userId":"admin-1","displayName":"Admin User","email":"admin@slock.ai","role":"admin"}
+                    ]}
+                """.trimIndent(),
+                usageJson = """{"computers":1,"computersLimit":"Unlimited","agents":10,"agentsLimit":"Unlimited","channels":12,"channelsLimit":"Unlimited"}""",
+                billingSubscriptionJson = """{"subscription":{"plan":"hobby"}}""",
+                onboardingJson = """{"setupModalReminderOptOut":true}"""
+            )
+        )
+
+        val server = runSuspend { repository.getServerSettings() }
+
+        assertTrue(server is DataResult.Content)
+        val serverSnapshot = (server as DataResult.Content).data
+        assertEquals("Slock Android", serverSnapshot.profile.name)
+        assertEquals("slock-android", serverSnapshot.profile.slug)
+        assertEquals(true, serverSnapshot.profile.canSave)
+        assertEquals(
+            listOf("admins", "billing", "pending_invites", "join_links", "onboarding_agent", "danger"),
+            serverSnapshot.sections.map { it.key }
+        )
+        assertEquals("Admin User", serverSnapshot.admins.single().name)
+        assertEquals("Admin", serverSnapshot.admins.single().role)
+        assertTrue(serverSnapshot.usageRows.any { it.label == "Plan" && it.value == "Hobby" })
+        assertTrue(serverSnapshot.usageRows.any { it.label == "Computers" && it.value == "1 / Unlimited" })
+        assertEquals(true, serverSnapshot.onboarding?.setupModalReminderOptOut)
+        assertEquals(SettingsSectionAvailability.Empty, serverSnapshot.sections.first { it.key == "join_links" }.state)
+        assertTrue(serverSnapshot.sections.all { it.state != SettingsSectionAvailability.Unavailable })
+    }
+
+    @Test
+    fun computersAndMobileKeepExistingSettingsContracts() {
         val repository = RealSettingsRepository(
             store = InMemoryAuthSessionStore(sampleSession),
             api = FakeSlockApi(responseCode = 404)
         )
 
         val computers = runSuspend { repository.getComputers() }
-        val server = runSuspend { repository.getServerSettings() }
         val mobile = runSuspend { repository.getMobileSettings() }
 
         assertTrue(computers is DataResult.Error)
         assertEquals("settings_machines_contract_mismatch", (computers as DataResult.Error).error.code)
         assertEquals(false, computers.error.retryable)
-
-        assertTrue(server is DataResult.Content)
-        val serverSnapshot = (server as DataResult.Content).data
-        assertEquals("Slock Android", serverSnapshot.profile.name)
-        assertEquals(false, serverSnapshot.profile.canSave)
-        assertEquals(listOf("billing", "danger"), serverSnapshot.sections.map { it.key })
-        assertTrue(serverSnapshot.sections.all { it.state != SettingsSectionAvailability.Unavailable })
 
         assertTrue(mobile is DataResult.Content)
         val mobileSnapshot = (mobile as DataResult.Content).data
@@ -344,6 +373,10 @@ class RealSettingsRepositoryTest {
         private val accountJson: String = """{"user":{"id":"user-1","email":"user@slock.ai","displayName":"Slock User"}}""",
         private val sessionsJson: String = """{"sessions":[]}""",
         private val revokeJson: String = """{"ok":true}""",
+        private val membersJson: String = """{"members":[]}""",
+        private val usageJson: String = """{"usage":{}}""",
+        private val billingSubscriptionJson: String = """{"subscription":{}}""",
+        private val onboardingJson: String = """{"settings":{}}""",
         private val machinesJson: String = """{"machines":[]}""",
         private val workspacesJson: String = """{"workspaces":[]}""",
         private val agentsJson: String = """{"agents":[]}""",
@@ -390,7 +423,39 @@ class RealSettingsRepositoryTest {
             response("""{"ok":true}""")
 
         override suspend fun serverMembers(serverId: String): Response<ResponseBody> =
-            response("""{"members":[]}""")
+            response(membersJson)
+
+        override suspend fun updateSettingsServerProfile(
+            serverId: String,
+            body: RequestBody
+        ): Response<ResponseBody> =
+            response("""{"id":"$serverId","name":"Slock Android"}""")
+
+        override suspend fun settingsServerUsage(serverId: String): Response<ResponseBody> =
+            response(usageJson)
+
+        override suspend fun settingsBillingSubscription(): Response<ResponseBody> =
+            response(billingSubscriptionJson)
+
+        override suspend fun createSettingsServerInvite(
+            serverId: String,
+            body: RequestBody
+        ): Response<ResponseBody> =
+            response("""{"invite":{}}""")
+
+        override suspend fun settingsServerOnboardingSettings(
+            serverId: String
+        ): Response<ResponseBody> =
+            response(onboardingJson)
+
+        override suspend fun updateSettingsServerOnboardingSettings(
+            serverId: String,
+            body: RequestBody
+        ): Response<ResponseBody> =
+            response("""{"settings":{}}""")
+
+        override suspend fun deleteSettingsServer(serverId: String): Response<ResponseBody> =
+            response("""{"ok":true}""")
 
         override suspend fun memberProfile(memberId: String): Response<ResponseBody> =
             response("""{"profile":{"id":"$memberId","displayName":"Member","presence":"offline"}}""")
@@ -412,8 +477,8 @@ class RealSettingsRepositoryTest {
 
         override suspend fun removeChannelMember(
             channelId: String,
-            memberId: String,
-            kind: String
+            kind: String,
+            memberId: String
         ): Response<ResponseBody> =
             response("""{"ok":true,"removed":{"id":"$memberId","kind":"$kind"}}""")
 
@@ -440,6 +505,12 @@ class RealSettingsRepositoryTest {
             response("""{"tasks":[]}""")
 
         override suspend fun claimTask(taskId: String): Response<ResponseBody> =
+            response("""{"task":{}}""")
+
+        override suspend fun updateTaskStatus(
+            taskId: String,
+            body: RequestBody
+        ): Response<ResponseBody> =
             response("""{"task":{}}""")
 
         override suspend fun saved(limit: Int, offset: Int): Response<ResponseBody> = response("""{"items":[]}""")

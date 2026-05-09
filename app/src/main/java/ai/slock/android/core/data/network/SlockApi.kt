@@ -52,6 +52,42 @@ interface SlockApi {
         @Path("serverId") serverId: String
     ): Response<ResponseBody>
 
+    @PATCH("servers/{serverId}")
+    suspend fun updateSettingsServerProfile(
+        @Path("serverId") serverId: String,
+        @Body body: RequestBody
+    ): Response<ResponseBody>
+
+    @GET("servers/{serverId}/usage")
+    suspend fun settingsServerUsage(
+        @Path("serverId") serverId: String
+    ): Response<ResponseBody>
+
+    @GET("billing/subscription")
+    suspend fun settingsBillingSubscription(): Response<ResponseBody>
+
+    @POST("servers/{serverId}/invites")
+    suspend fun createSettingsServerInvite(
+        @Path("serverId") serverId: String,
+        @Body body: RequestBody
+    ): Response<ResponseBody>
+
+    @GET("servers/{serverId}/onboarding-settings")
+    suspend fun settingsServerOnboardingSettings(
+        @Path("serverId") serverId: String
+    ): Response<ResponseBody>
+
+    @PATCH("servers/{serverId}/onboarding-settings")
+    suspend fun updateSettingsServerOnboardingSettings(
+        @Path("serverId") serverId: String,
+        @Body body: RequestBody
+    ): Response<ResponseBody>
+
+    @DELETE("servers/{serverId}")
+    suspend fun deleteSettingsServer(
+        @Path("serverId") serverId: String
+    ): Response<ResponseBody>
+
     @GET("members/{memberId}/profile")
     suspend fun memberProfile(
         @Path("memberId") memberId: String
@@ -92,11 +128,11 @@ interface SlockApi {
         @Body body: RequestBody
     ): Response<ResponseBody>
 
-    @DELETE("channels/{channelId}/members/{memberId}")
+    @DELETE("channels/{channelId}/members/{kind}/{memberId}")
     suspend fun removeChannelMember(
         @Path("channelId") channelId: String,
-        @Path("memberId") memberId: String,
-        @Query("kind") kind: String
+        @Path("kind") kind: String,
+        @Path("memberId") memberId: String
     ): Response<ResponseBody>
 
     @GET("channels/dm")
@@ -137,6 +173,12 @@ interface SlockApi {
     @PATCH("tasks/{taskId}/claim")
     suspend fun claimTask(
         @Path("taskId") taskId: String
+    ): Response<ResponseBody>
+
+    @PATCH("tasks/{taskId}/status")
+    suspend fun updateTaskStatus(
+        @Path("taskId") taskId: String,
+        @Body body: RequestBody
     ): Response<ResponseBody>
 
     @GET("channels/saved")

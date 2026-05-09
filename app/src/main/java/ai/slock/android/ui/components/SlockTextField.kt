@@ -24,7 +24,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -54,16 +56,61 @@ fun SlockTextField(
     forceFocused: Boolean = false,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
+    fieldValue: TextFieldValue? = null,
+    onFieldValueChange: ((TextFieldValue) -> Unit)? = null,
     inputModifier: Modifier = Modifier,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailingContent: (@Composable () -> Unit)? = null,
     minContentHeight: Dp = 48.dp,
     contentPaddingVertical: Dp = 12.dp,
+    inputFontWeight: FontWeight = FontWeight.Medium,
+    inputFontFamily: FontFamily? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     val focusedVisual = (focused || forceFocused) && enabled
     val shadow = if (focusedVisual) SlockShadow.Default else SlockShadow.Small
     val shadowPadding = SlockShadow.Default
+    val displayValue = fieldValue?.text ?: value
+    val fieldModifier = Modifier
+        .fillMaxWidth()
+        .padding(end = shadowPadding.offsetX, bottom = shadowPadding.offsetY)
+        .slockHardShadow(shadow)
+        .background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
+        .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Xs))
+        .alpha(if (enabled) 1f else 0.45f)
+        .onFocusChanged { focused = it.isFocused }
+        .then(inputModifier)
+    val textStyle = SlockType.Body.copy(
+        color = SlockColor.TextBlack,
+        fontWeight = inputFontWeight,
+        fontFamily = inputFontFamily ?: SlockType.Body.fontFamily
+    )
+    val decorationBox: @Composable (@Composable () -> Unit) -> Unit = { innerTextField ->
+        Row(
+            modifier = Modifier
+                .defaultMinSize(minHeight = minContentHeight)
+                .padding(horizontal = SlockSpacing.Md, vertical = contentPaddingVertical),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                if (displayValue.isEmpty() && placeholder.isNotEmpty()) {
+                    Text(
+                        text = placeholder,
+                        style = SlockType.Body.copy(fontWeight = inputFontWeight, fontFamily = inputFontFamily ?: SlockType.Body.fontFamily),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = if (singleLine) 1 else maxLines,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                innerTextField()
+            }
+            if (trailingContent != null) {
+                Box(modifier = Modifier.padding(start = SlockSpacing.Sm)) {
+                    trailingContent()
+                }
+            }
+        }
+    }
 
     Column(modifier = modifier) {
         if (label != null) {
@@ -74,58 +121,41 @@ fun SlockTextField(
                 modifier = Modifier.padding(bottom = SlockSpacing.Xs)
             )
         }
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            enabled = enabled,
-            singleLine = singleLine,
-            minLines = minLines,
-            maxLines = maxLines,
-            textStyle = SlockType.Body.copy(
-                color = SlockColor.TextBlack,
-                fontWeight = FontWeight.Medium
-            ),
-            keyboardOptions = keyboardOptions,
-            keyboardActions = keyboardActions,
-            visualTransformation = visualTransformation,
-            cursorBrush = SolidColor(SlockColor.TextBlack),
-            interactionSource = remember { MutableInteractionSource() },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(end = shadowPadding.offsetX, bottom = shadowPadding.offsetY)
-                .slockHardShadow(shadow)
-                .background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
-                .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Xs))
-                .alpha(if (enabled) 1f else 0.45f)
-                .onFocusChanged { focused = it.isFocused }
-                .then(inputModifier),
-            decorationBox = { innerTextField ->
-                Row(
-                modifier = Modifier
-                        .defaultMinSize(minHeight = minContentHeight)
-                        .padding(horizontal = SlockSpacing.Md, vertical = contentPaddingVertical),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(modifier = Modifier.weight(1f)) {
-                        if (value.isEmpty() && placeholder.isNotEmpty()) {
-                            Text(
-                                text = placeholder,
-                                style = SlockType.Body,
-                                color = SlockColor.TextMutedGray,
-                                maxLines = if (singleLine) 1 else maxLines,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        innerTextField()
-                    }
-                    if (trailingContent != null) {
-                        Box(modifier = Modifier.padding(start = SlockSpacing.Sm)) {
-                            trailingContent()
-                        }
-                    }
-                }
-            }
-        )
+        if (fieldValue != null && onFieldValueChange != null) {
+            BasicTextField(
+                value = fieldValue,
+                onValueChange = onFieldValueChange,
+                enabled = enabled,
+                singleLine = singleLine,
+                minLines = minLines,
+                maxLines = maxLines,
+                textStyle = textStyle,
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                visualTransformation = visualTransformation,
+                cursorBrush = SolidColor(SlockColor.TextBlack),
+                interactionSource = remember { MutableInteractionSource() },
+                modifier = fieldModifier,
+                decorationBox = decorationBox
+            )
+        } else {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                enabled = enabled,
+                singleLine = singleLine,
+                minLines = minLines,
+                maxLines = maxLines,
+                textStyle = textStyle,
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                visualTransformation = visualTransformation,
+                cursorBrush = SolidColor(SlockColor.TextBlack),
+                interactionSource = remember { MutableInteractionSource() },
+                modifier = fieldModifier,
+                decorationBox = decorationBox
+            )
+        }
         if (reserveErrorSpace || (isError && !errorText.isNullOrBlank())) {
             Text(
                 text = errorText.takeUnless { it.isNullOrBlank() } ?: " ",

@@ -353,7 +353,12 @@ data class SettingsComputerAgentSnapshot(
 
 data class SettingsServerSnapshot(
     val profile: SettingsServerProfileSnapshot,
-    val sections: List<SettingsServerSectionSnapshot>
+    val sections: List<SettingsServerSectionSnapshot>,
+    val admins: List<SettingsServerAdminSnapshot> = emptyList(),
+    val usageRows: List<SettingsPlanUsageSnapshot> = emptyList(),
+    val pendingInvites: List<SettingsServerInviteSnapshot> = emptyList(),
+    val joinLinks: List<SettingsServerJoinLinkSnapshot> = emptyList(),
+    val onboarding: SettingsServerOnboardingSnapshot? = null
 )
 
 data class SettingsServerProfileSnapshot(
@@ -367,6 +372,35 @@ data class SettingsServerSectionSnapshot(
     val title: String,
     val detail: String,
     val state: SettingsSectionAvailability = SettingsSectionAvailability.Unavailable
+)
+
+data class SettingsServerAdminSnapshot(
+    val id: String,
+    val name: String,
+    val detail: String? = null,
+    val role: String? = null
+)
+
+data class SettingsServerInviteSnapshot(
+    val id: String,
+    val email: String,
+    val inviterName: String? = null,
+    val createdAtLabel: String? = null
+)
+
+data class SettingsServerJoinLinkSnapshot(
+    val id: String,
+    val label: String,
+    val url: String? = null,
+    val maxUsesLabel: String? = null,
+    val usageLabel: String? = null,
+    val expiresAtLabel: String? = null
+)
+
+data class SettingsServerOnboardingSnapshot(
+    val setupModalReminderOptOut: Boolean,
+    val statusLabel: String,
+    val detail: String
 )
 
 data class SettingsMobileSnapshot(

@@ -1269,7 +1269,6 @@ private fun SlockStructuralStatePreview() {
                 role = "agent",
                 time = "13:26",
                 body = "Long mixed text wraps here: 组件 preview should include English and 中文内容 without overflowing.",
-                taskLabel = "task #5",
                 attachmentLabel = "1 file",
                 state = SlockMessageState.Pending
             )

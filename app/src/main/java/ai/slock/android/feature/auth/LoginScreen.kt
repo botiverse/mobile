@@ -22,7 +22,10 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import android.app.Activity
+import android.view.WindowManager
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -238,15 +241,23 @@ private fun ColumnScope.AuthFormColumn(
 
 @Composable
 fun AuthScaffold(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Box(modifier = modifier.fillMaxSize()) {
-        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream))
-        Box(
-                modifier =
-                        Modifier.fillMaxSize()
-                                .imePadding()
-                                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Lg),
-                contentAlignment = Alignment.Center
-        ) {
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        val window = (view.context as Activity).window
+        val previousMode = window.attributes.softInputMode
+        @Suppress("DEPRECATION")
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
+        onDispose {
+            window.setSoftInputMode(previousMode)
+        }
+    }
+    Box(
+            modifier =
+                    modifier.fillMaxSize()
+                            .background(SlockColor.SurfaceCream)
+                            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Lg),
+            contentAlignment = Alignment.Center
+    ) {
         Column(
                 modifier =
                         Modifier.fillMaxWidth()
@@ -264,7 +275,6 @@ fun AuthScaffold(modifier: Modifier = Modifier, content: @Composable ColumnScope
                 horizontalAlignment = Alignment.Start,
                 content = content
         )
-        }
     }
 }
 

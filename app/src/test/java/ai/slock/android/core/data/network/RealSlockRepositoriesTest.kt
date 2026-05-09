@@ -8,6 +8,7 @@ import ai.slock.android.core.data.repository.DataResult
 import ai.slock.android.core.data.repository.AddChannelMemberRequest
 import ai.slock.android.core.data.repository.CreateChannelRequest
 import ai.slock.android.core.data.repository.InboxFilter
+import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
 import ai.slock.android.core.data.repository.TaskFilter
 import ai.slock.android.core.model.AttachmentId
 import ai.slock.android.core.model.AvatarReference
@@ -60,6 +61,41 @@ class RealSlockRepositoriesTest {
         assertEquals("android-dev", snapshot.channels.single().name)
         assertEquals(ConversationKind.DirectMessage, snapshot.directMessages.single().kind)
         assertEquals(5, snapshot.unreadTotal)
+    }
+
+    @Test
+    fun channelRepositoryPreservesNestedAgentPresenceForHomeDirectMessages() {
+        val repository = RealChannelRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = FakeSlockApi(
+                channelsJson = """{"channels":[]}""",
+                directMessagesJson = """
+                    {
+                      "dms": [
+                        {
+                          "channelId": "dm-agent-1",
+                          "peer": {
+                            "id": "agent-1",
+                            "displayName": "Android-Developer",
+                            "kind": "agent",
+                            "avatarUrl": "https://cdn.example/agent.png",
+                            "presence": "active"
+                          }
+                        }
+                      ]
+                    }
+                """.trimIndent()
+            )
+        )
+
+        val result = runSuspend { repository.getHome(ServerId("server-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val directMessage = (result as DataResult.Content).data.directMessages.single()
+        assertEquals(ConversationKind.DirectMessage, directMessage.kind)
+        assertEquals("Android-Developer", directMessage.name)
+        assertEquals(Presence.Active, directMessage.presence)
+        assertEquals("agent-1", directMessage.presenceMemberId?.value)
     }
 
     @Test
@@ -288,6 +324,15 @@ class RealSlockRepositoriesTest {
                           "seq":"42",
                           "content":"Hello",
                           "createdByUser":{"id":"user-2","displayName":"Android Developer","kind":"agent"},
+                          "attachments":[
+                            {
+                              "id":"attachment-1",
+                              "filename":"preview.png",
+                              "mimeType":"image/png",
+                              "sizeLabel":"42 KB",
+                              "thumbnailUrl":"https://cdn.example/thumbs/attachment-1.png"
+                            }
+                          ],
                           "reply_count":7,
                           "task":{"id":"task-1","title":"Fix chat","status":"in_review","number":151}
                         },
@@ -335,6 +380,7 @@ class RealSlockRepositoriesTest {
         assertEquals("channel-1", chatMessage.threadId.value)
         assertEquals("a98ec1f2-1111-4222-8333-fedcba987654", chatMessage.threadChannelId?.value)
         assertEquals("Android Developer", chatMessage.author.displayName)
+        assertEquals("https://cdn.example/thumbs/attachment-1.png", chatMessage.attachments.single().thumbnailUrl)
         assertEquals(7, chatMessage.replyCount)
         assertEquals(TaskStatus.InReview, chatMessage.task?.status)
         assertEquals(MessageType.System, systemMessage.messageType)
@@ -671,6 +717,8 @@ class RealSlockRepositoriesTest {
                       "status": "in_progress",
                       "taskNumber": 181,
                       "messageId": "message-1",
+                      "parentMessageId": "parent-message-1",
+                      "threadChannelId": "thread-message-1",
                       "claimedById": "user-1",
                       "claimedByName": "Artin",
                       "channel": {"name": "android-dev"},
@@ -687,6 +735,9 @@ class RealSlockRepositoriesTest {
             """.trimIndent(),
             claimTaskJson = """
                 {"task":{"id":"task-1","title":"Wire tasks","status":"in_review","claimedById":"user-1"}}
+            """.trimIndent(),
+            updateTaskStatusJson = """
+                {"task":{"id":"task-1","title":"Wire tasks","status":"closed","claimedById":"user-1"}}
             """.trimIndent()
         )
         val repository = RealTaskRepository(
@@ -702,17 +753,90 @@ class RealSlockRepositoriesTest {
             )
         }
         val claim = runSuspend { repository.claimTask(TaskId("task-1")) }
+        val statusUpdate = runSuspend {
+            repository.updateTaskStatus(TaskId("task-1"), TaskStatus.Closed)
+        }
 
         assertTrue(tasks is DataResult.Content)
         val snapshot = (tasks as DataResult.Content).data
         assertEquals(1, snapshot.tasks.size)
         assertEquals("Wire tasks", snapshot.tasks.single().title)
         assertEquals("android-dev", snapshot.tasks.single().channelName)
+        assertEquals("parent-message-1", snapshot.tasks.single().parentMessageId?.value)
+        assertEquals("thread-message-1", snapshot.tasks.single().threadId?.value)
+        assertTrue(snapshot.tasks.single().isThreadTask)
         assertEquals("Artin", snapshot.tasks.single().assignee?.displayName)
         assertEquals(1, snapshot.summaryCounts[TaskStatus.InProgress])
         assertTrue(claim is DataResult.Content)
         assertEquals(TaskStatus.InReview, (claim as DataResult.Content).data.task.status)
+        assertTrue(statusUpdate is DataResult.Content)
+        assertEquals(TaskStatus.Closed, (statusUpdate as DataResult.Content).data.task.status)
         assertEquals("task-1", api.claimedTaskIds.single())
+        assertEquals("task-1:{\"status\":\"closed\"}", api.updatedTaskStatusBodies.single())
+    }
+
+    @Test
+    fun taskRepositoryMapsRealServerTaskShapeForThreadNavigation() {
+        val api = FakeSlockApi(
+            serverTasksJson = """
+                {
+                  "tasks": [
+                    {
+                      "id": "message-task-1",
+                      "taskNumber": 9,
+                      "title": "Open replies from Tasks",
+                      "content": "Open replies from Tasks",
+                      "status": "in_review",
+                      "taskStatus": "in_review",
+                      "channelType": "channel",
+                      "channelId": "parent-channel-1",
+                      "channelName": "home-fixes",
+                      "messageId": "parent-message-1",
+                      "threadId": "reply-thread-1",
+                      "claimedById": "agent-1",
+                      "claimedByName": "Android-App-Integrator",
+                      "claimedByType": "agent",
+                      "createdAt": "2026-05-09T03:00:00.000Z",
+                      "updatedAt": "2026-05-09T03:05:00.000Z"
+                    },
+                    {
+                      "id": "closed-task-1",
+                      "taskNumber": 10,
+                      "title": "Closed task",
+                      "status": "closed",
+                      "channelType": "channel",
+                      "channelId": "parent-channel-2",
+                      "messageId": "parent-message-2",
+                      "threadId": "reply-thread-2"
+                    }
+                  ]
+                }
+            """.trimIndent()
+        )
+        val repository = RealTaskRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val result = runSuspend { repository.getTasks(ServerId("server-1"), TaskFilter()) }
+
+        assertTrue(result is DataResult.Content)
+        val snapshot = (result as DataResult.Content).data
+        val threadTask = snapshot.tasks.first { it.id.value == "message-task-1" }
+        assertEquals(TaskStatus.InReview, threadTask.status)
+        assertEquals(9, threadTask.taskNumber)
+        assertEquals("parent-channel-1", threadTask.channelId?.value)
+        assertEquals("parent-message-1", threadTask.messageId?.value)
+        assertEquals("parent-message-1", threadTask.parentMessageId?.value)
+        assertEquals("reply-thread-1", threadTask.threadId?.value)
+        assertTrue(threadTask.isThreadTask)
+        assertEquals("Android-App-Integrator", threadTask.assignee?.displayName)
+        assertEquals(MemberKind.Agent, threadTask.assignee?.kind)
+        assertEquals("home-fixes", threadTask.channelName)
+        assertEquals(TaskStatus.Closed, snapshot.tasks.first { it.id.value == "closed-task-1" }.status)
+        assertEquals(1, snapshot.summaryCounts[TaskStatus.InReview])
+        assertEquals(1, snapshot.summaryCounts[TaskStatus.Closed])
     }
 
     @Test
@@ -741,7 +865,8 @@ class RealSlockRepositoriesTest {
             """.trimIndent(),
             settingsAgentsJson = """
                 {"agents":[
-                  {"id":"agent-2","name":"QA Tester","handle":"qa","role":"tester","presence":"working","avatar":"random:qa"}
+                  {"id":"agent-2","name":"QA Tester","handle":"qa","role":"tester","presence":"working","avatar":"random:qa"},
+                  {"id":"user-2","name":"Artin Agent","handle":"artin-agent","role":"assistant","presence":"online","avatar":"pixel:artin-agent"}
                 ]}
             """.trimIndent(),
             channelMembersJson = """
@@ -779,6 +904,15 @@ class RealSlockRepositoriesTest {
                 )
             )
         }
+        val removeResult = runSuspend {
+            repository.removeChannelMember(
+                RemoveChannelMemberRequest(
+                    channelId = ChannelId("channel-1"),
+                    memberId = MemberId("agent-1"),
+                    kind = MemberKind.Agent
+                )
+            )
+        }
 
         assertTrue(serverMembers is DataResult.Content)
         val serverMemberRows = (serverMembers as DataResult.Content).data.members
@@ -789,9 +923,16 @@ class RealSlockRepositoriesTest {
         val serverAgent = serverMemberRows.first { it.id.value == "agent-2" }
         assertEquals(MemberKind.Agent, serverAgent.kind)
         assertEquals("random:qa", serverAgent.avatarUrl)
+        val sameIdHuman = serverMemberRows.first { it.id.value == "user-2" && it.kind == MemberKind.Human }
+        val sameIdAgent = serverMemberRows.first { it.id.value == "user-2" && it.kind == MemberKind.Agent }
+        assertEquals("Artin Profile", sameIdHuman.displayName)
+        assertEquals("Artin Agent", sameIdAgent.displayName)
         assertTrue(channelMembers is DataResult.Content)
         val members = (channelMembers as DataResult.Content).data.members
-        assertEquals(3, members.size)
+        assertEquals(4, members.size)
+        val currentHuman = members.first { it.id.value == "user-1" }
+        assertEquals(MemberKind.Human, currentHuman.kind)
+        assertEquals("Artin Profile", currentHuman.displayName)
         assertEquals(Presence.Offline, members.first { it.id.value == "user-2" }.presence)
         val agent = members.first { it.id.value == "agent-1" }
         assertEquals(MemberKind.Agent, agent.kind)
@@ -801,6 +942,103 @@ class RealSlockRepositoriesTest {
         assertTrue(addResult is DataResult.Content)
         assertEquals("agent-1", (addResult as DataResult.Content).data.memberId.value)
         assertEquals("""channel-1:{"agentId":"agent-1"}""", api.addedMembers.single())
+        assertTrue(removeResult is DataResult.Content)
+        assertEquals("agent-1", (removeResult as DataResult.Content).data.memberId.value)
+        assertEquals("channel-1/agent/agent-1", api.removedMembers.single())
+    }
+
+    @Test
+    fun memberRepositoryTreatsAgentsEndpointFallbackRowsAsAgents() {
+        val api = FakeSlockApi(
+            serverMembersJson = """
+                {
+                  "members": [
+                    {"id":"user-3","displayName":"Taylor","handle":"taylor","kind":"user","role":"member","presence":"online"}
+                  ]
+                }
+            """.trimIndent(),
+            memberProfileJson = """
+                {
+                  "profile": {
+                    "id":"user-3",
+                    "displayName":"Taylor Profile",
+                    "handle":"taylor",
+                    "role":"member",
+                    "presence":"offline"
+                  }
+                }
+            """.trimIndent(),
+            settingsAgentsJson = """
+                {
+                  "items": [
+                    {"id":"agent-9","name":"Runtime Agent","handle":"runtime-agent","role":"worker","presence":"online"}
+                  ]
+                }
+            """.trimIndent()
+        )
+        val repository = RealMemberRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val result = runSuspend { repository.getMembers(ServerId("server-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val members = (result as DataResult.Content).data.members
+        val agent = members.single { it.id.value == "agent-9" }
+        assertEquals(MemberKind.Agent, agent.kind)
+        assertEquals("Runtime Agent", agent.displayName)
+    }
+
+    @Test
+    fun memberRepositoryDoesNotTreatFallbackHumansAsAgents() {
+        val api = FakeSlockApi(
+            serverMembersJson = """
+                {
+                  "data": [
+                    {"id":"user-3","displayName":"Taylor","handle":"taylor","kind":"user","role":"member","presence":"online"},
+                    {"id":"agent-2","displayName":"QA Agent","handle":"qa-agent","kind":"agent","role":"tester","presence":"online"}
+                  ]
+                }
+            """.trimIndent(),
+            memberProfileJson = """
+                {
+                  "profile": {
+                    "id":"user-3",
+                    "displayName":"Slock User",
+                    "handle":"user",
+                    "role":"owner",
+                    "presence":"offline"
+                  }
+                }
+            """.trimIndent(),
+            settingsAgentsJson = """
+                {
+                  "items": [
+                    {"id":"user-3","displayName":"Taylor","handle":"taylor","kind":"user","role":"member","presence":"online"},
+                    {"id":"agent-2","displayName":"QA Agent","handle":"qa-agent","kind":"agent","role":"tester","presence":"online"}
+                  ]
+                }
+            """.trimIndent()
+        )
+        val repository = RealMemberRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val result = runSuspend { repository.getMembers(ServerId("server-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val members = (result as DataResult.Content).data.members
+        assertEquals(1, members.count { it.id.value == "user-3" && it.kind == MemberKind.Human })
+        assertEquals(
+            members.joinToString { "${it.kind}:${it.id.value}:${it.displayName}" },
+            0,
+            members.count { it.id.value == "user-3" && it.kind == MemberKind.Agent }
+        )
+        assertEquals(1, members.count { it.id.value == "agent-2" && it.kind == MemberKind.Agent })
     }
 
     @Test
@@ -852,6 +1090,7 @@ class RealSlockRepositoriesTest {
         private val readReceiptJson: String = """{"ok":true}""",
         private val serverTasksJson: String = """{"tasks":[]}""",
         private val claimTaskJson: String = """{"task":{}}""",
+        private val updateTaskStatusJson: String = """{"task":{}}""",
         private val inboxJson: String = """{"items":[]}""",
         private val savedJson: String = """{"items":[]}""",
         private val searchJson: String = """{"results":[]}""",
@@ -870,12 +1109,14 @@ class RealSlockRepositoriesTest {
         var unreadSummaryCallCount = 0
             private set
         val addedMembers = mutableListOf<String>()
+        val removedMembers = mutableListOf<String>()
         val joinedChannelIds = mutableListOf<String>()
         val seqReadRequests = mutableListOf<String>()
         val readAllRequests = mutableListOf<String>()
         val createThreadBodies = mutableListOf<String>()
         val followThreadBodies = mutableListOf<String>()
         val claimedTaskIds = mutableListOf<String>()
+        val updatedTaskStatusBodies = mutableListOf<String>()
         val channelMessagesBeforeSeqCalls = mutableListOf<Long?>()
         var inboxReadAllCallCount = 0
             private set
@@ -917,6 +1158,38 @@ class RealSlockRepositoriesTest {
         override suspend fun serverMembers(serverId: String): Response<ResponseBody> =
             response(serverMembersJson)
 
+        override suspend fun updateSettingsServerProfile(
+            serverId: String,
+            body: RequestBody
+        ): Response<ResponseBody> =
+            response("""{"id":"$serverId","name":"Slock Android"}""")
+
+        override suspend fun settingsServerUsage(serverId: String): Response<ResponseBody> =
+            response("""{"usage":{}}""")
+
+        override suspend fun settingsBillingSubscription(): Response<ResponseBody> =
+            response("""{"subscription":{}}""")
+
+        override suspend fun createSettingsServerInvite(
+            serverId: String,
+            body: RequestBody
+        ): Response<ResponseBody> =
+            response("""{"invite":{}}""")
+
+        override suspend fun settingsServerOnboardingSettings(
+            serverId: String
+        ): Response<ResponseBody> =
+            response("""{"settings":{}}""")
+
+        override suspend fun updateSettingsServerOnboardingSettings(
+            serverId: String,
+            body: RequestBody
+        ): Response<ResponseBody> =
+            response("""{"settings":{}}""")
+
+        override suspend fun deleteSettingsServer(serverId: String): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
         override suspend fun memberProfile(memberId: String): Response<ResponseBody> =
             response(memberProfileJson)
 
@@ -939,10 +1212,12 @@ class RealSlockRepositoriesTest {
 
         override suspend fun removeChannelMember(
             channelId: String,
-            memberId: String,
-            kind: String
-        ): Response<ResponseBody> =
-            response("""{"ok":true,"removed":{"id":"$memberId","kind":"$kind"}}""")
+            kind: String,
+            memberId: String
+        ): Response<ResponseBody> {
+            removedMembers += "$channelId/$kind/$memberId"
+            return response("""{"ok":true,"removed":{"id":"$memberId","kind":"$kind"}}""")
+        }
 
         override suspend fun directMessages(): Response<ResponseBody> =
             directMessagesFailure?.let { throw it } ?:
@@ -976,6 +1251,14 @@ class RealSlockRepositoriesTest {
         override suspend fun claimTask(taskId: String): Response<ResponseBody> {
             claimedTaskIds += taskId
             return response(claimTaskJson)
+        }
+
+        override suspend fun updateTaskStatus(
+            taskId: String,
+            body: RequestBody
+        ): Response<ResponseBody> {
+            updatedTaskStatusBodies += "$taskId:${body.bodyAsString()}"
+            return response(updateTaskStatusJson)
         }
 
         override suspend fun saved(limit: Int, offset: Int): Response<ResponseBody> =

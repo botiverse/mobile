@@ -191,14 +191,16 @@ data class Attachment(
     val id: AttachmentId,
     val name: String,
     val mimeType: String,
-    val sizeLabel: String
+    val sizeLabel: String,
+    val thumbnailUrl: String? = null
 )
 
 enum class TaskStatus {
     Todo,
     InProgress,
     InReview,
-    Done
+    Done,
+    Closed
 }
 
 data class TaskSummary(
@@ -207,8 +209,10 @@ data class TaskSummary(
     val status: TaskStatus,
     val taskNumber: Int? = null,
     val messageId: MessageId? = null,
+    val parentMessageId: MessageId? = null,
     val channelId: ChannelId? = null,
     val threadId: ThreadId? = null,
+    val isThreadTask: Boolean = false,
     val assignee: MemberProfile? = null,
     val channelName: String? = null,
     val updatedAtLabel: String,

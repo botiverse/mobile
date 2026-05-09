@@ -63,6 +63,10 @@ interface ConversationRepository {
 interface TaskRepository {
     suspend fun getTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot>
     suspend fun claimTask(taskId: TaskId): DataResult<TaskActionResult>
+    suspend fun updateTaskStatus(
+        taskId: TaskId,
+        status: ai.slock.android.core.model.TaskStatus
+    ): DataResult<TaskActionResult>
 }
 
 interface MemberRepository {

@@ -30,7 +30,7 @@ private fun SlockTaskMemberComponentsPreview() {
                     SlockTaskStatus.Todo to listOf(
                         SlockTaskCardData(
                             title = "Build task/member/empty-error components with previews",
-                            source = "#onboarding-artin · task #6",
+                            source = "#onboarding-artin · #6",
                             owner = "@Android-Developer",
                             updatedAt = "13:56",
                             status = SlockTaskStatus.Todo

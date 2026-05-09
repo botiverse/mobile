@@ -20,6 +20,7 @@ Each contract entry should record:
 - [Tasks API contract](./tasks/task-api-contract-2026-05-07.md)
 - [Workspace file preview contract](./workspace/file-preview-api-contract.md)
 - [Socket.IO boundary](./realtime/android-socketio-boundary.md) - task #118
+- [Channel messages API contract](./messages/channel-messages-api-contract.md) - `GET /api/messages/channel/{channelId}`
 - [Reply count and thread-summary join contract](./messages/replycount-thread-summary-contract.md) - task #386
 - [Settings Billing and Server sections contract](./settings/android-settings-billing-server-contract.md) - task #388
 

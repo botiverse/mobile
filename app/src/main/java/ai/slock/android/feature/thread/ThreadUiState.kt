@@ -98,8 +98,11 @@ fun ThreadContent.mergeRefreshedThreadSnapshot(next: ThreadSnapshot): ThreadCont
 
 data class ThreadReplyHeaderContext(
     val parentChannelName: String?,
-    val parentMessagePreview: String?,
-    val taskNumber: Int? = null
+    val parentMessagePreview: String?
+)
+
+data class ThreadParentJumpTarget(
+    val parentMessageId: MessageId
 )
 
 enum class MessagePageStatus {
@@ -184,6 +187,7 @@ data class AttachmentPreviewUiState(
     val attachmentId: AttachmentId? = null,
     val name: String? = null,
     val url: String? = null,
+    val thumbnailUrl: String? = null,
     val mimeType: String? = null,
     val errorCode: String? = null
 )

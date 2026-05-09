@@ -133,6 +133,7 @@ fun MembersRouteScreen(
     modifier: Modifier = Modifier,
     initialSelectedMemberId: String? = null,
     onBack: () -> Unit = {},
+    onDetailBack: () -> Unit = {},
     onDetailVisibleChange: (Boolean) -> Unit = {},
     onOpenMemberProfile: (MemberProfile) -> Unit = {},
     onAddHuman: () -> Unit = {},
@@ -153,14 +154,16 @@ fun MembersRouteScreen(
         ?.firstOrNull { it.id.value == selectedMemberId }
 
     if (selectedMember != null) {
-        BackHandler { selectedMemberId = null }
+        val closeDetail = {
+            selectedMemberId = null
+            onDetailVisibleChange(false)
+            onDetailBack()
+        }
+        BackHandler { closeDetail() }
         if (selectedMember.kind == MemberKind.Human) {
             HumanMemberDetailScreen(
                 member = selectedMember,
-                onBack = {
-                    selectedMemberId = null
-                    onDetailVisibleChange(false)
-                },
+                onBack = closeDetail,
                 modifier = modifier
             )
         } else {
@@ -171,10 +174,7 @@ fun MembersRouteScreen(
                 agentDmsState = state.selectedAgentDmsState,
                 agentRemindersState = state.selectedAgentRemindersState,
                 agentActivityState = state.selectedAgentActivityState,
-                onBack = {
-                    selectedMemberId = null
-                    onDetailVisibleChange(false)
-                },
+                onBack = closeDetail,
                 modifier = modifier
             )
         }

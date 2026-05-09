@@ -44,6 +44,7 @@ class ThreadScreenPaginationTest {
             )
         )
         var request: OlderLoadRequest? = null
+        var showLoadingMore = false
 
         composeRule.setContent {
             SlockTheme {
@@ -58,12 +59,11 @@ class ThreadScreenPaginationTest {
                             anchorOffset = anchorOffset
                         )
                         val olderMessages = fakeRepository.loadOlderMessages(requireNotNull(request?.beforeSeq))
+                        showLoadingMore = true
                         screenState.value = screenState.value.copy(
                             loadState = ScreenLoadState.Content(
                                 current.copy(
-                                    messages = olderMessages + current.messages,
-                                    canLoadMoreBefore = false,
-                                    olderMessagesStatus = MessagePageStatus.EndReached,
+                                    olderMessagesStatus = MessagePageStatus.Loading,
                                     anchorMessageId = anchorMessageId,
                                     anchorOffset = anchorOffset
                                 )
@@ -82,7 +82,26 @@ class ThreadScreenPaginationTest {
             repeat(10) { swipeDown() }
         }
         composeRule.waitUntil(timeoutMillis = 5_000) { fakeRepository.loadCalls == 1 }
+        composeRule.onNodeWithText("Loading older messages...").assertExists()
+        composeRule.runOnIdle {
+            val current = (screenState.value.loadState as ScreenLoadState.Content).data
+            val olderMessages = fakeRepository.lastOlderMessages
+            screenState.value = screenState.value.copy(
+                loadState = ScreenLoadState.Content(
+                    current.copy(
+                        messages = olderMessages + current.messages,
+                        canLoadMoreBefore = false,
+                        olderMessagesStatus = MessagePageStatus.EndReached,
+                        anchorMessageId = request?.anchorMessageId,
+                        anchorOffset = request?.anchorOffset ?: 0
+                    )
+                )
+            )
+            showLoadingMore = false
+        }
         composeRule.waitForIdle()
+        assertEquals(false, showLoadingMore)
+
         assertEquals(21L, request?.beforeSeq)
         assertEquals(MessageId("message-22"), request?.anchorMessageId)
         assertNotNull(request?.anchorOffset)
@@ -93,6 +112,7 @@ class ThreadScreenPaginationTest {
         }
         composeRule.onNodeWithText("Message 21", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithText("Message 20", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Beginning of messages").assertIsDisplayed()
         composeRule.onNodeWithTag(THREAD_BACK_TO_BOTTOM_TAG).assertIsDisplayed()
 
         composeRule.onNodeWithTag(THREAD_BACK_TO_BOTTOM_TAG).performClick()
@@ -121,6 +141,8 @@ class ThreadScreenPaginationTest {
     ) {
         var loadCalls = 0
             private set
+        val lastOlderMessages: List<Message>
+            get() = olderMessages
 
         fun loadOlderMessages(beforeSeq: Long): List<Message> {
             loadCalls += 1

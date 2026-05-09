@@ -57,6 +57,8 @@
     <string name="settings_server_add_admin_placeholder">选择队友</string>
     <string name="settings_server_add_admin">添加管理员</string>
     <string name="settings_server_no_admins">暂无管理员。</string>
+    <string name="settings_server_no_pending_invites">暂无待处理邀请。</string>
+    <string name="settings_server_join_links_not_confirmed">加入链接创建和列表会保持禁用，直到 Settings 接口确认。</string>
     <string name="settings_billing_title">套餐与账单</string>
     <string name="settings_billing_trial_active">免费试用中</string>
     <string name="settings_billing_trial_detail">你的工作区可以继续试用 Slock 的核心协作能力。</string>
@@ -322,6 +324,7 @@
     <string name="tasks_status_in_progress">进行中</string>
     <string name="tasks_status_in_review">评审中</string>
     <string name="tasks_status_done">已完成</string>
+    <string name="tasks_status_closed">已关闭</string>
     <string name="tasks_empty_column_title">暂无%1$s任务</string>
     <string name="tasks_empty_column_detail">任务状态变化后可以放到这里。</string>
     <string name="common_loading">加载中</string>

@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,15 +13,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.res.stringResource
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import ai.slock.android.R
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
@@ -34,7 +43,8 @@ enum class SlockTaskStatus {
     Todo,
     InProgress,
     InReview,
-    Done
+    Done,
+    Closed
 }
 
 data class SlockTaskCardData(
@@ -43,7 +53,11 @@ data class SlockTaskCardData(
     val owner: String,
     val updatedAt: String,
     val status: SlockTaskStatus,
-    val onClick: (() -> Unit)? = null
+    val onClick: (() -> Unit)? = null,
+    val onStatusSelected: ((SlockTaskStatus) -> Unit)? = null,
+    val statusUpdating: Boolean = false,
+    val changeStatusLabel: String = "Change status",
+    val updatingLabel: String = "Updating"
 )
 
 @Composable
@@ -110,6 +124,7 @@ fun SlockTaskCard(
     statusLabel: String = task.status.displayLabel,
     modifier: Modifier = Modifier
 ) {
+    var statusMenuExpanded by rememberSaveable(task.title, task.status) { mutableStateOf(false) }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -121,7 +136,52 @@ fun SlockTaskCard(
             .padding(SlockSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        SlockStatusLabel(status = task.status, label = statusLabel)
+        Box {
+            SlockStatusLabel(
+                status = task.status,
+                label = if (task.statusUpdating) task.updatingLabel else statusLabel,
+                modifier =
+                    task.onStatusSelected?.let {
+                        Modifier.clickable(
+                            enabled = !task.statusUpdating,
+                            role = Role.Button,
+                            onClick = { statusMenuExpanded = !statusMenuExpanded }
+                        )
+                    } ?: Modifier
+            )
+            if (statusMenuExpanded) {
+                Popup(
+                    alignment = Alignment.TopStart,
+                    onDismissRequest = { statusMenuExpanded = false },
+                    properties = PopupProperties(focusable = true)
+                ) {
+                    Column(
+                        modifier =
+                            Modifier
+                                .width(180.dp)
+                                .padding(
+                                    end = SlockShadow.Small.offsetX,
+                                    bottom = SlockShadow.Small.offsetY
+                                )
+                                .slockHardShadow(SlockShadow.Small)
+                                .background(SlockColor.SurfaceWhite)
+                                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    ) {
+                        SlockTaskStatus.entries.forEach { status ->
+                            SlockTaskStatusDropdownRow(
+                                status = status,
+                                label = status.displayLabel,
+                                selected = status == task.status,
+                                onClick = {
+                                    statusMenuExpanded = false
+                                    task.onStatusSelected?.invoke(status)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
         Text(
             text = task.title,
             style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
@@ -155,6 +215,39 @@ fun SlockTaskCard(
 }
 
 @Composable
+private fun SlockTaskStatusDropdownRow(
+    status: SlockTaskStatus,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(if (selected) status.color else SlockColor.SurfaceWhite)
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        Icon(
+            imageVector = SlockIcons.ChevronRight,
+            contentDescription = null,
+            tint = SlockColor.TextBlack,
+            modifier = Modifier.width(12.dp)
+        )
+        Text(
+            text = label,
+            style = SlockType.SectionLabel,
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
 fun SlockStatusLabel(
     status: SlockTaskStatus,
     label: String = status.displayLabel,
@@ -177,6 +270,7 @@ private val SlockTaskStatus.displayLabel: String
         SlockTaskStatus.InProgress -> "IN PROGRESS"
         SlockTaskStatus.InReview -> "IN REVIEW"
         SlockTaskStatus.Done -> "DONE"
+        SlockTaskStatus.Closed -> "CLOSED"
     }
 
 private val SlockTaskStatus.color: Color
@@ -185,6 +279,7 @@ private val SlockTaskStatus.color: Color
         SlockTaskStatus.InProgress -> SlockColor.AccentCyan
         SlockTaskStatus.InReview -> SlockColor.BrandYellow
         SlockTaskStatus.Done -> SlockColor.AccentLime
+        SlockTaskStatus.Closed -> SlockColor.TextMutedGray
     }
 
 data class SlockTaskBoardCopy(
@@ -200,6 +295,7 @@ data class SlockTaskBoardCopy(
             val inProgress = stringResource(R.string.tasks_status_in_progress)
             val inReview = stringResource(R.string.tasks_status_in_review)
             val done = stringResource(R.string.tasks_status_done)
+            val closed = stringResource(R.string.tasks_status_closed)
 
             return SlockTaskBoardCopy(
                 emptyColumnDetail = stringResource(R.string.tasks_empty_column_detail),
@@ -210,6 +306,7 @@ data class SlockTaskBoardCopy(
                             SlockTaskStatus.InProgress -> inProgress
                             SlockTaskStatus.InReview -> inReview
                             SlockTaskStatus.Done -> done
+                            SlockTaskStatus.Closed -> closed
                         }.lowercase()
                     )
                 },
@@ -219,6 +316,7 @@ data class SlockTaskBoardCopy(
                         SlockTaskStatus.InProgress -> inProgress
                         SlockTaskStatus.InReview -> inReview
                         SlockTaskStatus.Done -> done
+                        SlockTaskStatus.Closed -> closed
                     }
                 }
             )

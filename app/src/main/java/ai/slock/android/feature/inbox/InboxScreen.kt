@@ -144,10 +144,11 @@ private fun InboxListScreen(
         when (val loadState = state.loadState) {
             ScreenLoadState.Loading -> InboxStateContent(
                 copy = copy,
-                title = copy.loadingTitle,
-                detail = copy.loadingDetail,
+                state = state,
                 onBack = onBack
-            )
+            ) {
+                InboxLoadingBody(overlay = state.previousContent != null)
+            }
             is ScreenLoadState.Content -> InboxLoadedContent(
                 state = state,
                 copy = copy,
@@ -161,22 +162,28 @@ private fun InboxListScreen(
             )
             is ScreenLoadState.Empty -> InboxStateContent(
                 copy = copy,
-                title = copy.emptyTitle,
-                detail = copy.emptyDetail,
+                state = state,
                 onBack = onBack
-            )
+            ) {
+                InboxEmptyBody(title = copy.emptyTitle, detail = copy.emptyDetail)
+            }
             is ScreenLoadState.Error -> InboxErrorContent(
                 copy = copy,
+                state = state,
                 error = loadState.error,
                 onBack = onBack,
                 onRetry = onRetry
             )
             is ScreenLoadState.NoPermission -> InboxStateContent(
                 copy = copy,
-                title = copy.noPermissionTitle,
-                detail = loadState.blocker.requiredCapability ?: loadState.blocker.code,
+                state = state,
                 onBack = onBack
-            )
+            ) {
+                InboxEmptyBody(
+                    title = copy.noPermissionTitle,
+                    detail = loadState.blocker.requiredCapability ?: loadState.blocker.code
+                )
+            }
         }
     }
 }
@@ -206,10 +213,11 @@ fun FollowedThreadsScreen(
         when (val loadState = state.loadState) {
             ScreenLoadState.Loading -> InboxStateContent(
                 copy = copy,
-                title = copy.loadingTitle,
-                detail = copy.loadingDetail,
+                state = state,
                 onBack = onBack
-            )
+            ) {
+                InboxLoadingBody(overlay = state.previousContent != null)
+            }
             is ScreenLoadState.Content -> FollowedThreadsLoadedContent(
                 state = state,
                 content = loadState.data,
@@ -218,22 +226,28 @@ fun FollowedThreadsScreen(
             )
             is ScreenLoadState.Empty -> InboxStateContent(
                 copy = copy,
-                title = copy.emptyTitle,
-                detail = copy.emptyDetail,
+                state = state,
                 onBack = onBack
-            )
+            ) {
+                InboxEmptyBody(title = copy.emptyTitle, detail = copy.emptyDetail)
+            }
             is ScreenLoadState.Error -> InboxErrorContent(
                 copy = copy,
+                state = state,
                 error = loadState.error,
                 onBack = onBack,
                 onRetry = onRetry
             )
             is ScreenLoadState.NoPermission -> InboxStateContent(
                 copy = copy,
-                title = copy.noPermissionTitle,
-                detail = loadState.blocker.requiredCapability ?: loadState.blocker.code,
+                state = state,
                 onBack = onBack
-            )
+            ) {
+                InboxEmptyBody(
+                    title = copy.noPermissionTitle,
+                    detail = loadState.blocker.requiredCapability ?: loadState.blocker.code
+                )
+            }
         }
     }
 }
@@ -610,7 +624,11 @@ private fun InboxFlatItem(
                 overflow = TextOverflow.Ellipsis
             )
             if (unread || item.replyCount > 0) {
-                InboxItemFooter(item = item, unread = unread)
+                InboxItemFooter(
+                    item = item,
+                    unread = unread,
+                    onOpenThread = onClick
+                )
             }
         }
         Box(modifier = Modifier.width(40.dp), contentAlignment = Alignment.TopEnd) {
@@ -620,7 +638,11 @@ private fun InboxFlatItem(
 }
 
 @Composable
-private fun InboxItemFooter(item: InboxItem, unread: Boolean) {
+private fun InboxItemFooter(
+    item: InboxItem,
+    unread: Boolean,
+    onOpenThread: () -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -633,7 +655,10 @@ private fun InboxItemFooter(item: InboxItem, unread: Boolean) {
             InboxBadge(text = stringResource(R.string.inbox_unread_count, it), color = SlockColor.BrandYellow)
         }
         item.replyCount.takeIf { it > 0 }?.let {
-            InboxBadge(text = stringResource(R.string.inbox_reply_count, it), color = SlockColor.SurfaceWhite)
+            InboxReplyChip(
+                text = stringResource(R.string.inbox_reply_count, it),
+                onClick = onOpenThread
+            )
         }
     }
 }
@@ -701,28 +726,58 @@ private fun InboxBadge(
 }
 
 @Composable
+private fun InboxReplyChip(
+    text: String,
+    onClick: () -> Unit
+) {
+    val shadow = SlockShadow.Small
+    Row(
+        modifier = Modifier
+            .padding(end = shadow.offsetX, bottom = shadow.offsetY)
+            .slockHardShadow(shadow)
+            .background(SlockColor.AppBgLightBlue, RoundedCornerShape(SlockRadius.Xs))
+            .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Xs))
+            .clickable(role = Role.Button, onClick = onClick)
+            .defaultMinSize(minHeight = 30.dp)
+            .padding(horizontal = SlockSpacing.Sm, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(
+            imageVector = SlockIcons.MessageSquare,
+            contentDescription = null,
+            tint = SlockColor.TextBlack,
+            modifier = Modifier.size(12.dp)
+        )
+        Text(
+            text = text,
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
 private fun InboxStateContent(
     copy: InboxScreenCopy,
-    title: String,
-    detail: String,
-    onBack: () -> Unit
+    state: InboxUiState,
+    onBack: () -> Unit,
+    body: @Composable () -> Unit
 ) {
     InboxHeader(
         title = copy.title,
-        content = InboxContent(
-            server = ServerSummary(ServerId("state"), "Slock Android"),
-            items = emptyList(),
-            totalCount = 0,
-            totalUnreadCount = 0
-        ),
+        content = state.previousContent ?: copy.placeholderContent,
         onBack = onBack
     )
-    InboxEmptyBody(title = title, detail = detail)
+    body()
 }
 
 @Composable
 private fun InboxErrorContent(
     copy: InboxScreenCopy,
+    state: InboxUiState,
     error: ScreenError,
     title: String? = null,
     onBack: () -> Unit,
@@ -730,12 +785,7 @@ private fun InboxErrorContent(
 ) {
     InboxHeader(
         title = copy.title,
-        content = InboxContent(
-            server = ServerSummary(ServerId("error"), "Slock Android"),
-            items = emptyList(),
-            totalCount = 0,
-            totalUnreadCount = 0
-        ),
+        content = state.previousContent ?: copy.placeholderContent,
         onBack = onBack
     )
     Column(
@@ -751,6 +801,35 @@ private fun InboxErrorContent(
         InboxMarkAllReadButton(onClick = onRetry)
     }
 }
+
+@Composable
+private fun InboxLoadingBody(overlay: Boolean) {
+    Box(
+        modifier = Modifier.fillMaxSize().padding(SlockSpacing.Lg),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text =
+                if (overlay) {
+                    stringResource(R.string.inbox_refreshing_body)
+                } else {
+                    stringResource(R.string.inbox_loading_body)
+                },
+            style = SlockType.Button,
+            color = SlockColor.TextBlack,
+            maxLines = 1
+        )
+    }
+}
+
+private val InboxScreenCopy.placeholderContent: InboxContent
+    get() =
+        InboxContent(
+            server = ServerSummary(ServerId("state"), "Slock Android"),
+            items = emptyList(),
+            totalCount = 0,
+            totalUnreadCount = 0
+        )
 
 private data class InboxScreenCopy(
     val title: String,
@@ -795,7 +874,7 @@ private fun InboxItem.previewText(): String =
 private fun InboxItem.metadataDescription(): String? =
     listOfNotNull(
         latestActivitySenderName ?: lastMessageSenderName,
-        taskNumber?.let { "task #$it" },
+        taskNumber?.let { "#$it" },
         taskStatus?.name
     ).joinToString(" · ").takeIf { it.isNotBlank() }
 
