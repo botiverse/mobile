@@ -3,7 +3,6 @@ package ai.slock.android.feature.settings
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,8 +20,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -30,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import ai.slock.android.R
 import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
 import ai.slock.android.ui.theme.SlockShadow
@@ -291,18 +291,19 @@ private fun PlanActionButton(
         enabled -> SlockColor.AccentPink
         else -> SlockColor.EmptyStateGray
     }
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 42.dp)
-            .background(background)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
-        contentAlignment = Alignment.Center
+    SlockKeySurface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        surfaceModifier = Modifier.heightIn(min = 42.dp),
+        enabled = enabled,
+        backgroundColor = background,
+        restingShadow = SlockShadow.Small,
+        pressedShadow = SlockShadow.None,
+        shape = RectangleShape
     ) {
         Text(
             text = text,
+            modifier = Modifier.padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
             style = SlockType.Button.copy(fontWeight = FontWeight.Bold),
             color = SlockColor.TextBlack,
             maxLines = 1,

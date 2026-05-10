@@ -18,13 +18,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.Role
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun SlockKeySurface(
@@ -37,25 +43,29 @@ fun SlockKeySurface(
         pressedBackgroundColor: Color = backgroundColor,
         restingShadow: SlockHardShadow = SlockShadow.Default,
         pressedShadow: SlockHardShadow = SlockShadow.Small,
+        pressCommitDelayMillis: Long = 0L,
         shape: Shape = RoundedCornerShape(SlockRadius.Xs),
         contentAlignment: Alignment = Alignment.Center,
         interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
         content: @Composable BoxScope.() -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+    val latestOnClick by rememberUpdatedState(onClick)
     val pressed by interactionSource.collectIsPressedAsState()
-    val isPressed = pressed && enabled
+    var committingPress by remember { mutableStateOf(false) }
+    val isPressed = (pressed || committingPress) && enabled
     val shadow = if (isPressed) pressedShadow else restingShadow
-        val currentBackgroundColor = if (isPressed) pressedBackgroundColor else backgroundColor
+    val currentBackgroundColor = if (isPressed) pressedBackgroundColor else backgroundColor
     Box(
             modifier =
                     modifier.padding(end = restingShadow.offsetX, bottom = restingShadow.offsetY)
+                            .then(surfaceModifier)
+                            .slockHardShadow(shadow)
                             .slockKeyPressOffset(
                                     isPressed = isPressed,
                                     restingShadow = restingShadow,
                                     pressedShadow = pressedShadow
                             )
-                            .then(surfaceModifier)
-                            .slockHardShadow(shadow)
                             .background(currentBackgroundColor, shape)
                             .border(SlockStroke.Default, SlockColor.BorderBlack, shape)
                             .clickable(
@@ -63,7 +73,18 @@ fun SlockKeySurface(
                                     interactionSource = interactionSource,
                                     indication = null,
                                     role = Role.Button,
-                                    onClick = onClick
+                                    onClick = {
+                                        if (pressCommitDelayMillis <= 0L) {
+                                            latestOnClick()
+                                        } else if (!committingPress) {
+                                            scope.launch {
+                                                committingPress = true
+                                                delay(pressCommitDelayMillis)
+                                                committingPress = false
+                                                latestOnClick()
+                                            }
+                                        }
+                                    }
                             )
                             .alpha(if (dimmed) 0.45f else 1f),
             contentAlignment = contentAlignment,

@@ -79,6 +79,7 @@ import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.components.SlockAvatar
 import ai.slock.android.ui.components.SlockIconSquareButton
 import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.components.SlockMemberAvatar
 import ai.slock.android.ui.components.SlockPageDivider
 import ai.slock.android.ui.components.SlockTextField
@@ -476,16 +477,11 @@ private fun MembersSectionHeader(
 
 @Composable
 private fun MembersSectionAddButton(onClick: () -> Unit) {
-    val shadow = SlockShadow.Small
-    Box(
-        modifier = Modifier
-            .padding(end = shadow.offsetX, bottom = shadow.offsetY)
-            .slockHardShadow(shadow)
-            .size(34.dp)
-            .background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
-            .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Xs))
-            .clickable(role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center
+    SlockKeySurface(
+        onClick = onClick,
+        restingShadow = SlockShadow.Small,
+        pressedShadow = SlockShadow.None,
+        surfaceModifier = Modifier.size(34.dp)
     ) {
         Text(
             text = "+",

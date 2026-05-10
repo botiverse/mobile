@@ -1206,15 +1206,13 @@ private fun MiniSquareIcon(
     contentDescription: String,
     onClick: (() -> Unit)? = null
 ) {
-    Box(
-        modifier = Modifier
-            .padding(end = SlockShadow.Small.offsetX, bottom = SlockShadow.Small.offsetY)
-            .slockHardShadow(SlockShadow.Small)
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .size(MiniActionSize)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
-        contentAlignment = Alignment.Center
+    SlockKeySurface(
+        onClick = onClick ?: {},
+        enabled = onClick != null,
+        dimmed = false,
+        restingShadow = SlockShadow.Small,
+        pressedShadow = SlockShadow.None,
+        surfaceModifier = Modifier.size(MiniActionSize)
     ) {
         Icon(
             imageVector = icon,

@@ -22,6 +22,7 @@ import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.components.SlockSegmentOption
 import ai.slock.android.ui.components.SlockTextField
 import ai.slock.android.ui.theme.SlockColor
@@ -60,6 +61,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -110,62 +112,60 @@ fun SettingsComputersScreen(
 
 @Composable
 private fun ComputerCard(computer: SettingsComputerSnapshot, onClick: () -> Unit) {
-    Row(
-            modifier =
-                    Modifier.fillMaxWidth()
-                            .padding(
-                                    end = SlockShadow.Small.offsetX,
-                                    bottom = SlockShadow.Small.offsetY
-                            )
-                            .slockHardShadow(SlockShadow.Small)
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .clickable(role = Role.Button, onClick = onClick)
-                            .padding(SlockSpacing.Md),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+    SlockKeySurface(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+            restingShadow = SlockShadow.Small,
+            pressedShadow = SlockShadow.None,
+            shape = RectangleShape
     ) {
-        Box(
-                modifier =
-                        Modifier.size(40.dp)
-                                .background(SlockColor.BrandYellow)
-                                .border(SlockStroke.Default, SlockColor.BorderBlack),
-                contentAlignment = Alignment.Center
+        Row(
+                modifier = Modifier.padding(SlockSpacing.Md),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
         ) {
-            Icon(
-                    imageVector = SlockIcons.Monitor,
-                    contentDescription = null,
-                    tint = SlockColor.TextBlack,
-                    modifier = Modifier.size(20.dp)
-            )
-        }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            Box(
+                    modifier =
+                            Modifier.size(40.dp)
+                                    .background(SlockColor.BrandYellow)
+                                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    contentAlignment = Alignment.Center
             ) {
-                Text(
-                        text = computer.name,
-                        style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                Icon(
+                        imageVector = SlockIcons.Monitor,
+                        contentDescription = null,
+                        tint = SlockColor.TextBlack,
+                        modifier = Modifier.size(20.dp)
                 )
-                OnlineDot(online = computer.online)
             }
-            Text(
-                    text =
-                            if (computer.daemonVersion == "daemon unavailable") {
-                                stringResource(R.string.settings_computers_daemon_unavailable)
-                            } else {
-                                computer.daemonVersion
-                            },
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                ) {
+                    Text(
+                            text = computer.name,
+                            style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                    )
+                    OnlineDot(online = computer.online)
+                }
+                Text(
+                        text =
+                                if (computer.daemonVersion == "daemon unavailable") {
+                                    stringResource(R.string.settings_computers_daemon_unavailable)
+                                } else {
+                                    computer.daemonVersion
+                                },
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -934,50 +934,53 @@ private fun SettingsLanguageDropdownButton(
         expanded: Boolean,
         onClick: () -> Unit
 ) {
-    Row(
-            modifier =
-                    Modifier.fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .clickable(role = Role.Button, onClick = onClick)
-                            .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    SlockKeySurface(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+            surfaceModifier = Modifier.heightIn(min = 48.dp),
+            restingShadow = SlockShadow.Small,
+            pressedShadow = SlockShadow.None,
+            shape = RectangleShape
     ) {
-        Icon(
-                imageVector = SlockIcons.Globe,
-                contentDescription = null,
-                tint = SlockColor.TextBlack,
-                modifier = Modifier.size(18.dp)
-        )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(
-                    text = label,
-                    style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+        Row(
+                modifier = Modifier.padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            Icon(
+                    imageVector = SlockIcons.Globe,
+                    contentDescription = null,
+                    tint = SlockColor.TextBlack,
+                    modifier = Modifier.size(18.dp)
             )
-            Text(
-                    text = detail,
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Text(
+                        text = label,
+                        style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                        text = detail,
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                    imageVector = SlockIcons.ChevronDown,
+                    contentDescription =
+                            if (expanded) {
+                                stringResource(R.string.settings_language_collapse)
+                            } else {
+                                stringResource(R.string.settings_language_expand)
+                            },
+                    tint = SlockColor.TextBlack,
+                    modifier = Modifier.size(16.dp)
             )
         }
-        Icon(
-                imageVector = SlockIcons.ChevronDown,
-                contentDescription =
-                        if (expanded) {
-                            stringResource(R.string.settings_language_collapse)
-                        } else {
-                            stringResource(R.string.settings_language_expand)
-                        },
-                tint = SlockColor.TextBlack,
-                modifier = Modifier.size(16.dp)
-        )
     }
 }
 
