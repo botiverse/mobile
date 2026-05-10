@@ -42,9 +42,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlinOptions {
-        jvmTarget = "11"
-    }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -53,6 +50,12 @@ android {
         getByName("connectedTest") {
             res.srcDir("src/connectedTest/res")
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
     }
 }
 
@@ -75,6 +78,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
     implementation(libs.retrofit)
@@ -83,6 +87,8 @@ dependencies {
     implementation(libs.socket.io.client)
     implementation(libs.markdown.renderer.android)
     implementation(libs.markdown.renderer.m3.android)
+    implementation(libs.markdown.renderer.coil3)
+    implementation(libs.markdown.renderer.code)
     implementation(libs.sqldelight.android.driver)
     testImplementation(libs.junit)
     testImplementation(libs.sqldelight.sqlite.driver)

@@ -76,13 +76,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -97,7 +96,6 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
@@ -133,6 +131,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -186,7 +185,6 @@ import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -195,7 +193,6 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
@@ -209,10 +206,19 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
+import com.mikepenz.markdown.coil3.Coil3ImageTransformerImpl
+import com.mikepenz.markdown.compose.components.markdownComponents
+import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeBlock
+import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeFence
 import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.elements.MarkdownCheckBox
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
+import com.mikepenz.markdown.model.markdownAnnotator
+import com.mikepenz.markdown.model.markdownInlineContent
+import com.mikepenz.markdown.model.rememberMarkdownState
+import dev.snipme.highlights.Highlights
+import dev.snipme.highlights.model.SyntaxThemes
 import java.net.URL
 import java.time.Instant
 import java.time.LocalDate
@@ -232,6 +238,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
+import org.intellij.markdown.MarkdownElementTypes
+import org.intellij.markdown.MarkdownTokenTypes
+import org.intellij.markdown.ast.getTextInNode
 
 val ThreadMessageBodyTextStyle: TextStyle
     get() =
@@ -4248,357 +4257,96 @@ private fun threadInlineTagPlaceholderWidthDp(
         density: Density,
         textMeasurer: TextMeasurer
 ): Dp {
-    val horizontalPadding = 20.dp
     val iconWidth = if (hasIcon) 14.dp + SlockSpacing.Xs else 0.dp
-    val tagStyle = SlockType.Caption.copy(fontSize = 14.sp)
     return with(density) {
-        textMeasurer.measure(text = label, style = tagStyle).size.width.toDp()
-    } + horizontalPadding + iconWidth + 2.dp
+                textMeasurer.measure(text = label, style = ThreadInlineChipTextStyle).size.width.toDp()
+        } + ThreadInlineChipHorizontalPadding * 2 + iconWidth
 }
 
-internal fun threadInlineTagEstimatedWidthSp(label: String, hasIcon: Boolean): Float {
-    val iconWidth = if (hasIcon) 18f else 0f
-    return 28f + iconWidth + label.length * 9f
+private fun threadInlineChipPlaceholderHeightSp(density: Density) = with(density) {
+        (ThreadInlineChipTextStyle.lineHeight.toDp() + ThreadInlineChipVerticalPadding * 2).toSp()
 }
 
-internal fun threadInlineCodeEstimatedWidthSp(code: String): Float {
-    return 14f + code.length * 9f
-}
+private val ThreadInlineChipHorizontalPadding = 10.dp
+private val ThreadInlineChipVerticalPadding = 3.dp
 
-internal sealed interface InlineBodyPart {
-    data class MarkdownText(val markdown: String) : InlineBodyPart
-    data class Tag(val tag: ThreadMarkdownTag) : InlineBodyPart
-    data class Code(val code: String) : InlineBodyPart
-}
-
-internal fun String.splitInlineBodyParts(): List<InlineBodyPart> {
-    val parts = mutableListOf<InlineBodyPart>()
-    fun addMarkdown(markdown: String) {
-        if (markdown.isNotEmpty()) parts.add(InlineBodyPart.MarkdownText(markdown))
-    }
-    // Inline code (backtick span) is matched first so tags inside code are not parsed as tags
-    val combined =
-            Regex(
-                    """`([^`\n]+)`|(?<![\p{L}\p{N}_])@[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}|(?<![\p{L}\p{N}_])#\d+|(?<![\p{L}\p{N}_])#[\p{L}][\p{L}\p{N}_-]{0,63}"""
-            )
-    var cursor = 0
-    for (match in combined.findAll(this)) {
-        if (match.range.first > cursor) {
-            addMarkdown(this.substring(cursor, match.range.first))
-        }
-        val fullMatch = match.value
-        when {
-            fullMatch.startsWith('`') -> {
-                parts.add(InlineBodyPart.Code(match.groupValues[1]))
-            }
-            fullMatch.startsWith('@') -> {
-                parts.add(InlineBodyPart.Tag(ThreadMarkdownTag(fullMatch, ThreadMarkdownTagKind.UserMention)))
-            }
-            fullMatch.drop(1).all { it.isDigit() } -> {
-                parts.add(InlineBodyPart.Tag(ThreadMarkdownTag(fullMatch, ThreadMarkdownTagKind.Task)))
-            }
-            fullMatch.equals("#task", ignoreCase = true) -> {
-                addMarkdown(fullMatch)
-            }
-            else -> {
-                parts.add(InlineBodyPart.Tag(ThreadMarkdownTag(fullMatch, ThreadMarkdownTagKind.Channel)))
-            }
-        }
-        cursor = match.range.last + 1
-    }
-    if (cursor < length) addMarkdown(this.substring(cursor))
-    return parts
-}
-
-@Composable
-@OptIn(ExperimentalLayoutApi::class)
-private fun ThreadInlineTagsBody(
-        parts: List<InlineBodyPart>,
-        style: androidx.compose.ui.text.TextStyle,
-        textAlign: TextAlign,
-        modifier: Modifier = Modifier,
-        onTagClick: (ThreadMarkdownTag) -> Unit,
-        onInteractiveBoundsChanged: (List<Rect>) -> Unit = {}
-) {
-    val density = LocalDensity.current
-    val fontScale = density.fontScale
-    val textMeasurer = rememberTextMeasurer()
-    var textRootOffset by remember(parts) { mutableStateOf(Offset.Zero) }
-    var textLayoutResult by remember(parts) { mutableStateOf<TextLayoutResult?>(null) }
-    val tagPlaceholderIndexes =
-            remember(parts) {
-                var placeholderIndex = 0
-                parts.mapNotNull { part ->
-                    when (part) {
-                        is InlineBodyPart.Tag -> placeholderIndex++
-                        is InlineBodyPart.Code -> null
-                        is InlineBodyPart.MarkdownText -> null
-                    }
-                }
-            }
-    LaunchedEffect(parts, textRootOffset, textLayoutResult) {
-        val result = textLayoutResult
-        if (result == null) {
-            onInteractiveBoundsChanged(emptyList())
-        } else {
-            onInteractiveBoundsChanged(
-                    tagPlaceholderIndexes.mapNotNull { placeholderIndex ->
-                        result.placeholderRects.getOrNull(placeholderIndex)?.let { rect ->
-                            rect.translate(textRootOffset)
-                        }
-                    }
-            )
-        }
-    }
-
-    val annotatedString = remember(parts) {
-        buildAnnotatedString {
-            parts.forEachIndexed { index, part ->
-                when (part) {
-                    is InlineBodyPart.MarkdownText -> append(part.markdown)
-                    is InlineBodyPart.Tag -> {
-                        pushStringAnnotation(ThreadInlineTagAnnotation, index.toString())
-                        appendInlineContent("slock:$index", part.tag.label)
-                        pop()
-                    }
-                    is InlineBodyPart.Code -> append(part.code.wrapLongCodeForDisplay().asMarkdownInlineCode())
-                }
-            }
-        }
-    }
-
-    val inlineContent: Map<String, InlineTextContent> = remember(parts, fontScale, textMeasurer) {
-        buildMap {
-            parts.forEachIndexed { index, part ->
-                when (part) {
-                    is InlineBodyPart.Tag -> {
-                        val tag = part.tag
-                        val label = threadMarkdownTagDisplayLabel(tag.label)
-                        val width =
-                                with(density) {
-                                    threadInlineTagPlaceholderWidthDp(
-                                            label = label,
-                                            hasIcon = false,
-                                            density = density,
-                                            textMeasurer = textMeasurer
-                                    ).toSp()
-                                }
-                        val heightSp = 18f + 6f / fontScale
-                        put(
-                                "slock:$index",
-                                InlineTextContent(
-                                        Placeholder(
-                                                width = width,
-                                                height = heightSp.sp,
-                                                placeholderVerticalAlign =
-                                                        PlaceholderVerticalAlign.Center
-                                        )
-                                ) {
-                                    ThreadChip(
-                                            label = label,
-                                            color =
-                                                    when (tag.kind) {
-                                                        ThreadMarkdownTagKind.Channel ->
-                                                                SlockColor.AccentCyan
-                                                        ThreadMarkdownTagKind.Task ->
-                                                                SlockColor.AccentOrange
-                                                        ThreadMarkdownTagKind.UserMention ->
-                                                                SlockColor.AccentLavender
-                                            },
-                                            icon = null,
-                                            onClick = { onTagClick(tag) }
-                                    )
-                                }
+private val ThreadInlineChipTextStyle: TextStyle
+        get() =
+                        SlockType.Caption.copy(
+                                        fontSize = 14.sp,
+                                        lineHeight = 16.sp
                         )
-                    }
-                    is InlineBodyPart.Code -> Unit
-                    is InlineBodyPart.MarkdownText -> Unit
-                }
-            }
-        }
-    }
 
-    val hasPlainMarkdown = remember(parts) { parts.any { it is InlineBodyPart.MarkdownText } }
-    val markdownAnnotatedString =
-            if (!hasPlainMarkdown) {
-                null
-            } else {
-                buildSlockInlineMarkdownAnnotatedString(
-                        parts = parts,
-                        style = style
-                )
-            }
-
-    val displayText = markdownAnnotatedString ?: annotatedString
-
-    val onlyTagsAndWhitespace =
-            remember(parts) {
-                parts.all { part ->
-                    when (part) {
-                        is InlineBodyPart.MarkdownText -> part.markdown.isBlank()
-                        is InlineBodyPart.Tag -> true
-                        is InlineBodyPart.Code -> false
-                    }
-                }
-            }
-    if (onlyTagsAndWhitespace) {
-        FlowRow(
-                modifier = modifier,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-        ) {
-            parts.filterIsInstance<InlineBodyPart.Tag>().forEach { part ->
-                val tag = part.tag
-                ThreadChip(
-                        label = threadMarkdownTagDisplayLabel(tag.label),
-                        color =
-                                when (tag.kind) {
-                                    ThreadMarkdownTagKind.Channel -> SlockColor.AccentCyan
-                                    ThreadMarkdownTagKind.Task -> SlockColor.AccentOrange
-                                    ThreadMarkdownTagKind.UserMention -> SlockColor.AccentLavender
-                                },
-                        icon = null,
-                        onClick = { onTagClick(tag) },
-                        modifier =
-                                Modifier.onGloballyPositioned { coordinates ->
-                                    onInteractiveBoundsChanged(listOf(coordinates.boundsInRoot()))
-                                }
-                )
-            }
-        }
-        return
-    }
-
-    Text(
-            text = displayText,
-            style = style.copy(textAlign = textAlign),
-            color = SlockColor.TextBlack,
-            modifier =
-                    modifier
-                            .onGloballyPositioned { coordinates ->
-                                val bounds = coordinates.boundsInRoot()
-                                textRootOffset = Offset(bounds.left, bounds.top)
-                            }
-                            .pointerInput(displayText, parts) {
-                                detectTapGestures { position ->
-                                    val tag =
-                                            textLayoutResult
-                                                    ?.getOffsetForPosition(position)
-                                                    ?.let { offset ->
-                                                        displayText.threadTagAtOffset(
-                                                                offset,
-                                                                parts
-                                                        )
-                                                    }
-                                    if (tag != null) {
-                                        onTagClick(tag)
-                                    }
-                                }
-                            },
-            onTextLayout = { textLayoutResult = it },
-            inlineContent = inlineContent
-    )
-}
-
-@Composable
-private fun buildSlockInlineMarkdownAnnotatedString(
-        parts: List<InlineBodyPart>,
-        style: TextStyle
-) =
-        buildAnnotatedString {
-            parts.forEachIndexed { index, part ->
-                when (part) {
-                    is InlineBodyPart.MarkdownText -> {
-                        append(
-                                part.markdown.buildMarkdownAnnotatedString(
-                                        style = style,
-                                        linkTextSpanStyle =
-                                                style.toSpanStyle()
-                                                        .copy(
-                                                                fontWeight = FontWeight.Bold,
-                                                                textDecoration =
-                                                                        TextDecoration.Underline
-                                                        )
-                                )
-                        )
-                    }
-                    is InlineBodyPart.Tag -> {
-                        pushStringAnnotation(ThreadInlineTagAnnotation, index.toString())
-                        appendInlineContent("slock:$index", part.tag.label)
-                        pop()
-                    }
-                    is InlineBodyPart.Code -> append(part.code.wrapLongCodeForDisplay().asMarkdownInlineCode())
-                }
-            }
-        }
-
-private fun String.asMarkdownInlineCode(): String =
-        "`" + replace("`", "\\`") + "`"
-
-internal fun String.wrapLongCodeForDisplay(): String =
-        buildString(length) {
-            this@wrapLongCodeForDisplay.forEach { char ->
-                append(char)
-                if (char == '/' || char == ':' || char == '-' || char == '_' || char == '.') {
-                    append('\u200B')
-                }
-            }
-        }
-
-private fun Rect.translate(offset: Offset): Rect =
-        Rect(
-                left = left + offset.x,
-                top = top + offset.y,
-                right = right + offset.x,
-                bottom = bottom + offset.y
+private val ThreadInlineTagRegex =
+        Regex(
+                """(?<![\p{L}\p{N}_])@[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}|(?<![\p{L}\p{N}_])#\d+|(?<![\p{L}\p{N}_])#[\p{L}][\p{L}\p{N}_-]{0,63}"""
         )
 
-private fun androidx.compose.ui.text.AnnotatedString.threadTagAtOffset(
-        offset: Int,
-        parts: List<InlineBodyPart>
-): ThreadMarkdownTag? =
-        listOf(offset, offset - 1, offset + 1)
-                .asSequence()
-                .filter { it >= 0 && it <= length }
-                .mapNotNull { probe ->
-                    getStringAnnotations(ThreadInlineTagAnnotation, probe, probe)
-                            .firstOrNull()
-                            ?.item
-                            ?.toIntOrNull()
-                            ?.let { index ->
-                                (parts.getOrNull(index) as? InlineBodyPart.Tag)?.tag
-                            }
-                }
-                .firstOrNull()
+internal data class ThreadInlineTagMatch(
+        val id: String,
+        val tag: ThreadMarkdownTag,
+        val range: IntRange
+)
 
-private const val ThreadInlineTagAnnotation = "thread_tag"
+internal data class ThreadInlineCodeMatch(
+        val id: String,
+        val code: String,
+        val range: IntRange
+)
 
-private fun String.maskMarkdownCodeRanges(): String {
-    val chars = toCharArray()
-    var index = 0
-    while (index < chars.size) {
-        if (startsWith("```", index)) {
-            val end =
-                    indexOf("```", startIndex = index + 3).let {
-                        if (it < 0) chars.size - 3 else it
-                    }
-            for (maskIndex in index until (end + 3).coerceAtMost(chars.size)) chars[maskIndex] = ' '
-            index = (end + 3).coerceAtMost(chars.size)
-        } else if (chars[index] == '`') {
-            val end = indexOf('`', startIndex = index + 1).let { if (it < 0) index else it }
-            for (maskIndex in index..end) chars[maskIndex] = ' '
-            index = (end + 1).coerceAtMost(chars.size)
-        } else {
-            index++
+private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
+        when {
+            startsWith('@') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.UserMention)
+            drop(1).all { it.isDigit() } -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.Task)
+            startsWith('#') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.Channel)
+            else -> null
         }
-    }
-    return String(chars)
+
+internal fun String.threadInlineTagMatches(baseOffset: Int = 0): List<ThreadInlineTagMatch> =
+        ThreadInlineTagRegex.findAll(this).mapNotNull { match ->
+            match.value.toThreadMarkdownTagOrNull()?.let { tag ->
+                ThreadInlineTagMatch(
+                        id = "slock:${baseOffset + match.range.first}",
+                        tag = tag,
+                        range = match.range
+                )
+            }
+        }.toList()
+
+internal fun String.threadInlineCodeMatches(baseOffset: Int = 0): List<ThreadInlineCodeMatch> {
+        val matches = mutableListOf<ThreadInlineCodeMatch>()
+        var cursor = 0
+        while (cursor < length) {
+                val start = indexOf('`', startIndex = cursor)
+                if (start < 0) break
+                val tickCount = countBackticks(start)
+                val fence = "`".repeat(tickCount)
+                val end = indexOf(fence, startIndex = start + tickCount)
+                if (end < 0) break
+                val rawCode = substring(start + tickCount, end)
+                matches +=
+                                ThreadInlineCodeMatch(
+                                                id = "slock-code:${baseOffset + start}",
+                                                code = rawCode.normalizeMarkdownInlineCodeText(),
+                                                range = start until end + tickCount
+                                )
+                cursor = end + tickCount
+        }
+        return matches
 }
 
-private sealed interface ThreadMarkdownSegment {
-    data class Text(val value: String) : ThreadMarkdownSegment
-    data class CodeBlock(val language: String?, val code: String) : ThreadMarkdownSegment
+private fun String.countBackticks(start: Int): Int {
+        var count = 0
+        while (start + count < length && this[start + count] == '`') count++
+        return count
 }
+
+private fun String.normalizeMarkdownInlineCodeText(): String =
+                if (length >= 2 && first() == ' ' && last() == ' ' && any { it != ' ' }) {
+                        substring(1, lastIndex)
+                } else {
+                        this
+                }
 
 @Composable
 private fun ThreadMarkdownBody(
@@ -4608,88 +4356,170 @@ private fun ThreadMarkdownBody(
         onTagClick: ((ThreadMarkdownTag) -> Unit)? = null,
         onInteractiveBoundsChanged: (List<Rect>) -> Unit = {}
 ) {
-    val segments = remember(body) { body.toThreadMarkdownSegments() }
-    val hasInlineTags =
-            remember(body, onTagClick) {
-                val searchableBody = body.maskMarkdownCodeRanges()
-                onTagClick != null && (searchableBody.contains('@') || searchableBody.contains('#'))
-            }
-    val bodyTypography = ThreadMessageBodyTextStyle.copy(textAlign = textAlign)
-    // Fast path: plain single-line message with no tags
-    if (segments.size == 1 &&
-                    segments.single() is ThreadMarkdownSegment.Text &&
-                    body.isPlainSingleLineMessage() &&
-                    !hasInlineTags
-    ) {
-        Text(
-                text = body,
-                style = bodyTypography,
-                color = SlockColor.TextBlack,
-                modifier = modifier,
-                textAlign = textAlign
-        )
-        return
-    }
-    if (segments.size == 1 && segments.single() is ThreadMarkdownSegment.Text && !hasInlineTags) {
-        ThreadOfficialMarkdown(body = body, textAlign = textAlign, modifier = modifier)
-        return
-    }
-    // Fast path: single text segment with tags — render with the Slock tag renderer.
-    if (segments.size == 1 && segments.single() is ThreadMarkdownSegment.Text) {
-        val parts = remember(body) { body.splitInlineBodyParts() }
-        ThreadInlineTagsBody(
-                parts = parts,
-                style = bodyTypography,
-                textAlign = textAlign,
-                modifier = modifier,
-                onTagClick = onTagClick ?: {},
-                onInteractiveBoundsChanged = onInteractiveBoundsChanged
-        )
-        return
-    }
-    Column(
+    ThreadOfficialMarkdown(
+            body = body,
+            textAlign = textAlign,
             modifier = modifier,
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-            horizontalAlignment = if (textAlign == TextAlign.End) Alignment.End else Alignment.Start
-    ) {
-        segments.forEach { segment ->
-            when (segment) {
-                is ThreadMarkdownSegment.Text -> {
-                    if (segment.value.isNotBlank()) {
-                        val parts = remember(segment.value) { segment.value.splitInlineBodyParts() }
-                        ThreadInlineTagsBody(
-                                parts = parts,
-                                style = bodyTypography,
-                                textAlign = textAlign,
-                                onTagClick = onTagClick ?: {},
-                                onInteractiveBoundsChanged = onInteractiveBoundsChanged
-                        )
-                    }
-                }
-                is ThreadMarkdownSegment.CodeBlock ->
-                        ThreadOfficialMarkdown(
-                                body = segment.asMarkdownCodeFence(),
-                                textAlign = textAlign
-                        )
-            }
-        }
-    }
+            onTagClick = onTagClick,
+            onInteractiveBoundsChanged = onInteractiveBoundsChanged
+    )
 }
 
 @Composable
 private fun ThreadOfficialMarkdown(
         body: String,
         textAlign: TextAlign = TextAlign.Start,
-        modifier: Modifier = Modifier
+        modifier: Modifier = Modifier,
+        onTagClick: ((ThreadMarkdownTag) -> Unit)? = null,
+        onInteractiveBoundsChanged: (List<Rect>) -> Unit = {}
 ) {
+    val markdownState = rememberMarkdownState(content = body, retainState = true)
+    val inlineTagMatches = remember(body, onTagClick != null) {
+        if (onTagClick == null) emptyList() else body.threadInlineTagMatches()
+    }
+    val inlineTagById = remember(inlineTagMatches) { inlineTagMatches.associateBy { it.id } }
+        val inlineCodeMatches = remember(body) { body.threadInlineCodeMatches() }
+        val inlineCodeById = remember(inlineCodeMatches) { inlineCodeMatches.associateBy { it.id } }
+    val inlineTagBounds = remember(body) { mutableStateMapOf<String, Rect>() }
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+        val isDarkTheme = isSystemInDarkTheme()
+        val highlightsBuilder = remember(isDarkTheme) {
+                Highlights.Builder().theme(SyntaxThemes.atom(darkMode = isDarkTheme))
+        }
+
+    LaunchedEffect(body, onTagClick != null) {
+        inlineTagBounds.clear()
+        onInteractiveBoundsChanged(emptyList())
+    }
+
+    val annotator =
+                        remember(inlineTagById, inlineCodeById) {
+                markdownAnnotator { content, child ->
+                                        if (child.type == MarkdownElementTypes.CODE_SPAN) {
+                                                val codeMatch = inlineCodeById["slock-code:${child.startOffset}"]
+                                                if (codeMatch != null) {
+                                                        appendInlineContent(codeMatch.id, codeMatch.code)
+                                                        return@markdownAnnotator true
+                                                }
+                    }
+                                        if (child.type != MarkdownTokenTypes.TEXT ||
+                                                                        child.parent?.type == MarkdownElementTypes.CODE_SPAN
+                                        ) return@markdownAnnotator false
+
+                    val nodeText = child.getTextInNode(content).toString()
+                    val nodeMatches =
+                            nodeText.threadInlineTagMatches(baseOffset = child.startOffset)
+                                    .filter { inlineTagById.containsKey(it.id) }
+                    if (nodeMatches.isEmpty()) return@markdownAnnotator false
+
+                    var cursor = 0
+                    nodeMatches.forEach { match ->
+                        if (match.range.first > cursor) {
+                            append(nodeText.substring(cursor, match.range.first))
+                        }
+                        appendInlineContent(match.id, match.tag.label)
+                        cursor = match.range.last + 1
+                    }
+                    if (cursor < nodeText.length) append(nodeText.substring(cursor))
+                    true
+                }
+            }
+
+    val inlineContent =
+            markdownInlineContent(
+                                        remember(inlineTagById, inlineCodeById, density, textMeasurer) {
+                                                val tagContent = inlineTagById.mapValues { (id, match) ->
+                            val tag = match.tag
+                            val label = threadMarkdownTagDisplayLabel(tag.label)
+                            val width =
+                                    with(density) {
+                                        threadInlineTagPlaceholderWidthDp(
+                                                label = label,
+                                                hasIcon = false,
+                                                density = density,
+                                                textMeasurer = textMeasurer
+                                        ).toSp()
+                                    }
+                            InlineTextContent(
+                                    Placeholder(
+                                            width = width,
+                                            height = threadInlineChipPlaceholderHeightSp(density),
+                                            placeholderVerticalAlign =
+                                                    PlaceholderVerticalAlign.Center
+                                    )
+                            ) {
+                                ThreadChip(
+                                        label = label,
+                                        color =
+                                                when (tag.kind) {
+                                                    ThreadMarkdownTagKind.Channel ->
+                                                            SlockColor.AccentCyan
+                                                    ThreadMarkdownTagKind.Task ->
+                                                            SlockColor.AccentOrange
+                                                    ThreadMarkdownTagKind.UserMention ->
+                                                            SlockColor.AccentLavender
+                                                },
+                                        icon = null,
+                                        onClick = { onTagClick?.invoke(tag) },
+                                        modifier =
+                                                Modifier.onGloballyPositioned { coordinates ->
+                                                    inlineTagBounds[id] = coordinates.boundsInRoot()
+                                                    onInteractiveBoundsChanged(
+                                                            inlineTagBounds.values.toList()
+                                                    )
+                                                }
+                                )
+                            }
+                        }
+                        val codeContent = inlineCodeById.mapValues { (_, match) ->
+                            val width =
+                                    threadInlineCodePlaceholderWidthSp(
+                                            code = match.code,
+                                            density = density,
+                                            textMeasurer = textMeasurer
+                                    )
+                            InlineTextContent(
+                                    Placeholder(
+                                            width = width,
+                                            height = threadInlineChipPlaceholderHeightSp(density),
+                                            placeholderVerticalAlign = PlaceholderVerticalAlign.Center
+                                    )
+                            ) {
+                                ThreadInlineCodeChip(match.code)
+                            }
+                        }
+                        tagContent + codeContent
+                    }
+            )
+    val components =
+            markdownComponents(
+                    codeBlock = {
+                        MarkdownHighlightedCodeBlock(
+                                content = it.content,
+                                node = it.node,
+                                highlightsBuilder = highlightsBuilder,
+                                showHeader = true
+                        )
+                    },
+                    codeFence = {
+                        MarkdownHighlightedCodeFence(
+                                content = it.content,
+                                node = it.node,
+                                highlightsBuilder = highlightsBuilder,
+                                showHeader = true
+                        )
+                    },
+                    checkbox = { MarkdownCheckBox(it.content, it.node, it.typography.text) }
+            )
+
     Markdown(
-            content = body,
+            markdownState = markdownState,
             colors =
                     markdownColor(
                             text = SlockColor.TextBlack,
                             codeBackground = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f),
-                            inlineCodeBackground =
-                                    MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f)
+                            inlineCodeBackground = SlockColor.BrandYellow.copy(alpha = 0.4f)
                     ),
             typography =
                     markdownTypography(
@@ -4706,47 +4536,43 @@ private fun ThreadOfficialMarkdown(
                                             textAlign = textAlign
                                     )
                     ),
+            imageTransformer = Coil3ImageTransformerImpl,
+            annotator = annotator,
+            inlineContent = inlineContent,
+            components = components,
             modifier = modifier.fillMaxWidth()
     )
 }
 
-private fun ThreadMarkdownSegment.CodeBlock.asMarkdownCodeFence(): String =
-        buildString {
-            append("```")
-            if (!language.isNullOrBlank()) append(language.trim())
-            append('\n')
-            append(code.trimEnd())
-            append("\n```")
-        }
+private val ThreadInlineCodeTextStyle: TextStyle
+    get() =
+            ThreadInlineChipTextStyle
 
-private fun String.toThreadMarkdownSegments(): List<ThreadMarkdownSegment> {
-    if (!contains("```")) return listOf(ThreadMarkdownSegment.Text(this))
-    val segments = mutableListOf<ThreadMarkdownSegment>()
-    var index = 0
-    while (index < length) {
-        val fenceStart = indexOf("```", startIndex = index)
-        if (fenceStart < 0) {
-            substring(index).takeIf { it.isNotBlank() }?.let {
-                segments += ThreadMarkdownSegment.Text(it)
-            }
-            break
-        }
-        substring(index, fenceStart).takeIf { it.isNotBlank() }?.let {
-            segments += ThreadMarkdownSegment.Text(it)
-        }
-        val infoStart = fenceStart + 3
-        val firstLineEnd = indexOf('\n', startIndex = infoStart).let { if (it < 0) length else it }
-        val language = substring(infoStart, firstLineEnd).trim().takeIf { it.isNotBlank() }
-        val codeStart = (firstLineEnd + 1).coerceAtMost(length)
-        val fenceEnd = indexOf("```", startIndex = codeStart)
-        if (fenceEnd < 0) {
-            segments += ThreadMarkdownSegment.CodeBlock(language, substring(codeStart))
-            break
-        }
-        segments += ThreadMarkdownSegment.CodeBlock(language, substring(codeStart, fenceEnd))
-        index = (fenceEnd + 3).coerceAtMost(length)
-    }
-    return segments.ifEmpty { listOf(ThreadMarkdownSegment.Text(this)) }
+private fun threadInlineCodePlaceholderWidthSp(
+        code: String,
+        density: Density,
+        textMeasurer: TextMeasurer
+) = with(density) {
+    val textWidth = textMeasurer.measure(text = code, style = ThreadInlineCodeTextStyle).size.width.toDp()
+        (textWidth + ThreadInlineChipHorizontalPadding * 2).toSp()
+}
+
+@Composable
+private fun ThreadInlineCodeChip(code: String) {
+    Text(
+            text = code,
+            style = ThreadInlineCodeTextStyle,
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            modifier =
+                    Modifier.background(SlockColor.BrandYellow.copy(alpha = 0.4f))
+                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                            .padding(
+                                    horizontal = ThreadInlineChipHorizontalPadding,
+                                    vertical = ThreadInlineChipVerticalPadding
+                            )
+    )
 }
 
 private fun String.isPlainSingleLineMessage(): Boolean =
@@ -4929,7 +4755,10 @@ private fun ThreadChip(
                                     Modifier.clickable(role = Role.Button, onClick = onClick)
                             else Modifier
                     )
-                    .padding(horizontal = 10.dp, vertical = 3.dp)
+                    .padding(
+                            horizontal = ThreadInlineChipHorizontalPadding,
+                            vertical = ThreadInlineChipVerticalPadding
+                    )
     Row(
             modifier = chipModifier,
             verticalAlignment = Alignment.CenterVertically,
@@ -4945,11 +4774,7 @@ private fun ThreadChip(
         }
         Text(
                 label,
-                style =
-                        SlockType.Caption.copy(
-                                fontSize = 14.sp,
-                                lineHeight = 18.sp
-                        ),
+                style = ThreadInlineChipTextStyle,
                 color = SlockColor.TextBlack,
                 maxLines = maxLines,
                 overflow = overflow
@@ -5178,7 +5003,7 @@ fun ThreadComposerBar(
                                                 right = 1f,
                                                 bottom = 1f
                         ),
-                        fieldValue = composerFieldValue,
+                        fieldValueProvider = composerValueProvider,
                         onValueChange = handleComposerFieldValueChange,
                         context = context,
                         onSelectAllApplied = { restoreComposerToolbarAfterSelectAll = true }
@@ -5559,20 +5384,23 @@ private fun rememberComposerTextToolbar(onInsertNewline: () -> Unit): TextToolba
 
 private fun TextToolbar.showComposerMenu(
         rect: Rect,
-        fieldValue: TextFieldValue,
+        fieldValueProvider: () -> TextFieldValue,
         onValueChange: (TextFieldValue) -> Unit,
         context: Context,
         onSelectAllApplied: () -> Unit = {}
 ) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val fieldValue = fieldValueProvider()
     showMenu(
             rect = rect,
             onCopyRequested =
-                    fieldValue.selectedText()?.let { selectedText ->
+                    fieldValue.selectedText()?.let {
                         {
-                            clipboard.setPrimaryClip(
-                                    ClipData.newPlainText("Composer text", selectedText)
-                            )
+                                                        fieldValueProvider().selectedText()?.let { selectedText ->
+                                                                clipboard.setPrimaryClip(
+                                                                                ClipData.newPlainText("Composer text", selectedText)
+                                                                )
+                                                        }
                         }
                     },
             onPasteRequested = {
@@ -5584,20 +5412,23 @@ private fun TextToolbar.showComposerMenu(
                                 ?.toString()
                                 .orEmpty()
                 if (pasteText.isNotEmpty()) {
-                    onValueChange(fieldValue.replaceSelection(pasteText))
+                                        onValueChange(fieldValueProvider().replaceSelection(pasteText))
                 }
             },
             onCutRequested =
-                    fieldValue.selectedText()?.let { selectedText ->
+                                        fieldValue.selectedText()?.let {
                         {
-                            clipboard.setPrimaryClip(
-                                    ClipData.newPlainText("Composer text", selectedText)
-                            )
-                            onValueChange(fieldValue.replaceSelection(""))
+                                                        val currentValue = fieldValueProvider()
+                                                        currentValue.selectedText()?.let { selectedText ->
+                                                                clipboard.setPrimaryClip(
+                                                                                ClipData.newPlainText("Composer text", selectedText)
+                                                                )
+                                                                onValueChange(currentValue.replaceSelection(""))
+                                                        }
                         }
                     },
             onSelectAllRequested = {
-                val selectedValue = fieldValue.selectAll()
+                                val selectedValue = fieldValueProvider().selectAll()
                 onValueChange(selectedValue)
                 onSelectAllApplied()
             }
@@ -5672,6 +5503,7 @@ private class ComposerTextActionModeCallback(
         }
         if (onCopyRequested != null) {
             menu.add(0, android.R.id.copy, 2, android.R.string.copy)
+                                        .setIcon(R.drawable.lucide_copy)
                     .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         }
         if (onPasteRequested != null) {
