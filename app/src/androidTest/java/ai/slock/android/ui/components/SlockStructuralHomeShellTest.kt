@@ -5,9 +5,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.ui.unit.dp
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Home
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -20,7 +17,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
-import ai.slock.android.SlockAppBottomBarHost
+import androidx.compose.ui.unit.dp
+import ai.slock.android.R
 import ai.slock.android.ui.theme.SlockSize
 import ai.slock.android.ui.theme.SlockSpacing
 import ai.slock.android.ui.theme.SlockTheme
@@ -154,8 +152,12 @@ class SlockStructuralHomeShellTest {
                     )
                     SlockAppBottomBarHost(
                         items = listOf(
-                            SlockBottomTabItem("home", "HOME", Icons.Outlined.Home),
-                            SlockBottomTabItem("tasks", "TASKS", SlockIcons.ListTodo)
+                            SlockBottomTabItem("home", "HOME", R.drawable.lucide_house),
+                            SlockBottomTabItem(
+                                "tasks",
+                                "TASKS",
+                                R.drawable.lucide_square_check_big
+                            )
                         ),
                         selectedKey = "home",
                         modifier = Modifier.align(Alignment.BottomCenter),

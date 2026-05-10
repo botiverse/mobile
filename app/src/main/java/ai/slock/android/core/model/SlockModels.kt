@@ -40,7 +40,9 @@ data class ConversationSummary(
     val avatarUrl: String? = null,
     val avatar: AvatarReference? = AvatarReference.fromWireValue(avatarUrl),
     val unreadCount: Int = 0,
+    val unreadCountKnown: Boolean = false,
     val mentionCount: Int = 0,
+    val mentionCountKnown: Boolean = false,
     val lastMessageId: MessageId? = null,
     val firstUnreadMessageId: MessageId? = null,
     val lastMessagePreview: String? = null,
@@ -50,8 +52,10 @@ data class ConversationSummary(
     val agentStatus: AgentStatus? = null,
     val presenceMemberId: MemberId? = null,
     val hasDraft: Boolean = false,
+    val hasDraftKnown: Boolean = false,
     val joined: Boolean = true,
     val archived: Boolean = false,
+    val memberCount: Int? = null,
     val permissions: ConversationPermissions = ConversationPermissions()
 )
 

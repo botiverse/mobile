@@ -263,6 +263,34 @@ class ThreadScreenPaginationTest {
     }
 
     @Test
+    fun replyThreadDoesNotShowNewerHistoryRetryState() {
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(messages = listOf(message(1L)), canLoadMoreBefore = false)
+                                .copy(
+                                    canLoadMoreAfter = true,
+                                    newerMessagesStatus = MessagePageStatus.Error,
+                                    newerMessagesErrorCode = "server_unavailable"
+                                )
+                        )
+                    ),
+                    replyHeaderContext = ThreadReplyHeaderContext(
+                        parentChannelName = "android-dev",
+                        parentMessagePreview = "Original thread starter"
+                    ),
+                    parentJumpTarget = ThreadParentJumpTarget(MessageId("origin-message"))
+                )
+            }
+        }
+
+        composeRule.onAllNodesWithText("Retry history", substring = true).assertCountEquals(0)
+        composeRule.onNodeWithText("Message 1").assertIsDisplayed()
+    }
+
+    @Test
     fun channelThreadStillShowsRefreshErrorRetry() {
         var retries = 0
 

@@ -4,13 +4,20 @@ import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
@@ -166,5 +173,91 @@ class MembersScreenAgentActivityTest {
 
         composeRule.onNodeWithText("No scheduled reminders").performTouchInput { swipeRight() }
         composeRule.onNode(hasText("AGENT DMS") and hasClickAction()).assertIsSelected()
+    }
+
+    @Test
+    fun agentProfileDetailDoesNotDuplicateHeaderIdentityOrStatus() {
+        val agent = MemberProfile(
+            id = MemberId("agent-single-identity"),
+            displayName = "Single Identity Agent",
+            handle = "@single-identity",
+            kind = MemberKind.Agent,
+            roleDescription = "Keeps one header identity",
+            presence = Presence.Active,
+            agentStatus = AgentStatus.Online
+        )
+
+        composeRule.setContent {
+            SlockTheme {
+                MembersRouteScreen(
+                    state = MembersUiState(
+                        loadState = ScreenLoadState.Content(
+                            MembersContent(
+                                server = ServerSummary(ServerId("server-1"), "Slock"),
+                                members = listOf(agent)
+                            )
+                        )
+                    ),
+                    initialSelectedMemberId = agent.id.value,
+                    initialSelectedDetailTab = "Profile"
+                )
+            }
+        }
+
+        composeRule.onAllNodesWithText("Single Identity Agent").assertCountEquals(1)
+        composeRule.onAllNodesWithText("Online", substring = true).assertCountEquals(1)
+        composeRule.onNode(hasText("PROFILE") and hasClickAction()).assertIsDisplayed()
+        composeRule.onNode(
+            hasText("@single-identity") and hasAnyAncestor(hasScrollAction())
+        ).assertExists()
+    }
+
+    @Test
+    fun agentProfileDetailEditsDisplayNameAndDescription() {
+        val agentState = mutableStateOf(
+            MemberProfile(
+                id = MemberId("agent-edit-profile"),
+                displayName = "Editable Agent",
+                handle = "@editable-agent",
+                kind = MemberKind.Agent,
+                roleDescription = "Old description",
+                presence = Presence.Active,
+                agentStatus = AgentStatus.Online
+            )
+        )
+        val saveCalls = mutableListOf<Pair<String, String>>()
+
+        composeRule.setContent {
+            SlockTheme {
+                MembersRouteScreen(
+                    state = MembersUiState(
+                        loadState = ScreenLoadState.Content(
+                            MembersContent(
+                                server = ServerSummary(ServerId("server-1"), "Slock"),
+                                members = listOf(agentState.value)
+                            )
+                        )
+                    ),
+                    initialSelectedMemberId = agentState.value.id.value,
+                    initialSelectedDetailTab = "Profile",
+                    onSaveAgentProfile = { _, displayName, description ->
+                        saveCalls += displayName to description
+                        agentState.value = agentState.value.copy(
+                            displayName = displayName,
+                            roleDescription = description
+                        )
+                    }
+                )
+            }
+        }
+
+        composeRule.onAllNodes(hasSetTextAction())[0].performTextReplacement("Updated Agent")
+        composeRule.onAllNodes(hasSetTextAction())[1].performTextReplacement("Updated description")
+        composeRule.onNodeWithText("Save").performClick()
+
+        assert(saveCalls.single() == ("Updated Agent" to "Updated description")) {
+            "Expected edited profile save payload, got $saveCalls"
+        }
+        composeRule.onAllNodesWithText("Updated Agent").assertCountEquals(2)
     }
 }

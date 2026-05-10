@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.annotation.DrawableRes
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,8 +30,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,7 +42,7 @@ import kotlinx.coroutines.launch
 
 data class SlockMenuOverlayAction(
         val label: String,
-        val icon: ImageVector,
+        @DrawableRes val icon: Int? = null,
         val group: String = "default",
         val onClick: () -> Unit
 )
@@ -105,12 +106,14 @@ private fun SlockMenuOverlayItem(action: SlockMenuOverlayAction) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
 ) {
-        Icon(
-                imageVector = action.icon,
-                contentDescription = null,
-                tint = SlockColor.TextBlack,
-                modifier = Modifier.size(20.dp)
-        )
+        action.icon?.let { icon ->
+            Icon(
+                    painter = painterResource(icon),
+                    contentDescription = null,
+                    tint = SlockColor.TextBlack,
+                    modifier = Modifier.size(20.dp)
+            )
+        }
         Text(
                 text = action.label,
                 style = SlockType.Body.copy(fontWeight = FontWeight.Normal),

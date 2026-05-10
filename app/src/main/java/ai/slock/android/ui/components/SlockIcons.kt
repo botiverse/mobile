@@ -1,7 +1,5 @@
 package ai.slock.android.ui.components
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -320,7 +318,24 @@ object SlockIcons {
         lineTo(18f, 18f)
     }
 
-    val Settings: ImageVector = Icons.Outlined.Settings
+    val Settings: ImageVector = strokeIcon("LucideSettings") {
+        moveTo(9.671f, 4.136f)
+        arcToRelative(2.34f, 2.34f, 0f, false, true, 4.659f, 0f)
+        arcToRelative(2.34f, 2.34f, 0f, false, false, 3.319f, 1.915f)
+        arcToRelative(2.34f, 2.34f, 0f, false, true, 2.33f, 4.033f)
+        arcToRelative(2.34f, 2.34f, 0f, false, false, 0f, 3.831f)
+        arcToRelative(2.34f, 2.34f, 0f, false, true, -2.33f, 4.033f)
+        arcToRelative(2.34f, 2.34f, 0f, false, false, -3.319f, 1.915f)
+        arcToRelative(2.34f, 2.34f, 0f, false, true, -4.659f, 0f)
+        arcToRelative(2.34f, 2.34f, 0f, false, false, -3.32f, -1.915f)
+        arcToRelative(2.34f, 2.34f, 0f, false, true, -2.33f, -4.033f)
+        arcToRelative(2.34f, 2.34f, 0f, false, false, 0f, -3.831f)
+        arcTo(2.34f, 2.34f, 0f, false, true, 6.35f, 6.051f)
+        arcToRelative(2.34f, 2.34f, 0f, false, false, 3.319f, -1.915f)
+        moveTo(15f, 12f)
+        arcTo(3f, 3f, 0f, false, true, 9f, 12f)
+        arcTo(3f, 3f, 0f, false, true, 15f, 12f)
+    }
 
     val LogOut: ImageVector = strokeIcon("LucideLogOut") {
         moveTo(16f, 17f)

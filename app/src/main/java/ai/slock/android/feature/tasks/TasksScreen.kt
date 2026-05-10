@@ -2,6 +2,7 @@ package ai.slock.android.feature.tasks
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -241,11 +242,14 @@ private fun TasksLoadedBody(
         }
     }
     val modeSwitching = renderedMode != selectedMode
+    val contentScrollState = rememberScrollState()
+    val listFilterScrollState = rememberScrollState()
+    val boardScrollState = rememberScrollState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(contentScrollState)
             .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
@@ -265,6 +269,7 @@ private fun TasksLoadedBody(
         TasksToolbar(
             state = state,
             copy = copy,
+            filterScrollState = listFilterScrollState,
             channelOptions = channelOptions,
             selectedChannelNames = selectedChannels,
             channelSelectorExpanded = channelSelectorExpanded,
@@ -290,6 +295,7 @@ private fun TasksLoadedBody(
                     TasksBoardSection(
                         content = filteredContent,
                         copy = copy,
+                        boardScrollState = boardScrollState,
                         onTaskClick = onTaskClick,
                         onTaskStatusChange = onTaskStatusChange,
                         updatingTaskId = state.statusUpdatingTaskId
@@ -365,6 +371,7 @@ private fun TasksSummaryBar(content: TasksContent, copy: TasksScreenCopy) {
 private fun TasksToolbar(
     state: TasksUiState,
     copy: TasksScreenCopy,
+    filterScrollState: ScrollState,
     channelOptions: List<String>,
     selectedChannelNames: Set<String>,
     channelSelectorExpanded: Boolean,
@@ -396,7 +403,7 @@ private fun TasksToolbar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
+                    .horizontalScroll(filterScrollState),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
@@ -791,6 +798,7 @@ private fun TasksCompactAction(
 private fun TasksBoardSection(
     content: TasksContent,
     copy: TasksScreenCopy,
+    boardScrollState: ScrollState,
     onTaskClick: (TaskSummary) -> Unit,
     onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
     updatingTaskId: String?
@@ -804,7 +812,8 @@ private fun TasksBoardSection(
                     onTaskClick = onTaskClick,
                     onTaskStatusChange = onTaskStatusChange,
                     updatingTaskId = updatingTaskId
-                )
+                ),
+            scrollState = boardScrollState
         )
     }
 }

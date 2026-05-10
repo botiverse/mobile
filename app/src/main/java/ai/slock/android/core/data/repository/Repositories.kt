@@ -80,6 +80,7 @@ interface TaskRepository {
 interface MemberRepository {
     suspend fun getMembers(serverId: ServerId): DataResult<MemberSnapshot>
     suspend fun getMemberProfile(memberId: MemberId): DataResult<MemberProfile>
+    suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile>
     suspend fun getAgentDetail(agentId: MemberId): DataResult<AgentDetailSnapshot>
     suspend fun getAgentDirectMessages(agentId: MemberId): DataResult<AgentDmSnapshot>
     suspend fun getAgentReminders(agentId: MemberId): DataResult<AgentReminderSnapshot>
@@ -227,6 +228,12 @@ data class RemoveChannelMemberRequest(
     val channelId: ChannelId,
     val memberId: MemberId,
     val kind: MemberKind
+)
+
+data class AgentProfileUpdateRequest(
+    val agentId: MemberId,
+    val displayName: String,
+    val description: String?
 )
 
 data class ChannelMemberActionResult(

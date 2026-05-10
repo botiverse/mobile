@@ -195,6 +195,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
@@ -208,6 +209,7 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
@@ -474,6 +476,7 @@ fun ThreadScreen(
                                     attachmentOpenStates = attachmentOpenStates,
                                     onOpenAttachment = onOpenAttachment,
                                     showOlderPageState = replyHeaderContext == null,
+                                    showNewerPageState = replyHeaderContext == null,
                                     showReplyAction = replyHeaderContext == null,
                                     resolveMemberName = { id ->
                                         (membersPanelState.loadState as? ScreenLoadState.Content)
@@ -686,7 +689,7 @@ fun ThreadScreen(
         if (showSettingsModal) {
             ThreadSettingsModal(
                     initialName = (state.loadState as? ScreenLoadState.Content)?.data?.header?.name
-                                    ?: "onboarding-artin",
+                                    ?: "Unknown thread",
                     onDismiss = { showSettingsModal = false }
             )
         }
@@ -717,7 +720,7 @@ private fun ColumnScope.ThreadScreenLoadFailure(
         showModeTabs: Boolean,
         onBack: () -> Unit,
         onSettingsClick: () -> Unit,
-        membersCount: Int,
+        membersCount: Int?,
         onMembersClick: () -> Unit,
         replyHeaderContext: ThreadReplyHeaderContext?,
         parentJumpTarget: ThreadParentJumpTarget?,
@@ -908,7 +911,7 @@ fun ThreadTopHeader(
         summary: ConversationSummary? = null,
         onBack: () -> Unit = {},
         onSettingsClick: () -> Unit = {},
-        membersCount: Int = 4,
+        membersCount: Int? = 4,
         onMembersClick: () -> Unit = {},
         replyHeaderContext: ThreadReplyHeaderContext? = null,
         parentJumpTarget: ThreadParentJumpTarget? = null,
@@ -923,7 +926,7 @@ fun ThreadTopHeader(
                 if (replyHeaderContext != null) {
                     "Threads"
                 } else {
-                    summary?.name ?: "onboarding-artin"
+                    summary?.name ?: "Unknown thread"
                 }
         val subtitle =
                 if (replyHeaderContext != null) {
@@ -1291,8 +1294,10 @@ private val ThreadMembersPanelState.modalMembers: List<ThreadMemberModalItem>
                 else -> emptyList()
             }
 
-private val ThreadMembersPanelState.memberCount: Int
-    get() = (loadState as? ScreenLoadState.Content)?.data?.members?.size ?: 0
+private val ThreadMembersPanelState.memberCount: Int?
+    get() =
+            (loadState as? ScreenLoadState.Content)?.data?.members?.size
+                    ?: fallbackMemberCount?.takeIf { fallbackMemberCountKnown }
 
 private fun MemberProfile.toThreadMemberModalItem(): ThreadMemberModalItem =
         ThreadMemberModalItem(
@@ -2246,7 +2251,7 @@ private fun HeaderIconButton(
 }
 
 @Composable
-private fun ThreadMembersButton(count: Int, onClick: () -> Unit) {
+private fun ThreadMembersButton(count: Int?, onClick: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val shadow = if (pressed) SlockShadow.None else SlockShadow.Small
@@ -2281,7 +2286,7 @@ private fun ThreadMembersButton(count: Int, onClick: () -> Unit) {
                 tint = SlockColor.TextBlack,
                 modifier = Modifier.size(18.dp)
         )
-        Text(count.toString(), style = SlockType.Button, color = SlockColor.TextBlack)
+        Text(count?.toString() ?: "--", style = SlockType.Button, color = SlockColor.TextBlack)
     }
 }
 
@@ -2416,6 +2421,7 @@ private fun ThreadMessageList(
         attachmentOpenStates: Map<AttachmentId, AttachmentOpenUiState>,
         onOpenAttachment: (Attachment) -> Unit,
         showOlderPageState: Boolean = true,
+        showNewerPageState: Boolean = true,
         showReplyAction: Boolean = true,
         resolveMemberName: (MemberId) -> String? = { null }
 ) {
@@ -2835,7 +2841,7 @@ private fun ThreadMessageList(
                     }
                 }
             }
-            if (content.shouldShowNewerPageState) {
+            if (showNewerPageState && content.shouldShowNewerPageState) {
                 item(key = "newer-page-state") {
                     ThreadMessagePageState(
                             canLoadMore = content.canLoadMoreAfter,
@@ -3021,9 +3027,11 @@ private suspend fun scrollThreadListItemToRenderedBottom(
     val targetBottom = targetItem?.let { it.offset + it.size } ?: -1
     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
             "SlockThreadScroll",
-            "scroll_item_to_rendered_bottom reason=$reason threadId=$threadId targetIndex=$targetIndex messageCount=${messageCount ?: -1} firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} targetBottom=$targetBottom viewportBottom=${listState.layoutInfo.viewportEndOffset} totalItems=${listState.layoutInfo.totalItemsCount}"
+            "scroll_item_to_rendered_bottom reason=$reason threadId=$threadId targetIndex=$targetIndex messageCount=${messageCount ?: -1} firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} targetBottom=$targetBottom viewportBottom=${listState.layoutInfo.viewportEndOffset} totalItems=${listState.layoutInfo.totalItemsCount} bottomTolerancePx=$ThreadRenderedBottomTolerancePx"
     )
 }
+
+private const val ThreadRenderedBottomTolerancePx = 24
 
 private fun LazyListState.isTargetItemAtBottom(targetIndex: Int): Boolean {
     val layoutInfo = layoutInfo
@@ -3034,7 +3042,7 @@ private fun LazyListState.isTargetItemAtBottom(targetIndex: Int): Boolean {
             lastItem.index >= targetIndex &&
             kotlin.math.abs(
                     targetItem.offset + targetItem.size - layoutInfo.viewportEndOffset
-            ) <= 24
+            ) <= ThreadRenderedBottomTolerancePx
 }
 
 private data class OlderTopProbe(
@@ -3726,7 +3734,7 @@ private fun Message.threadMessageActions(
             add(
                     SlockMenuOverlayAction(
                             label = "Share messages...",
-                            icon = SlockIcons.Share2,
+                            icon = R.drawable.lucide_share_2,
                             group = "share",
                             onClick = onShare
                     )
@@ -3734,23 +3742,23 @@ private fun Message.threadMessageActions(
             add(
                     SlockMenuOverlayAction(
                             label = "Copy link",
-                            icon = SlockIcons.Link,
-                            group = "message",
+                            icon = R.drawable.lucide_link,
+                            group = "message-copy",
                             onClick = onCopyLink
                     )
             )
             add(
                     SlockMenuOverlayAction(
                             label = "Copy markdown",
-                            icon = SlockIcons.Copy,
-                            group = "message",
+                            icon = R.drawable.lucide_copy,
+                            group = "message-copy",
                             onClick = onCopy
                     )
             )
             add(
                     SlockMenuOverlayAction(
                             label = "Save message",
-                            icon = SlockIcons.Bookmark,
+                            icon = R.drawable.lucide_bookmark,
                             group = "message",
                             onClick = onSave
                     )
@@ -3759,7 +3767,7 @@ private fun Message.threadMessageActions(
                 add(
                         SlockMenuOverlayAction(
                                 label = "Reply",
-                                icon = SlockIcons.MessageSquare,
+                                icon = R.drawable.lucide_message_square,
                                 group = "message",
                                 onClick = onReply
                         )
@@ -3778,8 +3786,8 @@ private fun Message.threadMessageActions(
                         }
                 val actionIcon =
                         when (task.status) {
-                            TaskStatus.Done, TaskStatus.Closed -> SlockIcons.RefreshCw
-                            else -> SlockIcons.CircleCheckBig
+                            TaskStatus.Done, TaskStatus.Closed -> R.drawable.lucide_refresh_cw
+                            else -> R.drawable.lucide_circle_check_big
                         }
                 add(
                         SlockMenuOverlayAction(
@@ -4226,13 +4234,16 @@ internal fun threadInlineCodeEstimatedWidthSp(code: String): Float {
 }
 
 internal sealed interface InlineBodyPart {
-    data class PlainText(val text: String) : InlineBodyPart
+    data class MarkdownText(val markdown: String) : InlineBodyPart
     data class Tag(val tag: ThreadMarkdownTag) : InlineBodyPart
     data class Code(val code: String) : InlineBodyPart
 }
 
 internal fun String.splitInlineBodyParts(): List<InlineBodyPart> {
     val parts = mutableListOf<InlineBodyPart>()
+    fun addMarkdown(markdown: String) {
+        if (markdown.isNotEmpty()) parts.add(InlineBodyPart.MarkdownText(markdown))
+    }
     // Inline code (backtick span) is matched first so tags inside code are not parsed as tags
     val combined =
             Regex(
@@ -4241,7 +4252,7 @@ internal fun String.splitInlineBodyParts(): List<InlineBodyPart> {
     var cursor = 0
     for (match in combined.findAll(this)) {
         if (match.range.first > cursor) {
-            parts.add(InlineBodyPart.PlainText(this.substring(cursor, match.range.first)))
+            addMarkdown(this.substring(cursor, match.range.first))
         }
         val fullMatch = match.value
         when {
@@ -4255,7 +4266,7 @@ internal fun String.splitInlineBodyParts(): List<InlineBodyPart> {
                 parts.add(InlineBodyPart.Tag(ThreadMarkdownTag(fullMatch, ThreadMarkdownTagKind.Task)))
             }
             fullMatch.equals("#task", ignoreCase = true) -> {
-                parts.add(InlineBodyPart.PlainText(fullMatch))
+                addMarkdown(fullMatch)
             }
             else -> {
                 parts.add(InlineBodyPart.Tag(ThreadMarkdownTag(fullMatch, ThreadMarkdownTagKind.Channel)))
@@ -4263,7 +4274,7 @@ internal fun String.splitInlineBodyParts(): List<InlineBodyPart> {
         }
         cursor = match.range.last + 1
     }
-    if (cursor < length) parts.add(InlineBodyPart.PlainText(this.substring(cursor)))
+    if (cursor < length) addMarkdown(this.substring(cursor))
     return parts
 }
 
@@ -4292,7 +4303,7 @@ private fun ThreadInlineTagsBody(
                             placeholderIndex++
                             null
                         }
-                        is InlineBodyPart.PlainText -> null
+                        is InlineBodyPart.MarkdownText -> null
                     }
                 }
             }
@@ -4315,7 +4326,7 @@ private fun ThreadInlineTagsBody(
         buildAnnotatedString {
             parts.forEachIndexed { index, part ->
                 when (part) {
-                    is InlineBodyPart.PlainText -> append(part.text)
+                    is InlineBodyPart.MarkdownText -> append(part.markdown)
                     is InlineBodyPart.Tag -> {
                         pushStringAnnotation(ThreadInlineTagAnnotation, index.toString())
                         appendInlineContent("slock:$index", part.tag.label)
@@ -4430,17 +4441,39 @@ private fun ThreadInlineTagsBody(
                                 }
                         )
                     }
-                    is InlineBodyPart.PlainText -> Unit
+                    is InlineBodyPart.MarkdownText -> Unit
                 }
             }
         }
     }
 
+    val hasPlainMarkdown = remember(parts) { parts.any { it is InlineBodyPart.MarkdownText } }
+    val codeSpanStyle =
+            SlockType.Caption.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Normal,
+                            fontSize = 13.sp,
+                            background = SlockColor.BrandYellow.copy(alpha = 0.42f)
+                    )
+                    .toSpanStyle()
+    val markdownAnnotatedString =
+            if (!hasPlainMarkdown) {
+                null
+            } else {
+                buildSlockInlineMarkdownAnnotatedString(
+                        parts = parts,
+                        style = style,
+                        codeSpanStyle = codeSpanStyle
+                )
+            }
+
+    val displayText = markdownAnnotatedString ?: annotatedString
+
     val onlyTagsAndWhitespace =
             remember(parts) {
                 parts.all { part ->
                     when (part) {
-                        is InlineBodyPart.PlainText -> part.text.isBlank()
+                        is InlineBodyPart.MarkdownText -> part.markdown.isBlank()
                         is InlineBodyPart.Tag -> true
                         is InlineBodyPart.Code -> false
                     }
@@ -4477,7 +4510,7 @@ private fun ThreadInlineTagsBody(
     }
 
     Text(
-            text = annotatedString,
+            text = displayText,
             style = style.copy(textAlign = textAlign),
             color = SlockColor.TextBlack,
             modifier =
@@ -4486,13 +4519,13 @@ private fun ThreadInlineTagsBody(
                                 val bounds = coordinates.boundsInRoot()
                                 textRootOffset = Offset(bounds.left, bounds.top)
                             }
-                            .pointerInput(annotatedString, parts) {
+                            .pointerInput(displayText, parts) {
                                 detectTapGestures { position ->
                                     val tag =
                                             textLayoutResult
                                                     ?.getOffsetForPosition(position)
                                                     ?.let { offset ->
-                                                        annotatedString.threadTagAtOffset(
+                                                        displayText.threadTagAtOffset(
                                                                 offset,
                                                                 parts
                                                         )
@@ -4506,6 +4539,40 @@ private fun ThreadInlineTagsBody(
             inlineContent = inlineContent
     )
 }
+
+@Composable
+private fun buildSlockInlineMarkdownAnnotatedString(
+        parts: List<InlineBodyPart>,
+        style: TextStyle,
+        codeSpanStyle: androidx.compose.ui.text.SpanStyle
+) =
+        buildAnnotatedString {
+            parts.forEachIndexed { index, part ->
+                when (part) {
+                    is InlineBodyPart.MarkdownText -> {
+                        append(
+                                part.markdown.buildMarkdownAnnotatedString(
+                                        style = style,
+                                        linkTextSpanStyle =
+                                                style.toSpanStyle()
+                                                        .copy(
+                                                                fontWeight = FontWeight.Bold,
+                                                                textDecoration =
+                                                                        TextDecoration.Underline
+                                                        ),
+                                        codeSpanStyle = codeSpanStyle
+                                )
+                        )
+                    }
+                    is InlineBodyPart.Tag -> {
+                        pushStringAnnotation(ThreadInlineTagAnnotation, index.toString())
+                        appendInlineContent("slock:$index", part.tag.label)
+                        pop()
+                    }
+                    is InlineBodyPart.Code -> appendInlineContent("slock-code:$index", part.code)
+                }
+            }
+        }
 
 private fun Rect.translate(offset: Offset): Rect =
         Rect(
@@ -4601,7 +4668,7 @@ private fun ThreadMarkdownBody(
     // Fast path: single text segment with inline tags/code — render with Slock inline chips.
     if (segments.size == 1 &&
                     segments.single() is ThreadMarkdownSegment.Text &&
-                    (hasInlineTags || body.contains('`'))
+                    body.needsSlockInlineRenderer(hasInlineTags)
     ) {
         val parts = remember(body) { body.splitInlineBodyParts() }
         ThreadInlineTagsBody(
@@ -4627,7 +4694,7 @@ private fun ThreadMarkdownBody(
                                 hasInlineTags &&
                                         (segment.value.contains('@') ||
                                                 segment.value.contains('#'))
-                        if (segmentHasTags) {
+                        if (segment.value.needsSlockInlineRenderer(segmentHasTags)) {
                             val parts = remember(segment.value) {
                                 segment.value.splitInlineBodyParts()
                             }
@@ -4635,7 +4702,7 @@ private fun ThreadMarkdownBody(
                                     parts = parts,
                                     style = bodyTypography,
                                     textAlign = textAlign,
-                                    onTagClick = onTagClick!!,
+                                    onTagClick = onTagClick ?: {},
                                     onInteractiveBoundsChanged = onInteractiveBoundsChanged
                             )
                         } else {
@@ -4776,6 +4843,9 @@ private fun String.isPlainSingleLineMessage(): Boolean =
         isNotBlank() &&
                 !contains('\n') &&
                 none { it == '`' || it == '*' || it == '[' || it == ']' || it == '>' }
+
+private fun String.needsSlockInlineRenderer(hasInlineTags: Boolean): Boolean =
+        hasInlineTags || contains('`') || contains("**")
 
 @Composable
 private fun ThreadAvatar(author: MemberProfile, onClick: (() -> Unit)? = null) {
@@ -5056,7 +5126,7 @@ fun ThreadComposerBar(
                 channelSuggestions.filter { channel ->
                     val q = trigger.query.lowercase()
                     channel.name.lowercase().contains(q)
-                }.take(6)
+                }
             else -> emptyList()
         }
     }

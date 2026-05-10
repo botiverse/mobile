@@ -2,6 +2,7 @@ package ai.slock.android.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -64,12 +65,13 @@ data class SlockTaskCardData(
 fun SlockTaskBoard(
     columns: Map<SlockTaskStatus, List<SlockTaskCardData>>,
     modifier: Modifier = Modifier,
+    scrollState: ScrollState = rememberScrollState(),
     copy: SlockTaskBoardCopy = SlockTaskBoardCopy.defaults()
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+            .horizontalScroll(scrollState),
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
         SlockTaskStatus.entries.forEach { status ->
@@ -216,12 +218,7 @@ fun SlockStatusSelector(
                         SlockTaskStatus.entries.map { option ->
                             SlockMenuOverlayAction(
                                 label = option.displayLabel,
-                                icon =
-                                    if (option == status) {
-                                        SlockIcons.Check
-                                    } else {
-                                        SlockIcons.Circle
-                                    },
+                                icon = R.drawable.lucide_check.takeIf { option == status },
                                 onClick = {
                                     onExpandedChange(false)
                                     onStatusSelected(option)

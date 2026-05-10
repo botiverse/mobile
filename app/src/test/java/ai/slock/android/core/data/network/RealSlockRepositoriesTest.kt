@@ -6,6 +6,7 @@ import ai.slock.android.core.data.auth.AuthSessionStore
 import ai.slock.android.core.data.auth.AuthUser
 import ai.slock.android.core.data.repository.DataResult
 import ai.slock.android.core.data.repository.AddChannelMemberRequest
+import ai.slock.android.core.data.repository.AgentProfileUpdateRequest
 import ai.slock.android.core.data.repository.CreateChannelRequest
 import ai.slock.android.core.data.repository.InboxFilter
 import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
@@ -43,7 +44,7 @@ class RealSlockRepositoriesTest {
         val api =
             FakeSlockApi(
                 channelsJson = """
-                    {"channels":[{"id":"channel-1","name":"android-dev","description":"Android work","unreadCount":3,"lastMessagePreview":"Ready"}]}
+                    {"channels":[{"id":"channel-1","name":"android-dev","description":"Android work","unreadCount":3,"lastMessagePreview":"Ready","memberCount":7}]}
                 """.trimIndent(),
                 directMessagesJson = """
                     [{"id":"dm-1","peerDisplayName":"Android-Developer","unreadCount":2,"lastMessagePreview":"Done"}]
@@ -60,9 +61,91 @@ class RealSlockRepositoriesTest {
         val snapshot = (result as DataResult.Content).data
         assertEquals("Slock Android", snapshot.server.name)
         assertEquals("android-dev", snapshot.channels.single().name)
+        assertEquals(7, snapshot.channels.single().memberCount)
         assertEquals(ConversationKind.DirectMessage, snapshot.directMessages.single().kind)
         assertEquals(5, snapshot.unreadTotal)
         assertEquals(listOf<String?>(null), api.channelArchivedQueries)
+    }
+
+    @Test
+    fun channelRepositoryPreservesCachedSummaryFieldsWhenRefreshOmitsThem() {
+        val api =
+            FakeSlockApi(
+                channelsJson = """
+                    {"channels":[{"id":"channel-1","name":"android-dev","memberCount":7,"lastMessagePreview":"Ready"}]}
+                """.trimIndent(),
+                directMessagesJson = """[]"""
+            )
+        val repository =
+            RealChannelRepository(
+                store = InMemoryAuthSessionStore(sampleSession),
+                api = api
+            )
+
+        val first = runSuspend { repository.getHome(ServerId("server-1")) }
+        api.channelsJson = """{"channels":[{"id":"channel-1","name":"android-dev"}]}"""
+        val second = runSuspend { repository.getHome(ServerId("server-1")) }
+
+        assertTrue(first is DataResult.Content)
+        assertTrue(second is DataResult.Content)
+        val channel = (second as DataResult.Content).data.channels.single()
+        assertEquals(7, channel.memberCount)
+        assertEquals("Ready", channel.lastMessagePreview)
+    }
+
+    @Test
+    fun channelRepositoryDoesNotLetMissingSummaryCountsOverwriteCachedValues() {
+        val api =
+            FakeSlockApi(
+                channelsJson = """
+                    {"channels":[{"id":"channel-1","name":"android-dev","memberCount":7,"unreadCount":5,"hasDraft":true,"lastMessagePreview":"Ready"}]}
+                """.trimIndent(),
+                directMessagesJson = """[]"""
+            )
+        val repository =
+            RealChannelRepository(
+                store = InMemoryAuthSessionStore(sampleSession),
+                api = api
+            )
+
+        val first = runSuspend { repository.getHome(ServerId("server-1")) }
+        api.channelsJson = """{"channels":[{"id":"channel-1","name":"android-dev"}]}"""
+        val second = runSuspend { repository.getHome(ServerId("server-1")) }
+
+        assertTrue(first is DataResult.Content)
+        assertTrue(second is DataResult.Content)
+        val channel = (second as DataResult.Content).data.channels.single()
+        assertEquals(7, channel.memberCount)
+        assertEquals(5, channel.unreadCount)
+        assertEquals(true, channel.hasDraft)
+        assertEquals("Ready", channel.lastMessagePreview)
+    }
+
+    @Test
+    fun channelRepositoryAllowsKnownZeroSummaryCountsToReplaceCachedValues() {
+        val api =
+            FakeSlockApi(
+                channelsJson = """
+                    {"channels":[{"id":"channel-1","name":"android-dev","memberCount":7,"unreadCount":5,"hasDraft":true}]}
+                """.trimIndent(),
+                directMessagesJson = """[]"""
+            )
+        val repository =
+            RealChannelRepository(
+                store = InMemoryAuthSessionStore(sampleSession),
+                api = api
+            )
+
+        runSuspend { repository.getHome(ServerId("server-1")) }
+        api.channelsJson =
+            """{"channels":[{"id":"channel-1","name":"android-dev","memberCount":0,"unreadCount":0,"hasDraft":false}]}"""
+        val second = runSuspend { repository.getHome(ServerId("server-1")) }
+
+        assertTrue(second is DataResult.Content)
+        val channel = (second as DataResult.Content).data.channels.single()
+        assertEquals(0, channel.memberCount)
+        assertEquals(0, channel.unreadCount)
+        assertEquals(false, channel.hasDraft)
     }
 
     @Test
@@ -1265,6 +1348,48 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
+    fun memberRepositoryUpdatesAgentProfileViaPatchAgentsEndpoint() {
+        val api = FakeSlockApi(
+            updateAgentJson = """
+                {
+                  "agent": {
+                    "id": "agent-9",
+                    "name": "Updated Agent",
+                    "description": "Updated description",
+                    "handle": "updated-agent",
+                    "status": "online"
+                  }
+                }
+            """.trimIndent()
+        )
+        val repository = RealMemberRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val result = runSuspend {
+            repository.updateAgentProfile(
+                AgentProfileUpdateRequest(
+                    agentId = MemberId("agent-9"),
+                    displayName = " Updated Agent ",
+                    description = " Updated description "
+                )
+            )
+        }
+
+        assertTrue(result is DataResult.Content)
+        val profile = (result as DataResult.Content).data
+        assertEquals("Updated Agent", profile.displayName)
+        assertEquals("Updated description", profile.roleDescription)
+        assertEquals(MemberKind.Agent, profile.kind)
+        assertEquals(
+            """agent-9:{"name":"Updated Agent","displayName":"Updated Agent","description":"Updated description","roleDescription":"Updated description"}""",
+            api.updatedAgents.single()
+        )
+    }
+
+    @Test
     fun memberRepositoryUsesUserIdForHumanProfileEnrichmentWhenMembershipIdIsPresent() {
         val api = FakeSlockApi(
             serverMembersJson = """
@@ -1560,11 +1685,12 @@ class RealSlockRepositoriesTest {
         private val settingsSessionsJson: String = """{"sessions":[]}""",
         private val revokeSessionJson: String = """{"ok":true}""",
         private val settingsAgentsJson: String = """{"agents":[]}""",
-        private val channelsJson: String = """{"channels":[]}""",
+        var channelsJson: String = """{"channels":[]}""",
         private val createChannelJson: String = """{"id":"channel-1","name":"android-dev"}""",
         private val joinChannelJson: String = """{"ok":true}""",
         private val serverMembersJson: String = """{"members":[]}""",
         private val memberProfileJson: String = """{}""",
+        private val updateAgentJson: String = """{"agent":{}}""",
         private val channelMembersJson: String = """{"members":[]}""",
         private val addChannelMemberJson: String = """{"ok":true}""",
         private val directMessagesJson: String = """[]""",
@@ -1604,6 +1730,7 @@ class RealSlockRepositoriesTest {
         val openDirectMessageBodies = mutableListOf<String>()
         val agentActivityLogCalls = mutableListOf<String>()
         val memberProfileCalls = mutableListOf<String>()
+        val updatedAgents = mutableListOf<String>()
         val claimedTaskIds = mutableListOf<String>()
         val channelTaskCalls = mutableListOf<String>()
         val updatedTaskStatusBodies = mutableListOf<String>()
@@ -1634,6 +1761,14 @@ class RealSlockRepositoriesTest {
 
         override suspend fun settingsAgents(): Response<ResponseBody> =
             response(settingsAgentsJson)
+
+        override suspend fun updateAgent(
+            agentId: String,
+            body: RequestBody
+        ): Response<ResponseBody> {
+            updatedAgents += "$agentId:${body.bodyAsString()}"
+            return response(updateAgentJson)
+        }
 
         override suspend fun channels(archived: String?): Response<ResponseBody> {
             channelArchivedQueries += archived

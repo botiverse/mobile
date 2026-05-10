@@ -12,6 +12,7 @@ import ai.slock.android.core.data.repository.AgentActivitySnapshot
 import ai.slock.android.core.data.repository.AgentDetailSnapshot
 import ai.slock.android.core.data.repository.AgentDmSnapshot
 import ai.slock.android.core.data.repository.AgentDmSummary
+import ai.slock.android.core.data.repository.AgentProfileUpdateRequest
 import ai.slock.android.core.data.repository.AgentReminderSnapshot
 import ai.slock.android.core.data.repository.AgentReminderSummary
 import ai.slock.android.core.data.repository.AttachmentOpenTarget
@@ -108,6 +109,8 @@ class RealChannelRepository(
 ) : ChannelRepository {
     private val directMessageCacheMutex = Mutex()
     private var directMessageCache: CachedDirectMessages? = null
+    private val conversationSummaryCacheLock = Any()
+    private var conversationSummaryCache: CachedConversationSummaries? = null
 
     override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> {
         val context = serverContext(serverId) ?: return authRequired()
@@ -191,6 +194,7 @@ class RealChannelRepository(
         val channelId =
                 createResult.data.channel.channelId
                         ?: ChannelId(createResult.data.channel.threadId.value)
+        rememberConversationSummaries(context.server.id, listOf(createResult.data.channel))
         val addedAgents = mutableListOf<String>()
         val addedUsers = mutableListOf<String>()
         for (agentId in request.agentMemberIds.distinct().filter { it.isNotBlank() }) {
@@ -219,8 +223,14 @@ class RealChannelRepository(
                 else -> return result.mapError()
             }
         }
+        val updatedChannel =
+                createResult.data.channel.withMergedMemberCount(
+                        (addedAgents.size + addedUsers.size).takeIf { it > 0 }
+                )
+        rememberConversationSummaries(context.server.id, listOf(updatedChannel))
         return DataResult.Content(
                 createResult.data.copy(
+                        channel = updatedChannel,
                         addedAgentMemberIds = addedAgents,
                         addedUserMemberIds = addedUsers
                 )
@@ -228,7 +238,7 @@ class RealChannelRepository(
     }
 
     override suspend fun joinChannel(channelId: ChannelId): DataResult<ChannelJoinResult> {
-        currentContext() ?: return authRequired()
+        val context = currentContext() ?: return authRequired()
         if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
         return execute(
                 emptyReason = EmptyReason.NoChannels,
@@ -243,7 +253,11 @@ class RealChannelRepository(
                             channel = channel
                     )
                 }
-        )
+        ).also { result ->
+            (result as? DataResult.Content)?.data?.channel?.let { channel ->
+                rememberConversationSummaries(context.server.id, listOf(channel))
+            }
+        }
     }
 
     private suspend fun addChannelMember(
@@ -279,24 +293,26 @@ class RealChannelRepository(
                                         names = arrayOf("channels", "items", "data"),
                                         warningLogger = warningLogger
                                 )
+                        val channels =
+                                channelItems.mapNotNull { item ->
+                                    val itemObject = item.asObjectOrNull()
+                                    if (itemObject == null) {
+                                        warningLogger(
+                                                "skip_item source=home_channels stage=item_map fieldPath=item reason=non_object"
+                                        )
+                                        null
+                                    } else {
+                                        itemObject.toConversationOrNull(
+                                                kind = ConversationKind.Channel,
+                                                source = "home_channels",
+                                                warningLogger = warningLogger
+                                        )?.takeUnless { it.archived }
+                                    }
+                                }
+                        rememberConversationSummaries(context.server.id, channels)
                         ChannelSnapshot(
                                 server = context.server,
-                                channels =
-                                        channelItems.mapNotNull { item ->
-                                            val itemObject = item.asObjectOrNull()
-                                            if (itemObject == null) {
-                                                warningLogger(
-                                                        "skip_item source=home_channels stage=item_map fieldPath=item reason=non_object"
-                                                )
-                                                null
-                                            } else {
-                                                itemObject.toConversationOrNull(
-                                                        kind = ConversationKind.Channel,
-                                                        source = "home_channels",
-                                                        warningLogger = warningLogger
-                                                )?.takeUnless { it.archived }
-                                            }
-                                        }
+                                channels = channels.withCachedConversationSummaries(context.server.id)
                         )
                     }
             )
@@ -327,28 +343,31 @@ class RealChannelRepository(
                                                                 ),
                                                         warningLogger = warningLogger
                                                 )
+                                        val directMessages =
+                                                directMessageItems.mapNotNull { item ->
+                                                    val itemObject = item.asObjectOrNull()
+                                                    if (itemObject == null) {
+                                                        warningLogger(
+                                                                "skip_item source=home_direct_messages stage=item_map fieldPath=item reason=non_object"
+                                                        )
+                                                        null
+                                                    } else {
+                                                        itemObject.toConversationOrNull(
+                                                                kind =
+                                                                        ConversationKind
+                                                                                .DirectMessage,
+                                                                source = "home_direct_messages",
+                                                                warningLogger = warningLogger
+                                                        )
+                                                    }
+                                                }
+                                        rememberConversationSummaries(context.server.id, directMessages)
                                         DirectMessageSnapshot(
                                                 server = context.server,
                                                 directMessages =
-                                                        directMessageItems.mapNotNull { item ->
-                                                            val itemObject = item.asObjectOrNull()
-                                                            if (itemObject == null) {
-                                                                warningLogger(
-                                                                        "skip_item source=home_direct_messages stage=item_map fieldPath=item reason=non_object"
-                                                                )
-                                                                null
-                                                            } else {
-                                                                itemObject.toConversationOrNull(
-                                                                        kind =
-                                                                                ConversationKind
-                                                                                        .DirectMessage,
-                                                                        source =
-                                                                                "home_direct_messages",
-                                                                        warningLogger =
-                                                                                warningLogger
-                                                                )
-                                                            }
-                                                        }
+                                                        directMessages.withCachedConversationSummaries(
+                                                                context.server.id
+                                                        )
                                         )
                                     }
                             )
@@ -419,7 +438,41 @@ class RealChannelRepository(
                                 .orEmpty()
                 val merged = mergeDirectMessages(existing, incoming)
                 directMessageCache = CachedDirectMessages(serverId, merged)
+                rememberConversationSummaries(serverId, merged)
                 merged
+            }
+
+    private fun rememberConversationSummaries(
+            serverId: ServerId,
+            conversations: List<ConversationSummary>
+    ) {
+        if (conversations.isEmpty()) return
+        synchronized(conversationSummaryCacheLock) {
+            val existing =
+                    conversationSummaryCache?.takeIf { it.serverId == serverId }?.summaries
+                            .orEmpty()
+            val merged = existing.toMutableMap()
+            conversations.forEach { conversation ->
+                val key = conversation.cacheKey() ?: return@forEach
+                merged[key] = merged[key]?.mergeConversationSummary(conversation) ?: conversation
+            }
+            conversationSummaryCache = CachedConversationSummaries(serverId, merged)
+        }
+    }
+
+    private fun List<ConversationSummary>.withCachedConversationSummaries(
+            serverId: ServerId
+    ): List<ConversationSummary> =
+            synchronized(conversationSummaryCacheLock) {
+                val cached =
+                        conversationSummaryCache?.takeIf { it.serverId == serverId }?.summaries
+                                .orEmpty()
+                if (cached.isEmpty()) return@synchronized this
+                map { conversation ->
+                    val key = conversation.cacheKey()
+                    if (key == null) conversation
+                    else cached[key]?.mergeConversationSummary(conversation) ?: conversation
+                }
             }
 
     private suspend fun serverContext(serverId: ServerId): NetworkServerContext? =
@@ -434,6 +487,11 @@ class RealChannelRepository(
     private data class CachedDirectMessages(
             val serverId: ServerId,
             val directMessages: List<ConversationSummary>
+    )
+
+    private data class CachedConversationSummaries(
+            val serverId: ServerId,
+            val summaries: Map<String, ConversationSummary>
     )
 }
 
@@ -671,6 +729,40 @@ class RealMemberRepository(
     override suspend fun getMemberProfile(memberId: MemberId): DataResult<MemberProfile> {
         currentContext() ?: return authRequired()
         return getHumanProfile(memberId, source = "member_profile")
+    }
+
+    override suspend fun updateAgentProfile(
+            request: AgentProfileUpdateRequest
+    ): DataResult<MemberProfile> {
+        currentContext() ?: return authRequired()
+        val displayName = request.displayName.trim()
+        val description = request.description?.trim()?.takeIf { it.isNotBlank() }
+        if (displayName.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        return execute(
+                emptyReason = EmptyReason.NoMembers,
+                block = {
+                    api.updateAgent(
+                            request.agentId.value,
+                            mapOf(
+                                            "name" to displayName,
+                                            "displayName" to displayName,
+                                            "description" to description,
+                                            "roleDescription" to description
+                                    )
+                                    .toJsonBody()
+                    )
+                },
+                source = "agent_profile_update",
+                warningLogger = warningLogger,
+                mapper = { json ->
+                    json.unwrap("agent", "profile", "member", "data")
+                            .toMemberProfile()
+                            ?.copy(kind = MemberKind.Agent)
+                            ?: throw IllegalStateException(
+                                    "Agent profile update response missing agent"
+                            )
+                }
+        )
     }
 
     override suspend fun getAgentDetail(agentId: MemberId): DataResult<AgentDetailSnapshot> {
@@ -1721,6 +1813,9 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
     val joined = if (kind == ConversationKind.DirectMessage) true else channelJoined()
     val canSend = boolean("canSend", "canWrite", "canMessage") ?: joined
     val avatarWireValue = conversationAvatarWireValue()
+    val unreadCount = int("unreadCount", "unread")
+    val mentionCount = int("mentionCount", "mentions")
+    val hasDraft = boolean("hasDraft", "draft", "has_draft")
     val agentStatus =
             string(
                             "agentStatus",
@@ -1790,8 +1885,10 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
             subtitle = string("description", "topic", "purpose", "peerDescription"),
             avatarUrl = avatarWireValue,
             avatar = AvatarReference.fromWireValue(avatarWireValue),
-            unreadCount = int("unreadCount", "unread") ?: 0,
-            mentionCount = int("mentionCount", "mentions") ?: 0,
+            unreadCount = unreadCount ?: 0,
+            unreadCountKnown = unreadCount != null,
+            mentionCount = mentionCount ?: 0,
+            mentionCountKnown = mentionCount != null,
             lastMessageId = string("lastMessageId", "latestMessageId")?.let(::MessageId),
             firstUnreadMessageId = string("firstUnreadMessageId")?.let(::MessageId),
             lastMessagePreview =
@@ -1828,8 +1925,21 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
                                             "id"
                                     ))
                             ?.let(::MemberId),
+            hasDraft = hasDraft ?: false,
+            hasDraftKnown = hasDraft != null,
             joined = joined,
             archived = boolean("archived", "isArchived") ?: false,
+            memberCount =
+                    int(
+                            "memberCount",
+                            "membersCount",
+                            "member_count",
+                            "members_count",
+                            "participantCount",
+                            "participantsCount",
+                            "participant_count",
+                            "participants_count"
+                    ),
             permissions =
                     ConversationPermissions(
                             canRead = boolean("canRead") ?: true,
@@ -1865,6 +1975,48 @@ private fun mergeDirectMessages(
 private val ConversationSummary.conversationCacheKey: String
     get() = channelId?.value ?: threadId.value
 
+private fun ConversationSummary.cacheKey(): String? = channelId?.value ?: threadId.value
+
+private fun ConversationSummary.mergeConversationSummary(
+        incoming: ConversationSummary
+): ConversationSummary =
+        incoming.copy(
+                name = incoming.name.takeUnless { it.isBlank() } ?: name,
+                subtitle = incoming.subtitle ?: subtitle,
+                avatarUrl = incoming.avatarUrl ?: avatarUrl,
+                avatar = incoming.avatar ?: avatar,
+                unreadCount =
+                        when {
+                            incoming.unreadCountKnown -> incoming.unreadCount
+                            unreadCountKnown -> unreadCount
+                            else -> incoming.unreadCount
+                        },
+                unreadCountKnown = incoming.unreadCountKnown || unreadCountKnown,
+                mentionCount =
+                        when {
+                            incoming.mentionCountKnown -> incoming.mentionCount
+                            mentionCountKnown -> mentionCount
+                            else -> incoming.mentionCount
+                        },
+                mentionCountKnown = incoming.mentionCountKnown || mentionCountKnown,
+                lastMessageId = incoming.lastMessageId ?: lastMessageId,
+                firstUnreadMessageId = incoming.firstUnreadMessageId ?: firstUnreadMessageId,
+                lastMessagePreview = incoming.lastMessagePreview ?: lastMessagePreview,
+                lastMessageAt = incoming.lastMessageAt ?: lastMessageAt,
+                lastMessageSenderName = incoming.lastMessageSenderName ?: lastMessageSenderName,
+                presence = incoming.presence ?: presence,
+                agentStatus = incoming.agentStatus ?: agentStatus,
+                presenceMemberId = incoming.presenceMemberId ?: presenceMemberId,
+                hasDraft = if (incoming.hasDraftKnown) incoming.hasDraft else hasDraft,
+                hasDraftKnown = incoming.hasDraftKnown || hasDraftKnown,
+                joined = incoming.joined || joined,
+                archived = incoming.archived || archived,
+                memberCount = incoming.memberCount ?: memberCount
+        )
+
+private fun ConversationSummary.withMergedMemberCount(incoming: Int?): ConversationSummary =
+        copy(memberCount = incoming ?: memberCount)
+
 private fun ConversationSummary.withDirectMessageFallback(
         previous: ConversationSummary
 ): ConversationSummary =
@@ -1873,8 +2025,20 @@ private fun ConversationSummary.withDirectMessageFallback(
                 subtitle = subtitle ?: previous.subtitle,
                 avatarUrl = avatarUrl ?: previous.avatarUrl,
                 avatar = avatar ?: previous.avatar,
-                unreadCount = maxOf(unreadCount, previous.unreadCount),
-                mentionCount = maxOf(mentionCount, previous.mentionCount),
+                unreadCount =
+                        when {
+                            unreadCountKnown -> unreadCount
+                            previous.unreadCountKnown -> previous.unreadCount
+                            else -> unreadCount
+                        },
+                unreadCountKnown = unreadCountKnown || previous.unreadCountKnown,
+                mentionCount =
+                        when {
+                            mentionCountKnown -> mentionCount
+                            previous.mentionCountKnown -> previous.mentionCount
+                            else -> mentionCount
+                        },
+                mentionCountKnown = mentionCountKnown || previous.mentionCountKnown,
                 lastMessageId = lastMessageId ?: previous.lastMessageId,
                 firstUnreadMessageId = firstUnreadMessageId ?: previous.firstUnreadMessageId,
                 lastMessagePreview = lastMessagePreview ?: previous.lastMessagePreview,
@@ -1883,8 +2047,11 @@ private fun ConversationSummary.withDirectMessageFallback(
                 presence = presence ?: previous.presence,
                 agentStatus = agentStatus ?: previous.agentStatus,
                 presenceMemberId = presenceMemberId ?: previous.presenceMemberId,
+                hasDraft = if (hasDraftKnown) hasDraft else previous.hasDraft,
+                hasDraftKnown = hasDraftKnown || previous.hasDraftKnown,
                 joined = joined || previous.joined,
-                archived = archived || previous.archived
+                archived = archived || previous.archived,
+                memberCount = memberCount ?: previous.memberCount
         )
 
 private fun JsonObject.conversationAvatarWireValue(): String? =

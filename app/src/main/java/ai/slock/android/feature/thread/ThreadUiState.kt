@@ -115,11 +115,25 @@ private fun ThreadUiState.mergeRealtimeTasks(tasks: List<TaskSummary>): ThreadUi
     if (tasks.isEmpty()) return this
     val contentState = loadState as? ScreenLoadState.Content ?: return this
     val content = contentState.data
-    val updatedMessages = content.messages.map { message -> message.withRealtimeTask(tasks) }
-    val updatedParentMessage = content.parentMessage?.withRealtimeTask(tasks)
-    val updatedTaskIds = tasks.map { it.id }.toSet()
+    val taskReferences =
+        content.messages.mapNotNull { it.task } +
+            listOfNotNull(content.parentMessage?.task) +
+            content.tasks
+    val mergedTasks =
+        tasks.map { task ->
+            taskReferences.firstOrNull { reference -> task.matchesTaskReference(reference) }
+                ?.withMessageTaskReference(task)
+                ?: task
+        }
+    val updatedMessages = content.messages.map { message -> message.withRealtimeTask(mergedTasks) }
+    val updatedParentMessage = content.parentMessage?.withRealtimeTask(mergedTasks)
+    val updatedTaskIds = mergedTasks.map { it.id }.toSet()
+    val updatedTaskNumbers = mergedTasks.mapNotNull { it.taskNumber }.toSet()
     val updatedTasks =
-        (content.tasks.filterNot { it.id in updatedTaskIds } + tasks)
+        (content.tasks.filterNot {
+            it.id in updatedTaskIds ||
+                (it.taskNumber != null && it.taskNumber in updatedTaskNumbers)
+        } + mergedTasks)
             .sortedWith(compareBy(nullsLast<Int>()) { it.taskNumber })
     return copy(
         loadState =
@@ -135,13 +149,42 @@ private fun ThreadUiState.mergeRealtimeTasks(tasks: List<TaskSummary>): ThreadUi
 
 private fun Message.withRealtimeTask(tasks: List<TaskSummary>): Message {
     val task = tasks.firstOrNull { it.matchesMessage(this) } ?: return this
-    return copy(task = task)
+    return copy(task = task.withMessageTaskReference(task))
 }
 
-private fun TaskSummary.matchesMessage(message: Message): Boolean =
-    messageId == message.id ||
-        parentMessageId == message.id ||
-        id == message.task?.id
+private fun TaskSummary.matchesMessage(message: Message): Boolean {
+    val existingTask = message.task
+    return messageId == message.id ||
+            parentMessageId == message.id ||
+            (existingTask != null && id.value == message.id.value) ||
+            id == existingTask?.id ||
+            (messageId != null && messageId == existingTask?.messageId) ||
+            (parentMessageId != null && parentMessageId == existingTask?.parentMessageId) ||
+            (taskNumber != null && taskNumber == existingTask?.taskNumber)
+}
+
+private fun TaskSummary.matchesTaskReference(referenceTask: TaskSummary): Boolean =
+    id == referenceTask.id ||
+        (messageId != null && messageId == referenceTask.messageId) ||
+        (parentMessageId != null && parentMessageId == referenceTask.parentMessageId) ||
+        (taskNumber != null && taskNumber == referenceTask.taskNumber) ||
+        id.value == referenceTask.messageId?.value ||
+        id.value == referenceTask.parentMessageId?.value
+
+private fun TaskSummary.withMessageTaskReference(incomingTask: TaskSummary): TaskSummary =
+    incomingTask.copy(
+        title = incomingTask.title.ifBlank { title },
+        taskNumber = incomingTask.taskNumber ?: taskNumber,
+        messageId = incomingTask.messageId ?: messageId,
+        parentMessageId = incomingTask.parentMessageId ?: parentMessageId,
+        channelId = incomingTask.channelId ?: channelId,
+        threadId = incomingTask.threadId ?: threadId,
+        isThreadTask = incomingTask.isThreadTask || isThreadTask,
+        assignee = incomingTask.assignee ?: assignee,
+        channelName = incomingTask.channelName ?: channelName,
+        updatedAtLabel = incomingTask.updatedAtLabel.ifBlank { updatedAtLabel },
+        canClaim = incomingTask.canClaim
+    )
 
 data class ThreadReplyHeaderContext(
     val parentChannelName: String?,
@@ -257,6 +300,8 @@ enum class ChannelJoinStatus {
 data class ThreadMembersPanelState(
     val loadState: ScreenLoadState<ThreadMembersPanelContent> = ScreenLoadState.Loading,
     val candidatesLoadState: ScreenLoadState<ThreadMembersPickerContent> = ScreenLoadState.Loading,
+    val fallbackMemberCount: Int? = null,
+    val fallbackMemberCountKnown: Boolean = false,
     val addStatus: ThreadMemberAddStatus = ThreadMemberAddStatus.Idle,
     val addErrorCode: String? = null,
     val removeStatus: ThreadMemberRemoveStatus = ThreadMemberRemoveStatus.Idle,

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,6 +53,7 @@ import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.components.SlockIconSquareButton
 import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.components.SlockPullRefreshContainer
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
 import ai.slock.android.ui.theme.SlockShadow
@@ -71,6 +73,8 @@ fun InboxScreen(
     onMarkItemRead: (InboxItem) -> Unit = {},
     onMarkAllRead: () -> Unit = {},
     onLoadMore: () -> Unit = {},
+    refreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     onRetry: () -> Unit = {}
 ) {
     val copy = InboxScreenCopy(
@@ -93,6 +97,8 @@ fun InboxScreen(
         onMarkItemRead = onMarkItemRead,
         onMarkAllRead = onMarkAllRead,
         onLoadMore = onLoadMore,
+        refreshing = refreshing,
+        onRefresh = onRefresh,
         onRetry = onRetry
     )
 }
@@ -104,6 +110,8 @@ fun SavedScreen(
     onOpenThread: (InboxItem) -> Unit,
     modifier: Modifier = Modifier,
     onLoadMore: () -> Unit = {},
+    refreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     onRetry: () -> Unit = {}
 ) {
     val copy = InboxScreenCopy(
@@ -123,6 +131,8 @@ fun SavedScreen(
         onOpenThread = onOpenThread,
         modifier = modifier,
         onLoadMore = onLoadMore,
+        refreshing = refreshing,
+        onRefresh = onRefresh,
         onRetry = onRetry
     )
 }
@@ -139,6 +149,8 @@ private fun InboxListScreen(
     onMarkItemRead: (InboxItem) -> Unit = {},
     onMarkAllRead: () -> Unit = {},
     onLoadMore: () -> Unit = {},
+    refreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     onRetry: () -> Unit = {}
 ) {
     Column(
@@ -164,7 +176,9 @@ private fun InboxListScreen(
                 onFilterSelected = onFilterSelected,
                 onMarkItemRead = onMarkItemRead,
                 onMarkAllRead = onMarkAllRead,
-                onLoadMore = onLoadMore
+                onLoadMore = onLoadMore,
+                refreshing = refreshing,
+                onRefresh = onRefresh
             )
             is ScreenLoadState.Empty -> InboxStateContent(
                 copy = copy,
@@ -200,6 +214,8 @@ fun FollowedThreadsScreen(
     onBack: () -> Unit,
     onOpenThread: (InboxItem) -> Unit,
     modifier: Modifier = Modifier,
+    refreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     onRetry: () -> Unit = {}
 ) {
     val copy = InboxScreenCopy(
@@ -228,7 +244,9 @@ fun FollowedThreadsScreen(
                 state = state,
                 content = loadState.data,
                 onBack = onBack,
-                onOpenThread = onOpenThread
+                onOpenThread = onOpenThread,
+                refreshing = refreshing,
+                onRefresh = onRefresh
             )
             is ScreenLoadState.Empty -> InboxStateContent(
                 copy = copy,
@@ -263,28 +281,39 @@ private fun FollowedThreadsLoadedContent(
     state: InboxUiState,
     content: InboxContent,
     onBack: () -> Unit,
-    onOpenThread: (InboxItem) -> Unit
+    onOpenThread: (InboxItem) -> Unit,
+    refreshing: Boolean,
+    onRefresh: () -> Unit
 ) {
     FollowedThreadsHeader(content = content, onBack = onBack)
-    if (content.items.isEmpty()) {
-        InboxEmptyBody(
-            title = stringResource(R.string.followed_threads_empty_title),
-            detail = stringResource(R.string.followed_threads_empty_detail)
-        )
-    } else {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            content.items.forEach { item ->
-                InboxFlatItem(
-                    item = item,
-                    focused = item.key == state.focusedItemKey,
-                    onClick = { onOpenThread(item) }
+    SlockPullRefreshContainer(
+        refreshing = refreshing,
+        onRefresh = onRefresh,
+        modifier = Modifier.fillMaxSize()
+    ) { offset ->
+        if (content.items.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize().offset(y = offset)) {
+                InboxEmptyBody(
+                    title = stringResource(R.string.followed_threads_empty_title),
+                    detail = stringResource(R.string.followed_threads_empty_detail)
                 )
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset(y = offset)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                content.items.forEach { item ->
+                    InboxFlatItem(
+                        item = item,
+                        focused = item.key == state.focusedItemKey,
+                        onClick = { onOpenThread(item) }
+                    )
+                }
             }
         }
     }
@@ -352,7 +381,9 @@ private fun InboxLoadedContent(
     onFilterSelected: (InboxFilter) -> Unit,
     onMarkItemRead: (InboxItem) -> Unit,
     onMarkAllRead: () -> Unit,
-    onLoadMore: () -> Unit
+    onLoadMore: () -> Unit,
+    refreshing: Boolean,
+    onRefresh: () -> Unit
 ) {
     val visibleItems = when (state.selectedFilter) {
         InboxFilter.All -> content.items
@@ -371,50 +402,59 @@ private fun InboxLoadedContent(
             onMarkAllRead = onMarkAllRead
         )
     }
-    if (visibleItems.isEmpty()) {
-        InboxEmptyBody(
-            title = if (showFilters && state.selectedFilter == InboxFilter.Unread) {
-                stringResource(R.string.inbox_no_unread_title)
-            } else {
-                copy.emptyTitle
-            },
-            detail = if (showFilters && state.selectedFilter == InboxFilter.Unread) {
-                stringResource(R.string.inbox_no_unread_detail)
-            } else {
-                copy.emptyDetail
-            }
-        )
-    } else {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            visibleItems.forEach { item ->
-                InboxFlatItem(
-                    item = item,
-                    focused = item.key == state.focusedItemKey,
-                    onClick = { onOpenThread(item) },
-                    onMarkRead = { onMarkItemRead(item) }
-                )
-            }
-            if (content.hasMore) {
-                SlockButton(
-                    text = if (state.loadingMore) {
-                        stringResource(R.string.inbox_loading_more)
+    SlockPullRefreshContainer(
+        refreshing = refreshing,
+        onRefresh = onRefresh,
+        modifier = Modifier.fillMaxSize()
+    ) { offset ->
+        if (visibleItems.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize().offset(y = offset)) {
+                InboxEmptyBody(
+                    title = if (showFilters && state.selectedFilter == InboxFilter.Unread) {
+                        stringResource(R.string.inbox_no_unread_title)
                     } else {
-                        stringResource(R.string.inbox_more_items_available)
+                        copy.emptyTitle
                     },
-                    onClick = onLoadMore,
-                    enabled = !state.loadingMore,
-                    loading = state.loadingMore,
-                    variant = SlockButtonVariant.Outline,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = SlockSpacing.Md)
+                    detail = if (showFilters && state.selectedFilter == InboxFilter.Unread) {
+                        stringResource(R.string.inbox_no_unread_detail)
+                    } else {
+                        copy.emptyDetail
+                    }
                 )
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset(y = offset)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                visibleItems.forEach { item ->
+                    InboxFlatItem(
+                        item = item,
+                        focused = item.key == state.focusedItemKey,
+                        onClick = { onOpenThread(item) },
+                        onMarkRead = { onMarkItemRead(item) }
+                    )
+                }
+                if (content.hasMore) {
+                    SlockButton(
+                        text = if (state.loadingMore) {
+                            stringResource(R.string.inbox_loading_more)
+                        } else {
+                            stringResource(R.string.inbox_more_items_available)
+                        },
+                        onClick = onLoadMore,
+                        enabled = !state.loadingMore,
+                        loading = state.loadingMore,
+                        variant = SlockButtonVariant.Outline,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = SlockSpacing.Md)
+                    )
+                }
             }
         }
     }

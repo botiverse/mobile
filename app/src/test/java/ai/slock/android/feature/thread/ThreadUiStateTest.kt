@@ -136,6 +136,27 @@ class ThreadUiStateTest {
     }
 
     @Test
+    fun refreshedThreadSnapshotPreservesCachedMemberCountWhenResponseOmitsIt() {
+        val state = ThreadUiState(
+            loadState = ScreenLoadState.Content(
+                ThreadContent(
+                    header = conversation("thread-1").copy(memberCount = 7),
+                    messages = listOf(message("message-2", seq = 20))
+                )
+            )
+        )
+        val snapshot = ThreadSnapshot(
+            conversation = conversation("thread-1", name = "Updated thread"),
+            messages = listOf(message("message-2", seq = 20))
+        )
+
+        val merged = state.mergeRefreshedThreadSnapshot(snapshot)
+        val content = (merged.loadState as ScreenLoadState.Content).data
+
+        assertEquals(7, content.header.memberCount)
+    }
+
+    @Test
     fun realtimeTaskCreatedMergesIntoVisibleThreadMessage() {
         val message = message("message-task-parent", seq = 20)
         val task =
@@ -239,6 +260,57 @@ class ThreadUiStateTest {
         assertEquals(TaskStatus.Done, content.messages.single().task?.status)
         assertEquals(TaskStatus.Done, content.tasks.single().status)
         assertEquals("Now", content.messages.single().task?.updatedAtLabel)
+    }
+
+    @Test
+    fun taskStatusUpdateMatchesServerMessageIdTaskIdAndPreservesReferences() {
+        val initialTask =
+            TaskSummary(
+                id = TaskId("task-1"),
+                title = "Finish reply thread",
+                status = TaskStatus.InProgress,
+                taskNumber = 382,
+                messageId = MessageId("message-task-parent"),
+                parentMessageId = MessageId("parent-message"),
+                channelId = ChannelId("channel-1"),
+                threadId = ThreadId("thread-1"),
+                isThreadTask = true,
+                assignee =
+                    MemberProfile(
+                        id = MemberId("agent-1"),
+                        displayName = "Cindy",
+                        handle = "cindy",
+                        kind = MemberKind.Agent
+                    ),
+                channelName = "对话流专修",
+                updatedAtLabel = "Earlier"
+            )
+        val sparseUpdate =
+            TaskSummary(
+                id = TaskId("message-task-parent"),
+                title = "Finish reply thread",
+                status = TaskStatus.Done,
+                updatedAtLabel = "Now"
+            )
+        val message = message("message-task-parent", seq = 20).copy(task = initialTask)
+        val state =
+            ThreadUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        ThreadContent(header = conversation("thread-1"), messages = listOf(message))
+                    )
+            )
+
+        val merged = state.withTaskStatusUpdate(sparseUpdate)
+        val updatedTask =
+            (merged.loadState as ScreenLoadState.Content).data.messages.single().task
+
+        assertEquals(TaskStatus.Done, updatedTask?.status)
+        assertEquals(382, updatedTask?.taskNumber)
+        assertEquals(MessageId("message-task-parent"), updatedTask?.messageId)
+        assertEquals(MessageId("parent-message"), updatedTask?.parentMessageId)
+        assertEquals("Cindy", updatedTask?.assignee?.displayName)
+        assertEquals("对话流专修", updatedTask?.channelName)
     }
 
     @Test

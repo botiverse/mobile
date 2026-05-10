@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -45,6 +46,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -68,6 +70,8 @@ import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.sample.SlockStateSamples
 import ai.slock.android.feature.thread.toThreadTimestampLabel
 import ai.slock.android.ui.components.SlockAgentStatusIndicator
+import ai.slock.android.ui.components.SlockButton
+import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.components.SlockAvatar
@@ -75,6 +79,7 @@ import ai.slock.android.ui.components.SlockIconSquareButton
 import ai.slock.android.ui.components.SlockIcons
 import ai.slock.android.ui.components.SlockMemberAvatar
 import ai.slock.android.ui.components.SlockPageDivider
+import ai.slock.android.ui.components.SlockTextField
 import ai.slock.android.ui.components.SlockTitledPageHeader
 import ai.slock.android.ui.components.SlockWorkspaceFileTree
 import ai.slock.android.ui.components.SlockWorkspaceNode
@@ -163,6 +168,7 @@ fun MembersRouteScreen(
     onDetailVisibleChange: (Boolean) -> Unit = {},
     onOpenMemberProfile: (MemberProfile) -> Unit = {},
     onOpenAgentDirectMessage: (MemberProfile) -> Unit = {},
+    onSaveAgentProfile: (MemberProfile, String, String) -> Unit = { _, _, _ -> },
     onAddHuman: () -> Unit = {},
     onRetry: () -> Unit = {}
 ) {
@@ -203,8 +209,12 @@ fun MembersRouteScreen(
                 agentDmsState = state.selectedAgentDmsState,
                 agentRemindersState = state.selectedAgentRemindersState,
                 agentActivityState = state.selectedAgentActivityState,
+                agentProfileSaveState = state.agentProfileSaveState,
                 onBack = closeDetail,
                 onOpenAgentDirectMessage = { onOpenAgentDirectMessage(selectedMember) },
+                onSaveAgentProfile = { displayName, description ->
+                    onSaveAgentProfile(selectedMember, displayName, description)
+                },
                 modifier = modifier
             )
         }
@@ -508,8 +518,10 @@ private fun MemberDetailScreen(
     agentDmsState: ScreenLoadState<AgentDmSnapshot>,
     agentRemindersState: ScreenLoadState<AgentReminderSnapshot>,
     agentActivityState: ScreenLoadState<AgentActivitySnapshot>,
+    agentProfileSaveState: AgentProfileSaveState,
     onBack: () -> Unit,
     onOpenAgentDirectMessage: () -> Unit,
+    onSaveAgentProfile: (String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var workspaceExpandedIds by rememberSaveable { mutableStateOf(SlockWorkspaceSamples.expandedIds.toList()) }
@@ -535,7 +547,12 @@ private fun MemberDetailScreen(
                     verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
                     when (selectedTab) {
-                        MemberDetailTab.Profile -> MemberProfileDetail(member = member)
+                        MemberDetailTab.Profile ->
+                            MemberProfileDetail(
+                                member = member,
+                                saveState = agentProfileSaveState,
+                                onSave = onSaveAgentProfile
+                            )
                         MemberDetailTab.AgentDms -> AgentDirectMessagesPanel(
                             state = agentDmsState,
                             onOpenAgentDirectMessage = onOpenAgentDirectMessage
@@ -682,62 +699,90 @@ private fun MemberDetailTabs(
 }
 
 @Composable
-private fun MemberProfileDetail(member: MemberProfile) {
-    MemberDetailPanel {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-        ) {
-            MemberDetailAvatar(member = member)
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-                ) {
-                    Text(
-                        text = member.displayName,
-                        style = MembersPageTitleType,
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    MemberKindBadge(kind = member.kind)
-                }
-                Text(
-                    text = member.handle,
-                    style = MembersDescriptionType,
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (member.kind != MemberKind.Human) {
-                    AgentStatusBadge(member = member)
-                }
-                Text(
-                    text = member.agentStatus?.label ?: member.roleDescription ?: "Member profile sample",
-                    style = MembersDescriptionType,
-                    color = SlockColor.TextBlack
-                )
-            }
-        }
+private fun MemberProfileDetail(
+    member: MemberProfile,
+    saveState: AgentProfileSaveState,
+    onSave: (String, String) -> Unit
+) {
+    var displayName by rememberSaveable(member.id.value) { mutableStateOf(member.displayName) }
+    var description by rememberSaveable(member.id.value) {
+        mutableStateOf(member.roleDescription.orEmpty())
     }
-    MemberDetailSection(title = "Display Name") {
-        MemberDetailValue(member.displayName)
+    LaunchedEffect(member.displayName, member.roleDescription) {
+        displayName = member.displayName
+        description = member.roleDescription.orEmpty()
     }
-    MemberDetailSection(title = "Description") {
-        MemberDetailValue(member.roleDescription ?: "No description configured")
-    }
-    MemberDetailSection(title = "Info") {
+    val trimmedDisplayName = displayName.trim()
+    val trimmedDescription = description.trim()
+    val hasChanges =
+        trimmedDisplayName != member.displayName.trim() ||
+            trimmedDescription != member.roleDescription.orEmpty().trim()
+    val isSaving = saveState is AgentProfileSaveState.Saving
+    val canSave = trimmedDisplayName.isNotBlank() && hasChanges && !isSaving
+    MemberDetailSection(title = "Profile") {
         Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
-            MemberDetailLabeledValue(
-                "Status",
-                member.agentStatus.agentStatusLabel(member.presence)
+            SlockTextField(
+                value = displayName,
+                onValueChange = { displayName = it },
+                label = "Display Name",
+                placeholder = "Agent display name",
+                enabled = !isSaving,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
             )
+            SlockTextField(
+                value = description,
+                onValueChange = { description = it },
+                label = "Description",
+                placeholder = "Agent description",
+                enabled = !isSaving,
+                singleLine = false,
+                minLines = 3,
+                maxLines = 5,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SlockButton(
+                    text = "Save",
+                    onClick = { onSave(trimmedDisplayName, trimmedDescription) },
+                    enabled = canSave,
+                    loading = isSaving,
+                    variant = SlockButtonVariant.Pink,
+                    modifier = Modifier.weight(1f)
+                )
+                if (hasChanges && !isSaving) {
+                    SlockButton(
+                        text = "Reset",
+                        onClick = {
+                            displayName = member.displayName
+                            description = member.roleDescription.orEmpty()
+                        },
+                        variant = SlockButtonVariant.Outline,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            when (saveState) {
+                is AgentProfileSaveState.Error ->
+                    Text(
+                        text = "Save failed: ${saveState.error.code}",
+                        style = MembersCaptionStrongType,
+                        color = SlockColor.AccentRed
+                    )
+                AgentProfileSaveState.Saved ->
+                    Text(
+                        text = "Saved",
+                        style = MembersCaptionStrongType,
+                        color = SlockColor.AccentLime
+                    )
+                AgentProfileSaveState.Idle,
+                AgentProfileSaveState.Saving -> Unit
+            }
+            MemberDetailLabeledValue("Handle", member.handle)
+            MemberDetailLabeledValue("Kind", member.kind.name)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xl)

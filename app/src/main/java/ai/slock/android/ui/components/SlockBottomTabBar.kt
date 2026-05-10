@@ -1,5 +1,6 @@
 package ai.slock.android.ui.components
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,7 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -34,7 +35,7 @@ import ai.slock.android.ui.theme.SlockType
 data class SlockBottomTabItem(
     val key: String,
     val label: String,
-    val icon: ImageVector,
+    @DrawableRes val icon: Int,
     val contentDescription: String = label
 )
 
@@ -71,7 +72,7 @@ fun SlockBottomTabBar(
                     verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
                 ) {
                     Icon(
-                        imageVector = item.icon,
+                        painter = painterResource(item.icon),
                         contentDescription = item.contentDescription,
                         tint = SlockColor.TextBlack,
                         modifier = Modifier.size(18.dp)

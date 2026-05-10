@@ -6,11 +6,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,11 +29,8 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.pullToRefresh
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -57,7 +49,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import ai.slock.android.R
 import ai.slock.android.core.model.AvatarReference
@@ -87,7 +78,6 @@ private val MiniActionSize = 36.dp
 private val MiniActionIconSize = 18.dp
 private val CountPillMinWidth = 20.dp
 private val CountPillHeight = 18.dp
-private val HomePullRefreshThreshold = 120.dp
 
 data class SlockServerSwitcherItem(
     val id: String,
@@ -165,10 +155,10 @@ private fun SlockBottomTabBarFramePreview() {
             SlockBottomTabBar(
                 items =
                     listOf(
-                        SlockBottomTabItem("home", "HOME", Icons.Outlined.Home),
-                        SlockBottomTabItem("tasks", "TASKS", SlockIcons.ListTodo),
-                        SlockBottomTabItem("members", "MEMBERS", Icons.Outlined.Person),
-                        SlockBottomTabItem("settings", "SETTINGS", Icons.Outlined.Settings)
+                        SlockBottomTabItem("home", "HOME", R.drawable.lucide_house),
+                        SlockBottomTabItem("tasks", "TASKS", R.drawable.lucide_square_check_big),
+                        SlockBottomTabItem("members", "MEMBERS", R.drawable.lucide_users),
+                        SlockBottomTabItem("settings", "SETTINGS", R.drawable.lucide_settings)
                     ),
                 selectedKey = "tasks",
                 onSelected = {},
@@ -342,10 +332,10 @@ fun SlockStructuralHomeShell(
             ) {
                 SlockBottomTabBar(
                     items = listOf(
-                        SlockBottomTabItem("home", "HOME", Icons.Outlined.Home),
-                        SlockBottomTabItem("tasks", "TASKS", SlockIcons.ListTodo),
-                        SlockBottomTabItem("members", "MEMBERS", Icons.Outlined.Person),
-                        SlockBottomTabItem("settings", "SETTINGS", Icons.Outlined.Settings)
+                        SlockBottomTabItem("home", "HOME", R.drawable.lucide_house),
+                        SlockBottomTabItem("tasks", "TASKS", R.drawable.lucide_square_check_big),
+                        SlockBottomTabItem("members", "MEMBERS", R.drawable.lucide_users),
+                        SlockBottomTabItem("settings", "SETTINGS", R.drawable.lucide_settings)
                     ),
                     selectedKey = selectedTabKey,
                     onSelected = onTabSelected,
@@ -358,7 +348,6 @@ fun SlockStructuralHomeShell(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HomeRefreshableContent(
     refreshing: Boolean,
@@ -367,81 +356,17 @@ private fun HomeRefreshableContent(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.(Dp) -> Unit
 ) {
-    val refreshState = rememberPullToRefreshState()
-    Box(
-        modifier = modifier.pullToRefresh(
-            isRefreshing = refreshing,
-            state = refreshState,
-            enabled = refreshEnabled,
-            threshold = HomePullRefreshThreshold,
-            onRefresh = {
-                if (refreshEnabled && !refreshing) {
-                    onRefresh()
-                }
-            }
-        )
-    ) {
+    SlockPullRefreshContainer(
+        refreshing = refreshing,
+        enabled = refreshEnabled,
+        onRefresh = onRefresh,
+        modifier = modifier
+    ) { offset ->
         Box(
             modifier = Modifier.fillMaxSize()
         ) {
-            val offset = if (refreshing) {
-                SlockSpacing.Xl
-            } else {
-                SlockSpacing.Xl * refreshState.distanceFraction.coerceIn(0f, 1f)
-            }
             content(offset)
         }
-        Box(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            HomeSlockRefreshIndicator(
-                refreshing = refreshing,
-                progress = refreshState.distanceFraction,
-                modifier = Modifier.align(Alignment.TopCenter)
-            )
-        }
-    }
-}
-
-@Composable
-private fun HomeSlockRefreshIndicator(
-    refreshing: Boolean,
-    progress: Float,
-    modifier: Modifier = Modifier
-) {
-    if (!refreshing && progress <= 0.01f) return
-    val transition = rememberInfiniteTransition(label = "home-refresh-logo")
-    val pulse = transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 520),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "home-refresh-logo-pulse"
-    )
-    val bounce = if (refreshing) pulse.value else progress.coerceIn(0f, 1f)
-    val scale = if (refreshing) {
-        1f + (0.06f * pulse.value)
-    } else {
-        0.92f + (0.08f * progress.coerceIn(0f, 1f))
-    }
-    Box(
-        modifier = modifier
-            .offset(y = SlockSpacing.Xs * bounce)
-            .padding(top = SlockSpacing.Lg),
-        contentAlignment = Alignment.Center
-    ) {
-        SlockLogoBadge(
-            text = "SLOCK",
-            variant = SlockLogoBadgeVariant.Compact,
-            modifier = Modifier
-                .offset(y = -(SlockSpacing.Xs * bounce))
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }
-        )
     }
 }
 

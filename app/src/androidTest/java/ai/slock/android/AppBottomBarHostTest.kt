@@ -3,16 +3,14 @@ package ai.slock.android
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Home
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import ai.slock.android.ui.components.SlockAppBottomBarHost
 import ai.slock.android.ui.components.SlockBottomTabItem
-import ai.slock.android.ui.components.SlockIcons
 import ai.slock.android.ui.theme.SlockTheme
 import org.junit.Rule
 import org.junit.Test
@@ -28,8 +26,12 @@ class AppBottomBarHostTest {
                     SlockAppBottomBarHost(
                         items =
                             listOf(
-                                SlockBottomTabItem("home", "HOME", Icons.Outlined.Home),
-                                SlockBottomTabItem("tasks", "TASKS", SlockIcons.ListTodo)
+                                SlockBottomTabItem("home", "HOME", R.drawable.lucide_house),
+                                SlockBottomTabItem(
+                                    "tasks",
+                                    "TASKS",
+                                    R.drawable.lucide_square_check_big
+                                )
                         ),
                         selectedKey = "home",
                         modifier = Modifier.align(Alignment.BottomCenter),

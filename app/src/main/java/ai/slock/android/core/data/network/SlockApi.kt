@@ -42,6 +42,12 @@ interface SlockApi {
     @GET("agents")
     suspend fun settingsAgents(): Response<ResponseBody>
 
+    @PATCH("agents/{agentId}")
+    suspend fun updateAgent(
+        @Path("agentId") agentId: String,
+        @Body body: RequestBody
+    ): Response<ResponseBody>
+
     @GET("channels")
     suspend fun channels(
         @Query("archived") archived: String? = null

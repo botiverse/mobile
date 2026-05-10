@@ -414,6 +414,11 @@ class RealSettingsRepositoryTest {
         override suspend fun settingsAgents(): Response<ResponseBody> =
             response(agentsJson, agentsResponseCode ?: responseCode)
 
+        override suspend fun updateAgent(
+            agentId: String,
+            body: RequestBody
+        ): Response<ResponseBody> = response("""{"ok":true}""")
+
         override suspend fun channels(archived: String?): Response<ResponseBody> = response("""{"channels":[]}""")
 
         override suspend fun createChannel(body: RequestBody): Response<ResponseBody> =

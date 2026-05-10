@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Slock" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Slock" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowBackground">@color/slock_surface_cream</item>
+        <item name="android:fontFamily">sans</item>
+    </style>
+
+    <style name="Theme.Slock.Starting" parent="Theme.SplashScreen">
+        <item name="android:windowBackground">@color/slock_surface_cream</item>
+        <item name="windowSplashScreenBackground">@color/slock_surface_cream</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.Slock</item>
+    </style>
 </resources>

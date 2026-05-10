@@ -7,7 +7,7 @@ class SplitInlineBodyPartsTest {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private fun plain(text: String) = InlineBodyPart.PlainText(text)
+    private fun plain(text: String) = InlineBodyPart.MarkdownText(text)
     private fun tag(label: String, kind: ThreadMarkdownTagKind) =
         InlineBodyPart.Tag(ThreadMarkdownTag(label, kind))
     private fun code(code: String) = InlineBodyPart.Code(code)
@@ -210,9 +210,24 @@ class SplitInlineBodyPartsTest {
     }
 
     @Test
-    fun `plain text with no tags returns single PlainText`() {
+    fun `plain text with no tags returns single MarkdownText`() {
         val parts = "hello world".splitInlineBodyParts()
         assertEquals(listOf(plain("hello world")), parts)
+    }
+
+    @Test
+    fun `double star span stays in markdown text`() {
+        val parts = "hello **bold text** world".splitInlineBodyParts()
+        assertEquals(listOf(plain("hello **bold text** world")), parts)
+    }
+
+    @Test
+    fun `markdown span can coexist with inline task and code`() {
+        val parts = "**Important** for #42 and `status`".splitInlineBodyParts()
+        assertEquals(
+                listOf(plain("**Important** for "), task("#42"), plain(" and "), code("status")),
+                parts
+        )
     }
 
     @Test

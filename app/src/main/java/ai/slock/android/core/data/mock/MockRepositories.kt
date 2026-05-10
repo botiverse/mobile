@@ -7,6 +7,7 @@ import ai.slock.android.core.data.repository.AgentActivitySnapshot
 import ai.slock.android.core.data.repository.AgentDetailSnapshot
 import ai.slock.android.core.data.repository.AgentDmSnapshot
 import ai.slock.android.core.data.repository.AgentDmSummary
+import ai.slock.android.core.data.repository.AgentProfileUpdateRequest
 import ai.slock.android.core.data.repository.AgentSnapshot
 import ai.slock.android.core.data.repository.AccountProfileUpdateRequest
 import ai.slock.android.core.data.repository.AccountSettingsSnapshot
@@ -66,6 +67,7 @@ import ai.slock.android.core.model.AttachmentId
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.InboxItemKind
 import ai.slock.android.core.model.MemberId
+import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageDeliveryState
@@ -452,6 +454,19 @@ class MockMemberRepository(
         resultFor(scenario, EmptyReason.NoMembers) {
             MockSeedData.memberSnapshot.members.firstOrNull { it.id == memberId }
                 ?: MockSeedData.memberSnapshot.members.first()
+        }
+
+    override suspend fun updateAgentProfile(
+        request: AgentProfileUpdateRequest
+    ): DataResult<MemberProfile> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            val existing = MockSeedData.memberSnapshot.members
+                .firstOrNull { it.id == request.agentId }
+                ?: MockSeedData.memberSnapshot.members.first { it.kind == MemberKind.Agent }
+            existing.copy(
+                displayName = request.displayName.trim(),
+                roleDescription = request.description?.trim()?.takeIf { it.isNotBlank() }
+            )
         }
 
     override suspend fun getAgentDetail(agentId: MemberId): DataResult<AgentDetailSnapshot> =

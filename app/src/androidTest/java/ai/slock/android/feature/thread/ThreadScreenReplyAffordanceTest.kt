@@ -75,6 +75,40 @@ class ThreadScreenReplyAffordanceTest {
     }
 
     @Test
+    fun threadHeaderShowsUnknownMemberCountWithoutRenderingZero() {
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            ThreadContent(
+                                header = ConversationSummary(
+                                    threadId = ThreadId("thread-reply-test"),
+                                    channelId = ChannelId("channel-reply-test"),
+                                    kind = ConversationKind.Channel,
+                                    name = "reply-test"
+                                ),
+                                messages = listOf(message(1)),
+                                canLoadMoreBefore = false
+                            )
+                        )
+                    ),
+                    membersPanelState =
+                        ThreadMembersPanelState(
+                            loadState = ScreenLoadState.Loading,
+                            fallbackMemberCount = null,
+                            fallbackMemberCountKnown = false
+                        )
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Members").assertIsDisplayed()
+        composeRule.onNodeWithText("--").assertIsDisplayed()
+        composeRule.onAllNodesWithText("0").assertCountEquals(0)
+    }
+
+    @Test
     fun footerRepliesClickOpensThreadWithoutShowingActionOverlay() {
         var openedThread = false
         composeRule.setContent {
@@ -968,6 +1002,55 @@ class ThreadScreenReplyAffordanceTest {
     }
 
     @Test
+    fun composerHashSuggestionsCanShowBeyondSixChannels() {
+        val composerValue = mutableStateOf("")
+        val channelSuggestions =
+            buildList {
+                add(
+                    ConversationSummary(
+                        threadId = ThreadId("all-thread"),
+                        channelId = ChannelId("all-channel"),
+                        kind = ConversationKind.Channel,
+                        name = "all"
+                    )
+                )
+                repeat(8) { index ->
+                    add(
+                        ConversationSummary(
+                            threadId = ThreadId("overflow-thread-$index"),
+                            channelId = ChannelId("overflow-channel-$index"),
+                            kind = ConversationKind.Channel,
+                            name = "overflow-$index"
+                        )
+                    )
+                }
+            }
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadComposerBar(
+                    composerState = ComposerState(
+                        value = composerValue.value,
+                        status = ComposerStatus.Ready
+                    ),
+                    placeholder = "Message",
+                    onComposerChange = { composerValue.value = it },
+                    onAsTaskChange = {},
+                    onSend = {},
+                    channelSuggestions = channelSuggestions
+                )
+            }
+        }
+
+        composeRule.onNode(hasSetTextAction()).performTextReplacement("#")
+        composeRule.onNodeWithTag(THREAD_COMPOSER_SUGGESTIONS_TAG).performTouchInput {
+            swipeUp()
+        }
+
+        composeRule.onNodeWithText("overflow-7").assertIsDisplayed()
+    }
+
+    @Test
     fun composerPendingImagePreviewOpensFromThumbnailTap() {
         composeRule.setContent {
             SlockTheme {
@@ -1073,5 +1156,19 @@ class ThreadScreenReplyAffordanceTest {
         timestampLabel = "Now",
         body = "Reply affordance test message",
         replyCount = replyCount
+    )
+
+    private fun content(
+        messages: List<Message>,
+        canLoadMoreBefore: Boolean
+    ) = ThreadContent(
+        header = ConversationSummary(
+            threadId = ThreadId("thread-reply-test"),
+            channelId = ChannelId("channel-reply-test"),
+            kind = ConversationKind.Channel,
+            name = "reply-test"
+        ),
+        messages = messages,
+        canLoadMoreBefore = canLoadMoreBefore
     )
 }

@@ -13,12 +13,36 @@ fun ConversationSummary.withTitleFallback(fallback: ConversationSummary?): Conve
             subtitle = subtitle ?: fallback.subtitle,
             threadId = if (shouldUseFallbackThreadId) fallback.threadId else threadId,
             channelId = if (shouldUseFallbackChannelId) fallback.channelId else channelId,
-            kind = fallback.kind
+            kind = fallback.kind,
+            unreadCount = if (unreadCountKnown) unreadCount else fallback.unreadCount,
+            unreadCountKnown = unreadCountKnown || fallback.unreadCountKnown,
+            mentionCount = if (mentionCountKnown) mentionCount else fallback.mentionCount,
+            mentionCountKnown = mentionCountKnown || fallback.mentionCountKnown,
+            lastMessageId = lastMessageId ?: fallback.lastMessageId,
+            firstUnreadMessageId = firstUnreadMessageId ?: fallback.firstUnreadMessageId,
+            lastMessagePreview = lastMessagePreview ?: fallback.lastMessagePreview,
+            lastMessageAt = lastMessageAt ?: fallback.lastMessageAt,
+            lastMessageSenderName = lastMessageSenderName ?: fallback.lastMessageSenderName,
+            hasDraft = if (hasDraftKnown) hasDraft else fallback.hasDraft,
+            hasDraftKnown = hasDraftKnown || fallback.hasDraftKnown,
+            memberCount = memberCount ?: fallback.memberCount
         )
     } else {
         copy(
             threadId = if (shouldUseFallbackThreadId) fallback.threadId else threadId,
-            channelId = if (shouldUseFallbackChannelId) fallback.channelId else channelId
+            channelId = if (shouldUseFallbackChannelId) fallback.channelId else channelId,
+            unreadCount = if (unreadCountKnown) unreadCount else fallback.unreadCount,
+            unreadCountKnown = unreadCountKnown || fallback.unreadCountKnown,
+            mentionCount = if (mentionCountKnown) mentionCount else fallback.mentionCount,
+            mentionCountKnown = mentionCountKnown || fallback.mentionCountKnown,
+            lastMessageId = lastMessageId ?: fallback.lastMessageId,
+            firstUnreadMessageId = firstUnreadMessageId ?: fallback.firstUnreadMessageId,
+            lastMessagePreview = lastMessagePreview ?: fallback.lastMessagePreview,
+            lastMessageAt = lastMessageAt ?: fallback.lastMessageAt,
+            lastMessageSenderName = lastMessageSenderName ?: fallback.lastMessageSenderName,
+            hasDraft = if (hasDraftKnown) hasDraft else fallback.hasDraft,
+            hasDraftKnown = hasDraftKnown || fallback.hasDraftKnown,
+            memberCount = memberCount ?: fallback.memberCount
         )
     }
 }
