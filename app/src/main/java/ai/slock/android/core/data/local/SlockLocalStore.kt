@@ -413,10 +413,26 @@ private fun TaskSummary.withReferencesFrom(incoming: TaskSummary): TaskSummary =
 
 private fun LocalSyncCursor.withUpdate(incoming: LocalSyncCursor): LocalSyncCursor =
     incoming.copy(
-        latestSeq = incoming.latestSeq ?: latestSeq,
-        oldestLoadedSeq = incoming.oldestLoadedSeq ?: oldestLoadedSeq,
-        newestLoadedSeq = incoming.newestLoadedSeq ?: newestLoadedSeq
+        latestSeq = maxSeq(latestSeq, incoming.latestSeq),
+        oldestLoadedSeq = minSeq(oldestLoadedSeq, incoming.oldestLoadedSeq),
+        newestLoadedSeq = maxSeq(newestLoadedSeq, incoming.newestLoadedSeq),
+        hasLoadedOldest = hasLoadedOldest || incoming.hasLoadedOldest,
+        hasLoadedNewest = hasLoadedNewest || incoming.hasLoadedNewest
     )
+
+private fun minSeq(current: Long?, incoming: Long?): Long? =
+    when {
+        current == null -> incoming
+        incoming == null -> current
+        else -> minOf(current, incoming)
+    }
+
+private fun maxSeq(current: Long?, incoming: Long?): Long? =
+    when {
+        current == null -> incoming
+        incoming == null -> current
+        else -> maxOf(current, incoming)
+    }
 
 private val ConversationKind.wireValue: String get() = name
 private fun String.toConversationKind(): ConversationKind =

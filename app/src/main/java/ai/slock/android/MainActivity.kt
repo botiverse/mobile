@@ -1221,11 +1221,16 @@ private fun SlockAppContent(
         tasksState = tasksState.withCachedTaskReferences(taskReferenceCache)
     }
 
-    fun openThread(conversation: ConversationSummary) {
-        replyThreadBackStack = emptyList()
+    fun openThread(conversation: ConversationSummary, fromParentPane: Boolean = false) {
+        val streamThreadId = ThreadId(conversation.messageStreamChannelId().value)
+        if (!fromParentPane) {
+            replyThreadBackStack = emptyList()
+        }
         threadParentJumpTarget = null
-        clearThreadReturnTarget()
-        selectedThreadRetryAction = { openThread(conversation) }
+        if (!fromParentPane) {
+            clearThreadReturnTarget()
+        }
+        selectedThreadRetryAction = { openThread(conversation, fromParentPane) }
         composerDrafts =
                 composerDrafts.saveComposerDraft(
                         selectedThreadId,
@@ -1234,10 +1239,10 @@ private fun SlockAppContent(
                         pendingAttachmentFiles,
                         failedAttachmentIds
                 )
-        selectedThreadId = conversation.threadId.value
+        selectedThreadId = streamThreadId.value
         attachmentPreviewState = null
         selectedThreadState =
-                localThreadUiState(conversation.threadId, fallbackHeader = conversation)
+                localThreadUiState(streamThreadId, fallbackHeader = conversation)
                         ?: ThreadUiState(
                                 ScreenLoadState.Content(
                                         ThreadContent(header = conversation, messages = emptyList())
@@ -1247,24 +1252,23 @@ private fun SlockAppContent(
         localComposerMessages = emptyList()
         realtimeThreadMessages = emptyList()
         attachmentOpenStates = emptyMap()
-        val draft = composerDrafts[conversation.threadId.value]
+        val draft = composerDrafts[streamThreadId.value]
         composerValue = draft?.value.orEmpty()
         composerAsTask = draft?.asTask ?: false
         pendingAttachmentFiles = draft?.attachments.orEmpty()
         failedAttachmentIds = draft?.failedAttachmentIds.orEmpty()
         coroutineScope.launch {
-            val result = conversationRepository.getThread(conversation.threadId)
+            val result = conversationRepository.getThread(streamThreadId)
             localWriteThrough.writeThreadResult(
                     result,
                     source = "open_thread",
-                    fallbackThreadId = conversation.threadId,
+                    fallbackThreadId = streamThreadId,
                     fallbackHeader = conversation
             )
             result.rememberTaskReferences()
             selectedThreadState =
-                    result.toThreadUiState(
-                                    fallbackHeader = conversation
-                            )
+                    (localThreadUiState(streamThreadId, fallbackHeader = conversation)
+                                    ?: result.toThreadUiState(fallbackHeader = conversation))
                             .withCachedTaskReferences()
             if (threadTab == ThreadTab.Tasks) {
                 val content =
@@ -1551,8 +1555,15 @@ private fun SlockAppContent(
                         result.rememberTaskReferences()
                         if (selectedThreadId == streamThreadId.value) {
                             selectedThreadState =
-                                    selectedThreadState
-                                            .mergeRefreshedThreadSnapshot(result.data)
+                                    (localThreadUiState(
+                                                    streamThreadId,
+                                                    fallbackHeader = currentContent.header,
+                                                    parentMessage = currentContent.parentMessage
+                                            )
+                                                    ?: selectedThreadState
+                                                            .mergeRefreshedThreadSnapshot(
+                                                                    result.data
+                                                            ))
                                             .withCachedTaskReferences()
                         }
                         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
@@ -1791,10 +1802,16 @@ private fun SlockAppContent(
             val parentMessage =
                     awaitedParentContextResult
                             ?.findParentMessage(item.parentMessageId)
-            selectedThreadState = result.toThreadUiState(
-                    fallbackHeader = fallbackHeader,
-                    parentMessage = parentMessage
-            )
+            selectedThreadState =
+                    (localThreadUiState(
+                                    ThreadId(threadChannelId.value),
+                                    fallbackHeader = fallbackHeader,
+                                    parentMessage = parentMessage
+                            )
+                                    ?: result.toThreadUiState(
+                                            fallbackHeader = fallbackHeader,
+                                            parentMessage = parentMessage
+                                    ))
             (result as? DataResult.Content)?.data?.let { snapshot ->
                 selectedThreadRetryAction = null
                 markThreadReadIfLoaded(
@@ -2153,10 +2170,16 @@ private fun SlockAppContent(
                         source = "open_existing_reply_thread",
                         fallbackThreadId = ThreadId(existingThreadChannelId.value)
                 )
-                selectedThreadState = result.toThreadUiState(
-                        fallbackHeader = fallbackHeader,
-                        parentMessage = message
-                )
+                selectedThreadState =
+                        localThreadUiState(
+                                ThreadId(existingThreadChannelId.value),
+                                fallbackHeader = fallbackHeader,
+                                parentMessage = message
+                        )
+                                ?: result.toThreadUiState(
+                                        fallbackHeader = fallbackHeader,
+                                        parentMessage = message
+                                )
                 (result as? DataResult.Content)?.data?.let { snapshot ->
                     selectedThreadRetryAction = null
                     markThreadReadIfLoaded(
@@ -2301,10 +2324,15 @@ private fun SlockAppContent(
             )
             result.rememberTaskReferences()
             selectedThreadState =
-                    result.toThreadUiState(
+                    (localThreadUiState(
+                                    ThreadId(action.threadChannelId.value),
                                     fallbackHeader = resolvedFallbackHeader,
                                     parentMessage = resolvedMessage
                             )
+                                    ?: result.toThreadUiState(
+                                            fallbackHeader = resolvedFallbackHeader,
+                                            parentMessage = resolvedMessage
+                                    ))
                             .withCachedTaskReferences()
             (result as? DataResult.Content)?.data?.let { snapshot ->
                 selectedThreadRetryAction = null
@@ -2321,7 +2349,7 @@ private fun SlockAppContent(
         }
     }
 
-    fun openTaskContext(task: TaskSummary) {
+        fun openTaskContext(task: TaskSummary, fromParentPane: Boolean = false) {
         val parentMessageId = task.parentMessageId ?: task.messageId
         val messageId = task.messageId
         val threadId = task.threadId
@@ -2391,7 +2419,7 @@ private fun SlockAppContent(
                                 result
                             }
                     if (displayResult !is DataResult.Content) {
-                        selectedThreadRetryAction = { openTaskContext(task) }
+                        selectedThreadRetryAction = { openTaskContext(task, fromParentPane) }
                         tasksState =
                                 tasksState.copy(
                                         navigationErrorCode = displayResult.readDiagnosticCode()
@@ -2417,12 +2445,14 @@ private fun SlockAppContent(
                                     failedAttachmentIds
                             )
                     destination = AppDestination.Home
-                    replyThreadBackStack =
-                            if (shouldOpenReplyThread && parentMessage != null) {
-                                listOf(currentReplyThreadBackStackEntry(parentMessage.id))
-                            } else {
-                                emptyList()
-                            }
+                    if (!fromParentPane) {
+                        replyThreadBackStack =
+                                if (shouldOpenReplyThread && parentMessage != null) {
+                                    listOf(currentReplyThreadBackStackEntry(parentMessage.id))
+                                } else {
+                                    emptyList()
+                                }
+                    }
                     threadParentJumpTarget =
                             if (shouldOpenReplyThread) parentMessage?.id?.value ?: parentMessageId?.value
                             else null
@@ -2544,7 +2574,10 @@ private fun SlockAppContent(
                     replyThreadBackStack = emptyList()
                     threadParentJumpTarget = null
                     selectedThreadId = result.data.conversation.threadId.value
-                    selectedThreadState = result.toThreadUiState().withCachedTaskReferences()
+                    selectedThreadState =
+                            (localThreadUiState(result.data.conversation.threadId)
+                                            ?: result.toThreadUiState())
+                                    .withCachedTaskReferences()
                     localComposerMessages = emptyList()
                     realtimeThreadMessages = emptyList()
                     attachmentOpenStates = emptyMap()
@@ -3220,7 +3253,21 @@ private fun SlockAppContent(
         selectedThreadStateProvider = { selectedThreadState },
         selectedThreadIdProvider = { selectedThreadId },
         setSelectedThreadState = { selectedThreadState = it },
-        onThreadSnapshot = { result -> result.rememberTaskReferences() },
+        onThreadSnapshot = { result ->
+            localWriteThrough.writeThreadResult(
+                    result,
+                    source = "refresh_thread",
+                    fallbackThreadId = selectedThreadId?.let(::ThreadId)
+            )
+            result.rememberTaskReferences()
+        },
+        localThreadUiStateProvider = { threadId, fallbackHeader, parentMessage ->
+            localThreadUiState(
+                    threadId,
+                    fallbackHeader = fallbackHeader,
+                    parentMessage = parentMessage
+            )
+        },
         transformThreadState = { state -> state.withCachedTaskReferences() },
         conversationRepository = conversationRepository,
         coroutineScope = coroutineScope
@@ -3924,7 +3971,7 @@ private fun SlockAppContent(
         }
     }
 
-    fun openMarkdownTag(tag: ThreadMarkdownTag) {
+        fun openMarkdownTag(tag: ThreadMarkdownTag, fromParentPane: Boolean = false) {
         fun openTaskReferenceMatches(matches: List<TaskSummary>, label: String, source: String): Boolean {
             return when (matches.size) {
                 0 -> false
@@ -3934,7 +3981,7 @@ private fun SlockAppContent(
                             "SlockMarkdownTag",
                             "open_task tag=$label taskId=${task.id.value} source=$source"
                     )
-                    openTaskContext(task)
+                    openTaskContext(task, fromParentPane = fromParentPane)
                     true
                 }
                 else -> {
@@ -4003,9 +4050,11 @@ private fun SlockAppContent(
                             "SlockMarkdownTag",
                             "open_channel tag=${tag.label} threadId=${conversation.threadId.value}"
                     )
-                    previousHomeRoute = HomeRoute.Thread
-                    homeRoute = HomeRoute.Thread
-                    openThread(conversation)
+                                        if (!fromParentPane) {
+                                                previousHomeRoute = HomeRoute.Thread
+                                                homeRoute = HomeRoute.Thread
+                                        }
+                                        openThread(conversation, fromParentPane = fromParentPane)
                 } else {
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                             "SlockMarkdownTag",
@@ -4142,7 +4191,13 @@ private fun SlockAppContent(
                                     },
                                     onOpenMemberProfile = { member -> openMemberProfile(member) },
                                     onOpenMarkdownTag = { tag -> openMarkdownTag(tag) },
+                                                                        onOpenParentPaneMarkdownTag = { tag ->
+                                                                                openMarkdownTag(tag, fromParentPane = true)
+                                                                        },
                                     onOpenTask = { task -> openTaskContext(task) },
+                                                                        onOpenParentPaneTask = { task ->
+                                                                                openTaskContext(task, fromParentPane = true)
+                                                                        },
                                     onTaskStatusChange = ::updateTaskStatus,
                                     onRetryThreadTasks = {
                                         refreshSelectedThreadTasks(reason = "retry")
@@ -4302,8 +4357,26 @@ private fun SlockAppContent(
                                                     selectedThreadState = it
                                                 },
                                                 onThreadSnapshot = { result ->
+                                                                                                        localWriteThrough.writeThreadResult(
+                                                                                                                        result,
+                                                                                                                        source = "refresh_thread",
+                                                                                                                        fallbackThreadId =
+                                                                                                                                        selectedThreadId?.let(
+                                                                                                                                                        ::ThreadId
+                                                                                                                                        )
+                                                                                                        )
                                                     result.rememberTaskReferences()
                                                 },
+                                                                                                localThreadUiStateProvider = {
+                                                                                                                threadId,
+                                                                                                                fallbackHeader,
+                                                                                                                parentMessage ->
+                                                                                                        localThreadUiState(
+                                                                                                                        threadId,
+                                                                                                                        fallbackHeader = fallbackHeader,
+                                                                                                                        parentMessage = parentMessage
+                                                                                                        )
+                                                                                                },
                                                 transformThreadState = { state ->
                                                     state.withCachedTaskReferences()
                                                 },
@@ -5783,7 +5856,9 @@ private fun HomeRouteScreen(
         onOpenParentPaneMessageThread: (Message) -> Unit,
         onOpenMemberProfile: (MemberProfile) -> Unit,
         onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
+        onOpenParentPaneMarkdownTag: (ThreadMarkdownTag) -> Unit,
         onOpenTask: (TaskSummary) -> Unit,
+        onOpenParentPaneTask: (TaskSummary) -> Unit,
         onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
         onRetryThreadTasks: () -> Unit,
         onThreadBack: () -> Boolean,
@@ -6053,8 +6128,8 @@ private fun HomeRouteScreen(
                             onNearBottomChange = {},
                             onOpenMessageThread = onOpenParentPaneMessageThread,
                             onOpenMemberProfile = onOpenMemberProfile,
-                            onOpenMarkdownTag = onOpenMarkdownTag,
-                            onOpenTask = onOpenTask,
+                            onOpenMarkdownTag = onOpenParentPaneMarkdownTag,
+                            onOpenTask = onOpenParentPaneTask,
                             onTaskStatusChange = onTaskStatusChange,
                             onRetryTasks = {},
                             currentMemberId = currentMemberId,
@@ -9808,6 +9883,12 @@ private fun refreshSelectedThread(
         selectedThreadIdProvider: () -> String?,
         setSelectedThreadState: (ThreadUiState) -> Unit,
         onThreadSnapshot: (DataResult<ThreadSnapshot>) -> Unit = {},
+                localThreadUiStateProvider: (ThreadId, ConversationSummary?, Message?) -> ThreadUiState? = {
+                                _,
+                                _,
+                                _ ->
+                        null
+                },
         transformThreadState: (ThreadUiState) -> ThreadUiState = { it },
         conversationRepository: ConversationRepository,
         coroutineScope: CoroutineScope
@@ -9827,11 +9908,16 @@ private fun refreshSelectedThread(
         onThreadSnapshot(result)
         when (result) {
             is DataResult.Content -> {
-                                if (selectedThreadIdProvider() == streamThreadId.value) {
+                if (selectedThreadIdProvider() == streamThreadId.value) {
                     setSelectedThreadState(
                             transformThreadState(
-                                    selectedThreadStateProvider()
-                                            .mergeRefreshedThreadSnapshot(result.data)
+                                    localThreadUiStateProvider(
+                                            streamThreadId,
+                                            currentContent.header,
+                                            currentContent.parentMessage
+                                    )
+                                            ?: selectedThreadStateProvider()
+                                                    .mergeRefreshedThreadSnapshot(result.data)
                             )
                     )
                 }
