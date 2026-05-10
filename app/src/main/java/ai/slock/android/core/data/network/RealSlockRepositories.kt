@@ -54,6 +54,7 @@ import ai.slock.android.core.data.repository.TaskSnapshot
 import ai.slock.android.core.data.repository.ThreadActionResult
 import ai.slock.android.core.data.repository.ThreadListSnapshot
 import ai.slock.android.core.data.repository.ThreadSnapshot
+import ai.slock.android.core.model.AgentStatus
 import ai.slock.android.core.model.Attachment
 import ai.slock.android.core.model.AttachmentId
 import ai.slock.android.core.model.AvatarReference
@@ -80,6 +81,7 @@ import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.toGravatarAvatarReference
 import ai.slock.android.core.state.EmptyReason
 import com.google.gson.Gson
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -292,7 +294,7 @@ class RealChannelRepository(
                                                         kind = ConversationKind.Channel,
                                                         source = "home_channels",
                                                         warningLogger = warningLogger
-                                                )
+                                                )?.takeUnless { it.archived }
                                             }
                                         }
                         )
@@ -1719,8 +1721,40 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
     val joined = if (kind == ConversationKind.DirectMessage) true else channelJoined()
     val canSend = boolean("canSend", "canWrite", "canMessage") ?: joined
     val avatarWireValue = conversationAvatarWireValue()
-    val presence =
+    val agentStatus =
             string(
+                            "agentStatus",
+                            "agent_status",
+                            "activity",
+                            "agentActivity",
+                            "agent_activity",
+                            "agentStatusLabel",
+                            "agent_status_label",
+                            "connectionStatus",
+                            "connection_status",
+                            "state",
+                            "agentState",
+                            "agent_state",
+                            "agentPresence",
+                            "agentStatus"
+                    )
+                    .toAgentStatusOrNull()
+                    ?: presenceSource
+                            ?.string(
+                                    "agentStatus",
+                                    "agent_status",
+                                    "activity",
+                                    "status",
+                                    "presence",
+                                    "availability",
+                                    "connectionStatus",
+                                    "connection_status",
+                                    "state"
+                            )
+                            .toAgentStatusOrNull()
+    val presence =
+            agentStatus?.presence
+                    ?: string(
                             "presence",
                             "status",
                             "activity",
@@ -1768,6 +1802,12 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
                     presence.takeIf {
                         kind != ConversationKind.DirectMessage ||
                                 presenceMemberKind == MemberKind.Agent
+                    },
+            agentStatus =
+                    agentStatus.takeIf {
+                        kind == ConversationKind.DirectMessage &&
+                                (presenceMemberKind == null ||
+                                        presenceMemberKind == MemberKind.Agent)
                     },
             presenceMemberId =
                     (string(
@@ -1841,6 +1881,7 @@ private fun ConversationSummary.withDirectMessageFallback(
                 lastMessageAt = lastMessageAt ?: previous.lastMessageAt,
                 lastMessageSenderName = lastMessageSenderName ?: previous.lastMessageSenderName,
                 presence = presence ?: previous.presence,
+                agentStatus = agentStatus ?: previous.agentStatus,
                 presenceMemberId = presenceMemberId ?: previous.presenceMemberId,
                 joined = joined || previous.joined,
                 archived = archived || previous.archived
@@ -1927,7 +1968,16 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
             lastMessageId =
                     string("lastMessageId", "latestMessageId", "messageId", "id")?.let(::MessageId),
             lastMessagePreview = string("lastMessagePreview", "preview", "content", "body"),
-            lastMessageAt = string("lastMessageAt", "updatedAt", "createdAt"),
+            lastMessageAt =
+                    timestampString(
+                            "lastMessageAt",
+                            "updatedAt",
+                            "updated_at",
+                            "createdAt",
+                            "created_at",
+                            "timestamp",
+                            "time"
+                    ),
             lastMessageSenderName = string("lastMessageSenderName", "senderName", "authorName"),
             threadChannelId = threadChannelId?.let(::ChannelId),
             parentChannelId = string("parentChannelId")?.let(::ChannelId),
@@ -1942,7 +1992,15 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
             parentMessagePreview = string("parentMessagePreview"),
             latestActivityMessageId = string("latestActivityMessageId")?.let(::MessageId),
             latestActivityPreview = string("latestActivityPreview"),
-            latestActivityAt = string("latestActivityAt"),
+            latestActivityAt =
+                    timestampString(
+                            "latestActivityAt",
+                            "latest_activity_at",
+                            "activityAt",
+                            "activity_at",
+                            "lastActivityAt",
+                            "last_activity_at"
+                    ),
             latestActivitySenderName = string("latestActivitySenderName"),
             replyCount = replyCountFromAliases() ?: 0,
             participantIds = stringList("participantIds", "participants").map(::MemberId),
@@ -1951,6 +2009,9 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
             taskClaimedByName = string("taskClaimedByName", "claimedByName")
     )
 }
+
+private fun JsonObject.timestampString(vararg names: String): String? =
+        string(*names) ?: long(*names)?.toString()
 
 private fun JsonObject.replyCountFromAliases(): Int? {
     int(
@@ -2443,7 +2504,8 @@ private fun JsonObject.toMemberProfile(): MemberProfile? {
             avatarUrl = avatarUrl,
             gravatarHash = gravatarHash,
             avatarLabel = displayName.take(1).uppercase(),
-            presence = memberPresence()
+            presence = memberPresence(),
+            agentStatus = memberAgentStatus()
     )
 }
 
@@ -2505,10 +2567,11 @@ private fun JsonObject.toAgentActivityEntry(): AgentActivityEntry? {
             id = id,
             type = type,
             title = title,
-            body = entry.string("body", "text", "content", "message", "detail", "activityDetail")
+            body = entry.string("body", "text", "content", "message", "detail", "activityDetail", "toolName", "tool_name", "name")
                             ?: entry.string("status", "activity")
                             ?: string("detail", "activityDetail"),
-            timestamp = agentActivityTimestamp()
+            timestamp = agentActivityTimestamp(),
+            details = entry.agentActivityDetails()
     )
 }
 
@@ -2520,9 +2583,82 @@ private fun JsonObject.toCurrentAgentActivityEntry(): AgentActivityEntry? {
             type = type,
             title = type.toAgentActivityTitle(),
             body = detail,
-            timestamp = string("updatedAt", "lastActivityAt", "lastSeenAt")
+            timestamp = string("updatedAt", "lastActivityAt", "lastSeenAt"),
+            details = agentActivityDetails()
     )
 }
+
+private fun JsonObject.agentActivityDetails(): List<Pair<String, String>> {
+    val excluded =
+            setOf(
+                    "id",
+                    "entryId",
+                    "eventId",
+                    "type",
+                    "eventType",
+                    "kind",
+                    "activity",
+                    "title",
+                    "label",
+                    "timestamp",
+                    "createdAt",
+                    "created_at",
+                    "time"
+            )
+    return entrySet()
+            .mapNotNull { (key, value) ->
+                if (key in excluded) return@mapNotNull null
+                val detailValue = value.agentActivityDetailValue() ?: return@mapNotNull null
+                key.agentActivityDetailLabel() to detailValue
+            }
+            .distinctBy { it.first.lowercase() to it.second }
+            .take(8)
+}
+
+private fun JsonElement.agentActivityDetailValue(): String? =
+        when {
+            isJsonPrimitive -> asJsonPrimitive.asString.takeIf { it.isNotBlank() }
+            isJsonObject -> {
+                val objectValue = asJsonObject
+                objectValue.string(
+                        "name",
+                        "label",
+                        "title",
+                        "value",
+                        "id",
+                        "message",
+                        "detail",
+                        "content",
+                        "text"
+                )
+                        ?: objectValue.entrySet()
+                                .take(3)
+                                .mapNotNull { (key, value) ->
+                                    value.takeIf { it.isJsonPrimitive }
+                                            ?.asJsonPrimitive
+                                            ?.asString
+                                            ?.takeIf { it.isNotBlank() }
+                                            ?.let { "${key.agentActivityDetailLabel()}: $it" }
+                                }
+                                .joinToString("; ")
+                                .takeIf { it.isNotBlank() }
+            }
+            isJsonArray ->
+                    asJsonArray
+                            .take(3)
+                            .mapNotNull { it.agentActivityDetailValue() }
+                            .joinToString(", ")
+                            .takeIf { it.isNotBlank() }
+            else -> null
+        }
+
+private fun String.agentActivityDetailLabel(): String =
+        replace('_', ' ')
+                .replace('-', ' ')
+                .replace(Regex("([a-z])([A-Z])"), "$1 $2")
+                .trim()
+                .ifBlank { "Detail" }
+                .replaceFirstChar { it.uppercase() }
 
 private fun JsonObject.agentActivityTimestamp(): String? =
         string("timestamp", "createdAt", "created_at", "time")
@@ -2531,7 +2667,15 @@ private fun JsonObject.agentActivityTimestamp(): String? =
 private fun String?.toAgentActivityTypeOrNull(): String? =
         when (val normalized = this?.lowercase()) {
             null, "", "unknown" -> null
-            "active", "online", "working", "thinking", "error", "offline", "idle" -> normalized
+            "active",
+            "online",
+            "connected",
+            "working",
+            "thinking",
+            "error",
+            "offline",
+            "disconnected",
+            "idle" -> normalized
             else -> normalized
         }
 
@@ -2543,7 +2687,8 @@ private fun String.toAgentActivityTitle(): String =
             "system" -> "System"
             "status" -> "Status"
             "working" -> "Working"
-            "online", "active" -> "Online"
+            "online", "active", "connected" -> "Online"
+            "disconnected" -> "Disconnected"
             "offline" -> "Offline"
             "idle" -> "Idle"
             "error" -> "Error"
@@ -2656,8 +2801,24 @@ private fun JsonObject.memberGravatarHash(): String? =
                 ?: nestedMemberObject()?.memberGravatarHash()
 
 private fun JsonObject.memberPresence(): Presence =
-        string("presence", "status", "activity", "availability").toPresenceOrNull()
+        memberAgentStatus()?.presence
+                ?: string("presence", "status", "activity", "availability").toPresenceOrNull()
                 ?: nestedMemberObject()?.memberPresence() ?: Presence.Offline
+
+private fun JsonObject.memberAgentStatus(): AgentStatus? =
+        string(
+                        "agentStatus",
+                        "agent_status",
+                        "activity",
+                        "status",
+                        "presence",
+                        "availability",
+                        "connectionStatus",
+                        "connection_status",
+                        "state"
+                )
+                .toAgentStatusOrNull()
+                ?: nestedMemberObject()?.memberAgentStatus()
 
 private fun JsonObject.memberKind(): MemberKind =
         explicitMemberKindOrNull()
@@ -2689,12 +2850,16 @@ private fun JsonObject.toChannelMemberProfile(defaultKind: MemberKind? = null): 
     val role =
             string("role", "channelRole", "memberRole", "roleDescription")
                     ?: profile.roleDescription
-    val presence = string("presence", "status", "availability").toPresence(profile.presence)
+    val agentStatus = memberAgentStatus() ?: profile.agentStatus
+    val presence =
+            agentStatus?.presence
+                    ?: string("presence", "status", "availability").toPresence(profile.presence)
     val badges = listOfNotNull(role).filter { it.isNotBlank() }
     return profile.copy(
             kind = defaultKind ?: explicitMemberKindOrNull() ?: profile.kind,
             roleDescription = role,
             presence = presence,
+            agentStatus = agentStatus,
             permissionBadges = if (badges.isNotEmpty()) badges else profile.permissionBadges
     )
 }
@@ -2815,12 +2980,16 @@ private fun String?.toPresence(fallback: Presence = Presence.Offline): Presence 
         toPresenceOrNull() ?: fallback
 
 private fun String?.toPresenceOrNull(): Presence? =
-        when (this?.lowercase()) {
-            "active", "online", "working", "available" -> Presence.Active
+        toAgentStatusOrNull()?.presence
+                ?: when (this?.lowercase()?.replace('-', '_')) {
+            "active", "online", "working", "available", "connected" -> Presence.Active
             "away", "idle", "busy" -> Presence.Away
-            "offline", "inactive" -> Presence.Offline
+            "offline", "inactive", "disconnected", "not_connected", "notconnected" ->
+                    Presence.Offline
             else -> null
         }
+
+private fun String?.toAgentStatusOrNull(): AgentStatus? = AgentStatus.fromWireValue(this)
 
 private fun JsonObject.toMessageAuthorProfile(): MemberProfile {
     val nestedAuthor =
@@ -3007,7 +3176,19 @@ private fun JsonObject.toTaskSummary(): TaskSummary? {
                             (channelType == "thread" && fallbackThreadId != null),
             assignee = assignee,
             channelName = string("channelName") ?: firstObject("channel")?.string("name", "slug"),
-            updatedAtLabel = string("updatedAt", "createdAt") ?: "",
+            updatedAtLabel =
+                    timestampString(
+                            "updatedAt",
+                            "updated_at",
+                            "latestActivityAt",
+                            "latest_activity_at",
+                            "lastActivityAt",
+                            "last_activity_at",
+                            "createdAt",
+                            "created_at",
+                            "timestamp",
+                            "time"
+                    ) ?: "",
             canClaim = boolean("canClaim") ?: true
     )
 }

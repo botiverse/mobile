@@ -60,6 +60,7 @@ fun SlockTextField(
     fieldValue: TextFieldValue? = null,
     onFieldValueChange: ((TextFieldValue) -> Unit)? = null,
     inputModifier: Modifier = Modifier,
+    textAreaModifier: Modifier = Modifier,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailingContent: (@Composable () -> Unit)? = null,
     bottomContent: (@Composable () -> Unit)? = null,
@@ -95,7 +96,7 @@ fun SlockTextField(
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.weight(1f)) {
+                Box(modifier = Modifier.weight(1f).then(textAreaModifier)) {
                     if (displayValue.isEmpty() && placeholder.isNotEmpty()) {
                         Text(
                             text = placeholder,

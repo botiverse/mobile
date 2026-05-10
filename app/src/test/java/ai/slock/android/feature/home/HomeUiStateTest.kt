@@ -1,5 +1,6 @@
 package ai.slock.android.feature.home
 
+import ai.slock.android.core.model.AgentStatus
 import ai.slock.android.core.model.AvatarReference
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationKind
@@ -111,6 +112,30 @@ class HomeUiStateTest {
     }
 
     @Test
+    fun withPreservedConversationUnreadKeepsServerUnreadAtLeastVisibleRowTotal() {
+        val previous = homeContent(
+            channels = listOf(
+                unreadChannel(id = "channel-1", threadId = "thread-1", unreadCount = 4)
+            ),
+            directMessages = emptyList(),
+            unreadTotal = 4
+        )
+        val current = homeContent(
+            channels = listOf(
+                unreadChannel(id = "channel-1", threadId = "thread-1", unreadCount = 0)
+            ),
+            directMessages = emptyList(),
+            unreadTotal = 0
+        ).copy(serverUnreadCount = 0)
+
+        val merged = current.withPreservedConversationUnread(previous)
+
+        assertEquals(4, merged.channels.single().unreadCount)
+        assertEquals(4, merged.unreadTotal)
+        assertEquals(4, merged.serverUnreadCount)
+    }
+
+    @Test
     fun withAgentDirectMessagePresenceFillsMissingAgentPresence() {
         val content = homeContent(
             channels = emptyList(),
@@ -131,7 +156,8 @@ class HomeUiStateTest {
                 handle = "Android-Developer",
                 kind = MemberKind.Agent,
                 avatarUrl = null,
-                presence = Presence.Active
+                presence = Presence.Active,
+                agentStatus = AgentStatus.Thinking
             ),
             MemberProfile(
                 id = MemberId("human-1"),
@@ -146,6 +172,7 @@ class HomeUiStateTest {
         val merged = content.withAgentDirectMessagePresence(members)
 
         assertEquals(Presence.Active, merged.directMessages.single().presence)
+        assertEquals(AgentStatus.Thinking, merged.directMessages.single().agentStatus)
         assertEquals("agent-android", merged.directMessages.single().presenceMemberId?.value)
     }
 

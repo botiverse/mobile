@@ -37,6 +37,7 @@ import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockIcons
 import ai.slock.android.ui.components.SlockTextField
+import ai.slock.android.ui.system.DeclareStatusBarColor
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockShadow
 import ai.slock.android.ui.theme.SlockSpacing
@@ -122,6 +123,7 @@ fun SettingsDetailHeader(
     val backInteractionSource = remember { MutableInteractionSource() }
     val backPressed by backInteractionSource.collectIsPressedAsState()
     val backShadow = if (backPressed) SlockShadow.None else SlockShadow.Small
+    DeclareStatusBarColor(SlockColor.SurfaceWhite)
     Row(
         modifier = modifier
             .fillMaxWidth()

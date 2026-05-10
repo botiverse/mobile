@@ -94,13 +94,16 @@
     <string name="settings_mobile_title">移动端</string>
     <string name="settings_mobile_subtitle">推送通知和服务器静音</string>
     <string name="settings_about_title">关于</string>
-    <string name="settings_about_home_subtitle">应用信息与脱敏诊断</string>
-    <string name="settings_about_subtitle">应用信息与诊断</string>
+    <string name="settings_about_home_subtitle">应用信息与运行状态</string>
+    <string name="settings_about_subtitle">应用信息与运行状态</string>
     <string name="settings_about_logo">SLOCK</string>
     <string name="settings_about_app_section">应用</string>
     <string name="settings_about_status_section">状态</string>
     <string name="settings_about_diagnostics_section">诊断</string>
+    <string name="settings_about_diagnostics_title">诊断</string>
+    <string name="settings_about_diagnostics_entry_detail">需要排查应用行为时，再打开这里查看脱敏运行日志。</string>
     <string name="settings_about_diagnostics_detail">最近应用诊断会在展示、复制或分享前脱敏。</string>
+    <string name="settings_about_open_diagnostics">打开诊断</string>
     <string name="settings_about_no_logs">暂无诊断记录。</string>
     <string name="settings_about_version">版本</string>
     <string name="settings_about_build">构建</string>
@@ -232,6 +235,9 @@
     <string name="settings_notification_test_text">移动端设置可以显示本地 Android 通知。</string>
     <string name="settings_notification_channel_name">设置测试通知</string>
     <string name="settings_notification_channel_description">来自移动端设置的本地测试通知。</string>
+    <string name="inbox_notification_channel_name">Inbox 通知</string>
+    <string name="inbox_notification_channel_description">来自 Slock 的未读 inbox 更新。</string>
+    <string name="inbox_notification_title">%1$s 有新消息</string>
     <string name="bottom_tab_home">首页</string>
     <string name="bottom_tab_tasks">任务</string>
     <string name="bottom_tab_members">成员</string>
@@ -281,6 +287,11 @@
     <string name="home_create_channel_agents_label">Agents</string>
     <string name="home_create_channel_users_label">成员</string>
     <string name="home_create_channel_no_members">暂无可选成员。</string>
+    <string name="home_create_channel_members_loading">正在加载成员…</string>
+    <string name="home_create_channel_members_error">成员加载失败：%1$s</string>
+    <string name="home_create_channel_member_selected">已选择</string>
+    <string name="home_create_channel_member_joined">已加入</string>
+    <string name="home_create_channel_member_add">添加</string>
     <string name="home_create_channel_error">无法创建频道。错误：%1$s</string>
     <string name="home_search">搜索</string>
     <string name="home_inbox">收件箱</string>
@@ -307,6 +318,7 @@
     <string name="inbox_loading_more">加载更多...</string>
     <string name="inbox_more_items_available">还有更多项目</string>
     <string name="inbox_open_item">打开收件箱项目</string>
+    <string name="inbox_mark_item_as_read">标为已读</string>
     <string name="inbox_badge_new">新</string>
     <string name="inbox_unread_count">%1$d 未读</string>
     <string name="inbox_reply_count">%1$d 条回复</string>
@@ -360,6 +372,7 @@
     <string name="tasks_status_closed">已关闭</string>
     <string name="tasks_empty_column_title">暂无%1$s任务</string>
     <string name="tasks_empty_column_detail">任务状态变化后可以放到这里。</string>
+    <string name="thread_composer_insert_newline">换行</string>
     <string name="common_loading">加载中</string>
     <string name="common_loading_sample_state">正在加载示例状态</string>
     <string name="common_preparing_local_state">正在准备本地状态。</string>

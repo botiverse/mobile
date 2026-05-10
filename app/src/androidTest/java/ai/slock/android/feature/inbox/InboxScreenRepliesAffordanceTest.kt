@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import ai.slock.android.core.model.ChannelId
@@ -72,6 +73,36 @@ class InboxScreenRepliesAffordanceTest {
 
         composeRule.onAllNodesWithText("0 replies").assertCountEquals(0)
         composeRule.onAllNodesWithText("replies").assertCountEquals(0)
+    }
+
+    @Test
+    fun checkButtonMarksItemReadWithoutOpeningThread() {
+        val openCount = AtomicInteger(0)
+        val markReadCount = AtomicInteger(0)
+        composeRule.setContent {
+            SlockTheme {
+                InboxScreen(
+                    state = InboxUiState(
+                        loadState = ScreenLoadState.Content(
+                            InboxContent(
+                                server = ServerSummary(ServerId("server-1"), "Slock Android"),
+                                items = listOf(
+                                    inboxItem(replyCount = 0).copy(unreadCount = 2)
+                                )
+                            )
+                        )
+                    ),
+                    onBack = {},
+                    onOpenThread = { openCount.incrementAndGet() },
+                    onMarkItemRead = { markReadCount.incrementAndGet() }
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Mark item as read").assertIsDisplayed().performClick()
+
+        assertEquals(0, openCount.get())
+        assertEquals(1, markReadCount.get())
     }
 
     private fun inboxItem(replyCount: Int) = InboxItem(

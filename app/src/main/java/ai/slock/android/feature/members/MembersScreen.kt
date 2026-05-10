@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,12 +39,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import ai.slock.android.core.data.repository.AgentActivitySnapshot
+import ai.slock.android.core.data.repository.AgentActivityEntry
 import ai.slock.android.core.data.repository.AgentDmSnapshot
 import ai.slock.android.core.data.repository.AgentReminderSnapshot
 import ai.slock.android.core.model.MemberId
@@ -55,17 +66,23 @@ import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenError
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.sample.SlockStateSamples
+import ai.slock.android.feature.thread.toThreadTimestampLabel
+import ai.slock.android.ui.components.SlockAgentStatusIndicator
 import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.components.SlockAvatar
 import ai.slock.android.ui.components.SlockIconSquareButton
 import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.components.SlockMemberAvatar
 import ai.slock.android.ui.components.SlockPageDivider
 import ai.slock.android.ui.components.SlockTitledPageHeader
 import ai.slock.android.ui.components.SlockWorkspaceFileTree
 import ai.slock.android.ui.components.SlockWorkspaceNode
 import ai.slock.android.ui.components.SlockWorkspaceSamples
 import ai.slock.android.ui.components.SlockWorkspaceTreeState
+import ai.slock.android.ui.components.agentStatusLabel
+import ai.slock.android.ui.components.defaultAvatarColor
+import ai.slock.android.ui.system.DeclareStatusBarColor
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
 import ai.slock.android.ui.theme.SlockShadow
@@ -79,6 +96,14 @@ private val MemberAvatarSize = 34.dp
 private val MemberPresenceSize = 12.dp
 private val MemberRowMinHeight = 48.dp
 private val MembersPageInset = SlockSpacing.Md
+private const val AGENT_ACTIVITY_TIMELINE_TAG = "agent_activity_timeline"
+private val MembersPageTitleType = SlockType.PageTitle.copy(fontSize = 19.sp, lineHeight = 23.sp)
+private val MembersBodyType = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp)
+private val MembersBodyStrongType = MembersBodyType.copy(fontWeight = FontWeight.Bold)
+private val MembersDescriptionType = MembersBodyType.copy(fontWeight = FontWeight.Normal)
+private val MembersCaptionType = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp)
+private val MembersCaptionStrongType = MembersCaptionType.copy(fontWeight = FontWeight.Bold)
+private val MembersButtonType = SlockType.Button.copy(fontSize = 13.sp, lineHeight = 17.sp)
 
 @Composable
 fun MembersPageShell(
@@ -132,6 +157,7 @@ fun MembersRouteScreen(
     state: MembersUiState,
     modifier: Modifier = Modifier,
     initialSelectedMemberId: String? = null,
+    initialSelectedDetailTab: String = MemberDetailTab.Profile.name,
     onBack: () -> Unit = {},
     onDetailBack: () -> Unit = {},
     onDetailVisibleChange: (Boolean) -> Unit = {},
@@ -141,11 +167,13 @@ fun MembersRouteScreen(
     onRetry: () -> Unit = {}
 ) {
     var selectedMemberId by rememberSaveable { mutableStateOf(initialSelectedMemberId) }
-    var selectedDetailTab by rememberSaveable { mutableStateOf(MemberDetailTab.Profile.name) }
-    LaunchedEffect(initialSelectedMemberId) {
+    var selectedDetailTab by rememberSaveable {
+        mutableStateOf(initialSelectedDetailTab.toMemberDetailTabName())
+    }
+    LaunchedEffect(initialSelectedMemberId, initialSelectedDetailTab) {
         if (initialSelectedMemberId != null) {
             selectedMemberId = initialSelectedMemberId
-            selectedDetailTab = MemberDetailTab.Profile.name
+            selectedDetailTab = initialSelectedDetailTab.toMemberDetailTabName()
             onDetailVisibleChange(true)
         }
     }
@@ -170,7 +198,7 @@ fun MembersRouteScreen(
         } else {
             MemberDetailScreen(
                 member = selectedMember,
-                selectedTab = MemberDetailTab.valueOf(selectedDetailTab),
+                selectedTab = selectedDetailTab.toMemberDetailTab(),
                 onTabSelected = { selectedDetailTab = it.name },
                 agentDmsState = state.selectedAgentDmsState,
                 agentRemindersState = state.selectedAgentRemindersState,
@@ -304,7 +332,7 @@ private fun MembersSectionHeader(
         )
         Text(
             text = count.toString(),
-            style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+            style = MembersBodyStrongType,
             color = SlockColor.TextMutedGray
         )
         Spacer(modifier = Modifier.weight(1f))
@@ -327,7 +355,7 @@ private fun MembersSectionAddButton(onClick: () -> Unit) {
     ) {
         Text(
             text = "+",
-            style = SlockType.PageTitle,
+            style = MembersPageTitleType,
             color = SlockColor.TextBlack
         )
     }
@@ -356,7 +384,7 @@ fun MemberFlatRow(
         ) {
             Text(
                 text = member.displayName,
-                style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                style = MembersBodyStrongType,
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -364,15 +392,12 @@ fun MemberFlatRow(
             )
             Text(
                 text = member.inlineDescription,
-                style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                style = MembersDescriptionType,
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-        }
-        if (member.kind != MemberKind.Human) {
-            MemberPresenceDot(presence = member.presence)
         }
     }
 }
@@ -382,50 +407,23 @@ private fun MemberFlatAvatar(member: MemberProfile) {
     Box(
         modifier = Modifier.size(MemberAvatarSize)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-        ) {
-            SlockAvatar(
-                avatarUrl = member.avatarUrl,
-                avatar = member.avatar,
-                label = member.avatarLabel,
-                size = MemberAvatarSize,
-                fontSize = SlockType.Button.fontSize,
-                fallbackColor = member.kind.avatarColor
-            )
-        }
-        if (member.kind != MemberKind.Human) {
-            MemberPresenceDot(
-                presence = member.presence,
-                modifier = Modifier.align(Alignment.BottomEnd)
-            )
-        }
+        SlockMemberAvatar(
+            member = member,
+            size = MemberAvatarSize,
+            fontSize = MembersButtonType.fontSize
+        )
     }
-}
-
-@Composable
-private fun MemberPresenceDot(
-    presence: Presence,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .size(MemberPresenceSize)
-            .background(presence.color, CircleShape)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack, CircleShape)
-    )
 }
 
 @Composable
 private fun MemberKindBadge(kind: MemberKind) {
     Text(
         text = kind.name.uppercase(),
-        style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+        style = MembersCaptionStrongType,
         color = SlockColor.TextBlack,
         maxLines = 1,
         modifier = Modifier
-            .background(kind.avatarColor, RoundedCornerShape(SlockRadius.Xs))
+            .background(kind.defaultAvatarColor, RoundedCornerShape(SlockRadius.Xs))
             .border(SlockStroke.Thin, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Xs))
             .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp)
     )
@@ -517,6 +515,7 @@ private fun MemberDetailScreen(
     var workspaceExpandedIds by rememberSaveable { mutableStateOf(SlockWorkspaceSamples.expandedIds.toList()) }
     var workspaceSelectedFileId by rememberSaveable { mutableStateOf("readme") }
     var workspacePreviewVisible by rememberSaveable { mutableStateOf(false) }
+    val tabSwipeModifier = Modifier.memberDetailTabSwipe(selectedTab, onTabSelected)
 
     Column(
         modifier = modifier
@@ -524,40 +523,46 @@ private fun MemberDetailScreen(
             .background(SlockColor.SurfaceWhite)
     ) {
         MemberDetailHeader(member = member, onBack = onBack)
-        MemberDetailTabs(selectedTab = selectedTab, onTabSelected = onTabSelected)
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
-        ) {
-            when (selectedTab) {
-                MemberDetailTab.Profile -> MemberProfileDetail(member = member)
-                MemberDetailTab.AgentDms -> AgentDirectMessagesPanel(
-                    state = agentDmsState,
-                    onOpenAgentDirectMessage = onOpenAgentDirectMessage
-                )
-                MemberDetailTab.Reminders -> AgentRemindersPanel(state = agentRemindersState)
-                MemberDetailTab.Workspace -> MemberWorkspaceDetail(
-                    expandedIds = workspaceExpandedIds.toSet(),
-                    selectedFileId = workspaceSelectedFileId,
-                    showPreview = workspacePreviewVisible,
-                    onToggleFolder = { folder ->
-                        workspaceExpandedIds = if (workspaceExpandedIds.contains(folder.id)) {
-                            workspaceExpandedIds - folder.id
-                        } else {
-                            workspaceExpandedIds + folder.id
-                        }
-                    },
-                    onSelectFile = { file ->
-                        workspaceSelectedFileId = file.id
-                        workspacePreviewVisible = true
-                    },
-                    onBackToTree = { workspacePreviewVisible = false }
-                )
-                MemberDetailTab.Activity -> AgentActivityPanel(state = agentActivityState)
+        Column(modifier = tabSwipeModifier.fillMaxSize()) {
+            MemberDetailTabs(selectedTab = selectedTab, onTabSelected = onTabSelected)
+            if (selectedTab == MemberDetailTab.Activity) {
+                AgentActivityPanel(state = agentActivityState, modifier = Modifier.fillMaxSize())
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    when (selectedTab) {
+                        MemberDetailTab.Profile -> MemberProfileDetail(member = member)
+                        MemberDetailTab.AgentDms -> AgentDirectMessagesPanel(
+                            state = agentDmsState,
+                            onOpenAgentDirectMessage = onOpenAgentDirectMessage
+                        )
+                        MemberDetailTab.Reminders -> AgentRemindersPanel(state = agentRemindersState)
+                        MemberDetailTab.Workspace -> MemberWorkspaceDetail(
+                            expandedIds = workspaceExpandedIds.toSet(),
+                            selectedFileId = workspaceSelectedFileId,
+                            showPreview = workspacePreviewVisible,
+                            onToggleFolder = { folder ->
+                                workspaceExpandedIds = if (workspaceExpandedIds.contains(folder.id)) {
+                                    workspaceExpandedIds - folder.id
+                                } else {
+                                    workspaceExpandedIds + folder.id
+                                }
+                            },
+                            onSelectFile = { file ->
+                                workspaceSelectedFileId = file.id
+                                workspacePreviewVisible = true
+                            },
+                            onBackToTree = { workspacePreviewVisible = false }
+                        )
+                        MemberDetailTab.Activity -> Unit
+                    }
+                    Spacer(modifier = Modifier.height(180.dp))
+                }
             }
-            Spacer(modifier = Modifier.height(180.dp))
         }
     }
 }
@@ -567,6 +572,7 @@ private fun MemberDetailHeader(
     member: MemberProfile,
     onBack: () -> Unit
 ) {
+    DeclareStatusBarColor(SlockColor.SurfaceWhite)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -587,20 +593,33 @@ private fun MemberDetailHeader(
             onClick = onBack,
             modifier = Modifier.size(38.dp)
         )
+        SlockMemberAvatar(
+            member = member,
+            size = 38.dp,
+            fontSize = MembersBodyStrongType.fontSize
+        )
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(1.dp)
         ) {
             Text(
                 text = member.displayName,
-                style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                style = MembersBodyStrongType,
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = member.roleDescription ?: member.handle,
-                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                text =
+                    if (member.kind == MemberKind.Human) {
+                        member.roleDescription ?: member.handle
+                    } else {
+                        listOfNotNull(
+                            member.agentStatus.agentStatusLabel(member.presence),
+                            member.roleDescription
+                        ).joinToString(" · ")
+                    },
+                style = MembersCaptionType,
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -631,6 +650,7 @@ private fun MemberDetailTabs(
                 modifier = Modifier
                     .height(40.dp)
                     .background(if (selectedTab == tab) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                    .semantics { selected = selectedTab == tab }
                     .clickable(role = Role.Tab) { onTabSelected(tab) }
                     .padding(horizontal = SlockSpacing.Md),
                 verticalAlignment = Alignment.CenterVertically,
@@ -680,7 +700,7 @@ private fun MemberProfileDetail(member: MemberProfile) {
                 ) {
                     Text(
                         text = member.displayName,
-                        style = SlockType.PageTitle,
+                        style = MembersPageTitleType,
                         color = SlockColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -690,14 +710,17 @@ private fun MemberProfileDetail(member: MemberProfile) {
                 }
                 Text(
                     text = member.handle,
-                    style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                    style = MembersDescriptionType,
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (member.kind != MemberKind.Human) {
+                    AgentStatusBadge(member = member)
+                }
                 Text(
-                    text = member.roleDescription ?: "Member profile sample",
-                    style = SlockType.Body,
+                    text = member.agentStatus?.label ?: member.roleDescription ?: "Member profile sample",
+                    style = MembersDescriptionType,
                     color = SlockColor.TextBlack
                 )
             }
@@ -711,7 +734,10 @@ private fun MemberProfileDetail(member: MemberProfile) {
     }
     MemberDetailSection(title = "Info") {
         Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
-            MemberDetailLabeledValue("Computer", "Jiachengs-MacBook-Pro.local · connected")
+            MemberDetailLabeledValue(
+                "Status",
+                member.agentStatus.agentStatusLabel(member.presence)
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xl)
@@ -818,7 +844,7 @@ private fun MemberSkillsSection() {
             ) {
                 Text(
                     text = "No skills in this agent's workspace",
-                    style = SlockType.Caption.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
+                    style = MembersCaptionType.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
                     color = SlockColor.TextMutedGray
                 )
             }
@@ -846,12 +872,12 @@ private fun MemberSkillGroup(
             )
             Text(
                 text = title,
-                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                style = MembersCaptionStrongType,
                 color = SlockColor.TextMutedGray
             )
             Text(
                 text = "($count)",
-                style = SlockType.Caption,
+                style = MembersCaptionType,
                 color = SlockColor.TextMutedGray
             )
         }
@@ -872,12 +898,12 @@ private fun MemberSkillPathGroup(
         ) {
             Text(
                 text = path,
-                style = SlockType.Caption.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                style = MembersCaptionType.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
                 color = SlockColor.TextMutedGray
             )
             Text(
                 text = "($count)",
-                style = SlockType.Caption.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                style = MembersCaptionType.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
                 color = SlockColor.TextMutedGray
             )
         }
@@ -902,14 +928,14 @@ private fun MemberSkillCard(
     ) {
         Text(
             text = name,
-            style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+            style = MembersBodyStrongType,
             color = SlockColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
             text = detail,
-            style = SlockType.Caption,
+            style = MembersCaptionType,
             color = SlockColor.TextMutedGray,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
@@ -918,22 +944,12 @@ private fun MemberSkillCard(
 }
 
 @Composable
-private fun MemberDetailAvatar(member: MemberProfile) {
-    Box(modifier = Modifier.size(64.dp)) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-        ) {
-            SlockAvatar(
-                avatarUrl = member.avatarUrl,
-                avatar = member.avatar,
-                label = member.avatarLabel,
-                size = 64.dp,
-                fontSize = SlockType.PageTitle.fontSize,
-                fallbackColor = member.kind.avatarColor
-            )
-        }
-    }
+private fun MemberDetailAvatar(member: MemberProfile, size: Dp = 64.dp) {
+    SlockMemberAvatar(
+        member = member,
+        size = size,
+        fontSize = MembersPageTitleType.fontSize
+    )
 }
 
 @Composable
@@ -946,8 +962,8 @@ private fun HumanMemberDetailAvatar(member: MemberProfile) {
                 avatar = member.avatar,
                 label = member.avatarLabel,
                 size = 64.dp,
-                fontSize = SlockType.PageTitle.fontSize,
-                fallbackColor = member.kind.avatarColor
+                fontSize = MembersPageTitleType.fontSize,
+                fallbackColor = member.kind.defaultAvatarColor
             )
         } else {
             Box(
@@ -965,12 +981,27 @@ private fun HumanMemberDetailAvatar(member: MemberProfile) {
                 )
             }
         }
-        if (member.kind != MemberKind.Human) {
-            MemberPresenceDot(
-                presence = member.presence,
-                modifier = Modifier.align(Alignment.BottomEnd)
-            )
-        }
+    }
+}
+
+@Composable
+private fun AgentStatusBadge(member: MemberProfile) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        SlockAgentStatusIndicator(
+            status = member.agentStatus,
+            presence = member.presence,
+            size = MemberPresenceSize
+        )
+        Text(
+            text = member.agentStatus.agentStatusLabel(member.presence),
+            style = MembersCaptionStrongType,
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -986,8 +1017,7 @@ private fun AgentDirectMessagesPanel(
         emptyDetail = "This agent has no direct threads in the current workspace.",
         errorTitle = "Agent DMs failed to load",
         noPermissionTitle = "Agent DMs unavailable",
-        noPermissionDetail = "agent_dms access denied",
-        isContentEmpty = { it.directMessages.isEmpty() }
+        noPermissionDetail = "agent_dms access denied"
     ) { snapshot ->
         MemberDetailActionButton(
             text = "Open direct message",
@@ -995,13 +1025,20 @@ private fun AgentDirectMessagesPanel(
             icon = SlockIcons.MessageSquare,
             onClick = onOpenAgentDirectMessage
         )
-        snapshot.directMessages.forEach { dm ->
-            AgentDetailCard(
-                title = dm.peerName,
-                subtitle = dm.lastMessagePreview ?: "No recent message",
-                meta = listOfNotNull(dm.peerId, dm.lastMessageAt).joinToString(" · "),
-                onClick = onOpenAgentDirectMessage
+        if (snapshot.directMessages.isEmpty()) {
+            AgentDetailStateCard(
+                "No agent DMs",
+                "This agent has no direct threads in the current workspace."
             )
+        } else {
+            snapshot.directMessages.forEach { dm ->
+                AgentDetailCard(
+                    title = dm.peerName,
+                    subtitle = dm.lastMessagePreview ?: "No recent message",
+                    meta = listOfNotNull(dm.peerId, dm.lastMessageAt).joinToString(" · "),
+                    onClick = onOpenAgentDirectMessage
+                )
+            }
         }
     }
 }
@@ -1032,26 +1069,206 @@ private fun AgentRemindersPanel(
 
 @Composable
 private fun AgentActivityPanel(
-    state: ScreenLoadState<AgentActivitySnapshot>
+    state: ScreenLoadState<AgentActivitySnapshot>,
+    modifier: Modifier = Modifier
 ) {
-    AgentDetailListPanel(
-        title = "Activity",
-        state = state,
-        emptyTitle = "No agent activity",
-        emptyDetail = "No recent activity entries are available.",
-        errorTitle = "Activity failed to load",
-        noPermissionTitle = "Activity unavailable",
-        noPermissionDetail = "activity access denied",
-        isContentEmpty = { it.activity.isEmpty() }
-    ) { snapshot ->
-        snapshot.activity.forEach { activity ->
-            AgentDetailCard(
-                title = activity.title,
-                subtitle = activity.body ?: activity.type,
-                meta = activity.timestamp.orEmpty()
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(SlockStroke.Thin)
+                .background(SlockColor.TextBlack.copy(alpha = 0.10f))
+        )
+        Column(
+            modifier = Modifier.padding(horizontal = SlockSpacing.Lg, vertical = SlockSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            Text(
+                text = "ACTIVITY",
+                style = SlockType.SectionLabel,
+                color = SlockColor.TextMutedGray
+            )
+            Text(
+                text = "Following latest events",
+                style = MembersCaptionType,
+                color = SlockColor.TextMutedGray
             )
         }
+        when (state) {
+            ScreenLoadState.Loading ->
+                AgentActivityStateCard(
+                    title = "Loading",
+                    detail = "Fetching real data...",
+                    modifier = Modifier.padding(horizontal = SlockSpacing.Lg)
+                )
+            is ScreenLoadState.Content -> {
+                if (state.data.activity.isEmpty()) {
+                    AgentActivityStateCard(
+                        title = "No agent activity",
+                        detail = "No recent activity entries are available.",
+                        modifier = Modifier.padding(horizontal = SlockSpacing.Lg)
+                    )
+                } else {
+                    AgentActivityTimeline(entries = state.data.activity)
+                }
+            }
+            is ScreenLoadState.Empty ->
+                AgentActivityStateCard(
+                    title = "No agent activity",
+                    detail = "No recent activity entries are available.",
+                    modifier = Modifier.padding(horizontal = SlockSpacing.Lg)
+                )
+            is ScreenLoadState.Error ->
+                AgentActivityStateCard(
+                    title = "Activity failed to load",
+                    detail = state.error.code,
+                    modifier = Modifier.padding(horizontal = SlockSpacing.Lg)
+                )
+            is ScreenLoadState.NoPermission ->
+                AgentActivityStateCard(
+                    title = "Activity unavailable",
+                    detail = "activity access denied",
+                    modifier = Modifier.padding(horizontal = SlockSpacing.Lg)
+                )
+        }
     }
+}
+
+@Composable
+private fun AgentActivityTimeline(entries: List<AgentActivityEntry>) {
+    val orderedEntries = entries.sortedBy { it.timestamp.activitySortKey() }
+    val listState = rememberLazyListState()
+    LaunchedEffect(orderedEntries.size, orderedEntries.lastOrNull()?.activityTimelineKey()) {
+        if (orderedEntries.isNotEmpty()) {
+            listState.scrollToItem(orderedEntries.lastIndex)
+        }
+    }
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag(AGENT_ACTIVITY_TIMELINE_TAG)
+            .padding(horizontal = SlockSpacing.Lg),
+        state = listState,
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        items(
+            items = orderedEntries,
+            key = { entry -> entry.activityTimelineKey() }
+        ) { activity ->
+            AgentActivityTimelineRow(activity = activity)
+        }
+        item { Spacer(modifier = Modifier.height(SlockSpacing.Lg)) }
+    }
+}
+
+@Composable
+private fun AgentActivityTimelineRow(activity: AgentActivityEntry) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+        verticalAlignment = Alignment.Top
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .background(activity.type.activityAccentColor(), CircleShape)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = SlockIcons.Activity,
+                    contentDescription = null,
+                    tint = SlockColor.TextBlack,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .width(SlockStroke.Thin)
+                    .height(22.dp)
+                    .background(SlockColor.BorderBlack.copy(alpha = 0.22f))
+            )
+        }
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .border(SlockStroke.Thin, SlockColor.EmptyStateGray)
+                .padding(SlockSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                Text(
+                    text = activity.title,
+                    style = MembersBodyStrongType,
+                    color = SlockColor.TextBlack,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = activity.timestamp.activityDisplayTime(),
+                    style = MembersCaptionStrongType,
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+                MemberDetailChip(activity.type.activityTypeLabel(), activity.type.activityAccentColor())
+            }
+            Text(
+                text = activity.activityPrimaryDetail(),
+                style = MembersBodyType,
+                color = SlockColor.TextBlack,
+                maxLines = 10,
+                overflow = TextOverflow.Ellipsis
+            )
+            activity.details.takeIf { it.isNotEmpty() }?.let { details ->
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    details.forEach { (label, value) ->
+                        Text(
+                            text = "$label: $value",
+                            style = MembersCaptionType,
+                            color = SlockColor.TextMutedGray,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            if (activity.id.isNotBlank()) {
+                Text(
+                    text = "id ${activity.id}",
+                    style = MembersCaptionType,
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AgentActivityStateCard(
+    title: String,
+    detail: String,
+    modifier: Modifier = Modifier
+) {
+    AgentDetailStateCard(
+        title = title,
+        detail = detail,
+        modifier = modifier
+    )
 }
 
 @Composable
@@ -1105,14 +1322,14 @@ private fun AgentDetailCard(
     ) {
         Text(
             text = title,
-            style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+            style = MembersBodyStrongType,
             color = SlockColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
             text = subtitle,
-            style = SlockType.Body,
+            style = MembersBodyType,
             color = SlockColor.TextBlack,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
@@ -1120,7 +1337,7 @@ private fun AgentDetailCard(
         if (meta.isNotBlank()) {
             Text(
                 text = meta,
-                style = SlockType.Caption,
+                style = MembersCaptionType,
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -1132,10 +1349,11 @@ private fun AgentDetailCard(
 @Composable
 private fun AgentDetailStateCard(
     title: String,
-    detail: String
+    detail: String,
+    modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .border(SlockStroke.Thin, SlockColor.EmptyStateGray)
             .padding(SlockSpacing.Sm),
@@ -1143,12 +1361,12 @@ private fun AgentDetailStateCard(
     ) {
         Text(
             text = title,
-            style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+            style = MembersBodyStrongType,
             color = SlockColor.TextBlack
         )
         Text(
             text = detail,
-            style = SlockType.Caption,
+            style = MembersCaptionType,
             color = SlockColor.TextMutedGray
         )
     }
@@ -1169,14 +1387,14 @@ private fun HumanMemberProfileDetail(member: MemberProfile) {
             ) {
                 Text(
                     text = member.displayName,
-                    style = SlockType.PageTitle,
+                    style = MembersPageTitleType,
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = member.handle,
-                    style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                    style = MembersDescriptionType,
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -1184,7 +1402,7 @@ private fun HumanMemberProfileDetail(member: MemberProfile) {
                 if (!member.roleDescription.isNullOrBlank()) {
                     Text(
                         text = member.roleDescription,
-                        style = SlockType.Body,
+                        style = MembersDescriptionType,
                         color = SlockColor.TextBlack
                     )
                 }
@@ -1213,7 +1431,7 @@ private fun MemberProfile.humanAvatarSourceLabel(): String =
 private fun MemberPresenceBadge(presence: Presence) {
     Text(
         text = presence.name.uppercase(),
-        style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+        style = MembersCaptionStrongType,
         color = SlockColor.TextBlack,
         modifier = Modifier
             .background(presence.color, RoundedCornerShape(SlockRadius.Xs))
@@ -1239,7 +1457,7 @@ private fun MemberDetailLabeledValue(
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(
             text = label,
-            style = SlockType.Caption,
+            style = MembersCaptionType,
             color = SlockColor.TextMutedGray
         )
         MemberDetailValue(value = value)
@@ -1250,7 +1468,7 @@ private fun MemberDetailLabeledValue(
 private fun MemberDetailValue(value: String) {
     Text(
         text = value,
-        style = SlockType.Body,
+        style = MembersBodyType,
         color = SlockColor.TextBlack,
         maxLines = 4,
         overflow = TextOverflow.Ellipsis
@@ -1266,7 +1484,7 @@ private fun MemberDetailSamplePanel(
         rows.forEach { row ->
             Text(
                 text = row,
-                style = SlockType.Body,
+                style = MembersBodyType,
                 color = SlockColor.TextBlack,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -1321,7 +1539,7 @@ private fun MemberDetailChip(
 ) {
     Text(
         text = text,
-        style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+        style = MembersCaptionStrongType,
         color = SlockColor.TextBlack,
         modifier = Modifier
             .background(color, RoundedCornerShape(SlockRadius.Xs))
@@ -1360,7 +1578,7 @@ private fun MemberDetailActionButton(
         Spacer(modifier = Modifier.width(SlockSpacing.Sm))
         Text(
             text = text,
-            style = SlockType.Button.copy(fontWeight = FontWeight.Bold),
+            style = MembersButtonType.copy(fontWeight = FontWeight.Bold),
             color = SlockColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -1376,6 +1594,46 @@ private enum class MemberDetailTab(val label: String) {
     Activity("Activity")
 }
 
+private fun String.toMemberDetailTab(): MemberDetailTab =
+    MemberDetailTab.entries.firstOrNull { tab ->
+        equals(tab.name, ignoreCase = true) ||
+            equals(tab.label, ignoreCase = true) ||
+            equals(tab.label.replace(" ", ""), ignoreCase = true) ||
+            equals(tab.label.replace(" ", "_"), ignoreCase = true)
+    } ?: MemberDetailTab.Profile
+
+private fun String.toMemberDetailTabName(): String = toMemberDetailTab().name
+
+private fun MemberDetailTab.neighbor(direction: Int): MemberDetailTab? {
+    val tabs = MemberDetailTab.entries
+    val nextIndex = tabs.indexOf(this) + direction
+    return tabs.getOrNull(nextIndex)
+}
+
+private fun Modifier.memberDetailTabSwipe(
+    selectedTab: MemberDetailTab,
+    onTabSelected: (MemberDetailTab) -> Unit
+): Modifier =
+    pointerInput(selectedTab, onTabSelected) {
+        var accumulatedDrag = 0f
+        detectHorizontalDragGestures(
+            onDragStart = { accumulatedDrag = 0f },
+            onHorizontalDrag = { change, dragAmount ->
+                accumulatedDrag += dragAmount
+                change.consume()
+            },
+            onDragEnd = {
+                val targetTab =
+                    when {
+                        accumulatedDrag < -64f -> selectedTab.neighbor(direction = 1)
+                        accumulatedDrag > 64f -> selectedTab.neighbor(direction = -1)
+                        else -> null
+                    }
+                targetTab?.let(onTabSelected)
+            }
+        )
+    }
+
 private val MemberDetailTab.icon: ImageVector
     get() = when (this) {
         MemberDetailTab.Profile -> SlockIcons.Bot
@@ -1385,31 +1643,55 @@ private val MemberDetailTab.icon: ImageVector
         MemberDetailTab.Activity -> SlockIcons.Activity
     }
 
+private val Presence.color: Color
+    get() = when (this) {
+        Presence.Active -> SlockColor.AccentLime
+        Presence.Away -> SlockColor.BrandYellow
+        Presence.Offline -> SlockColor.TextMutedGray
+    }
+
 private enum class MemberSection(val label: String) {
     Agents("AGENTS"),
     Humans("HUMANS")
 }
 
-private val MemberKind.avatarColor: Color
-    get() = when (this) {
-        MemberKind.Human -> SlockColor.AccentLavender
-        MemberKind.Agent -> SlockColor.AccentPink
-        MemberKind.System -> SlockColor.AccentCyan
+private fun String?.activitySortKey(): Long =
+    when {
+        isNullOrBlank() -> Long.MIN_VALUE
+        all { it.isDigit() } -> toLongOrNull() ?: Long.MIN_VALUE
+        else -> this
+            .filter { it.isDigit() }
+            .take(14)
+            .padEnd(14, '0')
+            .toLongOrNull() ?: Long.MIN_VALUE
     }
 
-private val Presence.color: Color
-    get() = when (this) {
-        Presence.Active -> SlockColor.AccentLime
-        Presence.Away -> SlockColor.BrandYellow
-        Presence.Offline -> SlockColor.EmptyStateGray
+private fun String?.activityDisplayTime(): String =
+    takeUnless { it.isNullOrBlank() }?.toThreadTimestampLabel()?.takeIf { it.isNotBlank() } ?: "No time"
+
+private fun AgentActivityEntry.activityPrimaryDetail(): String =
+    body?.takeIf { it.isNotBlank() }
+        ?: details.firstOrNull()?.let { (label, value) -> "$label: $value" }
+        ?: "No detail payload"
+
+private fun String.activityTypeLabel(): String =
+    replace('_', ' ')
+        .replace('-', ' ')
+        .trim()
+        .ifBlank { "Activity" }
+        .replaceFirstChar { it.uppercase() }
+
+private fun String.activityAccentColor(): Color =
+    when (lowercase()) {
+        "error", "failed", "failure" -> SlockColor.AccentRed
+        "tool_start", "tool", "working" -> SlockColor.AccentCyan
+        "thinking", "running", "active", "online" -> SlockColor.AccentLime
+        "text", "message", "system" -> SlockColor.AccentLavender
+        else -> SlockColor.BrandYellow
     }
 
-private val Presence.readableLabel: String
-    get() = when (this) {
-        Presence.Active -> "Active"
-        Presence.Away -> "Away"
-        Presence.Offline -> "Offline"
-    }
+private fun AgentActivityEntry.activityTimelineKey(): String =
+    id.ifBlank { "${type}:${timestamp.orEmpty()}:${body.orEmpty()}" }
 
 private val MemberProfile.inlineDescription: String
     get() = roleDescription ?: handle

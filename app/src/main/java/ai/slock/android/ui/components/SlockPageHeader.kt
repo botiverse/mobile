@@ -21,6 +21,7 @@ import ai.slock.android.ui.theme.SlockSize
 import ai.slock.android.ui.theme.SlockSpacing
 import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockType
+import ai.slock.android.ui.system.DeclareStatusBarColor
 
 @Composable
 fun SlockPageHeader(
@@ -30,6 +31,7 @@ fun SlockPageHeader(
     leadingContent: (@Composable () -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
+    DeclareStatusBarColor(SlockColor.BrandYellow)
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -74,6 +76,7 @@ fun SlockTitledPageHeader(
     modifier: Modifier = Modifier,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
+    DeclareStatusBarColor(SlockColor.BrandYellow)
     Row(
         modifier = modifier
             .fillMaxWidth()

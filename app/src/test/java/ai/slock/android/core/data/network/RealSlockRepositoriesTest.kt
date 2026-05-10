@@ -11,6 +11,7 @@ import ai.slock.android.core.data.repository.InboxFilter
 import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
 import ai.slock.android.core.data.repository.TaskFilter
 import ai.slock.android.core.model.AttachmentId
+import ai.slock.android.core.model.AgentStatus
 import ai.slock.android.core.model.AvatarReference
 import ai.slock.android.core.model.ConversationKind
 import ai.slock.android.core.model.InboxItemKind
@@ -39,9 +40,8 @@ import retrofit2.Response
 class RealSlockRepositoriesTest {
     @Test
     fun channelRepositoryMapsChannelsAndDmsToHomeSnapshot() {
-        val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(
+        val api =
+            FakeSlockApi(
                 channelsJson = """
                     {"channels":[{"id":"channel-1","name":"android-dev","description":"Android work","unreadCount":3,"lastMessagePreview":"Ready"}]}
                 """.trimIndent(),
@@ -49,6 +49,9 @@ class RealSlockRepositoriesTest {
                     [{"id":"dm-1","peerDisplayName":"Android-Developer","unreadCount":2,"lastMessagePreview":"Done"}]
                 """.trimIndent()
             )
+        val repository = RealChannelRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api
         )
 
         val result = runSuspend { repository.getHome(ServerId("server-1")) }
@@ -59,6 +62,33 @@ class RealSlockRepositoriesTest {
         assertEquals("android-dev", snapshot.channels.single().name)
         assertEquals(ConversationKind.DirectMessage, snapshot.directMessages.single().kind)
         assertEquals(5, snapshot.unreadTotal)
+        assertEquals(listOf<String?>(null), api.channelArchivedQueries)
+    }
+
+    @Test
+    fun channelRepositoryHidesArchivedChannelsFromHomeSnapshot() {
+        val repository = RealChannelRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api =
+                FakeSlockApi(
+                    channelsJson = """
+                        {
+                          "channels": [
+                            {"id":"channel-active","name":"active"},
+                            {"id":"channel-archived","name":"archived","archived":true},
+                            {"id":"channel-archived-alias","name":"archived alias","isArchived":true}
+                          ]
+                        }
+                    """.trimIndent(),
+                    directMessagesJson = """[]"""
+                )
+        )
+
+        val result = runSuspend { repository.getHome(ServerId("server-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val snapshot = (result as DataResult.Content).data
+        assertEquals(listOf("active"), snapshot.channels.map { it.name })
     }
 
     @Test
@@ -123,7 +153,8 @@ class RealSlockRepositoriesTest {
         assertTrue(result is DataResult.Content)
         val directMessage = (result as DataResult.Content).data.directMessages.single()
         assertEquals("QA-Tester", directMessage.name)
-        assertEquals(Presence.Away, directMessage.presence)
+        assertEquals(AgentStatus.Working, directMessage.agentStatus)
+        assertEquals(Presence.Active, directMessage.presence)
         assertEquals("agent-2", directMessage.presenceMemberId?.value)
     }
 
@@ -310,6 +341,60 @@ class RealSlockRepositoriesTest {
         assertEquals(12, snapshot.totalCount)
         assertEquals("thread:thread-1", snapshot.items.single().key)
         assertEquals(InboxItemKind.Thread, snapshot.items.single().kind)
+    }
+
+    @Test
+    fun inboxRepositoryMapsTimestampAliasesForUnifiedFormatting() {
+        val repository = RealInboxRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = FakeSlockApi(
+                inboxJson = """
+                    {
+                      "items": [
+                        {"channelId":"channel-1","channelName":"standard","timestamp":1778335200000},
+                        {"channelId":"channel-2","channelName":"activity","latest_activity_at":"2026-05-09 22:00:00+08:00"}
+                      ]
+                    }
+                """.trimIndent()
+            )
+        )
+
+        val result = runSuspend { repository.loadInitial(ServerId("server-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val items = (result as DataResult.Content).data.items
+        assertEquals("1778335200000", items.first { it.channelName == "standard" }.lastMessageAt)
+        assertEquals(
+            "2026-05-09 22:00:00+08:00",
+            items.first { it.channelName == "activity" }.latestActivityAt
+        )
+    }
+
+    @Test
+    fun taskRepositoryMapsTimestampAliasesForDefaultRecentSorting() {
+        val repository = RealTaskRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = FakeSlockApi(
+                serverTasksJson = """
+                    {
+                      "tasks": [
+                        {"id":"task-1","title":"Epoch task","timestamp":1778335200000},
+                        {"id":"task-2","title":"Activity task","latest_activity_at":"2026-05-09 22:00:00+08:00"}
+                      ]
+                    }
+                """.trimIndent()
+            )
+        )
+
+        val result = runSuspend { repository.getTasks(ServerId("server-1"), TaskFilter()) }
+
+        assertTrue(result is DataResult.Content)
+        val tasks = (result as DataResult.Content).data.tasks
+        assertEquals("1778335200000", tasks.first { it.title == "Epoch task" }.updatedAtLabel)
+        assertEquals(
+            "2026-05-09 22:00:00+08:00",
+            tasks.first { it.title == "Activity task" }.updatedAtLabel
+        )
     }
 
     @Test
@@ -1268,7 +1353,7 @@ class RealSlockRepositoriesTest {
                 {
                   "data": [
                     {"id":"user-3","displayName":"Taylor","handle":"taylor","kind":"user","role":"member","presence":"online"},
-                    {"id":"agent-2","displayName":"QA Agent","handle":"qa-agent","kind":"agent","role":"tester","presence":"online"}
+                    {"id":"agent-2","displayName":"QA Agent","handle":"qa-agent","kind":"agent","role":"tester","activity":"thinking"}
                   ]
                 }
             """.trimIndent(),
@@ -1287,7 +1372,7 @@ class RealSlockRepositoriesTest {
                 {
                   "items": [
                     {"id":"user-3","displayName":"Taylor","handle":"taylor","kind":"user","role":"member","presence":"online"},
-                    {"id":"agent-2","displayName":"QA Agent","handle":"qa-agent","kind":"agent","role":"tester","presence":"online"}
+                    {"id":"agent-2","displayName":"QA Agent","handle":"qa-agent","kind":"agent","role":"tester","activity":"thinking"}
                   ]
                 }
             """.trimIndent()
@@ -1308,7 +1393,9 @@ class RealSlockRepositoriesTest {
             0,
             members.count { it.id.value == "user-3" && it.kind == MemberKind.Agent }
         )
-        assertEquals(1, members.count { it.id.value == "agent-2" && it.kind == MemberKind.Agent })
+        val agent = members.single { it.id.value == "agent-2" && it.kind == MemberKind.Agent }
+        assertEquals(AgentStatus.Thinking, agent.agentStatus)
+        assertEquals(Presence.Active, agent.presence)
     }
 
     @Test
@@ -1521,6 +1608,7 @@ class RealSlockRepositoriesTest {
         val channelTaskCalls = mutableListOf<String>()
         val updatedTaskStatusBodies = mutableListOf<String>()
         val channelMessagesBeforeSeqCalls = mutableListOf<Long?>()
+        val channelArchivedQueries = mutableListOf<String?>()
         var inboxReadAllCallCount = 0
             private set
 
@@ -1547,8 +1635,10 @@ class RealSlockRepositoriesTest {
         override suspend fun settingsAgents(): Response<ResponseBody> =
             response(settingsAgentsJson)
 
-        override suspend fun channels(archived: String): Response<ResponseBody> =
-            response(channelsJson)
+        override suspend fun channels(archived: String?): Response<ResponseBody> {
+            channelArchivedQueries += archived
+            return response(channelsJson)
+        }
 
         override suspend fun createChannel(body: RequestBody): Response<ResponseBody> =
             response(createChannelJson)

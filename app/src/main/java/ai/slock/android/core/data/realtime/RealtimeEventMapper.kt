@@ -3,6 +3,7 @@ package ai.slock.android.core.data.realtime
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.Attachment
 import ai.slock.android.core.model.AttachmentId
+import ai.slock.android.core.model.AgentStatus
 import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
@@ -135,8 +136,19 @@ private fun JsonObject.toMemberPresenceUpdated(
     val memberId = string("memberId", "userId", "agentId", "id")
         ?: profileObject.string("memberId", "userId", "agentId", "id", "_id")
         ?: return null
-    val presence = string("presence", "status", "activity", "availability")
-        .toPresenceOrNull()
+    val agentStatus = string("agentStatus", "agent_status", "activity", "status", "presence", "availability")
+        .toAgentStatusOrNull()
+        ?: profileObject.string(
+            "agentStatus",
+            "agent_status",
+            "activity",
+            "status",
+            "presence",
+            "availability"
+        ).toAgentStatusOrNull()
+    val presence = agentStatus?.presence
+        ?: string("presence", "status", "activity", "availability")
+            .toPresenceOrNull()
         ?: profileObject.string("presence", "status", "activity", "availability").toPresenceOrNull()
         ?: return null
     val kind = defaultKind ?: when {
@@ -152,6 +164,7 @@ private fun JsonObject.toMemberPresenceUpdated(
         memberId = MemberId(memberId),
         presence = presence,
         kind = kind,
+        agentStatus = agentStatus.takeIf { kind == MemberKind.Agent || defaultKind == MemberKind.Agent },
         statusLabel = string("detail", "statusLabel", "message")
             ?: profileObject.string("detail", "statusLabel", "message")
     )
@@ -573,12 +586,15 @@ private fun String?.toPresence(fallback: Presence = Presence.Offline): Presence 
     toPresenceOrNull() ?: fallback
 
 private fun String?.toPresenceOrNull(): Presence? =
-    when (this?.lowercase()) {
-        "active", "online", "working", "available" -> Presence.Active
+    toAgentStatusOrNull()?.presence
+        ?: when (this?.lowercase()?.replace('-', '_')) {
+        "active", "online", "working", "available", "connected" -> Presence.Active
         "away", "idle", "busy" -> Presence.Away
-        "offline", "inactive" -> Presence.Offline
+        "offline", "inactive", "disconnected", "not_connected", "notconnected" -> Presence.Offline
         else -> null
     }
+
+private fun String?.toAgentStatusOrNull(): AgentStatus? = AgentStatus.fromWireValue(this)
 
 private fun JsonObject.unwrap(vararg names: String): JsonObject {
     for (name in names) {

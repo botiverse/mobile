@@ -42,3 +42,11 @@ fun InboxUiState.withBodyLoading(filter: InboxFilter = selectedFilter): InboxUiS
         selectedFilter = filter,
         previousContent = (loadState as? ScreenLoadState.Content)?.data ?: previousContent
     )
+
+fun InboxUiState.withSilentRefresh(filter: InboxFilter = selectedFilter): InboxUiState =
+    copy(
+        selectedFilter = filter,
+        focusedItemKey = null,
+        loadingMore = false,
+        previousContent = null
+    )

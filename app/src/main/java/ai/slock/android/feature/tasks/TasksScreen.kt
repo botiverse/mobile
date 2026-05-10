@@ -54,6 +54,7 @@ import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.components.SlockCheckbox
 import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.components.SlockStatusSelector
 import ai.slock.android.ui.components.SlockTaskBoard
 import ai.slock.android.ui.components.SlockTaskCardData
 import ai.slock.android.ui.components.SlockTaskStatus
@@ -66,6 +67,11 @@ import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
 import ai.slock.android.ui.theme.SlockType
 import ai.slock.android.ui.theme.slockHardShadow
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.util.Locale
 import kotlinx.coroutines.delay
 
@@ -212,9 +218,10 @@ private fun TasksLoadedBody(
         } else {
             emptySet()
         }
-    val channelScopedTasks = content.tasks.filter { task ->
-        selectedChannels.isEmpty() || task.channelName in selectedChannels
-    }
+    val channelScopedTasks =
+        content.tasks
+            .filter { task -> selectedChannels.isEmpty() || task.channelName in selectedChannels }
+            .sortedByRecentTaskTime()
     val channelScopedContent = content.copy(
         summaryCounts = TaskStatus.entries.associateWith { status ->
             channelScopedTasks.count { it.status == status }
@@ -902,7 +909,7 @@ private fun TasksListRow(
             .border(SlockStroke.Thin, SlockColor.EmptyStateGray)
             .clickable(role = Role.Button, onClick = onClick)
             .padding(SlockSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         Box(
@@ -931,133 +938,33 @@ private fun TasksListRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        TaskStatusSelector(
-            task = task,
-            copy = copy,
-            expanded = statusSelectorExpanded,
-            updating = updating,
-            onExpandedChange = { statusSelectorExpanded = it },
-            onStatusSelected = { status ->
-                statusSelectorExpanded = false
-                onStatusChange(status)
-            }
-        )
-        Icon(
-            imageVector = SlockIcons.ChevronRight,
-            contentDescription = null,
-            tint = SlockColor.TextMutedGray,
-            modifier = Modifier.size(16.dp)
-        )
-    }
-}
-
-@Composable
-private fun TaskStatusSelector(
-    task: TaskSummary,
-    copy: TasksScreenCopy,
-    expanded: Boolean,
-    updating: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    onStatusSelected: (TaskStatus) -> Unit
-) {
-    Box {
-        Row(
-            modifier =
-                Modifier
-                    .background(task.status.toSlockTaskStatus().statusColor)
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                    .clickable(
-                        enabled = !updating,
-                        role = Role.Button,
-                        onClick = { onExpandedChange(!expanded) }
-                    )
-                    .padding(horizontal = SlockSpacing.Sm, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            Text(
-                text =
-                    if (updating) {
-                        copy.statusUpdating.uppercase()
-                    } else {
-                        copy.statusLabel(task.status).uppercase()
-                    },
-                style = SlockType.SectionLabel,
-                color = SlockColor.TextBlack,
-                maxLines = 1
-            )
             Icon(
-                imageVector = SlockIcons.ChevronDown,
-                contentDescription = copy.changeStatus,
-                tint = SlockColor.TextBlack,
-                modifier = Modifier.size(12.dp)
+                imageVector = SlockIcons.ChevronRight,
+                contentDescription = null,
+                tint = SlockColor.TextMutedGray,
+                modifier = Modifier.size(16.dp)
+            )
+            SlockStatusSelector(
+                status = task.status.toSlockTaskStatus(),
+                label =
+                    if (updating) {
+                        copy.statusUpdating
+                    } else {
+                        copy.statusLabel(task.status)
+                    },
+                expanded = statusSelectorExpanded,
+                enabled = !updating,
+                onExpandedChange = { statusSelectorExpanded = it },
+                onStatusSelected = { status ->
+                    statusSelectorExpanded = false
+                    onStatusChange(status.toTaskStatus())
+                }
             )
         }
-        if (expanded) {
-            Popup(
-                alignment = Alignment.TopEnd,
-                offset = IntOffset(0, 28),
-                onDismissRequest = { onExpandedChange(false) },
-                properties = PopupProperties(focusable = true)
-            ) {
-                Column(
-                    modifier =
-                        Modifier
-                            .widthIn(min = 156.dp)
-                            .padding(
-                                end = SlockShadow.Small.offsetX,
-                                bottom = SlockShadow.Small.offsetY
-                            )
-                            .slockHardShadow(SlockShadow.Small)
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                ) {
-                    TaskStatus.entries.forEach { status ->
-                        TaskStatusDropdownRow(
-                            status = status,
-                            label = copy.statusLabel(status),
-                            selected = status == task.status,
-                            onClick = { onStatusSelected(status) }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TaskStatusDropdownRow(
-    status: TaskStatus,
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 38.dp)
-                .background(if (selected) status.toSlockTaskStatus().statusColor else SlockColor.SurfaceWhite)
-                .clickable(role = Role.Button, onClick = onClick)
-                .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(8.dp)
-                    .background(status.toSlockTaskStatus().statusColor, RoundedCornerShape(8.dp))
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack, RoundedCornerShape(8.dp))
-        )
-        Text(
-            text = label.uppercase(),
-            style = SlockType.SectionLabel,
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 
@@ -1110,6 +1017,47 @@ private fun TasksContent.toTaskColumns(
         .map { it.toTaskCardData(copy, onTaskClick, onTaskStatusChange, updatingTaskId) }
         .groupBy { it.status }
 }
+
+private fun List<TaskSummary>.sortedByRecentTaskTime(): List<TaskSummary> =
+    sortedWith(
+        compareByDescending<TaskSummary> { it.updatedAtLabel.toTaskSortEpochMillis() }
+            .thenByDescending { it.taskNumber ?: Int.MIN_VALUE }
+            .thenBy { it.title.lowercase(Locale.ROOT) }
+    )
+
+private fun String.toTaskSortEpochMillis(): Long {
+    val trimmed = trim()
+    if (trimmed.isEmpty()) return Long.MIN_VALUE
+    if (trimmed.all { it.isDigit() }) {
+        val value = trimmed.toLongOrNull() ?: return Long.MIN_VALUE
+        return when (trimmed.length) {
+            10 -> value * 1_000L
+            13 -> value
+            else -> Long.MIN_VALUE
+        }
+    }
+    val isoLikeTrimmed = trimmed.replace(' ', 'T')
+    return parseTaskSortTimeOrNull { Instant.parse(trimmed).toEpochMilli() }
+        ?: parseTaskSortTimeOrNull { OffsetDateTime.parse(trimmed).toInstant().toEpochMilli() }
+        ?: parseTaskSortTimeOrNull { ZonedDateTime.parse(trimmed).toInstant().toEpochMilli() }
+        ?: parseTaskSortTimeOrNull {
+            LocalDateTime.parse(trimmed).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        }
+        ?: parseTaskSortTimeOrNull { Instant.parse(isoLikeTrimmed).toEpochMilli() }
+        ?: parseTaskSortTimeOrNull { OffsetDateTime.parse(isoLikeTrimmed).toInstant().toEpochMilli() }
+        ?: parseTaskSortTimeOrNull { ZonedDateTime.parse(isoLikeTrimmed).toInstant().toEpochMilli() }
+        ?: parseTaskSortTimeOrNull {
+            LocalDateTime.parse(isoLikeTrimmed).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        }
+        ?: Long.MIN_VALUE
+}
+
+private inline fun parseTaskSortTimeOrNull(block: () -> Long): Long? =
+    try {
+        block()
+    } catch (_: Exception) {
+        null
+    }
 
 private fun TaskSummary.toTaskCardData(
     copy: TasksScreenCopy,

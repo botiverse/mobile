@@ -12,6 +12,7 @@ import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import ai.slock.android.core.data.repository.DataResult
 import ai.slock.android.core.data.repository.RealtimeSubscription
+import ai.slock.android.core.model.AgentStatus
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MessageType
@@ -314,10 +315,21 @@ class RealtimeRepositoryTest {
         val agent = agentActivity as RealtimeEvent.MemberPresenceUpdated
         assertEquals("agent-1", agent.memberId.value)
         assertEquals(MemberKind.Agent, agent.kind)
+        assertEquals(AgentStatus.Working, agent.agentStatus)
         assertEquals(Presence.Active, agent.presence)
         assertEquals("Running tests", agent.statusLabel)
         assertTrue(memberUpdated is RealtimeEvent.MemberPresenceUpdated)
         assertEquals(Presence.Away, (memberUpdated as RealtimeEvent.MemberPresenceUpdated).presence)
+
+        val disconnected = mapper.map(
+            RealtimeSocketEvents.AgentActivity,
+            mapOf(
+                "agentId" to "agent-1",
+                "activity" to "disconnected"
+            )
+        ) as RealtimeEvent.MemberPresenceUpdated
+        assertEquals(AgentStatus.Disconnected, disconnected.agentStatus)
+        assertEquals(Presence.Offline, disconnected.presence)
     }
 
     @Test

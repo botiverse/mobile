@@ -47,14 +47,12 @@ fun HomeContent.withPreservedConversationUnread(previous: HomeContent?): HomeCon
     if (previous == null) return this
     val preservedChannels = channels.map { it.withPreservedUnread(previous.conversationUnreadFor(it)) }
     val preservedDirectMessages = directMessages.map { it.withPreservedUnread(previous.conversationUnreadFor(it)) }
+    val rowTotal = preservedChannels.sumOf { it.unreadCount } + preservedDirectMessages.sumOf { it.unreadCount }
     return copy(
         channels = preservedChannels,
         directMessages = preservedDirectMessages,
-        unreadTotal = preserveUnreadTotal(
-            previous = previous,
-            channels = preservedChannels,
-            directMessages = preservedDirectMessages
-        )
+        unreadTotal = rowTotal,
+        serverUnreadCount = maxOf(serverUnreadCount, rowTotal)
     )
 }
 
@@ -69,6 +67,7 @@ fun HomeContent.withAgentDirectMessagePresence(members: List<MemberProfile>): Ho
             if (agent != null) {
                 conversation.copy(
                     presence = agent.presence,
+                    agentStatus = agent.agentStatus,
                     presenceMemberId = conversation.presenceMemberId ?: agent.id
                 )
             } else {
@@ -122,16 +121,3 @@ private fun MemberProfile.matchesDirectMessage(conversation: ConversationSummary
         handle.equals(conversation.name, ignoreCase = true) ||
         displayName.equals(conversation.name, ignoreCase = true) ||
         handle.equals(conversation.name.removePrefix("@"), ignoreCase = true)
-
-private fun HomeContent.preserveUnreadTotal(
-    previous: HomeContent,
-    channels: List<ConversationSummary>,
-    directMessages: List<ConversationSummary>
-): Int {
-    val rowTotal = channels.sumOf { it.unreadCount } + directMessages.sumOf { it.unreadCount }
-    return when {
-        rowTotal > 0 -> rowTotal
-        unreadTotal > 0 && previous.unreadTotal <= 0 -> unreadTotal
-        else -> 0
-    }
-}

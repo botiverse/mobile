@@ -134,7 +134,8 @@ data class AgentActivityEntry(
     val type: String,
     val title: String,
     val body: String? = null,
-    val timestamp: String? = null
+    val timestamp: String? = null,
+    val details: List<Pair<String, String>> = emptyList()
 )
 
 data class ChannelMemberSnapshot(

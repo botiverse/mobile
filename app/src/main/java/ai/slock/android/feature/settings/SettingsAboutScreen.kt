@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,9 +48,7 @@ data class SettingsAboutSnapshot(
 fun SettingsAboutScreen(
     snapshot: SettingsAboutSnapshot,
     modifier: Modifier = Modifier,
-    onCopyLogs: () -> Unit = {},
-    onShareLogs: () -> Unit = {},
-    onClearLogs: () -> Unit = {}
+    onOpenDiagnostics: () -> Unit = {}
 ) {
     Column(
         modifier = modifier
@@ -79,12 +78,38 @@ fun SettingsAboutScreen(
                 stringResource(R.string.settings_about_notifications) to snapshot.notificationStatus
             )
         )
-        SettingsDiagnosticsCard(
-            logs = snapshot.diagnosticLogs,
+        SettingsDiagnosticsEntry(onOpenDiagnostics = onOpenDiagnostics)
+    }
+}
+
+@Composable
+fun SettingsDiagnosticsScreen(
+    logs: List<SanitizedDiagnosticLogEntry>,
+    modifier: Modifier = Modifier,
+    onCopyLogs: () -> Unit = {},
+    onShareLogs: () -> Unit = {},
+    onClearLogs: () -> Unit = {}
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(SlockColor.SurfaceWhite)
+            .verticalScroll(rememberScrollState())
+            .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+    ) {
+        Text(
+            text = stringResource(R.string.settings_about_diagnostics_detail),
+            style = SlockType.Body,
+            color = SlockColor.TextMutedGray
+        )
+        SettingsDiagnosticsActions(
+            logsAvailable = logs.isNotEmpty(),
             onCopyLogs = onCopyLogs,
             onShareLogs = onShareLogs,
             onClearLogs = onClearLogs
         )
+        SettingsDiagnosticsText(logs = logs)
     }
 }
 
@@ -178,11 +203,8 @@ private fun SettingsAboutInfoRow(label: String, value: String) {
 }
 
 @Composable
-private fun SettingsDiagnosticsCard(
-    logs: List<SanitizedDiagnosticLogEntry>,
-    onCopyLogs: () -> Unit,
-    onShareLogs: () -> Unit,
-    onClearLogs: () -> Unit
+private fun SettingsDiagnosticsEntry(
+    onOpenDiagnostics: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -198,35 +220,27 @@ private fun SettingsDiagnosticsCard(
             color = SlockColor.TextBlack
         )
         Text(
-            text = stringResource(R.string.settings_about_diagnostics_detail),
+            text = stringResource(R.string.settings_about_diagnostics_entry_detail),
             style = SlockType.Caption,
             color = SlockColor.TextMutedGray
         )
-        if (logs.isEmpty()) {
-            Text(
-                text = stringResource(R.string.settings_about_no_logs),
-                style = SlockType.Body,
-                color = SlockColor.TextMutedGray,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(SlockColor.EmptyStateGray)
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                    .padding(SlockSpacing.Md)
-            )
-        } else {
-            logs.takeLast(12).forEach { log ->
-                Text(
-                    text = "${log.timestampMillis} ${log.tag}: ${log.message}",
-                    style = SlockType.Caption,
-                    color = SlockColor.TextBlack,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(SlockColor.EmptyStateGray)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                        .padding(SlockSpacing.Sm)
-                )
-            }
-        }
+        SlockButton(
+            text = stringResource(R.string.settings_about_open_diagnostics),
+            onClick = onOpenDiagnostics,
+            modifier = Modifier.fillMaxWidth(),
+            variant = SlockButtonVariant.Outline
+        )
+    }
+}
+
+@Composable
+private fun SettingsDiagnosticsActions(
+    logsAvailable: Boolean,
+    onCopyLogs: () -> Unit,
+    onShareLogs: () -> Unit,
+    onClearLogs: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
@@ -236,14 +250,14 @@ private fun SettingsDiagnosticsCard(
                 onClick = onCopyLogs,
                 modifier = Modifier.weight(1f),
                 variant = SlockButtonVariant.Outline,
-                enabled = logs.isNotEmpty()
+                enabled = logsAvailable
             )
             SlockButton(
                 text = stringResource(R.string.settings_about_share_logs),
                 onClick = onShareLogs,
                 modifier = Modifier.weight(1f),
                 variant = SlockButtonVariant.Yellow,
-                enabled = logs.isNotEmpty()
+                enabled = logsAvailable
             )
         }
         SlockButton(
@@ -251,7 +265,35 @@ private fun SettingsDiagnosticsCard(
             onClick = onClearLogs,
             modifier = Modifier.fillMaxWidth(),
             variant = SlockButtonVariant.Red,
-            enabled = logs.isNotEmpty()
+            enabled = logsAvailable
+        )
+    }
+}
+
+@Composable
+private fun SettingsDiagnosticsText(
+    logs: List<SanitizedDiagnosticLogEntry>,
+) {
+    val text =
+        if (logs.isEmpty()) {
+            stringResource(R.string.settings_about_no_logs)
+        } else {
+            logs.takeLast(80).joinToString(separator = "\n") { log ->
+                "${log.timestampMillis} ${log.tag}: ${log.message}"
+            }
+        }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Text(
+            text = text,
+            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace),
+            color = if (logs.isEmpty()) SlockColor.TextMutedGray else SlockColor.TextBlack
         )
     }
 }

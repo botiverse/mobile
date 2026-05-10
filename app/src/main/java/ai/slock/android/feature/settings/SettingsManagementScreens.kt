@@ -697,7 +697,9 @@ fun SettingsMobileScreen(
         modifier: Modifier = Modifier,
         chatLayoutPreference: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Default,
         localeSnapshot: LocaleSnapshot = LocaleSnapshot(current = AppLocale.Default),
+        pushNotificationsEnabledByUser: Boolean = snapshot.pushNotifications.enabled,
         onRequestNotificationPermission: () -> Unit = {},
+        onPushNotificationsEnabledChange: (Boolean) -> Unit = {},
         onChatLayoutPreferenceSelected: (MyMessageAlignmentPreference) -> Unit = {},
         onLocaleSelected: (AppLocale) -> Unit = {},
         onTogglePush: () -> Unit = {},
@@ -706,8 +708,8 @@ fun SettingsMobileScreen(
         onToggleMute: () -> Unit = {}
 ) {
     var pushEnabled by
-            remember(snapshot, notificationPermissionGranted) {
-                mutableStateOf(snapshot.pushNotifications.enabled && notificationPermissionGranted)
+            remember(snapshot, notificationPermissionGranted, pushNotificationsEnabledByUser) {
+                mutableStateOf(pushNotificationsEnabledByUser && notificationPermissionGranted)
             }
     var feedback by remember(snapshot) { mutableStateOf<String?>(null) }
     var showSettingsAction by remember(snapshot) { mutableStateOf(false) }
@@ -786,6 +788,7 @@ fun SettingsMobileScreen(
                 onPrimary = {
                     if (pushEnabled) {
                         pushEnabled = false
+                        onPushNotificationsEnabledChange(false)
                         feedback = notificationsDisabledFeedback
                     } else if (!notificationPermissionGranted) {
                         if (notificationPermissionAvailable) {
@@ -797,6 +800,7 @@ fun SettingsMobileScreen(
                         }
                     } else {
                         pushEnabled = true
+                        onPushNotificationsEnabledChange(true)
                         feedback = notificationsEnabledFeedback
                     }
                     onTogglePush()
@@ -810,6 +814,7 @@ fun SettingsMobileScreen(
                         feedback = permissionRequiredSendFeedback
                     } else {
                         pushEnabled = true
+                        onPushNotificationsEnabledChange(true)
                         feedback = sendingTestFeedback
                         onSendTest()
                     }

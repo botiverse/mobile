@@ -94,13 +94,16 @@
     <string name="settings_mobile_title">Mobile</string>
     <string name="settings_mobile_subtitle">Push notifications and server mute</string>
     <string name="settings_about_title">About</string>
-    <string name="settings_about_home_subtitle">App info and sanitized diagnostics</string>
-    <string name="settings_about_subtitle">App info and diagnostics</string>
+    <string name="settings_about_home_subtitle">App info and runtime status</string>
+    <string name="settings_about_subtitle">App info and runtime status</string>
     <string name="settings_about_logo">SLOCK</string>
     <string name="settings_about_app_section">App</string>
     <string name="settings_about_status_section">Status</string>
     <string name="settings_about_diagnostics_section">Diagnostics</string>
+    <string name="settings_about_diagnostics_title">Diagnostics</string>
+    <string name="settings_about_diagnostics_entry_detail">Open sanitized runtime logs when you need to inspect app behavior.</string>
     <string name="settings_about_diagnostics_detail">Recent app diagnostics are sanitized before display, copy, or share.</string>
+    <string name="settings_about_open_diagnostics">Open diagnostics</string>
     <string name="settings_about_no_logs">No diagnostics recorded yet.</string>
     <string name="settings_about_version">Version</string>
     <string name="settings_about_build">Build</string>
@@ -232,6 +235,9 @@
     <string name="settings_notification_test_text">Mobile Settings can show local Android notifications.</string>
     <string name="settings_notification_channel_name">Settings test notifications</string>
     <string name="settings_notification_channel_description">Local test notifications from Mobile Settings.</string>
+    <string name="inbox_notification_channel_name">Inbox notifications</string>
+    <string name="inbox_notification_channel_description">Unread inbox updates from Slock.</string>
+    <string name="inbox_notification_title">New message in %1$s</string>
     <string name="bottom_tab_home">Home</string>
     <string name="bottom_tab_tasks">Tasks</string>
     <string name="bottom_tab_members">Members</string>
@@ -281,6 +287,11 @@
     <string name="home_create_channel_agents_label">Agents</string>
     <string name="home_create_channel_users_label">People</string>
     <string name="home_create_channel_no_members">No members available yet.</string>
+    <string name="home_create_channel_members_loading">Loading members…</string>
+    <string name="home_create_channel_members_error">Could not load members: %1$s</string>
+    <string name="home_create_channel_member_selected">Selected</string>
+    <string name="home_create_channel_member_joined">Joined</string>
+    <string name="home_create_channel_member_add">Add</string>
     <string name="home_create_channel_error">Could not create channel. Error: %1$s</string>
     <string name="home_search">Search</string>
     <string name="home_inbox">Inbox</string>
@@ -307,6 +318,7 @@
     <string name="inbox_loading_more">Loading more...</string>
     <string name="inbox_more_items_available">More items available</string>
     <string name="inbox_open_item">Open inbox item</string>
+    <string name="inbox_mark_item_as_read">Mark item as read</string>
     <string name="inbox_badge_new">New</string>
     <string name="inbox_unread_count">%1$d unread</string>
     <string name="inbox_reply_count">%1$d replies</string>
@@ -362,6 +374,7 @@
     <string name="tasks_status_closed">Closed</string>
     <string name="tasks_empty_column_title">No %1$s tasks</string>
     <string name="tasks_empty_column_detail">Drop a task here when the state changes.</string>
+    <string name="thread_composer_insert_newline">Insert newline</string>
     <string name="common_loading">Loading</string>
     <string name="common_loading_sample_state">Loading sample state</string>
     <string name="common_preparing_local_state">Preparing local state.</string>

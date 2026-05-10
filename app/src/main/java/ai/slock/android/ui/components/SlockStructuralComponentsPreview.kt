@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
@@ -62,6 +63,7 @@ import ai.slock.android.R
 import ai.slock.android.core.model.AvatarReference
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockShadow
+import ai.slock.android.ui.theme.SlockSize
 import ai.slock.android.ui.theme.SlockSpacing
 import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
@@ -78,6 +80,7 @@ private val ChannelSymbolFontSize = 17.sp
 private val ChannelAvatarSize = 22.dp
 private val ChannelAvatarFontSize = 11.sp
 private val ChannelRowHeight = 36.dp
+private val HomeBottomTabListReserve = SlockSize.BottomBarHeight + SlockSpacing.Xl
 private val ChannelRowHorizontalPadding = 10.dp
 private val SectionChevronSize = 14.dp
 private val MiniActionSize = 36.dp
@@ -185,11 +188,14 @@ fun SlockStructuralHomeShell(
     directMessages: List<SlockHomeConversationItem> = emptyList(),
     selectedChannelId: String? = "android-dev",
     serverUnreadCount: Int = 5,
+    inboxUnreadCount: Int = 0,
+    savedCount: Int = 0,
     serverSwitcherExpanded: Boolean = false,
     contentRefreshing: Boolean = false,
     contentRefreshEnabled: Boolean = true,
     selectedTabKey: String = "home",
     showBottomBar: Boolean = true,
+    bottomContentPadding: Dp = if (showBottomBar) HomeBottomTabListReserve else SlockSpacing.Lg,
     outerPadding: Dp = SlockSpacing.Md,
     onContentRefresh: () -> Unit = {},
     onServerBadgeClick: () -> Unit = {},
@@ -234,7 +240,12 @@ fun SlockStructuralHomeShell(
                         .fillMaxSize()
                         .offset(y = it)
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = SlockSpacing.Lg, vertical = SlockSpacing.Lg),
+                        .padding(
+                            start = SlockSpacing.Lg,
+                            top = SlockSpacing.Lg,
+                            end = SlockSpacing.Lg,
+                            bottom = bottomContentPadding
+                        ),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
                 ) {
                     SidebarActionRow(
@@ -245,11 +256,13 @@ fun SlockStructuralHomeShell(
                     SidebarActionRow(
                         icon = SlockIcons.Inbox,
                         label = labels.inbox,
+                        badge = inboxUnreadCount.takeIf { it > 0 }?.toString(),
                         onClick = onInboxClick
                     )
                     SidebarActionRow(
                         icon = SlockIcons.Bookmark,
                         label = labels.saved,
+                        trailingText = savedCount.takeIf { it > 0 }?.toString(),
                         onClick = onSavedClick
                     )
                     Spacer(modifier = Modifier.height(SlockSpacing.Xs))
@@ -321,19 +334,26 @@ fun SlockStructuralHomeShell(
             }
         }
         if (showBottomBar) {
-            SlockBottomTabBar(
-                items = listOf(
-                    SlockBottomTabItem("home", "HOME", Icons.Outlined.Home),
-                    SlockBottomTabItem("tasks", "TASKS", SlockIcons.ListTodo),
-                    SlockBottomTabItem("members", "MEMBERS", Icons.Outlined.Person),
-                    SlockBottomTabItem("settings", "SETTINGS", Icons.Outlined.Settings)
-                ),
-                selectedKey = selectedTabKey,
-                onSelected = onTabSelected,
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .offset(y = -SlockStroke.Default)
-            )
+                    .navigationBarsPadding()
+                    .padding(bottom = SlockSpacing.Xs)
+            ) {
+                SlockBottomTabBar(
+                    items = listOf(
+                        SlockBottomTabItem("home", "HOME", Icons.Outlined.Home),
+                        SlockBottomTabItem("tasks", "TASKS", SlockIcons.ListTodo),
+                        SlockBottomTabItem("members", "MEMBERS", Icons.Outlined.Person),
+                        SlockBottomTabItem("settings", "SETTINGS", Icons.Outlined.Settings)
+                    ),
+                    selectedKey = selectedTabKey,
+                    onSelected = onTabSelected,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(y = -SlockStroke.Default)
+                )
+            }
         }
     }
 }
@@ -588,6 +608,7 @@ private fun SidebarActionRow(
     label: String,
     modifier: Modifier = Modifier,
     badge: String? = null,
+    trailingText: String? = null,
     onClick: (() -> Unit)? = null
 ) {
     Row(
@@ -621,6 +642,14 @@ private fun SidebarActionRow(
         )
         if (badge != null) {
             CountPill(text = badge, color = SlockColor.AccentPink)
+        } else if (trailingText != null) {
+            Text(
+                text = trailingText,
+                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

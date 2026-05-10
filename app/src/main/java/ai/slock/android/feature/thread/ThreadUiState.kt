@@ -108,15 +108,18 @@ fun ThreadUiState.mergeRealtimeTaskEvent(event: RealtimeEvent): ThreadUiState =
         else -> this
     }
 
+fun ThreadUiState.withTaskStatusUpdate(task: TaskSummary): ThreadUiState =
+    mergeRealtimeTasks(listOf(task))
+
 private fun ThreadUiState.mergeRealtimeTasks(tasks: List<TaskSummary>): ThreadUiState {
     if (tasks.isEmpty()) return this
     val contentState = loadState as? ScreenLoadState.Content ?: return this
     val content = contentState.data
     val updatedMessages = content.messages.map { message -> message.withRealtimeTask(tasks) }
     val updatedParentMessage = content.parentMessage?.withRealtimeTask(tasks)
+    val updatedTaskIds = tasks.map { it.id }.toSet()
     val updatedTasks =
-        (content.tasks + tasks)
-            .distinctBy { it.id }
+        (content.tasks.filterNot { it.id in updatedTaskIds } + tasks)
             .sortedWith(compareBy(nullsLast<Int>()) { it.taskNumber })
     return copy(
         loadState =

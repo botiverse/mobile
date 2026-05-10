@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import ai.slock.android.core.model.AgentStatus
 import ai.slock.android.core.model.AvatarReference
 import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
@@ -40,7 +41,8 @@ data class SlockMemberPickerItem(
     val avatarUrl: String? = null,
     val avatar: AvatarReference? = AvatarReference.fromWireValue(avatarUrl),
     val kind: MemberKind,
-    val presence: Presence
+    val presence: Presence,
+    val agentStatus: AgentStatus? = null
 )
 
 fun MemberProfile.toSlockMemberPickerItem(
@@ -59,7 +61,8 @@ fun MemberProfile.toSlockMemberPickerItem(
         avatarUrl = avatarUrl,
         avatar = avatar,
         kind = kind,
-        presence = presence
+        presence = presence,
+        agentStatus = agentStatus
     )
 
 @Composable
@@ -162,7 +165,7 @@ private fun SlockMemberPickerRow(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .size(9.dp)
-                        .background(member.presence.presenceColor)
+                        .background(member.agentStatus.agentStatusColor(member.presence))
                         .border(SlockStroke.Thin, SlockColor.BorderBlack)
                 )
             }
@@ -176,7 +179,7 @@ private fun SlockMemberPickerRow(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = if (member.kind == MemberKind.Human) member.role else "${member.role} · ${member.presence.name.lowercase()}",
+                text = if (member.kind == MemberKind.Human) member.role else "${member.role} · ${member.agentStatus.agentStatusLabel(member.presence)}",
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
@@ -200,11 +203,4 @@ private val MemberKind.avatarColor: Color
         MemberKind.Human -> SlockColor.AccentLavender
         MemberKind.Agent -> SlockColor.AccentPink
         MemberKind.System -> SlockColor.AccentCyan
-    }
-
-private val Presence.presenceColor: Color
-    get() = when (this) {
-        Presence.Active -> SlockColor.AccentLime
-        Presence.Away -> SlockColor.BrandYellow
-        Presence.Offline -> SlockColor.TextMutedGray
     }

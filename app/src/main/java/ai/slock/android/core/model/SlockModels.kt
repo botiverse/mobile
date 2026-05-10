@@ -47,6 +47,7 @@ data class ConversationSummary(
     val lastMessageAt: String? = null,
     val lastMessageSenderName: String? = null,
     val presence: Presence? = null,
+    val agentStatus: AgentStatus? = null,
     val presenceMemberId: MemberId? = null,
     val hasDraft: Boolean = false,
     val joined: Boolean = true,
@@ -71,6 +72,30 @@ enum class Presence {
     Active,
     Away,
     Offline
+}
+
+enum class AgentStatus(val label: String, val presence: Presence) {
+    Online("Online", Presence.Active),
+    Working("Working", Presence.Active),
+    Thinking("Thinking", Presence.Active),
+    Idle("Idle", Presence.Away),
+    Disconnected("Disconnected", Presence.Offline),
+    Offline("Offline", Presence.Offline),
+    Error("Error", Presence.Offline);
+
+    companion object {
+        fun fromWireValue(value: String?): AgentStatus? =
+            when (value?.trim()?.lowercase()?.replace('-', '_')) {
+                "online", "active", "available", "connected" -> Online
+                "working", "running", "busy" -> Working
+                "thinking" -> Thinking
+                "idle", "away" -> Idle
+                "disconnected", "not_connected", "notconnected" -> Disconnected
+                "offline", "inactive" -> Offline
+                "error", "failed", "failure" -> Error
+                else -> null
+            }
+    }
 }
 
 sealed interface AvatarReference {
@@ -116,6 +141,7 @@ data class MemberProfile(
         ?: gravatarHash?.toGravatarAvatarReference(),
     val avatarLabel: String = displayName.take(1).uppercase(),
     val presence: Presence = Presence.Offline,
+    val agentStatus: AgentStatus? = null,
     val permissionBadges: List<String> = emptyList()
 )
 
@@ -129,6 +155,7 @@ data class AgentProfile(
     val avatar: AvatarReference? = AvatarReference.fromWireValue(avatarUrl),
     val avatarLabel: String = displayName.take(1).uppercase(),
     val presence: Presence = Presence.Offline,
+    val agentStatus: AgentStatus? = null,
     val statusLabel: String? = null,
     val runtime: String? = null,
     val model: String? = null,
@@ -147,6 +174,7 @@ data class AgentProfile(
             avatar = avatar,
             avatarLabel = avatarLabel,
             presence = presence,
+            agentStatus = agentStatus,
             permissionBadges = permissionBadges
         )
 }
@@ -272,6 +300,7 @@ sealed interface RealtimeEvent {
         val memberId: MemberId,
         val presence: Presence,
         val kind: MemberKind? = null,
+        val agentStatus: AgentStatus? = null,
         val statusLabel: String? = null
     ) : RealtimeEvent
     data class SyncResumeResponse(

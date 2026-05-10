@@ -24,8 +24,11 @@ import ai.slock.android.core.data.network.RealSlockApiFactory
 import ai.slock.android.core.data.network.RealTaskRepository
 import ai.slock.android.core.data.preferences.ChatLayoutPreferenceSnapshot
 import ai.slock.android.core.data.preferences.MyMessageAlignmentPreference
+import ai.slock.android.core.data.preferences.NotificationPreferenceRepository
+import ai.slock.android.core.data.preferences.PersistentNotificationPreferenceRepository
 import ai.slock.android.core.data.preferences.PersistentChatLayoutPreferenceRepository
 import ai.slock.android.core.data.preferences.SharedPreferencesChatLayoutPreferenceStore
+import ai.slock.android.core.data.preferences.SharedPreferencesNotificationPreferenceStore
 import ai.slock.android.core.data.realtime.SessionRealtimeRepository
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.android.core.data.realtime.SocketIoSocketTransport
@@ -54,7 +57,9 @@ import ai.slock.android.core.data.repository.InboxSnapshot
 import ai.slock.android.core.data.repository.MemberRepository
 import ai.slock.android.core.data.repository.MemberSnapshot
 import ai.slock.android.core.data.repository.OpenDirectMessageResult
+import ai.slock.android.core.data.repository.ReadReceiptCoordinator
 import ai.slock.android.core.data.repository.ReadReceiptRepository
+import ai.slock.android.core.data.repository.ReadReceiptRequest
 import ai.slock.android.core.data.repository.RealtimeRepository
 import ai.slock.android.core.data.repository.RealtimeSubscription
 import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
@@ -100,9 +105,11 @@ import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
+import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
+import ai.slock.android.core.notification.shouldShowInboxNotification
 import ai.slock.android.core.model.toGravatarAvatarReference
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.ScreenLoadState
@@ -124,12 +131,14 @@ import ai.slock.android.feature.inbox.InboxUiState
 import ai.slock.android.feature.inbox.SavedScreen
 import ai.slock.android.feature.inbox.withBodyLoading
 import ai.slock.android.feature.inbox.withFilterLoading
+import ai.slock.android.feature.inbox.withSilentRefresh
 import ai.slock.android.feature.members.MembersContent
 import ai.slock.android.feature.members.MembersRouteScreen
 import ai.slock.android.feature.members.MembersUiState
 import ai.slock.android.feature.sample.SlockStateSamples
 import ai.slock.android.feature.settings.SettingsAboutScreen
 import ai.slock.android.feature.settings.SettingsAboutSnapshot
+import ai.slock.android.feature.settings.SettingsDiagnosticsScreen
 import ai.slock.android.feature.settings.SettingsAccountProfile
 import ai.slock.android.feature.settings.SettingsAccountScreen
 import ai.slock.android.feature.settings.SettingsBillingScreen
@@ -182,6 +191,7 @@ import ai.slock.android.feature.thread.ThreadUiState
 import ai.slock.android.feature.thread.mergeRefreshedThreadSnapshot
 import ai.slock.android.feature.thread.threadMarkdownTaskReferenceKey
 import ai.slock.android.feature.thread.mergeRealtimeTaskEvent
+import ai.slock.android.feature.thread.withTaskStatusUpdate
 import ai.slock.android.feature.thread.withThreadRefreshStatus
 import ai.slock.android.ui.components.SlockBottomTabBar
 import ai.slock.android.ui.components.SlockBottomTabItem
@@ -191,6 +201,8 @@ import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.components.SlockIcons
 import ai.slock.android.ui.components.SlockMemberPickerSection
+import ai.slock.android.ui.components.SlockMemberPickerMessage
+import ai.slock.android.ui.components.SlockMemberPickerItem
 import ai.slock.android.ui.components.SlockModal
 import ai.slock.android.ui.components.SlockModalAction
 import ai.slock.android.ui.components.SlockModalActionStyle
@@ -204,6 +216,7 @@ import ai.slock.android.ui.components.toSlockMemberPickerItem
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
 import ai.slock.android.ui.theme.SlockShadow
+import ai.slock.android.ui.theme.SlockSize
 import ai.slock.android.ui.theme.SlockSpacing
 import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
@@ -217,6 +230,7 @@ import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -254,6 +268,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.rememberScrollState
@@ -282,6 +297,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -444,11 +461,18 @@ fun SlockApp(
         activityActions: AppActivityActions = AppActivityActions()
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val localeStore = remember { SharedPreferencesLocalePreferenceStore(context) }
     val localeRepository = remember { PersistentLocaleRepository(localeStore) }
     val chatLayoutPreferenceStore = remember { SharedPreferencesChatLayoutPreferenceStore(context) }
     val chatLayoutPreferenceRepository = remember {
         PersistentChatLayoutPreferenceRepository(chatLayoutPreferenceStore)
+    }
+    val notificationPreferenceStore = remember {
+        SharedPreferencesNotificationPreferenceStore(context)
+    }
+    val notificationPreferenceRepository: NotificationPreferenceRepository = remember {
+        PersistentNotificationPreferenceRepository(notificationPreferenceStore)
     }
     val localeScope = rememberCoroutineScope()
     var localeSnapshot by remember {
@@ -460,6 +484,9 @@ fun SlockApp(
                         myMessageAlignment = chatLayoutPreferenceStore.readMyMessageAlignmentSync()
                 )
         )
+    }
+    var notificationsEnabledByUser by remember {
+        mutableStateOf(notificationPreferenceStore.readNotificationEnabledSync())
     }
 
     SlockLocaleProvider(locale = localeSnapshot.current) {
@@ -473,6 +500,15 @@ fun SlockApp(
                     localeScope.launch {
                         chatLayoutPreferenceSnapshot =
                                 chatLayoutPreferenceRepository.selectMyMessageAlignment(alignment)
+                    }
+                },
+                notificationsEnabledByUser = notificationsEnabledByUser,
+                onNotificationsEnabledByUserChange = { enabled ->
+                    localeScope.launch {
+                        notificationsEnabledByUser =
+                                notificationPreferenceRepository
+                                        .setNotificationEnabled(enabled)
+                                        .enabled
                     }
                 },
                 activityActions = activityActions,
@@ -519,10 +555,13 @@ private fun SlockAppContent(
         onLocaleSelected: (AppLocale) -> Unit,
         chatLayoutPreferenceSnapshot: ChatLayoutPreferenceSnapshot,
         onMyMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
+        notificationsEnabledByUser: Boolean,
+        onNotificationsEnabledByUserChange: (Boolean) -> Unit,
         activityActions: AppActivityActions,
         modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val authSessionStore = remember { EncryptedAuthSessionStore(context) }
     val authRepository = remember { RetrofitAuthRepository(authSessionStore) }
     val authTokenRefresher = remember { AuthTokenRefresher(authSessionStore) }
@@ -637,7 +676,7 @@ private fun SlockAppContent(
     var settingsDestination by rememberSaveable { mutableStateOf(SettingsDestination.Home) }
     var membersDetailVisible by rememberSaveable { mutableStateOf(false) }
     var membersDetailSelectedMemberId by rememberSaveable { mutableStateOf<String?>(null) }
-    var membersState by remember { mutableStateOf(SlockStateSamples.membersContent) }
+    var membersState by remember { mutableStateOf(MembersUiState(ScreenLoadState.Loading)) }
     var serverListState by remember {
         mutableStateOf<ScreenLoadState<ServerListSnapshot>>(ScreenLoadState.Loading)
     }
@@ -693,6 +732,9 @@ private fun SlockAppContent(
     var tasksState by remember {
         mutableStateOf<TasksUiState>(TasksUiState(ScreenLoadState.Loading))
     }
+    var nextTasksRefreshSilent by remember { mutableStateOf(false) }
+    var taskReferenceCache by remember { mutableStateOf<Map<TaskId, TaskSummary>>(emptyMap()) }
+    var taskReferenceCacheVersion by remember { mutableStateOf(0) }
     var tasksRefreshNonce by remember { mutableStateOf(0) }
     var taskReferenceChooserLabel by rememberSaveable { mutableStateOf<String?>(null) }
     var taskReferenceChooserIds by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
@@ -727,6 +769,7 @@ private fun SlockAppContent(
     var settingsMobileState by remember {
         mutableStateOf<ScreenLoadState<SettingsMobileSnapshot>>(ScreenLoadState.Loading)
     }
+    var lastInboxNotificationMessageId by rememberSaveable { mutableStateOf<String?>(null) }
     var settingsDiagnosticsVersion by remember { mutableStateOf(0) }
     var notificationPermissionGranted by remember {
         mutableStateOf(context.hasNotificationPermission())
@@ -751,6 +794,64 @@ private fun SlockAppContent(
     var createChannelSubmitting by rememberSaveable { mutableStateOf(false) }
     var createChannelError by rememberSaveable { mutableStateOf<String?>(null) }
     var appInForeground by remember { mutableStateOf(true) }
+    val pageStatusBarColor =
+            when {
+                authState is AuthUiState.Restoring || authState !is AuthUiState.Authenticated ->
+                        SlockColor.SurfaceCream
+                destination == AppDestination.Home && homeRoute == HomeRoute.Thread ->
+                        SlockColor.SurfaceWhite
+                destination == AppDestination.Members &&
+                        (membersDetailVisible || membersDetailSelectedMemberId != null) ->
+                        SlockColor.SurfaceWhite
+                destination == AppDestination.Settings &&
+                        settingsDestination != SettingsDestination.Home -> SlockColor.SurfaceWhite
+                else -> SlockColor.BrandYellow
+            }
+    val statusBarColor =
+            if (authState is AuthUiState.Restoring || authState !is AuthUiState.Authenticated) {
+                SlockColor.SurfaceCream
+            } else {
+                pageStatusBarColor
+    }
+    DisposableEffect(view, statusBarColor) {
+        val activity = view.context.findComponentActivity()
+        val previousColor = activity?.window?.statusBarColor
+        if (activity != null) {
+            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                    "SlockSystemBar",
+                    "apply_status_bar color=${statusBarColor.toStatusBarLogName()} " +
+                            "destination=${destination.key} homeRoute=$homeRoute " +
+                            "settingsDestination=$settingsDestination membersDetail=${membersDetailVisible || membersDetailSelectedMemberId != null}"
+            )
+            activity.enableEdgeToEdge(
+                    statusBarStyle =
+                            SystemBarStyle.light(
+                                    statusBarColor.toArgb(),
+                                    statusBarColor.toArgb()
+                            ),
+                    navigationBarStyle =
+                            SystemBarStyle.light(
+                                    SlockColor.SurfaceWhite.toArgb(),
+                                    SlockColor.SurfaceWhite.toArgb()
+                            )
+            )
+            activity.window.statusBarColor = statusBarColor.toArgb()
+        }
+        onDispose {
+            if (activity != null && previousColor != null) {
+                activity.enableEdgeToEdge(
+                        statusBarStyle =
+                                SystemBarStyle.light(previousColor, previousColor),
+                        navigationBarStyle =
+                                SystemBarStyle.light(
+                                        SlockColor.SurfaceWhite.toArgb(),
+                                        SlockColor.SurfaceWhite.toArgb()
+                                )
+                )
+                activity.window.statusBarColor = previousColor
+            }
+        }
+    }
     var unreadRefreshNonce by remember { mutableStateOf(0) }
     var selectedThreadRetryAction by remember {
         mutableStateOf<(() -> Unit)?>(null)
@@ -850,6 +951,28 @@ private fun SlockAppContent(
             }
         }
     }
+    val readReceiptCoordinator =
+            remember(readReceiptRepository, coroutineScope) {
+                ReadReceiptCoordinator(
+                        scope = coroutineScope,
+                        repository = readReceiptRepository,
+                        onOptimisticRead = { channelId ->
+                            reconcileReadLocally(channelId)
+                        },
+                        onResult = { request, result ->
+                            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                                    "SlockRead",
+                                    "mark_read_result channelId=${request.channelId.value} seq=${request.logSeq()} result=${result.realtimeResultName()} code=${result.readDiagnosticCode()}"
+                            )
+                        },
+                        onFailure = { request, _ ->
+                            reconcileUnreadCountsFromServer(
+                                    reason = "mark_read_failed",
+                                    channelId = request.channelId
+                            )
+                        }
+                )
+            }
 
     fun resetToSignedOut(message: String? = null) {
         realtimeSubscription?.close()
@@ -932,22 +1055,117 @@ private fun SlockAppContent(
     fun markThreadReadIfLoaded(content: ThreadContent) {
         val channelId = content.header.channelId ?: ChannelId(content.header.threadId.value)
         val maxSeq = content.messages.mapNotNull { it.seq }.maxOrNull()
-        reconcileReadLocally(channelId)
-        coroutineScope.launch {
-            val result =
-                    if (maxSeq != null && maxSeq > 0L) {
-                        readReceiptRepository.markChannelReadToSeq(channelId, maxSeq)
-                    } else {
-                        readReceiptRepository.markChannelReadAll(channelId)
-                    }
-            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
-                    "SlockRead",
-                    "mark_read_result channelId=${channelId.value} seq=${maxSeq ?: "all"} result=${result.realtimeResultName()} code=${result.readDiagnosticCode()}"
-            )
-            if (result !is DataResult.Content) {
-                reconcileUnreadCountsFromServer(reason = "mark_read_failed", channelId = channelId)
-            }
+        if (maxSeq != null && maxSeq > 0L) {
+            readReceiptCoordinator.markReadToSeq(channelId, maxSeq)
+        } else {
+            readReceiptCoordinator.markReadAll(channelId)
         }
+    }
+
+    fun markCurrentThreadReadToSeq(seq: Long?) {
+        val currentContent =
+                (selectedThreadState.loadState as? ScreenLoadState.Content)?.data
+        val channelId =
+                currentContent?.header?.channelId
+                        ?: currentContent?.header?.threadId?.value?.let(::ChannelId)
+                        ?: selectedThreadId?.let(::ChannelId)
+                        ?: return
+        if (seq != null && seq > 0L) {
+            readReceiptCoordinator.markReadToSeq(channelId, seq)
+        } else {
+            currentContent?.let(::markThreadReadIfLoaded)
+        }
+    }
+
+    fun markInboxItemRead(item: InboxItem) {
+        val channelId = item.threadChannelId ?: item.channelId
+        readReceiptCoordinator.markReadAll(channelId)
+    }
+
+    fun rememberTaskReferences(tasks: List<TaskSummary>) {
+        if (tasks.isEmpty()) return
+        val merged = taskReferenceCache.toMutableMap()
+        tasks.forEach { task ->
+            val current = merged[task.id]
+            merged[task.id] =
+                    if (current == null) task else current.mergeTaskReferenceCacheUpdate(task)
+        }
+        val next = merged.toMap()
+        if (next != taskReferenceCache) {
+            taskReferenceCache = next
+            taskReferenceCacheVersion += 1
+        }
+    }
+
+    fun rememberTaskReference(task: TaskSummary) {
+        rememberTaskReferences(listOf(task))
+    }
+
+    fun List<TaskSummary>.withCachedTaskReferences(): List<TaskSummary> =
+            map { task ->
+                taskReferenceCache[task.id]?.let(task::withTaskReferenceFieldsFrom) ?: task
+            }
+
+    fun Message.withCachedTaskReferences(): Message =
+            taskReferenceCache.findTaskForMessage(this)?.let { cached ->
+                copy(task = task?.withTaskReferenceFieldsFrom(cached) ?: cached)
+            } ?: this
+
+    fun ThreadContent.withCachedTaskReferences(): ThreadContent =
+            copy(
+                    messages = messages.map { it.withCachedTaskReferences() },
+                    tasks = tasks.withCachedTaskReferences(),
+                    parentMessage = parentMessage?.withCachedTaskReferences()
+            )
+
+    fun ThreadUiState.withCachedTaskReferences(): ThreadUiState =
+            copy(
+                    loadState =
+                            (loadState as? ScreenLoadState.Content)?.let { contentState ->
+                                ScreenLoadState.Content(
+                                        contentState.data.withCachedTaskReferences()
+                                )
+                            } ?: loadState,
+                    tasksState = tasksState?.withCachedTaskReferences(taskReferenceCache)
+            )
+
+    fun DataResult<ThreadSnapshot>.rememberTaskReferences() {
+        (this as? DataResult.Content)?.data?.let { snapshot ->
+            rememberTaskReferences(
+                    snapshot.tasks +
+                            snapshot.messages.mapNotNull { it.task } +
+                            listOfNotNull(snapshot.parentMessage?.task)
+            )
+        }
+    }
+
+    fun DataResult<TaskSnapshot>.rememberTaskReferences() {
+        (this as? DataResult.Content)?.data?.tasks?.let(::rememberTaskReferences)
+    }
+
+    fun RealtimeEvent.rememberTaskReferences() {
+        when (this) {
+            is RealtimeEvent.TaskCreated -> rememberTaskReferences(tasks)
+            is RealtimeEvent.TaskUpdated -> rememberTaskReference(task)
+            is RealtimeEvent.MessageNew -> message.task?.let(::rememberTaskReference)
+            is RealtimeEvent.MessageUpdated -> message.task?.let(::rememberTaskReference)
+            is RealtimeEvent.SyncResumeResponse ->
+                    rememberTaskReferences(messages.mapNotNull { it.task })
+            else -> Unit
+        }
+    }
+
+    LaunchedEffect(taskReferenceCacheVersion) {
+        if (taskReferenceCacheVersion == 0) return@LaunchedEffect
+        selectedThreadState = selectedThreadState.withCachedTaskReferences()
+        replyThreadBackStack =
+                replyThreadBackStack.map { entry ->
+                    entry.copy(
+                            selectedThreadState =
+                                    entry.selectedThreadState.withCachedTaskReferences()
+                    )
+                }
+        tasksState = tasksState.withCachedTaskReferences(taskReferenceCache)
     }
 
     fun openThread(conversation: ConversationSummary) {
@@ -982,7 +1200,12 @@ private fun SlockAppContent(
         failedAttachmentIds = draft?.failedAttachmentIds.orEmpty()
         coroutineScope.launch {
             val result = conversationRepository.getThread(conversation.threadId)
-            selectedThreadState = result.toThreadUiState(fallbackHeader = conversation)
+            result.rememberTaskReferences()
+            selectedThreadState =
+                    result.toThreadUiState(
+                                    fallbackHeader = conversation
+                            )
+                            .withCachedTaskReferences()
             if (threadTab == ThreadTab.Tasks) {
                 val content =
                         (selectedThreadState.loadState as? ScreenLoadState.Content)?.data
@@ -1000,6 +1223,7 @@ private fun SlockAppContent(
                     val fallbackState =
                             content
                                     .tasks
+                                    .withCachedTaskReferences()
                                     .toTasksUiStateForThreadTasks()
                     selectedThreadState =
                             selectedThreadState.copy(tasksState = fallbackState.withLoading())
@@ -1010,6 +1234,7 @@ private fun SlockAppContent(
                                         channelId = channelId,
                                         filter = TaskFilter()
                                 )
+                        tasksResult.rememberTaskReferences()
                         val currentContent =
                                 (selectedThreadState.loadState as? ScreenLoadState.Content)?.data
                         val currentChannelId =
@@ -1023,6 +1248,9 @@ private fun SlockAppContent(
                                                             .tasksState
                                                             .mergeThreadTasksRefreshResult(
                                                                     tasksResult
+                                                            )
+                                                            ?.withCachedTaskReferences(
+                                                                    taskReferenceCache
                                                             )
                                     )
                         }
@@ -1102,14 +1330,16 @@ private fun SlockAppContent(
             (selectedThreadState.loadState as? ScreenLoadState.Content)?.data
 
     fun selectedThreadChannelId(): ChannelId? {
-        val header = selectedThreadContent()?.header ?: return selectedThreadId?.let(::ChannelId)
-        return header.channelId ?: ChannelId(header.threadId.value)
+        return composerSendChannelId(selectedThreadContent(), selectedThreadId)
     }
 
     fun updateSelectedThreadTasksState(transform: (TasksUiState) -> TasksUiState) {
         val current =
                 selectedThreadState.tasksState
-                        ?: selectedThreadContent()?.tasks?.toTasksUiStateForThreadTasks()
+                        ?: selectedThreadContent()
+                                ?.tasks
+                                ?.withCachedTaskReferences()
+                                ?.toTasksUiStateForThreadTasks()
                         ?: TasksUiState(
                                 ScreenLoadState.Loading,
                                 selectedFilter = null
@@ -1136,12 +1366,14 @@ private fun SlockAppContent(
                             channelId = channelId,
                             filter = TaskFilter()
             )
+            result.rememberTaskReferences()
             if (selectedThreadChannelId() == channelId) {
                 selectedThreadState =
                         selectedThreadState.copy(
                                 tasksState =
                                         selectedThreadState.tasksState
                                                 .mergeThreadTasksRefreshResult(result)
+                                                ?.withCachedTaskReferences(taskReferenceCache)
                         )
             }
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
@@ -1164,9 +1396,12 @@ private fun SlockAppContent(
                 )
                 when (val result = conversationRepository.getThread(threadId)) {
                     is DataResult.Content -> {
+                        result.rememberTaskReferences()
                         if (selectedThreadId == threadId.value) {
                             selectedThreadState =
-                                    selectedThreadState.mergeRefreshedThreadSnapshot(result.data)
+                                    selectedThreadState
+                                            .mergeRefreshedThreadSnapshot(result.data)
+                                            .withCachedTaskReferences()
                         }
                         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                                 "SlockThreadLifecycle",
@@ -1416,6 +1651,11 @@ private fun SlockAppContent(
         val returnFailedAttachmentIds = threadReturnFailedAttachmentIds
         val returnSelectedThreadNearBottom = threadReturnSelectedThreadNearBottom
         clearThreadReturnTarget()
+        if (returnDestination == AppDestination.Tasks &&
+                        tasksState.loadState is ScreenLoadState.Content
+        ) {
+            nextTasksRefreshSilent = true
+        }
         destination = returnDestination
         if (returnDestination == AppDestination.Home) {
             previousHomeRoute = returnPreviousHomeRoute
@@ -1764,11 +2004,13 @@ private fun SlockAppContent(
             pendingAttachmentFiles = draft?.attachments.orEmpty()
             failedAttachmentIds = draft?.failedAttachmentIds.orEmpty()
             val result = conversationRepository.getThread(ThreadId(action.threadChannelId.value))
-            selectedThreadState = result.toThreadUiState(
-                    fallbackHeader = resolvedFallbackHeader,
-                    parentMessage = resolvedMessage,
-                    keepContentOnEmpty = true
-            )
+            result.rememberTaskReferences()
+            selectedThreadState =
+                    result.toThreadUiState(
+                                    fallbackHeader = resolvedFallbackHeader,
+                                    parentMessage = resolvedMessage
+                            )
+                            .withCachedTaskReferences()
             (result as? DataResult.Content)?.data?.let { snapshot ->
                 selectedThreadRetryAction = null
                 markThreadReadIfLoaded(
@@ -1809,8 +2051,20 @@ private fun SlockAppContent(
                         messageId != null -> conversationRepository.getMessageContext(messageId)
                         else -> conversationRepository.getMessageContext(parentMessageId!!)
                     }
+            val parentContextResult =
+                    if (parentMessageId != null &&
+                                    (task.isThreadTask && threadId != null ||
+                                            (messageId != null && parentMessageId != messageId))
+                    ) {
+                        conversationRepository.getMessageContext(parentMessageId)
+                    } else {
+                        result
+                    }
+            result.rememberTaskReferences()
+            parentContextResult.rememberTaskReferences()
             when (result) {
                 is DataResult.Content -> {
+                    val parentMessage = parentContextResult.findParentMessage(parentMessageId)
                     val fallbackHeader = task.toConversationSummary(result.data.conversation)
                     captureThreadReturnTarget()
                     composerDrafts =
@@ -1830,12 +2084,19 @@ private fun SlockAppContent(
                             if (threadReturnHomeRoute == HomeRoute.Thread) null else HomeRoute.Shell
                     homeRoute = HomeRoute.Thread
                     threadTab = ThreadTab.Chat
-                    selectedThreadId = result.data.conversation.threadId.value
-                    selectedThreadState = result.toThreadUiState(fallbackHeader)
+                    val openedThreadChannelId =
+                            result.data.conversation.channelId?.value
+                                    ?: result.data.conversation.threadId.value
+                    selectedThreadId = openedThreadChannelId
+                    selectedThreadState =
+                            result.toThreadUiState(
+                                    fallbackHeader = fallbackHeader,
+                                    parentMessage = parentMessage
+                            ).withCachedTaskReferences()
                     localComposerMessages = emptyList()
                     realtimeThreadMessages = emptyList()
                     attachmentOpenStates = emptyMap()
-                    val draft = composerDrafts[result.data.conversation.threadId.value]
+                    val draft = composerDrafts[openedThreadChannelId]
                     composerValue = draft?.value.orEmpty()
                     composerAsTask = draft?.asTask ?: false
                     pendingAttachmentFiles = draft?.attachments.orEmpty()
@@ -1851,7 +2112,7 @@ private fun SlockAppContent(
                     )
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                             "SlockTasksNav",
-                            "open_success taskId=${task.id.value} threadId=${result.data.conversation.threadId.value} highlighted=${result.data.highlightedMessageId?.value}"
+                            "open_success taskId=${task.id.value} selectedThreadId=$openedThreadChannelId headerThreadId=${result.data.conversation.threadId.value} headerChannelId=${result.data.conversation.channelId?.value.orEmpty()} highlighted=${result.data.highlightedMessageId?.value}"
                     )
                 }
                 is DataResult.Empty -> {
@@ -1896,10 +2157,11 @@ private fun SlockAppContent(
             )
             when (val result = conversationRepository.getMessageContext(target.parentMessageId)) {
                 is DataResult.Content -> {
+                    result.rememberTaskReferences()
                     replyThreadBackStack = emptyList()
                     threadParentJumpTarget = null
                     selectedThreadId = result.data.conversation.threadId.value
-                    selectedThreadState = result.toThreadUiState()
+                    selectedThreadState = result.toThreadUiState().withCachedTaskReferences()
                     localComposerMessages = emptyList()
                     realtimeThreadMessages = emptyList()
                     attachmentOpenStates = emptyMap()
@@ -1960,7 +2222,18 @@ private fun SlockAppContent(
             when (val result = taskRepository.updateTaskStatus(task.id, status)) {
                 is DataResult.Content -> {
                     val updatedTask = task.mergeTaskStatusAction(result.data.task)
+                    rememberTaskReference(updatedTask)
                     tasksState = tasksState.withTaskStatusUpdateSuccess(updatedTask)
+                    selectedThreadState = selectedThreadState.withTaskStatusUpdate(updatedTask)
+                    replyThreadBackStack =
+                            replyThreadBackStack.map { entry ->
+                                entry.copy(
+                                        selectedThreadState =
+                                                entry.selectedThreadState.withTaskStatusUpdate(
+                                                        updatedTask
+                                                )
+                                )
+                            }
                     if (updateThreadTasks) {
                         updateSelectedThreadTasksState {
                             it.withTaskStatusUpdateSuccess(updatedTask)
@@ -2149,11 +2422,14 @@ private fun SlockAppContent(
                 )
         coroutineScope.launch {
             val result = conversationRepository.loadOlderMessages(threadId, beforeSeq)
+            result.rememberTaskReferences()
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                     "SlockThreadPaging",
                     result.toOlderPageLog(threadId.value, beforeSeq)
             )
-            selectedThreadState = mergeOlderThreadPage(current = selectedThreadState, next = result)
+            selectedThreadState =
+                    mergeOlderThreadPage(current = selectedThreadState, next = result)
+                            .withCachedTaskReferences()
         }
     }
 
@@ -2164,11 +2440,13 @@ private fun SlockAppContent(
         if (selectedThreadState.isNewerPageLoading()) return
         selectedThreadState = selectedThreadState.withNewerPageStatus(MessagePageStatus.Loading)
         coroutineScope.launch {
+            val result = conversationRepository.loadNewerMessages(threadId, afterSeq)
+            result.rememberTaskReferences()
             selectedThreadState =
                     mergeNewerThreadPage(
                             current = selectedThreadState,
-                            next = conversationRepository.loadNewerMessages(threadId, afterSeq)
-                    )
+                            next = result
+                    ).withCachedTaskReferences()
         }
     }
 
@@ -2486,6 +2764,10 @@ private fun SlockAppContent(
                 is DataResult.Content -> {
                     serverListState = serverListState.applyUnreadSummary(result.data)
                     homeState = homeState.applyUnreadSummary(result.data)
+                    reconcileUnreadCountsFromServer(
+                            reason = "server_unread_${reason}",
+                            channelId = ChannelId(serverId.value)
+                    )
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                             "SlockUnread",
                             "fetch_success reason=$reason serverId=${serverId.value} total=${result.data.totalUnreadCount} selectedServerUnread=${result.data.selectedServerUnreadCount}"
@@ -2527,12 +2809,14 @@ private fun SlockAppContent(
         }
         refreshSelectedThread(
                 reason = "resume",
-                selectedThreadStateProvider = { selectedThreadState },
-                selectedThreadIdProvider = { selectedThreadId },
-                setSelectedThreadState = { selectedThreadState = it },
-                conversationRepository = conversationRepository,
-                coroutineScope = coroutineScope
-        )
+        selectedThreadStateProvider = { selectedThreadState },
+        selectedThreadIdProvider = { selectedThreadId },
+        setSelectedThreadState = { selectedThreadState = it },
+        onThreadSnapshot = { result -> result.rememberTaskReferences() },
+        transformThreadState = { state -> state.withCachedTaskReferences() },
+        conversationRepository = conversationRepository,
+        coroutineScope = coroutineScope
+)
     }
 
     LaunchedEffect(realtimeServerId, appInForeground, realtimeRepository) {
@@ -2555,6 +2839,7 @@ private fun SlockAppContent(
                         realtimeLastSeq = realtimeLastSeq.updateFrom(event)
                         val activeReplyParentMessageId =
                                 replyThreadBackStack.lastOrNull()?.parentMessageId
+                        event.rememberTaskReferences()
                         homeState = homeState.applyRealtimeEvent(event)
                         inboxState = inboxState.applyRealtimeEvent(event)
                         savedState = savedState.applySavedRealtimeEvent(event)
@@ -2570,6 +2855,37 @@ private fun SlockAppContent(
                                 )
                         membersState = membersState.applyRealtimeEvent(event)
                         threadMembersPanelState = threadMembersPanelState.applyRealtimeEvent(event)
+                        if (event is RealtimeEvent.MessageNew &&
+                                        notificationsEnabledByUser &&
+                                        lastInboxNotificationMessageId != event.message.id.value &&
+                                        shouldShowInboxNotification(
+                                                message = event.message,
+                                                currentMemberId =
+                                                        currentAuthSession
+                                                                ?.user
+                                                                ?.id
+                                                                ?.let(::MemberId),
+                                                isVisibleThread =
+                                                        selectedThreadContent()?.let { content ->
+                                                            event.message.matchesThread(
+                                                                    content.header,
+                                                                    selectedThreadId,
+                                                                    activeReplyParentMessageId
+                                                            )
+                                                        } == true
+                                        )
+                        ) {
+                            lastInboxNotificationMessageId = event.message.id.value
+                            val result =
+                                    context.showInboxNotification(
+                                            message = event.message,
+                                            diagnosticsTag = "realtime_message_new"
+                                    )
+                            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                                    "SlockInboxNotification",
+                                    "post_result source=realtime_message_new messageId=${event.message.id.value} ${result.toLogFields()} ${context.notificationDiagnostics().toLogFields()} userEnabled=$notificationsEnabledByUser"
+                            )
+                        }
                         if (event is RealtimeEvent.MemberPresenceUpdated) {
                             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                                     "SlockPresence",
@@ -2608,7 +2924,12 @@ private fun SlockAppContent(
                                         "SlockRead",
                                         "realtime_mark_read_start threadId=${selectedThreadId.orEmpty()} messageId=${event.message.id.value} seq=${event.message.seq ?: 0L}"
                                 )
-                                markThreadReadIfLoaded(content)
+                                markCurrentThreadReadToSeq(
+                                        maxOf(
+                                                content.latestMessageSeq(),
+                                                event.message.seq ?: 0L
+                                        )
+                                )
                             }
                         }
                         if (event is RealtimeEvent.Heartbeat && event.seq > previousSeq) {
@@ -2626,6 +2947,7 @@ private fun SlockAppContent(
                                                 threadId,
                                                 syncAfterSeq
                                         )
+                                newerResult.rememberTaskReferences()
                                 ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                                         "SlockRealtime",
                                         "gap_sync_result threadId=${threadId.value} result=${newerResult.realtimeResultName()}"
@@ -2637,7 +2959,7 @@ private fun SlockAppContent(
                                                                 MessagePageStatus.Loading
                                                         ),
                                                 next = newerResult
-                                        )
+                                        ).withCachedTaskReferences()
                             }
                         }
                     }
@@ -2796,14 +3118,44 @@ private fun SlockAppContent(
             val previousSavedState = savedState
             val previousHomeState = homeState
             val previousServerListState = serverListState
-            inboxState = inboxState.withBodyLoading(inboxFilter)
-            followedThreadsState = followedThreadsState.withBodyLoading()
-            savedState = savedState.withBodyLoading()
+            val silentInboxRefresh =
+                    !showRefreshAffordance &&
+                            inboxState.loadState is ScreenLoadState.Content
+            val silentFollowedThreadsRefresh =
+                    !showRefreshAffordance &&
+                            followedThreadsState.loadState is ScreenLoadState.Content
+            val silentSavedRefresh =
+                    !showRefreshAffordance &&
+                            savedState.loadState is ScreenLoadState.Content
+            inboxState =
+                    if (silentInboxRefresh) {
+                        inboxState.withSilentRefresh(inboxFilter)
+                    } else {
+                        inboxState.withBodyLoading(inboxFilter)
+                    }
+            followedThreadsState =
+                    if (silentFollowedThreadsRefresh) {
+                        followedThreadsState.withSilentRefresh()
+                    } else {
+                        followedThreadsState.withBodyLoading()
+                    }
+            savedState =
+                    if (silentSavedRefresh) {
+                        savedState.withSilentRefresh()
+                    } else {
+                        savedState.withBodyLoading()
+                    }
             searchState =
                     if (searchQuery.isBlank()) {
                         InboxUiState(ScreenLoadState.Empty(EmptyReason.NoSearchResults))
                     } else {
-                        searchState.withBodyLoading()
+                        if (!showRefreshAffordance &&
+                                        searchState.loadState is ScreenLoadState.Content
+                        ) {
+                            searchState.withSilentRefresh()
+                        } else {
+                            searchState.withBodyLoading()
+                        }
                     }
             // Snapshot fallback content before launching parallel requests
             val inboxPreviousContent = inboxState.previousContent
@@ -2897,6 +3249,10 @@ private fun SlockAppContent(
                     is DataResult.Content -> {
                         serverListState = serverListState.applyUnreadSummary(unreadResult.data)
                         homeState = homeState.applyUnreadSummary(unreadResult.data)
+                        reconcileUnreadCountsFromServer(
+                                reason = "home_refresh_$refreshSource",
+                                channelId = ChannelId(selectedServerId.value)
+                        )
                         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                                 "SlockUnread",
                                 "fetch_success reason=$refreshSource serverId=${selectedServerId.value} total=${unreadResult.data.totalUnreadCount} selectedServerUnread=${unreadResult.data.selectedServerUnreadCount}"
@@ -3013,18 +3369,31 @@ private fun SlockAppContent(
                         ?: (serverListState as? ScreenLoadState.Content)?.data?.selectedServer?.id
                                 ?: currentAuthSession?.currentServerId?.let(::ServerId)
                                 ?: return@LaunchedEffect
-        tasksState = tasksState.withLoading(tasksFilter)
+        val silentRefresh =
+                nextTasksRefreshSilent && tasksState.loadState is ScreenLoadState.Content
+        nextTasksRefreshSilent = false
+        if (silentRefresh) {
+            tasksState =
+                    tasksState.copy(
+                            selectedFilter = tasksFilter,
+                            navigationErrorCode = null,
+                            refreshing = false
+                    )
+        } else {
+            tasksState = tasksState.withLoading(tasksFilter)
+        }
+        val result =
+                taskRepository.getTasks(
+                        serverId = selectedServerId,
+                        filter =
+                                TaskFilter(
+                                        statuses = tasksFilter?.let { setOf(it) }.orEmpty()
+                                )
+                )
+        result.rememberTaskReferences()
         tasksState =
-                taskRepository
-                        .getTasks(
-                                serverId = selectedServerId,
-                                filter =
-                                        TaskFilter(
-                                                statuses = tasksFilter?.let { setOf(it) }.orEmpty()
-                                        )
-                        )
-                        .toTasksUiState(tasksFilter)
-                        .copy(refreshing = false)
+                tasksState.mergeTasksRefreshResult(result, tasksFilter)
+                        .withCachedTaskReferences(taskReferenceCache)
     }
 
     LaunchedEffect(authState, destination, settingsDestination, settingsRepository) {
@@ -3062,7 +3431,9 @@ private fun SlockAppContent(
                     settingsMobileState = ScreenLoadState.Loading
                     settingsMobileState = settingsRepository.getMobileSettings().toScreenLoadState()
                 }
-                SettingsDestination.Home, SettingsDestination.About ->
+                SettingsDestination.Home,
+                SettingsDestination.About,
+                SettingsDestination.Diagnostics ->
                         Unit
             }
         }
@@ -3226,28 +3597,15 @@ private fun SlockAppContent(
                                     }
                             )
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Spacer(
-                    modifier =
-                            Modifier.fillMaxWidth()
-                                    .windowInsetsTopHeight(WindowInsets.statusBars)
-                                    .background(
-                                            if (destination == AppDestination.Home &&
-                                                            homeRoute == HomeRoute.Thread
-                                            ) {
-                                                SlockColor.SurfaceWhite
-                                            } else if (
-                                                    destination == AppDestination.Settings &&
-                                                            settingsDestination != SettingsDestination.Home
-                                            ) {
-                                                SlockColor.SurfaceWhite
-                                            } else {
-                                                SlockColor.BrandYellow
-                                            }
-                                    )
-            )
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                when (destination) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Spacer(
+                        modifier =
+                                Modifier.fillMaxWidth()
+                                        .windowInsetsTopHeight(WindowInsets.statusBars)
+                                        .background(statusBarColor)
+                )
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    when (destination) {
                     AppDestination.Home ->
                             HomeRouteScreen(
                                     route = homeRoute,
@@ -3450,6 +3808,12 @@ private fun SlockAppContent(
                                                 setSelectedThreadState = {
                                                     selectedThreadState = it
                                                 },
+                                                onThreadSnapshot = { result ->
+                                                    result.rememberTaskReferences()
+                                                },
+                                                transformThreadState = { state ->
+                                                    state.withCachedTaskReferences()
+                                                },
                                                 conversationRepository = conversationRepository,
                                                 coroutineScope = coroutineScope
                                         )
@@ -3460,7 +3824,12 @@ private fun SlockAppContent(
                                     onRemoveChannelMember = ::removeSelectedThreadMember,
                                     attachmentOpenStates = attachmentOpenStates,
                                     attachmentPreviewState = attachmentPreviewState,
-                                    onThreadNearBottomChange = { selectedThreadNearBottom = it },
+                                    onThreadNearBottomChange = { isNearBottom ->
+                                        selectedThreadNearBottom = isNearBottom
+                                        if (isNearBottom) {
+                                            selectedThreadContent()?.let(::markThreadReadIfLoaded)
+                                        }
+                                    },
                                     onOpenAttachment = { openAttachment(it) },
                                     onDismissAttachmentPreview = ::dismissAttachmentPreview,
                                     onOpenAttachmentPreviewExternally = { preview ->
@@ -3617,12 +3986,35 @@ private fun SlockAppContent(
                                         serverSwitcherExpanded = false
                                         createChannelVisible = true
                                         createChannelError = null
+                                        val selectedServerId =
+                                                selectedServerOverride
+                                                        ?: (serverListState as? ScreenLoadState.Content)
+                                                                ?.data
+                                                                ?.selectedServer
+                                                                ?.id
+                                                        ?: currentAuthSession
+                                                                ?.currentServerId
+                                                                ?.let(::ServerId)
+                                        if (selectedServerId != null) {
+                                            membersState =
+                                                    MembersUiState(ScreenLoadState.Loading)
+                                            coroutineScope.launch {
+                                                membersState =
+                                                        memberRepository
+                                                                .getMembers(selectedServerId)
+                                                                .toMembersUiState()
+                                            }
+                                        }
                                     },
                                     onSend = {
                                         val body = composerValue.trim()
-                                        val threadId = selectedThreadId?.let(::ThreadId)
-                                        val channelId = selectedThreadId?.let(::ChannelId)
                                         val selectedHeader = selectedThreadContent()?.header
+                                        val channelId =
+                                                composerSendChannelId(
+                                                        selectedThreadContent(),
+                                                        selectedThreadId
+                                                )
+                                        val threadId = channelId?.value?.let(::ThreadId)
                                         if (selectedHeader != null &&
                                                         (!selectedHeader.joined ||
                                                                 !selectedHeader.permissions.canSend)
@@ -3817,6 +4209,7 @@ private fun SlockAppContent(
                                     },
                                     onLoadOlderThreadMessages = ::loadOlderThreadMessages,
                                     onLoadNewerThreadMessages = ::loadNewerThreadMessages,
+                                    onMarkInboxItemRead = ::markInboxItemRead,
                                     onInboxFilterSelected = { filter ->
                                         if (filter != inboxFilter) {
                                             val selectedServerId =
@@ -4039,6 +4432,9 @@ private fun SlockAppContent(
                                     onLocaleSelected = onLocaleSelected,
                                     chatLayoutPreferenceSnapshot = chatLayoutPreferenceSnapshot,
                                     onMyMessageAlignmentSelected = onMyMessageAlignmentSelected,
+                                    notificationsEnabledByUser = notificationsEnabledByUser,
+                                    onNotificationsEnabledByUserChange =
+                                            onNotificationsEnabledByUserChange,
                                     onOpenComputerDetail = { machineId ->
                                         settingsSelectedComputerId = machineId
                                         settingsDestination = SettingsDestination.ComputerDetail
@@ -4128,12 +4524,17 @@ private fun SlockAppContent(
                                                 notificationPermissionGranted =
                                                         granted ||
                                                                 context.hasNotificationPermission()
+                                                if (notificationPermissionGranted) {
+                                                    onNotificationsEnabledByUserChange(true)
+                                                }
                                                 ai.slock.android.core.data.diagnostics
                                                         .SlockDiagnosticsLogger.d(
                                                         "SlockSettingsNotification",
                                                         "request_permission_result granted=$notificationPermissionGranted ${context.notificationDiagnostics().toLogFields()}"
                                                 )
                                             }
+                                        } else {
+                                            onNotificationsEnabledByUserChange(true)
                                         }
                                     },
                                     onSendTestNotification = {
@@ -4173,37 +4574,29 @@ private fun SlockAppContent(
                                         settingsDiagnosticsVersion++
                                     }
                             )
+                    }
                 }
             }
             if (showBottomBar) {
-                Box(
-                        modifier =
-                                Modifier.fillMaxWidth()
-                                        .background(SlockColor.SurfaceWhite)
-                                        .navigationBarsPadding()
-                                        .padding(bottom = SlockSpacing.Xs)
-                ) {
-                    SlockBottomTabBar(
-                            items = appBottomTabs(),
-                            selectedKey = destination.key,
-                            onSelected = { key ->
-                                val nextDestination = AppDestination.entries.first { it.key == key }
-                                if (nextDestination == AppDestination.Home &&
-                                                (destination != AppDestination.Home ||
-                                                        homeRoute != HomeRoute.Shell)
-                                ) {
-                                    homeResumeRefreshNonce += 1
-                                }
-                                destination = nextDestination
-                                homeRoute = HomeRoute.Shell
-                                previousHomeRoute = null
-                                membersDetailVisible = false
-                            },
-                            modifier = Modifier.fillMaxWidth().offset(y = -SlockStroke.Default)
-                    )
-                }
+                SlockAppBottomBarHost(
+                        items = appBottomTabs(),
+                        selectedKey = destination.key,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                        onSelected = { key ->
+                            val nextDestination = AppDestination.entries.first { it.key == key }
+                            if (nextDestination == AppDestination.Home &&
+                                            (destination != AppDestination.Home ||
+                                                    homeRoute != HomeRoute.Shell)
+                            ) {
+                                homeResumeRefreshNonce += 1
+                            }
+                            destination = nextDestination
+                            homeRoute = HomeRoute.Shell
+                            previousHomeRoute = null
+                            membersDetailVisible = false
+                        }
+                )
             }
-        }
         if (createServerVisible) {
             val trimmedCreateServerName = createServerName.trim()
             val trimmedCreateServerSlug = createServerSlug.trim()
@@ -4321,13 +4714,14 @@ private fun SlockAppContent(
             val trimmedCreateChannelDescription = createChannelDescription.trim()
             val createChannelSubmitEnabled =
                     trimmedCreateChannelName.isNotBlank() && !createChannelSubmitting
+            val createChannelMembersLoadState = membersState.loadState
             val createChannelMembers =
-                    ((SlockStateSamples.membersContent.loadState as? ScreenLoadState.Content)
-                                    ?.data
-                                    ?.members)
+                    (createChannelMembersLoadState as? ScreenLoadState.Content)
+                            ?.data
+                            ?.members
                             .orEmpty()
             val createChannelAgents = createChannelMembers.filter { it.kind == MemberKind.Agent }
-            val createChannelUsers = createChannelMembers.filter { it.kind != MemberKind.Agent }
+            val createChannelUsers = createChannelMembers.filter { it.kind == MemberKind.Human }
             SlockModal(
                     title = stringResource(R.string.home_create_channel_title),
                     onDismiss = {
@@ -4462,10 +4856,12 @@ private fun SlockAppContent(
                             members = createChannelAgents,
                             selectedIds = createChannelAgentMemberIds,
                             enabled = !createChannelSubmitting,
+                            membersLoadState = createChannelMembersLoadState,
                             onSelectionChange = { memberId, selected ->
+                                val agentId = memberId.removeCreateChannelKindPrefix()
                                 createChannelAgentMemberIds =
                                         createChannelAgentMemberIds.withSelection(
-                                                memberId,
+                                                agentId,
                                                 selected
                                         )
                                 createChannelError = null
@@ -4476,10 +4872,12 @@ private fun SlockAppContent(
                             members = createChannelUsers,
                             selectedIds = createChannelUserMemberIds,
                             enabled = !createChannelSubmitting,
+                            membersLoadState = createChannelMembersLoadState,
                             emptyText = stringResource(R.string.home_create_channel_no_members),
                             onSelectionChange = { memberId, selected ->
+                                val userId = memberId.removeCreateChannelKindPrefix()
                                 createChannelUserMemberIds =
-                                        createChannelUserMemberIds.withSelection(memberId, selected)
+                                        createChannelUserMemberIds.withSelection(userId, selected)
                                 createChannelError = null
                             }
                     )
@@ -4847,6 +5245,29 @@ private enum class AppDestination(val key: String, val label: String) {
 }
 
 @Composable
+internal fun SlockAppBottomBarHost(
+        items: List<SlockBottomTabItem>,
+        selectedKey: String,
+        onSelected: (String) -> Unit,
+        modifier: Modifier = Modifier
+) {
+    Box(
+            modifier =
+                    modifier.fillMaxWidth()
+                            .background(SlockColor.SurfaceWhite)
+                            .navigationBarsPadding()
+                            .padding(bottom = SlockSpacing.Xs)
+    ) {
+        SlockBottomTabBar(
+                items = items,
+                selectedKey = selectedKey,
+                onSelected = onSelected,
+                modifier = Modifier.fillMaxWidth().offset(y = -SlockStroke.Default)
+        )
+    }
+}
+
+@Composable
 private fun appBottomTabs(): List<SlockBottomTabItem> =
         listOf(
                 SlockBottomTabItem(
@@ -4942,6 +5363,7 @@ private fun HomeRouteScreen(
         currentMemberId: MemberId?,
         myMessageAlignment: MyMessageAlignmentPreference,
         onInboxFilterSelected: (InboxFilter) -> Unit,
+        onMarkInboxItemRead: (InboxItem) -> Unit,
         onLoadInboxMore: (Int?, InboxFilter) -> Unit,
         onLoadSavedMore: (Int?) -> Unit,
         onLoadSearchMore: (Int?) -> Unit
@@ -4968,6 +5390,8 @@ private fun HomeRouteScreen(
                         serverListState = serverListState,
                         homeState = homeState,
                         draftThreadIds = draftThreadIds,
+                        inboxState = inboxState,
+                        savedState = savedState,
                         selectedThreadId = selectedThreadId,
                         homeRefreshInProgress = homeRefreshInProgress,
                         homeRefreshError = homeRefreshError,
@@ -4984,7 +5408,7 @@ private fun HomeRouteScreen(
                     selectedThreadState.takeUnless {
                         it.loadState == ScreenLoadState.Loading && selectedThreadId == null
                     }
-                            ?: SlockStateSamples.threadContent
+                            ?: ThreadUiState(ScreenLoadState.Loading)
             val threadAuthorProfiles = threadMembersPanelState.threadAuthorProfiles()
             val threadLoadState =
                     when (val loadState = baseThreadState.loadState) {
@@ -5100,6 +5524,7 @@ private fun HomeRouteScreen(
                             onOpenThreadFromRoute(HomeRoute.Inbox)
                         },
                         onFilterSelected = onInboxFilterSelected,
+                        onMarkItemRead = onMarkInboxItemRead,
                         onLoadMore = {
                             onLoadInboxMore(inboxState.nextOffset, inboxState.selectedFilter)
                         }
@@ -5149,9 +5574,9 @@ private fun SearchResultsScreen(
         onLoadMore: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockPageHeader(
+        SettingsDetailHeader(
                 title = stringResource(R.string.home_search),
-                subtitle = stringResource(R.string.inbox_more_items_available)
+                onBack = onBack
         )
         SlockTextField(
                 value = query,
@@ -5269,6 +5694,8 @@ private fun HomeShellScreen(
         serverListState: ScreenLoadState<ServerListSnapshot>,
         homeState: HomeUiState,
         draftThreadIds: Set<String>,
+        inboxState: InboxUiState,
+        savedState: InboxUiState,
         selectedThreadId: String?,
         homeRefreshInProgress: Boolean,
         homeRefreshError: String?,
@@ -5308,6 +5735,8 @@ private fun HomeShellScreen(
             onOpenSearch = onOpenSearch,
             serverListState = serverListState,
             content = content,
+            inboxState = inboxState,
+            savedState = savedState,
             selectedThreadId = selectedThreadId ?: homeState.selectedThreadId,
             homeRefreshInProgress =
                     homeRefreshInProgress || homeState.loadState == ScreenLoadState.Loading,
@@ -5368,6 +5797,8 @@ private fun HomeStructuralContent(
         onOpenSearch: () -> Unit,
         serverListState: ScreenLoadState<ServerListSnapshot>,
         content: HomeContent,
+        inboxState: InboxUiState,
+        savedState: InboxUiState,
         selectedThreadId: String?,
         homeRefreshInProgress: Boolean,
         homeRefreshError: String?,
@@ -5382,6 +5813,11 @@ private fun HomeStructuralContent(
     val serverSnapshot = (serverListState as? ScreenLoadState.Content)?.data
     val servers = serverSnapshot?.servers?.map { it.toSwitcherItem() }.orEmpty()
     val selectedServer = serverSnapshot?.selectedServer ?: serverSnapshot?.servers?.firstOrNull()
+    val density = LocalDensity.current
+    val appBottomBarContentPadding =
+            SlockSize.BottomBarHeight +
+                    with(density) { WindowInsets.navigationBars.getBottom(this).toDp() } +
+                    SlockSpacing.Xl
     val currentServerName =
             selectedServer?.name
                     ?: when (serverListState) {
@@ -5402,10 +5838,13 @@ private fun HomeStructuralContent(
                 selectedChannelId = selectedThreadId
                                 ?: content.channels.firstOrNull()?.threadId?.value,
                 serverUnreadCount = content.serverUnreadCount,
+                inboxUnreadCount = inboxState.visibleUnreadCount() ?: 0,
+                savedCount = savedState.visibleTotalCount() ?: 0,
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 contentRefreshing = homeRefreshInProgress,
                 contentRefreshEnabled = homeRefreshError == null,
                 showBottomBar = false,
+                bottomContentPadding = appBottomBarContentPadding,
                 outerPadding = 0.dp,
                 onContentRefresh = onHomeRefresh,
                 onServerBadgeClick = { onServerSwitcherExpandedChange(!serverSwitcherExpanded) },
@@ -5476,27 +5915,78 @@ private fun CreateChannelMemberSection(
         members: List<MemberProfile>,
         selectedIds: List<String>,
         enabled: Boolean,
+        membersLoadState: ScreenLoadState<MembersContent>,
         modifier: Modifier = Modifier,
         emptyText: String? = null,
         onSelectionChange: (String, Boolean) -> Unit
 ) {
-    val pickerMembers = members.map { it.toSlockMemberPickerItem() }
-    val selectedIdSet = selectedIds.toSet()
-    SlockMemberPickerSection(
-            label = title,
-            members = pickerMembers,
-            selectedIds = selectedIdSet,
-            enabled = enabled,
-            modifier = modifier,
-            emptyText = emptyText ?: "None",
-            selectedText = "Selected",
-            disabledText = "Joined",
-            availableText = "Add",
-            onMemberSelected = { member ->
-                onSelectionChange(member.id, member.id !in selectedIdSet)
+    val pickerMembers = members.map { it.toSlockMemberPickerItem().withStableCreateChannelId() }
+    val selectedIdSet =
+            selectedIds.map { memberId ->
+                val kind =
+                        members.firstOrNull { it.id.value == memberId }?.kind ?: MemberKind.Human
+                kind.name + ":" + memberId
+            }.toSet()
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+        when (membersLoadState) {
+            ScreenLoadState.Loading -> {
+                Text(text = title, style = SlockType.SectionLabel, color = SlockColor.TextMutedGray)
+                SlockMemberPickerMessage(
+                        text = stringResource(R.string.home_create_channel_members_loading)
+                )
             }
-    )
+            is ScreenLoadState.Error -> {
+                Text(text = title, style = SlockType.SectionLabel, color = SlockColor.TextMutedGray)
+                SlockMemberPickerMessage(
+                        text =
+                                stringResource(
+                                        R.string.home_create_channel_members_error,
+                                        membersLoadState.error.code
+                                )
+                )
+            }
+            is ScreenLoadState.NoPermission -> {
+                Text(text = title, style = SlockType.SectionLabel, color = SlockColor.TextMutedGray)
+                SlockMemberPickerMessage(
+                        text =
+                                stringResource(
+                                        R.string.home_create_channel_members_error,
+                                        membersLoadState.blocker.code
+                                )
+                )
+            }
+            is ScreenLoadState.Empty,
+            is ScreenLoadState.Content -> {
+                SlockMemberPickerSection(
+                        label = title,
+                        members = pickerMembers,
+                        selectedIds = selectedIdSet,
+                        enabled = enabled,
+                        emptyText = emptyText ?: stringResource(R.string.home_create_channel_no_members),
+                        selectedText = stringResource(R.string.home_create_channel_member_selected),
+                        disabledText = stringResource(R.string.home_create_channel_member_joined),
+                        availableText = stringResource(R.string.home_create_channel_member_add),
+                        onMemberSelected = { member ->
+                            onSelectionChange(member.id, member.id !in selectedIdSet)
+                        }
+                )
+            }
+        }
+    }
 }
+
+private fun SlockMemberPickerItem.withStableCreateChannelId(): SlockMemberPickerItem =
+        copy(
+                id =
+                        when (kind) {
+                            MemberKind.Agent -> MemberKind.Agent.name + ":" + id
+                            MemberKind.Human -> MemberKind.Human.name + ":" + id
+                            MemberKind.System -> MemberKind.System.name + ":" + id
+                        }
+        )
+
+private fun String.removeCreateChannelKindPrefix(): String =
+        substringAfter(":", this)
 
 @Composable
 private fun TaskReferenceChooserModal(
@@ -5516,11 +6006,11 @@ private fun TaskReferenceChooserModal(
                     )
     ) {
         Column(
-                modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             Text(
-                    text = "$label matches multiple tasks.",
+                    text = "$label matches ${tasks.size} tasks. Check status, update time, channel, and assignee before choosing.",
                     style = SlockType.Caption,
                     color = SlockColor.TextMutedGray
             )
@@ -5547,37 +6037,106 @@ private fun TaskReferenceChooserRow(task: TaskSummary, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        Icon(
-                imageVector = SlockIcons.ListTodo,
-                contentDescription = null,
-                tint = SlockColor.TextBlack,
-                modifier = Modifier.size(18.dp)
-        )
+        TaskReferenceStatusBadge(status = task.status)
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                    text = listOfNotNull(task.taskNumber?.let { "#$it" }, task.title)
-                            .joinToString(" "),
-                    style = SlockType.Button,
+                    text = task.taskReferenceChooserTitle(),
+                    style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                    text = task.taskReferenceChooserMetaLine(),
+                    style = SlockType.Caption,
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
             )
-            Text(
-                    text =
-                            listOfNotNull(
-                                            task.channelName?.takeIf { it.isNotBlank() },
-                                            task.status.name.lowercase().replace('_', ' ')
-                                    )
-                                    .joinToString(" · ")
-                                    .ifBlank { task.updatedAtLabel },
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-            )
+            val contextLine = task.taskReferenceChooserContextLine()
+            if (contextLine.isNotBlank()) {
+                Text(
+                        text = contextLine,
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
+
+@Composable
+private fun TaskReferenceStatusBadge(status: TaskStatus) {
+    Box(
+            modifier =
+                    Modifier.size(30.dp)
+                            .background(status.taskReferenceColor, RoundedCornerShape(SlockRadius.Xs))
+                            .border(
+                                    SlockStroke.Default,
+                                    SlockColor.BorderBlack,
+                                    RoundedCornerShape(SlockRadius.Xs)
+                            ),
+            contentAlignment = Alignment.Center
+    ) {
+        Icon(
+                imageVector = status.taskReferenceIcon,
+                contentDescription = status.taskReferenceLabel,
+                tint = SlockColor.TextBlack,
+                modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+internal fun TaskSummary.taskReferenceChooserTitle(): String =
+        listOfNotNull(taskNumber?.let { "#$it" }, title.takeIf { it.isNotBlank() })
+                .joinToString(" ")
+
+internal fun TaskSummary.taskReferenceChooserMetaLine(): String =
+        listOf(status.taskReferenceLabel, updatedAtLabel)
+                .filter { it.isNotBlank() }
+                .joinToString(" · ")
+
+internal fun TaskSummary.taskReferenceChooserContextLine(): String =
+        listOfNotNull(
+                        channelName?.takeIf { it.isNotBlank() }?.let { "#$it" },
+                        assignee?.let { member ->
+                            member.handle.takeIf { it.isNotBlank() } ?: member.displayName
+                        },
+                        messageId?.value?.take(8)?.let { "msg $it" }
+                )
+                .joinToString(" · ")
+
+private val TaskStatus.taskReferenceLabel: String
+    get() =
+            when (this) {
+                TaskStatus.Todo -> "Todo"
+                TaskStatus.InProgress -> "In progress"
+                TaskStatus.InReview -> "In review"
+                TaskStatus.Done -> "Done"
+                TaskStatus.Closed -> "Closed"
+            }
+
+private val TaskStatus.taskReferenceColor: Color
+    get() =
+            when (this) {
+                TaskStatus.Todo -> SlockColor.AccentOrange
+                TaskStatus.InProgress -> SlockColor.AccentCyan
+                TaskStatus.InReview -> SlockColor.AccentLavender
+                TaskStatus.Done -> SlockColor.AccentLime
+                TaskStatus.Closed -> SlockColor.AccentRed
+            }
+
+private val TaskStatus.taskReferenceIcon: androidx.compose.ui.graphics.vector.ImageVector
+    get() =
+            when (this) {
+                TaskStatus.Todo -> SlockIcons.Circle
+                TaskStatus.InProgress -> SlockIcons.Play
+                TaskStatus.InReview -> SlockIcons.Eye
+                TaskStatus.Done -> SlockIcons.CircleCheckBig
+                TaskStatus.Closed -> SlockIcons.Ban
+            }
 
 private fun List<String>.withSelection(value: String, selected: Boolean): List<String> =
         if (selected) {
@@ -5924,6 +6483,12 @@ private fun DataResult<*>.readDiagnosticCode(): String =
             is DataResult.NoPermission -> blocker.code
         }
 
+private fun ReadReceiptRequest.logSeq(): String =
+        when (this) {
+            is ReadReceiptRequest.ToSeq -> seq.toString()
+            is ReadReceiptRequest.All -> "all"
+        }
+
 private fun DataResult<HomeSnapshot>.diagnosticCode(): String =
         when (this) {
             is DataResult.Content -> "ok"
@@ -6015,7 +6580,10 @@ private fun HomeUiState.applyMemberPresence(
     val updatedDms =
             content.directMessages.map { conversation ->
                 if (conversation.matchesPresenceMember(event)) {
-                    conversation.copy(presence = event.presence)
+                    conversation.copy(
+                            presence = event.presence,
+                            agentStatus = event.agentStatus ?: conversation.agentStatus
+                    )
                 } else {
                     conversation
                 }
@@ -6132,6 +6700,7 @@ private fun ConversationSummary.withAgentDirectMessageFallback(
                 avatarUrl = avatarUrl ?: member.avatarUrl,
                 avatar = avatar ?: member.avatar,
                 presence = presence ?: member.presence,
+                agentStatus = agentStatus ?: member.agentStatus,
                 presenceMemberId = presenceMemberId ?: member.id
         )
 
@@ -6322,7 +6891,10 @@ private fun ThreadMembersPanelState.applyMemberPresence(
 private fun MemberProfile.withPresence(event: RealtimeEvent.MemberPresenceUpdated): MemberProfile {
     val kindMatches = event.kind == null || event.kind == kind
     return if (id == event.memberId && kindMatches) {
-        copy(presence = event.presence)
+        copy(
+                presence = event.presence,
+                agentStatus = event.agentStatus ?: agentStatus
+        )
     } else {
         this
     }
@@ -6668,6 +7240,13 @@ private fun HomeUiState.serverUnreadFor(serverId: ServerId): Int? {
     return if (content.server.id == serverId) content.serverUnreadCount else null
 }
 
+private fun InboxUiState.visibleContent(): InboxContent? =
+        (loadState as? ScreenLoadState.Content)?.data ?: previousContent
+
+private fun InboxUiState.visibleUnreadCount(): Int? = visibleContent()?.totalUnreadCount
+
+private fun InboxUiState.visibleTotalCount(): Int? = visibleContent()?.totalCount
+
 private fun DataResult<InboxSnapshot>.toInboxUiState(
         selectedFilter: InboxFilter,
         previousContent: InboxContent? = null
@@ -6722,10 +7301,9 @@ private fun DataResult<ThreadListSnapshot>.toFollowedThreadsUiState(
 
 private fun DataResult<ThreadSnapshot>.toThreadUiState(
         fallbackHeader: ConversationSummary? = null,
-        parentMessage: Message? = null,
-        keepContentOnEmpty: Boolean = false
+        parentMessage: Message? = null
 ): ThreadUiState {
-    val fallbackPreviewHeader = fallbackHeader?.takeIf { keepContentOnEmpty || !it.joined }
+    val fallbackPreviewHeader = fallbackHeader
     val contentHeader =
             (this as? DataResult.Content)
                     ?.data
@@ -6762,8 +7340,7 @@ private fun DataResult<ThreadSnapshot>.toThreadUiState(
                                             messages = emptyList(),
                                             replyActionErrorCode =
                                                     previewErrorCode.takeUnless {
-                                                        keepContentOnEmpty &&
-                                                                reason == EmptyReason.NoMessages
+                                                        reason == EmptyReason.NoMessages
                                                     },
                                             parentMessage = parentMessage
                                     )
@@ -6808,6 +7385,22 @@ private fun DataResult<ThreadSnapshot>.findParentMessage(parentMessageId: Messag
     return data.parentMessage?.takeIf { it.id == parentMessageId }
             ?: data.messages.firstOrNull { it.id == parentMessageId }
 }
+
+internal fun composerSendChannelId(
+        content: ThreadContent?,
+        selectedThreadId: String?
+): ChannelId? =
+        content?.header?.channelId
+                ?: content?.header?.threadId?.value?.let(::ChannelId)
+                ?: selectedThreadId?.let(::ChannelId)
+
+internal fun threadUiStateForPreviewResult(
+        result: DataResult<ThreadSnapshot>,
+        fallbackHeader: ConversationSummary
+): ThreadUiState =
+        result.toThreadUiState(
+                fallbackHeader = fallbackHeader
+        )
 
 private fun HomeContent.findConversation(id: String): ConversationSummary? =
         (channels + directMessages).firstOrNull { conversation ->
@@ -7291,6 +7884,39 @@ private fun DataResult<TaskSnapshot>.toTasksUiState(selectedFilter: TaskStatus?)
                 selectedFilter = selectedFilter
         )
 
+private fun TasksUiState.mergeTasksRefreshResult(
+        result: DataResult<TaskSnapshot>,
+        selectedFilter: TaskStatus?
+): TasksUiState =
+        when (result) {
+            is DataResult.Content ->
+                    result.toTasksUiState(selectedFilter).copy(refreshing = false)
+            is DataResult.Empty ->
+                    takeIf { loadState is ScreenLoadState.Content }
+                            ?.copy(
+                                    selectedFilter = selectedFilter,
+                                    refreshing = false,
+                                    navigationErrorCode = result.reason.name
+                            )
+                            ?: result.toTasksUiState(selectedFilter).copy(refreshing = false)
+            is DataResult.Error ->
+                    takeIf { loadState is ScreenLoadState.Content }
+                            ?.copy(
+                                    selectedFilter = selectedFilter,
+                                    refreshing = false,
+                                    navigationErrorCode = result.error.code
+                            )
+                            ?: result.toTasksUiState(selectedFilter).copy(refreshing = false)
+            is DataResult.NoPermission ->
+                    takeIf { loadState is ScreenLoadState.Content }
+                            ?.copy(
+                                    selectedFilter = selectedFilter,
+                                    refreshing = false,
+                                    navigationErrorCode = result.blocker.code
+                            )
+                            ?: result.toTasksUiState(selectedFilter).copy(refreshing = false)
+        }
+
 private fun TasksUiState?.mergeThreadTasksRefreshResult(
         result: DataResult<TaskSnapshot>
 ): TasksUiState {
@@ -7350,6 +7976,53 @@ private fun TaskSummary.mergeTaskStatusAction(actionTask: TaskSummary): TaskSumm
                 channelName = actionTask.channelName ?: channelName,
                 updatedAtLabel = actionTask.updatedAtLabel.ifBlank { updatedAtLabel },
                 canClaim = actionTask.canClaim
+        )
+
+internal fun TaskSummary.mergeTaskReferenceCacheUpdate(incomingTask: TaskSummary): TaskSummary =
+        incomingTask.withTaskReferenceFieldsFrom(this)
+
+internal fun TaskSummary.withTaskReferenceFieldsFrom(referenceTask: TaskSummary): TaskSummary =
+        copy(
+                title = title.ifBlank { referenceTask.title },
+                status = status,
+                taskNumber = taskNumber ?: referenceTask.taskNumber,
+                messageId = messageId ?: referenceTask.messageId,
+                parentMessageId = parentMessageId ?: referenceTask.parentMessageId,
+                channelId = channelId ?: referenceTask.channelId,
+                threadId = threadId ?: referenceTask.threadId,
+                isThreadTask = isThreadTask || referenceTask.isThreadTask,
+                assignee = assignee ?: referenceTask.assignee,
+                channelName = channelName ?: referenceTask.channelName,
+                updatedAtLabel = updatedAtLabel.ifBlank { referenceTask.updatedAtLabel },
+                canClaim = canClaim
+        )
+
+private fun Map<TaskId, TaskSummary>.findTaskForMessage(message: Message): TaskSummary? =
+        values.firstOrNull { task -> task.matchesMessageReference(message) }
+
+private fun TaskSummary.matchesMessageReference(message: Message): Boolean =
+        messageId == message.id ||
+                parentMessageId == message.id ||
+                id == message.task?.id ||
+                taskNumber != null && taskNumber == message.task?.taskNumber
+
+private fun TasksUiState.withCachedTaskReferences(
+        cache: Map<TaskId, TaskSummary>
+): TasksUiState =
+        copy(
+                loadState =
+                        (loadState as? ScreenLoadState.Content)?.let { contentState ->
+                            ScreenLoadState.Content(
+                                    contentState.data.copy(
+                                            tasks =
+                                                    contentState.data.tasks.map { task ->
+                                                        task.withTaskReferenceFieldsFrom(
+                                                                cache[task.id] ?: task
+                                                        )
+                                                    }
+                                    )
+                            )
+                        } ?: loadState
         )
 
 private fun TasksUiState.applyRealtimeEvent(event: RealtimeEvent): TasksUiState {
@@ -7583,6 +8256,7 @@ private fun MemberProfile.withThreadAuthorProfile(profile: MemberProfile): Membe
             avatar = avatar ?: profile.avatar ?: AvatarReference.fromWireValue(mergedAvatarUrl),
             avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: profile.avatarLabel,
             presence = if (presence == Presence.Offline) profile.presence else presence,
+            agentStatus = agentStatus ?: profile.agentStatus,
             permissionBadges =
                     if (permissionBadges.isEmpty()) profile.permissionBadges else permissionBadges
     )
@@ -7617,6 +8291,8 @@ private fun SettingsScreen(
         onLocaleSelected: (AppLocale) -> Unit,
         chatLayoutPreferenceSnapshot: ChatLayoutPreferenceSnapshot,
         onMyMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
+        notificationsEnabledByUser: Boolean,
+        onNotificationsEnabledByUserChange: (Boolean) -> Unit,
         onOpenComputerDetail: (String) -> Unit,
         onSaveServerProfile: (String) -> Unit,
         onSendServerInvite: (String) -> Unit,
@@ -7635,10 +8311,10 @@ private fun SettingsScreen(
     if (destination != SettingsDestination.Home) {
         BackHandler {
             onDestinationChange(
-                    if (destination == SettingsDestination.ComputerDetail) {
-                        SettingsDestination.Computers
-                    } else {
-                        SettingsDestination.Home
+                    when (destination) {
+                        SettingsDestination.ComputerDetail -> SettingsDestination.Computers
+                        SettingsDestination.Diagnostics -> SettingsDestination.About
+                        else -> SettingsDestination.Home
                     }
             )
         }
@@ -7788,6 +8464,9 @@ private fun SettingsScreen(
                                     localeSnapshot = localeSnapshot,
                                     onRequestNotificationPermission =
                                             onRequestNotificationPermission,
+                                    pushNotificationsEnabledByUser = notificationsEnabledByUser,
+                                    onPushNotificationsEnabledChange =
+                                            onNotificationsEnabledByUserChange,
                                     onChatLayoutPreferenceSelected = onMyMessageAlignmentSelected,
                                     onLocaleSelected = onLocaleSelected,
                                     onSendTest = onSendTestNotification,
@@ -7802,6 +8481,18 @@ private fun SettingsScreen(
                     ) {
                         SettingsAboutScreen(
                                 snapshot = aboutSnapshot,
+                                onOpenDiagnostics = {
+                                    onDestinationChange(SettingsDestination.Diagnostics)
+                                }
+                        )
+                    }
+            SettingsDestination.Diagnostics ->
+                    SettingsSecondaryScreen(
+                            title = stringResource(R.string.settings_about_diagnostics_title),
+                            onBack = { onDestinationChange(SettingsDestination.About) }
+                    ) {
+                        SettingsDiagnosticsScreen(
+                                logs = aboutSnapshot.diagnosticLogs,
                                 onCopyLogs = onCopyDiagnostics,
                                 onShareLogs = onShareDiagnostics,
                                 onClearLogs = onClearDiagnostics
@@ -7872,7 +8563,8 @@ private enum class SettingsDestination(val key: String) {
     Server("server"),
     Billing("billing"),
     Mobile("mobile"),
-    About("about")
+    About("about"),
+    Diagnostics("diagnostics")
 }
 
 @Composable
@@ -8158,6 +8850,7 @@ private fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPlans(): List<Sett
         }
 
 private const val SettingsNotificationVisibleTestChannelId = "settings-test-visible-v2"
+private const val InboxNotificationChannelId = SettingsNotificationVisibleTestChannelId
 
 private enum class SettingsNotificationPostResult {
     Posted,
@@ -8292,11 +8985,111 @@ private fun Context.showSettingsTestNotification(): SettingsNotificationPostOutc
     }
 }
 
+private fun Context.showInboxNotification(
+        message: Message,
+        diagnosticsTag: String
+): SettingsNotificationPostOutcome {
+    ensureSettingsNotificationChannel()
+    val diagnostics = notificationDiagnostics()
+    if (!diagnostics.permissionGranted)
+            return SettingsNotificationPostOutcome(
+                    SettingsNotificationPostResult.PermissionDenied,
+                    visibilityReason = "permission_denied"
+            )
+    if (!diagnostics.notificationsEnabled)
+            return SettingsNotificationPostOutcome(
+                    SettingsNotificationPostResult.NotificationsDisabled,
+                    visibilityReason = "notifications_disabled"
+            )
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                    diagnostics.channelImportance == NotificationManager.IMPORTANCE_NONE
+    ) {
+        return SettingsNotificationPostOutcome(
+                SettingsNotificationPostResult.ChannelBlocked,
+                visibilityReason = "channel_blocked"
+        )
+    }
+    val notificationId = message.id.value.hashCode().let { if (it == Int.MIN_VALUE) 1 else kotlin.math.abs(it) }
+            .coerceAtLeast(1)
+    val title = getString(R.string.inbox_notification_title, message.notificationChannelName())
+    val text = message.notificationBody()
+    try {
+        val contentIntent =
+                packageManager
+                        .getLaunchIntentForPackage(packageName)
+                        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        ?.let { intent ->
+                            PendingIntent.getActivity(
+                                    this,
+                                    notificationId,
+                                    intent,
+                                    PendingIntent.FLAG_UPDATE_CURRENT or
+                                            PendingIntent.FLAG_IMMUTABLE
+                            )
+                        }
+        NotificationManagerCompat.from(this)
+                .notify(
+                        notificationId,
+                        NotificationCompat.Builder(this, InboxNotificationChannelId)
+                                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                                .setContentTitle(title)
+                                .setContentText(text)
+                                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                                .setWhen(System.currentTimeMillis())
+                                .setShowWhen(true)
+                                .setContentIntent(contentIntent)
+                                .setAutoCancel(true)
+                                .build()
+                )
+        val activeAfterPost = isNotificationActive(notificationId)
+        return if (activeAfterPost) {
+            SettingsNotificationPostOutcome(
+                    SettingsNotificationPostResult.Posted,
+                    notificationId = notificationId,
+                    activeAfterPost = true,
+                    visibilityReason = "${diagnosticsTag}_active_notification_posted"
+            )
+        } else {
+            SettingsNotificationPostOutcome(
+                    SettingsNotificationPostResult.PostedButNotActive,
+                    notificationId = notificationId,
+                    activeAfterPost = false,
+                    visibilityReason = "${diagnosticsTag}_post_returned_but_not_active"
+            )
+        }
+    } catch (error: SecurityException) {
+        ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
+                "SlockInboxNotification",
+                "post_security_exception source=$diagnosticsTag messageId=${message.id.value} code=${error.javaClass.simpleName}"
+        )
+        return SettingsNotificationPostOutcome(
+                SettingsNotificationPostResult.SecurityException,
+                notificationId = notificationId,
+                visibilityReason = "security_exception"
+        )
+    }
+}
+
+private fun Message.notificationChannelName(): String =
+        channelId?.value ?: threadChannelId?.value ?: threadId.value
+
+private fun Message.notificationBody(): String =
+        listOf(author.displayName, body)
+                .filter { it.isNotBlank() }
+                .joinToString(": ")
+                .ifBlank { author.displayName }
+
 private fun refreshSelectedThread(
         reason: String,
         selectedThreadStateProvider: () -> ThreadUiState,
         selectedThreadIdProvider: () -> String?,
         setSelectedThreadState: (ThreadUiState) -> Unit,
+        onThreadSnapshot: (DataResult<ThreadSnapshot>) -> Unit = {},
+        transformThreadState: (ThreadUiState) -> ThreadUiState = { it },
         conversationRepository: ConversationRepository,
         coroutineScope: CoroutineScope
 ) {
@@ -8311,11 +9104,16 @@ private fun refreshSelectedThread(
                 "SlockThreadLifecycle",
                 "refresh_start reason=$reason threadId=${threadId.value}"
         )
-        when (val result = conversationRepository.getThread(threadId)) {
+        val result = conversationRepository.getThread(threadId)
+        onThreadSnapshot(result)
+        when (result) {
             is DataResult.Content -> {
                 if (selectedThreadIdProvider() == threadId.value) {
                     setSelectedThreadState(
-                            selectedThreadStateProvider().mergeRefreshedThreadSnapshot(result.data)
+                            transformThreadState(
+                                    selectedThreadStateProvider()
+                                            .mergeRefreshedThreadSnapshot(result.data)
+                            )
                     )
                 }
                 ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
@@ -8559,6 +9357,21 @@ private fun Context.shareDiagnostics() {
         )
     }
 }
+
+private fun Color.toStatusBarLogName(): String =
+        when (this) {
+            SlockColor.SurfaceWhite -> "surface_white"
+            SlockColor.SurfaceCream -> "surface_cream"
+            SlockColor.BrandYellow -> "brand_yellow"
+            else -> "0x${toArgb().toUInt().toString(16)}"
+        }
+
+private tailrec fun Context.findComponentActivity(): ComponentActivity? =
+        when (this) {
+            is ComponentActivity -> this
+            is ContextWrapper -> baseContext.findComponentActivity()
+            else -> null
+        }
 
 @Preview(showBackground = true, widthDp = 360, heightDp = 800)
 @Composable

@@ -21,6 +21,7 @@ Each contract entry should record:
 - [Workspace file preview contract](./workspace/file-preview-api-contract.md)
 - [Socket.IO boundary](./realtime/android-socketio-boundary.md) - task #118
 - [Channel messages API contract](./messages/channel-messages-api-contract.md) - `GET /api/messages/channel/{channelId}`
+- [Read receipts contract](./messages/read-receipts-contract.md) - `GET /channels/unread`, `POST /channels/{channelId}/read`, `POST /channels/{channelId}/read-all`
 - [Reply count and thread-summary join contract](./messages/replycount-thread-summary-contract.md) - task #386
 - [Followed threads API contract](./messages/followed-threads-api-contract.md) - `GET /api/channels/threads/followed` (2026-05-09)
 - [Message context and reply thread creation contract](./messages/message-context-thread-creation-contract.md) - task #71
@@ -247,7 +248,8 @@ Android restore-session behavior:
 
 | Method | Path | Notes |
 |--------|------|---------|
-| `GET`  | `/api/channels?archived=include` | All channels (including archived). |
+| `GET`  | `/api/channels` | Default Home channel list. Android filters `archived` / `isArchived` rows locally so archived channels stay hidden without sending unsupported query values. |
+| `GET`  | `/api/channels?archived=include` | All channels (including archived), when an explicit archived-management surface needs them. |
 | `GET`  | `/api/channels/dm` | DM channels. |
 | `POST` | `/api/channels/dm` | Open/create a DM. Body is `{ agentId }` or `{ userId }`. |
 | `GET`  | `/api/channels/unread` | Unread message counts per channel. |

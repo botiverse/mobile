@@ -206,6 +206,42 @@ class ThreadUiStateTest {
     }
 
     @Test
+    fun taskStatusUpdateRefreshesVisibleMessageParentAndThreadTasks() {
+        val initialTask =
+            TaskSummary(
+                id = TaskId("task-1"),
+                title = "Finish reply thread",
+                status = TaskStatus.InProgress,
+                taskNumber = 382,
+                messageId = MessageId("message-task-parent"),
+                updatedAtLabel = "Earlier"
+            )
+        val updatedTask = initialTask.copy(status = TaskStatus.Done, updatedAtLabel = "Now")
+        val parentMessage = message("message-task-parent", seq = 10).copy(task = initialTask)
+        val replyMessage = message("message-reply", seq = 20).copy(task = initialTask)
+        val state =
+            ThreadUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        ThreadContent(
+                            header = conversation("reply-thread-1"),
+                            parentMessage = parentMessage,
+                            messages = listOf(replyMessage),
+                            tasks = listOf(initialTask)
+                        )
+                    )
+            )
+
+        val merged = state.withTaskStatusUpdate(updatedTask)
+        val content = (merged.loadState as ScreenLoadState.Content).data
+
+        assertEquals(TaskStatus.Done, content.parentMessage?.task?.status)
+        assertEquals(TaskStatus.Done, content.messages.single().task?.status)
+        assertEquals(TaskStatus.Done, content.tasks.single().status)
+        assertEquals("Now", content.messages.single().task?.updatedAtLabel)
+    }
+
+    @Test
     fun realtimeMessageUpdateDoesNotClearExistingAuthorAvatar() {
         val existing =
             message("message-avatar", seq = 20).copy(

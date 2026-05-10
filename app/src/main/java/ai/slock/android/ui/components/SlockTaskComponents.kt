@@ -136,52 +136,6 @@ fun SlockTaskCard(
             .padding(SlockSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        Box {
-            SlockStatusLabel(
-                status = task.status,
-                label = if (task.statusUpdating) task.updatingLabel else statusLabel,
-                modifier =
-                    task.onStatusSelected?.let {
-                        Modifier.clickable(
-                            enabled = !task.statusUpdating,
-                            role = Role.Button,
-                            onClick = { statusMenuExpanded = !statusMenuExpanded }
-                        )
-                    } ?: Modifier
-            )
-            if (statusMenuExpanded) {
-                Popup(
-                    alignment = Alignment.TopStart,
-                    onDismissRequest = { statusMenuExpanded = false },
-                    properties = PopupProperties(focusable = true)
-                ) {
-                    Column(
-                        modifier =
-                            Modifier
-                                .width(180.dp)
-                                .padding(
-                                    end = SlockShadow.Small.offsetX,
-                                    bottom = SlockShadow.Small.offsetY
-                                )
-                                .slockHardShadow(SlockShadow.Small)
-                                .background(SlockColor.SurfaceWhite)
-                                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    ) {
-                        SlockTaskStatus.entries.forEach { status ->
-                            SlockTaskStatusDropdownRow(
-                                status = status,
-                                label = status.displayLabel,
-                                selected = status == task.status,
-                                onClick = {
-                                    statusMenuExpanded = false
-                                    task.onStatusSelected?.invoke(status)
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-        }
         Text(
             text = task.title,
             style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
@@ -211,39 +165,73 @@ fun SlockTaskCard(
                 color = SlockColor.TextMutedGray
             )
         }
+        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomEnd) {
+            SlockStatusSelector(
+                status = task.status,
+                label = if (task.statusUpdating) task.updatingLabel else statusLabel,
+                expanded = statusMenuExpanded,
+                enabled = !task.statusUpdating && task.onStatusSelected != null,
+                onExpandedChange = { statusMenuExpanded = it },
+                onStatusSelected = { status ->
+                    statusMenuExpanded = false
+                    task.onStatusSelected?.invoke(status)
+                }
+            )
+        }
     }
 }
 
 @Composable
-private fun SlockTaskStatusDropdownRow(
+fun SlockStatusSelector(
     status: SlockTaskStatus,
     label: String,
-    selected: Boolean,
-    onClick: () -> Unit
+    expanded: Boolean,
+    enabled: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onStatusSelected: (SlockTaskStatus) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(if (selected) status.color else SlockColor.SurfaceWhite)
-                .clickable(role = Role.Button, onClick = onClick)
-                .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-    ) {
-        Icon(
-            imageVector = SlockIcons.ChevronRight,
-            contentDescription = null,
-            tint = SlockColor.TextBlack,
-            modifier = Modifier.width(12.dp)
+    Box(modifier = modifier) {
+        SlockStatusLabel(
+            status = status,
+            label = label,
+            modifier =
+                if (enabled) {
+                    Modifier.clickable(
+                        role = Role.Button,
+                        onClick = { onExpandedChange(!expanded) }
+                    )
+                } else {
+                    Modifier
+                }
         )
-        Text(
-            text = label,
-            style = SlockType.SectionLabel,
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        if (expanded) {
+            Popup(
+                alignment = Alignment.BottomEnd,
+                onDismissRequest = { onExpandedChange(false) },
+                properties = PopupProperties(focusable = true)
+            ) {
+                SlockMenuOverlay(
+                    actions =
+                        SlockTaskStatus.entries.map { option ->
+                            SlockMenuOverlayAction(
+                                label = option.displayLabel,
+                                icon =
+                                    if (option == status) {
+                                        SlockIcons.Check
+                                    } else {
+                                        SlockIcons.Circle
+                                    },
+                                onClick = {
+                                    onExpandedChange(false)
+                                    onStatusSelected(option)
+                                }
+                            )
+                        },
+                    width = 184.dp
+                )
+            }
+        }
     }
 }
 
@@ -255,12 +243,12 @@ fun SlockStatusLabel(
 ) {
     Text(
         text = label.uppercase(),
-        style = SlockType.Caption,
+        style = SlockType.SectionLabel,
         color = SlockColor.TextBlack,
         modifier = modifier
             .background(status.color)
             .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .padding(horizontal = SlockSpacing.Sm, vertical = 2.dp)
+            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs)
     )
 }
 

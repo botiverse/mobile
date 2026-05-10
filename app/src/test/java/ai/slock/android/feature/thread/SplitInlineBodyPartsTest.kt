@@ -137,9 +137,40 @@ class SplitInlineBodyPartsTest {
 
     @Test
     fun `thread timestamp formatter handles standard and space separated datetimes`() {
-        assertEquals("22:00", "2026-05-09T22:00:00+08:00".toThreadTimestampLabel())
-        assertEquals("22:00", "2026-05-09 22:00:00+08:00".toThreadTimestampLabel())
-        assertEquals("22:00", "2026-05-09 22:00:00.000+08:00".toThreadTimestampLabel())
+        val zone = java.time.ZoneId.of("Asia/Shanghai")
+        val today = java.time.LocalDate.of(2026, 5, 9)
+
+        assertEquals("22:00", "2026-05-09T22:00:00+08:00".toThreadTimestampLabel(zone, today))
+        assertEquals("22:00", "2026-05-09 22:00:00+08:00".toThreadTimestampLabel(zone, today))
+        assertEquals("22:00", "2026-05-09 22:00:00.000+08:00".toThreadTimestampLabel(zone, today))
+        assertEquals("22:00", "2026-05-09T22:00:00.000+0800".toThreadTimestampLabel(zone, today))
+        assertEquals("22:00", "2026-05-09 22:00:00+0800".toThreadTimestampLabel(zone, today))
+        assertEquals("22:00", "1778335200000".toThreadTimestampLabel(zone, today))
+        assertEquals("22:00", "1778335200".toThreadTimestampLabel(zone, today))
+    }
+
+    @Test
+    fun `thread timestamp formatter handles server microsecond utc offset hour`() {
+        val zone = java.time.ZoneId.of("Asia/Shanghai")
+        val today = java.time.LocalDate.of(2026, 5, 10)
+
+        assertEquals(
+            "05:53",
+            "2026-05-09 21:53:33.024426+00".toThreadTimestampLabel(zone, today)
+        )
+    }
+
+    @Test
+    fun `thread timestamp formatter includes date outside today`() {
+        val zone = java.time.ZoneId.of("Asia/Shanghai")
+        val today = java.time.LocalDate.of(2026, 5, 10)
+
+        assertEquals("22:00", "2026-05-10T22:00:00+08:00".toThreadTimestampLabel(zone, today))
+        assertEquals("05-09 22:00", "2026-05-09T22:00:00+08:00".toThreadTimestampLabel(zone, today))
+        assertEquals(
+                "2025-12-31 23:58",
+                "2025-12-31T23:58:00+08:00".toThreadTimestampLabel(zone, today)
+        )
     }
 
     // ── mention chips ────────────────────────────────────────────────────────

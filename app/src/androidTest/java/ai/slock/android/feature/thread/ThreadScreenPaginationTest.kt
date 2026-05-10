@@ -2,6 +2,7 @@ package ai.slock.android.feature.thread
 
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -13,6 +14,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
+import ai.slock.android.core.model.AgentStatus
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationKind
 import ai.slock.android.core.model.ConversationSummary
@@ -21,6 +25,7 @@ import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageId
+import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.state.ScreenError
 import ai.slock.android.core.state.ScreenLoadState
@@ -129,6 +134,74 @@ class ThreadScreenPaginationTest {
         composeRule.onAllNodesWithText("TASKS").assertCountEquals(0)
         composeRule.onNodeWithText("Original thread starter").assertIsDisplayed()
         composeRule.onNodeWithText("Message 1").assertIsDisplayed()
+    }
+
+    @Test
+    fun horizontalSwipeSwitchesBetweenChatAndTasksTabs() {
+        val selectedTab = mutableStateOf(ThreadTab.Chat)
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        selectedTab = selectedTab.value,
+                        loadState = ScreenLoadState.Content(
+                            content(messages = listOf(message(1L)), canLoadMoreBefore = false)
+                        )
+                    ),
+                    onModeSelected = { selectedTab.value = it }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("CHAT").assertIsDisplayed()
+        composeRule.onNodeWithTag(THREAD_MESSAGE_LIST_TAG).performTouchInput {
+            swipeLeft()
+        }
+
+        composeRule.runOnIdle {
+            assertEquals(ThreadTab.Tasks, selectedTab.value)
+        }
+        composeRule.onNodeWithText("No tasks").assertIsDisplayed()
+
+        composeRule.onNodeWithText("No tasks").performTouchInput {
+            swipeRight()
+        }
+
+        composeRule.runOnIdle {
+            assertEquals(ThreadTab.Chat, selectedTab.value)
+        }
+        composeRule.onNodeWithText("Message 1").assertIsDisplayed()
+    }
+
+    @Test
+    fun verticalSwipeInMessageListDoesNotSwitchThreadTab() {
+        val selectedTab = mutableStateOf(ThreadTab.Chat)
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        selectedTab = selectedTab.value,
+                        loadState = ScreenLoadState.Content(
+                            content(
+                                messages = (1L..24L).map(::message),
+                                canLoadMoreBefore = false
+                            )
+                        )
+                    ),
+                    onModeSelected = { selectedTab.value = it }
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(THREAD_MESSAGE_LIST_TAG).performTouchInput {
+            down(center)
+            moveBy(Offset(0f, -140f))
+            up()
+        }
+
+        composeRule.runOnIdle {
+            assertEquals(ThreadTab.Chat, selectedTab.value)
+        }
     }
 
     @Test
@@ -268,6 +341,110 @@ class ThreadScreenPaginationTest {
     }
 
     @Test
+    fun replyThreadLongOriginCanCollapseAndExpand() {
+        val longOriginBody =
+            (1..18).joinToString("\n") { index ->
+                "Original thread starter line $index with enough text to make the pinned origin tall"
+            }
+        val origin =
+            message(1L).copy(
+                id = MessageId("long-origin-message"),
+                body = longOriginBody
+            )
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(messages = listOf(message(2L)), canLoadMoreBefore = false)
+                        )
+                    ),
+                    replyHeaderContext = ThreadReplyHeaderContext(
+                        parentChannelName = "android-dev",
+                        parentMessagePreview = "Original thread starter",
+                        parentMessage = origin
+                    ),
+                    parentJumpTarget = ThreadParentJumpTarget(MessageId("long-origin-message"))
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Original thread starter line 1", substring = true)
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Message 2").assertIsDisplayed()
+        composeRule.onNodeWithText("Expand origin").assertIsDisplayed().performClick()
+        composeRule.onAllNodesWithText("Collapse origin").assertCountEquals(1)
+        composeRule.onAllNodesWithText("Original thread starter line 18", substring = true)
+            .assertCountEquals(1)
+    }
+
+    @Test
+    fun replyThreadHugeExpandedOriginKeepsCollapseVisible() {
+        val hugeOriginBody =
+            (1..80).joinToString("\n") { index ->
+                "Very long origin line $index with enough text to overflow the expanded panel"
+            }
+        val origin =
+            message(1L).copy(
+                id = MessageId("huge-origin-message"),
+                body = hugeOriginBody
+            )
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(messages = listOf(message(2L)), canLoadMoreBefore = false)
+                        )
+                    ),
+                    replyHeaderContext = ThreadReplyHeaderContext(
+                        parentChannelName = "android-dev",
+                        parentMessagePreview = "Huge origin",
+                        parentMessage = origin
+                    ),
+                    parentJumpTarget = ThreadParentJumpTarget(MessageId("huge-origin-message"))
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Expand origin").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Collapse origin").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Expand origin").assertIsDisplayed()
+    }
+
+    @Test
+    fun replyThreadNearThresholdOriginDoesNotShowRedundantCollapseControl() {
+        val origin =
+            message(1L).copy(
+                id = MessageId("near-threshold-origin-message"),
+                body = (1..6).joinToString("\n") { index -> "Compact origin line $index" }
+            )
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(messages = listOf(message(2L)), canLoadMoreBefore = false)
+                        )
+                    ),
+                    replyHeaderContext = ThreadReplyHeaderContext(
+                        parentChannelName = "android-dev",
+                        parentMessagePreview = "Compact origin",
+                        parentMessage = origin
+                    ),
+                    parentJumpTarget = ThreadParentJumpTarget(MessageId("near-threshold-origin-message"))
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Compact origin line 1", substring = true).assertIsDisplayed()
+        composeRule.onAllNodesWithText("Expand origin").assertCountEquals(0)
+    }
+
+    @Test
     fun channelReplyActionCanCreateThreadWithoutExistingReplies() {
         var openedReply: Message? = null
 
@@ -386,6 +563,92 @@ class ThreadScreenPaginationTest {
         composeRule.runOnIdle {
             assertEquals(agent, removedMember)
         }
+    }
+
+    @Test
+    fun addMemberPickerClickingSelectedAgentAgainDeselectsIt() {
+        val currentMember = MemberProfile(
+            id = MemberId("human-current"),
+            displayName = "Human Current",
+            handle = "human-current",
+            kind = MemberKind.Human,
+            roleDescription = "Owner"
+        )
+        val candidate = MemberProfile(
+            id = MemberId("agent-candidate"),
+            displayName = "Agent Candidate",
+            handle = "agent-candidate",
+            kind = MemberKind.Agent,
+            roleDescription = "Agent"
+        )
+        val membersState = ThreadMembersPanelState(
+            loadState = ScreenLoadState.Content(
+                ThreadMembersPanelContent(members = listOf(currentMember))
+            ),
+            candidatesLoadState = ScreenLoadState.Content(
+                ThreadMembersPickerContent(candidates = listOf(candidate))
+            )
+        )
+        var addCalls = 0
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(messages = listOf(message(1)), canLoadMoreBefore = false)
+                        )
+                    ),
+                    membersPanelState = membersState,
+                    onAddChannelMember = { _, _ -> addCalls += 1 }
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Members").performClick()
+        composeRule.onNodeWithText("+ Add Member").assertIsDisplayed().performClick()
+
+        composeRule.onNodeWithText("Agent Candidate").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Selected").assertIsDisplayed()
+        composeRule.onNodeWithText("Agent Candidate").performClick()
+        composeRule.onAllNodesWithText("Selected").assertCountEquals(0)
+        composeRule.onNodeWithText("Add").assertIsDisplayed()
+        composeRule.onNodeWithText("Add Selected").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(0, addCalls)
+        }
+    }
+
+    @Test
+    fun agentMessageAvatarShowsStatusIndicator() {
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(
+                                messages =
+                                    listOf(
+                                        message(1).copy(
+                                            author =
+                                                author.copy(
+                                                    displayName = "Thinking Agent",
+                                                    agentStatus = AgentStatus.Thinking,
+                                                    presence = Presence.Active
+                                                )
+                                        )
+                                    ),
+                                canLoadMoreBefore = false
+                            )
+                        )
+                    )
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Thinking Agent").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Agent status: Thinking").assertIsDisplayed()
     }
 
     @Test

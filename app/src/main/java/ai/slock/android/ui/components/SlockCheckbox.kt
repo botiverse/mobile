@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -76,7 +77,9 @@ fun SlockLabeledCheckbox(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    size: Dp = 20.dp
+    size: Dp = 20.dp,
+    labelSpacing: Dp = SlockSpacing.Sm,
+    labelStyle: TextStyle = SlockType.Button.copy(fontSize = 16.sp, lineHeight = 20.sp)
 ) {
     Row(
         modifier = modifier
@@ -87,7 +90,7 @@ fun SlockLabeledCheckbox(
                 onClick = { onCheckedChange(!checked) }
             ),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        horizontalArrangement = Arrangement.spacedBy(labelSpacing)
     ) {
         SlockCheckbox(
             checked = checked,
@@ -96,7 +99,7 @@ fun SlockLabeledCheckbox(
         )
         Text(
             text = label,
-            style = SlockType.Button.copy(fontSize = 16.sp, lineHeight = 20.sp),
+            style = labelStyle,
             color = if (enabled) SlockColor.TextMutedGray else SlockColor.TextMutedGray.copy(alpha = 0.6f)
         )
     }

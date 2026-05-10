@@ -68,6 +68,7 @@ fun InboxScreen(
     onOpenThread: (InboxItem) -> Unit,
     modifier: Modifier = Modifier,
     onFilterSelected: (InboxFilter) -> Unit = {},
+    onMarkItemRead: (InboxItem) -> Unit = {},
     onMarkAllRead: () -> Unit = {},
     onLoadMore: () -> Unit = {},
     onRetry: () -> Unit = {}
@@ -89,6 +90,7 @@ fun InboxScreen(
         onOpenThread = onOpenThread,
         modifier = modifier,
         onFilterSelected = onFilterSelected,
+        onMarkItemRead = onMarkItemRead,
         onMarkAllRead = onMarkAllRead,
         onLoadMore = onLoadMore,
         onRetry = onRetry
@@ -134,6 +136,7 @@ private fun InboxListScreen(
     onOpenThread: (InboxItem) -> Unit,
     modifier: Modifier = Modifier,
     onFilterSelected: (InboxFilter) -> Unit = {},
+    onMarkItemRead: (InboxItem) -> Unit = {},
     onMarkAllRead: () -> Unit = {},
     onLoadMore: () -> Unit = {},
     onRetry: () -> Unit = {}
@@ -159,6 +162,7 @@ private fun InboxListScreen(
                 onBack = onBack,
                 onOpenThread = onOpenThread,
                 onFilterSelected = onFilterSelected,
+                onMarkItemRead = onMarkItemRead,
                 onMarkAllRead = onMarkAllRead,
                 onLoadMore = onLoadMore
             )
@@ -346,6 +350,7 @@ private fun InboxLoadedContent(
     onBack: () -> Unit,
     onOpenThread: (InboxItem) -> Unit,
     onFilterSelected: (InboxFilter) -> Unit,
+    onMarkItemRead: (InboxItem) -> Unit,
     onMarkAllRead: () -> Unit,
     onLoadMore: () -> Unit
 ) {
@@ -391,7 +396,8 @@ private fun InboxLoadedContent(
                 InboxFlatItem(
                     item = item,
                     focused = item.key == state.focusedItemKey,
-                    onClick = { onOpenThread(item) }
+                    onClick = { onOpenThread(item) },
+                    onMarkRead = { onMarkItemRead(item) }
                 )
             }
             if (content.hasMore) {
@@ -558,7 +564,8 @@ private fun InboxMarkAllReadButton(onClick: () -> Unit) {
 private fun InboxFlatItem(
     item: InboxItem,
     focused: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onMarkRead: () -> Unit = onClick
 ) {
     val unread = item.unreadCount > 0
     val metadataDescription = item.metadataDescription()
@@ -634,7 +641,7 @@ private fun InboxFlatItem(
             }
         }
         Box(modifier = Modifier.width(40.dp), contentAlignment = Alignment.TopEnd) {
-            InboxItemCheckButton(onClick = onClick)
+            InboxItemCheckButton(onClick = onMarkRead)
         }
     }
 }
@@ -683,7 +690,7 @@ private fun InboxItemCheckButton(
     ) {
         Icon(
             imageVector = SlockIcons.Check,
-            contentDescription = stringResource(R.string.inbox_open_item),
+            contentDescription = stringResource(R.string.inbox_mark_item_as_read),
             tint = SlockColor.TextBlack,
             modifier = Modifier.size(16.dp)
         )

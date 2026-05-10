@@ -44,7 +44,7 @@ interface SlockApi {
 
     @GET("channels")
     suspend fun channels(
-        @Query("archived") archived: String = "include"
+        @Query("archived") archived: String? = null
     ): Response<ResponseBody>
 
     @GET("servers/{serverId}/members")
