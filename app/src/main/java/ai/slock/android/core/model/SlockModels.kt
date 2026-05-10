@@ -255,7 +255,8 @@ data class TaskSummary(
 enum class InboxItemKind {
     Channel,
     DirectMessage,
-    Thread
+    Thread,
+    System
 }
 
 data class InboxItem(

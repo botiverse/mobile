@@ -1,7 +1,6 @@
 package ai.slock.android.feature.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +18,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -29,15 +30,13 @@ import androidx.compose.ui.unit.dp
 import ai.slock.android.ui.components.SlockIcons
 import ai.slock.android.ui.components.SlockTitledPageHeader
 import ai.slock.android.ui.theme.SlockColor
-import ai.slock.android.ui.theme.SlockShadow
 import ai.slock.android.ui.theme.SlockSpacing
 import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
 import ai.slock.android.ui.theme.SlockType
-import ai.slock.android.ui.theme.slockHardShadow
 
-private val SettingsRowMinHeight = 68.dp
-private val SettingsIconBoxSize = 38.dp
+private val SettingsRowMinHeight = 56.dp
+private val SettingsIconBoxSize = 32.dp
 private val SettingsIconSize = 18.dp
 private val SettingsChevronSize = 16.dp
 
@@ -75,8 +74,15 @@ fun SettingsHomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(SlockSpacing.Md),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                .drawBehind {
+                    val stroke = SlockStroke.Default.toPx()
+                    drawLine(
+                        color = SlockColor.BorderBlack,
+                        start = Offset(0f, size.height - stroke / 2f),
+                        end = Offset(size.width, size.height - stroke / 2f),
+                        strokeWidth = stroke
+                    )
+                }
         ) {
             items.forEach { item ->
                 SettingsNavRow(
@@ -101,21 +107,20 @@ fun SettingsNavRow(
         item.selected -> SlockColor.AccentCyan
         else -> SlockColor.SurfaceWhite
     }
-    val shadow = if (
-        item.enabled &&
-        (item.interactionState == SettingsRowInteractionState.Focused || item.interactionState == SettingsRowInteractionState.Pressed)
-    ) {
-        SlockShadow.Small
-    } else {
-        null
-    }
     Row(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = SettingsRowMinHeight)
-            .then(if (shadow != null) Modifier.slockHardShadow(shadow) else Modifier)
             .background(backgroundColor)
-            .border(SlockStroke.Default, borderColor)
+            .drawBehind {
+                val stroke = SlockStroke.Default.toPx()
+                drawLine(
+                    color = borderColor,
+                    start = Offset(0f, size.height - stroke / 2f),
+                    end = Offset(size.width, size.height - stroke / 2f),
+                    strokeWidth = stroke
+                )
+            }
             .clickable(enabled = item.enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
@@ -123,9 +128,7 @@ fun SettingsNavRow(
     ) {
         Box(
             modifier = Modifier
-                .size(SettingsIconBoxSize)
-                .background(if (item.enabled) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, borderColor),
+                .size(SettingsIconBoxSize),
             contentAlignment = Alignment.Center
         ) {
             Icon(

@@ -14,6 +14,7 @@ okhttp = "4.12.0"
 gson = "2.11.0"
 socketIoClient = "2.1.2"
 markdownRenderer = "0.33.0"
+sqldelight = "2.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -38,8 +39,11 @@ gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 socket-io-client = { group = "io.socket", name = "socket.io-client", version.ref = "socketIoClient" }
 markdown-renderer-android = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-android", version.ref = "markdownRenderer" }
 markdown-renderer-m3-android = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-m3-android", version.ref = "markdownRenderer" }
+sqldelight-android-driver = { group = "app.cash.sqldelight", name = "android-driver", version.ref = "sqldelight" }
+sqldelight-sqlite-driver = { group = "app.cash.sqldelight", name = "sqlite-driver", version.ref = "sqldelight" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }

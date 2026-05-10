@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,7 +29,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -45,7 +45,6 @@ import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenError
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.sample.SlockStateSamples
-import ai.slock.android.feature.thread.ThreadMessageBodyTextStyle
 import ai.slock.android.feature.thread.toThreadTimestampLabel
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
@@ -608,9 +607,7 @@ private fun InboxFlatItem(
     onMarkRead: () -> Unit = onClick
 ) {
     val unread = item.unreadCount > 0
-    val metadataDescription = item.metadataDescription()
     val metadataTimestamp = item.metadataTimestamp()?.toThreadTimestampLabel()
-    val hasMetadata = !metadataDescription.isNullOrBlank() || !metadataTimestamp.isNullOrBlank()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -635,43 +632,24 @@ private fun InboxFlatItem(
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
             ) {
                 Text(
-                    text = item.titleText,
-                    style = SlockType.Button.copy(fontWeight = FontWeight.Bold),
-                    color = SlockColor.TextBlack,
+                    text = item.channelLabelText,
+                    style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                    color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.widthIn(max = 180.dp)
                 )
-                if (hasMetadata) {
-                    if (!metadataDescription.isNullOrBlank()) {
-                        Text(
-                            text = metadataDescription,
-                            style = SlockType.Caption,
-                            color = SlockColor.TextMutedGray,
-                            textAlign = TextAlign.End,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    if (!metadataTimestamp.isNullOrBlank()) {
-                        Text(
-                            text = metadataTimestamp,
-                            style = SlockType.Caption,
-                            color = SlockColor.TextMutedGray,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                if (!metadataTimestamp.isNullOrBlank()) {
+                    Text(
+                        text = metadataTimestamp,
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
-            Text(
-                text = item.previewText(),
-                style = ThreadMessageBodyTextStyle,
-                color = SlockColor.TextBlack,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            InboxItemActivityBody(item = item)
             if (unread || item.replyCount > 0) {
                 InboxItemFooter(
                     item = item,
@@ -684,6 +662,74 @@ private fun InboxFlatItem(
             InboxItemCheckButton(onClick = onMarkRead)
         }
     }
+}
+
+@Composable
+private fun InboxItemActivityBody(item: InboxItem) {
+    when (val activity = item.activityPreview()) {
+        is InboxActivityPreview.NewMessage -> InboxNewMessageLine(activity = activity)
+        is InboxActivityPreview.Reply -> InboxReplyActivityLine(activity = activity)
+        is InboxActivityPreview.System -> InboxSystemMessageLine(activity = activity)
+    }
+}
+
+@Composable
+private fun InboxNewMessageLine(activity: InboxActivityPreview.NewMessage) {
+    Text(
+        text = activity.body,
+        style = SlockType.Button.copy(fontWeight = FontWeight.Bold),
+        color = SlockColor.TextBlack,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+private fun InboxReplyActivityLine(activity: InboxActivityPreview.Reply) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = activity.parentBody,
+            style = SlockType.Button.copy(fontWeight = FontWeight.Bold),
+            color = SlockColor.TextBlack,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "↳",
+                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                color = SlockColor.TextMutedGray
+            )
+            Text(
+                text = "${activity.sender}: ${activity.replyBody}",
+                style = SlockType.Caption,
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun InboxSystemMessageLine(activity: InboxActivityPreview.System) {
+    Text(
+        text = activity.body,
+        style = SlockType.Button.copy(fontWeight = FontWeight.Bold),
+        color = SlockColor.TextBlack,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable
@@ -710,6 +756,13 @@ private fun InboxItemFooter(
             )
         }
     }
+}
+
+private sealed interface InboxActivityPreview {
+    data class NewMessage(val body: String) : InboxActivityPreview
+    data class Reply(val parentBody: String, val sender: String, val replyBody: String) :
+            InboxActivityPreview
+    data class System(val body: String) : InboxActivityPreview
 }
 
 @Composable
@@ -749,7 +802,9 @@ private fun InboxKindIcon(
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            imageVector = if (item.kind == InboxItemKind.Thread) SlockIcons.MessageSquare else SlockIcons.MessageSquare,
+            imageVector =
+                    if (item.kind == InboxItemKind.System) SlockIcons.BellRing
+                    else SlockIcons.MessageSquare,
             contentDescription = null,
             tint = if (unread) SlockColor.AccentPink else SlockColor.TextMutedGray,
             modifier = Modifier.size(18.dp)
@@ -906,26 +961,36 @@ private fun InboxEmptyBody(
     }
 }
 
-private val InboxItem.titleText: String
+private val InboxItem.channelLabelText: String
     get() = when (kind) {
-        InboxItemKind.Thread -> parentChannelName ?: channelName
         InboxItemKind.DirectMessage -> channelName
+        InboxItemKind.Thread -> "#${parentChannelName ?: channelName}"
         InboxItemKind.Channel -> "#$channelName"
+        InboxItemKind.System -> "#$channelName"
     }
 
 @Composable
-private fun InboxItem.previewText(): String =
-    latestActivityPreview
-        ?: lastMessagePreview
-        ?: parentMessagePreview
-        ?: stringResource(R.string.inbox_no_preview)
-
-private fun InboxItem.metadataDescription(): String? =
-    listOfNotNull(
-        latestActivitySenderName ?: lastMessageSenderName,
-        taskNumber?.let { "#$it" },
-        taskStatus?.name
-    ).joinToString(" · ").takeIf { it.isNotBlank() }
+private fun InboxItem.activityPreview(): InboxActivityPreview {
+    val fallback = stringResource(R.string.inbox_no_preview)
+    if (kind == InboxItemKind.System) {
+        return InboxActivityPreview.System(
+            body = latestActivityPreview ?: lastMessagePreview ?: parentMessagePreview ?: fallback
+        )
+    }
+    val parent = parentMessagePreview?.takeIf { it.isNotBlank() }
+    val reply = latestActivityPreview?.takeIf { it.isNotBlank() }
+    val sender = latestActivitySenderName ?: lastMessageSenderName
+    if (kind == InboxItemKind.Thread && parent != null && reply != null && reply != parent && sender != null) {
+        return InboxActivityPreview.Reply(
+            parentBody = parent,
+            sender = sender,
+            replyBody = reply
+        )
+    }
+    return InboxActivityPreview.NewMessage(
+        body = lastMessagePreview ?: latestActivityPreview ?: parentMessagePreview ?: fallback
+    )
+}
 
 private fun InboxItem.metadataTimestamp(): String? =
     latestActivityAt ?: lastMessageAt

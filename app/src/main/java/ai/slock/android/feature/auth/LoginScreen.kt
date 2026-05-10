@@ -66,6 +66,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+private val AuthCardMaxWidth = 460.dp
+private val AuthFormMaxWidth = 360.dp
+
 @Composable
 fun LoginScreen(
         onLogin: (email: String, password: String) -> Unit,
@@ -235,7 +238,7 @@ private fun ColumnScope.AuthFormColumn(
             modifier =
                     modifier.align(Alignment.CenterHorizontally)
                             .fillMaxWidth()
-                            .widthIn(max = 360.dp),
+                            .widthIn(max = AuthFormMaxWidth),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.Start,
             content = content
@@ -264,7 +267,7 @@ fun AuthScaffold(modifier: Modifier = Modifier, content: @Composable ColumnScope
         Column(
                 modifier =
                         Modifier.fillMaxWidth()
-                                .widthIn(max = 620.dp)
+                                .widthIn(max = AuthCardMaxWidth)
                                 .padding(
                                         end = SlockShadow.Default.offsetX,
                                         bottom = SlockShadow.Default.offsetY

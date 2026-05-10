@@ -454,6 +454,64 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
+    fun inboxRepositoryMapsRealThreadItemShape() {
+        val repository = RealInboxRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = FakeSlockApi(
+                inboxJson = """
+                    {
+                      "items": [
+                        {
+                          "kind": "thread",
+                          "threadChannelId": "thread-1",
+                          "parentMessageId": "parent-message-1",
+                          "parentChannelId": "channel-1",
+                          "parentChannelName": "mardown专修",
+                          "parentChannelType": "channel",
+                          "parentMessagePreview": "inline code 也有这个问题",
+                          "parentMessageSenderType": "human",
+                          "parentMessageSenderId": "user-1",
+                          "latestActivityPreview": "收到，我会修 inline code",
+                          "latestActivitySenderType": "agent",
+                          "latestActivitySenderId": "agent-1",
+                          "latestActivitySender": {
+                            "id": "agent-1",
+                            "displayName": "Android-App-Integrator"
+                          },
+                          "latestActivityMessageId": "reply-message-1",
+                          "firstUnreadMessageId": null,
+                          "lastActivityAt": "2026-05-10T21:26:00+08:00",
+                          "lastReplyAt": "2026-05-10T21:26:00+08:00",
+                          "replyCount": 8,
+                          "unreadCount": 1,
+                          "taskNumber": null,
+                          "taskStatus": null
+                        }
+                      ],
+                      "hasMore": true,
+                      "totalCount": 30,
+                      "totalUnreadCount": 4
+                    }
+                """.trimIndent()
+            )
+        )
+
+        val result = runSuspend { repository.loadInitial(ServerId("server-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val item = (result as DataResult.Content).data.items.single()
+        assertEquals(InboxItemKind.Thread, item.kind)
+        assertEquals("thread-1", item.threadChannelId?.value)
+        assertEquals("channel-1", item.parentChannelId?.value)
+        assertEquals(ConversationKind.Channel, item.parentChannelKind)
+        assertEquals("inline code 也有这个问题", item.parentMessagePreview)
+        assertEquals("收到，我会修 inline code", item.latestActivityPreview)
+        assertEquals("Android-App-Integrator", item.latestActivitySenderName)
+        assertEquals("2026-05-10T21:26:00+08:00", item.latestActivityAt)
+        assertEquals(8, item.replyCount)
+    }
+
+    @Test
     fun taskRepositoryMapsTimestampAliasesForDefaultRecentSorting() {
         val repository = RealTaskRepository(
             store = InMemoryAuthSessionStore(sampleSession),
@@ -668,6 +726,37 @@ class RealSlockRepositoriesTest {
         assertEquals(MessageType.System, systemMessage.messageType)
         assertEquals("task_claimed", systemMessage.systemEventType)
         assertEquals("task-1", systemMessage.metadata["taskId"])
+    }
+
+    @Test
+    fun channelMessagesWithoutChannelObjectUseRequestChannelId() {
+        val repository = RealConversationRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = FakeSlockApi(
+                channelMessagesJson = """
+                    {
+                      "messages": [
+                        {
+                          "id":"message-1",
+                          "channelId":"channel-all",
+                          "seq":"42",
+                          "content":"Hello",
+                          "createdByUser":{"id":"user-2","displayName":"Android Developer"}
+                        }
+                      ]
+                    }
+                """.trimIndent()
+            ),
+            warningLogger = {}
+        )
+
+        val result = runSuspend { repository.getThread(ThreadId("channel-all")) }
+
+        assertTrue(result is DataResult.Content)
+        val snapshot = (result as DataResult.Content).data
+        assertEquals("channel-all", snapshot.conversation.threadId.value)
+        assertEquals("channel-all", snapshot.conversation.channelId?.value)
+        assertEquals("channel-all", snapshot.messages.single().threadId.value)
     }
 
     @Test

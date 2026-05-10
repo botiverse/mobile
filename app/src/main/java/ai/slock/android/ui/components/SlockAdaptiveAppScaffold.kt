@@ -1,7 +1,6 @@
 package ai.slock.android.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -72,17 +72,22 @@ fun SlockAdaptiveAppScaffold(
     showNavigation: Boolean,
     statusBarColor: Color,
     modifier: Modifier = Modifier,
+    statusBarContent: (@Composable (SlockAdaptiveAppLayoutInfo) -> Unit)? = null,
     content: @Composable (SlockAdaptiveAppLayoutInfo) -> Unit
 ) {
-    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        val layoutInfo = rememberSlockAdaptiveAppLayoutInfo(maxWidth, maxHeight)
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) adaptiveWindow@{
+        val layoutInfo =
+            rememberSlockAdaptiveAppLayoutInfo(
+                width = this@adaptiveWindow.maxWidth,
+                height = this@adaptiveWindow.maxHeight
+            )
         Row(
             modifier =
                 Modifier
                     .fillMaxSize()
                     .background(SlockColor.AppBgLightBlue)
         ) {
-            if (showNavigation && layoutInfo.usesNavigationRail) {
+            if (slockAdaptiveShowsNavigationRail(layoutInfo)) {
                 SlockAppNavigationRail(
                     items = items,
                     selectedKey = selectedKey,
@@ -91,13 +96,17 @@ fun SlockAdaptiveAppScaffold(
             }
             Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .windowInsetsTopHeight(WindowInsets.statusBars)
-                                .background(statusBarColor)
-                    )
+                    if (statusBarContent != null) {
+                        statusBarContent(layoutInfo)
+                    } else {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .windowInsetsTopHeight(WindowInsets.statusBars)
+                                    .background(statusBarColor)
+                        )
+                    }
                     Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                         content(layoutInfo)
                     }
@@ -146,6 +155,9 @@ fun slockAdaptiveAppLayoutInfo(
         height = height
     )
 }
+
+fun slockAdaptiveShowsNavigationRail(layoutInfo: SlockAdaptiveAppLayoutInfo): Boolean =
+    layoutInfo.usesNavigationRail
 
 @Composable
 fun SlockAdaptiveBottomContentPadding(
@@ -200,7 +212,20 @@ private fun SlockAppNavigationRail(
                 .width(NavigationRailWidth)
                 .fillMaxHeight()
                 .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
+                .drawWithContent {
+                    drawContent()
+                    val stroke = SlockStroke.Default.toPx()
+                    drawLine(
+                        color = SlockColor.BorderBlack,
+                        start = androidx.compose.ui.geometry.Offset(size.width - stroke / 2f, 0f),
+                        end =
+                            androidx.compose.ui.geometry.Offset(
+                                size.width - stroke / 2f,
+                                size.height
+                            ),
+                        strokeWidth = stroke
+                    )
+                },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
@@ -275,5 +300,5 @@ private fun SlockNavigationRailItem(
 
 private val MediumWindowMinWidth = 600.dp
 private val ExpandedWindowMinWidth = 840.dp
-private val NavigationRailWidth = 84.dp
-private val NavigationRailItemHeight = 62.dp
+private val NavigationRailWidth = 72.dp
+private val NavigationRailItemHeight = 58.dp

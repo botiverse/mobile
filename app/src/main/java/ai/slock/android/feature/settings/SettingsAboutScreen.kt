@@ -5,18 +5,15 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -27,11 +24,9 @@ import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticLogEntry
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.theme.SlockColor
-import ai.slock.android.ui.theme.SlockShadow
 import ai.slock.android.ui.theme.SlockSpacing
 import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockType
-import ai.slock.android.ui.theme.slockHardShadow
 
 data class SettingsAboutSnapshot(
     val appVersion: String,
@@ -60,7 +55,6 @@ fun SettingsAboutScreen(
             .padding(SlockSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
-        SettingsAboutHeader()
         SettingsAboutInfoCard(
             title = stringResource(R.string.settings_about_app_section),
             rows = listOf(
@@ -112,40 +106,6 @@ fun SettingsDiagnosticsScreen(
             onClearLogs = onClearLogs
         )
         SettingsDiagnosticsText(logs = logs)
-    }
-}
-
-@Composable
-private fun SettingsAboutHeader() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(end = SlockShadow.Small.offsetX, bottom = SlockShadow.Small.offsetY)
-            .slockHardShadow(SlockShadow.Small)
-            .background(SlockColor.BrandYellow)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .padding(SlockSpacing.Md),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-    ) {
-        Icon(
-            painter = painterResource(R.drawable.slock_splash_logo),
-            contentDescription = stringResource(R.string.settings_about_logo),
-            modifier = Modifier.size(48.dp),
-            tint = androidx.compose.ui.graphics.Color.Unspecified
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = stringResource(R.string.settings_about_title),
-                style = SlockType.PageTitle,
-                color = SlockColor.TextBlack
-            )
-            Text(
-                text = stringResource(R.string.settings_about_subtitle),
-                style = SlockType.Caption,
-                color = SlockColor.TextBlack
-            )
-        }
     }
 }
 

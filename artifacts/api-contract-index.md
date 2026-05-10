@@ -24,6 +24,7 @@ Each contract entry should record:
 - [Read receipts contract](./messages/read-receipts-contract.md) - `GET /channels/unread`, `POST /channels/{channelId}/read`, `POST /channels/{channelId}/read-all`
 - [Reply count and thread-summary join contract](./messages/replycount-thread-summary-contract.md) - task #386
 - [Followed threads API contract](./messages/followed-threads-api-contract.md) - `GET /api/channels/threads/followed` (2026-05-09)
+- [Inbox API contract](./messages/inbox-api-contract.md) - `GET /api/channels/inbox` (2026-05-10)
 - [Message context and reply thread creation contract](./messages/message-context-thread-creation-contract.md) - task #71
 - [Settings Billing and Server sections contract](./settings/android-settings-billing-server-contract.md) - task #388
 - [Members, agents, DM, reminders, and activity contract](./members/members-agents-dm-reminders-activity-contract.md) - task #387 / #设置项专修 task #2
@@ -35,6 +36,7 @@ Current canonical doc slices for the analyzed API / mapper surface:
 - task #385: [Socket.IO / realtime contract and merge semantics](./realtime/android-socketio-boundary.md)
 - task #386: [message replyCount and channel thread-summary join contract](./messages/replycount-thread-summary-contract.md)
 - task #386b: [followed threads API contract](./messages/followed-threads-api-contract.md) — `GET /channels/threads/followed`, dual-source join
+- task #45 follow-up: [inbox API contract](./messages/inbox-api-contract.md) — `GET /channels/inbox`, thread/channel row fields
 - task #71: [message context and reply thread creation contract](./messages/message-context-thread-creation-contract.md) — `GET /messages/context/{messageId}` before `POST /channels/{channelId}/threads`
 - task #387 / #设置项专修 task #2: [members profiles, agents, DM, reminders, and activity contracts](./members/members-agents-dm-reminders-activity-contract.md)
 - task #388: [settings Billing and confirmed Server sections contracts](./settings/android-settings-billing-server-contract.md)

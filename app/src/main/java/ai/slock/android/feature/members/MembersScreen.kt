@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -70,6 +71,7 @@ import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.sample.SlockStateSamples
 import ai.slock.android.feature.thread.toThreadTimestampLabel
 import ai.slock.android.ui.components.SlockAgentStatusIndicator
+import ai.slock.android.ui.components.SlockAdaptiveAppLayoutInfo
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
@@ -85,12 +87,14 @@ import ai.slock.android.ui.components.SlockWorkspaceFileTree
 import ai.slock.android.ui.components.SlockWorkspaceNode
 import ai.slock.android.ui.components.SlockWorkspaceSamples
 import ai.slock.android.ui.components.SlockWorkspaceTreeState
+import ai.slock.android.ui.components.SlockWindowLayoutMode
 import ai.slock.android.ui.components.agentStatusLabel
 import ai.slock.android.ui.components.defaultAvatarColor
 import ai.slock.android.ui.system.DeclareStatusBarColor
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
 import ai.slock.android.ui.theme.SlockShadow
+import ai.slock.android.ui.theme.SlockSize
 import ai.slock.android.ui.theme.SlockSpacing
 import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
@@ -101,7 +105,10 @@ private val MemberAvatarSize = 34.dp
 private val MemberPresenceSize = 12.dp
 private val MemberRowMinHeight = 48.dp
 private val MembersPageInset = SlockSpacing.Md
+private val MemberDetailHeaderContentHeight = SlockSize.PageHeaderHeight - SlockStroke.Default
 private const val AGENT_ACTIVITY_TIMELINE_TAG = "agent_activity_timeline"
+internal const val MEMBERS_WIDE_DIVIDER_TAG = "members_wide_divider"
+internal const val MEMBERS_WIDE_DETAIL_PANE_TAG = "members_wide_detail_pane"
 private val MembersPageTitleType = SlockType.PageTitle.copy(fontSize = 19.sp, lineHeight = 23.sp)
 private val MembersBodyType = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp)
 private val MembersBodyStrongType = MembersBodyType.copy(fontWeight = FontWeight.Bold)
@@ -161,6 +168,7 @@ fun MembersPageShell(
 fun MembersRouteScreen(
     state: MembersUiState,
     modifier: Modifier = Modifier,
+    adaptiveLayoutInfo: SlockAdaptiveAppLayoutInfo? = null,
     initialSelectedMemberId: String? = null,
     initialSelectedDetailTab: String = MemberDetailTab.Profile.name,
     onBack: () -> Unit = {},
@@ -187,6 +195,44 @@ fun MembersRouteScreen(
         ?.data
         ?.members
         ?.firstOrNull { it.id.value == selectedMemberId }
+    val wideMembersMode =
+        adaptiveLayoutInfo?.mode != null &&
+            adaptiveLayoutInfo.mode != SlockWindowLayoutMode.CompactSinglePane
+    val openDetail: (MemberProfile) -> Unit = { member ->
+        selectedMemberId = member.id.value
+        selectedDetailTab = MemberDetailTab.Profile.name
+        onDetailVisibleChange(true)
+        onOpenMemberProfile(member)
+    }
+
+    if (wideMembersMode) {
+        BackHandler(enabled = selectedMember != null) {
+            selectedMemberId = null
+            onDetailVisibleChange(false)
+        }
+        MembersWideRouteScreen(
+            state = state,
+            selectedMember = selectedMember,
+            selectedTab = selectedDetailTab.toMemberDetailTab(),
+            onTabSelected = { selectedDetailTab = it.name },
+            onCloseDetail = {
+                selectedMemberId = null
+                onDetailVisibleChange(false)
+            },
+            onMemberClick = openDetail,
+            onOpenAgentDirectMessage = {
+                selectedMember?.let(onOpenAgentDirectMessage)
+            },
+            onSaveAgentProfile = { member, displayName, description ->
+                onSaveAgentProfile(member, displayName, description)
+            },
+            onBack = onBack,
+            onAddHuman = onAddHuman,
+            onRetry = onRetry,
+            modifier = modifier
+        )
+        return
+    }
 
     if (selectedMember != null) {
         val closeDetail = {
@@ -224,15 +270,93 @@ fun MembersRouteScreen(
             state = state,
             modifier = modifier,
             onBack = onBack,
-            onMemberClick = { member ->
-                selectedMemberId = member.id.value
-                selectedDetailTab = MemberDetailTab.Profile.name
-                onDetailVisibleChange(true)
-                onOpenMemberProfile(member)
-            },
+            onMemberClick = openDetail,
             onAddHuman = onAddHuman,
             onRetry = onRetry
         )
+    }
+}
+
+@Composable
+private fun MembersWideRouteScreen(
+    state: MembersUiState,
+    selectedMember: MemberProfile?,
+    selectedTab: MemberDetailTab,
+    onTabSelected: (MemberDetailTab) -> Unit,
+    onCloseDetail: () -> Unit,
+    onMemberClick: (MemberProfile) -> Unit,
+    onOpenAgentDirectMessage: () -> Unit,
+    onSaveAgentProfile: (MemberProfile, String, String) -> Unit,
+    onBack: () -> Unit,
+    onAddHuman: () -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (selectedMember == null) {
+        MembersPageShell(
+            state = state,
+            modifier = modifier,
+            onBack = onBack,
+            onMemberClick = onMemberClick,
+            onAddHuman = onAddHuman,
+            onRetry = onRetry
+        )
+        return
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxSize()
+            .background(SlockColor.SurfaceWhite)
+    ) {
+        MembersPageShell(
+            state = state,
+            modifier = Modifier
+                .weight(0.42f)
+                .fillMaxHeight(),
+            onBack = onBack,
+            onMemberClick = onMemberClick,
+            onAddHuman = onAddHuman,
+            onRetry = onRetry
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(SlockStroke.Default)
+                .background(SlockColor.BorderBlack)
+                .testTag(MEMBERS_WIDE_DIVIDER_TAG)
+        )
+        if (selectedMember.kind == MemberKind.Human) {
+            HumanMemberDetailScreen(
+                member = selectedMember,
+                onBack = onCloseDetail,
+                closeMode = true,
+                modifier = Modifier
+                    .weight(0.58f)
+                    .fillMaxHeight()
+                    .testTag(MEMBERS_WIDE_DETAIL_PANE_TAG)
+            )
+        } else {
+            MemberDetailScreen(
+                member = selectedMember,
+                selectedTab = selectedTab,
+                onTabSelected = onTabSelected,
+                agentDmsState = state.selectedAgentDmsState,
+                agentRemindersState = state.selectedAgentRemindersState,
+                agentActivityState = state.selectedAgentActivityState,
+                agentProfileSaveState = state.agentProfileSaveState,
+                onBack = onCloseDetail,
+                closeMode = true,
+                onOpenAgentDirectMessage = onOpenAgentDirectMessage,
+                onSaveAgentProfile = { displayName, description ->
+                    onSaveAgentProfile(selectedMember, displayName, description)
+                },
+                modifier = Modifier
+                    .weight(0.58f)
+                    .fillMaxHeight()
+                    .testTag(MEMBERS_WIDE_DETAIL_PANE_TAG)
+            )
+        }
     }
 }
 
@@ -490,6 +614,7 @@ private fun MembersStateHeader(onBack: () -> Unit) {
 private fun HumanMemberDetailScreen(
     member: MemberProfile,
     onBack: () -> Unit,
+    closeMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -497,7 +622,7 @@ private fun HumanMemberDetailScreen(
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        MemberDetailHeader(member = member, onBack = onBack)
+        MemberDetailHeader(member = member, onBack = onBack, closeMode = closeMode)
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -520,6 +645,7 @@ private fun MemberDetailScreen(
     agentActivityState: ScreenLoadState<AgentActivitySnapshot>,
     agentProfileSaveState: AgentProfileSaveState,
     onBack: () -> Unit,
+    closeMode: Boolean = false,
     onOpenAgentDirectMessage: () -> Unit,
     onSaveAgentProfile: (String, String) -> Unit,
     modifier: Modifier = Modifier
@@ -534,7 +660,7 @@ private fun MemberDetailScreen(
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        MemberDetailHeader(member = member, onBack = onBack)
+        MemberDetailHeader(member = member, onBack = onBack, closeMode = closeMode)
         Column(modifier = tabSwipeModifier.fillMaxSize()) {
             MemberDetailTabs(selectedTab = selectedTab, onTabSelected = onTabSelected)
             if (selectedTab == MemberDetailTab.Activity) {
@@ -587,14 +713,15 @@ private fun MemberDetailScreen(
 @Composable
 private fun MemberDetailHeader(
     member: MemberProfile,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    closeMode: Boolean = false
 ) {
     DeclareStatusBarColor(SlockColor.SurfaceWhite)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
-            .heightIn(min = 58.dp)
+            .heightIn(min = MemberDetailHeaderContentHeight)
             .padding(
                 start = SlockSpacing.Md,
                 end = SlockSpacing.Md,
@@ -605,8 +732,8 @@ private fun MemberDetailHeader(
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         SlockIconSquareButton(
-            icon = SlockIcons.ArrowLeft,
-            contentDescription = "Back to members",
+            icon = if (closeMode) SlockIcons.X else SlockIcons.ArrowLeft,
+            contentDescription = if (closeMode) "Close member detail" else "Back to members",
             onClick = onBack,
             modifier = Modifier.size(38.dp)
         )
@@ -629,12 +756,9 @@ private fun MemberDetailHeader(
             Text(
                 text =
                     if (member.kind == MemberKind.Human) {
-                        member.roleDescription ?: member.handle
+                        member.handle
                     } else {
-                        listOfNotNull(
-                            member.agentStatus.agentStatusLabel(member.presence),
-                            member.roleDescription
-                        ).joinToString(" · ")
+                        member.agentStatus.agentStatusLabel(member.presence)
                     },
                 style = MembersCaptionType,
                 color = SlockColor.TextMutedGray,
@@ -708,9 +832,15 @@ private fun MemberProfileDetail(
     var description by rememberSaveable(member.id.value) {
         mutableStateOf(member.roleDescription.orEmpty())
     }
+    var editing by rememberSaveable(member.id.value) { mutableStateOf(false) }
     LaunchedEffect(member.displayName, member.roleDescription) {
         displayName = member.displayName
         description = member.roleDescription.orEmpty()
+    }
+    LaunchedEffect(saveState) {
+        if (saveState == AgentProfileSaveState.Saved) {
+            editing = false
+        }
     }
     val trimmedDisplayName = displayName.trim()
     val trimmedDescription = description.trim()
@@ -721,47 +851,76 @@ private fun MemberProfileDetail(
     val canSave = trimmedDisplayName.isNotBlank() && hasChanges && !isSaving
     MemberDetailSection(title = "Profile") {
         Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
-            SlockTextField(
-                value = displayName,
-                onValueChange = { displayName = it },
-                label = "Display Name",
-                placeholder = "Agent display name",
-                enabled = !isSaving,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
-            )
-            SlockTextField(
-                value = description,
-                onValueChange = { description = it },
-                label = "Description",
-                placeholder = "Agent description",
-                enabled = !isSaving,
-                singleLine = false,
-                minLines = 3,
-                maxLines = 5,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default)
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SlockButton(
-                    text = "Save",
-                    onClick = { onSave(trimmedDisplayName, trimmedDescription) },
-                    enabled = canSave,
-                    loading = isSaving,
-                    variant = SlockButtonVariant.Pink,
-                    modifier = Modifier.weight(1f)
+            if (editing) {
+                SlockTextField(
+                    value = displayName,
+                    onValueChange = { displayName = it },
+                    label = "Display Name",
+                    placeholder = "Agent display name",
+                    enabled = !isSaving,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
                 )
-                if (hasChanges && !isSaving) {
+                SlockTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = "Description",
+                    placeholder = "Agent description",
+                    enabled = !isSaving,
+                    singleLine = false,
+                    minLines = 3,
+                    maxLines = 5,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     SlockButton(
-                        text = "Reset",
+                        text = "Save",
+                        onClick = { onSave(trimmedDisplayName, trimmedDescription) },
+                        enabled = canSave,
+                        loading = isSaving,
+                        variant = SlockButtonVariant.Pink,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SlockButton(
+                        text = "Cancel",
                         onClick = {
                             displayName = member.displayName
                             description = member.roleDescription.orEmpty()
+                            editing = false
                         },
+                        enabled = !isSaving,
                         variant = SlockButtonVariant.Outline,
                         modifier = Modifier.weight(1f)
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+                    ) {
+                        MemberDetailLabeledValue("Display Name", member.displayName)
+                        MemberDetailLabeledValue(
+                            label = "Description",
+                            value = member.roleDescription.orEmpty().ifBlank { "No description" }
+                        )
+                    }
+                    SlockIconSquareButton(
+                        icon = SlockIcons.Pencil,
+                        contentDescription = "Edit agent profile",
+                        onClick = {
+                            displayName = member.displayName
+                            description = member.roleDescription.orEmpty()
+                            editing = true
+                        },
+                        modifier = Modifier.size(38.dp)
                     )
                 }
             }

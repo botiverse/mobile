@@ -1,0 +1,285 @@
+CREATE TABLE local_conversation (
+  id TEXT NOT NULL PRIMARY KEY,
+  channel_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  name TEXT NOT NULL,
+  parent_channel_id TEXT,
+  parent_message_id TEXT,
+  avatar_url TEXT,
+  unread_count INTEGER NOT NULL DEFAULT 0,
+  updated_at_label TEXT,
+  last_synced_at_ms INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX local_conversation_channel_id ON local_conversation(channel_id);
+CREATE INDEX local_conversation_thread_id ON local_conversation(thread_id);
+
+CREATE TABLE local_message (
+  id TEXT NOT NULL PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  seq INTEGER,
+  author_id TEXT NOT NULL,
+  author_display_name TEXT NOT NULL,
+  author_handle TEXT NOT NULL,
+  author_kind TEXT NOT NULL,
+  timestamp_label TEXT NOT NULL,
+  body TEXT NOT NULL,
+  message_type TEXT NOT NULL,
+  system_event_type TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  delivery_state TEXT NOT NULL,
+  reply_count INTEGER NOT NULL DEFAULT 0,
+  parent_message_id TEXT,
+  updated_at_label TEXT,
+  last_synced_at_ms INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX local_message_thread_seq ON local_message(thread_id, seq);
+CREATE INDEX local_message_thread_id_id ON local_message(thread_id, id);
+CREATE INDEX local_message_parent_message_id ON local_message(parent_message_id);
+
+CREATE TABLE local_attachment (
+  id TEXT NOT NULL PRIMARY KEY,
+  message_id TEXT NOT NULL REFERENCES local_message(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  size_label TEXT NOT NULL,
+  thumbnail_url TEXT,
+  sort_order INTEGER NOT NULL
+);
+
+CREATE INDEX local_attachment_message_id ON local_attachment(message_id);
+
+CREATE TABLE local_task_reference (
+  id TEXT NOT NULL PRIMARY KEY,
+  message_id TEXT,
+  parent_message_id TEXT,
+  channel_id TEXT,
+  thread_id TEXT,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL,
+  task_number INTEGER,
+  is_thread_task INTEGER NOT NULL DEFAULT 0,
+  assignee_id TEXT,
+  assignee_display_name TEXT,
+  assignee_handle TEXT,
+  assignee_kind TEXT,
+  channel_name TEXT,
+  updated_at_label TEXT NOT NULL,
+  can_claim INTEGER NOT NULL DEFAULT 1,
+  last_synced_at_ms INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX local_task_reference_message_id ON local_task_reference(message_id);
+CREATE INDEX local_task_reference_parent_message_id ON local_task_reference(parent_message_id);
+CREATE INDEX local_task_reference_task_number ON local_task_reference(task_number);
+
+CREATE TABLE local_member_snapshot (
+  id TEXT NOT NULL PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  handle TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  avatar_url TEXT,
+  gravatar_hash TEXT,
+  avatar_label TEXT,
+  presence TEXT,
+  role_description TEXT,
+  last_synced_at_ms INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE local_sync_cursor (
+  scope_id TEXT NOT NULL PRIMARY KEY,
+  scope_kind TEXT NOT NULL,
+  latest_seq INTEGER,
+  oldest_loaded_seq INTEGER,
+  newest_loaded_seq INTEGER,
+  has_loaded_oldest INTEGER NOT NULL DEFAULT 0,
+  has_loaded_newest INTEGER NOT NULL DEFAULT 1,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE local_outbox_message (
+  local_id TEXT NOT NULL PRIMARY KEY,
+  channel_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  body TEXT NOT NULL,
+  attachment_ids_json TEXT NOT NULL DEFAULT '[]',
+  as_task INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  last_error_code TEXT
+);
+
+selectConversation:
+SELECT *
+FROM local_conversation
+WHERE id = ? OR thread_id = ? OR channel_id = ?
+ORDER BY CASE
+  WHEN id = ? THEN 0
+  WHEN thread_id = ? THEN 1
+  ELSE 2
+END
+LIMIT 1;
+
+upsertConversation:
+INSERT OR REPLACE INTO local_conversation(
+  id,
+  channel_id,
+  thread_id,
+  kind,
+  name,
+  parent_channel_id,
+  parent_message_id,
+  avatar_url,
+  unread_count,
+  updated_at_label,
+  last_synced_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectMessage:
+SELECT *
+FROM local_message
+WHERE id = ?;
+
+selectMessagesForThread:
+SELECT *
+FROM local_message
+WHERE thread_id = ?
+ORDER BY COALESCE(seq, 9223372036854775807), id;
+
+upsertMessage:
+INSERT OR REPLACE INTO local_message(
+  id,
+  thread_id,
+  channel_id,
+  seq,
+  author_id,
+  author_display_name,
+  author_handle,
+  author_kind,
+  timestamp_label,
+  body,
+  message_type,
+  system_event_type,
+  metadata_json,
+  delivery_state,
+  reply_count,
+  parent_message_id,
+  updated_at_label,
+  last_synced_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteAttachmentsForMessage:
+DELETE FROM local_attachment
+WHERE message_id = ?;
+
+insertAttachment:
+INSERT INTO local_attachment(
+  id,
+  message_id,
+  name,
+  mime_type,
+  size_label,
+  thumbnail_url,
+  sort_order
+) VALUES (?, ?, ?, ?, ?, ?, ?);
+
+selectAttachmentsForMessage:
+SELECT *
+FROM local_attachment
+WHERE message_id = ?
+ORDER BY sort_order, id;
+
+selectTaskReference:
+SELECT *
+FROM local_task_reference
+WHERE id = ?;
+
+upsertTaskReference:
+INSERT OR REPLACE INTO local_task_reference(
+  id,
+  message_id,
+  parent_message_id,
+  channel_id,
+  thread_id,
+  title,
+  status,
+  task_number,
+  is_thread_task,
+  assignee_id,
+  assignee_display_name,
+  assignee_handle,
+  assignee_kind,
+  channel_name,
+  updated_at_label,
+  can_claim,
+  last_synced_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectTaskReferencesForMessage:
+SELECT *
+FROM local_task_reference
+WHERE message_id = ? OR parent_message_id = ?
+ORDER BY COALESCE(task_number, 9223372036854775807), id;
+
+upsertMemberSnapshot:
+INSERT OR REPLACE INTO local_member_snapshot(
+  id,
+  display_name,
+  handle,
+  kind,
+  avatar_url,
+  gravatar_hash,
+  avatar_label,
+  presence,
+  role_description,
+  last_synced_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectMemberSnapshot:
+SELECT *
+FROM local_member_snapshot
+WHERE id = ?;
+
+upsertSyncCursor:
+INSERT OR REPLACE INTO local_sync_cursor(
+  scope_id,
+  scope_kind,
+  latest_seq,
+  oldest_loaded_seq,
+  newest_loaded_seq,
+  has_loaded_oldest,
+  has_loaded_newest,
+  updated_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+selectSyncCursor:
+SELECT *
+FROM local_sync_cursor
+WHERE scope_id = ?;
+
+insertOutboxMessage:
+INSERT INTO local_outbox_message(
+  local_id,
+  channel_id,
+  thread_id,
+  body,
+  attachment_ids_json,
+  as_task,
+  status,
+  created_at_ms,
+  last_error_code
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateOutboxStatus:
+UPDATE local_outbox_message
+SET status = ?, last_error_code = ?
+WHERE local_id = ?;
+
+selectPendingOutboxMessages:
+SELECT *
+FROM local_outbox_message
+WHERE status IN ('pending', 'failed')
+ORDER BY created_at_ms, local_id;

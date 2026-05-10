@@ -9,6 +9,8 @@ import ai.slock.android.core.data.auth.RetrofitAuthRepository
 import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
 import ai.slock.android.core.data.locale.AppLocale
 import ai.slock.android.core.data.locale.LocaleSnapshot
+import ai.slock.android.core.data.local.SlockLocalWriteThrough
+import ai.slock.android.core.data.local.createSlockLocalStore
 import ai.slock.android.core.data.locale.PersistentLocaleRepository
 import ai.slock.android.core.data.locale.SharedPreferencesLocalePreferenceStore
 import ai.slock.android.core.data.network.RealChannelRepository
@@ -52,9 +54,7 @@ import ai.slock.android.core.data.repository.CreateChannelRequest
 import ai.slock.android.core.data.repository.CreateServerRequest
 import ai.slock.android.core.data.repository.DataResult
 import ai.slock.android.core.data.repository.HomeSnapshot
-import ai.slock.android.core.data.repository.InboxFilter as RepositoryInboxFilter
 import ai.slock.android.core.data.repository.InboxRepository
-import ai.slock.android.core.data.repository.InboxSnapshot
 import ai.slock.android.core.data.repository.MemberRepository
 import ai.slock.android.core.data.repository.MemberSnapshot
 import ai.slock.android.core.data.repository.OpenDirectMessageResult
@@ -65,9 +65,7 @@ import ai.slock.android.core.data.repository.RealtimeRepository
 import ai.slock.android.core.data.repository.RealtimeSubscription
 import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
 import ai.slock.android.core.data.repository.SavedRepository
-import ai.slock.android.core.data.repository.SavedSnapshot
 import ai.slock.android.core.data.repository.SearchRepository
-import ai.slock.android.core.data.repository.SearchSnapshot
 import ai.slock.android.core.data.repository.SendMessageResult
 import ai.slock.android.core.data.repository.ServerListSnapshot
 import ai.slock.android.core.data.repository.ServerUnreadRepository
@@ -85,7 +83,6 @@ import ai.slock.android.core.data.repository.TaskFilter
 import ai.slock.android.core.data.repository.TaskRepository
 import ai.slock.android.core.data.repository.TaskSnapshot
 import ai.slock.android.core.data.repository.ThreadActionResult
-import ai.slock.android.core.data.repository.ThreadListSnapshot
 import ai.slock.android.core.data.repository.ThreadSnapshot
 import ai.slock.android.core.model.Attachment
 import ai.slock.android.core.model.AttachmentId
@@ -126,11 +123,22 @@ import ai.slock.android.feature.home.withAgentDirectMessagePresence
 import ai.slock.android.feature.home.withDraftIndicators
 import ai.slock.android.feature.home.withPreservedConversationUnread
 import ai.slock.android.feature.inbox.FollowedThreadsScreen
-import ai.slock.android.feature.inbox.InboxContent
 import ai.slock.android.feature.inbox.InboxFilter
 import ai.slock.android.feature.inbox.InboxScreen
 import ai.slock.android.feature.inbox.InboxUiState
 import ai.slock.android.feature.inbox.SavedScreen
+import ai.slock.android.feature.inbox.applyRealtimeEvent
+import ai.slock.android.feature.inbox.applySavedRealtimeEvent
+import ai.slock.android.feature.inbox.mergeInboxPage
+import ai.slock.android.feature.inbox.toConversationSummary
+import ai.slock.android.feature.inbox.toFollowedThreadsUiState
+import ai.slock.android.feature.inbox.toInboxUiState
+import ai.slock.android.feature.inbox.toRepositoryFilter
+import ai.slock.android.feature.inbox.toSavedInboxUiState
+import ai.slock.android.feature.inbox.toSearchInboxUiState
+import ai.slock.android.feature.inbox.visibleContent
+import ai.slock.android.feature.inbox.visibleTotalCount
+import ai.slock.android.feature.inbox.visibleUnreadCount
 import ai.slock.android.feature.inbox.withBodyLoading
 import ai.slock.android.feature.inbox.withFilterLoading
 import ai.slock.android.feature.inbox.withSilentRefresh
@@ -185,6 +193,7 @@ import ai.slock.android.feature.thread.ThreadMemberRemoveStatus
 import ai.slock.android.feature.thread.ThreadMembersPanelContent
 import ai.slock.android.feature.thread.ThreadMembersPanelState
 import ai.slock.android.feature.thread.ThreadMembersPickerContent
+import ai.slock.android.feature.thread.ThreadHeaderNavigationIcon
 import ai.slock.android.feature.thread.ThreadParentJumpTarget
 import ai.slock.android.feature.thread.ThreadRefreshStatus
 import ai.slock.android.feature.thread.ThreadReplyHeaderContext
@@ -218,6 +227,7 @@ import ai.slock.android.ui.components.SlockAdaptiveBottomContentPadding
 import ai.slock.android.ui.components.SlockServerSwitcherItem
 import ai.slock.android.ui.components.SlockStructuralHomeShell
 import ai.slock.android.ui.components.SlockTextField
+import ai.slock.android.ui.components.SlockWindowLayoutMode
 import ai.slock.android.ui.components.toSlockMemberPickerItem
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
@@ -257,19 +267,27 @@ import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -292,8 +310,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -585,6 +606,27 @@ private fun SlockAppContent(
     val conversationRepository: ConversationRepository = remember {
         RealConversationRepository(authSessionStore, slockApi)
     }
+    val localWriteThrough = remember {
+        SlockLocalWriteThrough(
+                store = createSlockLocalStore(context),
+                logger = { message ->
+                    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                            "SlockLocalStore",
+                            message
+                    )
+                }
+        )
+    }
+    fun localThreadUiState(
+            threadId: ThreadId,
+            fallbackHeader: ConversationSummary? = null,
+            parentMessage: Message? = null
+    ): ThreadUiState? =
+            localWriteThrough.readThreadUiState(
+                    threadId,
+                    fallbackHeader = fallbackHeader,
+                    parentMessage = parentMessage
+            )
     val readReceiptRepository: ReadReceiptRepository = remember {
         RealReadReceiptRepository(authSessionStore, slockApi)
     }
@@ -865,6 +907,7 @@ private fun SlockAppContent(
     val showBottomBar =
             (destination != AppDestination.Home || homeRoute == HomeRoute.Shell) &&
                     !(destination == AppDestination.Members && membersDetailVisible)
+    val showNavigation = showBottomBar
 
     fun clearThreadReturnTarget() {
         threadReturnDestination = null
@@ -1190,12 +1233,13 @@ private fun SlockAppContent(
         selectedThreadId = conversation.threadId.value
         attachmentPreviewState = null
         selectedThreadState =
-                ThreadUiState(
-                        ScreenLoadState.Content(
-                                ThreadContent(header = conversation, messages = emptyList())
-                        ),
-                        composerState = conversation.toComposerState()
-                )
+                localThreadUiState(conversation.threadId, fallbackHeader = conversation)
+                        ?: ThreadUiState(
+                                ScreenLoadState.Content(
+                                        ThreadContent(header = conversation, messages = emptyList())
+                                ),
+                                composerState = conversation.toComposerState()
+                        )
         localComposerMessages = emptyList()
         realtimeThreadMessages = emptyList()
         attachmentOpenStates = emptyMap()
@@ -1206,6 +1250,12 @@ private fun SlockAppContent(
         failedAttachmentIds = draft?.failedAttachmentIds.orEmpty()
         coroutineScope.launch {
             val result = conversationRepository.getThread(conversation.threadId)
+            localWriteThrough.writeThreadResult(
+                    result,
+                    source = "open_thread",
+                    fallbackThreadId = conversation.threadId,
+                    fallbackHeader = conversation
+            )
             result.rememberTaskReferences()
             selectedThreadState =
                     result.toThreadUiState(
@@ -1316,12 +1366,20 @@ private fun SlockAppContent(
                                 replyThreadBackStack.isNotEmpty() || threadParentJumpTarget != null
                 ) ?: return@LaunchedEffect
         val result = conversationRepository.getThread(ThreadId(threadId))
+        localWriteThrough.writeThreadResult(result, source = "restore_thread", fallbackThreadId = ThreadId(threadId))
         result.rememberTaskReferences()
         if (homeRoute == HomeRoute.Thread &&
                         selectedThreadId == threadId &&
                         selectedThreadState.loadState is ScreenLoadState.Loading
         ) {
-            selectedThreadState = result.toThreadUiState().withCachedTaskReferences()
+            selectedThreadState =
+                    (
+                            result.toThreadUiState().takeIf {
+                                it.loadState !is ScreenLoadState.Content
+                            }
+                                    ?: localThreadUiState(ThreadId(threadId))
+                                    ?: result.toThreadUiState()
+                            ).withCachedTaskReferences()
         }
     }
 
@@ -1392,9 +1450,19 @@ private fun SlockAppContent(
                             ?.withCachedTaskReferences()
                             ?.toTasksUiStateForThreadTasks()
 
-    fun selectedThreadChannelId(): ChannelId? {
-        return composerSendChannelId(selectedThreadContent(), selectedThreadId)
-    }
+    fun selectedThreadVisibleTasksChannelId(): ChannelId? =
+            (selectedThreadVisibleTasksState()?.loadState as? ScreenLoadState.Content)
+                    ?.data
+                    ?.tasks
+                    ?.mapNotNull { it.channelId }
+                    ?.distinct()
+                    ?.singleOrNull()
+
+    fun selectedThreadChannelId(): ChannelId? =
+            selectedThreadContent()?.header?.channelId
+                    ?: selectedThreadVisibleTasksChannelId()
+                    ?: selectedThreadContent()?.header?.threadId?.value?.let(::ChannelId)
+                    ?: selectedThreadId?.let(::ChannelId)
 
     fun updateSelectedThreadTasksState(transform: (TasksUiState) -> TasksUiState) {
         val current =
@@ -1459,6 +1527,7 @@ private fun SlockAppContent(
                 )
                 when (val result = conversationRepository.getThread(threadId)) {
                     is DataResult.Content -> {
+                        localWriteThrough.writeThreadResult(result, source = "refresh_thread", fallbackThreadId = threadId)
                         result.rememberTaskReferences()
                         if (selectedThreadId == threadId.value) {
                             selectedThreadState =
@@ -1654,12 +1723,13 @@ private fun SlockAppContent(
         selectedThreadId = threadChannelId.value
         attachmentPreviewState = null
         selectedThreadState =
-                ThreadUiState(
-                        ScreenLoadState.Content(
-                                ThreadContent(header = fallbackHeader, messages = emptyList())
-                        ),
-                        composerState = fallbackHeader.toComposerState()
-                )
+                localThreadUiState(ThreadId(threadChannelId.value), fallbackHeader = fallbackHeader)
+                        ?: ThreadUiState(
+                                ScreenLoadState.Content(
+                                        ThreadContent(header = fallbackHeader, messages = emptyList())
+                                ),
+                                composerState = fallbackHeader.toComposerState()
+                        )
         localComposerMessages = emptyList()
         realtimeThreadMessages = emptyList()
         attachmentOpenStates = emptyMap()
@@ -1685,9 +1755,21 @@ private fun SlockAppContent(
                     } else {
                         conversationRepository.getThread(ThreadId(threadChannelId.value))
                     }
+            val awaitedParentContextResult = parentContextResult?.await()
+            awaitedParentContextResult?.let {
+                localWriteThrough.writeThreadResult(
+                        it,
+                        source = "open_inbox_parent_context",
+                        fallbackThreadId = item.parentMessageId?.value?.let(::ThreadId)
+                )
+            }
+            localWriteThrough.writeThreadResult(
+                    result,
+                    source = "open_inbox_thread",
+                    fallbackThreadId = ThreadId(threadChannelId.value)
+            )
             val parentMessage =
-                    parentContextResult
-                            ?.await()
+                    awaitedParentContextResult
                             ?.findParentMessage(item.parentMessageId)
             selectedThreadState = result.toThreadUiState(
                     fallbackHeader = fallbackHeader,
@@ -2010,13 +2092,20 @@ private fun SlockAppContent(
             threadParentJumpTarget = message.id.value
             selectedThreadId = existingThreadChannelId.value
             selectedThreadState =
-                    ThreadUiState(
-                            ScreenLoadState.Content(
-                                    ThreadContent(header = fallbackHeader, messages = emptyList())
-                                            .copy(parentMessage = message)
-                            ),
-                            composerState = fallbackHeader.toComposerState()
+                    localThreadUiState(
+                            ThreadId(existingThreadChannelId.value),
+                            fallbackHeader = fallbackHeader,
+                            parentMessage = message
                     )
+                            ?: ThreadUiState(
+                                    ScreenLoadState.Content(
+                                            ThreadContent(
+                                                    header = fallbackHeader,
+                                                    messages = emptyList()
+                                            ).copy(parentMessage = message)
+                                    ),
+                                    composerState = fallbackHeader.toComposerState()
+                            )
             localComposerMessages = emptyList()
             realtimeThreadMessages = emptyList()
             attachmentOpenStates = emptyMap()
@@ -2028,6 +2117,11 @@ private fun SlockAppContent(
             coroutineScope.launch {
                 val result =
                         conversationRepository.getThread(ThreadId(existingThreadChannelId.value))
+                localWriteThrough.writeThreadResult(
+                        result,
+                        source = "open_existing_reply_thread",
+                        fallbackThreadId = ThreadId(existingThreadChannelId.value)
+                )
                 selectedThreadState = result.toThreadUiState(
                         fallbackHeader = fallbackHeader,
                         parentMessage = message
@@ -2055,6 +2149,11 @@ private fun SlockAppContent(
                             "messageThreadId=${message.threadId.value}"
             )
             val contextResult = conversationRepository.getMessageContext(message.id)
+            localWriteThrough.writeThreadResult(
+                    contextResult,
+                    source = "open_reply_context",
+                    fallbackThreadId = message.threadId
+            )
             val contextSnapshot = (contextResult as? DataResult.Content)?.data
             val contextMessage =
                     contextSnapshot?.messages?.firstOrNull { it.id == message.id }
@@ -2072,7 +2171,7 @@ private fun SlockAppContent(
                     "open_message_thread_context_result messageId=${message.id.value} " +
                             "result=${contextResult.realtimeResultName()} " +
                             "resolvedChannelId=${createChannelId.value} " +
-                            "contextConversationId=${contextSnapshot?.conversation?.threadId?.value.orEmpty()} " +
+                            "contextThreadId=${contextSnapshot?.conversation?.threadId?.value.orEmpty()} " +
                             "contextMessageCount=${contextSnapshot?.messages?.size ?: 0}"
             )
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
@@ -2104,15 +2203,20 @@ private fun SlockAppContent(
             val resolvedFallbackHeader = resolvedMessage.toConversationSummary(currentHeader)
             selectedThreadId = action.threadChannelId.value
             selectedThreadState =
-                    ThreadUiState(
-                            ScreenLoadState.Content(
-                                    ThreadContent(
-                                            header = resolvedFallbackHeader,
-                                            messages = emptyList()
-                                    ).copy(parentMessage = resolvedMessage)
-                            ),
-                            composerState = resolvedFallbackHeader.toComposerState()
+                    localThreadUiState(
+                            ThreadId(action.threadChannelId.value),
+                            fallbackHeader = resolvedFallbackHeader,
+                            parentMessage = resolvedMessage
                     )
+                            ?: ThreadUiState(
+                                    ScreenLoadState.Content(
+                                            ThreadContent(
+                                                    header = resolvedFallbackHeader,
+                                                    messages = emptyList()
+                                            ).copy(parentMessage = resolvedMessage)
+                                    ),
+                                    composerState = resolvedFallbackHeader.toComposerState()
+                            )
             localComposerMessages = emptyList()
             realtimeThreadMessages = emptyList()
             attachmentOpenStates = emptyMap()
@@ -2122,6 +2226,11 @@ private fun SlockAppContent(
             pendingAttachmentFiles = draft?.attachments.orEmpty()
             failedAttachmentIds = draft?.failedAttachmentIds.orEmpty()
             val result = conversationRepository.getThread(ThreadId(action.threadChannelId.value))
+            localWriteThrough.writeThreadResult(
+                    result,
+                    source = "open_created_reply_thread",
+                    fallbackThreadId = ThreadId(action.threadChannelId.value)
+            )
             result.rememberTaskReferences()
             selectedThreadState =
                     result.toThreadUiState(
@@ -2178,6 +2287,16 @@ private fun SlockAppContent(
                     } else {
                         result
                     }
+            localWriteThrough.writeThreadResult(
+                    result,
+                    source = "open_task_context",
+                    fallbackThreadId = threadId
+            )
+            localWriteThrough.writeThreadResult(
+                    parentContextResult,
+                    source = "open_task_parent_context",
+                    fallbackThreadId = parentMessageId?.value?.let(::ThreadId)
+            )
             result.rememberTaskReferences()
             parentContextResult.rememberTaskReferences()
             when (result) {
@@ -2193,6 +2312,11 @@ private fun SlockAppContent(
                                         conversationRepository.getThread(
                                                 ThreadId(replyThreadChannelId.value)
                                         )
+                                localWriteThrough.writeThreadResult(
+                                        replyThreadResult,
+                                        source = "open_task_reply_thread",
+                                        fallbackThreadId = ThreadId(replyThreadChannelId.value)
+                                )
                                 replyThreadResult.rememberTaskReferences()
                                 replyThreadResult
                             } else {
@@ -2241,10 +2365,17 @@ private fun SlockAppContent(
                                     ?: displayResult.data.conversation.threadId.value
                     selectedThreadId = openedThreadChannelId
                     selectedThreadState =
-                            displayResult.toThreadUiState(
-                                    fallbackHeader = fallbackHeader,
-                                    parentMessage = parentMessage
-                            ).withCachedTaskReferences()
+                            (
+                                    localThreadUiState(
+                                            ThreadId(openedThreadChannelId),
+                                            fallbackHeader = fallbackHeader,
+                                            parentMessage = parentMessage
+                                    )
+                                            ?: displayResult.toThreadUiState(
+                                                    fallbackHeader = fallbackHeader,
+                                                    parentMessage = parentMessage
+                                            )
+                                    ).withCachedTaskReferences()
                     localComposerMessages = emptyList()
                     realtimeThreadMessages = emptyList()
                     attachmentOpenStates = emptyMap()
@@ -2302,6 +2433,31 @@ private fun SlockAppContent(
                         pendingAttachmentFiles,
                         failedAttachmentIds
                 )
+        val parentEntry =
+                replyThreadBackStack.lastOrNull {
+                    it.parentMessageId == target.parentMessageId
+                }
+        if (parentEntry != null) {
+            replyThreadBackStack = replyThreadBackStack.dropLast(1)
+            threadParentJumpTarget = parentEntry.parentJumpTarget
+            selectedThreadId = parentEntry.selectedThreadId
+            attachmentPreviewState = null
+            selectedThreadState = parentEntry.selectedThreadState.withHighlightedMessage(target.parentMessageId)
+            previousHomeRoute = parentEntry.previousHomeRoute
+            homeRoute = HomeRoute.Thread
+            localComposerMessages = parentEntry.localComposerMessages
+            realtimeThreadMessages = parentEntry.realtimeThreadMessages
+            attachmentOpenStates = parentEntry.attachmentOpenStates
+            composerValue = parentEntry.composerValue
+            composerAsTask = parentEntry.composerAsTask
+            pendingAttachmentFiles = parentEntry.pendingAttachmentFiles
+            failedAttachmentIds = parentEntry.failedAttachmentIds
+            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                    "SlockTasksNav",
+                    "open_parent_restore parentMessageId=${target.parentMessageId.value} selectedThreadId=${selectedThreadId.orEmpty()}"
+            )
+            return
+        }
         coroutineScope.launch {
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                     "SlockTasksNav",
@@ -2309,6 +2465,11 @@ private fun SlockAppContent(
             )
             when (val result = conversationRepository.getMessageContext(target.parentMessageId)) {
                 is DataResult.Content -> {
+                    localWriteThrough.writeThreadResult(
+                            result,
+                            source = "open_thread_parent_message",
+                            fallbackThreadId = target.parentMessageId.value.let(::ThreadId)
+                    )
                     result.rememberTaskReferences()
                     replyThreadBackStack = emptyList()
                     threadParentJumpTarget = null
@@ -2573,6 +2734,7 @@ private fun SlockAppContent(
                 )
         coroutineScope.launch {
             val result = conversationRepository.loadOlderMessages(threadId, beforeSeq)
+            localWriteThrough.writeThreadResult(result, source = "page_older", fallbackThreadId = threadId)
             result.rememberTaskReferences()
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                     "SlockThreadPaging",
@@ -2592,6 +2754,7 @@ private fun SlockAppContent(
         selectedThreadState = selectedThreadState.withNewerPageStatus(MessagePageStatus.Loading)
         coroutineScope.launch {
             val result = conversationRepository.loadNewerMessages(threadId, afterSeq)
+            localWriteThrough.writeThreadResult(result, source = "page_newer", fallbackThreadId = threadId)
             result.rememberTaskReferences()
             selectedThreadState =
                     mergeNewerThreadPage(
@@ -3014,6 +3177,7 @@ private fun SlockAppContent(
                         realtimeLastSeq = realtimeLastSeq.updateFrom(event)
                         val activeReplyParentMessageId =
                                 replyThreadBackStack.lastOrNull()?.parentMessageId
+                        localWriteThrough.writeRealtimeEvent(event)
                         event.rememberTaskReferences()
                         homeState = homeState.applyRealtimeEvent(event)
                         inboxState = inboxState.applyRealtimeEvent(event)
@@ -3122,6 +3286,7 @@ private fun SlockAppContent(
                                                 threadId,
                                                 syncAfterSeq
                                         )
+                                localWriteThrough.writeThreadResult(newerResult, source = "gap_sync", fallbackThreadId = threadId)
                                 newerResult.rememberTaskReferences()
                                 ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                                         "SlockRealtime",
@@ -3606,7 +3771,10 @@ private fun SlockAppContent(
                     settingsMobileState = ScreenLoadState.Loading
                     settingsMobileState = settingsRepository.getMobileSettings().toScreenLoadState()
                 }
-                SettingsDestination.Home,
+                SettingsDestination.Home -> {
+                    settingsAccountState = ScreenLoadState.Loading
+                    settingsAccountState = settingsRepository.getAccount().toScreenLoadState()
+                }
                 SettingsDestination.About,
                 SettingsDestination.Diagnostics ->
                         Unit
@@ -3849,7 +4017,7 @@ private fun SlockAppContent(
                 previousHomeRoute = null
                 membersDetailVisible = false
             },
-            showNavigation = showBottomBar,
+            showNavigation = showNavigation,
             statusBarColor = statusBarColor,
             modifier =
                     modifier.background(
@@ -3858,7 +4026,23 @@ private fun SlockAppContent(
                             } else {
                                 SlockColor.AppBgLightBlue
                             }
+                    ),
+            statusBarContent = { layoutInfo ->
+                if (destination == AppDestination.Members &&
+                                (membersDetailVisible || membersDetailSelectedMemberId != null) &&
+                                layoutInfo.mode != SlockWindowLayoutMode.CompactSinglePane
+                ) {
+                    MembersWideStatusBar()
+                } else {
+                    Box(
+                            modifier =
+                                    Modifier
+                                            .fillMaxWidth()
+                                            .windowInsetsTopHeight(WindowInsets.statusBars)
+                                            .background(statusBarColor)
                     )
+                }
+            }
     ) { adaptiveLayoutInfo ->
                     when (destination) {
                     AppDestination.Home ->
@@ -4018,6 +4202,7 @@ private fun SlockAppContent(
                                     followedThreadsState = followedThreadsState,
                                     selectedThreadState = selectedThreadState,
                                     selectedThreadId = selectedThreadId,
+                                    replyThreadBackStack = replyThreadBackStack,
                                     replyHeaderContext =
                                             replyThreadBackStack
                                                     .lastOrNull()
@@ -4097,6 +4282,21 @@ private fun SlockAppContent(
                                                     "SlockAttachment",
                                                     "preview_external attachmentId=${preview.attachmentId?.value.orEmpty()} result=${if (opened) "opened" else "no_handler"}"
                                             )
+                                        }
+                                    },
+                                    onSendParentPaneMessage = { threadId, body, asTask, onResult ->
+                                        coroutineScope.launch {
+                                            val result =
+                                                    conversationRepository.sendMessage(
+                                                            threadId = threadId,
+                                                            body = body,
+                                                            asTask = asTask
+                                                    )
+                                            localWriteThrough.writeSendResult(
+                                                    result,
+                                                    source = "send_parent_reply_split"
+                                            )
+                                            onResult(result)
                                         }
                                     },
                                     savedState = savedState,
@@ -4370,6 +4570,7 @@ private fun SlockAppContent(
                                                         )
                                                 when (result) {
                                                     is DataResult.Content -> {
+                                                        localWriteThrough.writeSendResult(result, source = "send_message")
                                                         selectedThreadState =
                                                                 selectedThreadState
                                                                         .appendSentMessage(
@@ -4608,7 +4809,7 @@ private fun SlockAppContent(
                                     myMessageAlignment =
                                             chatLayoutPreferenceSnapshot.myMessageAlignment,
                                     adaptiveLayoutInfo = adaptiveLayoutInfo,
-                                    showNavigation = showBottomBar
+                                    showNavigation = showNavigation
                             )
                     AppDestination.Tasks ->
                             TasksScreen(
@@ -4628,6 +4829,7 @@ private fun SlockAppContent(
                     AppDestination.Members ->
                             MembersRouteScreen(
                                     state = membersState,
+                                    adaptiveLayoutInfo = adaptiveLayoutInfo,
                                     initialSelectedMemberId = membersDetailSelectedMemberId,
                                     onBack = { destination = AppDestination.Home },
                                     onDetailVisibleChange = {
@@ -4648,6 +4850,7 @@ private fun SlockAppContent(
                                     state = SlockStateSamples.settingsContent,
                                     destination = settingsDestination,
                                     onDestinationChange = { settingsDestination = it },
+                                    adaptiveLayoutInfo = adaptiveLayoutInfo,
                                     accountState = settingsAccountState,
                                     computersState = settingsComputersState,
                                     computerDetailState = settingsComputerDetailState,
@@ -5533,6 +5736,7 @@ private fun HomeRouteScreen(
         followedThreadsState: InboxUiState,
         selectedThreadState: ThreadUiState,
         selectedThreadId: String?,
+        replyThreadBackStack: List<ReplyThreadBackStackEntry>,
         replyHeaderContext: ThreadReplyHeaderContext?,
         parentJumpTarget: ThreadParentJumpTarget?,
         onOpenParentMessage: (ThreadParentJumpTarget) -> Unit,
@@ -5545,6 +5749,12 @@ private fun HomeRouteScreen(
         onOpenAttachment: (Attachment) -> Unit,
         onDismissAttachmentPreview: () -> Unit,
         onOpenAttachmentPreviewExternally: (AttachmentPreviewUiState) -> Unit,
+        onSendParentPaneMessage: (
+                ThreadId,
+                String,
+                Boolean,
+                (DataResult<SendMessageResult>) -> Unit
+        ) -> Unit,
         savedState: InboxUiState,
         searchState: InboxUiState,
         searchQuery: String,
@@ -5656,32 +5866,202 @@ private fun HomeRouteScreen(
             val retryLoadOlderThreadMessagesHandler: () -> Unit = {
                 onLoadOlderThreadMessages(null, 0)
             }
-            ThreadScreen(
+            val threadScreenState =
+                    baseThreadState.copy(
+                            loadState = threadLoadState,
+                            selectedTab = threadTab,
+                            composerState =
+                                    baseThreadState.composerState.copy(
+                                            value = composerValue,
+                                            asTask = composerAsTask,
+                                            attachmentIds =
+                                                    List(pendingAttachmentCount) { index ->
+                                                        AttachmentId("pending-attachment-$index")
+                                                    },
+                                            pendingAttachments = pendingAttachments,
+                                            status =
+                                                    baseThreadState.composerState.status
+                                                            .fromComposerValue(
+                                                                    value = composerValue,
+                                                                    hasAttachments =
+                                                                            pendingAttachmentCount >
+                                                                                    0
+                                                            )
+                                    )
+                    )
+            val parentReplyEntry = replyThreadBackStack.lastOrNull()
+            val wideReplyPane =
+                    adaptiveLayoutInfo.mode != SlockWindowLayoutMode.CompactSinglePane &&
+                            parentReplyEntry != null &&
+                            threadTab == ThreadTab.Chat
+            if (wideReplyPane) {
+                val parentThreadContent =
+                        (parentReplyEntry.selectedThreadState.loadState as? ScreenLoadState.Content)
+                                ?.data
+                val parentThreadHeader = parentThreadContent?.header
+                var parentPaneComposerValue by remember(parentReplyEntry.parentMessageId) {
+                    mutableStateOf("")
+                }
+                var parentPaneComposerAsTask by remember(parentReplyEntry.parentMessageId) {
+                    mutableStateOf(false)
+                }
+                val parentPaneComposerState =
+                        (parentThreadHeader?.toComposerState() ?: parentReplyEntry.selectedThreadState
+                                .composerState)
+                                .copy(
+                                        value = parentPaneComposerValue,
+                                        asTask = parentPaneComposerAsTask,
+                                        status = ComposerStatus.IdleEmpty.fromComposerValue(
+                                                value = parentPaneComposerValue,
+                                                hasAttachments = false
+                                        ),
+                                        noPermissionCode = parentThreadHeader
+                                                ?.toComposerState()
+                                                ?.noPermissionCode
+                                )
+                Row(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+                    ThreadScreen(
+                            state =
+                                    parentReplyEntry.selectedThreadState.copy(
+                                            selectedTab = ThreadTab.Chat,
+                                            composerState = parentPaneComposerState
+                                    ),
+                            modifier =
+                                    Modifier.weight(0.46f)
+                                            .fillMaxSize()
+                                            .widePaneSwipe(
+                                                    enabled = true,
+                                                    onSwipeLeft = {},
+                                                    onSwipeRight = {}
+                                            ),
+                            onBack = {
+                                onRouteChange(
+                                        previousRoute?.takeUnless { it == HomeRoute.Thread }
+                                                ?: HomeRoute.Shell
+                                )
+                            },
+                            onModeSelected = {},
+                            onComposerChange = {
+                                parentPaneComposerValue = it
+                            },
+                            onAsTaskChange = {
+                                parentPaneComposerAsTask = it
+                            },
+                            onAttachImage = {},
+                            onAttachFile = {},
+                            onRemoveAttachment = {},
+                            onRetryAttachment = {},
+                            onSend = {
+                                val body = parentPaneComposerValue.trim()
+                                val parentThreadId =
+                                        composerSendChannelId(
+                                                parentThreadContent,
+                                                parentReplyEntry.selectedThreadId
+                                        )?.value?.let(::ThreadId)
+                                if (parentThreadId != null && body.isNotEmpty()) {
+                                    onSendParentPaneMessage(
+                                            parentThreadId,
+                                            body,
+                                            parentPaneComposerAsTask
+                                    ) { result ->
+                                        if (result is DataResult.Content) {
+                                            parentPaneComposerValue = ""
+                                            parentPaneComposerAsTask = false
+                                        }
+                                    }
+                                }
+                            },
+                            onLoadOlderMessages = { _, _ -> },
+                            onRetryLoadOlderMessages = {},
+                            onLoadNewerMessages = {},
+                            onRetryLoadNewerMessages = {},
+                            onRefreshThread = {},
+                            onNearBottomChange = {},
+                            onOpenMessageThread = onOpenMessageThread,
+                            onOpenMemberProfile = onOpenMemberProfile,
+                            onOpenMarkdownTag = onOpenMarkdownTag,
+                            onOpenTask = onOpenTask,
+                            onTaskStatusChange = onTaskStatusChange,
+                            onRetryTasks = {},
+                            currentMemberId = currentMemberId,
+                            myMessageAlignment = myMessageAlignment,
+                            parentJumpTarget = null,
+                            onOpenParentMessage = onOpenParentMessage,
+                            membersPanelState = threadMembersPanelState,
+                            onOpenAttachment = onOpenAttachment,
+                            onDismissAttachmentPreview = onDismissAttachmentPreview,
+                            onOpenAttachmentPreviewExternally =
+                                    onOpenAttachmentPreviewExternally,
+                            onJoinChannel = onJoinChannel,
+                            onRetryThreadLoad = {},
+                            showComposer = true,
+                            showReplyActions = false
+                    )
+                    Box(
+                            modifier =
+                                    Modifier.fillMaxSize()
+                                            .weight(0.54f)
+                    ) {
+                        ThreadScreen(
+                                state = threadScreenState,
+                                onBack = {
+                                    if (!onThreadBack()) {
+                                        onRouteChange(
+                                                previousRoute?.takeUnless {
+                                                    it == HomeRoute.Thread
+                                                } ?: HomeRoute.Shell
+                                        )
+                                    }
+                                },
+                                onModeSelected = onThreadTabChange,
+                                onComposerChange = onComposerValueChange,
+                                onAsTaskChange = onComposerAsTaskChange,
+                                onAttachImage = onAttachImage,
+                                onAttachFile = onAttachFile,
+                                onRemoveAttachment = onRemoveAttachment,
+                                onRetryAttachment = onRetryAttachments,
+                                onSend = onSend,
+                                onLoadOlderMessages = onLoadOlderThreadMessages,
+                                onRetryLoadOlderMessages = retryLoadOlderThreadMessagesHandler,
+                                onLoadNewerMessages = onLoadNewerThreadMessages,
+                                onRetryLoadNewerMessages = onLoadNewerThreadMessages,
+                                onRefreshThread = onRefreshThread,
+                                onNearBottomChange = onThreadNearBottomChange,
+                                onOpenMessageThread = { onOpenMessageThread(it) },
+                                onOpenMemberProfile = onOpenMemberProfile,
+                                onOpenMarkdownTag = onOpenMarkdownTag,
+                                onOpenTask = onOpenTask,
+                                onTaskStatusChange = onTaskStatusChange,
+                                onRetryTasks = onRetryThreadTasks,
+                                attachmentOpenStates = attachmentOpenStates,
+                                attachmentPreviewState = attachmentPreviewState,
+                                onOpenAttachment = onOpenAttachment,
+                                onDismissAttachmentPreview = onDismissAttachmentPreview,
+                                onOpenAttachmentPreviewExternally =
+                                        onOpenAttachmentPreviewExternally,
+                                onJoinChannel = onJoinChannel,
+                                membersPanelState = threadMembersPanelState,
+                                onAddChannelMember = onAddChannelMember,
+                                onRemoveChannelMember = onRemoveChannelMember,
+                                currentMemberId = currentMemberId,
+                                myMessageAlignment = myMessageAlignment,
+                                replyHeaderContext = enrichedReplyHeaderContext,
+                                parentJumpTarget = parentJumpTarget,
+                                onOpenParentMessage = onOpenParentMessage,
+                                onRetryThreadLoad = onRetryThreadLoad,
+                                headerNavigationIcon = ThreadHeaderNavigationIcon.Close,
+                                showTopBorder = false,
+                                showConversationActions = false,
+                                channelSuggestions =
+                                        (homeState.loadState as? ScreenLoadState.Content)
+                                                ?.data?.channels.orEmpty()
+                        )
+                    }
+                }
+            } else {
+                ThreadScreen(
                     state =
-                            baseThreadState.copy(
-                                    loadState = threadLoadState,
-                                    selectedTab = threadTab,
-                                    composerState =
-                                            baseThreadState.composerState.copy(
-                                                    value = composerValue,
-                                                    asTask = composerAsTask,
-                                                    attachmentIds =
-                                                            List(pendingAttachmentCount) { index ->
-                                                                AttachmentId(
-                                                                        "pending-attachment-$index"
-                                                                )
-                                                            },
-                                                    pendingAttachments = pendingAttachments,
-                                                    status =
-                                                            baseThreadState.composerState.status
-                                                                    .fromComposerValue(
-                                                                            value = composerValue,
-                                                                            hasAttachments =
-                                                                                    pendingAttachmentCount >
-                                                                                            0
-                                                                    )
-                                            )
-                            ),
+                            threadScreenState,
                     onBack = {
                         if (!onThreadBack()) {
                             onRouteChange(
@@ -5728,7 +6108,8 @@ private fun HomeRouteScreen(
                     channelSuggestions =
                             (homeState.loadState as? ScreenLoadState.Content)
                                     ?.data?.channels.orEmpty()
-            )
+                )
+            }
         }
         HomeRoute.Inbox ->
                 InboxScreen(
@@ -5858,6 +6239,28 @@ private enum class HomeRoute {
     Saved,
     Search
 }
+
+private fun Modifier.widePaneSwipe(
+        enabled: Boolean,
+        onSwipeLeft: () -> Unit,
+        onSwipeRight: () -> Unit
+): Modifier =
+        if (!enabled) {
+            this
+        } else {
+            pointerInput(onSwipeLeft, onSwipeRight) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    awaitHorizontalTouchSlopOrCancellation(down.id) { change, overSlop ->
+                        when {
+                            overSlop < 0f -> onSwipeLeft()
+                            overSlop > 0f -> onSwipeRight()
+                        }
+                        change.consume()
+                    }
+                }
+            }
+        }
 
 private data class ReplyThreadBackStackEntry(
         val selectedThreadId: String?,
@@ -6937,74 +7340,6 @@ private fun ConversationSummary.withAgentDirectMessageFallback(
                 presenceMemberId = presenceMemberId ?: member.id
         )
 
-private fun InboxUiState.applyRealtimeEvent(
-        event: RealtimeEvent,
-        query: String? = null
-): InboxUiState =
-        when (event) {
-            is RealtimeEvent.MessageNew -> applyRealtimeMessages(listOf(event.message), query)
-            is RealtimeEvent.MessageUpdated -> applyRealtimeMessages(listOf(event.message), query)
-            is RealtimeEvent.SyncResumeResponse -> applyRealtimeMessages(event.messages, query)
-            is RealtimeEvent.ThreadUpdated -> applyThreadUpdated(event)
-            else -> this
-        }
-
-private fun InboxUiState.applySavedRealtimeEvent(event: RealtimeEvent): InboxUiState =
-        when (event) {
-            is RealtimeEvent.MessageUpdated -> updateExistingMessage(event.message)
-            is RealtimeEvent.SyncResumeResponse ->
-                    event.messages.fold(this) { state, message ->
-                        state.updateExistingMessage(message)
-                    }
-            else -> this
-        }
-
-private fun InboxUiState.applyRealtimeMessages(
-        messages: List<Message>,
-        query: String?
-): InboxUiState {
-    val contentState = loadState as? ScreenLoadState.Content ?: return this
-    val filteredMessages =
-            if (query.isNullOrBlank()) {
-                messages
-            } else {
-                messages.filter { it.body.contains(query, ignoreCase = true) }
-            }
-    if (filteredMessages.isEmpty()) return this
-    val content = contentState.data
-    val items = (filteredMessages.map { it.toInboxItem() } + content.items).distinctBy { it.key }
-    return copy(
-            loadState =
-                    ScreenLoadState.Content(
-                            content.copy(
-                                    items = items,
-                                    totalCount = content.totalCount.coerceAtLeast(items.size),
-                                    totalUnreadCount = items.sumOf { it.unreadCount }
-                            )
-                    )
-    )
-}
-
-private fun InboxUiState.updateExistingMessage(message: Message): InboxUiState {
-    val contentState = loadState as? ScreenLoadState.Content ?: return this
-    val content = contentState.data
-    val updatedItems =
-            content.items.map { item ->
-                if (item.lastMessageId == message.id || item.latestActivityMessageId == message.id
-                ) {
-                    item.copy(
-                            lastMessagePreview = message.body,
-                            latestActivityPreview = message.body,
-                            latestActivityAt = message.timestampLabel,
-                            latestActivitySenderName = message.author.displayName
-                    )
-                } else {
-                    item
-                }
-            }
-    return copy(loadState = ScreenLoadState.Content(content.copy(items = updatedItems)))
-}
-
 private fun MembersUiState.applyRealtimeEvent(event: RealtimeEvent): MembersUiState =
         when (event) {
             is RealtimeEvent.MemberPresenceUpdated -> applyMemberPresence(event)
@@ -7022,26 +7357,6 @@ private fun MembersUiState.applyMemberPresence(
                             content.copy(members = content.members.map { it.withPresence(event) })
                     )
     )
-}
-
-private fun InboxUiState.applyThreadUpdated(event: RealtimeEvent.ThreadUpdated): InboxUiState {
-    val contentState = loadState as? ScreenLoadState.Content ?: return this
-    val content = contentState.data
-    val updatedItems =
-            content.items.map { item ->
-                if (item.parentMessageId == event.parentMessageId ||
-                                item.threadChannelId == event.threadChannelId
-                ) {
-                    item.copy(
-                            replyCount = event.replyCount,
-                            latestActivityAt = event.lastReplyAt ?: item.latestActivityAt,
-                            participantIds = event.participantIds
-                    )
-                } else {
-                    item
-                }
-            }
-    return copy(loadState = ScreenLoadState.Content(content.copy(items = updatedItems)))
 }
 
 private fun List<Message>.applyRealtimeEvent(event: RealtimeEvent): List<Message> =
@@ -7380,26 +7695,6 @@ private fun ThreadUiState.logVisibleThreadMerge(
     )
 }
 
-private fun Message.toInboxItem(): InboxItem =
-        InboxItem(
-                key = id.value,
-                kind = if (channelId == null) InboxItemKind.Thread else InboxItemKind.Channel,
-                channelId = channelId ?: ChannelId(threadId.value),
-                channelName = channelId?.value ?: threadId.value,
-                unreadCount = 1,
-                firstUnreadMessageId = id,
-                lastMessageId = id,
-                lastMessagePreview = body,
-                lastMessageAt = timestampLabel,
-                lastMessageSenderName = author.displayName,
-                threadChannelId = ChannelId(threadId.value),
-                latestActivityMessageId = id,
-                latestActivityPreview = body,
-                latestActivityAt = timestampLabel,
-                latestActivitySenderName = author.displayName,
-                replyCount = replyCount
-        )
-
 private fun DataResult<HomeSnapshot>.toHomeUiState(
         selectedServerId: String?,
         preservedServerUnreadCount: Int? = null,
@@ -7473,65 +7768,6 @@ private fun HomeUiState.serverUnreadFor(serverId: ServerId): Int? {
     return if (content.server.id == serverId) content.serverUnreadCount else null
 }
 
-private fun InboxUiState.visibleContent(): InboxContent? =
-        (loadState as? ScreenLoadState.Content)?.data ?: previousContent
-
-private fun InboxUiState.visibleUnreadCount(): Int? = visibleContent()?.totalUnreadCount
-
-private fun InboxUiState.visibleTotalCount(): Int? = visibleContent()?.totalCount
-
-private fun DataResult<InboxSnapshot>.toInboxUiState(
-        selectedFilter: InboxFilter,
-        previousContent: InboxContent? = null
-): InboxUiState =
-        InboxUiState(
-                loadState =
-                        when (this) {
-                            is DataResult.Content ->
-                                    ScreenLoadState.Content(
-                                            InboxContent(
-                                                    server = data.server,
-                                                    items = data.items,
-                                                    totalCount = data.totalCount,
-                                                    totalUnreadCount = data.totalUnreadCount,
-                                                    hasMore = data.hasMore
-                                            )
-                                    )
-                            is DataResult.Empty -> ScreenLoadState.Empty(reason)
-                            is DataResult.Error -> ScreenLoadState.Error(error)
-                            is DataResult.NoPermission -> ScreenLoadState.NoPermission(blocker)
-                        },
-                selectedFilter = selectedFilter,
-                nextOffset = (this as? DataResult.Content)?.data?.nextOffset,
-                previousContent = (this as? DataResult.Content)?.let { null } ?: previousContent
-        )
-
-private fun DataResult<ThreadListSnapshot>.toFollowedThreadsUiState(
-        previousContent: InboxContent? = null
-): InboxUiState =
-        InboxUiState(
-                loadState =
-                        when (this) {
-                            is DataResult.Content ->
-                                    ScreenLoadState.Content(
-                                            InboxContent(
-                                                    server = data.server,
-                                                    items = data.threads,
-                                                    totalCount = data.totalCount,
-                                                    totalUnreadCount =
-                                                            data.threads.sumOf { it.unreadCount },
-                                                    hasMore = data.hasMore
-                                            )
-                                    )
-                            is DataResult.Empty -> ScreenLoadState.Empty(reason)
-                            is DataResult.Error -> ScreenLoadState.Error(error)
-                            is DataResult.NoPermission -> ScreenLoadState.NoPermission(blocker)
-                        },
-                selectedFilter = InboxFilter.All,
-                nextOffset = (this as? DataResult.Content)?.data?.nextOffset,
-                previousContent = (this as? DataResult.Content)?.let { null } ?: previousContent
-        )
-
 private fun DataResult<ThreadSnapshot>.toThreadUiState(
         fallbackHeader: ConversationSummary? = null,
         parentMessage: Message? = null
@@ -7562,7 +7798,8 @@ private fun DataResult<ThreadSnapshot>.toThreadUiState(
                                         hasGap = data.hasGap,
                                         historyLimited = data.historyLimited,
                                         highlightedMessageId = data.highlightedMessageId,
-                                        parentMessage = parentMessage ?: data.parentMessage
+                                        parentMessage = parentMessage ?: data.parentMessage,
+                                        tasks = data.tasks
                                 )
                         )
                 is DataResult.Empty ->
@@ -7691,32 +7928,6 @@ private fun HomeContent.findConversation(id: String): ConversationSummary? =
         (channels + directMessages).firstOrNull { conversation ->
             conversation.threadId.value == id || conversation.channelId?.value == id
         }
-
-private fun InboxItem.toConversationSummary(): ConversationSummary {
-    val threadId = ThreadId((threadChannelId ?: channelId).value)
-    val title =
-            when (kind) {
-                InboxItemKind.Thread -> parentChannelName ?: channelName
-                InboxItemKind.DirectMessage, InboxItemKind.Channel -> channelName
-            }
-    return ConversationSummary(
-            threadId = threadId,
-            channelId = threadChannelId ?: channelId,
-            kind = parentChannelKind
-                            ?: when (kind) {
-                                InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
-                                else -> ConversationKind.Channel
-                            },
-            name = title,
-            subtitle = parentMessagePreview ?: lastMessagePreview ?: latestActivityPreview,
-            unreadCount = unreadCount,
-            lastMessageId = latestActivityMessageId ?: lastMessageId,
-            firstUnreadMessageId = firstUnreadMessageId,
-            lastMessagePreview = latestActivityPreview ?: lastMessagePreview,
-            lastMessageAt = latestActivityAt ?: lastMessageAt,
-            lastMessageSenderName = latestActivitySenderName ?: lastMessageSenderName
-    )
-}
 
 private fun Message.toConversationSummary(
         currentHeader: ConversationSummary?
@@ -8127,54 +8338,6 @@ private fun ThreadSnapshot.toThreadContent(
                 highlightedMessageId = highlightedMessageId
         )
 
-private fun DataResult<SavedSnapshot>.toSavedInboxUiState(
-        previousContent: InboxContent? = null
-): InboxUiState =
-        InboxUiState(
-                loadState =
-                        when (this) {
-                            is DataResult.Content ->
-                                    ScreenLoadState.Content(
-                                            InboxContent(
-                                                    server = data.server,
-                                                    items = data.items,
-                                                    totalCount = data.totalCount,
-                                                    hasMore = data.hasMore
-                                            )
-                                    )
-                            is DataResult.Empty -> ScreenLoadState.Empty(EmptyReason.NoInboxItems)
-                            is DataResult.Error -> ScreenLoadState.Error(error)
-                            is DataResult.NoPermission -> ScreenLoadState.NoPermission(blocker)
-                        },
-                selectedFilter = InboxFilter.All,
-                nextOffset = (this as? DataResult.Content)?.data?.nextOffset,
-                previousContent = (this as? DataResult.Content)?.let { null } ?: previousContent
-        )
-
-private fun DataResult<SearchSnapshot>.toSearchInboxUiState(
-        previousContent: InboxContent? = null
-): InboxUiState =
-        InboxUiState(
-                loadState =
-                        when (this) {
-                            is DataResult.Content ->
-                                    ScreenLoadState.Content(
-                                            InboxContent(
-                                                    server = data.server,
-                                                    items = data.items,
-                                                    totalCount = data.totalCount,
-                                                    hasMore = data.hasMore
-                                            )
-                                    )
-                            is DataResult.Empty -> ScreenLoadState.Empty(reason)
-                            is DataResult.Error -> ScreenLoadState.Error(error)
-                            is DataResult.NoPermission -> ScreenLoadState.NoPermission(blocker)
-                        },
-                selectedFilter = InboxFilter.All,
-                nextOffset = (this as? DataResult.Content)?.data?.nextOffset,
-                previousContent = (this as? DataResult.Content)?.let { null } ?: previousContent
-        )
-
 private fun DataResult<TaskSnapshot>.toTasksUiState(selectedFilter: TaskStatus?): TasksUiState =
         TasksUiState(
                 loadState =
@@ -8366,36 +8529,6 @@ private fun List<TaskSummary>.replaceOrAppend(task: TaskSummary): List<TaskSumma
 private fun List<TaskSummary>.summaryCounts(): Map<TaskStatus, Int> =
         TaskStatus.entries.associateWith { status -> count { it.status == status } }
 
-private fun mergeInboxPage(current: InboxUiState, next: InboxUiState): InboxUiState {
-    val currentContent = current.loadState as? ScreenLoadState.Content
-    val nextContent = next.loadState as? ScreenLoadState.Content
-    if (currentContent == null || nextContent == null) {
-        return next.copy(loadingMore = false)
-    }
-
-    val mergedItems = (currentContent.data.items + nextContent.data.items).distinctBy { it.key }
-
-    return next.copy(
-            loadState =
-                    ScreenLoadState.Content(
-                            nextContent.data.copy(
-                                    items = mergedItems,
-                                    totalCount =
-                                            nextContent.data.totalCount.coerceAtLeast(
-                                                    mergedItems.size
-                                            )
-                            )
-                    ),
-            loadingMore = false
-    )
-}
-
-private fun InboxFilter.toRepositoryFilter(): RepositoryInboxFilter =
-        when (this) {
-            InboxFilter.All -> RepositoryInboxFilter.All
-            InboxFilter.Unread -> RepositoryInboxFilter.Unread
-        }
-
 private fun <T> DataResult<T>.toScreenLoadState(): ScreenLoadState<T> =
         when (this) {
             is DataResult.Content -> ScreenLoadState.Content(data)
@@ -8435,14 +8568,26 @@ private fun DataResult<MemberSnapshot>.toMembersUiState(): MembersUiState =
 private fun MembersUiState.withMemberProfile(member: MemberProfile): MembersUiState =
         when (val loadState = loadState) {
             is ScreenLoadState.Content -> {
-                val members = buildList {
-                    addAll(loadState.data.members.filterNot { it.id == member.id })
-                    add(member)
-                }
+                val members = loadState.data.members.replaceMemberPreservingOrder(member)
                 copy(loadState = ScreenLoadState.Content(loadState.data.copy(members = members)))
             }
             else -> this
         }
+
+internal fun List<MemberProfile>.replaceMemberPreservingOrder(member: MemberProfile):
+        List<MemberProfile> {
+    var replaced = false
+    val updated =
+            map { existing ->
+                if (existing.id == member.id) {
+                    replaced = true
+                    member
+                } else {
+                    existing
+                }
+            }
+    return if (replaced) updated else updated + member
+}
 
 private fun DataResult<AgentDmSnapshot>.toAgentDmsLoadState(): ScreenLoadState<AgentDmSnapshot> =
         when (this) {
@@ -8587,6 +8732,7 @@ private fun SettingsScreen(
         state: ai.slock.android.feature.settings.SettingsUiState,
         destination: SettingsDestination,
         onDestinationChange: (SettingsDestination) -> Unit,
+        adaptiveLayoutInfo: SlockAdaptiveAppLayoutInfo,
         accountState: ScreenLoadState<AccountSettingsSnapshot>,
         computersState: ScreenLoadState<SettingsComputersSnapshot>,
         computerDetailState: ScreenLoadState<SettingsComputerDetailSnapshot>,
@@ -8617,7 +8763,15 @@ private fun SettingsScreen(
         onShareDiagnostics: () -> Unit,
         onClearDiagnostics: () -> Unit
 ) {
-    if (destination != SettingsDestination.Home) {
+    val wideSettingsMode = adaptiveLayoutInfo.mode != SlockWindowLayoutMode.CompactSinglePane
+    val effectiveDestination =
+            if (wideSettingsMode && destination == SettingsDestination.Home) {
+                SettingsDestination.Account
+            } else {
+                destination
+            }
+
+    if (!wideSettingsMode && destination != SettingsDestination.Home) {
         BackHandler {
             onDestinationChange(
                     when (destination) {
@@ -8637,179 +8791,376 @@ private fun SettingsScreen(
             contentPadding = 0.dp,
             backgroundColor = SlockColor.BrandYellow
     ) { content ->
-        when (destination) {
-            SettingsDestination.Home ->
-                    SettingsPageSurface {
-                        SettingsHomeScreen(
-                                title = stringResource(R.string.settings_home_title),
-                                subtitle = content.settings.server.name,
-                                items = settingsHomeItems(content, localeSnapshot),
-                                onItemClick = { key ->
-                                    onDestinationChange(
-                                            when (key) {
-                                                SettingsDestination.Account.key ->
-                                                        SettingsDestination.Account
-                                                SettingsDestination.Computers.key ->
-                                                        SettingsDestination.Computers
-                                                SettingsDestination.Server.key ->
-                                                        SettingsDestination.Server
-                                                SettingsDestination.Billing.key ->
-                                                        SettingsDestination.Billing
-                                                SettingsDestination.Mobile.key ->
-                                                        SettingsDestination.Mobile
-                                                SettingsDestination.About.key ->
-                                                        SettingsDestination.About
-                                                else -> SettingsDestination.Home
-                                            }
-                                    )
-                                }
+        if (wideSettingsMode) {
+            SettingsAdaptiveScaffold(
+                    content = content,
+                    localeSnapshot = localeSnapshot,
+                    selectedDestination = effectiveDestination,
+                    onDestinationChange = onDestinationChange
+            ) {
+                SettingsDestinationContent(
+                        destination = effectiveDestination,
+                        compact = false,
+                        onDestinationChange = onDestinationChange,
+                        accountState = accountState,
+                        computersState = computersState,
+                        computerDetailState = computerDetailState,
+                        serverState = serverState,
+                        billingState = billingState,
+                        mobileState = mobileState,
+                        aboutSnapshot = aboutSnapshot,
+                        notificationPermissionGranted = notificationPermissionGranted,
+                        notificationPermissionLauncherAvailable =
+                                notificationPermissionLauncherAvailable,
+                        localeSnapshot = localeSnapshot,
+                        onLocaleSelected = onLocaleSelected,
+                        chatLayoutPreferenceSnapshot = chatLayoutPreferenceSnapshot,
+                        onMyMessageAlignmentSelected = onMyMessageAlignmentSelected,
+                        notificationsEnabledByUser = notificationsEnabledByUser,
+                        onNotificationsEnabledByUserChange =
+                                onNotificationsEnabledByUserChange,
+                        onOpenComputerDetail = onOpenComputerDetail,
+                        onSaveServerProfile = onSaveServerProfile,
+                        onSendServerInvite = onSendServerInvite,
+                        onDeleteServer = onDeleteServer,
+                        serverActionFeedback = serverActionFeedback,
+                        serverActionInProgress = serverActionInProgress,
+                        onLogout = onLogout,
+                        onRetryComputerDetail = onRetryComputerDetail,
+                        onRequestNotificationPermission = onRequestNotificationPermission,
+                        onSendTestNotification = onSendTestNotification,
+                        onOpenNotificationSettings = onOpenNotificationSettings,
+                        onCopyDiagnostics = onCopyDiagnostics,
+                        onShareDiagnostics = onShareDiagnostics,
+                        onClearDiagnostics = onClearDiagnostics
+                )
+            }
+        } else {
+            when (destination) {
+                SettingsDestination.Home ->
+                        SettingsHomeContent(
+                                content = content,
+                                localeSnapshot = localeSnapshot,
+                                selectedDestination = destination,
+                                onDestinationChange = onDestinationChange
                         )
-                    }
-            SettingsDestination.Account ->
-                    SettingsSecondaryScreen(
-                            title = stringResource(R.string.settings_account_title),
-                            onBack = { onDestinationChange(SettingsDestination.Home) }
-                    ) {
-                        SettingsDataStateContent(
-                                state = accountState,
-                                emptyTitle = stringResource(R.string.settings_account_title),
-                                emptyDetail = stringResource(R.string.common_preparing_local_state)
-                        ) { account ->
-                            SettingsAccountScreen(
-                                    profile = account.profile.toSettingsAccountProfile(),
-                                    connectedAccounts =
-                                            account.connectedAccounts.map {
-                                                it.toSettingsConnectedAccount()
-                                            },
-                                    showOuterBorder = false,
-                                    onLogout = onLogout
-                            )
-                        }
-                    }
-            SettingsDestination.Computers ->
-                    SettingsSecondaryScreen(
-                            title = stringResource(R.string.settings_computers_title),
-                            onBack = { onDestinationChange(SettingsDestination.Home) }
-                    ) {
-                        SettingsDataStateContent(
-                                state = computersState,
-                                emptyTitle =
-                                        stringResource(R.string.settings_computers_empty_title),
-                                emptyDetail =
-                                        stringResource(R.string.settings_computers_empty_detail)
-                        ) { computers ->
-                            SettingsComputersScreen(
-                                    snapshot = computers,
-                                    onOpenComputer = onOpenComputerDetail
-                            )
-                        }
-                    }
-            SettingsDestination.ComputerDetail ->
-                    SettingsSecondaryScreen(
-                            title = stringResource(R.string.settings_computer_detail_title),
-                            onBack = { onDestinationChange(SettingsDestination.Computers) }
-                    ) {
-                        SettingsDataStateContent(
-                                state = computerDetailState,
-                                emptyTitle =
-                                        stringResource(R.string.settings_computer_detail_title),
-                                emptyDetail =
-                                        stringResource(R.string.settings_computer_detail_empty)
-                        ) { detail ->
-                            SettingsComputerDetailScreen(
-                                    snapshot = detail,
-                                    onRetryWorkspaces = onRetryComputerDetail,
-                                    onRetryAgents = onRetryComputerDetail
-                            )
-                        }
-                    }
-            SettingsDestination.Server ->
-                    SettingsSecondaryScreen(
-                            title = stringResource(R.string.settings_server_title),
-                            onBack = { onDestinationChange(SettingsDestination.Home) }
-                    ) {
-                        SettingsDataStateContent(
-                                state = serverState,
-                                emptyTitle = stringResource(R.string.settings_server_title),
-                                emptyDetail = stringResource(R.string.settings_unavailable_detail)
-                        ) { server ->
-                            SettingsServerManagementScreen(
-                                    snapshot = server,
-                                    onSaveProfile = onSaveServerProfile,
-                                    onSendInvite = onSendServerInvite,
-                                    onDeleteServer = onDeleteServer,
-                                    actionFeedback = serverActionFeedback,
-                                    actionInProgress = serverActionInProgress
-                            )
-                        }
-                    }
-            SettingsDestination.Billing ->
-                    SettingsSecondaryScreen(
-                            title = stringResource(R.string.settings_billing_title),
-                            onBack = { onDestinationChange(SettingsDestination.Home) }
-                    ) {
-                        SettingsBillingScreen(
-                                currentPlan = billingState.toBillingCurrentPlanState(),
-                                plans = billingState.toBillingPlans()
+                else ->
+                        SettingsDestinationContent(
+                                destination = destination,
+                                compact = true,
+                                onDestinationChange = onDestinationChange,
+                                accountState = accountState,
+                                computersState = computersState,
+                                computerDetailState = computerDetailState,
+                                serverState = serverState,
+                                billingState = billingState,
+                                mobileState = mobileState,
+                                aboutSnapshot = aboutSnapshot,
+                                notificationPermissionGranted = notificationPermissionGranted,
+                                notificationPermissionLauncherAvailable =
+                                        notificationPermissionLauncherAvailable,
+                                localeSnapshot = localeSnapshot,
+                                onLocaleSelected = onLocaleSelected,
+                                chatLayoutPreferenceSnapshot = chatLayoutPreferenceSnapshot,
+                                onMyMessageAlignmentSelected = onMyMessageAlignmentSelected,
+                                notificationsEnabledByUser = notificationsEnabledByUser,
+                                onNotificationsEnabledByUserChange =
+                                        onNotificationsEnabledByUserChange,
+                                onOpenComputerDetail = onOpenComputerDetail,
+                                onSaveServerProfile = onSaveServerProfile,
+                                onSendServerInvite = onSendServerInvite,
+                                onDeleteServer = onDeleteServer,
+                                serverActionFeedback = serverActionFeedback,
+                                serverActionInProgress = serverActionInProgress,
+                                onLogout = onLogout,
+                                onRetryComputerDetail = onRetryComputerDetail,
+                                onRequestNotificationPermission = onRequestNotificationPermission,
+                                onSendTestNotification = onSendTestNotification,
+                                onOpenNotificationSettings = onOpenNotificationSettings,
+                                onCopyDiagnostics = onCopyDiagnostics,
+                                onShareDiagnostics = onShareDiagnostics,
+                                onClearDiagnostics = onClearDiagnostics
                         )
-                    }
-            SettingsDestination.Mobile ->
-                    SettingsSecondaryScreen(
-                            title = stringResource(R.string.settings_mobile_title),
-                            onBack = { onDestinationChange(SettingsDestination.Home) }
-                    ) {
-                        SettingsDataStateContent(
-                                state = mobileState,
-                                emptyTitle = stringResource(R.string.settings_mobile_title),
-                                emptyDetail = stringResource(R.string.settings_unavailable_detail)
-                        ) { mobile ->
-                            SettingsMobileScreen(
-                                    snapshot = mobile,
-                                    notificationPermissionGranted = notificationPermissionGranted,
-                                    notificationPermissionAvailable =
-                                            notificationPermissionLauncherAvailable,
-                                    chatLayoutPreference =
-                                            chatLayoutPreferenceSnapshot.myMessageAlignment,
-                                    localeSnapshot = localeSnapshot,
-                                    onRequestNotificationPermission =
-                                            onRequestNotificationPermission,
-                                    pushNotificationsEnabledByUser = notificationsEnabledByUser,
-                                    onPushNotificationsEnabledChange =
-                                            onNotificationsEnabledByUserChange,
-                                    onChatLayoutPreferenceSelected = onMyMessageAlignmentSelected,
-                                    onLocaleSelected = onLocaleSelected,
-                                    onSendTest = onSendTestNotification,
-                                    onOpenNotificationSettings = onOpenNotificationSettings
-                            )
-                        }
-                    }
-            SettingsDestination.About ->
-                    SettingsSecondaryScreen(
-                            title = stringResource(R.string.settings_about_title),
-                            onBack = { onDestinationChange(SettingsDestination.Home) }
-                    ) {
-                        SettingsAboutScreen(
-                                snapshot = aboutSnapshot,
-                                onOpenDiagnostics = {
-                                    onDestinationChange(SettingsDestination.Diagnostics)
-                                }
-                        )
-                    }
-            SettingsDestination.Diagnostics ->
-                    SettingsSecondaryScreen(
-                            title = stringResource(R.string.settings_about_diagnostics_title),
-                            onBack = { onDestinationChange(SettingsDestination.About) }
-                    ) {
-                        SettingsDiagnosticsScreen(
-                                logs = aboutSnapshot.diagnosticLogs,
-                                onCopyLogs = onCopyDiagnostics,
-                                onShareLogs = onShareDiagnostics,
-                                onClearLogs = onClearDiagnostics
-                        )
-                    }
+            }
         }
     }
 }
+
+@Composable
+private fun SettingsAdaptiveScaffold(
+        content: SettingsContent,
+        localeSnapshot: LocaleSnapshot,
+        selectedDestination: SettingsDestination,
+        onDestinationChange: (SettingsDestination) -> Unit,
+        detail: @Composable () -> Unit
+) {
+    SettingsPageSurface {
+        Row(modifier = Modifier.fillMaxSize()) {
+            Box(
+                    modifier =
+                            Modifier.width(336.dp)
+                                    .fillMaxSize()
+                                    .background(SlockColor.SurfaceWhite)
+                                    .drawWithContent {
+                                        drawContent()
+                                        val stroke = SlockStroke.Default.toPx()
+                                        drawLine(
+                                                color = SlockColor.BorderBlack,
+                                                start = Offset(size.width - stroke / 2f, 0f),
+                                                end =
+                                                        Offset(
+                                                                size.width - stroke / 2f,
+                                                                size.height
+                                                        ),
+                                                strokeWidth = stroke
+                                        )
+                                    }
+            ) {
+                SettingsHomeScreen(
+                        title = stringResource(R.string.settings_home_title),
+                        subtitle = content.settings.server.name,
+                        items =
+                                settingsHomeItems(
+                                        content = content,
+                                        localeSnapshot = localeSnapshot,
+                                        selectedDestination = selectedDestination
+                                ),
+                        onItemClick = { key ->
+                            onDestinationChange(key.toSettingsDestination())
+                        }
+                )
+            }
+            Box(
+                    modifier =
+                            Modifier.weight(1f)
+                                    .fillMaxSize()
+                                    .background(SlockColor.SurfaceWhite)
+            ) {
+                detail()
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsHomeContent(
+        content: SettingsContent,
+        localeSnapshot: LocaleSnapshot,
+        selectedDestination: SettingsDestination,
+        onDestinationChange: (SettingsDestination) -> Unit
+) {
+    SettingsPageSurface {
+        SettingsHomeScreen(
+                title = stringResource(R.string.settings_home_title),
+                subtitle = content.settings.server.name,
+                items =
+                        settingsHomeItems(
+                                content = content,
+                                localeSnapshot = localeSnapshot,
+                                selectedDestination = selectedDestination
+                        ),
+                onItemClick = { key ->
+                    onDestinationChange(key.toSettingsDestination())
+                }
+        )
+    }
+}
+
+@Composable
+private fun SettingsDestinationContent(
+        destination: SettingsDestination,
+        compact: Boolean,
+        onDestinationChange: (SettingsDestination) -> Unit,
+        accountState: ScreenLoadState<AccountSettingsSnapshot>,
+        computersState: ScreenLoadState<SettingsComputersSnapshot>,
+        computerDetailState: ScreenLoadState<SettingsComputerDetailSnapshot>,
+        serverState: ScreenLoadState<SettingsServerSnapshot>,
+        billingState: ScreenLoadState<SettingsBillingSnapshot>,
+        mobileState: ScreenLoadState<SettingsMobileSnapshot>,
+        aboutSnapshot: SettingsAboutSnapshot,
+        notificationPermissionGranted: Boolean,
+        notificationPermissionLauncherAvailable: Boolean,
+        localeSnapshot: LocaleSnapshot,
+        onLocaleSelected: (AppLocale) -> Unit,
+        chatLayoutPreferenceSnapshot: ChatLayoutPreferenceSnapshot,
+        onMyMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
+        notificationsEnabledByUser: Boolean,
+        onNotificationsEnabledByUserChange: (Boolean) -> Unit,
+        onOpenComputerDetail: (String) -> Unit,
+        onSaveServerProfile: (String) -> Unit,
+        onSendServerInvite: (String) -> Unit,
+        onDeleteServer: (String) -> Unit,
+        serverActionFeedback: String?,
+        serverActionInProgress: Boolean,
+        onLogout: () -> Unit,
+        onRetryComputerDetail: () -> Unit,
+        onRequestNotificationPermission: () -> Unit,
+        onSendTestNotification: () -> Unit,
+        onOpenNotificationSettings: () -> Unit,
+        onCopyDiagnostics: () -> Unit,
+        onShareDiagnostics: () -> Unit,
+        onClearDiagnostics: () -> Unit
+) {
+    when (destination) {
+        SettingsDestination.Home,
+        SettingsDestination.Account ->
+                SettingsSecondaryScreen(
+                        title = stringResource(R.string.settings_account_title),
+                        showBack = compact,
+                        onBack = { onDestinationChange(SettingsDestination.Home) }
+                ) {
+                    SettingsDataStateContent(
+                            state = accountState,
+                            emptyTitle = stringResource(R.string.settings_account_title),
+                            emptyDetail = stringResource(R.string.common_preparing_local_state)
+                    ) { account ->
+                        SettingsAccountScreen(
+                                profile = account.profile.toSettingsAccountProfile(),
+                                connectedAccounts =
+                                        account.connectedAccounts.map {
+                                            it.toSettingsConnectedAccount()
+                                        },
+                                showOuterBorder = false,
+                                onLogout = onLogout
+                        )
+                    }
+                }
+        SettingsDestination.Computers ->
+                SettingsSecondaryScreen(
+                        title = stringResource(R.string.settings_computers_title),
+                        showBack = compact,
+                        onBack = { onDestinationChange(SettingsDestination.Home) }
+                ) {
+                    SettingsDataStateContent(
+                            state = computersState,
+                            emptyTitle = stringResource(R.string.settings_computers_empty_title),
+                            emptyDetail = stringResource(R.string.settings_computers_empty_detail)
+                    ) { computers ->
+                        SettingsComputersScreen(
+                                snapshot = computers,
+                                onOpenComputer = onOpenComputerDetail
+                        )
+                    }
+                }
+        SettingsDestination.ComputerDetail ->
+                SettingsSecondaryScreen(
+                        title = stringResource(R.string.settings_computer_detail_title),
+                        showBack = compact,
+                        onBack = { onDestinationChange(SettingsDestination.Computers) }
+                ) {
+                    SettingsDataStateContent(
+                            state = computerDetailState,
+                            emptyTitle = stringResource(R.string.settings_computer_detail_title),
+                            emptyDetail = stringResource(R.string.settings_computer_detail_empty)
+                    ) { detail ->
+                        SettingsComputerDetailScreen(
+                                snapshot = detail,
+                                onRetryWorkspaces = onRetryComputerDetail,
+                                onRetryAgents = onRetryComputerDetail
+                        )
+                    }
+                }
+        SettingsDestination.Server ->
+                SettingsSecondaryScreen(
+                        title = stringResource(R.string.settings_server_title),
+                        showBack = compact,
+                        onBack = { onDestinationChange(SettingsDestination.Home) }
+                ) {
+                    SettingsDataStateContent(
+                            state = serverState,
+                            emptyTitle = stringResource(R.string.settings_server_title),
+                            emptyDetail = stringResource(R.string.settings_unavailable_detail)
+                    ) { server ->
+                        SettingsServerManagementScreen(
+                                snapshot = server,
+                                onSaveProfile = onSaveServerProfile,
+                                onSendInvite = onSendServerInvite,
+                                onDeleteServer = onDeleteServer,
+                                actionFeedback = serverActionFeedback,
+                                actionInProgress = serverActionInProgress
+                        )
+                    }
+                }
+        SettingsDestination.Billing ->
+                SettingsSecondaryScreen(
+                        title = stringResource(R.string.settings_billing_title),
+                        showBack = compact,
+                        onBack = { onDestinationChange(SettingsDestination.Home) }
+                ) {
+                    SettingsBillingScreen(
+                            currentPlan = billingState.toBillingCurrentPlanState(),
+                            plans = billingState.toBillingPlans()
+                    )
+                }
+        SettingsDestination.Mobile ->
+                SettingsSecondaryScreen(
+                        title = stringResource(R.string.settings_mobile_title),
+                        showBack = compact,
+                        onBack = { onDestinationChange(SettingsDestination.Home) }
+                ) {
+                    SettingsDataStateContent(
+                            state = mobileState,
+                            emptyTitle = stringResource(R.string.settings_mobile_title),
+                            emptyDetail = stringResource(R.string.settings_unavailable_detail)
+                    ) { mobile ->
+                        SettingsMobileScreen(
+                                snapshot = mobile,
+                                notificationPermissionGranted = notificationPermissionGranted,
+                                notificationPermissionAvailable =
+                                        notificationPermissionLauncherAvailable,
+                                chatLayoutPreference =
+                                        chatLayoutPreferenceSnapshot.myMessageAlignment,
+                                localeSnapshot = localeSnapshot,
+                                onRequestNotificationPermission = onRequestNotificationPermission,
+                                pushNotificationsEnabledByUser = notificationsEnabledByUser,
+                                onPushNotificationsEnabledChange =
+                                        onNotificationsEnabledByUserChange,
+                                onChatLayoutPreferenceSelected = onMyMessageAlignmentSelected,
+                                onLocaleSelected = onLocaleSelected,
+                                onSendTest = onSendTestNotification,
+                                onOpenNotificationSettings = onOpenNotificationSettings
+                        )
+                    }
+                }
+        SettingsDestination.About ->
+                SettingsSecondaryScreen(
+                        title = stringResource(R.string.settings_about_title),
+                        showBack = compact,
+                        onBack = { onDestinationChange(SettingsDestination.Home) }
+                ) {
+                    SettingsAboutScreen(
+                            snapshot = aboutSnapshot,
+                            onOpenDiagnostics = {
+                                onDestinationChange(SettingsDestination.Diagnostics)
+                            }
+                    )
+                }
+        SettingsDestination.Diagnostics ->
+                SettingsSecondaryScreen(
+                        title = stringResource(R.string.settings_about_diagnostics_title),
+                        showBack = compact,
+                        onBack = { onDestinationChange(SettingsDestination.About) }
+                ) {
+                    SettingsDiagnosticsScreen(
+                            logs = aboutSnapshot.diagnosticLogs,
+                            onCopyLogs = onCopyDiagnostics,
+                            onShareLogs = onShareDiagnostics,
+                            onClearLogs = onClearDiagnostics
+                    )
+                }
+    }
+}
+
+private fun String.toSettingsDestination(): SettingsDestination =
+        when (this) {
+            SettingsDestination.Account.key -> SettingsDestination.Account
+            SettingsDestination.Computers.key -> SettingsDestination.Computers
+            SettingsDestination.Server.key -> SettingsDestination.Server
+            SettingsDestination.Billing.key -> SettingsDestination.Billing
+            SettingsDestination.Mobile.key -> SettingsDestination.Mobile
+            SettingsDestination.About.key -> SettingsDestination.About
+            else -> SettingsDestination.Home
+        }
 
 @Composable
 private fun <T> SettingsDataStateContent(
@@ -8842,12 +9193,13 @@ private fun <T> SettingsDataStateContent(
 @Composable
 private fun SettingsSecondaryScreen(
         title: String,
+        showBack: Boolean = true,
         onBack: () -> Unit,
         content: @Composable () -> Unit
 ) {
     SettingsPageSurface {
         Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-            SettingsDetailHeader(title = title, onBack = onBack)
+            SettingsDetailHeader(title = title, showBack = showBack, onBack = onBack)
             Box(modifier = Modifier.weight(1f)) { content() }
         }
     }
@@ -9003,55 +9355,58 @@ private fun CountBadge(text: String) {
 
 @Composable
 private fun settingsHomeItems(
-        content: SettingsContent,
-        localeSnapshot: LocaleSnapshot
+        @Suppress("UNUSED_PARAMETER") content: SettingsContent,
+        @Suppress("UNUSED_PARAMETER") localeSnapshot: LocaleSnapshot,
+        selectedDestination: SettingsDestination = SettingsDestination.Account
 ): List<SettingsHomeItem> {
-    val sections = content.settings.manageableSections.joinToString()
-    val currentLanguage =
-            when (localeSnapshot.current) {
-                AppLocale.English -> stringResource(R.string.settings_language_current_english)
-                AppLocale.SimplifiedChinese ->
-                        stringResource(R.string.settings_language_current_chinese)
-            }
     return listOf(
             SettingsHomeItem(
                     key = SettingsDestination.Account.key,
                     title = stringResource(R.string.settings_account_title),
                     subtitle = stringResource(R.string.settings_account_subtitle),
                     icon = SlockIcons.User,
-                    value = sections.ifBlank { null },
-                    selected = true
+                    selected =
+                            selectedDestination == SettingsDestination.Account ||
+                                    selectedDestination == SettingsDestination.Home
             ),
             SettingsHomeItem(
                     key = SettingsDestination.Computers.key,
                     title = stringResource(R.string.settings_computers_title),
                     subtitle = stringResource(R.string.settings_computers_subtitle),
-                    icon = SlockIcons.Monitor
+                    icon = SlockIcons.Monitor,
+                    selected =
+                            selectedDestination == SettingsDestination.Computers ||
+                                    selectedDestination == SettingsDestination.ComputerDetail
             ),
             SettingsHomeItem(
                     key = SettingsDestination.Server.key,
                     title = stringResource(R.string.settings_server_title),
                     subtitle = stringResource(R.string.settings_server_subtitle),
-                    icon = SlockIcons.Users
+                    icon = SlockIcons.Users,
+                    selected = selectedDestination == SettingsDestination.Server
             ),
             SettingsHomeItem(
                     key = SettingsDestination.Billing.key,
                     title = stringResource(R.string.settings_billing_title),
                     subtitle = stringResource(R.string.settings_billing_subtitle),
-                    icon = SlockIcons.ShieldCheck
+                    icon = SlockIcons.ShieldCheck,
+                    selected = selectedDestination == SettingsDestination.Billing
             ),
             SettingsHomeItem(
                     key = SettingsDestination.Mobile.key,
                     title = stringResource(R.string.settings_mobile_title),
                     subtitle = stringResource(R.string.settings_mobile_subtitle),
                     icon = SlockIcons.Smartphone,
-                    value = currentLanguage
+                    selected = selectedDestination == SettingsDestination.Mobile
             ),
             SettingsHomeItem(
                     key = SettingsDestination.About.key,
                     title = stringResource(R.string.settings_about_title),
                     subtitle = stringResource(R.string.settings_about_home_subtitle),
-                    icon = SlockIcons.Bug
+                    icon = SlockIcons.Bug,
+                    selected =
+                            selectedDestination == SettingsDestination.About ||
+                                    selectedDestination == SettingsDestination.Diagnostics
             )
     )
 }
@@ -9674,6 +10029,38 @@ private fun Color.toStatusBarLogName(): String =
             SlockColor.BrandYellow -> "brand_yellow"
             else -> "0x${toArgb().toUInt().toString(16)}"
         }
+
+@Composable
+private fun MembersWideStatusBar() {
+    Row(
+            modifier =
+                    Modifier
+                            .fillMaxWidth()
+                            .windowInsetsTopHeight(WindowInsets.statusBars)
+    ) {
+        Box(
+                modifier =
+                        Modifier
+                                .weight(0.42f)
+                                .fillMaxHeight()
+                                .background(SlockColor.BrandYellow)
+        )
+        Box(
+                modifier =
+                        Modifier
+                                .width(SlockStroke.Default)
+                                .fillMaxHeight()
+                                .background(SlockColor.BorderBlack)
+        )
+        Box(
+                modifier =
+                        Modifier
+                                .weight(0.58f)
+                                .fillMaxHeight()
+                                .background(SlockColor.SurfaceWhite)
+        )
+    }
+}
 
 private tailrec fun Context.findComponentActivity(): ComponentActivity? =
         when (this) {

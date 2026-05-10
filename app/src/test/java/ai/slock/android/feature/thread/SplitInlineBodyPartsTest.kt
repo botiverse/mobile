@@ -124,7 +124,7 @@ class SplitInlineBodyPartsTest {
         val threeDigitWidth =
             threadInlineTagEstimatedWidthSp(label = "#123", hasIcon = false)
 
-        assertEquals(8f, threeDigitWidth - twoDigitWidth, 0.01f)
+        assertEquals(9f, threeDigitWidth - twoDigitWidth, 0.01f)
     }
 
     @Test
@@ -236,6 +236,17 @@ class SplitInlineBodyPartsTest {
         assertEquals(
             listOf(code("foo"), plain(" and "), code("bar")),
             parts
+        )
+    }
+
+    @Test
+    fun `long code inserts zero width breaks at separators`() {
+        val wrapped =
+                "./gradlew :app:testDebugUnitTest --tests foo_bar-baz".wrapLongCodeForDisplay()
+
+        assertEquals(
+                ".\u200B/\u200Bgradlew :\u200Bapp:\u200BtestDebugUnitTest -\u200B-\u200Btests foo_\u200Bbar-\u200Bbaz",
+                wrapped
         )
     }
 }

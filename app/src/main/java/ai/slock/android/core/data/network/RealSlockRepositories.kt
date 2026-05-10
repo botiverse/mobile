@@ -1467,6 +1467,7 @@ class RealConversationRepository(
                             source = source,
                             warningLogger = warningLogger,
                             mapper = { json ->
+                                logThreadSnapshotShape(source, threadId, json)
                                 json.toThreadSnapshot(
                                         context = context,
                                         fallbackThreadId = threadId,
@@ -1786,7 +1787,9 @@ private fun JsonObject.toConversationOrNull(
 }
 
 private fun JsonObject.toConversation(kind: ConversationKind): ConversationSummary {
-    val id = string("id", "channelId", "threadChannelId", "_id") ?: "unknown-channel"
+    val id =
+            string("id", "channelId", "threadChannelId", "_id")
+                    ?: throwMissingChannelTimelineId(kind, this)
     return toConversation(kind, id)
 }
 
@@ -1879,7 +1882,7 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
                             .toPresenceOrNull()
     return ConversationSummary(
             threadId = ThreadId(string("threadId", "threadChannelId", "id") ?: id),
-            channelId = ChannelId(id),
+            channelId = string("channelId")?.let(::ChannelId) ?: ChannelId(id),
             kind = kind,
             name = name,
             subtitle = string("description", "topic", "purpose", "peerDescription"),
@@ -1894,7 +1897,10 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
             lastMessagePreview =
                     string("lastMessagePreview", "preview", "latestActivityPreview", "content"),
             lastMessageAt = string("lastMessageAt", "updatedAt", "latestActivityAt", "createdAt"),
-            lastMessageSenderName = string("lastMessageSenderName", "senderName", "authorName"),
+            lastMessageSenderName =
+                    string("lastMessageSenderName", "senderName", "authorName")
+                            ?: firstObject("lastMessage", "latestMessage", "message")
+                                    ?.messageSenderName(),
             presence =
                     presence.takeIf {
                         kind != ConversationKind.DirectMessage ||
@@ -2107,6 +2113,7 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
                     ?: when (string("kind", "type")) {
                         "dm", "direct_message", "directMessage" -> InboxItemKind.DirectMessage
                         "thread" -> InboxItemKind.Thread
+                        "system", "system_message", "systemMessage", "event" -> InboxItemKind.System
                         else -> InboxItemKind.Channel
                     }
     val channelId = string("channelId", "id", "threadChannelId") ?: "unknown-channel"
@@ -2115,6 +2122,7 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
             when {
                 kind == InboxItemKind.Thread && threadChannelId != null -> "thread:$threadChannelId"
                 kind == InboxItemKind.DirectMessage -> "dm:$channelId"
+                kind == InboxItemKind.System -> "system:$channelId:${string("lastMessageId", "latestActivityMessageId", "messageId", "id").orEmpty()}"
                 else -> "channel:$channelId"
             }
     return InboxItem(
@@ -2134,7 +2142,9 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
             firstUnreadMessageId = string("firstUnreadMessageId")?.let(::MessageId),
             lastMessageId =
                     string("lastMessageId", "latestMessageId", "messageId", "id")?.let(::MessageId),
-            lastMessagePreview = string("lastMessagePreview", "preview", "content", "body"),
+            lastMessagePreview =
+                    string("lastMessagePreview", "preview", "content", "body")
+                            ?: messagePreviewFrom("lastMessage", "latestMessage", "message"),
             lastMessageAt =
                     timestampString(
                             "lastMessageAt",
@@ -2144,21 +2154,63 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
                             "created_at",
                             "timestamp",
                             "time"
-                    ),
-            lastMessageSenderName = string("lastMessageSenderName", "senderName", "authorName"),
+                    ) ?: messageTimestampFrom("lastMessage", "latestMessage", "message"),
+            lastMessageSenderName =
+                    string(
+                            "lastMessageSenderName",
+                            "lastMessageSenderDisplayName",
+                            "senderDisplayName",
+                            "senderName",
+                            "authorDisplayName",
+                            "authorName",
+                            "agentDisplayName",
+                            "agentName"
+                    )
+                            ?: senderNameFrom(
+                                    "lastMessageSender",
+                                    "latestMessageSender",
+                                    "sender",
+                                    "author",
+                                    "agent",
+                                    "createdBy",
+                                    "createdByUser"
+                            )
+                            ?: messageSenderNameFrom("lastMessage", "latestMessage", "message"),
             threadChannelId = threadChannelId?.let(::ChannelId),
             parentChannelId = string("parentChannelId")?.let(::ChannelId),
             parentChannelName = string("parentChannelName"),
             parentChannelKind =
-                    string("parentChannelKind")?.let {
+                    string("parentChannelKind", "parentChannelType")?.let {
                         if (it == "dm") ConversationKind.DirectMessage else ConversationKind.Channel
                     },
             parentMessageId =
                     string("parentMessageId", "parentId", "rootMessageId", "messageId")
                             ?.let(::MessageId),
-            parentMessagePreview = string("parentMessagePreview"),
-            latestActivityMessageId = string("latestActivityMessageId")?.let(::MessageId),
-            latestActivityPreview = string("latestActivityPreview"),
+            parentMessagePreview =
+                    string("parentMessagePreview", "rootMessagePreview", "originalMessagePreview")
+                            ?: messagePreviewFrom("parentMessage", "rootMessage", "originalMessage"),
+            latestActivityMessageId =
+                    string("latestActivityMessageId", "latestReplyMessageId", "lastReplyMessageId")
+                            ?.let(::MessageId)
+                            ?: messageIdFrom(
+                                            "latestActivity",
+                                            "latestMessage",
+                                            "lastMessage",
+                                            "reply",
+                                            "lastReply",
+                                            "message"
+                                    )
+                                    ?.let(::MessageId),
+            latestActivityPreview =
+                    string("latestActivityPreview", "latestReplyPreview", "lastReplyPreview")
+                            ?: messagePreviewFrom(
+                                    "latestActivity",
+                                    "latestMessage",
+                                    "lastMessage",
+                                    "reply",
+                                    "lastReply",
+                                    "message"
+                            ),
             latestActivityAt =
                     timestampString(
                             "latestActivityAt",
@@ -2166,9 +2218,53 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
                             "activityAt",
                             "activity_at",
                             "lastActivityAt",
-                            "last_activity_at"
+                            "last_activity_at",
+                            "lastReplyAt"
+                    ) ?: messageTimestampFrom(
+                            "latestActivity",
+                            "latestMessage",
+                            "lastMessage",
+                            "reply",
+                            "lastReply",
+                            "message"
                     ),
-            latestActivitySenderName = string("latestActivitySenderName"),
+            latestActivitySenderName =
+                    string(
+                            "latestActivitySenderName",
+                            "latestActivitySenderDisplayName",
+                            "latestActivityAgentName",
+                            "latestActivityAgentDisplayName",
+                            "latestReplySenderName",
+                            "latestReplySenderDisplayName",
+                            "latestReplyAgentName",
+                            "latestReplyAgentDisplayName",
+                            "lastReplySenderName",
+                            "lastReplySenderDisplayName",
+                            "lastReplyAgentName",
+                            "lastReplyAgentDisplayName"
+                    )
+                            ?: senderNameFrom(
+                                    "latestActivitySender",
+                                    "latestActivityAuthor",
+                                    "latestActivityAgent",
+                                    "latestReplySender",
+                                    "latestReplyAuthor",
+                                    "latestReplyAgent",
+                                    "lastReplySender",
+                                    "lastReplyAuthor",
+                                    "lastReplyAgent",
+                                    "sender",
+                                    "author",
+                                    "agent"
+                            )
+                            ?: messageSenderNameFrom(
+                                    "latestActivity",
+                                    "latestMessage",
+                                    "lastMessage",
+                                    "reply",
+                                    "lastReply",
+                                    "message"
+                            ),
             replyCount = replyCountFromAliases() ?: 0,
             participantIds = stringList("participantIds", "participants").map(::MemberId),
             taskNumber = int("taskNumber"),
@@ -2179,6 +2275,64 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
 
 private fun JsonObject.timestampString(vararg names: String): String? =
         string(*names) ?: long(*names)?.toString()
+
+private fun JsonObject.messagePreviewFrom(vararg objectNames: String): String? =
+        firstMessageObject(*objectNames)?.messagePreview()
+
+private fun JsonObject.messageSenderNameFrom(vararg objectNames: String): String? =
+        firstMessageObject(*objectNames)?.messageSenderName()
+
+private fun JsonObject.senderNameFrom(vararg objectNames: String): String? =
+        firstObject(*objectNames)?.messageSenderName()
+
+private fun JsonObject.messageTimestampFrom(vararg objectNames: String): String? =
+        firstMessageObject(*objectNames)
+                ?.timestampString(
+                        "timestamp",
+                        "time",
+                        "createdAt",
+                        "created_at",
+                        "updatedAt",
+                        "updated_at",
+                        "lastActivityAt",
+                        "last_activity_at"
+                )
+
+private fun JsonObject.messageIdFrom(vararg objectNames: String): String? =
+        firstMessageObject(*objectNames)?.string("id", "_id", "messageId")
+
+private fun JsonObject.firstMessageObject(vararg objectNames: String): JsonObject? {
+    for (objectName in objectNames) {
+        val value = get(objectName) ?: continue
+        when {
+            value.isJsonObject -> return value.asJsonObject
+            value.isJsonArray ->
+                    value.asJsonArray.firstOrNull { it.isJsonObject }?.asJsonObject?.let {
+                        return it
+                    }
+        }
+    }
+    return null
+}
+
+private fun JsonObject.messagePreview(): String? =
+        string("preview", "content", "body", "text", "message", "title")
+
+private fun JsonObject.messageSenderName(): String? =
+        string(
+                        "senderName",
+                        "senderDisplayName",
+                        "authorName",
+                        "authorDisplayName",
+                        "displayName",
+                        "name",
+                        "username",
+                        "handle",
+                        "agentDisplayName",
+                        "agentName"
+                )
+                ?: firstObject("author", "sender", "member", "user", "agent")
+                        ?.string("displayName", "name", "username", "handle", "email")
 
 private fun JsonObject.replyCountFromAliases(): Int? {
     int(
@@ -2259,6 +2413,23 @@ private fun JsonObject.toThreadSnapshot(
             historyLimited = boolean("historyLimited", "limited") ?: false,
             highlightedMessageId = highlightedMessageId
                             ?: string("highlightedMessageId", "messageId")?.let(::MessageId)
+    )
+}
+
+private fun logThreadSnapshotShape(source: String, fallbackThreadId: ThreadId, root: JsonObject) {
+    val unwrapped = root.unwrap("data", "context")
+    val messages = root.messageItems().mapNotNull { it.asObjectOrNull() }
+    val firstMessage = messages.firstOrNull()
+    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+            "SlockConversation",
+            "thread_snapshot_shape source=$source fallbackThreadId=${fallbackThreadId.value} " +
+                    "rootKeys=${root.safeNetworkKeyList()} " +
+                    "dataKeys=${unwrapped.safeNetworkKeyList()} " +
+                    "conversationKeys=${root.firstObject("conversation", "channel", "thread")?.safeNetworkKeyList() ?: "none"} " +
+                    "messageCount=${messages.size} " +
+                    "firstMessageKeys=${firstMessage?.safeNetworkKeyList() ?: "none"} " +
+                    "firstMessageThreadId=${firstMessage?.string("threadId", "thread_id").orEmpty()} " +
+                    "firstMessageChannelId=${firstMessage?.string("channelId", "channel_id").orEmpty()}"
     )
 }
 
@@ -3509,7 +3680,7 @@ private fun JsonObject.toConversationOrDefault(
         threadId: ThreadId,
         name: String
 ): ConversationSummary =
-        if (entrySet().isEmpty()) {
+        if (entrySet().isEmpty() || !hasChannelTimelineIdentity()) {
             ConversationSummary(
                     threadId = threadId,
                     channelId = ChannelId(threadId.value),
@@ -3519,6 +3690,21 @@ private fun JsonObject.toConversationOrDefault(
         } else {
             toConversation(ConversationKind.Channel)
         }
+
+private fun JsonObject.hasChannelTimelineIdentity(): Boolean =
+        string("id", "channelId", "threadChannelId", "_id") != null
+
+private fun throwMissingChannelTimelineId(kind: ConversationKind, root: JsonObject): Nothing {
+    val message = "missing_channel_timeline_id kind=${kind.name} rootKeys=${root.safeNetworkKeyList()}"
+    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
+            "SlockConversation",
+            message
+    )
+    throw IllegalStateException(message)
+}
+
+private fun JsonObject.safeNetworkKeyList(): String =
+        entrySet().map { it.key }.sorted().joinToString("|").ifBlank { "none" }
 
 private fun JsonObject.unwrap(vararg names: String): JsonObject {
     for (name in names) {

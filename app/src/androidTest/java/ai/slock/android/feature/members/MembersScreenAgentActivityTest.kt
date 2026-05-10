@@ -2,6 +2,7 @@ package ai.slock.android.feature.members
 
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertCountEquals
@@ -11,11 +12,12 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollToIndex
@@ -34,6 +36,9 @@ import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
 import ai.slock.android.core.state.ScreenLoadState
+import ai.slock.android.ui.components.SlockAdaptiveAppLayoutInfo
+import ai.slock.android.ui.components.SlockAdaptiveNavigationPlacement
+import ai.slock.android.ui.components.SlockWindowLayoutMode
 import ai.slock.android.ui.theme.SlockTheme
 import org.junit.Rule
 import org.junit.Test
@@ -41,6 +46,74 @@ import org.junit.Test
 class MembersScreenAgentActivityTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    @Test
+    fun wideMembersOpensDetailPaneBesideListAndClosesIt() {
+        val agent = MemberProfile(
+            id = MemberId("agent-wide"),
+            displayName = "Wide Agent",
+            handle = "@wide-agent",
+            kind = MemberKind.Agent,
+            roleDescription = "Checks wide layout",
+            presence = Presence.Active,
+            agentStatus = AgentStatus.Online
+        )
+        val human = MemberProfile(
+            id = MemberId("human-wide"),
+            displayName = "Wide Human",
+            handle = "@wide-human",
+            kind = MemberKind.Human,
+            roleDescription = "Designer",
+            presence = Presence.Away
+        )
+        val openedMembers = mutableListOf<String>()
+
+        composeRule.setContent {
+            SlockTheme {
+                MembersRouteScreen(
+                    state = MembersUiState(
+                        loadState = ScreenLoadState.Content(
+                            MembersContent(
+                                server = ServerSummary(ServerId("server-1"), "Slock"),
+                                members = listOf(agent, human)
+                            )
+                        )
+                    ),
+                    adaptiveLayoutInfo = SlockAdaptiveAppLayoutInfo(
+                        mode = SlockWindowLayoutMode.MediumListDetail,
+                        navigationPlacement = SlockAdaptiveNavigationPlacement.NavigationRail,
+                        width = 900.dp,
+                        height = 700.dp
+                    ),
+                    onOpenMemberProfile = { openedMembers += it.id.value }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Members").assertIsDisplayed()
+        composeRule.onNodeWithText("Wide Agent").assertIsDisplayed()
+        composeRule.onAllNodesWithContentDescription("Close member detail").assertCountEquals(0)
+        composeRule.onAllNodesWithTag(MEMBERS_WIDE_DETAIL_PANE_TAG).assertCountEquals(0)
+        composeRule.onAllNodesWithTag(MEMBERS_WIDE_DIVIDER_TAG).assertCountEquals(0)
+
+        composeRule.onNodeWithText("Wide Agent").performClick()
+
+        composeRule.onNodeWithText("Members").assertIsDisplayed()
+        composeRule.onNodeWithTag(MEMBERS_WIDE_DETAIL_PANE_TAG).assertIsDisplayed()
+        composeRule.onAllNodesWithTag(MEMBERS_WIDE_DIVIDER_TAG).assertCountEquals(1)
+        composeRule.onNodeWithContentDescription("Close member detail").assertIsDisplayed()
+        composeRule.onNode(hasText("PROFILE") and hasClickAction()).assertIsDisplayed()
+        assert(openedMembers == listOf("agent-wide")) {
+            "Expected wide pane to request the clicked member profile once, got $openedMembers"
+        }
+
+        composeRule.onNodeWithContentDescription("Close member detail").performClick()
+
+        composeRule.onNodeWithText("Members").assertIsDisplayed()
+        composeRule.onNodeWithText("Wide Agent").assertIsDisplayed()
+        composeRule.onAllNodesWithTag(MEMBERS_WIDE_DETAIL_PANE_TAG).assertCountEquals(0)
+        composeRule.onAllNodesWithTag(MEMBERS_WIDE_DIVIDER_TAG).assertCountEquals(0)
+    }
 
     @Test
     fun agentActivityDetailShowsFormattedScrollableNewestFirstTimeline() {
@@ -226,6 +299,7 @@ class MembersScreenAgentActivityTest {
             )
         )
         val saveCalls = mutableListOf<Pair<String, String>>()
+        val saveState = mutableStateOf<AgentProfileSaveState>(AgentProfileSaveState.Idle)
 
         composeRule.setContent {
             SlockTheme {
@@ -237,7 +311,7 @@ class MembersScreenAgentActivityTest {
                                 members = listOf(agentState.value)
                             )
                         )
-                    ),
+                    ).copy(agentProfileSaveState = saveState.value),
                     initialSelectedMemberId = agentState.value.id.value,
                     initialSelectedDetailTab = "Profile",
                     onSaveAgentProfile = { _, displayName, description ->
@@ -246,10 +320,15 @@ class MembersScreenAgentActivityTest {
                             displayName = displayName,
                             roleDescription = description
                         )
+                        saveState.value = AgentProfileSaveState.Saved
                     }
                 )
             }
         }
+
+        composeRule.onNodeWithContentDescription("Edit agent profile").assertIsDisplayed()
+        composeRule.onAllNodes(hasSetTextAction()).assertCountEquals(0)
+        composeRule.onNodeWithContentDescription("Edit agent profile").performClick()
 
         composeRule.onAllNodes(hasSetTextAction())[0].performTextReplacement("Updated Agent")
         composeRule.onAllNodes(hasSetTextAction())[1].performTextReplacement("Updated description")
@@ -259,5 +338,6 @@ class MembersScreenAgentActivityTest {
             "Expected edited profile save payload, got $saveCalls"
         }
         composeRule.onAllNodesWithText("Updated Agent").assertCountEquals(2)
+        composeRule.onAllNodes(hasSetTextAction()).assertCountEquals(0)
     }
 }

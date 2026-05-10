@@ -196,6 +196,11 @@ data class ThreadParentJumpTarget(
     val parentMessageId: MessageId
 )
 
+enum class ThreadHeaderNavigationIcon {
+    Back,
+    Close
+}
+
 enum class MessagePageStatus {
     Idle,
     Loading,

@@ -40,6 +40,7 @@ import ai.slock.android.ui.components.SlockTextField
 import ai.slock.android.ui.system.DeclareStatusBarColor
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockShadow
+import ai.slock.android.ui.theme.SlockSize
 import ai.slock.android.ui.theme.SlockSpacing
 import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
@@ -118,6 +119,7 @@ fun SettingsServerDetailScreen(
 fun SettingsDetailHeader(
     title: String,
     modifier: Modifier = Modifier,
+    showBack: Boolean = true,
     onBack: () -> Unit = {}
 ) {
     val backInteractionSource = remember { MutableInteractionSource() }
@@ -127,6 +129,7 @@ fun SettingsDetailHeader(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .heightIn(min = SlockSize.PageHeaderHeight)
             .background(SlockColor.SurfaceWhite)
             .drawBehind {
                 val stroke = SlockStroke.Default.toPx()
@@ -141,27 +144,29 @@ fun SettingsDetailHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
-        Box(
-            modifier = Modifier
-                .padding(end = SlockShadow.Small.offsetX, bottom = SlockShadow.Small.offsetY)
-                .slockHardShadow(backShadow)
-                .size(SettingsDetailHeaderButtonSize)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .clickable(
-                    interactionSource = backInteractionSource,
-                    indication = null,
-                    role = Role.Button,
-                    onClick = onBack
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = SlockIcons.ArrowLeft,
-                contentDescription = null,
-                tint = SlockColor.TextBlack,
-                modifier = Modifier.size(SettingsDetailHeaderIconSize)
-            )
+        if (showBack) {
+            Box(
+                modifier = Modifier
+                    .padding(end = SlockShadow.Small.offsetX, bottom = SlockShadow.Small.offsetY)
+                    .slockHardShadow(backShadow)
+                    .size(SettingsDetailHeaderButtonSize)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .clickable(
+                        interactionSource = backInteractionSource,
+                        indication = null,
+                        role = Role.Button,
+                        onClick = onBack
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = SlockIcons.ArrowLeft,
+                    contentDescription = null,
+                    tint = SlockColor.TextBlack,
+                    modifier = Modifier.size(SettingsDetailHeaderIconSize)
+                )
+            }
         }
         Text(
             text = title,

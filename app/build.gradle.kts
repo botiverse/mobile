@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.sqldelight)
 }
 
 android {
@@ -55,6 +56,16 @@ android {
     }
 }
 
+sqldelight {
+    databases {
+        create("SlockDatabase") {
+            packageName.set("ai.slock.android.core.data.local")
+            schemaOutputDirectory.set(file("src/main/sqldelight/databases"))
+            verifyMigrations.set(true)
+        }
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
@@ -72,7 +83,9 @@ dependencies {
     implementation(libs.socket.io.client)
     implementation(libs.markdown.renderer.android)
     implementation(libs.markdown.renderer.m3.android)
+    implementation(libs.sqldelight.android.driver)
     testImplementation(libs.junit)
+    testImplementation(libs.sqldelight.sqlite.driver)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

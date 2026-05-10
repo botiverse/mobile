@@ -101,7 +101,7 @@ Reply count aliases are documented in [Reply count and thread-summary join contr
 Android logs the creation path under `SlockThreadReplies`:
 
 - `open_message_thread_context_start messageId=... fallbackChannelId=... messageThreadId=...`
-- `open_message_thread_context_result messageId=... result=... resolvedChannelId=... contextConversationId=... contextMessageCount=...`
+- `open_message_thread_context_result messageId=... result=... resolvedChannelId=... contextThreadId=... contextMessageCount=...`
 - `open_message_thread_create_start parentMessageId=... channelId=...`
 - `thread_action_result source=thread_create_or_open threadChannelId=... parentMessageId=... replyCount=...`
 

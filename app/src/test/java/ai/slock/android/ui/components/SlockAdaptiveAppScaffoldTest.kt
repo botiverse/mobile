@@ -28,4 +28,18 @@ class SlockAdaptiveAppScaffoldTest {
         assertEquals(SlockWindowLayoutMode.ExpandedThreePane, layout.mode)
         assertEquals(SlockAdaptiveNavigationPlacement.NavigationRail, layout.navigationPlacement)
     }
+
+    @Test
+    fun wideLayoutKeepsNavigationRailWhenPageNavigationIsHidden() {
+        val layout = slockAdaptiveAppLayoutInfo(width = 840.dp, height = 900.dp)
+
+        assertEquals(true, slockAdaptiveShowsNavigationRail(layout))
+    }
+
+    @Test
+    fun compactLayoutHidesNavigationWhenPageNavigationIsHidden() {
+        val layout = slockAdaptiveAppLayoutInfo(width = 599.dp, height = 800.dp)
+
+        assertEquals(false, slockAdaptiveShowsNavigationRail(layout))
+    }
 }

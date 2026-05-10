@@ -365,6 +365,22 @@ object SlockIcons {
         lineTo(15f, 21f)
     }
 
+    val ExternalLink: ImageVector = strokeIcon("LucideExternalLink") {
+        moveTo(15f, 3f)
+        lineTo(21f, 3f)
+        lineTo(21f, 9f)
+        moveTo(10f, 14f)
+        lineTo(21f, 3f)
+        moveTo(18f, 13f)
+        lineTo(18f, 19f)
+        curveTo(18f, 20.1046f, 17.1046f, 21f, 16f, 21f)
+        lineTo(5f, 21f)
+        curveTo(3.8954f, 21f, 3f, 20.1046f, 3f, 19f)
+        lineTo(3f, 8f)
+        curveTo(3f, 6.8954f, 3.8954f, 6f, 5f, 6f)
+        lineTo(11f, 6f)
+    }
+
     val Users: ImageVector = strokeIcon("LucideUsers") {
         moveTo(16f, 21f)
         lineTo(16f, 19f)

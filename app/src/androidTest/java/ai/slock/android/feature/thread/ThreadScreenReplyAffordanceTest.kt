@@ -5,8 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
@@ -486,6 +488,40 @@ class ThreadScreenReplyAffordanceTest {
 
         composeRule.runOnIdle {
             assertEquals(AttachmentId("attachment-click"), openedAttachment)
+        }
+        composeRule.onAllNodesWithText("Copy markdown").assertCountEquals(0)
+    }
+
+    @Test
+    fun landscapeAttachmentClickOpensAttachmentWithoutShowingActionOverlay() {
+        var openedAttachment: AttachmentId? = null
+        val attachment = Attachment(
+            id = AttachmentId("landscape-attachment-click"),
+            name = "landscape-preview.png",
+            mimeType = "image/png",
+            sizeLabel = "8 KB",
+            thumbnailUrl = "https://example.invalid/landscape-preview.png"
+        )
+
+        composeRule.setContent {
+            SlockTheme {
+                Box(modifier = Modifier.width(760.dp)) {
+                    ThreadMessageItem(
+                        message = message(replyCount = 0).copy(
+                            attachments = listOf(attachment)
+                        ),
+                        onOpenAttachment = { openedAttachment = it.id }
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("landscape-preview.png")
+            .assertIsDisplayed()
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(AttachmentId("landscape-attachment-click"), openedAttachment)
         }
         composeRule.onAllNodesWithText("Copy markdown").assertCountEquals(0)
     }
