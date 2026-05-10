@@ -4,6 +4,7 @@ import ai.slock.android.R
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.components.SlockTextField
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
@@ -16,9 +17,6 @@ import ai.slock.android.ui.theme.slockHardShadow
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,20 +28,16 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -110,11 +104,6 @@ fun SettingsAccountScreen(
 
 @Composable
 private fun SettingsLogoutAction(onLogout: () -> Unit, modifier: Modifier = Modifier) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val shadow = if (pressed) SlockShadow.None else SlockShadow.Small
-    val background = if (pressed) SlockColor.AccentOrange else SlockColor.AccentRed
-
     Column(
             modifier = modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
@@ -124,32 +113,18 @@ private fun SettingsLogoutAction(onLogout: () -> Unit, modifier: Modifier = Modi
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray
         )
-        Box(
-                modifier =
-                        Modifier.fillMaxWidth()
-                                .padding(
-                                        end = SlockShadow.Small.offsetX,
-                                        bottom = SlockShadow.Small.offsetY
-                                )
-                                .slockHardShadow(shadow)
-                                .background(background, RoundedCornerShape(SlockRadius.Xs))
-                                .border(
-                                        SlockStroke.Default,
-                                        SlockColor.BorderBlack,
-                                        RoundedCornerShape(SlockRadius.Xs)
-                                )
-                                .clickable(
-                                        interactionSource = interactionSource,
-                                        indication = null,
-                                        role = Role.Button,
-                                        onClick = onLogout
-                                )
-                                .heightIn(min = 48.dp)
-                                .padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
-                contentAlignment = Alignment.Center
+        SlockKeySurface(
+                onClick = onLogout,
+                modifier = Modifier.fillMaxWidth(),
+                surfaceModifier = Modifier.heightIn(min = 48.dp),
+                backgroundColor = SlockColor.AccentRed,
+                pressedBackgroundColor = SlockColor.AccentOrange,
+                restingShadow = SlockShadow.Small,
+                pressedShadow = SlockShadow.None
         ) {
             Text(
                     text = stringResource(R.string.settings_account_logout),
+                    modifier = Modifier.padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
                     color = SlockColor.TextBlack,
                     style = SlockType.Button.copy(fontWeight = FontWeight.Bold),
                     textAlign = TextAlign.Center,

@@ -2,9 +2,6 @@ package ai.slock.android.feature.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,15 +16,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -36,6 +30,7 @@ import ai.slock.android.R
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.components.SlockTextField
 import ai.slock.android.ui.system.DeclareStatusBarColor
 import ai.slock.android.ui.theme.SlockColor
@@ -122,9 +117,6 @@ fun SettingsDetailHeader(
     showBack: Boolean = true,
     onBack: () -> Unit = {}
 ) {
-    val backInteractionSource = remember { MutableInteractionSource() }
-    val backPressed by backInteractionSource.collectIsPressedAsState()
-    val backShadow = if (backPressed) SlockShadow.None else SlockShadow.Small
     DeclareStatusBarColor(SlockColor.SurfaceWhite)
     Row(
         modifier = modifier
@@ -145,20 +137,11 @@ fun SettingsDetailHeader(
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
         if (showBack) {
-            Box(
-                modifier = Modifier
-                    .padding(end = SlockShadow.Small.offsetX, bottom = SlockShadow.Small.offsetY)
-                    .slockHardShadow(backShadow)
-                    .size(SettingsDetailHeaderButtonSize)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .clickable(
-                        interactionSource = backInteractionSource,
-                        indication = null,
-                        role = Role.Button,
-                        onClick = onBack
-                    ),
-                contentAlignment = Alignment.Center
+            SlockKeySurface(
+                onClick = onBack,
+                restingShadow = SlockShadow.Small,
+                pressedShadow = SlockShadow.None,
+                surfaceModifier = Modifier.size(SettingsDetailHeaderButtonSize)
             ) {
                 Icon(
                     imageVector = SlockIcons.ArrowLeft,

@@ -2,6 +2,7 @@ package ai.slock.android.ui.theme
 
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
@@ -32,3 +33,17 @@ fun Modifier.slockHardShadow(
         size = size
     )
 }
+
+fun Modifier.slockKeyPressOffset(
+    isPressed: Boolean,
+    restingShadow: SlockHardShadow,
+    pressedShadow: SlockHardShadow
+): Modifier =
+    if (isPressed) {
+        offset(
+            x = restingShadow.offsetX - pressedShadow.offsetX,
+            y = restingShadow.offsetY - pressedShadow.offsetY
+        )
+    } else {
+        this
+    }

@@ -34,6 +34,7 @@ import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.components.SlockLabeledCheckbox
 import ai.slock.android.ui.components.SlockMemberAvatar
 import ai.slock.android.ui.components.SlockMemberPickerItem
@@ -2281,31 +2282,12 @@ private fun HeaderIconButton(
         enabled: Boolean = true,
         onClick: () -> Unit = {}
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val shadow = if (pressed && enabled) SlockShadow.None else SlockShadow.Small
-    Box(
-            modifier =
-                    Modifier.padding(
-                                    end = SlockShadow.Small.offsetX,
-                                    bottom = SlockShadow.Small.offsetY
-                            )
-                            .slockHardShadow(shadow)
-                            .size(38.dp)
-                            .background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
-                            .border(
-                                    SlockStroke.Default,
-                                    SlockColor.BorderBlack,
-                                    RoundedCornerShape(SlockRadius.Xs)
-                            )
-                            .clickable(
-                                    enabled = enabled,
-                                    interactionSource = interactionSource,
-                                    indication = null,
-                                    role = Role.Button,
-                                    onClick = onClick
-                            ),
-            contentAlignment = Alignment.Center
+    SlockKeySurface(
+            onClick = onClick,
+            enabled = enabled,
+            restingShadow = SlockShadow.Small,
+            pressedShadow = SlockShadow.None,
+            surfaceModifier = Modifier.size(38.dp)
     ) {
         Icon(
                 imageVector = icon,
@@ -2318,41 +2300,25 @@ private fun HeaderIconButton(
 
 @Composable
 private fun ThreadMembersButton(count: Int?, onClick: () -> Unit) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val shadow = if (pressed) SlockShadow.None else SlockShadow.Small
-    Row(
-            modifier =
-                    Modifier.padding(
-                                    end = SlockShadow.Small.offsetX,
-                                    bottom = SlockShadow.Small.offsetY
-                            )
-                            .slockHardShadow(shadow)
-                            .background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
-                            .border(
-                                    SlockStroke.Default,
-                                    SlockColor.BorderBlack,
-                                    RoundedCornerShape(SlockRadius.Xs)
-                            )
-                            .heightIn(min = 38.dp)
-                            .defaultMinSize(minWidth = 54.dp)
-                            .clickable(
-                                    interactionSource = interactionSource,
-                                    indication = null,
-                                    role = Role.Button,
-                                    onClick = onClick
-                            )
-                            .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    SlockKeySurface(
+            onClick = onClick,
+            restingShadow = SlockShadow.Small,
+            pressedShadow = SlockShadow.None,
+            surfaceModifier = Modifier.heightIn(min = 38.dp).defaultMinSize(minWidth = 54.dp)
     ) {
-        Icon(
-                SlockIcons.Users,
-                contentDescription = "Members",
-                tint = SlockColor.TextBlack,
-                modifier = Modifier.size(18.dp)
-        )
-        Text(count?.toString() ?: "--", style = SlockType.Button, color = SlockColor.TextBlack)
+        Row(
+                modifier = Modifier.padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            Icon(
+                    SlockIcons.Users,
+                    contentDescription = "Members",
+                    tint = SlockColor.TextBlack,
+                    modifier = Modifier.size(18.dp)
+            )
+            Text(count?.toString() ?: "--", style = SlockType.Button, color = SlockColor.TextBlack)
+        }
     }
 }
 
@@ -3228,40 +3194,31 @@ private fun threadHorizontalPadding(): Dp =
 
 @Composable
 private fun ThreadBackToBottomButton(modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val shadow = if (pressed) SlockShadow.None else SlockShadow.Small
-    Row(
-            modifier =
-                    modifier.heightIn(min = 28.dp)
-                            .slockHardShadow(shadow)
-                            .background(SlockColor.AccentCyan, RoundedCornerShape(SlockRadius.Xs))
-                            .border(
-                                    SlockStroke.Default,
-                                    SlockColor.BorderBlack,
-                                    RoundedCornerShape(SlockRadius.Xs)
-                            )
-                            .clickable(
-                                    interactionSource = interactionSource,
-                                    indication = null,
-                                    role = Role.Button,
-                                    onClick = onClick
-                            )
-                            .padding(horizontal = SlockSpacing.Sm, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    SlockKeySurface(
+            onClick = onClick,
+            modifier = modifier,
+            backgroundColor = SlockColor.AccentCyan,
+            restingShadow = SlockShadow.Small,
+            pressedShadow = SlockShadow.None,
+            surfaceModifier = Modifier.heightIn(min = 28.dp)
     ) {
-        Text(
-                text = "Back to bottom",
-                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
-                color = SlockColor.TextBlack
-        )
-        Icon(
-                imageVector = SlockIcons.ChevronDown,
-                contentDescription = null,
-                tint = SlockColor.TextBlack,
-                modifier = Modifier.size(14.dp)
-        )
+        Row(
+                modifier = Modifier.padding(horizontal = SlockSpacing.Sm, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            Text(
+                    text = "Back to bottom",
+                    style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                    color = SlockColor.TextBlack
+            )
+            Icon(
+                    imageVector = SlockIcons.ChevronDown,
+                    contentDescription = null,
+                    tint = SlockColor.TextBlack,
+                    modifier = Modifier.size(14.dp)
+            )
+        }
     }
 }
 
