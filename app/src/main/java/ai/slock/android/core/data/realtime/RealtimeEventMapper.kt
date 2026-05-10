@@ -385,7 +385,10 @@ private fun JsonObject.toTaskSummary(): TaskSummary? {
                 (channelType == "thread" && fallbackThreadId != null),
         assignee = firstObject("assignee", "claimedBy", "assignedTo")?.toMemberProfile()
             ?: claimedByFallback(),
-        channelName = string("channelName"),
+        channelName =
+            string("channelName")
+                ?: firstObject("channel", "parentChannel", "conversation")
+                    ?.string("name", "channelName", "slug", "channelSlug"),
         updatedAtLabel = string("updatedAt", "createdAt") ?: "",
         canClaim = boolean("canClaim") ?: true
     )

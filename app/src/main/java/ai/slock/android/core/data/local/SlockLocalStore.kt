@@ -17,6 +17,8 @@ import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
+import ai.slock.android.core.model.ThreadConversation
+import ai.slock.android.core.model.withTitleFallback
 
 interface SlockLocalStore {
     fun upsertConversation(conversation: ConversationSummary, syncedAtMs: Long)
@@ -83,19 +85,21 @@ class SqlDelightSlockLocalStore(
     private val queries = database.slockDatabaseQueries
 
     override fun upsertConversation(conversation: ConversationSummary, syncedAtMs: Long) {
-        requireValidLocalId(conversation.threadId.value, "conversation.threadId")
-        requireValidLocalId(conversation.channelId?.value, "conversation.channelId")
+        val storedConversation = getConversation(conversation.threadId)
+        val conversationToStore = conversation.withTitleFallback(storedConversation)
+        requireValidLocalId(conversationToStore.threadId.value, "conversation.threadId")
+        requireValidLocalId(conversationToStore.channelId?.value, "conversation.channelId")
         queries.upsertConversation(
-            id = conversation.threadId.value,
-            channel_id = conversation.channelId?.value ?: conversation.threadId.value,
-            thread_id = conversation.threadId.value,
-            kind = conversation.kind.wireValue,
-            name = conversation.name,
-            parent_channel_id = null,
-            parent_message_id = null,
-            avatar_url = conversation.avatarUrl,
-            unread_count = conversation.unreadCount.toLong(),
-            updated_at_label = conversation.lastMessageAt,
+            id = conversationToStore.threadId.value,
+            channel_id = conversationToStore.channelId?.value ?: conversationToStore.threadId.value,
+            thread_id = conversationToStore.threadId.value,
+            kind = conversationToStore.kind.wireValue,
+            name = conversationToStore.name,
+            parent_channel_id = conversationToStore.thread?.parentChannelId?.value,
+            parent_message_id = conversationToStore.thread?.parentMessageId?.value,
+            avatar_url = conversationToStore.avatarUrl,
+            unread_count = conversationToStore.unreadCount.toLong(),
+            updated_at_label = conversationToStore.lastMessageAt,
             last_synced_at_ms = syncedAtMs
         )
     }
@@ -277,6 +281,15 @@ private fun Local_conversation.toConversationSummary(): ConversationSummary =
     ConversationSummary(
         threadId = ThreadId(thread_id),
         channelId = ChannelId(channel_id),
+        thread =
+            if (kind.toConversationKind() == ConversationKind.Thread && parent_message_id != null) {
+                ThreadConversation(
+                    parentChannelId = parent_channel_id?.let(::ChannelId) ?: ChannelId(channel_id),
+                    parentMessageId = MessageId(parent_message_id)
+                )
+            } else {
+                null
+            },
         kind = kind.toConversationKind(),
         name = name,
         avatarUrl = avatar_url,

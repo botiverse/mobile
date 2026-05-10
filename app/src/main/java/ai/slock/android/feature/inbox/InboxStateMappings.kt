@@ -15,6 +15,7 @@ import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageType
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ThreadId
+import ai.slock.android.core.model.ThreadConversation
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.ScreenLoadState
 
@@ -236,7 +237,12 @@ private fun Message.toInboxItem(): InboxItem =
         )
 
 fun InboxItem.toConversationSummary(): ConversationSummary {
-    val threadId = ThreadId((threadChannelId ?: channelId).value)
+    val threadId =
+            if (kind == InboxItemKind.Thread && parentChannelId != null && parentMessageId != null) {
+                ai.slock.android.core.model.threadIdentity(parentChannelId, parentMessageId)
+            } else {
+                ThreadId((threadChannelId ?: channelId).value)
+            }
     val title =
             when (kind) {
                 InboxItemKind.Thread -> parentChannelName ?: channelName
@@ -244,10 +250,21 @@ fun InboxItem.toConversationSummary(): ConversationSummary {
             }
     return ConversationSummary(
             threadId = threadId,
-            channelId = threadChannelId ?: channelId,
+            channelId = parentChannelId ?: channelId,
+            thread =
+                    if (kind == InboxItemKind.Thread && parentChannelId != null && parentMessageId != null) {
+                        ThreadConversation(
+                                parentChannelId = parentChannelId,
+                                parentMessageId = parentMessageId,
+                                streamChannelId = threadChannelId
+                        )
+                    } else {
+                        null
+                    },
             kind = parentChannelKind
                             ?: when (kind) {
                                 InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
+                                InboxItemKind.Thread -> ConversationKind.Thread
                                 else -> ConversationKind.Channel
                             },
             name = title,

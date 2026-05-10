@@ -2,60 +2,69 @@ package ai.slock.android.core.model
 
 fun ConversationSummary.withTitleFallback(fallback: ConversationSummary?): ConversationSummary {
     if (fallback == null) return this
-    val genericNames = setOf("Messages", "channel", threadId.value, channelId?.value.orEmpty())
-        .filter { it.isNotBlank() }
-    val shouldUseFallback = name.isBlank() || name in genericNames
-    val shouldUseFallbackThreadId = threadId.value == "unknown-channel"
-    val shouldUseFallbackChannelId = channelId == null || channelId?.value == "unknown-channel"
-    return if (shouldUseFallback) {
-        copy(
-            name = fallback.name,
-            subtitle = subtitle ?: fallback.subtitle,
-            threadId = if (shouldUseFallbackThreadId) fallback.threadId else threadId,
-            channelId = if (shouldUseFallbackChannelId) fallback.channelId else channelId,
-            kind = fallback.kind,
-            unreadCount = if (unreadCountKnown) unreadCount else fallback.unreadCount,
-            unreadCountKnown = unreadCountKnown || fallback.unreadCountKnown,
-            mentionCount = if (mentionCountKnown) mentionCount else fallback.mentionCount,
-            mentionCountKnown = mentionCountKnown || fallback.mentionCountKnown,
-            lastMessageId = lastMessageId ?: fallback.lastMessageId,
-            firstUnreadMessageId = firstUnreadMessageId ?: fallback.firstUnreadMessageId,
-            lastMessagePreview = lastMessagePreview ?: fallback.lastMessagePreview,
-            lastMessageAt = lastMessageAt ?: fallback.lastMessageAt,
-            lastMessageSenderName = lastMessageSenderName ?: fallback.lastMessageSenderName,
-            hasDraft = if (hasDraftKnown) hasDraft else fallback.hasDraft,
-            hasDraftKnown = hasDraftKnown || fallback.hasDraftKnown,
-            memberCount = memberCount ?: fallback.memberCount
-        )
-    } else {
-        copy(
-            threadId = if (shouldUseFallbackThreadId) fallback.threadId else threadId,
-            channelId = if (shouldUseFallbackChannelId) fallback.channelId else channelId,
-            unreadCount = if (unreadCountKnown) unreadCount else fallback.unreadCount,
-            unreadCountKnown = unreadCountKnown || fallback.unreadCountKnown,
-            mentionCount = if (mentionCountKnown) mentionCount else fallback.mentionCount,
-            mentionCountKnown = mentionCountKnown || fallback.mentionCountKnown,
-            lastMessageId = lastMessageId ?: fallback.lastMessageId,
-            firstUnreadMessageId = firstUnreadMessageId ?: fallback.firstUnreadMessageId,
-            lastMessagePreview = lastMessagePreview ?: fallback.lastMessagePreview,
-            lastMessageAt = lastMessageAt ?: fallback.lastMessageAt,
-            lastMessageSenderName = lastMessageSenderName ?: fallback.lastMessageSenderName,
-            hasDraft = if (hasDraftKnown) hasDraft else fallback.hasDraft,
-            hasDraftKnown = hasDraftKnown || fallback.hasDraftKnown,
-            memberCount = memberCount ?: fallback.memberCount
-        )
-    }
+    val nameLooksLikeIdentity =
+        name.isBlank() || name == threadId.value || name == channelId?.value
+    val sameConversation = isSameConversationAs(fallback)
+    val shouldUseFallbackName = sameConversation && nameLooksLikeIdentity && fallback.hasDisplayName()
+    return copy(
+        name = if (shouldUseFallbackName) fallback.name else name,
+        subtitle = subtitle ?: fallback.subtitle,
+        channelId = channelId ?: fallback.channelId.takeIf { sameConversation },
+        thread = thread ?: fallback.thread.takeIf { sameConversation },
+        kind = if (shouldUseFallbackName) fallback.kind else kind,
+        unreadCount = if (unreadCountKnown) unreadCount else fallback.unreadCount,
+        unreadCountKnown = unreadCountKnown || fallback.unreadCountKnown,
+        mentionCount = if (mentionCountKnown) mentionCount else fallback.mentionCount,
+        mentionCountKnown = mentionCountKnown || fallback.mentionCountKnown,
+        lastMessageId = lastMessageId ?: fallback.lastMessageId,
+        firstUnreadMessageId = firstUnreadMessageId ?: fallback.firstUnreadMessageId,
+        lastMessagePreview = lastMessagePreview ?: fallback.lastMessagePreview,
+        lastMessageAt = lastMessageAt ?: fallback.lastMessageAt,
+        lastMessageSenderName = lastMessageSenderName ?: fallback.lastMessageSenderName,
+        hasDraft = if (hasDraftKnown) hasDraft else fallback.hasDraft,
+        hasDraftKnown = hasDraftKnown || fallback.hasDraftKnown,
+        memberCount = memberCount ?: fallback.memberCount
+    )
 }
+
+fun ConversationSummary.messageStreamChannelId(): ChannelId =
+    // API routing id for /messages/channel/{id}; thread identity remains parent channel + parent message.
+    thread?.streamChannelId ?: channelId ?: ChannelId(threadId.value)
+
+fun ConversationSummary.isSameConversationAs(other: ConversationSummary): Boolean {
+    if (kind == ConversationKind.Thread || other.kind == ConversationKind.Thread) {
+        return threadAnchorChannelId() != null &&
+            threadAnchorChannelId() == other.threadAnchorChannelId() &&
+            threadAnchorMessageId() != null &&
+            threadAnchorMessageId() == other.threadAnchorMessageId()
+    }
+    return threadId == other.threadId ||
+        isTopLevelChannel && other.isTopLevelChannel && channelId == other.channelId
+}
+
+fun threadIdentity(parentChannelId: ChannelId, parentMessageId: MessageId): ThreadId =
+    ThreadId("${parentChannelId.value}:${parentMessageId.value}")
+
+private fun ConversationSummary.threadAnchorChannelId(): ChannelId? =
+    thread?.parentChannelId ?: channelId
+        ?: threadId.value.substringBefore(':').takeIf { it != threadId.value }?.let(::ChannelId)
+
+private fun ConversationSummary.threadAnchorMessageId(): MessageId? =
+    thread?.parentMessageId
+        ?: threadId.value.substringAfter(':').takeIf { it != threadId.value }?.let(::MessageId)
+
+private val ConversationSummary.isTopLevelChannel: Boolean
+    get() = kind == ConversationKind.Channel && thread == null &&
+        (channelId == null || channelId?.value == threadId.value)
+
+private fun ConversationSummary.hasDisplayName(): Boolean =
+    name.isNotBlank() && name != threadId.value && name != channelId?.value
 
 fun ConversationSummary.withPreviewMembershipFallback(
     fallback: ConversationSummary?
 ): ConversationSummary {
     if (fallback == null || fallback.joined) return this
-    val sameChannel = threadId == fallback.threadId ||
-        channelId == fallback.channelId ||
-        channelId?.value == fallback.threadId.value ||
-        fallback.channelId?.value == threadId.value
-    if (!sameChannel) return this
+    if (!isSameConversationAs(fallback)) return this
     return copy(
         joined = false,
         permissions = fallback.permissions

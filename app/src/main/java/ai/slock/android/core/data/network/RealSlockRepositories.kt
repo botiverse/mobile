@@ -79,6 +79,8 @@ import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
+import ai.slock.android.core.model.ThreadConversation
+import ai.slock.android.core.model.threadIdentity
 import ai.slock.android.core.model.toGravatarAvatarReference
 import ai.slock.android.core.state.EmptyReason
 import com.google.gson.Gson
@@ -1156,7 +1158,7 @@ class RealSavedRepository(private val store: AuthSessionStore, private val api: 
                 mapper = { json ->
                     val items =
                             json.items("items", "messages", "saved")
-                                    .map {
+                                    .mapNotNull {
                                         it.asObject()
                                                 .toInboxItem(defaultKind = InboxItemKind.Channel)
                                     }
@@ -1190,7 +1192,7 @@ class RealSearchRepository(private val store: AuthSessionStore, private val api:
                 mapper = { json ->
                     val items =
                             json.items("items", "results", "messages")
-                                    .map {
+                                    .mapNotNull {
                                         it.asObject()
                                                 .toInboxItem(defaultKind = InboxItemKind.Channel)
                                     }
@@ -1286,7 +1288,7 @@ class RealConversationRepository(
                     json.toThreadSnapshot(
                             context = context,
                             fallbackThreadId = threadId,
-                            fallbackConversationName = "Messages"
+                            fallbackConversationName = threadId.value
                     )
                 }
         )
@@ -1471,7 +1473,7 @@ class RealConversationRepository(
                                 json.toThreadSnapshot(
                                         context = context,
                                         fallbackThreadId = threadId,
-                                        fallbackConversationName = "Messages"
+                                        fallbackConversationName = threadId.value
                                 )
                             }
                     )
@@ -1808,11 +1810,12 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
                             "agentUsername",
                             "userDisplayName",
                             "username",
+                            "slug",
+                            "channelSlug",
                             "title"
                     )
                     ?: presenceSource?.string("displayName", "name", "username", "email")
-                            ?: if (kind == ConversationKind.DirectMessage) "Direct message"
-                    else "channel"
+                            ?: id
     val joined = if (kind == ConversationKind.DirectMessage) true else channelJoined()
     val canSend = boolean("canSend", "canWrite", "canMessage") ?: joined
     val avatarWireValue = conversationAvatarWireValue()
@@ -1979,15 +1982,18 @@ private fun mergeDirectMessages(
 }
 
 private val ConversationSummary.conversationCacheKey: String
-    get() = channelId?.value ?: threadId.value
+        get() =
+                if (kind == ConversationKind.Thread) threadId.value
+                else channelId?.value ?: threadId.value
 
-private fun ConversationSummary.cacheKey(): String? = channelId?.value ?: threadId.value
+private fun ConversationSummary.cacheKey(): String? =
+        if (kind == ConversationKind.Thread) threadId.value else channelId?.value ?: threadId.value
 
 private fun ConversationSummary.mergeConversationSummary(
         incoming: ConversationSummary
 ): ConversationSummary =
         incoming.copy(
-                name = incoming.name.takeUnless { it.isBlank() } ?: name,
+                name = incoming.name.takeUnless { it.isGenericConversationName(incoming) } ?: name,
                 subtitle = incoming.subtitle ?: subtitle,
                 avatarUrl = incoming.avatarUrl ?: avatarUrl,
                 avatar = incoming.avatar ?: avatar,
@@ -2020,6 +2026,10 @@ private fun ConversationSummary.mergeConversationSummary(
                 memberCount = incoming.memberCount ?: memberCount
         )
 
+private fun String.isGenericConversationName(conversation: ConversationSummary): Boolean =
+        isBlank() || this == conversation.threadId.value ||
+                this == conversation.channelId?.value
+
 private fun ConversationSummary.withMergedMemberCount(incoming: Int?): ConversationSummary =
         copy(memberCount = incoming ?: memberCount)
 
@@ -2027,7 +2037,7 @@ private fun ConversationSummary.withDirectMessageFallback(
         previous: ConversationSummary
 ): ConversationSummary =
         copy(
-                name = name.takeUnless { it.isBlank() || it == "Direct message" } ?: previous.name,
+                name = name.takeUnless { it.isGenericConversationName(this) } ?: previous.name,
                 subtitle = subtitle ?: previous.subtitle,
                 avatarUrl = avatarUrl ?: previous.avatarUrl,
                 avatar = avatar ?: previous.avatar,
@@ -2107,7 +2117,7 @@ private fun JsonObject.joinedChannelOrNull(channelId: ChannelId): ConversationSu
             .copy(joined = true)
 }
 
-private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxItem {
+private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxItem? {
     val kind =
             defaultKind
                     ?: when (string("kind", "type")) {
@@ -2116,7 +2126,7 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
                         "system", "system_message", "systemMessage", "event" -> InboxItemKind.System
                         else -> InboxItemKind.Channel
                     }
-    val channelId = string("channelId", "id", "threadChannelId") ?: "unknown-channel"
+        val channelId = string("channelId", "id", "threadChannelId") ?: return null
     val threadChannelId = string("threadChannelId")
     val key =
             when {
@@ -2135,9 +2145,11 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
                             "name",
                             "peerDisplayName",
                             "peerName",
-                            "parentChannelName"
+                            "parentChannelName",
+                            "slug",
+                            "channelSlug"
                     )
-                            ?: "channel",
+                            ?: channelId,
             unreadCount = int("unreadCount", "unread") ?: 0,
             firstUnreadMessageId = string("firstUnreadMessageId")?.let(::MessageId),
             lastMessageId =
@@ -2394,13 +2406,17 @@ private fun JsonObject.toThreadSnapshot(
                                 it.timestampLabel
                             }
                     )
-    val conversation =
+    val mappedConversation =
             unwrap("conversation", "channel", "thread")
                     .toConversationOrDefault(
                             threadId = fallbackThreadId,
                             name = fallbackConversationName
-                                            ?: messages.firstOrNull()?.threadId?.value ?: "Messages"
+                                            ?: messages.firstOrNull()?.threadId?.value ?: fallbackThreadId.value
                     )
+    val conversation = mappedConversation.withThreadAnchor(
+            parentMessage = parentMessage,
+            streamChannelId = ChannelId(fallbackThreadId.value)
+    )
     return ThreadSnapshot(
             conversation = conversation,
             messages = messages,
@@ -3513,7 +3529,10 @@ private fun JsonObject.toTaskSummary(): TaskSummary? {
                             explicitThreadId != null ||
                             (channelType == "thread" && fallbackThreadId != null),
             assignee = assignee,
-            channelName = string("channelName") ?: firstObject("channel")?.string("name", "slug"),
+            channelName =
+                    string("channelName")
+                            ?: firstObject("channel", "parentChannel", "conversation")
+                                    ?.string("name", "channelName", "slug", "channelSlug"),
             updatedAtLabel =
                     timestampString(
                             "updatedAt",
@@ -3690,6 +3709,24 @@ private fun JsonObject.toConversationOrDefault(
         } else {
             toConversation(ConversationKind.Channel)
         }
+
+private fun ConversationSummary.withThreadAnchor(
+        parentMessage: Message?,
+        streamChannelId: ChannelId
+): ConversationSummary {
+    val parentChannelId = parentMessage?.channelId ?: return this
+    return copy(
+            threadId = threadIdentity(parentChannelId, parentMessage.id),
+            channelId = parentChannelId,
+            thread =
+                    ThreadConversation(
+                            parentChannelId = parentChannelId,
+                            parentMessageId = parentMessage.id,
+                            streamChannelId = parentMessage.threadChannelId ?: streamChannelId
+                    ),
+            kind = ConversationKind.Thread
+    )
+}
 
 private fun JsonObject.hasChannelTimelineIdentity(): Boolean =
         string("id", "channelId", "threadChannelId", "_id") != null

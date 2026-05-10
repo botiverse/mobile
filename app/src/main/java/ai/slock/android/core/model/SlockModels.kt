@@ -26,14 +26,22 @@ data class ServerPermissions(
 
 enum class ConversationKind {
     Channel,
+    Thread,
     DirectMessage,
     Inbox,
     System
 }
 
+data class ThreadConversation(
+    val parentChannelId: ChannelId,
+    val parentMessageId: MessageId,
+    val streamChannelId: ChannelId? = null
+)
+
 data class ConversationSummary(
     val threadId: ThreadId,
     val channelId: ChannelId? = null,
+    val thread: ThreadConversation? = null,
     val kind: ConversationKind,
     val name: String,
     val subtitle: String? = null,

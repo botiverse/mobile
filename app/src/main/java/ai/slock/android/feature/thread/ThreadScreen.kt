@@ -3874,9 +3874,9 @@ private fun ThreadMessageFooterMeta(
         alignEnd: Boolean,
         modifier: Modifier = Modifier
 ) {
-    val task = message.task
-    val replyLabel = message.replyCount.takeIf { it > 0 }?.let { "$it replies" }
-    if (task == null && replyLabel == null) return
+        val task = message.task?.withMessageThreadContext(message)
+        val replyLabel = message.replyCount.takeIf { it > 0 }?.let { "$it replies" }
+        if (task == null && replyLabel == null) return
     if (replyLabel != null) {
         LaunchedEffect(message.id, message.threadChannelId, message.replyCount, replyLabel) {
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
@@ -3931,6 +3931,14 @@ private fun ThreadMessageFooterMeta(
         }
     }
 }
+
+private fun TaskSummary.withMessageThreadContext(message: Message): TaskSummary =
+        copy(
+                messageId = messageId ?: message.id,
+                parentMessageId = parentMessageId ?: message.id,
+                channelId = channelId ?: message.channelId,
+                threadId = threadId ?: message.threadChannelId?.let { ThreadId(it.value) }
+        )
 
 private fun MemberProfile.resolvedFooterDisplayName(): String? {
     val display = displayName.trim().takeIf { it.isNotBlank() && it != id.value }

@@ -107,8 +107,13 @@ import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
+import ai.slock.android.core.model.ThreadConversation
+import ai.slock.android.core.model.messageStreamChannelId
 import ai.slock.android.core.notification.shouldShowInboxNotification
+import ai.slock.android.core.model.threadIdentity
 import ai.slock.android.core.model.toGravatarAvatarReference
+import ai.slock.android.core.model.withPreviewMembershipFallback
+import ai.slock.android.core.model.withTitleFallback
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.ScreenError
 import ai.slock.android.core.state.ScreenLoadState
@@ -1102,7 +1107,7 @@ private fun SlockAppContent(
     }
 
     fun markThreadReadIfLoaded(content: ThreadContent) {
-        val channelId = content.header.channelId ?: ChannelId(content.header.threadId.value)
+        val channelId = content.header.messageStreamChannelId()
         val maxSeq = content.messages.mapNotNull { it.seq }.maxOrNull()
         if (maxSeq != null && maxSeq > 0L) {
             readReceiptCoordinator.markReadToSeq(channelId, maxSeq)
@@ -1115,8 +1120,7 @@ private fun SlockAppContent(
         val currentContent =
                 (selectedThreadState.loadState as? ScreenLoadState.Content)?.data
         val channelId =
-                currentContent?.header?.channelId
-                        ?: currentContent?.header?.threadId?.value?.let(::ChannelId)
+                currentContent?.header?.messageStreamChannelId()
                         ?: selectedThreadId?.let(::ChannelId)
                         ?: return
         if (seq != null && seq > 0L) {
@@ -1443,6 +1447,18 @@ private fun SlockAppContent(
     fun selectedThreadContent(): ThreadContent? =
             (selectedThreadState.loadState as? ScreenLoadState.Content)?.data
 
+    fun ThreadUiState.headerForTask(task: TaskSummary): ConversationSummary? {
+        val content = (loadState as? ScreenLoadState.Content)?.data ?: return null
+        val messages = listOfNotNull(content.parentMessage) + content.messages
+        return content.header.takeIf { messages.any { message -> task.matchesMessageReference(message) } }
+    }
+
+    fun taskSourceHeader(task: TaskSummary): ConversationSummary? =
+            selectedThreadState.headerForTask(task)
+                    ?: replyThreadBackStack.asReversed().firstNotNullOfOrNull { entry ->
+                        entry.selectedThreadState.headerForTask(task)
+                    }
+
     fun selectedThreadVisibleTasksState(): TasksUiState? =
             selectedThreadState.tasksState
                     ?: selectedThreadContent()
@@ -1517,19 +1533,23 @@ private fun SlockAppContent(
     val refreshSelectedThread: (String) -> Unit = { reason ->
         val currentContent = selectedThreadContent()
         if (currentContent != null && currentContent.refreshStatus != ThreadRefreshStatus.Loading) {
-            val threadId = currentContent.header.threadId
+            val streamThreadId = ThreadId(currentContent.header.messageStreamChannelId().value)
             selectedThreadState =
                     selectedThreadState.withThreadRefreshStatus(ThreadRefreshStatus.Loading)
             coroutineScope.launch {
                 ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                         "SlockThreadLifecycle",
-                        "refresh_start reason=$reason threadId=${threadId.value}"
+                        "refresh_start reason=$reason threadId=${streamThreadId.value} logicalThreadId=${currentContent.header.threadId.value}"
                 )
-                when (val result = conversationRepository.getThread(threadId)) {
+                when (val result = conversationRepository.getThread(streamThreadId)) {
                     is DataResult.Content -> {
-                        localWriteThrough.writeThreadResult(result, source = "refresh_thread", fallbackThreadId = threadId)
+                        localWriteThrough.writeThreadResult(
+                                result,
+                                source = "refresh_thread",
+                                fallbackThreadId = streamThreadId
+                        )
                         result.rememberTaskReferences()
-                        if (selectedThreadId == threadId.value) {
+                        if (selectedThreadId == streamThreadId.value) {
                             selectedThreadState =
                                     selectedThreadState
                                             .mergeRefreshedThreadSnapshot(result.data)
@@ -1537,11 +1557,11 @@ private fun SlockAppContent(
                         }
                         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                                 "SlockThreadLifecycle",
-                                "refresh_success reason=$reason threadId=${threadId.value} messageCount=${result.data.messages.size} canLoadMoreBefore=${result.data.canLoadMoreBefore} canLoadMoreAfter=${result.data.canLoadMoreAfter}"
+                                "refresh_success reason=$reason threadId=${streamThreadId.value} messageCount=${result.data.messages.size} canLoadMoreBefore=${result.data.canLoadMoreBefore} canLoadMoreAfter=${result.data.canLoadMoreAfter}"
                         )
                     }
                     is DataResult.Empty -> {
-                        if (selectedThreadId == threadId.value) {
+                        if (selectedThreadId == streamThreadId.value) {
                             selectedThreadState =
                                     selectedThreadState.withThreadRefreshStatus(
                                             ThreadRefreshStatus.Error,
@@ -1550,11 +1570,11 @@ private fun SlockAppContent(
                         }
                         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                                 "SlockThreadLifecycle",
-                                "refresh_empty reason=$reason threadId=${threadId.value} code=${result.reason.name}"
+                                "refresh_empty reason=$reason threadId=${streamThreadId.value} code=${result.reason.name}"
                         )
                     }
                     is DataResult.Error -> {
-                        if (selectedThreadId == threadId.value) {
+                        if (selectedThreadId == streamThreadId.value) {
                             selectedThreadState =
                                     selectedThreadState.withThreadRefreshStatus(
                                             ThreadRefreshStatus.Error,
@@ -1563,11 +1583,11 @@ private fun SlockAppContent(
                         }
                         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                                 "SlockThreadLifecycle",
-                                "refresh_error reason=$reason threadId=${threadId.value} code=${result.error.code}"
+                                "refresh_error reason=$reason threadId=${streamThreadId.value} code=${result.error.code}"
                         )
                     }
                     is DataResult.NoPermission -> {
-                        if (selectedThreadId == threadId.value) {
+                        if (selectedThreadId == streamThreadId.value) {
                             selectedThreadState =
                                     selectedThreadState.withThreadRefreshStatus(
                                             ThreadRefreshStatus.Error,
@@ -1576,7 +1596,7 @@ private fun SlockAppContent(
                         }
                         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                                 "SlockThreadLifecycle",
-                                "refresh_no_permission reason=$reason threadId=${threadId.value} code=${result.blocker.code}"
+                                "refresh_no_permission reason=$reason threadId=${streamThreadId.value} code=${result.blocker.code}"
                         )
                     }
                 }
@@ -2073,7 +2093,7 @@ private fun SlockAppContent(
         }
     }
 
-    fun openMessageThread(message: Message) {
+    fun openMessageThread(message: Message, fromParentPane: Boolean = false) {
         composerDrafts =
                 composerDrafts.saveComposerDraft(
                         selectedThreadId,
@@ -2082,13 +2102,24 @@ private fun SlockAppContent(
                         pendingAttachmentFiles,
                         failedAttachmentIds
                 )
-        val currentHeader = selectedThreadContent()?.header
+        val parentPaneEntry = replyThreadBackStack.lastOrNull()
+        val openingReplyFromParentPane = fromParentPane && parentPaneEntry != null
+        val parentPaneContent =
+                (parentPaneEntry?.selectedThreadState?.loadState as? ScreenLoadState.Content)?.data
+        val currentHeader =
+                if (openingReplyFromParentPane) {
+                    parentPaneContent?.header
+                } else {
+                    selectedThreadContent()?.header
+                }
         val fallbackHeader = message.toConversationSummary(currentHeader)
         val existingThreadChannelId = message.threadChannelId
-        selectedThreadRetryAction = { openMessageThread(message) }
+        selectedThreadRetryAction = { openMessageThread(message, fromParentPane) }
         if (existingThreadChannelId != null) {
-            replyThreadBackStack =
-                    replyThreadBackStack + currentReplyThreadBackStackEntry(message.id)
+            if (!openingReplyFromParentPane) {
+                replyThreadBackStack =
+                        replyThreadBackStack + currentReplyThreadBackStackEntry(message.id)
+            }
             threadParentJumpTarget = message.id.value
             selectedThreadId = existingThreadChannelId.value
             selectedThreadState =
@@ -2139,7 +2170,17 @@ private fun SlockAppContent(
             }
             return
         }
-        selectedThreadState = selectedThreadState.withReplyActionError(null)
+        if (openingReplyFromParentPane && parentPaneEntry != null) {
+            replyThreadBackStack =
+                    replyThreadBackStack.dropLast(1) +
+                            parentPaneEntry.copy(
+                                    selectedThreadState =
+                                            parentPaneEntry.selectedThreadState
+                                                    .withReplyActionError(null)
+                            )
+        } else {
+            selectedThreadState = selectedThreadState.withReplyActionError(null)
+        }
         coroutineScope.launch {
             val fallbackCreateChannelId = message.channelId ?: ChannelId(message.threadId.value)
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
@@ -2185,15 +2226,42 @@ private fun SlockAppContent(
                             parentMessageId = message.id
                     )
             if (createResult !is DataResult.Content) {
-                selectedThreadState =
-                        selectedThreadState.withReplyActionError(createResult.readDiagnosticCode())
+                if (openingReplyFromParentPane && parentPaneEntry != null) {
+                    replyThreadBackStack =
+                            replyThreadBackStack.dropLast(1) +
+                                    parentPaneEntry.copy(
+                                            selectedThreadState =
+                                                    parentPaneEntry.selectedThreadState
+                                                            .withReplyActionError(
+                                                                    createResult
+                                                                            .readDiagnosticCode()
+                                                            )
+                                    )
+                } else {
+                    selectedThreadState =
+                            selectedThreadState.withReplyActionError(
+                                    createResult.readDiagnosticCode()
+                            )
+                }
                 return@launch
             }
             val action = createResult.data
-            selectedThreadState = selectedThreadState.mergeThreadActionResult(action)
-            replyThreadBackStack =
-                    replyThreadBackStack +
-                            currentReplyThreadBackStackEntry(action.parentMessageId ?: message.id)
+            if (openingReplyFromParentPane && parentPaneEntry != null) {
+                replyThreadBackStack =
+                        replyThreadBackStack.dropLast(1) +
+                                parentPaneEntry.copy(
+                                        selectedThreadState =
+                                                parentPaneEntry.selectedThreadState
+                                                        .mergeThreadActionResult(action)
+                                )
+            } else {
+                selectedThreadState = selectedThreadState.mergeThreadActionResult(action)
+                replyThreadBackStack =
+                        replyThreadBackStack +
+                                currentReplyThreadBackStackEntry(
+                                        action.parentMessageId ?: message.id
+                                )
+            }
             threadParentJumpTarget = (action.parentMessageId ?: message.id).value
             val resolvedMessage =
                     contextResolvedMessage.copy(
@@ -2336,7 +2404,9 @@ private fun SlockAppContent(
                         )
                         return@launch
                     }
-                    val fallbackHeader = task.toConversationSummary(result.data.conversation)
+                    val sourceHeader = taskSourceHeader(task)
+                    val fallbackHeader =
+                            task.toConversationSummary(sourceHeader ?: result.data.conversation)
                     captureThreadReturnTarget()
                     composerDrafts =
                             composerDrafts.saveComposerDraft(
@@ -4067,6 +4137,9 @@ private fun SlockAppContent(
                                     },
                                     onOpenThreadItem = { item -> openThreadItem(item) },
                                     onOpenMessageThread = { message -> openMessageThread(message) },
+                                    onOpenParentPaneMessageThread = { message ->
+                                        openMessageThread(message, fromParentPane = true)
+                                    },
                                     onOpenMemberProfile = { member -> openMemberProfile(member) },
                                     onOpenMarkdownTag = { tag -> openMarkdownTag(tag) },
                                     onOpenTask = { task -> openTaskContext(task) },
@@ -5707,6 +5780,7 @@ private fun HomeRouteScreen(
         onOpenConversationThread: (ConversationSummary, HomeRoute) -> Unit,
         onOpenThreadItem: (InboxItem) -> Unit,
         onOpenMessageThread: (Message) -> Unit,
+        onOpenParentPaneMessageThread: (Message) -> Unit,
         onOpenMemberProfile: (MemberProfile) -> Unit,
         onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
         onOpenTask: (TaskSummary) -> Unit,
@@ -5977,7 +6051,7 @@ private fun HomeRouteScreen(
                             onRetryLoadNewerMessages = {},
                             onRefreshThread = {},
                             onNearBottomChange = {},
-                            onOpenMessageThread = onOpenMessageThread,
+                            onOpenMessageThread = onOpenParentPaneMessageThread,
                             onOpenMemberProfile = onOpenMemberProfile,
                             onOpenMarkdownTag = onOpenMarkdownTag,
                             onOpenTask = onOpenTask,
@@ -5995,7 +6069,7 @@ private fun HomeRouteScreen(
                             onJoinChannel = onJoinChannel,
                             onRetryThreadLoad = {},
                             showComposer = true,
-                            showReplyActions = false
+                            showReplyActions = true
                     )
                     Box(
                             modifier =
@@ -7310,7 +7384,8 @@ private fun ConversationSummary.withHomeDirectMessageFallback(
         previous: ConversationSummary
 ): ConversationSummary =
         copy(
-                name = name.takeUnless { it.isBlank() || it == "Direct message" } ?: previous.name,
+                name = name.takeIf { it.isUsefulConversationName(threadId, channelId) }
+                        ?: previous.name,
                 subtitle = subtitle ?: previous.subtitle,
                 avatarUrl = avatarUrl ?: previous.avatarUrl,
                 avatar = avatar ?: previous.avatar,
@@ -7331,7 +7406,7 @@ private fun ConversationSummary.withAgentDirectMessageFallback(
         member: MemberProfile
 ): ConversationSummary =
         copy(
-                name = name.takeUnless { it.isBlank() || it == "Direct message" }
+                name = name.takeIf { it.isUsefulConversationName(threadId, channelId) }
                         ?: member.displayName,
                 avatarUrl = avatarUrl ?: member.avatarUrl,
                 avatar = avatar ?: member.avatar,
@@ -7658,18 +7733,18 @@ private fun Message.matchesThread(
         conversation: ConversationSummary,
         selectedThreadId: String? = null,
         activeReplyParentMessageId: MessageId? = null
-): Boolean =
-        threadId == conversation.threadId ||
-                channelId == conversation.channelId ||
-                channelId?.value == conversation.threadId.value ||
-                threadChannelId == conversation.channelId ||
-                threadChannelId?.value == conversation.threadId.value ||
+): Boolean {
+    val streamChannelId = conversation.messageStreamChannelId()
+    return threadId.value == streamChannelId.value ||
+                channelId == streamChannelId ||
+                threadChannelId == streamChannelId ||
                 selectedThreadId?.let { selectedId ->
                     threadId.value == selectedId ||
                             channelId?.value == selectedId ||
                             threadChannelId?.value == selectedId
                 } == true ||
                 activeReplyParentMessageId?.let { parentId -> parentMessageId == parentId } == true
+}
 
 private fun ThreadUiState.logVisibleThreadMerge(
         event: RealtimeEvent,
@@ -7886,8 +7961,7 @@ internal fun composerSendChannelId(
         content: ThreadContent?,
         selectedThreadId: String?
 ): ChannelId? =
-        content?.header?.channelId
-                ?: content?.header?.threadId?.value?.let(::ChannelId)
+        content?.header?.messageStreamChannelId()
                 ?: selectedThreadId?.let(::ChannelId)
 
 internal fun threadUiStateForPreviewResult(
@@ -7932,11 +8006,31 @@ private fun HomeContent.findConversation(id: String): ConversationSummary? =
 private fun Message.toConversationSummary(
         currentHeader: ConversationSummary?
 ): ConversationSummary {
-    val targetThreadId = threadChannelId?.let { ThreadId(it.value) } ?: threadId
+    val parentChannelId = channelId
+    val targetThreadId =
+            if (threadChannelId != null && parentChannelId != null) {
+                threadIdentity(parentChannelId, id)
+            } else {
+                threadChannelId?.let { ThreadId(it.value) } ?: threadId
+            }
+    val targetKind =
+            if (threadChannelId != null || parentMessageId != null) {
+                ConversationKind.Thread
+            } else {
+                currentHeader?.kind ?: ConversationKind.Channel
+            }
     return ConversationSummary(
             threadId = targetThreadId,
-            channelId = threadChannelId ?: channelId,
-            kind = currentHeader?.kind ?: ConversationKind.Channel,
+            channelId = parentChannelId,
+            thread =
+                    parentChannelId?.takeIf { targetKind == ConversationKind.Thread }?.let {
+                        ThreadConversation(
+                                parentChannelId = it,
+                                parentMessageId = id,
+                                streamChannelId = threadChannelId
+                        )
+                    },
+            kind = targetKind,
             name = currentHeader?.name?.takeIf { it.isNotBlank() }
                             ?: channelId?.value ?: targetThreadId.value,
             subtitle = body.takeIf { it.isNotBlank() },
@@ -7950,13 +8044,32 @@ private fun Message.toConversationSummary(
 private fun TaskSummary.toConversationSummary(
         fallback: ConversationSummary? = null
 ): ConversationSummary {
-    val targetThreadId = threadId ?: channelId?.let { ThreadId(it.value) } ?: ThreadId(id.value)
+    val opensReplyThread =
+            isThreadTask || threadId?.let { channelId == null || it.value != channelId?.value } == true
+        val targetThreadId =
+                        if (opensReplyThread && channelId != null && parentMessageId != null) {
+                                threadIdentity(channelId, parentMessageId)
+                        } else {
+                                threadId ?: channelId?.let { ThreadId(it.value) } ?: ThreadId(id.value)
+                        }
+    val targetChannelId =
+                        if (opensReplyThread) channelId ?: fallback?.channelId else channelId ?: fallback?.channelId
+    val fallbackName = fallback?.name?.takeIf { it.isUsefulConversationName(targetThreadId, targetChannelId) }
     return ConversationSummary(
             threadId = targetThreadId,
-            channelId = channelId ?: fallback?.channelId,
-            kind = fallback?.kind ?: ConversationKind.Channel,
-            name = fallback?.name?.takeIf { it.isNotBlank() }
-                            ?: channelName ?: targetThreadId.value,
+            channelId = targetChannelId,
+                        thread =
+                                        if (opensReplyThread && targetChannelId != null && parentMessageId != null) {
+                                                ThreadConversation(
+                                                                parentChannelId = targetChannelId,
+                                                                parentMessageId = parentMessageId,
+                                                                streamChannelId = threadId?.let { ChannelId(it.value) }
+                                                )
+                                        } else {
+                                                null
+                                        },
+            kind = if (opensReplyThread) ConversationKind.Thread else fallback?.kind ?: ConversationKind.Channel,
+            name = fallbackName ?: channelName ?: targetThreadId.value,
             subtitle = title,
             lastMessageId = parentMessageId ?: messageId,
             lastMessagePreview = title,
@@ -7965,69 +8078,11 @@ private fun TaskSummary.toConversationSummary(
     )
 }
 
-private fun ConversationSummary.withTitleFallback(
-        fallback: ConversationSummary?
-): ConversationSummary {
-    if (fallback == null) return this
-    val genericNames =
-            setOf("Messages", "channel", threadId.value, channelId?.value.orEmpty()).filter {
-                it.isNotBlank()
-            }
-    val shouldUseFallback = name.isBlank() || name in genericNames
-    val shouldUseFallbackThreadId = threadId.value == "unknown-channel"
-    val shouldUseFallbackChannelId = channelId == null || channelId?.value == "unknown-channel"
-    return if (shouldUseFallback) {
-        copy(
-                name = fallback.name,
-                subtitle = subtitle ?: fallback.subtitle,
-                threadId = if (shouldUseFallbackThreadId) fallback.threadId else threadId,
-                channelId = if (shouldUseFallbackChannelId) fallback.channelId else channelId,
-                kind = fallback.kind,
-                unreadCount = if (unreadCountKnown) unreadCount else fallback.unreadCount,
-                unreadCountKnown = unreadCountKnown || fallback.unreadCountKnown,
-                mentionCount = if (mentionCountKnown) mentionCount else fallback.mentionCount,
-                mentionCountKnown = mentionCountKnown || fallback.mentionCountKnown,
-                lastMessageId = lastMessageId ?: fallback.lastMessageId,
-                firstUnreadMessageId = firstUnreadMessageId ?: fallback.firstUnreadMessageId,
-                lastMessagePreview = lastMessagePreview ?: fallback.lastMessagePreview,
-                lastMessageAt = lastMessageAt ?: fallback.lastMessageAt,
-                lastMessageSenderName = lastMessageSenderName ?: fallback.lastMessageSenderName,
-                hasDraft = if (hasDraftKnown) hasDraft else fallback.hasDraft,
-                hasDraftKnown = hasDraftKnown || fallback.hasDraftKnown,
-                memberCount = memberCount ?: fallback.memberCount
-        )
-    } else {
-        copy(
-                threadId = if (shouldUseFallbackThreadId) fallback.threadId else threadId,
-                channelId = if (shouldUseFallbackChannelId) fallback.channelId else channelId,
-                unreadCount = if (unreadCountKnown) unreadCount else fallback.unreadCount,
-                unreadCountKnown = unreadCountKnown || fallback.unreadCountKnown,
-                mentionCount = if (mentionCountKnown) mentionCount else fallback.mentionCount,
-                mentionCountKnown = mentionCountKnown || fallback.mentionCountKnown,
-                lastMessageId = lastMessageId ?: fallback.lastMessageId,
-                firstUnreadMessageId = firstUnreadMessageId ?: fallback.firstUnreadMessageId,
-                lastMessagePreview = lastMessagePreview ?: fallback.lastMessagePreview,
-                lastMessageAt = lastMessageAt ?: fallback.lastMessageAt,
-                lastMessageSenderName = lastMessageSenderName ?: fallback.lastMessageSenderName,
-                hasDraft = if (hasDraftKnown) hasDraft else fallback.hasDraft,
-                hasDraftKnown = hasDraftKnown || fallback.hasDraftKnown,
-                memberCount = memberCount ?: fallback.memberCount
-        )
-    }
-}
-
-private fun ConversationSummary.withPreviewMembershipFallback(
-        fallback: ConversationSummary?
-): ConversationSummary {
-    if (fallback == null || fallback.joined) return this
-    val sameChannel =
-            threadId == fallback.threadId ||
-                    channelId == fallback.channelId ||
-                    channelId?.value == fallback.threadId.value ||
-                    fallback.channelId?.value == threadId.value
-    if (!sameChannel) return this
-    return copy(joined = false, permissions = fallback.permissions)
-}
+private fun String.isUsefulConversationName(
+        threadId: ThreadId,
+        channelId: ChannelId? = null
+): Boolean =
+        isNotBlank() && this != threadId.value && this != channelId?.value
 
 private fun ConversationSummary.toComposerState(): ComposerState =
         ComposerState(
@@ -9759,20 +9814,20 @@ private fun refreshSelectedThread(
 ) {
     val currentContent = selectedThreadStateProvider().selectedThreadContent() ?: return
     if (currentContent.refreshStatus == ThreadRefreshStatus.Loading) return
-    val threadId = currentContent.header.threadId
+        val streamThreadId = ThreadId(currentContent.header.messageStreamChannelId().value)
     setSelectedThreadState(
             selectedThreadStateProvider().withThreadRefreshStatus(ThreadRefreshStatus.Loading)
     )
     coroutineScope.launch {
         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                 "SlockThreadLifecycle",
-                "refresh_start reason=$reason threadId=${threadId.value}"
+                "refresh_start reason=$reason threadId=${streamThreadId.value} logicalThreadId=${currentContent.header.threadId.value}"
         )
-        val result = conversationRepository.getThread(threadId)
+        val result = conversationRepository.getThread(streamThreadId)
         onThreadSnapshot(result)
         when (result) {
             is DataResult.Content -> {
-                if (selectedThreadIdProvider() == threadId.value) {
+                                if (selectedThreadIdProvider() == streamThreadId.value) {
                     setSelectedThreadState(
                             transformThreadState(
                                     selectedThreadStateProvider()
@@ -9782,11 +9837,11 @@ private fun refreshSelectedThread(
                 }
                 ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                         "SlockThreadLifecycle",
-                        "refresh_success reason=$reason threadId=${threadId.value} messageCount=${result.data.messages.size} canLoadMoreBefore=${result.data.canLoadMoreBefore} canLoadMoreAfter=${result.data.canLoadMoreAfter}"
+                        "refresh_success reason=$reason threadId=${streamThreadId.value} messageCount=${result.data.messages.size} canLoadMoreBefore=${result.data.canLoadMoreBefore} canLoadMoreAfter=${result.data.canLoadMoreAfter}"
                 )
             }
             is DataResult.Empty -> {
-                if (selectedThreadIdProvider() == threadId.value) {
+                if (selectedThreadIdProvider() == streamThreadId.value) {
                     setSelectedThreadState(
                             selectedThreadStateProvider()
                                     .withThreadRefreshStatus(
@@ -9797,11 +9852,11 @@ private fun refreshSelectedThread(
                 }
                 ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                         "SlockThreadLifecycle",
-                        "refresh_empty reason=$reason threadId=${threadId.value} code=${result.reason.name}"
+                        "refresh_empty reason=$reason threadId=${streamThreadId.value} code=${result.reason.name}"
                 )
             }
             is DataResult.Error -> {
-                if (selectedThreadIdProvider() == threadId.value) {
+                if (selectedThreadIdProvider() == streamThreadId.value) {
                     setSelectedThreadState(
                             selectedThreadStateProvider()
                                     .withThreadRefreshStatus(
@@ -9812,11 +9867,11 @@ private fun refreshSelectedThread(
                 }
                 ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                         "SlockThreadLifecycle",
-                        "refresh_error reason=$reason threadId=${threadId.value} code=${result.error.code}"
+                        "refresh_error reason=$reason threadId=${streamThreadId.value} code=${result.error.code}"
                 )
             }
             is DataResult.NoPermission -> {
-                if (selectedThreadIdProvider() == threadId.value) {
+                if (selectedThreadIdProvider() == streamThreadId.value) {
                     setSelectedThreadState(
                             selectedThreadStateProvider()
                                     .withThreadRefreshStatus(
@@ -9827,7 +9882,7 @@ private fun refreshSelectedThread(
                 }
                 ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                         "SlockThreadLifecycle",
-                        "refresh_no_permission reason=$reason threadId=${threadId.value} code=${result.blocker.code}"
+                        "refresh_no_permission reason=$reason threadId=${streamThreadId.value} code=${result.blocker.code}"
                 )
             }
         }
