@@ -2486,26 +2486,27 @@ private fun ThreadMessageList(
 ) {
     val horizontalPadding = threadHorizontalPadding()
     val showOlderPageState = showOlderPageState && content.shouldShowOlderPageState
+    val showNewerPageState = showNewerPageState && content.shouldShowNewerPageState
     val beforeSeq = content.messages.mapNotNull { it.seq }.minOrNull()
     val isLoadingOlder = content.olderMessagesStatus == MessagePageStatus.Loading
-    val leadingItemCount =
+    val bottomItemCount = if (showNewerPageState) 1 else 0
+    val topItemCount =
             (if (showOlderPageState) 1 else 0) +
                     (if (content.historyLimited || content.hasGap) 1 else 0) +
                     (if (content.replyActionErrorCode != null) 1 else 0)
-    val listState =
-            rememberLazyListState(
-                    initialFirstVisibleItemIndex =
-                            (leadingItemCount + content.messages.lastIndex).coerceAtLeast(0)
-            )
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = 0)
+    val displayedMessages = remember(content.messages) { content.messages.asReversed() }
     val highlightedMessageIndex =
             content.highlightedMessageId?.let { highlightedId ->
                 content.messages.indexOfFirst { it.id == highlightedId }.takeIf { it >= 0 }
             }
     val targetMessageIndex =
             highlightedMessageIndex ?: content.messages.lastIndex.takeIf { it >= 0 }
-    val targetListIndex = targetMessageIndex?.let { leadingItemCount + it }
-    val latestMessageListIndex =
-            content.messages.lastIndex.takeIf { it >= 0 }?.let { leadingItemCount + it }
+    val targetListIndex =
+            targetMessageIndex?.let { bottomItemCount + content.messages.lastIndex - it }
+    val latestMessageListIndex = content.messages.lastIndex.takeIf { it >= 0 }?.let { bottomItemCount }
+    val oldestMessageListIndex =
+            content.messages.lastIndex.takeIf { it >= 0 }?.let { bottomItemCount + it }
     var initialPositionApplied by remember(threadId) { mutableStateOf(false) }
     var observedLastMessageId by remember(threadId) { mutableStateOf<MessageId?>(null) }
     var followNewMessages by remember(threadId) { mutableStateOf(true) }
@@ -2513,66 +2514,29 @@ private fun ThreadMessageList(
     val keyboardBottomPx = WindowInsets.ime.getBottom(density)
     var previousKeyboardBottomPx by remember(threadId) { mutableStateOf(keyboardBottomPx) }
     var keyboardInsetSettling by remember(threadId) { mutableStateOf(false) }
+        var initialLayoutSettling by remember(threadId) { mutableStateOf(false) }
+        var measuredLayoutRevision by remember(threadId) { mutableStateOf(0) }
     val shouldLoadNewer by
-            remember(content.canLoadMoreAfter, content.newerMessagesStatus) {
+                        remember(content.canLoadMoreAfter, content.newerMessagesStatus, bottomItemCount) {
                 derivedStateOf {
                     val totalItems = listState.layoutInfo.totalItemsCount
-                    val lastVisibleIndex =
-                            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                                        val firstVisibleIndex =
+                                                        listState.layoutInfo.visibleItemsInfo.minOfOrNull { it.index } ?: 0
                     content.canLoadMoreAfter &&
                             content.newerMessagesStatus == MessagePageStatus.Idle &&
                             totalItems > 0 &&
-                            lastVisibleIndex >= totalItems - 2
+                                                        firstVisibleIndex <= bottomItemCount + 1
                 }
             }
     val isNearBottom by remember {
         derivedStateOf {
-            val layoutInfo = listState.layoutInfo
-            val visibleItems = layoutInfo.visibleItemsInfo
-            val lastVisibleItem = visibleItems.lastOrNull()
-            if (layoutInfo.totalItemsCount <= 0 || lastVisibleItem == null) {
-                true
-            } else {
-                val viewportBottom = layoutInfo.viewportEndOffset
-                lastVisibleItem.index >= layoutInfo.totalItemsCount - 2 &&
-                        lastVisibleItem.offset + lastVisibleItem.size <= viewportBottom + 24
-            }
+                        latestMessageListIndex == null || listState.isTargetItemAtBottom(latestMessageListIndex)
         }
     }
     val showBackToBottom by
             remember(latestMessageListIndex) {
                 derivedStateOf {
-                    val layoutInfo = listState.layoutInfo
-                    val visibleItems = layoutInfo.visibleItemsInfo
-                    val lastVisibleItem = visibleItems.lastOrNull()
-                    if (latestMessageListIndex == null ||
-                                    layoutInfo.totalItemsCount <= 0 ||
-                                    lastVisibleItem == null
-                    ) {
-                        false
-                    } else {
-                        val latestVisible = visibleItems.any { it.index == latestMessageListIndex }
-                        val viewportBottom = layoutInfo.viewportEndOffset
-                        val distanceBelowViewport =
-                                if (latestVisible) {
-                                    0
-                                } else {
-                                    layoutInfo
-                                            .visibleItemsInfo
-                                            .filter { it.index > lastVisibleItem.index }
-                                            .sumOf { it.size }
-                                            .takeIf { it > 0 }
-                                            ?: (latestMessageListIndex - lastVisibleItem.index)
-                                                    .coerceAtLeast(0) * 48
-                                }
-                        val lastItemHasBottomGap =
-                                lastVisibleItem.index >= layoutInfo.totalItemsCount - 1 &&
-                                        lastVisibleItem.offset + lastVisibleItem.size <=
-                                                viewportBottom + 24
-                        !lastItemHasBottomGap &&
-                                (lastVisibleItem.index < latestMessageListIndex ||
-                                        distanceBelowViewport > 24)
-                    }
+                                        latestMessageListIndex != null && !listState.isTargetItemAtBottom(latestMessageListIndex)
                 }
             }
     val lastMessageId = content.messages.lastOrNull()?.id
@@ -2585,46 +2549,51 @@ private fun ThreadMessageList(
             content.canLoadMoreBefore,
             content.olderMessagesStatus,
             beforeSeq,
-            leadingItemCount,
+            topItemCount,
+            bottomItemCount,
             content.messages.size
     ) {
         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                 "SlockThreadPaging",
-                "older_state threadId=$threadId loadingRowVisible=$showOlderPageState canLoadMoreBefore=${content.canLoadMoreBefore} isLoadingOlder=$isLoadingOlder status=${content.olderMessagesStatus} beforeSeq=${beforeSeq ?: -1L} leadingItemCount=$leadingItemCount messageCount=${content.messages.size}"
+                "older_state threadId=$threadId loadingRowVisible=$showOlderPageState canLoadMoreBefore=${content.canLoadMoreBefore} isLoadingOlder=$isLoadingOlder status=${content.olderMessagesStatus} beforeSeq=${beforeSeq ?: -1L} topItemCount=$topItemCount bottomItemCount=$bottomItemCount messageCount=${content.messages.size}"
         )
     }
 
     LaunchedEffect(
             threadId,
             content.canLoadMoreBefore,
-            leadingItemCount,
+            oldestMessageListIndex,
+            bottomItemCount,
             content.olderMessagesStatus
     ) {
         if (!content.canLoadMoreBefore || content.olderMessagesStatus != MessagePageStatus.Idle) {
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                     "SlockThreadPaging",
-                    "older_watch_skip threadId=$threadId reason=disabled canLoadMoreBefore=${content.canLoadMoreBefore} isLoadingOlder=$isLoadingOlder status=${content.olderMessagesStatus} beforeSeq=${beforeSeq ?: -1L} firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} leadingItemCount=$leadingItemCount messageCount=${content.messages.size}"
+                    "older_watch_skip threadId=$threadId reason=disabled canLoadMoreBefore=${content.canLoadMoreBefore} isLoadingOlder=$isLoadingOlder status=${content.olderMessagesStatus} beforeSeq=${beforeSeq ?: -1L} firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} oldestMessageListIndex=${oldestMessageListIndex ?: -1} bottomItemCount=$bottomItemCount messageCount=${content.messages.size}"
             )
             return@LaunchedEffect
         }
         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                 "SlockThreadPaging",
-                "older_watch_start threadId=$threadId canLoadMoreBefore=${content.canLoadMoreBefore} isLoadingOlder=$isLoadingOlder beforeSeq=${beforeSeq ?: -1L} firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} leadingItemCount=$leadingItemCount messageCount=${content.messages.size}"
+                "older_watch_start threadId=$threadId canLoadMoreBefore=${content.canLoadMoreBefore} isLoadingOlder=$isLoadingOlder beforeSeq=${beforeSeq ?: -1L} firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} oldestMessageListIndex=${oldestMessageListIndex ?: -1} bottomItemCount=$bottomItemCount messageCount=${content.messages.size}"
         )
         var requestSent = false
         snapshotFlow {
             OlderTopProbe(
-                    firstVisibleItemIndex = listState.firstVisibleItemIndex,
-                    firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
-                    firstRealMessageIndex = leadingItemCount
+                    topVisibleItemIndex = listState.layoutInfo.visibleItemsInfo.maxOfOrNull { it.index }
+                            ?: listState.firstVisibleItemIndex,
+                    topVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
+                    oldestMessageListIndex = oldestMessageListIndex ?: -1
             )
         }
                 .distinctUntilChanged()
                 .collect { probe ->
-                    val isNearTop = probe.firstVisibleItemIndex <= probe.firstRealMessageIndex + 1
+                    val isNearTop =
+                            probe.oldestMessageListIndex >= 0 &&
+                                    probe.topVisibleItemIndex >= probe.oldestMessageListIndex - 1
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                             "SlockThreadPaging",
-                            "older_top_probe threadId=$threadId firstVisible=${probe.firstVisibleItemIndex} firstOffset=${probe.firstVisibleItemScrollOffset} firstRealMessageIndex=${probe.firstRealMessageIndex} nearTop=$isNearTop canLoadMoreBefore=${content.canLoadMoreBefore} isLoadingOlder=$isLoadingOlder status=${content.olderMessagesStatus} beforeSeq=${beforeSeq ?: -1L}"
+                            "older_top_probe threadId=$threadId topVisible=${probe.topVisibleItemIndex} topOffset=${probe.topVisibleItemScrollOffset} oldestMessageListIndex=${probe.oldestMessageListIndex} nearTop=$isNearTop canLoadMoreBefore=${content.canLoadMoreBefore} isLoadingOlder=$isLoadingOlder status=${content.olderMessagesStatus} beforeSeq=${beforeSeq ?: -1L}"
                     )
                     if (!isNearTop) {
                         requestSent = false
@@ -2633,23 +2602,29 @@ private fun ThreadMessageList(
                     if (requestSent) {
                         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                                 "SlockThreadPaging",
-                                "older_trigger_skip threadId=$threadId reason=already_requested firstVisible=${probe.firstVisibleItemIndex} firstOffset=${probe.firstVisibleItemScrollOffset} canLoadMoreBefore=${content.canLoadMoreBefore} isLoadingOlder=$isLoadingOlder status=${content.olderMessagesStatus} beforeSeq=${beforeSeq ?: -1L}"
+                                "older_trigger_skip threadId=$threadId reason=already_requested topVisible=${probe.topVisibleItemIndex} topOffset=${probe.topVisibleItemScrollOffset} canLoadMoreBefore=${content.canLoadMoreBefore} isLoadingOlder=$isLoadingOlder status=${content.olderMessagesStatus} beforeSeq=${beforeSeq ?: -1L}"
                         )
                         return@collect
                     }
                     val firstVisibleMessageItem =
-                            listState.layoutInfo.visibleItemsInfo.firstOrNull { item ->
-                                val messageIndex = item.index - leadingItemCount
-                                messageIndex in content.messages.indices
+                            listState.layoutInfo.visibleItemsInfo
+                                    .filter { item ->
+                                        val messageIndex =
+                                                content.messages.lastIndex -
+                                                        (item.index - bottomItemCount)
+                                        messageIndex in content.messages.indices
+                                    }
+                                    .maxByOrNull { it.index }
+                    val anchorMessageIndex =
+                            firstVisibleMessageItem?.let { item ->
+                                content.messages.lastIndex - (item.index - bottomItemCount)
                             }
                     val anchorMessageId =
-                            firstVisibleMessageItem?.let { item ->
-                                content.messages.getOrNull(item.index - leadingItemCount)?.id
-                            }
+                            anchorMessageIndex?.let { content.messages.getOrNull(it)?.id }
                     val anchorOffset = firstVisibleMessageItem?.offset?.coerceAtLeast(0) ?: 0
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                             "SlockThreadPaging",
-                            "older_trigger threadId=$threadId firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} leadingItemCount=$leadingItemCount messageCount=${content.messages.size} canLoadMoreBefore=${content.canLoadMoreBefore} isLoadingOlder=$isLoadingOlder status=${content.olderMessagesStatus} beforeSeq=${beforeSeq ?: -1L} anchorMessageId=${anchorMessageId?.value.orEmpty()}"
+                            "older_trigger threadId=$threadId firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} oldestMessageListIndex=${oldestMessageListIndex ?: -1} bottomItemCount=$bottomItemCount messageCount=${content.messages.size} canLoadMoreBefore=${content.canLoadMoreBefore} isLoadingOlder=$isLoadingOlder status=${content.olderMessagesStatus} beforeSeq=${beforeSeq ?: -1L} anchorMessageId=${anchorMessageId?.value.orEmpty()}"
                     )
                     requestSent = true
                     onLoadOlderMessages(anchorMessageId, anchorOffset)
@@ -2660,8 +2635,14 @@ private fun ThreadMessageList(
             onLoadNewerMessages()
         }
     }
-    LaunchedEffect(isNearBottom, lastMessageId, observedLastMessageId, initialPositionApplied) {
-        if (keyboardInsetSettling) {
+    LaunchedEffect(
+            isNearBottom,
+            lastMessageId,
+            observedLastMessageId,
+            initialPositionApplied,
+            initialLayoutSettling
+    ) {
+                if (keyboardInsetSettling || initialLayoutSettling) {
             return@LaunchedEffect
         }
         if (initialPositionApplied && lastMessageId == observedLastMessageId) {
@@ -2678,7 +2659,8 @@ private fun ThreadMessageList(
                     targetIndex = targetListIndex,
                     threadId = threadId,
                     reason = "initial_scroll",
-                    messageCount = content.messages.size
+                    messageCount = content.messages.size,
+                    scrollToListBottom = content.highlightedMessageId == null
             )
             initialPositionApplied = true
             observedLastMessageId = lastMessageId
@@ -2688,17 +2670,17 @@ private fun ThreadMessageList(
     LaunchedEffect(
             content.anchorMessageId,
             content.anchorOffset,
-            leadingItemCount,
+            bottomItemCount,
             content.messages
     ) {
         val anchorMessageId = content.anchorMessageId ?: return@LaunchedEffect
         val anchorMessageIndex = content.messages.indexOfFirst { it.id == anchorMessageId }
         if (anchorMessageIndex >= 0) {
-            val anchorListIndex = leadingItemCount + anchorMessageIndex
+            val anchorListIndex = bottomItemCount + content.messages.lastIndex - anchorMessageIndex
             val anchorOffset = content.anchorOffset.coerceAtLeast(0)
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                     "SlockThreadPaging",
-                    "anchor_state threadId=$threadId anchorMessageId=${anchorMessageId.value} anchorIndex=$anchorMessageIndex listIndex=$anchorListIndex offset=$anchorOffset leadingItemCount=$leadingItemCount messageCount=${content.messages.size} firstVisible=${listState.firstVisibleItemIndex}"
+                    "anchor_state threadId=$threadId anchorMessageId=${anchorMessageId.value} anchorIndex=$anchorMessageIndex listIndex=$anchorListIndex offset=$anchorOffset bottomItemCount=$bottomItemCount messageCount=${content.messages.size} firstVisible=${listState.firstVisibleItemIndex}"
             )
         }
     }
@@ -2717,7 +2699,8 @@ private fun ThreadMessageList(
                         listState = listState,
                         targetIndex = latestMessageListIndex,
                         threadId = threadId,
-                        reason = "keyboard_inset_$attempt"
+                        reason = "keyboard_inset_$attempt",
+                        scrollToListBottom = true
                 )
                 delay(40)
             }
@@ -2739,7 +2722,8 @@ private fun ThreadMessageList(
                     targetIndex = latestMessageListIndex,
                     threadId = threadId,
                     reason = "message_count_changed",
-                    messageCount = content.messages.size
+                    messageCount = content.messages.size,
+                    scrollToListBottom = true
             )
         }
     }
@@ -2747,40 +2731,63 @@ private fun ThreadMessageList(
         if (!initialPositionApplied || !followNewMessages || latestMessageListIndex == null) {
             return@LaunchedEffect
         }
-        var firstVisibleItemIndex = listState.firstVisibleItemIndex
-        var firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
-        repeat(8) {
-            delay(80)
-            if (!followNewMessages) return@LaunchedEffect
-            val currentFirstVisibleItemIndex = listState.firstVisibleItemIndex
-            val currentFirstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
-            val userMovedAwayFromBottom =
-                    currentFirstVisibleItemIndex < firstVisibleItemIndex ||
-                            (currentFirstVisibleItemIndex == firstVisibleItemIndex &&
-                                    currentFirstVisibleItemScrollOffset >
-                                            firstVisibleItemScrollOffset + 24)
-            if (userMovedAwayFromBottom) {
-                ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
-                        "SlockThreadScroll",
-                        "initial_layout_settle_stop threadId=$threadId reason=user_moved firstVisible=$currentFirstVisibleItemIndex firstOffset=$currentFirstVisibleItemScrollOffset previousFirstVisible=$firstVisibleItemIndex previousFirstOffset=$firstVisibleItemScrollOffset"
-                )
-                return@LaunchedEffect
+        initialLayoutSettling = true
+        try {
+            var firstVisibleItemIndex = listState.firstVisibleItemIndex
+            var firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
+            repeat(12) {
+                delay(80)
+                if (!followNewMessages) return@LaunchedEffect
+                val currentFirstVisibleItemIndex = listState.firstVisibleItemIndex
+                val currentFirstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
+                val userMovedAwayFromBottom =
+                        currentFirstVisibleItemIndex > firstVisibleItemIndex ||
+                                (currentFirstVisibleItemIndex == firstVisibleItemIndex &&
+                                        currentFirstVisibleItemScrollOffset >
+                                                firstVisibleItemScrollOffset + 24)
+                if (userMovedAwayFromBottom) {
+                    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                            "SlockThreadScroll",
+                            "initial_layout_settle_stop threadId=$threadId reason=user_moved firstVisible=$currentFirstVisibleItemIndex firstOffset=$currentFirstVisibleItemScrollOffset previousFirstVisible=$firstVisibleItemIndex previousFirstOffset=$firstVisibleItemScrollOffset"
+                    )
+                    return@LaunchedEffect
+                }
+                val targetAtBottom = listState.isTargetItemAtBottom(latestMessageListIndex)
+                if (!targetAtBottom) {
+                    scrollThreadListItemToRenderedBottom(
+                            listState = listState,
+                            targetIndex = latestMessageListIndex,
+                            threadId = threadId,
+                            reason = "initial_layout_settle",
+                            messageCount = content.messages.size,
+                            scrollToListBottom = true
+                    )
+                    firstVisibleItemIndex = listState.firstVisibleItemIndex
+                    firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
+                } else {
+                    firstVisibleItemIndex = currentFirstVisibleItemIndex
+                    firstVisibleItemScrollOffset = currentFirstVisibleItemScrollOffset
+                }
             }
-            val targetAtBottom = listState.isTargetItemAtBottom(latestMessageListIndex)
-            if (!targetAtBottom) {
-                scrollThreadListItemToRenderedBottom(
-                        listState = listState,
-                        targetIndex = latestMessageListIndex,
-                        threadId = threadId,
-                        reason = "initial_layout_settle",
-                        messageCount = content.messages.size
-                )
-                firstVisibleItemIndex = listState.firstVisibleItemIndex
-                firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
-            } else {
-                firstVisibleItemIndex = currentFirstVisibleItemIndex
-                firstVisibleItemScrollOffset = currentFirstVisibleItemScrollOffset
-            }
+        } finally {
+            initialLayoutSettling = false
+        }
+    }
+    LaunchedEffect(
+            measuredLayoutRevision,
+            latestMessageListIndex,
+            initialPositionApplied,
+            followNewMessages
+    ) {
+        if (initialPositionApplied && followNewMessages && latestMessageListIndex != null) {
+            scrollThreadListItemToRenderedBottom(
+                    listState = listState,
+                    targetIndex = latestMessageListIndex,
+                    threadId = threadId,
+                    reason = "measured_height_changed",
+                    messageCount = content.messages.size,
+                    scrollToListBottom = true
+            )
         }
     }
     LaunchedEffect(lastMessageId, latestMessageListIndex) {
@@ -2796,7 +2803,8 @@ private fun ThreadMessageList(
                         targetIndex = latestMessageListIndex,
                         threadId = threadId,
                         reason = "last_message_changed",
-                        messageCount = content.messages.size
+                        messageCount = content.messages.size,
+                        scrollToListBottom = true
                 )
             }
             observedLastMessageId = lastMessageId
@@ -2819,8 +2827,68 @@ private fun ThreadMessageList(
                                 horizontal = horizontalPadding,
                                 vertical = SlockSpacing.Md
                         ),
+                                reverseLayout = true,
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
+                        if (showNewerPageState) {
+                                item(key = "newer-page-state") {
+                                        ThreadMessagePageState(
+                                                        canLoadMore = content.canLoadMoreAfter,
+                                                        status = content.newerMessagesStatus,
+                                                        errorCode = content.newerMessagesErrorCode,
+                                                        loadingText = "Loading newer messages...",
+                                                        idleText = "Scroll down to load newer messages",
+                                                        endText = null,
+                                                        onRetry = onRetryLoadNewerMessages
+                                        )
+                                }
+                        }
+                        itemsIndexed(items = displayedMessages, key = { _, message -> message.id.value }) {
+                                        index,
+                                        message ->
+                                ThreadMessageListItemHeightCache(
+                                                message = message,
+                                                highlighted = message.id == content.highlightedMessageId,
+                                                cache = itemHeightCache,
+                                                onHeightChanged = { measuredLayoutRevision += 1 }
+                                ) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+                                                if (message.messageType == MessageType.System) {
+                                                        ThreadSystemMessageItem(
+                                                                        message = message,
+                                                                        highlighted = message.id == content.highlightedMessageId,
+                                                                        onOpenThread =
+                                                                                        if (showReplyAction) {
+                                                                                                { onOpenMessageThread(message) }
+                                                                                        } else {
+                                                                                                null
+                                                                                        }
+                                                        )
+                                                } else {
+                                                        ThreadMessageItem(
+                                                                        message = message,
+                                                                        isCurrentUserMessage =
+                                                                                        message.isCurrentUserMessage(currentMemberId),
+                                                                        myMessageAlignment = myMessageAlignment,
+                                                                        highlighted = message.id == content.highlightedMessageId,
+                                                                        attachmentOpenStates = attachmentOpenStates,
+                                                                        onOpenAttachment = onOpenAttachment,
+                                                                        onOpenThread =
+                                                                                        if (showReplyAction) {
+                                                                                                { onOpenMessageThread(message) }
+                                                                                        } else {
+                                                                                                null
+                                                                                        },
+                                                                        onOpenAuthorProfile = { onOpenMemberProfile(message.author) },
+                                                                        onOpenTask = { onOpenTask(it) },
+                                                                        onTaskStatusChange = onTaskStatusChange,
+                                                                        onOpenMarkdownTag = onOpenMarkdownTag,
+                                                                        resolveMemberName = resolveMemberName
+                                                        )
+                                                }
+                                        }
+                                }
+                        }
             if (showOlderPageState) {
                 item(key = "older-page-state") {
                     ThreadMessagePageState(
@@ -2855,64 +2923,6 @@ private fun ThreadMessageList(
                     )
                 }
             }
-            itemsIndexed(items = content.messages, key = { _, message -> message.id.value }) {
-                    index,
-                    message ->
-                ThreadMessageListItemHeightCache(
-                        message = message,
-                        highlighted = message.id == content.highlightedMessageId,
-                        cache = itemHeightCache
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-                        if (message.messageType == MessageType.System) {
-                            ThreadSystemMessageItem(
-                                    message = message,
-                                    highlighted = message.id == content.highlightedMessageId,
-                                    onOpenThread =
-                                            if (showReplyAction) {
-                                                { onOpenMessageThread(message) }
-                                            } else {
-                                                null
-                                            }
-                            )
-                        } else {
-                            ThreadMessageItem(
-                                    message = message,
-                                    isCurrentUserMessage =
-                                            message.isCurrentUserMessage(currentMemberId),
-                                    myMessageAlignment = myMessageAlignment,
-                                    highlighted = message.id == content.highlightedMessageId,
-                                    attachmentOpenStates = attachmentOpenStates,
-                                    onOpenAttachment = onOpenAttachment,
-                                    onOpenThread =
-                                            if (showReplyAction) {
-                                                { onOpenMessageThread(message) }
-                                            } else {
-                                                null
-                                            },
-                                    onOpenAuthorProfile = { onOpenMemberProfile(message.author) },
-                                    onOpenTask = { onOpenTask(it) },
-                                    onTaskStatusChange = onTaskStatusChange,
-                                    onOpenMarkdownTag = onOpenMarkdownTag,
-                                    resolveMemberName = resolveMemberName
-                            )
-                        }
-                    }
-                }
-            }
-            if (showNewerPageState && content.shouldShowNewerPageState) {
-                item(key = "newer-page-state") {
-                    ThreadMessagePageState(
-                            canLoadMore = content.canLoadMoreAfter,
-                            status = content.newerMessagesStatus,
-                            errorCode = content.newerMessagesErrorCode,
-                            loadingText = "Loading newer messages...",
-                            idleText = "Scroll down to load newer messages",
-                            endText = null,
-                            onRetry = onRetryLoadNewerMessages
-                    )
-                }
-            }
         }
         if (showBackToBottom) {
             ThreadBackToBottomButton(
@@ -2932,7 +2942,8 @@ private fun ThreadMessageList(
                                     targetIndex = targetIndex,
                                     threadId = threadId,
                                     reason = "back_to_bottom_click",
-                                    messageCount = content.messages.size
+                                    messageCount = content.messages.size,
+                                    scrollToListBottom = true
                             )
                         }
                     }
@@ -2950,6 +2961,7 @@ internal fun ThreadMessageListItemHeightCache(
         message: Message,
         highlighted: Boolean,
         cache: ThreadItemHeightCache,
+        onHeightChanged: () -> Unit = {},
         content: @Composable () -> Unit
 ) {
     BoxWithConstraints {
@@ -2959,6 +2971,9 @@ internal fun ThreadMessageListItemHeightCache(
             message.threadItemHeightSignature(highlighted)
         }
         val cachedHeight = cache.get(message.id, signature, widthPx)
+        var measuredHeightPx by remember(message.id, signature, widthPx) {
+            mutableStateOf(cachedHeight ?: 0)
+        }
         Box(
                 modifier =
                         Modifier.then(
@@ -2969,11 +2984,16 @@ internal fun ThreadMessageListItemHeightCache(
                                         } ?: Modifier
                                 )
                                 .onGloballyPositioned { coordinates ->
+                                    val heightPx = coordinates.size.height
+                                    if (heightPx > 0 && measuredHeightPx != heightPx) {
+                                        measuredHeightPx = heightPx
+                                        onHeightChanged()
+                                    }
                                     cache.put(
                                             message.id,
                                             signature,
                                             coordinates.size.width,
-                                            coordinates.size.height
+                                            heightPx
                                     )
                                 }
         ) {
@@ -3064,9 +3084,23 @@ private suspend fun scrollThreadListItemToRenderedBottom(
         targetIndex: Int,
         threadId: String,
         reason: String,
-        messageCount: Int? = null
+        messageCount: Int? = null,
+        scrollToListBottom: Boolean = false
 ) {
     yield()
+        if (scrollToListBottom) {
+                repeat(4) {
+                        yield()
+                        listState.scrollToItem(0, 0)
+                }
+                val targetItem = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
+                val targetBottom = targetItem?.let { it.offset + it.size } ?: -1
+                ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                                "SlockThreadScroll",
+                                "scroll_item_to_rendered_bottom reason=$reason threadId=$threadId targetIndex=$targetIndex messageCount=${messageCount ?: -1} firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} targetBottom=$targetBottom viewportBottom=${listState.layoutInfo.viewportEndOffset} totalItems=${listState.layoutInfo.totalItemsCount} scrollToListBottom=true bottomTolerancePx=$ThreadRenderedBottomTolerancePx"
+                )
+                return
+        }
     listState.scrollToItem(targetIndex, 0)
     repeat(3) {
         yield()
@@ -3086,7 +3120,7 @@ private suspend fun scrollThreadListItemToRenderedBottom(
     val targetBottom = targetItem?.let { it.offset + it.size } ?: -1
     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
             "SlockThreadScroll",
-            "scroll_item_to_rendered_bottom reason=$reason threadId=$threadId targetIndex=$targetIndex messageCount=${messageCount ?: -1} firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} targetBottom=$targetBottom viewportBottom=${listState.layoutInfo.viewportEndOffset} totalItems=${listState.layoutInfo.totalItemsCount} bottomTolerancePx=$ThreadRenderedBottomTolerancePx"
+            "scroll_item_to_rendered_bottom reason=$reason threadId=$threadId targetIndex=$targetIndex messageCount=${messageCount ?: -1} firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} targetBottom=$targetBottom viewportBottom=${listState.layoutInfo.viewportEndOffset} totalItems=${listState.layoutInfo.totalItemsCount} scrollToListBottom=false bottomTolerancePx=$ThreadRenderedBottomTolerancePx"
     )
 }
 
@@ -3096,18 +3130,19 @@ private fun LazyListState.isTargetItemAtBottom(targetIndex: Int): Boolean {
     val layoutInfo = layoutInfo
     val targetItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
     val lastItem = layoutInfo.visibleItemsInfo.lastOrNull()
+    val targetBottom = targetItem?.let { it.offset + it.size } ?: return false
     return targetItem != null &&
             lastItem != null &&
-            lastItem.index >= targetIndex &&
-            kotlin.math.abs(
-                    targetItem.offset + targetItem.size - layoutInfo.viewportEndOffset
-            ) <= ThreadRenderedBottomTolerancePx
+            (kotlin.math.abs(targetBottom - layoutInfo.viewportEndOffset) <=
+                    ThreadRenderedBottomTolerancePx ||
+                    (!canScrollBackward &&
+                            targetBottom <= layoutInfo.viewportEndOffset + ThreadRenderedBottomTolerancePx))
 }
 
 private data class OlderTopProbe(
-        val firstVisibleItemIndex: Int,
-        val firstVisibleItemScrollOffset: Int,
-        val firstRealMessageIndex: Int
+        val topVisibleItemIndex: Int,
+        val topVisibleItemScrollOffset: Int,
+        val oldestMessageListIndex: Int
 )
 
 @Composable

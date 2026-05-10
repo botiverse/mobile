@@ -8046,28 +8046,28 @@ private fun TaskSummary.toConversationSummary(
 ): ConversationSummary {
     val opensReplyThread =
             isThreadTask || threadId?.let { channelId == null || it.value != channelId?.value } == true
-        val targetThreadId =
-                        if (opensReplyThread && channelId != null && parentMessageId != null) {
-                                threadIdentity(channelId, parentMessageId)
-                        } else {
-                                threadId ?: channelId?.let { ThreadId(it.value) } ?: ThreadId(id.value)
-                        }
+    val targetThreadId =
+            if (opensReplyThread && channelId != null && parentMessageId != null) {
+                threadIdentity(channelId, parentMessageId)
+            } else {
+                threadId ?: channelId?.let { ThreadId(it.value) } ?: ThreadId(id.value)
+            }
     val targetChannelId =
-                        if (opensReplyThread) channelId ?: fallback?.channelId else channelId ?: fallback?.channelId
+            if (opensReplyThread) channelId ?: fallback?.channelId else channelId ?: fallback?.channelId
     val fallbackName = fallback?.name?.takeIf { it.isUsefulConversationName(targetThreadId, targetChannelId) }
     return ConversationSummary(
             threadId = targetThreadId,
             channelId = targetChannelId,
-                        thread =
-                                        if (opensReplyThread && targetChannelId != null && parentMessageId != null) {
-                                                ThreadConversation(
-                                                                parentChannelId = targetChannelId,
-                                                                parentMessageId = parentMessageId,
-                                                                streamChannelId = threadId?.let { ChannelId(it.value) }
-                                                )
-                                        } else {
-                                                null
-                                        },
+            thread =
+                    if (opensReplyThread && targetChannelId != null && parentMessageId != null) {
+                        ThreadConversation(
+                                parentChannelId = targetChannelId,
+                                parentMessageId = parentMessageId,
+                                streamChannelId = threadId?.let { ChannelId(it.value) }
+                        )
+                    } else {
+                        null
+                    },
             kind = if (opensReplyThread) ConversationKind.Thread else fallback?.kind ?: ConversationKind.Channel,
             name = fallbackName ?: channelName ?: targetThreadId.value,
             subtitle = title,
