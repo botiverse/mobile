@@ -2,6 +2,7 @@ CREATE TABLE local_conversation (
   id TEXT NOT NULL PRIMARY KEY,
   channel_id TEXT NOT NULL,
   thread_id TEXT NOT NULL,
+  stream_channel_id TEXT,
   kind TEXT NOT NULL,
   name TEXT NOT NULL,
   parent_channel_id TEXT,
@@ -14,11 +15,13 @@ CREATE TABLE local_conversation (
 
 CREATE INDEX local_conversation_channel_id ON local_conversation(channel_id);
 CREATE INDEX local_conversation_thread_id ON local_conversation(thread_id);
+CREATE INDEX local_conversation_stream_channel_id ON local_conversation(stream_channel_id);
 
 CREATE TABLE local_message (
   id TEXT NOT NULL PRIMARY KEY,
   thread_id TEXT NOT NULL,
   channel_id TEXT NOT NULL,
+  thread_channel_id TEXT,
   seq INTEGER,
   author_id TEXT NOT NULL,
   author_display_name TEXT NOT NULL,
@@ -38,6 +41,8 @@ CREATE TABLE local_message (
 
 CREATE INDEX local_message_thread_seq ON local_message(thread_id, seq);
 CREATE INDEX local_message_thread_id_id ON local_message(thread_id, id);
+CREATE INDEX local_message_channel_seq ON local_message(channel_id, seq);
+CREATE INDEX local_message_thread_channel_id ON local_message(thread_channel_id);
 CREATE INDEX local_message_parent_message_id ON local_message(parent_message_id);
 
 CREATE TABLE local_attachment (
@@ -115,11 +120,12 @@ CREATE TABLE local_outbox_message (
 selectConversation:
 SELECT *
 FROM local_conversation
-WHERE id = ? OR thread_id = ? OR channel_id = ?
+WHERE id = ? OR thread_id = ? OR channel_id = ? OR stream_channel_id = ?
 ORDER BY CASE
   WHEN id = ? THEN 0
   WHEN thread_id = ? THEN 1
-  ELSE 2
+  WHEN stream_channel_id = ? THEN 2
+  ELSE 3
 END
 LIMIT 1;
 
@@ -128,6 +134,7 @@ INSERT OR REPLACE INTO local_conversation(
   id,
   channel_id,
   thread_id,
+  stream_channel_id,
   kind,
   name,
   parent_channel_id,
@@ -136,7 +143,7 @@ INSERT OR REPLACE INTO local_conversation(
   unread_count,
   updated_at_label,
   last_synced_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectMessage:
 SELECT *
@@ -146,7 +153,7 @@ WHERE id = ?;
 selectMessagesForThread:
 SELECT *
 FROM local_message
-WHERE thread_id = ?
+WHERE channel_id = ?
 ORDER BY COALESCE(seq, 9223372036854775807), id;
 
 upsertMessage:
@@ -154,6 +161,7 @@ INSERT OR REPLACE INTO local_message(
   id,
   thread_id,
   channel_id,
+  thread_channel_id,
   seq,
   author_id,
   author_display_name,
@@ -169,7 +177,7 @@ INSERT OR REPLACE INTO local_message(
   parent_message_id,
   updated_at_label,
   last_synced_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteAttachmentsForMessage:
 DELETE FROM local_attachment

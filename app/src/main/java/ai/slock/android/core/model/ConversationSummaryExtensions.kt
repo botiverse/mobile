@@ -29,7 +29,13 @@ fun ConversationSummary.withTitleFallback(fallback: ConversationSummary?): Conve
 
 fun ConversationSummary.messageStreamChannelId(): ChannelId =
     // API routing id for /messages/channel/{id}; thread identity remains parent channel + parent message.
-    thread?.streamChannelId ?: channelId ?: ChannelId(threadId.value)
+    explicitMessageStreamChannelId() ?: ChannelId(threadId.value)
+
+fun ConversationSummary.explicitMessageStreamChannelId(): ChannelId? =
+    thread?.streamChannelId
+        ?: if (kind == ConversationKind.Thread) null else channelId ?: ChannelId(threadId.value)
+
+fun topLevelThreadId(channelId: ChannelId): ThreadId = ThreadId(channelId.value)
 
 fun ConversationSummary.isSameConversationAs(other: ConversationSummary): Boolean {
     if (kind == ConversationKind.Thread || other.kind == ConversationKind.Thread) {
@@ -47,15 +53,20 @@ fun threadIdentity(parentChannelId: ChannelId, parentMessageId: MessageId): Thre
 
 private fun ConversationSummary.threadAnchorChannelId(): ChannelId? =
     thread?.parentChannelId ?: channelId
-        ?: threadId.value.substringBefore(':').takeIf { it != threadId.value }?.let(::ChannelId)
+        ?: threadId.parentChannelIdOrNull()
 
 private fun ConversationSummary.threadAnchorMessageId(): MessageId? =
-    thread?.parentMessageId
-        ?: threadId.value.substringAfter(':').takeIf { it != threadId.value }?.let(::MessageId)
+    thread?.parentMessageId ?: threadId.parentMessageIdOrNull()
+
+fun ThreadId.parentChannelIdOrNull(): ChannelId? =
+    value.substringBefore(':').takeIf { it != value && it.isNotBlank() }?.let(::ChannelId)
+
+fun ThreadId.parentMessageIdOrNull(): MessageId? =
+    value.substringAfter(':').takeIf { it != value && it.isNotBlank() }?.let(::MessageId)
 
 private val ConversationSummary.isTopLevelChannel: Boolean
     get() = kind == ConversationKind.Channel && thread == null &&
-        (channelId == null || channelId?.value == threadId.value)
+        (channelId == null || channelId.value == threadId.value)
 
 private fun ConversationSummary.hasDisplayName(): Boolean =
     name.isNotBlank() && name != threadId.value && name != channelId?.value

@@ -3,11 +3,14 @@ package ai.slock.android.core.data.local
 import ai.slock.android.core.data.repository.DataResult
 import ai.slock.android.core.data.repository.SendMessageResult
 import ai.slock.android.core.data.repository.ThreadSnapshot
+import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.ConversationSummary
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
+import ai.slock.android.core.model.explicitMessageStreamChannelId
+import ai.slock.android.core.model.messageStreamChannelId
 import ai.slock.android.core.model.withTitleFallback
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.thread.ComposerState
@@ -82,15 +85,26 @@ class SlockLocalWriteThrough(
         requireValidSnapshotId(conversation.threadId.value, "conversation.threadId", source)
         requireValidSnapshotId(conversation.channelId?.value, "conversation.channelId", source)
         val syncedAtMs = clock()
+        val streamChannelId = conversation.explicitMessageStreamChannelId()
         store.upsertConversation(conversation, syncedAtMs)
-        snapshot.parentMessage?.let { store.upsertMessage(it, syncedAtMs) }
-        snapshot.messages.forEach { store.upsertMessage(it, syncedAtMs) }
+        val persistedMessages = mutableListOf<Message>()
+        snapshot.parentMessage?.let { parentMessage ->
+            if (writeMessage(parentMessage, syncedAtMs, source, parentMessage.channelId ?: streamChannelId)) {
+                persistedMessages += parentMessage
+            }
+        }
+        snapshot.messages.forEach { message ->
+            if (writeMessage(message, syncedAtMs, source, message.channelId ?: streamChannelId)) {
+                persistedMessages += message
+            }
+        }
         snapshot.tasks.forEach { store.upsertTaskReference(it, syncedAtMs) }
-        val timelineSeqs =
-            (listOfNotNull(snapshot.parentMessage) + snapshot.messages).mapNotNull(Message::seq)
+        val timelineSeqs = persistedMessages.mapNotNull(Message::seq)
         store.upsertSyncCursor(
             LocalSyncCursor(
-                scopeId = conversation.threadId.value,
+                scopeId = requireNotNull(streamChannelId) {
+                    "Missing local thread stream channel id for ${conversation.threadId.value}"
+                }.value,
                 scopeKind = LocalSyncScopeKind.Thread,
                 latestSeq = snapshot.lastSeq.takeIf { it > 0L },
                 oldestLoadedSeq = timelineSeqs.minOrNull(),
@@ -101,28 +115,32 @@ class SlockLocalWriteThrough(
             )
         )
         logger(
-            "write_thread source=$source threadId=${conversation.threadId.value} messages=${snapshot.messages.size} parent=${snapshot.parentMessage != null} tasks=${snapshot.tasks.size} lastSeq=${snapshot.lastSeq}"
+            "write_thread source=$source threadId=${conversation.threadId.value} streamChannelId=${streamChannelId.value} messages=${snapshot.messages.size} parent=${snapshot.parentMessage != null} tasks=${snapshot.tasks.size} lastSeq=${snapshot.lastSeq}"
         )
     }
 
     private fun writeMessages(messages: List<Message>, source: String) {
         if (messages.isEmpty()) return
         val syncedAtMs = clock()
-        messages.forEach { message -> store.upsertMessage(message, syncedAtMs) }
-        messages.groupBy { it.threadId }.forEach { (threadId, threadMessages) ->
-            val seqs = threadMessages.mapNotNull(Message::seq)
-            store.upsertSyncCursor(
-                LocalSyncCursor(
-                    scopeId = threadId.value,
-                    scopeKind = LocalSyncScopeKind.Thread,
-                    latestSeq = seqs.maxOrNull(),
-                    newestLoadedSeq = seqs.maxOrNull(),
-                    updatedAtMs = syncedAtMs
-                )
-            )
+        messages.forEach { message ->
+            writeMessage(message, syncedAtMs, source, message.channelId)
         }
+        messages.mapNotNull { message -> message.channelId?.let { it to message } }
+            .groupBy({ it.first }, { it.second })
+            .forEach { (channelId, channelMessages) ->
+                val seqs = channelMessages.mapNotNull(Message::seq)
+                store.upsertSyncCursor(
+                    LocalSyncCursor(
+                        scopeId = channelId.value,
+                        scopeKind = LocalSyncScopeKind.Thread,
+                        latestSeq = seqs.maxOrNull(),
+                        newestLoadedSeq = seqs.maxOrNull(),
+                        updatedAtMs = syncedAtMs
+                    )
+                )
+            }
         logger(
-            "write_messages source=$source count=${messages.size} threads=${messages.map { it.threadId.value }.distinct().joinToString()}"
+            "write_messages source=$source count=${messages.size} channels=${messages.mapNotNull { it.channelId?.value }.distinct().joinToString()}"
         )
     }
 
@@ -131,6 +149,22 @@ class SlockLocalWriteThrough(
         val syncedAtMs = clock()
         tasks.forEach { task -> store.upsertTaskReference(task, syncedAtMs) }
         logger("write_tasks source=$source count=${tasks.size}")
+    }
+
+    private fun writeMessage(
+        message: Message,
+        syncedAtMs: Long,
+        source: String,
+        streamChannelId: ChannelId?
+    ): Boolean {
+        if (streamChannelId == null) {
+            logger(
+                "write_message_skip source=$source reason=missing_stream_channel_id messageId=${message.id.value} threadId=${message.threadId.value}"
+            )
+            return false
+        }
+        store.upsertMessage(message, syncedAtMs, streamChannelId)
+        return true
     }
 }
 

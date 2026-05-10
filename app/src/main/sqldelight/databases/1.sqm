@@ -2,6 +2,7 @@ CREATE TABLE local_conversation (
   id TEXT NOT NULL PRIMARY KEY,
   channel_id TEXT NOT NULL,
   thread_id TEXT NOT NULL,
+  stream_channel_id TEXT,
   kind TEXT NOT NULL,
   name TEXT NOT NULL,
   parent_channel_id TEXT,
@@ -14,11 +15,13 @@ CREATE TABLE local_conversation (
 
 CREATE INDEX local_conversation_channel_id ON local_conversation(channel_id);
 CREATE INDEX local_conversation_thread_id ON local_conversation(thread_id);
+CREATE INDEX local_conversation_stream_channel_id ON local_conversation(stream_channel_id);
 
 CREATE TABLE local_message (
   id TEXT NOT NULL PRIMARY KEY,
   thread_id TEXT NOT NULL,
   channel_id TEXT NOT NULL,
+  thread_channel_id TEXT,
   seq INTEGER,
   author_id TEXT NOT NULL,
   author_display_name TEXT NOT NULL,
@@ -38,6 +41,8 @@ CREATE TABLE local_message (
 
 CREATE INDEX local_message_thread_seq ON local_message(thread_id, seq);
 CREATE INDEX local_message_thread_id_id ON local_message(thread_id, id);
+CREATE INDEX local_message_channel_seq ON local_message(channel_id, seq);
+CREATE INDEX local_message_thread_channel_id ON local_message(thread_channel_id);
 CREATE INDEX local_message_parent_message_id ON local_message(parent_message_id);
 
 CREATE TABLE local_attachment (

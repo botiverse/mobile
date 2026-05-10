@@ -109,6 +109,7 @@ import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadConversation
 import ai.slock.android.core.model.messageStreamChannelId
+import ai.slock.android.core.model.parentChannelIdOrNull
 import ai.slock.android.core.notification.shouldShowInboxNotification
 import ai.slock.android.core.model.threadIdentity
 import ai.slock.android.core.model.toGravatarAvatarReference
@@ -2057,7 +2058,8 @@ private fun SlockAppContent(
     }
 
     fun joinVisibleChannel(conversation: ConversationSummary) {
-        val channelId = conversation.channelId ?: ChannelId(conversation.threadId.value)
+        val channelId = conversation.channelId ?: conversation.threadId.parentChannelIdOrNull()
+            ?: ChannelId(conversation.threadId.value)
         selectedThreadState = selectedThreadState.withChannelJoinStatus(ChannelJoinStatus.Joining)
         coroutineScope.launch {
             when (val result = channelRepository.joinChannel(channelId)) {
@@ -2205,11 +2207,15 @@ private fun SlockAppContent(
             selectedThreadState = selectedThreadState.withReplyActionError(null)
         }
         coroutineScope.launch {
-            val fallbackCreateChannelId = message.channelId ?: ChannelId(message.threadId.value)
+            val parentChannelIdCandidate =
+                    message.channelId
+                            ?: message.threadId.parentChannelIdOrNull()
+                            ?: currentHeader?.channelId
+                            ?: currentHeader?.thread?.parentChannelId
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                     "SlockThreadReplies",
                     "open_message_thread_context_start messageId=${message.id.value} " +
-                            "fallbackChannelId=${fallbackCreateChannelId.value} " +
+                            "parentChannelIdCandidate=${parentChannelIdCandidate?.value.orEmpty()} " +
                             "messageThreadId=${message.threadId.value}"
             )
             val contextResult = conversationRepository.getMessageContext(message.id)
@@ -2222,30 +2228,42 @@ private fun SlockAppContent(
             val contextMessage =
                     contextSnapshot?.messages?.firstOrNull { it.id == message.id }
                             ?: contextSnapshot?.parentMessage?.takeIf { it.id == message.id }
-            val createChannelId =
+            val resolvedParentChannelId =
                     contextMessage?.channelId
                             ?: contextSnapshot?.conversation?.channelId
-                            ?: contextSnapshot?.conversation?.threadId?.let { ChannelId(it.value) }
-                            ?: fallbackCreateChannelId
+                            ?: contextSnapshot?.conversation?.thread?.parentChannelId
+                            ?: contextSnapshot?.conversation?.threadId?.parentChannelIdOrNull()
+                            ?: parentChannelIdCandidate
+            if (resolvedParentChannelId == null) {
+                ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
+                        "SlockThreadReplies",
+                        "open_message_thread_missing_parent_channel messageId=${message.id.value} " +
+                                "messageThreadId=${message.threadId.value} " +
+                                "contextThreadId=${contextSnapshot?.conversation?.threadId?.value.orEmpty()}"
+                )
+                selectedThreadState =
+                        selectedThreadState.withReplyActionError("missing_parent_channel")
+                return@launch
+            }
             val contextResolvedMessage =
-                    contextMessage?.copy(channelId = contextMessage.channelId ?: createChannelId)
-                            ?: message.copy(channelId = message.channelId ?: createChannelId)
+                    contextMessage?.copy(channelId = contextMessage.channelId ?: resolvedParentChannelId)
+                            ?: message.copy(channelId = message.channelId ?: resolvedParentChannelId)
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                     "SlockThreadReplies",
-                    "open_message_thread_context_result messageId=${message.id.value} " +
+                            "open_message_thread_context_result messageId=${message.id.value} " +
                             "result=${contextResult.realtimeResultName()} " +
-                            "resolvedChannelId=${createChannelId.value} " +
+                            "resolvedParentChannelId=${resolvedParentChannelId.value} " +
                             "contextThreadId=${contextSnapshot?.conversation?.threadId?.value.orEmpty()} " +
                             "contextMessageCount=${contextSnapshot?.messages?.size ?: 0}"
             )
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                     "SlockThreadReplies",
                     "open_message_thread_create_start parentMessageId=${message.id.value} " +
-                            "channelId=${createChannelId.value}"
+                            "parentChannelId=${resolvedParentChannelId.value}"
             )
             val createResult =
                     conversationRepository.createOrOpenThread(
-                            channelId = createChannelId,
+                            channelId = resolvedParentChannelId,
                             parentMessageId = message.id
                     )
             if (createResult !is DataResult.Content) {
@@ -3458,7 +3476,8 @@ private fun SlockAppContent(
                 (homeState.loadState as? ScreenLoadState.Content)?.data ?: return@LaunchedEffect
         (content.channels + content.directMessages).filter { it.joined }.forEach { conversation ->
             realtimeRepository.joinChannel(
-                    conversation.channelId ?: ChannelId(conversation.threadId.value)
+                    conversation.channelId ?: conversation.threadId.parentChannelIdOrNull()
+                            ?: ChannelId(conversation.threadId.value)
             )
         }
     }
@@ -4357,26 +4376,26 @@ private fun SlockAppContent(
                                                     selectedThreadState = it
                                                 },
                                                 onThreadSnapshot = { result ->
-                                                                                                        localWriteThrough.writeThreadResult(
-                                                                                                                        result,
-                                                                                                                        source = "refresh_thread",
-                                                                                                                        fallbackThreadId =
-                                                                                                                                        selectedThreadId?.let(
-                                                                                                                                                        ::ThreadId
-                                                                                                                                        )
-                                                                                                        )
+                                                    localWriteThrough.writeThreadResult(
+                                                            result,
+                                                            source = "refresh_thread",
+                                                            fallbackThreadId =
+                                                                    selectedThreadId?.let(
+                                                                            ::ThreadId
+                                                                    )
+                                                    )
                                                     result.rememberTaskReferences()
                                                 },
-                                                                                                localThreadUiStateProvider = {
-                                                                                                                threadId,
-                                                                                                                fallbackHeader,
-                                                                                                                parentMessage ->
-                                                                                                        localThreadUiState(
-                                                                                                                        threadId,
-                                                                                                                        fallbackHeader = fallbackHeader,
-                                                                                                                        parentMessage = parentMessage
-                                                                                                        )
-                                                                                                },
+                                                localThreadUiStateProvider = {
+                                                        threadId,
+                                                        fallbackHeader,
+                                                        parentMessage ->
+                                                    localThreadUiState(
+                                                            threadId,
+                                                            fallbackHeader = fallbackHeader,
+                                                            parentMessage = parentMessage
+                                                    )
+                                                },
                                                 transformThreadState = { state ->
                                                     state.withCachedTaskReferences()
                                                 },
@@ -4430,11 +4449,11 @@ private fun SlockAppContent(
                                             )
                                         }
                                     },
-                                    onSendParentPaneMessage = { threadId, body, asTask, onResult ->
+                                    onSendParentPaneMessage = { messageStreamChannelId, body, asTask, onResult ->
                                         coroutineScope.launch {
                                             val result =
                                                     conversationRepository.sendMessage(
-                                                            threadId = threadId,
+                                                            channelId = messageStreamChannelId,
                                                             body = body,
                                                             asTask = asTask
                                                     )
@@ -4594,12 +4613,11 @@ private fun SlockAppContent(
                                     onSend = {
                                         val body = composerValue.trim()
                                         val selectedHeader = selectedThreadContent()?.header
-                                        val channelId =
+                                        val messageStreamChannelId =
                                                 composerSendChannelId(
                                                         selectedThreadContent(),
                                                         selectedThreadId
                                                 )
-                                        val threadId = channelId?.value?.let(::ThreadId)
                                         if (selectedHeader != null &&
                                                         (!selectedHeader.joined ||
                                                                 !selectedHeader.permissions.canSend)
@@ -4612,7 +4630,7 @@ private fun SlockAppContent(
                                                                             "join_required"
                                                                     else "read_only"
                                                     )
-                                        } else if (threadId != null &&
+                                        } else if (messageStreamChannelId != null &&
                                                         (body.isNotEmpty() ||
                                                                 pendingAttachmentFiles.isNotEmpty())
                                         ) {
@@ -4625,7 +4643,7 @@ private fun SlockAppContent(
                                                     )
                                             coroutineScope.launch {
                                                 val attachmentIds =
-                                                        if (channelId != null &&
+                                                        if (messageStreamChannelId != null &&
                                                                         pendingAttachmentFiles
                                                                                 .isNotEmpty()
                                                         ) {
@@ -4634,7 +4652,7 @@ private fun SlockAppContent(
                                                                                     .uploadAttachments(
                                                                                             AttachmentUploadRequest(
                                                                                                     channelId =
-                                                                                                            channelId,
+                                                                                                            messageStreamChannelId,
                                                                                                     files =
                                                                                                             pendingAttachmentFiles
                                                                                             )
@@ -4653,7 +4671,7 @@ private fun SlockAppContent(
                                                                     composerDrafts =
                                                                             composerDrafts
                                                                                     .saveComposerDraft(
-                                                                                            threadId.value,
+                                                                                            messageStreamChannelId.value,
                                                                                             composerValue,
                                                                                             composerAsTask,
                                                                                             pendingAttachmentFiles,
@@ -4680,7 +4698,7 @@ private fun SlockAppContent(
                                                                     composerDrafts =
                                                                             composerDrafts
                                                                                     .saveComposerDraft(
-                                                                                            threadId.value,
+                                                                                            messageStreamChannelId.value,
                                                                                             composerValue,
                                                                                             composerAsTask,
                                                                                             pendingAttachmentFiles,
@@ -4709,7 +4727,7 @@ private fun SlockAppContent(
                                                         )
                                                 val result =
                                                         conversationRepository.sendMessage(
-                                                                threadId = threadId,
+                                                                channelId = messageStreamChannelId,
                                                                 body = body,
                                                                 attachmentIds = attachmentIds,
                                                                 asTask = composerAsTask
@@ -4723,7 +4741,7 @@ private fun SlockAppContent(
                                                                                 result.data
                                                                         )
                                                         composerDrafts =
-                                                                composerDrafts - threadId.value
+                                                                composerDrafts - messageStreamChannelId.value
                                                         composerValue = ""
                                                         composerAsTask = false
                                                         pendingAttachmentFiles = emptyList()
@@ -4732,7 +4750,7 @@ private fun SlockAppContent(
                                                     is DataResult.Empty -> {
                                                         composerDrafts =
                                                                 composerDrafts.saveComposerDraft(
-                                                                        threadId.value,
+                                                                        messageStreamChannelId.value,
                                                                         composerValue,
                                                                         composerAsTask,
                                                                         pendingAttachmentFiles,
@@ -4752,7 +4770,7 @@ private fun SlockAppContent(
                                                     is DataResult.Error -> {
                                                         composerDrafts =
                                                                 composerDrafts.saveComposerDraft(
-                                                                        threadId.value,
+                                                                        messageStreamChannelId.value,
                                                                         composerValue,
                                                                         composerAsTask,
                                                                         pendingAttachmentFiles,
@@ -4772,7 +4790,7 @@ private fun SlockAppContent(
                                                     is DataResult.NoPermission -> {
                                                         composerDrafts =
                                                                 composerDrafts.saveComposerDraft(
-                                                                        threadId.value,
+                                                                        messageStreamChannelId.value,
                                                                         composerValue,
                                                                         composerAsTask,
                                                                         pendingAttachmentFiles,
@@ -5899,7 +5917,7 @@ private fun HomeRouteScreen(
         onDismissAttachmentPreview: () -> Unit,
         onOpenAttachmentPreviewExternally: (AttachmentPreviewUiState) -> Unit,
         onSendParentPaneMessage: (
-                ThreadId,
+                ChannelId,
                 String,
                 Boolean,
                 (DataResult<SendMessageResult>) -> Unit
@@ -6102,14 +6120,14 @@ private fun HomeRouteScreen(
                             onRetryAttachment = {},
                             onSend = {
                                 val body = parentPaneComposerValue.trim()
-                                val parentThreadId =
+                                val parentMessageStreamChannelId =
                                         composerSendChannelId(
                                                 parentThreadContent,
                                                 parentReplyEntry.selectedThreadId
-                                        )?.value?.let(::ThreadId)
-                                if (parentThreadId != null && body.isNotEmpty()) {
+                                        )
+                                if (parentMessageStreamChannelId != null && body.isNotEmpty()) {
                                     onSendParentPaneMessage(
-                                            parentThreadId,
+                                            parentMessageStreamChannelId,
                                             body,
                                             parentPaneComposerAsTask
                                     ) { result ->
@@ -7093,7 +7111,8 @@ private fun HomeUiState.withJoinedChannel(channel: ConversationSummary): HomeUiS
             loadState as? ScreenLoadState.Content
                     ?: return copy(selectedThreadId = channel.threadId.value)
     val content = contentState.data
-    val channelId = channel.channelId ?: ChannelId(channel.threadId.value)
+    val channelId = channel.channelId ?: channel.threadId.parentChannelIdOrNull()
+            ?: ChannelId(channel.threadId.value)
     var replaced = false
     val channels =
             content.channels
@@ -7150,7 +7169,7 @@ private fun HomeUiState.applyUnreadCounts(snapshot: ChannelUnreadSnapshot): Home
     val contentState = loadState as? ScreenLoadState.Content ?: return this
     val content = contentState.data
     fun ConversationSummary.applyCount(): ConversationSummary {
-        val id = channelId ?: ChannelId(threadId.value)
+        val id = channelId ?: threadId.parentChannelIdOrNull() ?: ChannelId(threadId.value)
         val count = snapshot.unreadCounts[id] ?: 0
         return copy(
                 unreadCount = count,
@@ -8120,7 +8139,9 @@ private fun TaskSummary.toConversationSummary(
         fallback: ConversationSummary? = null
 ): ConversationSummary {
     val opensReplyThread =
-            isThreadTask || threadId?.let { channelId == null || it.value != channelId?.value } == true
+            isThreadTask || threadId?.let { taskThreadId ->
+                channelId == null || taskThreadId.value != channelId.value
+            } == true
     val targetThreadId =
             if (opensReplyThread && channelId != null && parentMessageId != null) {
                 threadIdentity(channelId, parentMessageId)
@@ -8138,7 +8159,10 @@ private fun TaskSummary.toConversationSummary(
                         ThreadConversation(
                                 parentChannelId = targetChannelId,
                                 parentMessageId = parentMessageId,
-                                streamChannelId = threadId?.let { ChannelId(it.value) }
+                                streamChannelId =
+                                        threadId
+                                                ?.takeUnless { it == targetThreadId }
+                                                ?.let { ChannelId(it.value) }
                         )
                     } else {
                         null
@@ -9883,12 +9907,12 @@ private fun refreshSelectedThread(
         selectedThreadIdProvider: () -> String?,
         setSelectedThreadState: (ThreadUiState) -> Unit,
         onThreadSnapshot: (DataResult<ThreadSnapshot>) -> Unit = {},
-                localThreadUiStateProvider: (ThreadId, ConversationSummary?, Message?) -> ThreadUiState? = {
-                                _,
-                                _,
-                                _ ->
-                        null
-                },
+        localThreadUiStateProvider: (ThreadId, ConversationSummary?, Message?) -> ThreadUiState? = {
+                _,
+                _,
+                _ ->
+            null
+        },
         transformThreadState: (ThreadUiState) -> ThreadUiState = { it },
         conversationRepository: ConversationRepository,
         coroutineScope: CoroutineScope

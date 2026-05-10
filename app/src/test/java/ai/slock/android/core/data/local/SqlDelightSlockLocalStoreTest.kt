@@ -31,6 +31,7 @@ class SqlDelightSlockLocalStoreTest {
             id = "thread-1",
             channel_id = "channel-1",
             thread_id = "thread-1",
+            stream_channel_id = "channel-1",
             kind = "Channel",
             name = "general",
             parent_channel_id = null,
@@ -44,7 +45,15 @@ class SqlDelightSlockLocalStoreTest {
         assertEquals(
             "general",
             database.slockDatabaseQueries
-                .selectConversation("thread-1", "thread-1", "thread-1", "thread-1", "thread-1")
+                .selectConversation(
+                    "thread-1",
+                    "thread-1",
+                    "thread-1",
+                    "thread-1",
+                    "thread-1",
+                    "thread-1",
+                    "thread-1"
+                )
                 .executeAsOne()
                 .name
         )
@@ -82,10 +91,10 @@ class SqlDelightSlockLocalStoreTest {
             ),
             syncedAtMs = 10L
         )
-        store.upsertMessage(message, syncedAtMs = 11L)
+        store.upsertMessage(message, syncedAtMs = 11L, streamChannelId = ChannelId("channel-1"))
 
         val conversation = store.getConversation(ThreadId("thread-1"))
-        val messages = store.getMessagesForThread(ThreadId("thread-1"))
+        val messages = store.getMessagesForThread(ThreadId("channel-1"))
 
         assertEquals("general", conversation?.name)
         assertEquals(3, conversation?.unreadCount)

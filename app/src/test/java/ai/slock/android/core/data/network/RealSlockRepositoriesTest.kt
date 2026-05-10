@@ -660,6 +660,7 @@ class RealSlockRepositoriesTest {
                       "messages": [
                         {
                           "id":"c41039c4-1111-4222-8333-0123456789ab",
+                          "channelId":"channel-1",
                           "thread_id":"a98ec1f2-1111-4222-8333-fedcba987654",
                           "seq":"42",
                           "content":"Hello",
@@ -717,7 +718,7 @@ class RealSlockRepositoriesTest {
         assertEquals(42L, chatMessage.seq)
         assertEquals("Hello", chatMessage.body)
         assertEquals("channel-1", chatMessage.threadId.value)
-        assertEquals("channel-1", chatMessage.threadId.value)
+        assertEquals("channel-1", chatMessage.channelId?.value)
         assertEquals("a98ec1f2-1111-4222-8333-fedcba987654", chatMessage.threadChannelId?.value)
         assertEquals("Android Developer", chatMessage.author.displayName)
         assertEquals("https://cdn.example/thumbs/attachment-1.png", chatMessage.attachments.single().thumbnailUrl)
@@ -965,7 +966,7 @@ class RealSlockRepositoriesTest {
 
         val context = runSuspend { repository.getMessageContext(MessageId("message-focus")) }
         val sync = runSuspend { repository.loadNewerMessages(ThreadId("channel-1"), afterSeq = 50) }
-        val sent = runSuspend { repository.sendMessage(ThreadId("channel-1"), "Sent") }
+        val sent = runSuspend { repository.sendMessage(ChannelId("channel-1"), "Sent") }
         val followed = runSuspend { repository.getFollowedThreads(ServerId("server-1")) }
         val done = runSuspend { repository.markThreadDone(ChannelId("thread-1")) }
 

@@ -77,6 +77,7 @@ import ai.slock.android.core.model.SessionSnapshot
 import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.ThreadId
+import ai.slock.android.core.model.topLevelThreadId
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenError
@@ -307,7 +308,7 @@ class MockConversationRepository(
         }
 
     override suspend fun sendMessage(
-        threadId: ThreadId,
+        channelId: ChannelId,
         body: String,
         attachmentIds: List<AttachmentId>,
         asTask: Boolean
@@ -319,8 +320,8 @@ class MockConversationRepository(
                 SendMessageResult(
                     Message(
                         id = MessageId("message-local-${body.hashCode()}"),
-                        threadId = threadId,
-                        channelId = ChannelId(threadId.value),
+                        threadId = topLevelThreadId(channelId),
+                        channelId = channelId,
                         seq = MockSeedData.threadSnapshot.lastSeq + 1,
                         author = MockSeedData.apiDeveloper,
                         timestampLabel = "Now",

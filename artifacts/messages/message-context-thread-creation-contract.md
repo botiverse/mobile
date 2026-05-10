@@ -100,9 +100,10 @@ Reply count aliases are documented in [Reply count and thread-summary join contr
 
 Android logs the creation path under `SlockThreadReplies`:
 
-- `open_message_thread_context_start messageId=... fallbackChannelId=... messageThreadId=...`
-- `open_message_thread_context_result messageId=... result=... resolvedChannelId=... contextThreadId=... contextMessageCount=...`
-- `open_message_thread_create_start parentMessageId=... channelId=...`
+- `open_message_thread_context_start messageId=... parentChannelIdCandidate=... messageThreadId=...`
+- `open_message_thread_context_result messageId=... result=... resolvedParentChannelId=... contextThreadId=... contextMessageCount=...`
+- `open_message_thread_missing_parent_channel messageId=... messageThreadId=... contextThreadId=...`
+- `open_message_thread_create_start parentMessageId=... parentChannelId=...`
 - `thread_action_result source=thread_create_or_open threadChannelId=... parentMessageId=... replyCount=...`
 
 These logs are safe for adb debugging and should not include auth tokens.

@@ -18,13 +18,17 @@ import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadConversation
+import ai.slock.android.core.model.explicitMessageStreamChannelId
+import ai.slock.android.core.model.messageStreamChannelId
+import ai.slock.android.core.model.parentChannelIdOrNull
+import ai.slock.android.core.model.parentMessageIdOrNull
 import ai.slock.android.core.model.withTitleFallback
 
 interface SlockLocalStore {
     fun upsertConversation(conversation: ConversationSummary, syncedAtMs: Long)
     fun getConversation(id: ThreadId): ConversationSummary?
     fun getThreadTimeline(threadId: ThreadId): LocalThreadTimeline?
-    fun upsertMessage(message: Message, syncedAtMs: Long)
+    fun upsertMessage(message: Message, syncedAtMs: Long, streamChannelId: ChannelId? = null)
     fun getMessagesForThread(threadId: ThreadId): List<Message>
     fun upsertTaskReference(task: TaskSummary, syncedAtMs: Long)
     fun getTaskReferencesForMessage(messageId: MessageId): List<TaskSummary>
@@ -87,16 +91,24 @@ class SqlDelightSlockLocalStore(
     override fun upsertConversation(conversation: ConversationSummary, syncedAtMs: Long) {
         val storedConversation = getConversation(conversation.threadId)
         val conversationToStore = conversation.withTitleFallback(storedConversation)
+        val parentChannelId = conversationToStore.thread?.parentChannelId
+            ?: conversationToStore.threadId.parentChannelIdOrNull()
+        val parentMessageId = conversationToStore.thread?.parentMessageId
+            ?: conversationToStore.threadId.parentMessageIdOrNull()
+        val storedChannelId = conversationToStore.channelId ?: parentChannelId
+        val streamChannelId = conversationToStore.explicitMessageStreamChannelId()
         requireValidLocalId(conversationToStore.threadId.value, "conversation.threadId")
-        requireValidLocalId(conversationToStore.channelId?.value, "conversation.channelId")
+        requireValidLocalId(storedChannelId?.value, "conversation.channelId")
+        requireValidLocalId(streamChannelId?.value, "conversation.streamChannelId")
         queries.upsertConversation(
             id = conversationToStore.threadId.value,
-            channel_id = conversationToStore.channelId?.value ?: conversationToStore.threadId.value,
+            channel_id = storedChannelId?.value ?: conversationToStore.threadId.value,
             thread_id = conversationToStore.threadId.value,
+            stream_channel_id = streamChannelId?.value,
             kind = conversationToStore.kind.wireValue,
             name = conversationToStore.name,
-            parent_channel_id = conversationToStore.thread?.parentChannelId?.value,
-            parent_message_id = conversationToStore.thread?.parentMessageId?.value,
+            parent_channel_id = parentChannelId?.value,
+            parent_message_id = parentMessageId?.value,
             avatar_url = conversationToStore.avatarUrl,
             unread_count = conversationToStore.unreadCount.toLong(),
             updated_at_label = conversationToStore.lastMessageAt,
@@ -110,15 +122,18 @@ class SqlDelightSlockLocalStore(
             id.value,
             id.value,
             id.value,
+            id.value,
+            id.value,
             id.value
         ).executeAsOneOrNull()?.toConversationSummary()
 
     override fun getThreadTimeline(threadId: ThreadId): LocalThreadTimeline? {
         val conversation = getConversation(threadId) ?: return null
-        val messages = getMessagesForThread(threadId)
+        val streamChannelId = conversation.explicitMessageStreamChannelId() ?: return null
+        val messages = getMessagesForThread(ThreadId(streamChannelId.value))
         val tasks = messages.flatMap { message -> getTaskReferencesForMessage(message.id) }
             .distinctBy { it.id }
-        val cursor = getSyncCursor(threadId.value)
+        val cursor = getSyncCursor(streamChannelId.value)
         return LocalThreadTimeline(
             conversation = conversation,
             messages = messages,
@@ -127,14 +142,23 @@ class SqlDelightSlockLocalStore(
         )
     }
 
-    override fun upsertMessage(message: Message, syncedAtMs: Long) {
+    override fun upsertMessage(
+        message: Message,
+        syncedAtMs: Long,
+        streamChannelId: ChannelId?
+    ) {
         requireValidLocalId(message.threadId.value, "message.threadId")
-        requireValidLocalId(message.channelId?.value, "message.channelId")
+        requireValidLocalId(streamChannelId?.value, "message.streamChannelId")
+        val storedChannelId = requireNotNull(message.channelId ?: streamChannelId) {
+            "Missing local message stream channel id for message ${message.id.value}"
+        }
+        requireValidLocalId(storedChannelId.value, "message.channelId")
         database.transaction {
             queries.upsertMessage(
                 id = message.id.value,
                 thread_id = message.threadId.value,
-                channel_id = message.channelId?.value ?: message.threadId.value,
+                channel_id = storedChannelId.value,
+                thread_channel_id = message.threadChannelId?.value,
                 seq = message.seq,
                 author_id = message.author.id.value,
                 author_display_name = message.author.displayName,
@@ -285,7 +309,8 @@ private fun Local_conversation.toConversationSummary(): ConversationSummary =
             if (kind.toConversationKind() == ConversationKind.Thread && parent_message_id != null) {
                 ThreadConversation(
                     parentChannelId = parent_channel_id?.let(::ChannelId) ?: ChannelId(channel_id),
-                    parentMessageId = MessageId(parent_message_id)
+                    parentMessageId = MessageId(parent_message_id),
+                    streamChannelId = stream_channel_id?.let(::ChannelId)
                 )
             } else {
                 null
@@ -305,6 +330,7 @@ private fun Local_message.toMessage(
         id = MessageId(id),
         threadId = ThreadId(thread_id),
         channelId = ChannelId(channel_id),
+        threadChannelId = thread_channel_id?.let(::ChannelId),
         seq = seq,
         author = MemberProfile(
             id = MemberId(author_id),

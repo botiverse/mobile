@@ -16,6 +16,9 @@ import ai.slock.android.core.model.MessageType
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadConversation
+import ai.slock.android.core.model.parentChannelIdOrNull
+import ai.slock.android.core.model.threadIdentity
+import ai.slock.android.core.model.topLevelThreadId
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.ScreenLoadState
 
@@ -219,16 +222,18 @@ private fun Message.toInboxItem(): InboxItem =
                 key = id.value,
                 kind =
                         if (messageType == MessageType.System) InboxItemKind.System
-                        else if (channelId == null) InboxItemKind.Thread else InboxItemKind.Channel,
-                channelId = channelId ?: ChannelId(threadId.value),
-                channelName = channelId?.value ?: threadId.value,
+                        else if (parentMessageId != null || threadId.parentChannelIdOrNull() != null)
+                                InboxItemKind.Thread
+                        else InboxItemKind.Channel,
+                channelId = channelId ?: threadId.parentChannelIdOrNull() ?: ChannelId(threadId.value),
+                channelName = channelId?.value ?: threadId.parentChannelIdOrNull()?.value ?: threadId.value,
                 unreadCount = 1,
                 firstUnreadMessageId = id,
                 lastMessageId = id,
                 lastMessagePreview = body,
                 lastMessageAt = timestampLabel,
                 lastMessageSenderName = author.displayName,
-                threadChannelId = ChannelId(threadId.value),
+                threadChannelId = threadChannelId ?: channelId,
                 latestActivityMessageId = id,
                 latestActivityPreview = body,
                 latestActivityAt = timestampLabel,
@@ -239,9 +244,9 @@ private fun Message.toInboxItem(): InboxItem =
 fun InboxItem.toConversationSummary(): ConversationSummary {
     val threadId =
             if (kind == InboxItemKind.Thread && parentChannelId != null && parentMessageId != null) {
-                ai.slock.android.core.model.threadIdentity(parentChannelId, parentMessageId)
+                threadIdentity(parentChannelId, parentMessageId)
             } else {
-                ThreadId((threadChannelId ?: channelId).value)
+                topLevelThreadId(threadChannelId ?: channelId)
             }
     val title =
             when (kind) {

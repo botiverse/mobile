@@ -80,7 +80,10 @@ import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadConversation
+import ai.slock.android.core.model.parentChannelIdOrNull
+import ai.slock.android.core.model.parentMessageIdOrNull
 import ai.slock.android.core.model.threadIdentity
+import ai.slock.android.core.model.topLevelThreadId
 import ai.slock.android.core.model.toGravatarAvatarReference
 import ai.slock.android.core.state.EmptyReason
 import com.google.gson.Gson
@@ -1417,7 +1420,7 @@ class RealConversationRepository(
     }
 
     override suspend fun sendMessage(
-            threadId: ThreadId,
+            channelId: ChannelId,
             body: String,
             attachmentIds: List<AttachmentId>,
             asTask: Boolean
@@ -1427,21 +1430,23 @@ class RealConversationRepository(
                 return DataResult.Empty(EmptyReason.NoMessages)
         return execute(
                 emptyReason = EmptyReason.NoMessages,
-                block = { api.sendMessage(sendMessageBody(threadId, body, attachmentIds, asTask)) },
+                block = { api.sendMessage(sendMessageBody(channelId, body, attachmentIds, asTask)) },
                 source = "messages_send",
                 warningLogger = warningLogger,
                 mapper = { json ->
+                    val fallbackThreadId = topLevelThreadId(channelId)
                     val message =
-                            json.unwrap("message", "data").toMessage(fallbackThreadId = threadId)
-                                    ?: json.toMessage(fallbackThreadId = threadId)
+                            json.unwrap("message", "data")
+                                    .toMessage(fallbackThreadId = fallbackThreadId)
+                                    ?: json.toMessage(fallbackThreadId = fallbackThreadId)
                                             ?: Message(
                                             id =
                                                     MessageId(
                                                             json.string("id", "messageId")
                                                                     ?: "message-sent"
-                                                    ),
-                                            threadId = threadId,
-                                            channelId = ChannelId(threadId.value),
+                                            ),
+                                            threadId = fallbackThreadId,
+                                            channelId = channelId,
                                             author = context.session.user.toMemberProfile(),
                                             timestampLabel =
                                                     json.string("createdAt", "timestampLabel")
@@ -1883,10 +1888,37 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
                                     "state"
                             )
                             .toPresenceOrNull()
+    val rawThreadChannelId = string("threadChannelId", "thread_channel_id")
+    val rawParentChannelId = string("parentChannelId", "parent_channel_id")
+    val rawParentMessageId = string("parentMessageId", "parent_message_id", "rootMessageId", "root_message_id")
+    val resolvedKind =
+            if (kind == ConversationKind.Thread || (rawThreadChannelId != null && rawParentMessageId != null)) {
+                ConversationKind.Thread
+            } else {
+                kind
+            }
+    val parentChannelId = rawParentChannelId?.let(::ChannelId)
+    val parentMessageId = rawParentMessageId?.let(::MessageId)
+    val streamChannelId = rawThreadChannelId?.let(::ChannelId)
     return ConversationSummary(
-            threadId = ThreadId(string("threadId", "threadChannelId", "id") ?: id),
-            channelId = string("channelId")?.let(::ChannelId) ?: ChannelId(id),
-            kind = kind,
+            threadId =
+                    if (resolvedKind == ConversationKind.Thread && parentChannelId != null && parentMessageId != null) {
+                        threadIdentity(parentChannelId, parentMessageId)
+                    } else {
+                        ThreadId(string("threadId", "id") ?: rawThreadChannelId ?: id)
+                    },
+            channelId = parentChannelId ?: string("channelId")?.let(::ChannelId) ?: ChannelId(id),
+            thread =
+                    if (resolvedKind == ConversationKind.Thread && parentChannelId != null && parentMessageId != null) {
+                        ThreadConversation(
+                                parentChannelId = parentChannelId,
+                                parentMessageId = parentMessageId,
+                                streamChannelId = streamChannelId
+                        )
+                    } else {
+                        null
+                    },
+            kind = resolvedKind,
             name = name,
             subtitle = string("description", "topic", "purpose", "peerDescription"),
             avatarUrl = avatarWireValue,
@@ -2399,7 +2431,9 @@ private fun JsonObject.toThreadSnapshot(
                     ?.toMessage(fallbackThreadId)
     val messages =
             messageItems()
-                    .mapNotNull { it.asObjectOrNull()?.toMessage(fallbackThreadId) }
+                    .mapNotNull {
+                        it.asObjectOrNull()?.toMessage(fallbackThreadId = fallbackThreadId)
+                    }
                     .distinctBy { it.id }
                     .sortedWith(
                             compareBy<Message> { it.seq ?: Long.MAX_VALUE }.thenBy {
@@ -2751,9 +2785,7 @@ private fun JsonObject.toMessage(fallbackThreadId: ThreadId): Message? {
     return Message(
             id = MessageId(id),
             threadId = threadId,
-            channelId =
-                    string("channelId", "channel_id", "threadChannelId", "thread_channel_id")
-                            ?.let(::ChannelId),
+            channelId = string("channelId", "channel_id")?.let(::ChannelId),
             threadChannelId = (explicitThreadChannelId ?: topLevelReplyThreadId)?.let(::ChannelId),
             seq =
                     long(
@@ -3700,10 +3732,27 @@ private fun JsonObject.toConversationOrDefault(
         name: String
 ): ConversationSummary =
         if (entrySet().isEmpty() || !hasChannelTimelineIdentity()) {
+            val parentChannelId = threadId.parentChannelIdOrNull()
+            val parentMessageId = threadId.parentMessageIdOrNull()
             ConversationSummary(
                     threadId = threadId,
-                    channelId = ChannelId(threadId.value),
-                    kind = ConversationKind.Channel,
+                    channelId = parentChannelId ?: ChannelId(threadId.value),
+                    thread =
+                            if (parentChannelId != null && parentMessageId != null) {
+                                ThreadConversation(
+                                        parentChannelId = parentChannelId,
+                                        parentMessageId = parentMessageId,
+                                        streamChannelId = null
+                                )
+                            } else {
+                                null
+                            },
+                    kind =
+                            if (parentChannelId != null && parentMessageId != null) {
+                                ConversationKind.Thread
+                            } else {
+                                ConversationKind.Channel
+                            },
                     name = name
             )
         } else {
@@ -3714,6 +3763,11 @@ private fun ConversationSummary.withThreadAnchor(
         parentMessage: Message?,
         streamChannelId: ChannelId
 ): ConversationSummary {
+    if (kind == ConversationKind.Thread && thread?.streamChannelId == null) {
+        return copy(
+                thread = thread?.copy(streamChannelId = streamChannelId)
+        )
+    }
     val parentChannelId = parentMessage?.channelId ?: return this
     return copy(
             threadId = threadIdentity(parentChannelId, parentMessage.id),
@@ -3793,13 +3847,13 @@ private fun MessageId.toParentMessageThreadBody(): RequestBody =
         mapOf("parentMessageId" to value).toJsonBody()
 
 private fun sendMessageBody(
-        threadId: ThreadId,
+        channelId: ChannelId,
         body: String,
         attachmentIds: List<AttachmentId>,
         asTask: Boolean
 ): RequestBody =
         mapOf(
-                        "channelId" to threadId.value,
+                        "channelId" to channelId.value,
                         "content" to body,
                         "attachmentIds" to attachmentIds.map { it.value },
                         "asTask" to asTask

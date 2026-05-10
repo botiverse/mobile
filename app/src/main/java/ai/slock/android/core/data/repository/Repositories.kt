@@ -56,7 +56,7 @@ interface ConversationRepository {
         attachmentId: ai.slock.android.core.model.AttachmentId
     ): DataResult<AttachmentOpenTarget>
     suspend fun sendMessage(
-        threadId: ThreadId,
+        channelId: ChannelId,
         body: String,
         attachmentIds: List<ai.slock.android.core.model.AttachmentId> = emptyList(),
         asTask: Boolean = false

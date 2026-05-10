@@ -146,6 +146,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -1245,6 +1246,7 @@ private fun ThreadCollapsibleOriginMessage(
         }
         if (collapsible) {
             ThreadOriginCompactToggle(
+                                        expanded = expanded,
                     text = if (expanded) "Collapse origin" else "Expand origin",
                     onClick = { onExpandedChange(!expanded) },
                     modifier = Modifier.fillMaxWidth()
@@ -1255,29 +1257,34 @@ private fun ThreadCollapsibleOriginMessage(
 
 @Composable
 private fun ThreadOriginCompactToggle(
+        expanded: Boolean,
         text: String,
         onClick: () -> Unit,
         modifier: Modifier = Modifier
 ) {
     Box(
-            modifier =
-                    modifier.background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
-                            .border(
-                                    SlockStroke.Default,
-                                    SlockColor.BorderBlack,
-                                    RoundedCornerShape(SlockRadius.Xs)
-                            )
-                            .clickable(role = Role.Button, onClick = onClick)
-                            .padding(horizontal = SlockSpacing.Sm, vertical = 6.dp),
+            modifier = modifier.padding(top = 2.dp).clickable(role = Role.Button, onClick = onClick),
             contentAlignment = Alignment.Center
     ) {
-        Text(
-                text = text,
-                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-        )
+        Row(
+                modifier = Modifier.padding(horizontal = SlockSpacing.Sm, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally)
+        ) {
+            Text(
+                    text = text,
+                    style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+            )
+            Icon(
+                    imageVector = SlockIcons.ChevronDown,
+                    contentDescription = null,
+                    tint = SlockColor.TextMutedGray,
+                    modifier = Modifier.size(14.dp).rotate(if (expanded) 180f else 0f)
+            )
+        }
     }
 }
 
@@ -3455,7 +3462,7 @@ fun ThreadMessageItem(
 ) {
     val context = LocalContext.current
     var showMessageActions by remember(message.id.value) { mutableStateOf(false) }
-    var messageActionAnchor by remember(message.id.value) { mutableStateOf(IntOffset.Zero) }
+        var messageActionAnchor by remember(message.id.value) { mutableStateOf<IntOffset?>(null) }
     var messageActionAreaOffset by remember(message.id.value) { mutableStateOf(IntOffset.Zero) }
     var messageBodyOffset by remember(message.id.value) { mutableStateOf(IntOffset.Zero) }
     var messageInteractiveAreaBounds by remember(message.id.value) { mutableStateOf<List<Rect>>(emptyList()) }
@@ -3540,7 +3547,7 @@ fun ThreadMessageItem(
                                 .semantics {
                                     contentDescription = "Message actions"
                                     onClick(label = "Message actions") {
-                                        showMessageActions = !showMessageActions
+                                                                                toggleMessageActions(IntOffset.Zero)
                                         true
                                     }
                                 },
@@ -3669,12 +3676,7 @@ fun ThreadMessageItem(
             if (showMessageActions) {
                 ThreadMessageActionsPopup(
                         message = message,
-                        anchor =
-                                if (messageActionAnchor == IntOffset.Zero) {
-                                    messageActionAreaOffset
-                                } else {
-                                    messageActionAnchor
-                                },
+                                                anchor = messageActionAnchor ?: IntOffset.Zero,
                         onDismiss = { showMessageActions = false },
                         onReply =
                                 onOpenThread?.let { openThread ->
@@ -3780,8 +3782,8 @@ private fun Modifier.messageActionsTrigger(
                             if (!wasDragDismissed) {
                                 onOpen(
                                         IntOffset(
-                                                rootOffset.x + lastPosition.x.roundToInt(),
-                                                rootOffset.y + lastPosition.y.roundToInt()
+                                                lastPosition.x.roundToInt(),
+                                                lastPosition.y.roundToInt()
                                         )
                                 )
                             }

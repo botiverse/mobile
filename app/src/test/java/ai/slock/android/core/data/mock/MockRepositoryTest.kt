@@ -55,8 +55,8 @@ class MockRepositoryTest {
     fun conversationRepositoryExposesThreadAndSendBranches() {
         assertTrue(runSuspend { conversationRepo(MockScenario.Content).getThread(threadId) } is DataResult.Content)
         assertTrue(runSuspend { conversationRepo(MockScenario.Empty).getThread(threadId) } is DataResult.Empty)
-        assertTrue(runSuspend { conversationRepo(MockScenario.Error).sendMessage(threadId, "fail") } is DataResult.Error)
-        assertTrue(runSuspend { conversationRepo(MockScenario.NoPermission).sendMessage(threadId, "hello") } is DataResult.NoPermission)
+        assertTrue(runSuspend { conversationRepo(MockScenario.Error).sendMessage(ChannelId(threadId.value), "fail") } is DataResult.Error)
+        assertTrue(runSuspend { conversationRepo(MockScenario.NoPermission).sendMessage(ChannelId(threadId.value), "hello") } is DataResult.NoPermission)
     }
 
     @Test

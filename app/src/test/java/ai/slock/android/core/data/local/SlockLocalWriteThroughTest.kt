@@ -85,6 +85,27 @@ class SlockLocalWriteThroughTest {
     }
 
     @Test
+    fun sendResultWithoutChannelIdIsLoggedAndSkipped() {
+        val store = createInMemoryStore()
+        val logs = mutableListOf<String>()
+        val writer = SlockLocalWriteThrough(store, clock = { 44L }, logger = logs::add)
+
+        writer.writeSendResult(
+            DataResult.Content(
+                SendMessageResult(message("local-sent", seq = 10).copy(channelId = null))
+            ),
+            source = "send"
+        )
+
+        assertEquals(emptyList<Message>(), store.getMessagesForThread(ThreadId("thread-1")))
+        assertTrue(
+            logs.any {
+                it.contains("write_message_skip source=send reason=missing_stream_channel_id")
+            }
+        )
+    }
+
+    @Test
     fun readsThreadUiStateFromLocalTimeline() {
         val store = createInMemoryStore()
         val writer = SlockLocalWriteThrough(store, clock = { 44L })

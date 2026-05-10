@@ -72,6 +72,24 @@ class ConversationSummaryIdentityTest {
     }
 
     @Test
+    fun compositeThreadIdDoesNotPretendItIsExplicitReplyStream() {
+        val replyThread =
+            ConversationSummary(
+                threadId = threadIdentity(ChannelId("parent-channel"), MessageId("parent-message")),
+                channelId = ChannelId("parent-channel"),
+                thread =
+                    ThreadConversation(
+                        parentChannelId = ChannelId("parent-channel"),
+                        parentMessageId = MessageId("parent-message")
+                    ),
+                kind = ConversationKind.Thread,
+                name = "reply"
+            )
+
+        assertEquals(null, replyThread.explicitMessageStreamChannelId())
+    }
+
+    @Test
     fun titleFallbackDoesNotBorrowParentTitleForDifferentThreadConversation() {
         val replyThread =
             ConversationSummary(
