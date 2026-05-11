@@ -29,6 +29,7 @@ import app.cash.sqldelight.coroutines.mapToOneOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 
 interface SlockLocalStore {
     fun upsertConversation(conversation: ConversationSummary, syncedAtMs: Long)
@@ -179,6 +180,7 @@ class SqlDelightSlockLocalStore(
             .asFlow()
             .mapToList(Dispatchers.IO)
             .map { getThreadTimeline(threadId) }
+            .onStart { emit(getThreadTimeline(threadId)) }
 
     override fun upsertMessage(
         message: Message,
