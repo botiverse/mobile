@@ -134,7 +134,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -219,9 +218,12 @@ import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.markdownAnnotator
 import com.mikepenz.markdown.model.markdownInlineContent
 import com.mikepenz.markdown.model.rememberMarkdownState
+import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
 import dev.snipme.highlights.Highlights
 import dev.snipme.highlights.model.SyntaxThemes
-import java.net.URL
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -233,11 +235,9 @@ import java.time.format.DateTimeFormatterBuilder
 import java.time.format.DateTimeParseException
 import java.time.temporal.ChronoField
 import java.util.LinkedHashMap
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import org.intellij.markdown.MarkdownElementTypes
@@ -287,6 +287,9 @@ fun ThreadScreen(
         membersPanelState: ThreadMembersPanelState = rememberSampleThreadMembersPanelState(),
         onAddChannelMember: (String, MemberKind) -> Unit = { _, _ -> },
         onRemoveChannelMember: (MemberProfile) -> Unit = {},
+        archiveChannelStatus: ThreadSettingsModalStatus = ThreadSettingsModalStatus.Default,
+        onArchiveChannel: () -> Unit = {},
+        onDeleteChannel: () -> Unit = {},
         currentMemberId: MemberId? = null,
         myMessageAlignment: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Default,
         replyHeaderContext: ThreadReplyHeaderContext? = null,
@@ -533,7 +536,12 @@ fun ThreadScreen(
                                         ?.data?.members.orEmpty()
                         ThreadComposerBar(
                                 composerState = composerState,
-                                placeholder = "Message #${header.name}",
+                                placeholder =
+                                        if (replyHeaderContext != null) {
+                                            "Message Threads"
+                                        } else {
+                                            "Message #${header.name}"
+                                        },
                                 onComposerChange = onComposerChange,
                                 onAsTaskChange = onAsTaskChange,
                                 onAttachImage = onAttachImage,
@@ -731,6 +739,9 @@ fun ThreadScreen(
             ThreadSettingsModal(
                     initialName = (state.loadState as? ScreenLoadState.Content)?.data?.header?.name
                                     ?: "Unknown thread",
+                    status = archiveChannelStatus,
+                    onArchiveChannel = onArchiveChannel,
+                    onDeleteChannel = onDeleteChannel,
                     onDismiss = { showSettingsModal = false }
             )
         }
@@ -982,6 +993,10 @@ fun ThreadTopHeader(
                     summary?.subtitle
                 }
         val isDirectMessage = summary?.kind == ConversationKind.DirectMessage && replyHeaderContext == null
+        val showManagementActions =
+                showConversationActions && replyHeaderContext == null && parentJumpTarget == null
+        val showNavigationIconAtStart = navigationIcon == ThreadHeaderNavigationIcon.Back
+        val showCloseActionAtEnd = navigationIcon == ThreadHeaderNavigationIcon.Close
         Row(
                 modifier =
                         Modifier.fillMaxWidth()
@@ -1003,19 +1018,9 @@ fun ThreadTopHeader(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            HeaderIconButton(
-                    icon =
-                            when (navigationIcon) {
-                                ThreadHeaderNavigationIcon.Back -> SlockIcons.ArrowLeft
-                                ThreadHeaderNavigationIcon.Close -> SlockIcons.X
-                            },
-                    contentDescription =
-                            when (navigationIcon) {
-                                ThreadHeaderNavigationIcon.Back -> "Back"
-                                ThreadHeaderNavigationIcon.Close -> "Close"
-                            },
-                    onClick = onBack
-            )
+            if (showNavigationIconAtStart) {
+                HeaderIconButton(SlockIcons.ArrowLeft, "Back", onClick = onBack)
+            }
             if (replyHeaderContext == null) {
                 if (isDirectMessage) {
                     summary?.let { ThreadConversationAvatar(summary = it) }
@@ -1057,7 +1062,10 @@ fun ThreadTopHeader(
                         onClick = { onOpenParentMessage(parentJumpTarget) }
                 )
             }
-            if (showConversationActions && !isDirectMessage) {
+            if (showCloseActionAtEnd) {
+                HeaderIconButton(SlockIcons.X, "Close", onClick = onBack)
+            }
+            if (showManagementActions && !isDirectMessage) {
                 HeaderIconButton(SlockIcons.Settings, "Settings", onClick = onSettingsClick)
                 HeaderIconButton(SlockIcons.LogOut, "Leave")
                 ThreadMembersButton(count = membersCount, onClick = onMembersClick)
@@ -1432,12 +1440,18 @@ private fun threadSampleMemberProfiles(): List<MemberProfile> =
 private fun threadMemberModalItems(): List<ThreadMemberModalItem> =
         threadSampleMemberProfiles().map { it.toThreadMemberModalItem() }
 
-private enum class ThreadSettingsModalStatus {
+enum class ThreadSettingsModalStatus {
     Default,
     Saving,
+    Deleting,
     Error,
     Disabled,
     NoPermission
+}
+
+enum class ThreadDangerAction {
+    Archive,
+    Delete
 }
 
 @Composable
@@ -1445,96 +1459,204 @@ private fun ThreadSettingsModal(
         initialName: String,
         modifier: Modifier = Modifier,
         status: ThreadSettingsModalStatus = ThreadSettingsModalStatus.Default,
+        onArchiveChannel: () -> Unit = {},
+        onDeleteChannel: () -> Unit = {},
         onDismiss: () -> Unit
 ) {
     var name by rememberSaveable(initialName) { mutableStateOf(initialName) }
     var description by rememberSaveable {
         mutableStateOf("Coordinate Android UI, sample state, and app integration.")
     }
-    val saving = status == ThreadSettingsModalStatus.Saving
+    var confirmingAction by rememberSaveable { mutableStateOf<ThreadDangerAction?>(null) }
+    var confirmationName by rememberSaveable(confirmingAction) { mutableStateOf("") }
+    val archiving = status == ThreadSettingsModalStatus.Saving
+    val deleting = status == ThreadSettingsModalStatus.Deleting
+    val busy = archiving || deleting
     val disabled =
             status == ThreadSettingsModalStatus.Disabled ||
                     status == ThreadSettingsModalStatus.NoPermission
-    val enabled = !saving && !disabled
+    val enabled = !busy && !disabled
+    val dangerAction = confirmingAction
+    val confirmMatches = confirmationName.trim() == initialName
 
     SlockModal(
-            title = "EDIT CHANNEL",
+            title =
+                    when (dangerAction) {
+                        ThreadDangerAction.Archive -> "ARCHIVE CHANNEL"
+                        ThreadDangerAction.Delete -> "DELETE CHANNEL"
+                        null -> "EDIT CHANNEL"
+                    },
             onDismiss = onDismiss,
             modifier = modifier,
             enabled = !disabled,
-            dismissOnScrimClick = !saving,
+            dismissOnScrimClick = !busy,
             errorText =
                     when (status) {
-                        ThreadSettingsModalStatus.Error -> "Unable to save sample channel settings."
+                        ThreadSettingsModalStatus.Error ->
+                                when (dangerAction) {
+                                    ThreadDangerAction.Delete -> "Unable to delete channel."
+                                    else -> "Unable to archive channel."
+                                }
                         ThreadSettingsModalStatus.NoPermission ->
                                 "You do not have permission to edit this channel."
                         else -> null
                     },
             secondaryAction =
                     SlockModalAction(
-                            text = "Cancel",
-                            onClick = onDismiss,
+                            text = if (dangerAction == null) "Cancel" else "Back",
+                            onClick = {
+                                if (dangerAction == null) {
+                                    onDismiss()
+                                } else if (!busy) {
+                                    confirmingAction = null
+                                    confirmationName = ""
+                                }
+                            },
                             style = SlockModalActionStyle.Outline,
-                            enabled = !saving
+                            enabled = !busy
                     ),
             primaryAction =
-                    SlockModalAction(
-                            text = if (saving) "Saving" else "Save Changes",
-                            onClick = onDismiss,
-                            enabled = enabled && name.isNotBlank(),
-                            loading = saving
-                    ),
+                    when (dangerAction) {
+                        ThreadDangerAction.Archive ->
+                                SlockModalAction(
+                                        text = if (archiving) "Archiving" else "Archive Channel",
+                                        onClick = onArchiveChannel,
+                                        style = SlockModalActionStyle.Warning,
+                                        enabled = enabled && confirmMatches,
+                                        loading = archiving,
+                                        icon = SlockIcons.Archive
+                                )
+                        ThreadDangerAction.Delete ->
+                                SlockModalAction(
+                                        text = if (deleting) "Deleting" else "Delete Channel",
+                                        onClick = onDeleteChannel,
+                                        style = SlockModalActionStyle.Danger,
+                                        enabled = enabled && confirmMatches,
+                                        loading = deleting,
+                                        icon = SlockIcons.Trash
+                                )
+                        null ->
+                                SlockModalAction(
+                                        text = "Save Changes",
+                                        onClick = onDismiss,
+                                        enabled = enabled && name.isNotBlank(),
+                                        loading = false
+                                )
+                    },
             dangerActions =
-                    listOf(
-                            SlockModalAction(
-                                    text = "Archive Channel",
-                                    onClick = {},
-                                    style = SlockModalActionStyle.Warning,
-                                    enabled = enabled,
-                                    icon = SlockIcons.Archive
-                            ),
-                            SlockModalAction(
-                                    text = "Delete Channel",
-                                    onClick = {},
-                                    style = SlockModalActionStyle.Danger,
-                                    enabled = enabled,
-                                    icon = SlockIcons.Trash
-                            )
-                    )
+                    if (dangerAction == null) {
+                        listOf(
+                                SlockModalAction(
+                                        text = "Archive Channel",
+                                        onClick = {
+                                            confirmationName = ""
+                                            confirmingAction = ThreadDangerAction.Archive
+                                        },
+                                        style = SlockModalActionStyle.Warning,
+                                        enabled = enabled,
+                                        icon = SlockIcons.Archive
+                                ),
+                                SlockModalAction(
+                                        text = "Delete Channel",
+                                        onClick = {
+                                            confirmationName = ""
+                                            confirmingAction = ThreadDangerAction.Delete
+                                        },
+                                        style = SlockModalActionStyle.Danger,
+                                        enabled = enabled,
+                                        icon = SlockIcons.Trash
+                                )
+                        )
+                    } else {
+                        emptyList()
+                    }
     ) {
-        Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-        ) {
-            Text(
-                    text = "#$initialName",
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-            )
-            SlockModalTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = "Name",
-                    placeholder = "channel-name",
-                    required = true,
+        if (dangerAction == null) {
+            Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+            ) {
+                Text(
+                        text = "#$initialName",
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                )
+                SlockModalTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = "Name",
+                        placeholder = "channel-name",
+                        required = true,
+                        enabled = enabled,
+                        isError = status == ThreadSettingsModalStatus.Error || name.isBlank(),
+                        errorText = if (name.isBlank()) "Name is required." else null
+                )
+                SlockModalTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        label = "Description",
+                        placeholder = "What is this channel for?",
+                        optional = true,
+                        enabled = enabled,
+                        singleLine = false,
+                        minLines = 3,
+                        maxLines = 4
+                )
+            }
+        } else {
+            ThreadDangerConfirmationContent(
+                    action = dangerAction,
+                    channelName = initialName,
+                    confirmationName = confirmationName,
+                    onConfirmationNameChange = { confirmationName = it },
                     enabled = enabled,
-                    isError = status == ThreadSettingsModalStatus.Error || name.isBlank(),
-                    errorText = if (name.isBlank()) "Name is required." else null
-            )
-            SlockModalTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = "Description",
-                    placeholder = "What is this channel for?",
-                    optional = true,
-                    enabled = enabled,
-                    singleLine = false,
-                    minLines = 3,
-                    maxLines = 4
+                    isError = confirmationName.isNotBlank() && !confirmMatches
             )
         }
+    }
+}
+
+@Composable
+private fun ThreadDangerConfirmationContent(
+        action: ThreadDangerAction,
+        channelName: String,
+        confirmationName: String,
+        onConfirmationNameChange: (String) -> Unit,
+        enabled: Boolean,
+        isError: Boolean
+) {
+    Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+    ) {
+        Text(
+                text =
+                        when (action) {
+                            ThreadDangerAction.Archive ->
+                                    "Archive #$channelName? Members keep read access and history, but writes will be frozen and the channel will be hidden from sidebars."
+                            ThreadDangerAction.Delete ->
+                                    "Delete #$channelName? This permanently removes the channel and its messages."
+                        },
+                style = SlockType.Body,
+                color = SlockColor.TextBlack
+        )
+        Text(
+                text = "Type $channelName to confirm.",
+                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                color = SlockColor.TextMutedGray
+        )
+        SlockModalTextField(
+                value = confirmationName,
+                onValueChange = onConfirmationNameChange,
+                label = "Channel name",
+                placeholder = channelName,
+                required = true,
+                enabled = enabled,
+                isError = isError,
+                errorText = if (isError) "Channel name does not match." else null
+        )
     }
 }
 
@@ -1591,23 +1713,28 @@ private fun ThreadAttachmentPreviewModal(
 
 @Composable
 private fun ThreadAttachmentRemoteImagePreview(url: String?, name: String) {
-    val imageBitmap by
-            produceState<androidx.compose.ui.graphics.ImageBitmap?>(
-                    initialValue = null,
-                    key1 = url
-            ) {
-                value =
-                        withContext(Dispatchers.IO) {
-                            runCatching {
-                                        url?.takeIf { it.isNotBlank() }?.let {
-                                            URL(it).openStream().use { input ->
-                                                BitmapFactory.decodeStream(input)?.asImageBitmap()
-                                            }
-                                        }
-                                    }
-                                    .getOrNull()
-                        }
+    val imageUrl = url?.takeIf { it.isNotBlank() }
+    val context = LocalPlatformContext.current
+    val cacheKey = remember(imageUrl) { imageUrl?.let { "attachment-preview:$it" } }
+    val request =
+            remember(context, imageUrl, cacheKey) {
+                imageUrl?.let {
+                    ImageRequest.Builder(context)
+                            .data(it)
+                            .memoryCacheKey(cacheKey)
+                            .diskCacheKey(cacheKey)
+                            .memoryCachePolicy(CachePolicy.ENABLED)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .networkCachePolicy(CachePolicy.ENABLED)
+                            .build()
+                }
             }
+    var loadState by remember(imageUrl) {
+        mutableStateOf(
+                if (imageUrl == null) RemoteImageLoadState.Missing
+                else RemoteImageLoadState.Loading
+        )
+    }
     Box(
             modifier =
                     Modifier.fillMaxWidth()
@@ -1624,22 +1751,14 @@ private fun ThreadAttachmentRemoteImagePreview(url: String?, name: String) {
                             .clip(RoundedCornerShape(SlockRadius.Xs)),
             contentAlignment = Alignment.Center
     ) {
-        if (imageBitmap != null) {
-            Image(
-                    bitmap = imageBitmap!!,
-                    contentDescription = name,
-                    contentScale = ContentScale.Fit,
-                    modifier =
-                            Modifier.fillMaxWidth().heightIn(min = 220.dp).padding(SlockSpacing.Sm)
-            )
-        } else if (url.isNullOrBlank()) {
+        if (loadState == RemoteImageLoadState.Missing || loadState == RemoteImageLoadState.Error) {
             Icon(
                     imageVector = SlockIcons.Image,
                     contentDescription = null,
                     tint = SlockColor.TextMutedGray,
                     modifier = Modifier.size(40.dp)
             )
-        } else {
+        } else if (loadState == RemoteImageLoadState.Loading) {
             CircularProgressIndicator(
                     modifier = Modifier.size(28.dp),
                     strokeWidth = 2.dp,
@@ -1647,7 +1766,26 @@ private fun ThreadAttachmentRemoteImagePreview(url: String?, name: String) {
                     trackColor = SlockColor.SurfaceWhite
             )
         }
+        if (request != null) {
+            AsyncImage(
+                    model = request,
+                    contentDescription = name,
+                    contentScale = ContentScale.Fit,
+                    onLoading = { loadState = RemoteImageLoadState.Loading },
+                    onSuccess = { loadState = RemoteImageLoadState.Success },
+                    onError = { loadState = RemoteImageLoadState.Error },
+                    modifier =
+                            Modifier.fillMaxWidth().heightIn(min = 220.dp).padding(SlockSpacing.Sm)
+            )
+        }
     }
+}
+
+private enum class RemoteImageLoadState {
+    Missing,
+    Loading,
+    Success,
+    Error
 }
 
 @Composable
@@ -2183,6 +2321,7 @@ private fun ThreadMemberRow(
         member: ThreadMemberModalItem,
         onClick: () -> Unit = {}
 ) {
+    val openAvatarDescription = "Open ${member.name} details"
     Row(
             modifier =
                     Modifier.fillMaxWidth()
@@ -2193,7 +2332,12 @@ private fun ThreadMemberRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
-        Box(modifier = Modifier.size(46.dp)) {
+        Box(
+                modifier =
+                        Modifier.size(46.dp)
+                                .semantics { contentDescription = openAvatarDescription }
+                                .clickable(role = Role.Button, onClick = onClick)
+        ) {
             SlockMemberAvatar(
                     avatarUrl = member.avatarUrl,
                     avatar = member.avatar,
@@ -2477,12 +2621,13 @@ private fun ThreadMessageList(
     val initialOldestRenderedMessageIndex =
             highlightedMessageIndex?.let { minOf(latestWindowStartIndex, it) }
                     ?: latestWindowStartIndex
-    var oldestRenderedMessageIndex by remember(threadId) {
+    val highlightedMessageKey = content.highlightedMessageId?.value.orEmpty()
+    var oldestRenderedMessageIndex by remember(threadId, highlightedMessageKey) {
         mutableStateOf(initialOldestRenderedMessageIndex)
     }
-        var initialPositionApplied by remember(threadId) { mutableStateOf(false) }
-        var observedLastMessageId by remember(threadId) { mutableStateOf<MessageId?>(null) }
-        var followNewMessages by remember(threadId) { mutableStateOf(true) }
+        var initialPositionApplied by remember(threadId, highlightedMessageKey) { mutableStateOf(false) }
+        var observedLastMessageId by remember(threadId, highlightedMessageKey) { mutableStateOf<MessageId?>(null) }
+        var followNewMessages by remember(threadId, highlightedMessageKey) { mutableStateOf(true) }
     LaunchedEffect(content.messages.size, highlightedMessageIndex, followNewMessages) {
         val nextLatestWindowStartIndex =
                 (content.messages.size - ThreadMessageRenderWindowChunkSize).coerceAtLeast(0)
@@ -2516,6 +2661,7 @@ private fun ThreadMessageList(
     var keyboardInsetSettling by remember(threadId) { mutableStateOf(false) }
         var initialLayoutSettling by remember(threadId) { mutableStateOf(false) }
         var measuredLayoutRevision by remember(threadId) { mutableStateOf(0) }
+        var explicitBottomScrollSettling by remember(threadId) { mutableStateOf(false) }
     val shouldLoadNewer by
                         remember(content.canLoadMoreAfter, content.newerMessagesStatus, bottomItemCount) {
                 derivedStateOf {
@@ -2666,7 +2812,7 @@ private fun ThreadMessageList(
             onNearBottomChange(isNearBottom)
         }
     }
-    LaunchedEffect(threadId, content.messages.size, content.highlightedMessageId, targetListIndex) {
+    LaunchedEffect(threadId, highlightedMessageKey, content.messages.size, targetListIndex) {
         if (!initialPositionApplied && targetListIndex != null) {
             yield()
             yield()
@@ -2793,9 +2939,23 @@ private fun ThreadMessageList(
             measuredLayoutRevision,
             latestMessageListIndex,
             initialPositionApplied,
-            followNewMessages
+            followNewMessages,
+            initialLayoutSettling,
+            keyboardInsetSettling,
+            explicitBottomScrollSettling
     ) {
-        if (initialPositionApplied && followNewMessages && latestMessageListIndex != null) {
+        if (initialLayoutSettling || keyboardInsetSettling || explicitBottomScrollSettling) {
+            return@LaunchedEffect
+        }
+        if (initialPositionApplied &&
+                        followNewMessages &&
+                        latestMessageListIndex != null &&
+                        measuredLayoutRevision > 0
+        ) {
+            delay(96)
+            if (!followNewMessages || initialLayoutSettling || keyboardInsetSettling) {
+                return@LaunchedEffect
+            }
             scrollThreadListItemToRenderedBottom(
                     listState = listState,
                     targetIndex = latestMessageListIndex,
@@ -2951,16 +3111,24 @@ private fun ThreadMessageList(
                                 latestMessageListIndex
                                         ?: (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(
                                                 0
-                                        )
+                        )
                         coroutineScope.launch {
-                            scrollThreadListItemToRenderedBottom(
-                                    listState = listState,
-                                    targetIndex = targetIndex,
-                                    threadId = threadId,
-                                    reason = "back_to_bottom_click",
-                                    messageCount = content.messages.size,
-                                    scrollToListBottom = true
-                            )
+                            explicitBottomScrollSettling = true
+                            try {
+                                scrollThreadListItemToRenderedBottom(
+                                        listState = listState,
+                                        targetIndex = targetIndex,
+                                        threadId = threadId,
+                                        reason = "back_to_bottom_click",
+                                        messageCount = content.messages.size,
+                                        scrollToListBottom = true
+                                )
+                                followNewMessages = true
+                                onNearBottomChange(true)
+                            } finally {
+                                delay(120)
+                                explicitBottomScrollSettling = false
+                            }
                         }
                     }
             )
@@ -3504,7 +3672,7 @@ fun ThreadMessageItem(
                                 .semantics {
                                     contentDescription = "Message actions"
                                     onClick(label = "Message actions") {
-                                                                                toggleMessageActions(IntOffset.Zero)
+                                        toggleMessageActions(messageActionAreaOffset)
                                         true
                                     }
                                 },
@@ -3714,16 +3882,14 @@ private fun Modifier.messageActionsTrigger(
                             var lastPosition = down.position
                             var wasDragDismissed = false
                             do {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val event = awaitPointerEvent(PointerEventPass.Final)
                                 event.changes
                                         .firstOrNull { it.id == pointerId }
                                         ?.let { change ->
                                             totalPositionChange += change.positionChange()
                                             lastPosition = change.position
-                                            if (event.type == PointerEventType.Release &&
-                                                            !wasDragDismissed
-                                            ) {
-                                                change.consume()
+                                            if (change.isConsumed) {
+                                                wasDragDismissed = true
                                             }
                                         }
                                 if (event.changes.any {
@@ -3739,8 +3905,8 @@ private fun Modifier.messageActionsTrigger(
                             if (!wasDragDismissed) {
                                 onOpen(
                                         IntOffset(
-                                                lastPosition.x.roundToInt(),
-                                                lastPosition.y.roundToInt()
+                                                rootOffset.x + lastPosition.x.roundToInt(),
+                                                rootOffset.y + lastPosition.y.roundToInt()
                                         )
                                 )
                             }
@@ -4149,49 +4315,64 @@ private fun ThreadAttachmentThumbnail(
         isImage: Boolean,
         isLoading: Boolean
 ) {
-    val imageBitmap by
-            produceState<androidx.compose.ui.graphics.ImageBitmap?>(
-                    initialValue = null,
-                    key1 = thumbnailUrl
-            ) {
-                value =
-                        withContext(Dispatchers.IO) {
-                            runCatching {
-                                        thumbnailUrl?.let {
-                                            URL(it).openStream().use { input ->
-                                                BitmapFactory.decodeStream(input)?.asImageBitmap()
-                                            }
-                                        }
-                                    }
-                                    .getOrNull()
-                        }
+    val imageUrl = thumbnailUrl?.takeIf { it.isNotBlank() }
+    val context = LocalPlatformContext.current
+    val cacheKey = remember(imageUrl) { imageUrl?.let { "attachment-thumbnail:$it" } }
+    val request =
+            remember(context, imageUrl, cacheKey) {
+                imageUrl?.let {
+                    ImageRequest.Builder(context)
+                            .data(it)
+                            .memoryCacheKey(cacheKey)
+                            .diskCacheKey(cacheKey)
+                            .memoryCachePolicy(CachePolicy.ENABLED)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .networkCachePolicy(CachePolicy.ENABLED)
+                            .build()
+                }
             }
+    var loadState by remember(imageUrl) {
+        mutableStateOf(
+                if (imageUrl == null) RemoteImageLoadState.Missing
+                else RemoteImageLoadState.Loading
+        )
+    }
     Box(
-                modifier =
-                        Modifier.fillMaxSize()
-                                .background(
-                                        if (imageBitmap != null) SlockColor.SurfaceWhite
-                                        else if (isImage) SlockColor.AccentPink
-                                        else SlockColor.SurfaceWhite,
-                                        RoundedCornerShape(SlockRadius.Xs)
-                ),
-                contentAlignment = Alignment.Center
-        ) {
-            if (isLoading) {
-                CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = SlockColor.TextBlack,
-                        trackColor = SlockColor.SurfaceWhite
-                )
-            } else if (imageBitmap != null) {
-                Image(
-                        bitmap = imageBitmap!!,
+            modifier =
+                    Modifier.fillMaxSize()
+                            .background(
+                                    if (loadState == RemoteImageLoadState.Success) {
+                                        SlockColor.SurfaceWhite
+                                    } else if (isImage) {
+                                        SlockColor.AccentPink
+                                    } else {
+                                        SlockColor.SurfaceWhite
+                                    },
+                                    RoundedCornerShape(SlockRadius.Xs)
+                            ),
+            contentAlignment = Alignment.Center
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = SlockColor.TextBlack,
+                    trackColor = SlockColor.SurfaceWhite
+            )
+        } else {
+            if (request != null) {
+                AsyncImage(
+                        model = request,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(SlockRadius.Xs))
+                        onLoading = { loadState = RemoteImageLoadState.Loading },
+                        onSuccess = { loadState = RemoteImageLoadState.Success },
+                        onError = { loadState = RemoteImageLoadState.Error },
+                        modifier =
+                                Modifier.fillMaxSize().clip(RoundedCornerShape(SlockRadius.Xs))
                 )
-            } else {
+            }
+            if (loadState != RemoteImageLoadState.Success) {
                 Icon(
                         imageVector = if (isImage) SlockIcons.Image else SlockIcons.FileText,
                         contentDescription = null,
@@ -4200,6 +4381,7 @@ private fun ThreadAttachmentThumbnail(
                 )
             }
         }
+    }
 }
 
 @Composable
@@ -4510,7 +4692,11 @@ private fun ThreadOfficialMarkdown(
                         remember(inlineTagById, inlineCodeById) {
                 markdownAnnotator { content, child ->
                                         if (child.type == MarkdownElementTypes.CODE_SPAN) {
-                                                val codeMatch = inlineCodeById["slock-code:${child.startOffset}"]
+                                                val codeMatch =
+                                                        inlineCodeById["slock-code:${child.startOffset}"]
+                                                                ?: inlineCodeMatches.firstOrNull {
+                                                                        child.startOffset in it.range
+                                                                }
                                                 if (codeMatch != null) {
                                                         appendInlineContent(codeMatch.id, codeMatch.code)
                                                         return@markdownAnnotator true
@@ -4667,25 +4853,38 @@ private fun threadInlineCodePlaceholderWidthSp(
         textMeasurer: TextMeasurer
 ) = with(density) {
     val textWidth = textMeasurer.measure(text = code, style = ThreadInlineCodeTextStyle).size.width.toDp()
-        (textWidth + ThreadInlineChipHorizontalPadding * 2).toSp()
+        (
+                textWidth +
+                        ThreadInlineChipHorizontalPadding * 2 +
+                        SlockStroke.Thin * 2 +
+                        ThreadInlineCodePlaceholderSlack
+                ).toSp()
 }
+
+private val ThreadInlineCodePlaceholderSlack = 8.dp
 
 @Composable
 private fun ThreadInlineCodeChip(code: String) {
-    Text(
-            text = code,
-            style = ThreadInlineCodeTextStyle,
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
+    Box(
             modifier =
-                    Modifier.background(SlockColor.BrandYellow.copy(alpha = 0.4f))
+                    Modifier.fillMaxSize()
+                            .background(SlockColor.BrandYellow.copy(alpha = 0.4f))
                             .border(SlockStroke.Thin, SlockColor.BorderBlack)
                             .padding(
                                     horizontal = ThreadInlineChipHorizontalPadding,
                                     vertical = ThreadInlineChipVerticalPadding
-                            )
-    )
+                            ),
+            contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+                text = code,
+                style = ThreadInlineCodeTextStyle,
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Visible,
+                modifier = Modifier.fillMaxWidth()
+        )
+    }
 }
 
 private fun String.isPlainSingleLineMessage(): Boolean =
@@ -4695,9 +4894,12 @@ private fun String.isPlainSingleLineMessage(): Boolean =
 
 @Composable
 private fun ThreadAvatar(author: MemberProfile, onClick: (() -> Unit)? = null) {
+    val openAvatarDescription = "Open ${author.displayName} profile"
     val avatarModifier =
             if (onClick != null) {
-                Modifier.clickable(role = Role.Button, onClick = onClick)
+                Modifier
+                        .semantics { contentDescription = openAvatarDescription }
+                        .clickable(role = Role.Button, onClick = onClick)
             } else {
                 Modifier
             }

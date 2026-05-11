@@ -90,6 +90,8 @@ dependencies {
     implementation(libs.markdown.renderer.coil3)
     implementation(libs.markdown.renderer.code)
     implementation(libs.sqldelight.android.driver)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
     testImplementation(libs.junit)
     testImplementation(libs.sqldelight.sqlite.driver)
     androidTestImplementation(libs.androidx.junit)

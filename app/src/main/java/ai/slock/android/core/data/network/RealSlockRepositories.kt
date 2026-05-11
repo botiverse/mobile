@@ -19,6 +19,8 @@ import ai.slock.android.core.data.repository.AttachmentOpenTarget
 import ai.slock.android.core.data.repository.AttachmentUploadFile
 import ai.slock.android.core.data.repository.AttachmentUploadRequest
 import ai.slock.android.core.data.repository.AttachmentUploadResult
+import ai.slock.android.core.data.repository.ChannelArchiveResult
+import ai.slock.android.core.data.repository.ChannelDeleteResult
 import ai.slock.android.core.data.repository.ChannelJoinResult
 import ai.slock.android.core.data.repository.ChannelMemberActionResult
 import ai.slock.android.core.data.repository.ChannelMemberSnapshot
@@ -265,6 +267,47 @@ class RealChannelRepository(
         }
     }
 
+    override suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult> {
+        val context = currentContext() ?: return authRequired()
+        if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
+        return execute(
+                emptyReason = EmptyReason.NoChannels,
+                block = { api.archiveChannel(channelId.value) },
+                source = "channel_archive",
+                warningLogger = warningLogger,
+                mapper = { json ->
+                    val channel = json.archivedChannelOrNull(channelId)
+                    ChannelArchiveResult(
+                            channelId = channelId,
+                            archived = channel?.archived ?: true,
+                            channel = channel
+                    )
+                }
+        ).also { result ->
+            if (result is DataResult.Content) {
+                removeConversationSummary(context.server.id, channelId)
+            }
+        }
+    }
+
+    override suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult> {
+        val context = currentContext() ?: return authRequired()
+        if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
+        return execute(
+                emptyReason = EmptyReason.NoChannels,
+                block = { api.deleteChannel(channelId.value) },
+                source = "channel_delete",
+                warningLogger = warningLogger,
+                mapper = {
+                    ChannelDeleteResult(channelId = channelId, deleted = true)
+                }
+        ).also { result ->
+            if (result is DataResult.Content) {
+                removeConversationSummary(context.server.id, channelId)
+            }
+        }
+    }
+
     private suspend fun addChannelMember(
             channelId: ChannelId,
             fieldName: String,
@@ -462,6 +505,19 @@ class RealChannelRepository(
                 merged[key] = merged[key]?.mergeConversationSummary(conversation) ?: conversation
             }
             conversationSummaryCache = CachedConversationSummaries(serverId, merged)
+        }
+    }
+
+    private fun removeConversationSummary(serverId: ServerId, channelId: ChannelId) {
+        synchronized(conversationSummaryCacheLock) {
+            val existing =
+                    conversationSummaryCache?.takeIf { it.serverId == serverId }?.summaries
+                            ?: return
+            val filtered =
+                    existing.filterValues { summary ->
+                        summary.channelId != channelId && summary.threadId.value != channelId.value
+                    }
+            conversationSummaryCache = CachedConversationSummaries(serverId, filtered)
         }
     }
 
@@ -2147,6 +2203,17 @@ private fun JsonObject.joinedChannelOrNull(channelId: ChannelId): ConversationSu
     return channelObject
             .toConversation(ConversationKind.Channel, channelId.value)
             .copy(joined = true)
+}
+
+private fun JsonObject.archivedChannelOrNull(channelId: ChannelId): ConversationSummary? {
+    val channelObject = firstObject("channel", "data") ?: this
+    val hasChannelShape =
+            channelObject.string("id", "channelId", "threadChannelId", "_id") != null ||
+                    channelObject.string("name", "channelName", "title") != null
+    if (!hasChannelShape) return null
+    return channelObject
+            .toConversation(ConversationKind.Channel, channelId.value)
+            .copy(archived = true)
 }
 
 private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxItem? {

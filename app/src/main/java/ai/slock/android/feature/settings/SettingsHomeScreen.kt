@@ -63,6 +63,7 @@ fun SettingsHomeScreen(
     modifier: Modifier = Modifier,
     title: String = "Settings",
     subtitle: String = "Slock Android",
+    showSelection: Boolean = true,
     onItemClick: (String) -> Unit = {}
 ) {
     Column(
@@ -86,7 +87,7 @@ fun SettingsHomeScreen(
         ) {
             items.forEach { item ->
                 SettingsNavRow(
-                    item = item,
+                    item = if (showSelection) item else item.copy(selected = false),
                     onClick = { onItemClick(item.key) }
                 )
             }

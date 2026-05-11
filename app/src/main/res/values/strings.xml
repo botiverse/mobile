@@ -151,6 +151,10 @@
     <string name="settings_account_chat_layout_detail">Choose which side shows messages sent by you on this device.</string>
     <string name="settings_account_chat_layout_left">Left</string>
     <string name="settings_account_chat_layout_right">Right</string>
+    <string name="settings_mobile_large_screen_navigation_section">Large-screen navigation</string>
+    <string name="settings_mobile_large_screen_navigation_detail">Try the persistent left rail or the centered floating tab bar on tablets and landscape screens.</string>
+    <string name="settings_mobile_large_screen_navigation_left_rail">Left rail</string>
+    <string name="settings_mobile_large_screen_navigation_floating_dock">Floating dock</string>
     <string name="settings_account_verified">Verified</string>
     <string name="settings_account_display_name_label">Display name</string>
     <string name="settings_account_display_name_placeholder">Your public name</string>

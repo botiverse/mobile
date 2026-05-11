@@ -29,6 +29,31 @@ fun InboxUiState.visibleUnreadCount(): Int? = visibleContent()?.totalUnreadCount
 
 fun InboxUiState.visibleTotalCount(): Int? = visibleContent()?.totalCount
 
+fun InboxUiState.clearAllUnread(): InboxUiState {
+    fun InboxContent.clearUnreadContent(): InboxContent {
+        val updatedItems =
+                if (selectedFilter == InboxFilter.Unread) {
+                    emptyList()
+                } else {
+                    items.map { item -> item.copy(unreadCount = 0, firstUnreadMessageId = null) }
+                }
+        return copy(
+                items = updatedItems,
+                totalCount = if (selectedFilter == InboxFilter.Unread) 0 else totalCount,
+                totalUnreadCount = 0
+        )
+    }
+    return copy(
+            loadState =
+                    when (val state = loadState) {
+                        is ScreenLoadState.Content ->
+                                ScreenLoadState.Content(state.data.clearUnreadContent())
+                        else -> loadState
+                    },
+            previousContent = previousContent?.clearUnreadContent()
+    )
+}
+
 fun DataResult<InboxSnapshot>.toInboxUiState(
         selectedFilter: InboxFilter,
         previousContent: InboxContent? = null

@@ -15,6 +15,7 @@ gson = "2.11.0"
 socketIoClient = "2.1.2"
 markdownRenderer = "0.40.2"
 sqldelight = "2.1.0"
+coil = "3.4.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -44,6 +45,8 @@ markdown-renderer-coil3 = { group = "com.mikepenz", name = "multiplatform-markdo
 markdown-renderer-code = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-code", version.ref = "markdownRenderer" }
 sqldelight-android-driver = { group = "app.cash.sqldelight", name = "android-driver", version.ref = "sqldelight" }
 sqldelight-sqlite-driver = { group = "app.cash.sqldelight", name = "sqlite-driver", version.ref = "sqldelight" }
+coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
+coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

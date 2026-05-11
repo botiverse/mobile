@@ -1077,6 +1077,46 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
+    fun channelRepositoryArchivesChannelWithWebEndpoint() {
+        val api = FakeSlockApi(
+            archiveChannelJson = """{"id":"channel-1","name":"android-dev","archived":true}"""
+        )
+        val repository = RealChannelRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val result = runSuspend { repository.archiveChannel(ChannelId("channel-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val data = (result as DataResult.Content).data
+        assertEquals("channel-1", data.channelId.value)
+        assertEquals(true, data.archived)
+        assertEquals(true, data.channel?.archived)
+        assertEquals("android-dev", data.channel?.name)
+        assertEquals(listOf("channel-1"), api.archivedChannelIds)
+    }
+
+    @Test
+    fun channelRepositoryDeletesChannelWithWebEndpoint() {
+        val api = FakeSlockApi(deleteChannelJson = """{"ok":true}""")
+        val repository = RealChannelRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val result = runSuspend { repository.deleteChannel(ChannelId("channel-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val data = (result as DataResult.Content).data
+        assertEquals("channel-1", data.channelId.value)
+        assertEquals(true, data.deleted)
+        assertEquals(listOf("channel-1"), api.deletedChannelIds)
+    }
+
+    @Test
     fun readReceiptRepositoryMapsSeqReadAndUnreadCounts() {
         val api = FakeSlockApi(
             unreadCountsJson = """{"channel-1":3,"thread-1":{"unreadCount":2}}""",
@@ -1806,6 +1846,8 @@ class RealSlockRepositoriesTest {
         private val channelThreadsJson: String = """{"threads":[]}""",
         private val createThreadJson: String = """{"threadChannelId":"thread-1"}""",
         private val threadActionJson: String = """{"ok":true}""",
+        private val archiveChannelJson: String = """{"ok":true}""",
+        private val deleteChannelJson: String = """{"ok":true}""",
         private val responseCode: Int = 200
     ) : SlockApi {
         var unreadSummaryCallCount = 0
@@ -1813,6 +1855,8 @@ class RealSlockRepositoriesTest {
         val addedMembers = mutableListOf<String>()
         val removedMembers = mutableListOf<String>()
         val joinedChannelIds = mutableListOf<String>()
+        val archivedChannelIds = mutableListOf<String>()
+        val deletedChannelIds = mutableListOf<String>()
         val seqReadRequests = mutableListOf<String>()
         val readAllRequests = mutableListOf<String>()
         val createThreadBodies = mutableListOf<String>()
@@ -1871,6 +1915,16 @@ class RealSlockRepositoriesTest {
         override suspend fun joinChannel(channelId: String): Response<ResponseBody> {
             joinedChannelIds += channelId
             return response(joinChannelJson)
+        }
+
+        override suspend fun archiveChannel(channelId: String): Response<ResponseBody> {
+            archivedChannelIds += channelId
+            return response(archiveChannelJson)
+        }
+
+        override suspend fun deleteChannel(channelId: String): Response<ResponseBody> {
+            deletedChannelIds += channelId
+            return response(deleteChannelJson)
         }
 
         override suspend fun serverMembers(serverId: String): Response<ResponseBody> =

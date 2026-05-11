@@ -129,6 +129,16 @@ interface SlockApi {
         @Path("channelId") channelId: String
     ): Response<ResponseBody>
 
+    @POST("channels/{channelId}/archive")
+    suspend fun archiveChannel(
+        @Path("channelId") channelId: String
+    ): Response<ResponseBody>
+
+    @DELETE("channels/{channelId}")
+    suspend fun deleteChannel(
+        @Path("channelId") channelId: String
+    ): Response<ResponseBody>
+
     @POST("channels/{channelId}/members")
     suspend fun addChannelMember(
         @Path("channelId") channelId: String,

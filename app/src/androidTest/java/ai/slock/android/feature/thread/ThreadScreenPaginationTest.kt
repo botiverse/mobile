@@ -4,7 +4,9 @@ import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -12,6 +14,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeLeft
@@ -594,6 +597,98 @@ class ThreadScreenPaginationTest {
     }
 
     @Test
+    fun membersListAvatarOpensMemberDetail() {
+        val agent = MemberProfile(
+            id = MemberId("agent-avatar-detail"),
+            displayName = "Avatar Detail Agent",
+            handle = "avatar-detail",
+            kind = MemberKind.Agent,
+            roleDescription = "Agent"
+        )
+        val membersState = ThreadMembersPanelState(
+            loadState = ScreenLoadState.Content(
+                ThreadMembersPanelContent(members = listOf(agent))
+            ),
+            candidatesLoadState = ScreenLoadState.Content(
+                ThreadMembersPickerContent(candidates = emptyList())
+            )
+        )
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(messages = listOf(message(1)), canLoadMoreBefore = false)
+                        )
+                    ),
+                    membersPanelState = membersState
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Members").performClick()
+        composeRule.onNodeWithContentDescription("Open Avatar Detail Agent details")
+            .assertIsDisplayed()
+            .performClick()
+
+        composeRule.onNodeWithText("Remove Agent").assertIsDisplayed()
+    }
+
+    @Test
+    fun channelSettingsArchiveActionInvokesCallback() {
+        var archiveClicks = 0
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(messages = listOf(message(1)), canLoadMoreBefore = false)
+                        )
+                    ),
+                    onArchiveChannel = { archiveClicks += 1 }
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNodeWithText("Archive Channel").assertIsDisplayed().performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(1, archiveClicks)
+        }
+    }
+
+    @Test
+    fun channelSettingsDeleteRequiresConfirmationName() {
+        var deleteClicks = 0
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(messages = listOf(message(1)), canLoadMoreBefore = false)
+                        )
+                    ),
+                    onDeleteChannel = { deleteClicks += 1 }
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNodeWithText("Delete Channel").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Delete Channel").assertIsNotEnabled()
+        composeRule.onNodeWithText("android").performTextInput("android-dev")
+        composeRule.onNodeWithText("Delete Channel").assertIsEnabled().performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(1, deleteClicks)
+        }
+    }
+
+    @Test
     fun addMemberPickerClickingSelectedAgentAgainDeselectsIt() {
         val currentMember = MemberProfile(
             id = MemberId("human-current"),
@@ -776,6 +871,52 @@ class ThreadScreenPaginationTest {
         }
         composeRule.onNodeWithText("Message 16", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithText("Message 21", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun highlightedMessageChangeRepositionsVirtualWindowInSameThread() {
+        val screenState = mutableStateOf(
+            ThreadUiState(
+                loadState = ScreenLoadState.Content(
+                    content(
+                        messages = (1L..80L).map(::message),
+                        canLoadMoreBefore = false
+                    ).copy(highlightedMessageId = MessageId("message-70"))
+                )
+            )
+        )
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = screenState.value,
+                    currentMemberId = MemberId("current-user")
+                )
+            }
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Message 70", useUnmergedTree = true)
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithText("Message 70", useUnmergedTree = true).assertIsDisplayed()
+
+        composeRule.runOnIdle {
+            val current = (screenState.value.loadState as ScreenLoadState.Content).data
+            screenState.value = screenState.value.copy(
+                loadState = ScreenLoadState.Content(
+                    current.copy(highlightedMessageId = MessageId("message-20"))
+                )
+            )
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Message 20", useUnmergedTree = true)
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithText("Message 20", useUnmergedTree = true).assertIsDisplayed()
     }
 
     private data class OlderLoadRequest(

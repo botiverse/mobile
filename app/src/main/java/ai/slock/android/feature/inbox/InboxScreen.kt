@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -288,6 +289,7 @@ private fun FollowedThreadsLoadedContent(
     SlockPullRefreshContainer(
         refreshing = refreshing,
         onRefresh = onRefresh,
+        threshold = rememberInboxPullRefreshThreshold(),
         modifier = Modifier.fillMaxSize()
     ) { offset ->
         if (content.items.isEmpty()) {
@@ -404,6 +406,7 @@ private fun InboxLoadedContent(
     SlockPullRefreshContainer(
         refreshing = refreshing,
         onRefresh = onRefresh,
+        threshold = rememberInboxPullRefreshThreshold(),
         modifier = Modifier.fillMaxSize()
     ) { offset ->
         if (visibleItems.isEmpty()) {
@@ -458,6 +461,20 @@ private fun InboxLoadedContent(
         }
     }
 }
+
+@Composable
+private fun rememberInboxPullRefreshThreshold() =
+    with(LocalConfiguration.current) {
+        if (screenHeightDp <= InboxShortHeightPullRefreshMaxHeightDp) {
+            InboxLandscapePullRefreshThreshold
+        } else {
+            InboxPortraitPullRefreshThreshold
+        }
+    }
+
+private val InboxPortraitPullRefreshThreshold = 180.dp
+private val InboxLandscapePullRefreshThreshold = 96.dp
+private const val InboxShortHeightPullRefreshMaxHeightDp = 540
 
 @Composable
 private fun InboxHeader(

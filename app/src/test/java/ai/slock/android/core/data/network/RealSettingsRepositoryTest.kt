@@ -427,6 +427,12 @@ class RealSettingsRepositoryTest {
         override suspend fun joinChannel(channelId: String): Response<ResponseBody> =
             response("""{"ok":true}""")
 
+        override suspend fun archiveChannel(channelId: String): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
+        override suspend fun deleteChannel(channelId: String): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
         override suspend fun serverMembers(serverId: String): Response<ResponseBody> =
             response(membersJson)
 

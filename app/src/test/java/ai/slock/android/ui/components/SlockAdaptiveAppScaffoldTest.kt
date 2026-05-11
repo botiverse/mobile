@@ -30,6 +30,32 @@ class SlockAdaptiveAppScaffoldTest {
     }
 
     @Test
+    fun wideWidthCanUseFloatingDockNavigation() {
+        val layout =
+            slockAdaptiveAppLayoutInfo(
+                width = 840.dp,
+                height = 900.dp,
+                largeScreenNavigationStyle = SlockLargeScreenNavigationStyle.FloatingDock
+            )
+
+        assertEquals(SlockWindowLayoutMode.ExpandedThreePane, layout.mode)
+        assertEquals(SlockAdaptiveNavigationPlacement.FloatingDock, layout.navigationPlacement)
+    }
+
+    @Test
+    fun compactWidthKeepsBottomBarWhenFloatingDockIsSelected() {
+        val layout =
+            slockAdaptiveAppLayoutInfo(
+                width = 599.dp,
+                height = 800.dp,
+                largeScreenNavigationStyle = SlockLargeScreenNavigationStyle.FloatingDock
+            )
+
+        assertEquals(SlockWindowLayoutMode.CompactSinglePane, layout.mode)
+        assertEquals(SlockAdaptiveNavigationPlacement.BottomBar, layout.navigationPlacement)
+    }
+
+    @Test
     fun wideLayoutKeepsNavigationRailWhenPageNavigationIsHidden() {
         val layout = slockAdaptiveAppLayoutInfo(width = 840.dp, height = 900.dp)
 

@@ -1,6 +1,9 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package ai.slock.android.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,10 +20,11 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -50,7 +54,13 @@ enum class SlockWindowLayoutMode {
 
 enum class SlockAdaptiveNavigationPlacement {
     BottomBar,
-    NavigationRail
+    NavigationRail,
+    FloatingDock
+}
+
+enum class SlockLargeScreenNavigationStyle {
+    NavigationRail,
+    FloatingDock
 }
 
 @Immutable
@@ -71,6 +81,8 @@ fun SlockAdaptiveAppScaffold(
     onSelected: (String) -> Unit,
     showNavigation: Boolean,
     statusBarColor: Color,
+    largeScreenNavigationStyle: SlockLargeScreenNavigationStyle =
+        SlockLargeScreenNavigationStyle.NavigationRail,
     modifier: Modifier = Modifier,
     statusBarContent: (@Composable (SlockAdaptiveAppLayoutInfo) -> Unit)? = null,
     content: @Composable (SlockAdaptiveAppLayoutInfo) -> Unit
@@ -79,7 +91,8 @@ fun SlockAdaptiveAppScaffold(
         val layoutInfo =
             rememberSlockAdaptiveAppLayoutInfo(
                 width = this@adaptiveWindow.maxWidth,
-                height = this@adaptiveWindow.maxHeight
+                height = this@adaptiveWindow.maxHeight,
+                largeScreenNavigationStyle = largeScreenNavigationStyle
             )
         Row(
             modifier =
@@ -103,7 +116,7 @@ fun SlockAdaptiveAppScaffold(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .windowInsetsTopHeight(WindowInsets.statusBars)
+                                    .windowInsetsTopHeight(WindowInsets.statusBarsIgnoringVisibility)
                                     .background(statusBarColor)
                         )
                     }
@@ -120,6 +133,16 @@ fun SlockAdaptiveAppScaffold(
                         modifier = Modifier.align(Alignment.BottomCenter),
                         onSelected = onSelected
                     )
+                } else if (
+                    showNavigation &&
+                    layoutInfo.navigationPlacement == SlockAdaptiveNavigationPlacement.FloatingDock
+                ) {
+                    SlockAppFloatingDockHost(
+                        items = items,
+                        selectedKey = selectedKey,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                        onSelected = onSelected
+                    )
                 }
             }
         }
@@ -129,12 +152,21 @@ fun SlockAdaptiveAppScaffold(
 @Composable
 fun rememberSlockAdaptiveAppLayoutInfo(
     width: Dp,
-    height: Dp
-): SlockAdaptiveAppLayoutInfo = slockAdaptiveAppLayoutInfo(width, height)
+    height: Dp,
+    largeScreenNavigationStyle: SlockLargeScreenNavigationStyle =
+        SlockLargeScreenNavigationStyle.NavigationRail
+): SlockAdaptiveAppLayoutInfo =
+    slockAdaptiveAppLayoutInfo(
+        width = width,
+        height = height,
+        largeScreenNavigationStyle = largeScreenNavigationStyle
+    )
 
 fun slockAdaptiveAppLayoutInfo(
     width: Dp,
-    height: Dp
+    height: Dp,
+    largeScreenNavigationStyle: SlockLargeScreenNavigationStyle =
+        SlockLargeScreenNavigationStyle.NavigationRail
 ): SlockAdaptiveAppLayoutInfo {
     val mode =
         when {
@@ -145,6 +177,8 @@ fun slockAdaptiveAppLayoutInfo(
     val navigationPlacement =
         if (mode == SlockWindowLayoutMode.CompactSinglePane) {
             SlockAdaptiveNavigationPlacement.BottomBar
+        } else if (largeScreenNavigationStyle == SlockLargeScreenNavigationStyle.FloatingDock) {
+            SlockAdaptiveNavigationPlacement.FloatingDock
         } else {
             SlockAdaptiveNavigationPlacement.NavigationRail
         }
@@ -166,6 +200,15 @@ fun SlockAdaptiveBottomContentPadding(
 ): Dp =
     if (showNavigation &&
         layoutInfo.navigationPlacement == SlockAdaptiveNavigationPlacement.BottomBar
+    ) {
+        SlockSize.BottomBarHeight +
+            with(LocalDensity.current) {
+                WindowInsets.navigationBars.getBottom(this).toDp()
+            } +
+            SlockSpacing.Xl
+    } else if (
+        showNavigation &&
+        layoutInfo.navigationPlacement == SlockAdaptiveNavigationPlacement.FloatingDock
     ) {
         SlockSize.BottomBarHeight +
             with(LocalDensity.current) {
@@ -196,6 +239,36 @@ fun SlockAppBottomBarHost(
             selectedKey = selectedKey,
             onSelected = onSelected,
             modifier = Modifier.fillMaxWidth().offset(y = -SlockStroke.Default)
+        )
+    }
+}
+
+@Composable
+private fun SlockAppFloatingDockHost(
+    items: List<SlockBottomTabItem>,
+    selectedKey: String,
+    onSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier =
+            modifier
+                .navigationBarsPadding()
+                .padding(bottom = SlockSpacing.Md)
+                .widthIn(max = FloatingDockMaxWidth)
+                .fillMaxWidth(FloatingDockWidthFraction)
+                .offset(x = SlockStroke.Default, y = SlockStroke.Default)
+                .background(SlockColor.BorderBlack)
+    ) {
+        SlockBottomTabBar(
+            items = items,
+            selectedKey = selectedKey,
+            onSelected = onSelected,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .offset(x = -SlockStroke.Default, y = -SlockStroke.Default)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
         )
     }
 }
@@ -232,14 +305,14 @@ private fun SlockAppNavigationRail(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .windowInsetsTopHeight(WindowInsets.statusBars)
+                    .windowInsetsTopHeight(WindowInsets.statusBarsIgnoringVisibility)
         )
         Column(
             modifier =
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(vertical = SlockSpacing.Md),
+                    .padding(bottom = SlockSpacing.Md),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
@@ -302,3 +375,5 @@ private val MediumWindowMinWidth = 600.dp
 private val ExpandedWindowMinWidth = 840.dp
 private val NavigationRailWidth = 72.dp
 private val NavigationRailItemHeight = 58.dp
+private val FloatingDockMaxWidth = 420.dp
+private const val FloatingDockWidthFraction = 0.72f

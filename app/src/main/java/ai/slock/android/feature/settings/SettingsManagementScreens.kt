@@ -3,6 +3,7 @@ package ai.slock.android.feature.settings
 import ai.slock.android.R
 import ai.slock.android.core.data.locale.AppLocale
 import ai.slock.android.core.data.locale.LocaleSnapshot
+import ai.slock.android.core.data.preferences.LargeScreenNavigationPreference
 import ai.slock.android.core.data.preferences.MyMessageAlignmentPreference
 import ai.slock.android.core.data.repository.SettingsComputerAgentSnapshot
 import ai.slock.android.core.data.repository.SettingsComputerDetailSnapshot
@@ -696,11 +697,14 @@ fun SettingsMobileScreen(
         notificationPermissionAvailable: Boolean = true,
         modifier: Modifier = Modifier,
         chatLayoutPreference: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Default,
+        largeScreenNavigation: LargeScreenNavigationPreference =
+                LargeScreenNavigationPreference.Default,
         localeSnapshot: LocaleSnapshot = LocaleSnapshot(current = AppLocale.Default),
         pushNotificationsEnabledByUser: Boolean = snapshot.pushNotifications.enabled,
         onRequestNotificationPermission: () -> Unit = {},
         onPushNotificationsEnabledChange: (Boolean) -> Unit = {},
         onChatLayoutPreferenceSelected: (MyMessageAlignmentPreference) -> Unit = {},
+        onLargeScreenNavigationSelected: (LargeScreenNavigationPreference) -> Unit = {},
         onLocaleSelected: (AppLocale) -> Unit = {},
         onTogglePush: () -> Unit = {},
         onSendTest: () -> Unit = {},
@@ -835,6 +839,10 @@ fun SettingsMobileScreen(
         SettingsMobileChatLayoutPreference(
                 selected = chatLayoutPreference,
                 onSelected = onChatLayoutPreferenceSelected
+        )
+        SettingsMobileLargeScreenNavigationPreference(
+                selected = largeScreenNavigation,
+                onSelected = onLargeScreenNavigationSelected
         )
         SettingsMobileLanguagePreference(
                 localeSnapshot = localeSnapshot,
@@ -1069,6 +1077,57 @@ private fun SettingsMobileChatLayoutPreference(
                                     MyMessageAlignmentPreference.Right ->
                                             stringResource(
                                                     R.string.settings_account_chat_layout_right
+                                            )
+                                },
+                        selected = option == selected,
+                        onSelected = { onSelected(option) },
+                        modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsMobileLargeScreenNavigationPreference(
+        selected: LargeScreenNavigationPreference,
+        onSelected: (LargeScreenNavigationPreference) -> Unit,
+        modifier: Modifier = Modifier
+) {
+    Column(
+            modifier =
+                    modifier.fillMaxWidth()
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .padding(SlockSpacing.Md),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Text(
+                text = stringResource(R.string.settings_mobile_large_screen_navigation_section)
+                        .uppercase(),
+                style = SlockType.SectionLabel,
+                color = SlockColor.TextBlack
+        )
+        Text(
+                text = stringResource(R.string.settings_mobile_large_screen_navigation_detail),
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray
+        )
+        Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            LargeScreenNavigationPreference.entries.forEach { option ->
+                SlockSegmentOption(
+                        text =
+                                when (option) {
+                                    LargeScreenNavigationPreference.LeftRail ->
+                                            stringResource(
+                                                    R.string.settings_mobile_large_screen_navigation_left_rail
+                                            )
+                                    LargeScreenNavigationPreference.FloatingDock ->
+                                            stringResource(
+                                                    R.string.settings_mobile_large_screen_navigation_floating_dock
                                             )
                                 },
                         selected = option == selected,

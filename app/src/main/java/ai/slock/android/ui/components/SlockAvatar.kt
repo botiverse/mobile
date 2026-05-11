@@ -1,8 +1,6 @@
 package ai.slock.android.ui.components
 
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -12,14 +10,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -30,9 +28,10 @@ import ai.slock.android.core.model.AvatarReference
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockType
-import java.net.URL
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
 
 @Composable
 fun SlockAvatar(
@@ -50,10 +49,8 @@ fun SlockAvatar(
         pixelSpec != null -> PixelAvatar(spec = pixelSpec, modifier = modifier, size = size)
         avatarWireValue?.isHttpAvatarUrl() == true -> UrlAvatar(
             url = avatarWireValue,
-            label = label,
             modifier = modifier,
             size = size,
-            fontSize = fontSize,
             fallbackColor = fallbackColor
         )
         else -> DefaultUserAvatar(modifier = modifier, size = size, fallbackColor = fallbackColor)
@@ -63,36 +60,48 @@ fun SlockAvatar(
 @Composable
 private fun UrlAvatar(
     url: String,
-    label: String,
     modifier: Modifier,
     size: Dp,
-    fontSize: TextUnit,
     fallbackColor: Color
 ) {
-    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, key1 = url) {
-        value = withContext(Dispatchers.IO) {
-            runCatching {
-                URL(url).openStream().use { input ->
-                    BitmapFactory.decodeStream(input)?.asImageBitmap()
-                }
-            }.getOrNull()
+    val context = LocalPlatformContext.current
+    val cacheKey = remember(url) { "avatar:$url" }
+    val request =
+        remember(context, url, cacheKey) {
+            ImageRequest.Builder(context)
+                    .data(url)
+                    .memoryCacheKey(cacheKey)
+                    .diskCacheKey(cacheKey)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .networkCachePolicy(CachePolicy.ENABLED)
+                    .build()
         }
-    }
-    if (bitmap != null) {
-        Box(
-            modifier = modifier
-                .size(size)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-        ) {
-            Image(
-                bitmap = bitmap!!,
+    var failed by remember(url) { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier
+            .size(size)
+            .background(fallbackColor)
+            .border(SlockStroke.Thin, SlockColor.BorderBlack),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = SlockIcons.User,
+            contentDescription = null,
+            tint = SlockColor.TextBlack,
+            modifier = Modifier.size(size * 0.56f)
+        )
+        if (!failed) {
+            AsyncImage(
+                model = request,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
+                onSuccess = { failed = false },
+                onError = { failed = true },
                 modifier = Modifier.fillMaxSize()
             )
         }
-    } else {
-        DefaultUserAvatar(modifier = modifier, size = size, fallbackColor = fallbackColor)
     }
 }
 

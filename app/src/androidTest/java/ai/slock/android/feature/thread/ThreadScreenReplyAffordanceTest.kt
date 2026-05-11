@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
@@ -128,6 +129,35 @@ class ThreadScreenReplyAffordanceTest {
             assertEquals(true, openedThread)
         }
         composeRule.onAllNodesWithText("Copy markdown").assertCountEquals(0)
+    }
+
+    @Test
+    fun messageAvatarClickOpensAuthorProfile() {
+        var openedProfile = false
+        composeRule.setContent {
+            SlockTheme {
+                ThreadMessageItem(
+                    message = message(replyCount = 0).copy(
+                        author = MemberProfile(
+                            id = MemberId("avatar-profile-agent"),
+                            displayName = "Avatar Profile Agent",
+                            handle = "avatar-profile-agent",
+                            kind = MemberKind.Agent,
+                            roleDescription = "Agent"
+                        )
+                    ),
+                    onOpenAuthorProfile = { openedProfile = true }
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Open Avatar Profile Agent profile")
+            .assertIsDisplayed()
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(true, openedProfile)
+        }
     }
 
     @Test
@@ -302,6 +332,56 @@ class ThreadScreenReplyAffordanceTest {
         }
 
         composeRule.onNodeWithContentDescription("Open original message").assertIsDisplayed()
+    }
+
+    @Test
+    fun threadHeaderShowsCloseAfterOriginalMessageJump() {
+        composeRule.setContent {
+            SlockTheme {
+                ThreadTopHeader(
+                    replyHeaderContext = ThreadReplyHeaderContext(
+                        parentChannelName = "android-dev",
+                        parentMessagePreview = "Parent task"
+                    ),
+                    parentJumpTarget = ThreadParentJumpTarget(MessageId("parent-message")),
+                    navigationIcon = ThreadHeaderNavigationIcon.Close
+                )
+            }
+        }
+
+        val openBounds =
+            composeRule.onNodeWithContentDescription("Open original message")
+                .assertIsDisplayed()
+                .getUnclippedBoundsInRoot()
+        val closeBounds =
+            composeRule.onNodeWithContentDescription("Close")
+                .assertIsDisplayed()
+                .getUnclippedBoundsInRoot()
+
+        assertTrue(openBounds.left < closeBounds.left)
+        composeRule.onAllNodesWithContentDescription("Back").assertCountEquals(0)
+    }
+
+    @Test
+    fun threadContextHeaderHidesChannelManagementActions() {
+        composeRule.setContent {
+            SlockTheme {
+                ThreadTopHeader(
+                    summary = ConversationSummary(
+                        threadId = ThreadId("inbox-thread"),
+                        channelId = ChannelId("inbox-channel"),
+                        kind = ConversationKind.Channel,
+                        name = "inbox thread"
+                    ),
+                    parentJumpTarget = ThreadParentJumpTarget(MessageId("parent-message"))
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Open original message").assertIsDisplayed()
+        composeRule.onAllNodesWithContentDescription("Settings").assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription("Leave").assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription("Members").assertCountEquals(0)
     }
 
     @Test
@@ -527,6 +607,37 @@ class ThreadScreenReplyAffordanceTest {
     }
 
     @Test
+    fun apkAttachmentClickOpensAttachmentWithoutShowingActionOverlay() {
+        var openedAttachment: AttachmentId? = null
+        val attachment = Attachment(
+            id = AttachmentId("apk-attachment-click"),
+            name = "slock-release.apk",
+            mimeType = "application/vnd.android.package-archive",
+            sizeLabel = "92 MB"
+        )
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadMessageItem(
+                    message = message(replyCount = 0).copy(
+                        attachments = listOf(attachment)
+                    ),
+                    onOpenAttachment = { openedAttachment = it.id }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("slock-release.apk")
+            .assertIsDisplayed()
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(AttachmentId("apk-attachment-click"), openedAttachment)
+        }
+        composeRule.onAllNodesWithText("Copy markdown").assertCountEquals(0)
+    }
+
+    @Test
     fun doneTaskActionShowsReopenAndMovesBackToInProgress() {
         var statusChange: Pair<TaskId, TaskStatus>? = null
         val task = TaskSummary(
@@ -732,6 +843,42 @@ class ThreadScreenReplyAffordanceTest {
         assertEquals(true, menuBounds.top >= bodyBounds.top - 8.dp)
         assertEquals(true, menuBounds.top <= bodyBounds.bottom + 16.dp)
         assertEquals(true, menuBounds.bottom > bodyBounds.bottom)
+    }
+
+    @Test
+    fun messageActionOverlayUsesRootCoordinatesInsideOffsetContainer() {
+        composeRule.setContent {
+            SlockTheme {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(y = 120.dp)
+                            .width(260.dp)
+                    ) {
+                        ThreadMessageItem(
+                            message = message(replyCount = 0),
+                            onOpenThread = {}
+                        )
+                    }
+                }
+            }
+        }
+
+        val bodyBounds =
+            composeRule.onNodeWithText("Reply affordance test message")
+                .assertIsDisplayed()
+                .getUnclippedBoundsInRoot()
+
+        composeRule.onNodeWithText("Reply affordance test message").performClick()
+        val menuBounds =
+            composeRule.onNodeWithTag(THREAD_MESSAGE_ACTION_MENU_TAG, useUnmergedTree = true)
+                .assertIsDisplayed()
+                .getUnclippedBoundsInRoot()
+
+        assertEquals(true, menuBounds.left >= bodyBounds.left - 16.dp)
+        assertEquals(true, menuBounds.top >= bodyBounds.top - 8.dp)
+        assertEquals(true, menuBounds.top <= bodyBounds.bottom + 16.dp)
     }
 
     @Test
@@ -961,6 +1108,38 @@ class ThreadScreenReplyAffordanceTest {
             assertEquals(true, asTask)
             assertEquals(true, sent)
         }
+    }
+
+    @Test
+    fun replyThreadComposerUsesThreadsPlaceholderInsteadOfInternalThreadId() {
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(
+                                messages = emptyList(),
+                                canLoadMoreBefore = false
+                            ).copy(
+                                header = ConversationSummary(
+                                    threadId = ThreadId("message#threadid"),
+                                    channelId = ChannelId("message#threadid"),
+                                    kind = ConversationKind.Thread,
+                                    name = "message#threadid"
+                                )
+                            )
+                        )
+                    ),
+                    replyHeaderContext = ThreadReplyHeaderContext(
+                        parentChannelName = "all",
+                        parentMessagePreview = "Original message"
+                    )
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Message Threads").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Message #message#threadid").assertCountEquals(0)
     }
 
     @Test

@@ -15,8 +15,19 @@ class ChatLayoutPreferenceRepositoryTest {
         val snapshot = runSuspend { repository.getChatLayoutPreference() }
 
         assertEquals(MyMessageAlignmentPreference.Left, snapshot.myMessageAlignment)
+        assertEquals(LargeScreenNavigationPreference.LeftRail, snapshot.largeScreenNavigation)
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Left))
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Right))
+        assertTrue(
+            snapshot.supportedLargeScreenNavigation.contains(
+                LargeScreenNavigationPreference.LeftRail
+            )
+        )
+        assertTrue(
+            snapshot.supportedLargeScreenNavigation.contains(
+                LargeScreenNavigationPreference.FloatingDock
+            )
+        )
     }
 
     @Test
@@ -33,8 +44,24 @@ class ChatLayoutPreferenceRepositoryTest {
         assertEquals(MyMessageAlignmentPreference.Left, restored.myMessageAlignment)
     }
 
+    @Test
+    fun persistsSelectedLargeScreenNavigation() {
+        val store = InMemoryChatLayoutPreferenceStore()
+        val repository = PersistentChatLayoutPreferenceRepository(store)
+
+        val selected = runSuspend {
+            repository.selectLargeScreenNavigation(LargeScreenNavigationPreference.FloatingDock)
+        }
+        val restored = runSuspend { repository.getChatLayoutPreference() }
+
+        assertEquals(LargeScreenNavigationPreference.FloatingDock, selected.largeScreenNavigation)
+        assertEquals(LargeScreenNavigationPreference.FloatingDock, restored.largeScreenNavigation)
+    }
+
     private class InMemoryChatLayoutPreferenceStore(
-        private var alignment: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Default
+        private var alignment: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Default,
+        private var largeScreenNavigation: LargeScreenNavigationPreference =
+            LargeScreenNavigationPreference.Default
     ) : ChatLayoutPreferenceStore {
         override fun readMyMessageAlignmentSync(): MyMessageAlignmentPreference = alignment
 
@@ -42,6 +69,18 @@ class ChatLayoutPreferenceRepositoryTest {
 
         override suspend fun saveMyMessageAlignment(alignment: MyMessageAlignmentPreference) {
             this.alignment = alignment
+        }
+
+        override fun readLargeScreenNavigationSync(): LargeScreenNavigationPreference =
+            largeScreenNavigation
+
+        override suspend fun readLargeScreenNavigation(): LargeScreenNavigationPreference =
+            largeScreenNavigation
+
+        override suspend fun saveLargeScreenNavigation(
+            navigation: LargeScreenNavigationPreference
+        ) {
+            this.largeScreenNavigation = navigation
         }
     }
 }

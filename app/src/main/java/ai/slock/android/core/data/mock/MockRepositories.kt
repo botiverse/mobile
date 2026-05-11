@@ -19,6 +19,8 @@ import ai.slock.android.core.data.repository.AttachmentUploadResult
 import ai.slock.android.core.data.repository.AddChannelMemberRequest
 import ai.slock.android.core.data.repository.ChannelMemberActionResult
 import ai.slock.android.core.data.repository.ChannelMemberSnapshot
+import ai.slock.android.core.data.repository.ChannelArchiveResult
+import ai.slock.android.core.data.repository.ChannelDeleteResult
 import ai.slock.android.core.data.repository.ChannelJoinResult
 import ai.slock.android.core.data.repository.ChannelSnapshot
 import ai.slock.android.core.data.repository.ChannelUnreadSnapshot
@@ -602,6 +604,19 @@ class MockChannelRepository(
                 .firstOrNull { it.channelId == channelId }
                 ?.copy(joined = true)
             ChannelJoinResult(channelId = channelId, joined = true, channel = channel)
+        }
+
+    override suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult> =
+        resultFor(scenario, EmptyReason.NoChannels) {
+            val channel = MockSeedData.channelSnapshot.channels
+                .firstOrNull { it.channelId == channelId }
+                ?.copy(archived = true)
+            ChannelArchiveResult(channelId = channelId, archived = true, channel = channel)
+        }
+
+    override suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult> =
+        resultFor(scenario, EmptyReason.NoChannels) {
+            ChannelDeleteResult(channelId = channelId, deleted = true)
         }
 
     private fun openMockDirectMessage(): DataResult<OpenDirectMessageResult> =

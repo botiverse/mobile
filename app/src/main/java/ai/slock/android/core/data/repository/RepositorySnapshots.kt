@@ -176,6 +176,17 @@ data class ChannelJoinResult(
     val channel: ConversationSummary? = null
 )
 
+data class ChannelArchiveResult(
+    val channelId: ChannelId,
+    val archived: Boolean = true,
+    val channel: ConversationSummary? = null
+)
+
+data class ChannelDeleteResult(
+    val channelId: ChannelId,
+    val deleted: Boolean = true
+)
+
 data class ChannelUnreadSnapshot(
     val server: ServerSummary,
     val unreadCounts: Map<ChannelId, Int>,

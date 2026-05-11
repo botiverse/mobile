@@ -66,6 +66,32 @@ class TaskReferenceCacheTest {
         assertEquals("Now", enriched.updatedAtLabel)
     }
 
+    @Test
+    fun threadTaskStatusActionPrefersParentMessageId() {
+        val task =
+                task(status = TaskStatus.InProgress).copy(
+                        id = TaskId("thread-reference-id"),
+                        parentMessageId = MessageId("parent-message-382"),
+                        messageId = MessageId("reply-message-382"),
+                        isThreadTask = true
+                )
+
+        assertEquals(TaskId("parent-message-382"), task.statusActionTaskId(preferThreadMessageIdentity = true))
+        assertEquals(TaskId("thread-reference-id"), task.statusActionTaskId(preferThreadMessageIdentity = false))
+    }
+
+    @Test
+    fun threadTaskStatusActionFallsBackToMessageId() {
+        val task =
+                task(status = TaskStatus.InProgress).copy(
+                        id = TaskId("thread-reference-id"),
+                        messageId = MessageId("message-382"),
+                        isThreadTask = true
+                )
+
+        assertEquals(TaskId("message-382"), task.statusActionTaskId(preferThreadMessageIdentity = true))
+    }
+
     private fun task(status: TaskStatus) =
             TaskSummary(
                     id = TaskId("task-382"),
