@@ -23,17 +23,38 @@ import ai.slock.android.core.model.messageStreamChannelId
 import ai.slock.android.core.model.parentChannelIdOrNull
 import ai.slock.android.core.model.parentMessageIdOrNull
 import ai.slock.android.core.model.withTitleFallback
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
+import app.cash.sqldelight.coroutines.mapToOneOrNull
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 interface SlockLocalStore {
     fun upsertConversation(conversation: ConversationSummary, syncedAtMs: Long)
     fun getConversation(id: ThreadId): ConversationSummary?
     fun getThreadTimeline(threadId: ThreadId): LocalThreadTimeline?
+    fun observeThreadTimeline(threadId: ThreadId): Flow<LocalThreadTimeline?>
     fun upsertMessage(message: Message, syncedAtMs: Long, streamChannelId: ChannelId? = null)
     fun getMessagesForThread(threadId: ThreadId): List<Message>
     fun upsertTaskReference(task: TaskSummary, syncedAtMs: Long)
+    fun deleteTaskReference(taskId: TaskId)
     fun getTaskReferencesForMessage(messageId: MessageId): List<TaskSummary>
     fun upsertMemberSnapshot(member: MemberProfile, syncedAtMs: Long)
     fun getMemberSnapshot(memberId: MemberId): MemberProfile?
+    fun updateMemberPresence(
+        memberId: MemberId,
+        presence: Presence,
+        kind: MemberKind?,
+        syncedAtMs: Long
+    )
+    fun updateMessageThreadMetadata(
+        parentMessageId: MessageId,
+        threadChannelId: ChannelId,
+        replyCount: Int,
+        lastReplyAt: String?,
+        syncedAtMs: Long
+    )
     fun upsertSyncCursor(cursor: LocalSyncCursor)
     fun getSyncCursor(scopeId: String): LocalSyncCursor?
     fun enqueueOutboxMessage(message: LocalOutboxMessage)
@@ -142,6 +163,23 @@ class SqlDelightSlockLocalStore(
         )
     }
 
+    override fun observeThreadTimeline(threadId: ThreadId): Flow<LocalThreadTimeline?> =
+        queries
+            .selectThreadTimelineInvalidation(
+                threadId.value,
+                threadId.value,
+                threadId.value,
+                threadId.value,
+                threadId.value,
+                threadId.value,
+                threadId.value,
+                threadId.value,
+                threadId.value
+            )
+            .asFlow()
+            .mapToList(Dispatchers.IO)
+            .map { getThreadTimeline(threadId) }
+
     override fun upsertMessage(
         message: Message,
         syncedAtMs: Long,
@@ -231,6 +269,10 @@ class SqlDelightSlockLocalStore(
             .executeAsList()
             .map { it.toTaskSummary() }
 
+    override fun deleteTaskReference(taskId: TaskId) {
+        queries.deleteTaskReference(taskId.value)
+    }
+
     override fun upsertMemberSnapshot(member: MemberProfile, syncedAtMs: Long) {
         queries.upsertMemberSnapshot(
             id = member.id.value,
@@ -248,6 +290,50 @@ class SqlDelightSlockLocalStore(
 
     override fun getMemberSnapshot(memberId: MemberId): MemberProfile? =
         queries.selectMemberSnapshot(memberId.value).executeAsOneOrNull()?.toMemberProfile()
+
+    override fun updateMemberPresence(
+        memberId: MemberId,
+        presence: Presence,
+        kind: MemberKind?,
+        syncedAtMs: Long
+    ) {
+        val current = getMemberSnapshot(memberId)
+        if (current == null) {
+            upsertMemberSnapshot(
+                MemberProfile(
+                    id = memberId,
+                    displayName = memberId.value,
+                    handle = memberId.value,
+                    kind = kind ?: MemberKind.Human,
+                    presence = presence
+                ),
+                syncedAtMs
+            )
+            return
+        }
+        queries.updateMemberPresence(
+            presence = presence.wireValue,
+            value = kind?.wireValue,
+            last_synced_at_ms = syncedAtMs,
+            id = memberId.value
+        )
+    }
+
+    override fun updateMessageThreadMetadata(
+        parentMessageId: MessageId,
+        threadChannelId: ChannelId,
+        replyCount: Int,
+        lastReplyAt: String?,
+        syncedAtMs: Long
+    ) {
+        queries.updateMessageThreadMetadata(
+            thread_channel_id = threadChannelId.value,
+            value = replyCount.toLong(),
+            value_ = lastReplyAt,
+            last_synced_at_ms = syncedAtMs,
+            id = parentMessageId.value
+        )
+    }
 
     override fun upsertSyncCursor(cursor: LocalSyncCursor) {
         val current = queries.selectSyncCursor(cursor.scopeId).executeAsOneOrNull()?.toLocalSyncCursor()
