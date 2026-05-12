@@ -25,7 +25,9 @@ import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
+import ai.slock.android.core.model.ThreadConversation
 import ai.slock.shared.model.messageStreamChannelId
+import ai.slock.shared.model.threadIdentity
 import ai.slock.shared.model.withTitleFallback
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.thread.ComposerState
@@ -98,14 +100,21 @@ class SlockLocalWriteThrough(
         result: DataResult<ThreadSnapshot>,
         source: String,
         fallbackThreadId: ThreadId? = null,
-        fallbackHeader: ConversationSummary? = null
+        fallbackHeader: ConversationSummary? = null,
+        fallbackParentMessage: Message? = null
     ) {
         val snapshot = (result as? DataResult.Content)?.data
         if (snapshot == null) {
             logger("write_thread_skip source=$source reason=${result.localWriteSkipReason()} fallbackThreadId=${fallbackThreadId?.value.orEmpty()}")
             return
         }
-        writeThreadSnapshot(snapshot, source, fallbackHeader)
+        writeThreadSnapshot(
+            snapshot = snapshot,
+            source = source,
+            fallbackThreadId = fallbackThreadId,
+            fallbackHeader = fallbackHeader,
+            fallbackParentMessage = fallbackParentMessage
+        )
     }
 
     fun writeHomeResult(result: DataResult<HomeSnapshot>, source: String) {
@@ -182,16 +191,29 @@ class SlockLocalWriteThrough(
     private fun writeThreadSnapshot(
         snapshot: ThreadSnapshot,
         source: String,
-        fallbackHeader: ConversationSummary? = null
+        fallbackThreadId: ThreadId? = null,
+        fallbackHeader: ConversationSummary? = null,
+        fallbackParentMessage: Message? = null
     ) {
-        val conversation = snapshot.conversation.withTitleFallback(fallbackHeader)
+        val storedConversation =
+            fallbackThreadId?.let(store::getConversation) ?: store.getConversation(snapshot.conversation.threadId)
+        val resolvedParentMessage = snapshot.parentMessage ?: fallbackParentMessage
+        val conversation =
+            snapshot.conversation
+                .withTitleFallback(fallbackHeader)
+                .withResolvedReplyThreadMetadata(
+                    storedConversation = storedConversation,
+                    fallbackHeader = fallbackHeader,
+                    parentMessage = resolvedParentMessage,
+                    fallbackThreadId = fallbackThreadId
+                )
         requireValidSnapshotId(conversation.threadId.value, "conversation.threadId", source)
         requireValidSnapshotId(conversation.channelId?.value, "conversation.channelId", source)
         val syncedAtMs = clock()
         val streamChannelId = conversation.explicitMessageStreamChannelId()
         store.upsertConversation(conversation, syncedAtMs)
         val persistedMessages = mutableListOf<Message>()
-        snapshot.parentMessage?.let { parentMessage ->
+        resolvedParentMessage?.let { parentMessage ->
             if (writeMessage(parentMessage, syncedAtMs, source, parentMessage.channelId ?: streamChannelId)) {
                 persistedMessages += parentMessage
             }
@@ -218,8 +240,69 @@ class SlockLocalWriteThrough(
             )
         )
         logger(
-            "write_thread source=$source threadId=${conversation.threadId.value} streamChannelId=${streamChannelId.value} messages=${snapshot.messages.size} parent=${snapshot.parentMessage != null} tasks=${snapshot.tasks.size} lastSeq=${snapshot.lastSeq}"
+            "write_thread source=$source threadId=${conversation.threadId.value} streamChannelId=${streamChannelId.value} messages=${snapshot.messages.size} parent=${resolvedParentMessage != null} tasks=${snapshot.tasks.size} lastSeq=${snapshot.lastSeq}"
         )
+    }
+
+    internal fun ConversationSummary.withResolvedReplyThreadMetadata(
+        storedConversation: ConversationSummary? = null,
+        fallbackHeader: ConversationSummary? = null,
+        parentMessage: Message? = null,
+        fallbackThreadId: ThreadId? = null
+    ): ConversationSummary {
+        val streamChannelId =
+            explicitMessageStreamChannelId()
+                ?: storedConversation?.explicitMessageStreamChannelId()
+                ?: fallbackHeader?.explicitMessageStreamChannelId()
+                ?: fallbackThreadId?.let { ChannelId(it.value) }
+        val resolvedParentChannelId =
+            parentMessage?.channelId
+                ?: storedConversation?.thread?.parentChannelId
+                ?: fallbackHeader?.thread?.parentChannelId
+        if (parentMessage != null && resolvedParentChannelId != null) {
+            return copy(
+                threadId = threadIdentity(resolvedParentChannelId, parentMessage.id),
+                channelId = resolvedParentChannelId,
+                thread =
+                    ThreadConversation(
+                        parentChannelId = resolvedParentChannelId,
+                        parentMessageId = parentMessage.id,
+                        streamChannelId = parentMessage.threadChannelId ?: streamChannelId
+                    ),
+                kind = ConversationKind.Thread
+            )
+        }
+        val currentThread = thread
+        if (kind == ConversationKind.Thread && currentThread != null) {
+            return if (currentThread.streamChannelId == null && streamChannelId != null) {
+                copy(thread = currentThread.copy(streamChannelId = streamChannelId))
+            } else {
+                this
+            }
+        }
+        val threadedFallback =
+            listOfNotNull(storedConversation, fallbackHeader).firstOrNull { candidate ->
+                candidate.kind == ConversationKind.Thread &&
+                    candidate.thread != null &&
+                    (
+                        streamChannelId == null ||
+                            candidate.messageStreamChannelId() == streamChannelId
+                        )
+            }
+        val threadedFallbackThread = threadedFallback?.thread
+        return if (threadedFallback != null && threadedFallbackThread != null) {
+            copy(
+                threadId = threadedFallback.threadId,
+                channelId = threadedFallback.channelId ?: threadedFallbackThread.parentChannelId,
+                thread =
+                    threadedFallbackThread.copy(
+                        streamChannelId = threadedFallbackThread.streamChannelId ?: streamChannelId
+                    ),
+                kind = ConversationKind.Thread
+            )
+        } else {
+            this
+        }
     }
 
     private fun writeMessages(messages: List<Message>, source: String) {

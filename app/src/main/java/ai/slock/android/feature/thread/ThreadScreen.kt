@@ -206,6 +206,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -256,6 +257,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
+import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.getTextInNode
@@ -266,7 +268,8 @@ val ThreadMessageBodyTextStyle: TextStyle
                     fontWeight = FontWeight.Normal,
                     fontFamily = SlockNormalFontFamily,
                     fontSize = 15.sp,
-                    lineHeight = 21.sp
+                    lineHeight = 21.sp,
+                    platformStyle = PlatformTextStyle(includeFontPadding = false)
             )
 
 @Composable
@@ -291,6 +294,7 @@ fun ThreadScreen(
         onOpenMessageThread: (Message) -> Unit = {},
         onOpenMemberProfile: (MemberProfile) -> Unit = {},
         onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit = {},
+        onOpenSlockWebLink: (String) -> Boolean = { false },
         onOpenTask: (TaskSummary) -> Unit = {},
         onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit = { _, _ -> },
         onSaveMessage: (Message) -> Unit = {},
@@ -533,6 +537,7 @@ fun ThreadScreen(
                                     onOpenMessageThread = onOpenMessageThread,
                                     onOpenMemberProfile = onOpenMemberProfile,
                                     onOpenMarkdownTag = onOpenMarkdownTag,
+                                    onOpenSlockWebLink = onOpenSlockWebLink,
                                     onOpenTask = onOpenTask,
                                     onTaskStatusChange = onTaskStatusChange,
                                     onSaveMessage = onSaveMessage,
@@ -786,6 +791,7 @@ fun ThreadScreen(
                     status = archiveChannelStatus,
                     onArchiveChannel = onArchiveChannel,
                     onDeleteChannel = onDeleteChannel,
+                    onLeaveChannel = onLeaveChannel,
                     onDismiss = { showSettingsModal = false }
             )
         }
@@ -1085,7 +1091,6 @@ fun ThreadTopHeader(
             }
             if (showManagementActions && !isDirectMessage) {
                 HeaderIconButton(SlockIcons.Settings, "Settings", onClick = onSettingsClick)
-                HeaderIconButton(SlockIcons.LogOut, "Leave", onClick = onLeaveChannel)
                 ThreadMembersButton(count = membersCount, onClick = onMembersClick)
             }
         }
@@ -1582,7 +1587,8 @@ private fun threadSampleMemberProfiles(): List<MemberProfile> =
                         displayName = "Android-Developer",
                         handle = "@android-developer",
                         kind = MemberKind.Agent,
-                        roleDescription = "UI components",
+                        description = "UI components",
+                        roleDescription = "agent",
                         avatarUrl = "pixel:robot",
                         avatarLabel = "A",
                         presence = Presence.Active
@@ -1592,7 +1598,8 @@ private fun threadSampleMemberProfiles(): List<MemberProfile> =
                         displayName = "API-Integration-Developer",
                         handle = "@api-integration-developer",
                         kind = MemberKind.Agent,
-                        roleDescription = "Data contracts",
+                        description = "Data contracts",
+                        roleDescription = "agent",
                         avatarUrl = "random:api-integration-developer",
                         avatarLabel = "I",
                         presence = Presence.Away
@@ -1602,7 +1609,7 @@ private fun threadSampleMemberProfiles(): List<MemberProfile> =
                         displayName = "artin",
                         handle = "@artin",
                         kind = MemberKind.Human,
-                        roleDescription = "Product owner",
+                        description = "Product owner",
                         avatarLabel = "A",
                         presence = Presence.Active
                 ),
@@ -1611,7 +1618,7 @@ private fun threadSampleMemberProfiles(): List<MemberProfile> =
                         displayName = "QA-Tester",
                         handle = "@qa-tester",
                         kind = MemberKind.Human,
-                        roleDescription = "Acceptance",
+                        description = "Acceptance",
                         avatarUrl = "pixel:star",
                         avatarLabel = "Q",
                         presence = Presence.Offline
@@ -1631,6 +1638,7 @@ enum class ThreadSettingsModalStatus {
 }
 
 enum class ThreadDangerAction {
+    Leave,
     Archive,
     Delete
 }
@@ -1642,6 +1650,7 @@ private fun ThreadSettingsModal(
         status: ThreadSettingsModalStatus = ThreadSettingsModalStatus.Default,
         onArchiveChannel: () -> Unit = {},
         onDeleteChannel: () -> Unit = {},
+        onLeaveChannel: () -> Unit = {},
         onDismiss: () -> Unit
 ) {
     var name by rememberSaveable(initialName) { mutableStateOf(initialName) }
@@ -1663,6 +1672,7 @@ private fun ThreadSettingsModal(
     SlockModal(
             title =
                     when (dangerAction) {
+                        ThreadDangerAction.Leave -> "LEAVE CHANNEL"
                         ThreadDangerAction.Archive -> "ARCHIVE CHANNEL"
                         ThreadDangerAction.Delete -> "DELETE CHANNEL"
                         null -> "EDIT CHANNEL"
@@ -1675,11 +1685,16 @@ private fun ThreadSettingsModal(
                     when (status) {
                         ThreadSettingsModalStatus.Error ->
                                 when (dangerAction) {
+                                    ThreadDangerAction.Leave -> "Unable to leave channel."
                                     ThreadDangerAction.Delete -> "Unable to delete channel."
                                     else -> "Unable to archive channel."
                                 }
                         ThreadSettingsModalStatus.NoPermission ->
-                                "You do not have permission to edit this channel."
+                                when (dangerAction) {
+                                    ThreadDangerAction.Leave ->
+                                            "You do not have permission to leave this channel."
+                                    else -> "You do not have permission to edit this channel."
+                                }
                         else -> null
                     },
             secondaryAction =
@@ -1698,6 +1713,15 @@ private fun ThreadSettingsModal(
                     ),
             primaryAction =
                     when (dangerAction) {
+                        ThreadDangerAction.Leave ->
+                                SlockModalAction(
+                                        text = if (deleting) "Leaving" else "Leave Channel",
+                                        onClick = onLeaveChannel,
+                                        style = SlockModalActionStyle.Warning,
+                                        enabled = enabled,
+                                        loading = deleting,
+                                        icon = SlockIcons.LogOut
+                                )
                         ThreadDangerAction.Archive ->
                                 SlockModalAction(
                                         text = if (archiving) "Archiving" else "Archive Channel",
@@ -1727,6 +1751,16 @@ private fun ThreadSettingsModal(
             dangerActions =
                     if (dangerAction == null) {
                         listOf(
+                                SlockModalAction(
+                                        text = "Leave Channel",
+                                        onClick = {
+                                            confirmationName = ""
+                                            confirmingAction = ThreadDangerAction.Leave
+                                        },
+                                        style = SlockModalActionStyle.Warning,
+                                        enabled = enabled,
+                                        icon = SlockIcons.LogOut
+                                ),
                                 SlockModalAction(
                                         text = "Archive Channel",
                                         onClick = {
@@ -1812,32 +1846,51 @@ private fun ThreadDangerConfirmationContent(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
-        Text(
-                text =
-                        when (action) {
-                            ThreadDangerAction.Archive ->
-                                    "Archive #$channelName? Members keep read access and history, but writes will be frozen and the channel will be hidden from sidebars."
-                            ThreadDangerAction.Delete ->
-                                    "Delete #$channelName? This permanently removes the channel and its messages."
-                        },
-                style = SlockType.Body,
-                color = SlockColor.TextBlack
-        )
-        Text(
-                text = "Type $channelName to confirm.",
-                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
-                color = SlockColor.TextMutedGray
-        )
-        SlockModalTextField(
-                value = confirmationName,
-                onValueChange = onConfirmationNameChange,
-                label = "Channel name",
-                placeholder = channelName,
-                required = true,
-                enabled = enabled,
-                isError = isError,
-                errorText = if (isError) "Channel name does not match." else null
-        )
+        when (action) {
+            ThreadDangerAction.Leave -> {
+                Text(
+                        text =
+                                "Leave #$channelName? You will be removed from this channel, but the channel itself will remain.",
+                        style = SlockType.Body,
+                        color = SlockColor.TextBlack
+                )
+                Text(
+                        text = "You can rejoin later if your permissions still allow it.",
+                        style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                        color = SlockColor.TextMutedGray
+                )
+            }
+            ThreadDangerAction.Archive,
+            ThreadDangerAction.Delete -> {
+                Text(
+                        text =
+                                when (action) {
+                                    ThreadDangerAction.Archive ->
+                                            "Archive #$channelName? Members keep read access and history, but writes will be frozen and the channel will be hidden from sidebars."
+                                    ThreadDangerAction.Delete ->
+                                            "Delete #$channelName? This permanently removes the channel and its messages."
+                                    ThreadDangerAction.Leave -> ""
+                                },
+                        style = SlockType.Body,
+                        color = SlockColor.TextBlack
+                )
+                Text(
+                        text = "Type $channelName to confirm.",
+                        style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                        color = SlockColor.TextMutedGray
+                )
+                SlockModalTextField(
+                        value = confirmationName,
+                        onValueChange = onConfirmationNameChange,
+                        label = "Channel name",
+                        placeholder = channelName,
+                        required = true,
+                        enabled = enabled,
+                        isError = isError,
+                        errorText = if (isError) "Channel name does not match." else null
+                )
+            }
+        }
     }
 }
 
@@ -2801,6 +2854,7 @@ private fun ThreadMessageList(
         onOpenMessageThread: (Message) -> Unit,
         onOpenMemberProfile: (MemberProfile) -> Unit,
         onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
+        onOpenSlockWebLink: (String) -> Boolean,
         onOpenTask: (TaskSummary) -> Unit,
         onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
         onSaveMessage: (Message) -> Unit,
@@ -3253,6 +3307,7 @@ private fun ThreadMessageList(
                                                                         onTaskStatusChange = onTaskStatusChange,
                                                                         onSaveMessage = onSaveMessage,
                                                                         onOpenMarkdownTag = onOpenMarkdownTag,
+                                                                        onOpenSlockWebLink = onOpenSlockWebLink,
                                                                         resolveMemberName = resolveMemberName
                                                         )
                                                 }
@@ -3426,6 +3481,7 @@ internal fun Message.threadItemHeightSignature(highlighted: Boolean): Int =
                         author.displayName,
                         author.handle,
                         author.kind,
+                        author.description.orEmpty(),
                         author.roleDescription.orEmpty(),
                         author.avatar?.wireValue.orEmpty(),
                         author.agentStatus,
@@ -3831,6 +3887,7 @@ fun ThreadMessageItem(
         onShareMessage: (Message) -> Unit = {},
         onCopyMessageLink: (Message) -> Unit = {},
         onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit = {},
+        onOpenSlockWebLink: (String) -> Boolean = { false },
         resolveMemberName: (MemberId) -> String? = { null }
 ) {
     val context = LocalContext.current
@@ -3868,9 +3925,11 @@ fun ThreadMessageItem(
             isCurrentUserMessage && myMessageAlignment == MyMessageAlignmentPreference.Right
     val messageMaxWidthFraction = if (alignCurrentUserRight) 0.82f else 1f
     val bodyFillWidth = !alignCurrentUserRight || !message.body.isPlainSingleLineMessage()
+    val hasFooterMeta = message.task != null || message.replyCount > 0
     val authorDescription =
-            message.author.roleDescription?.trim()?.takeIf { it.isNotBlank() }
-                    ?: message.author.kind.name.lowercase()
+            message.author.description
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
     Row(
             modifier =
                     modifier.fillMaxWidth()
@@ -3948,16 +4007,18 @@ fun ThreadMessageItem(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.widthIn(max = 220.dp)
                 )
-                Text(
-                        text = authorDescription,
-                        style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier =
-                                Modifier.weight(1f)
-                                        .testTag(THREAD_MESSAGE_HEADER_DESCRIPTION_TAG)
-                )
+                if (authorDescription != null) {
+                    Text(
+                            text = authorDescription,
+                            style = SlockType.Caption,
+                            color = SlockColor.TextMutedGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier =
+                                    Modifier.weight(1f)
+                                            .testTag(THREAD_MESSAGE_HEADER_DESCRIPTION_TAG)
+                    )
+                }
                 if (message.timestampLabel.isNotBlank()) {
                     Text(
                             text = message.timestampLabel.toThreadTimestampLabel(),
@@ -3999,6 +4060,7 @@ fun ThreadMessageItem(
                             body = message.body,
                             textAlign = if (alignCurrentUserRight) TextAlign.End else TextAlign.Start,
                             onTagClick = onOpenMarkdownTag,
+                            onOpenSlockWebLink = onOpenSlockWebLink,
                             onInteractiveBoundsChanged = { bounds ->
                                 messageBodyInteractiveAreaBounds = bounds
                             }
@@ -4022,7 +4084,7 @@ fun ThreadMessageItem(
             } else if (messageAttachmentInteractiveAreaBounds.isNotEmpty()) {
                 messageAttachmentInteractiveAreaBounds = emptyList()
             }
-            if (message.task != null || message.replyCount > 0) {
+                        if (hasFooterMeta) {
                 ThreadMessageFooterMeta(
                         message = message,
                         onTaskStatusChange = onTaskStatusChange,
@@ -4030,7 +4092,7 @@ fun ThreadMessageItem(
                         alignEnd = alignCurrentUserRight,
                         modifier =
                                 Modifier.messageContentWidth(messageMaxWidthFraction)
-                                        .padding(top = SlockSpacing.Xs)
+                                        .padding(top = ThreadMarkdownParagraphSpacing)
                                         .onGloballyPositioned { coordinates ->
                                             messageInteractiveAreaBounds =
                                                     listOf(coordinates.boundsInRoot())
@@ -4788,18 +4850,27 @@ private fun threadInlineTagPlaceholderWidthDp(
         } + ThreadInlineChipHorizontalPadding * 2 + iconWidth
 }
 
-private fun threadInlineChipPlaceholderHeightSp(density: Density) = with(density) {
-        (ThreadInlineChipTextStyle.lineHeight.toDp() + ThreadInlineChipVerticalPadding * 2).toSp()
-}
+// Slot height must equal body lineHeight EXACTLY (no sp<->dp round-trip), otherwise
+// fontScale / floating-point drift makes the slot slightly taller than the line box,
+// stretching the last line (white edge below) and shifting the chip off-center.
+private fun threadInlineChipPlaceholderHeightSp(@Suppress("UNUSED_PARAMETER") density: Density) =
+        ThreadMessageBodyTextStyle.lineHeight
 
 private val ThreadInlineChipHorizontalPadding = 10.dp
-private val ThreadInlineChipVerticalPadding = 3.dp
+private val ThreadInlineChipVerticalPaddingTop = 1.dp
+private val ThreadInlineChipVerticalPaddingBottom = 4.dp
+private val ThreadFooterChipVerticalPadding = 3.dp
 
 private val ThreadInlineChipTextStyle: TextStyle
         get() =
                         SlockType.Caption.copy(
                                         fontSize = 14.sp,
                                         lineHeight = 16.sp,
+                                        lineHeightStyle =
+                                                LineHeightStyle(
+                                                        alignment = LineHeightStyle.Alignment.Center,
+                                                        trim = LineHeightStyle.Trim.Both
+                                                ),
                                         platformStyle =
                                                 PlatformTextStyle(includeFontPadding = false)
                         )
@@ -4810,6 +4881,7 @@ private fun ThreadMarkdownBody(
         modifier: Modifier = Modifier,
         textAlign: TextAlign = TextAlign.Start,
         onTagClick: ((ThreadMarkdownTag) -> Unit)? = null,
+        onOpenSlockWebLink: (String) -> Boolean = { false },
         onInteractiveBoundsChanged: (List<Rect>) -> Unit = {}
 ) {
     val normalizedBody = remember(body) { body.normalizeThreadMarkdownBody() }
@@ -4818,6 +4890,7 @@ private fun ThreadMarkdownBody(
             textAlign = textAlign,
             modifier = modifier,
             onTagClick = onTagClick,
+            onOpenSlockWebLink = onOpenSlockWebLink,
             onInteractiveBoundsChanged = onInteractiveBoundsChanged
     )
 }
@@ -4828,6 +4901,7 @@ private fun ThreadOfficialMarkdown(
         textAlign: TextAlign = TextAlign.Start,
         modifier: Modifier = Modifier,
         onTagClick: ((ThreadMarkdownTag) -> Unit)? = null,
+        onOpenSlockWebLink: (String) -> Boolean = { false },
         onInteractiveBoundsChanged: (List<Rect>) -> Unit = {}
 ) {
     val markdownState = rememberMarkdownState(content = body, retainState = true)
@@ -4844,6 +4918,17 @@ private fun ThreadOfficialMarkdown(
         val highlightsBuilder = remember(isDarkTheme) {
                 Highlights.Builder().theme(SyntaxThemes.atom(darkMode = isDarkTheme))
         }
+    val fallbackUriHandler = LocalUriHandler.current
+    val uriHandler =
+            remember(fallbackUriHandler, onOpenSlockWebLink) {
+                object : UriHandler {
+                    override fun openUri(uri: String) {
+                        if (!onOpenSlockWebLink(uri)) {
+                            fallbackUriHandler.openUri(uri)
+                        }
+                    }
+                }
+            }
 
     LaunchedEffect(body, onTagClick != null) {
         inlineTagBounds.clear()
@@ -4910,19 +4995,30 @@ private fun ThreadOfficialMarkdown(
                                                     PlaceholderVerticalAlign.TextCenter
                                     )
                             ) {
-                                ThreadChip(
-                                        label = label,
-                                        color = threadMarkdownTagColor(tag.kind),
-                                        icon = null,
-                                        onClick = { onTagClick?.invoke(tag) },
-                                        modifier =
-                                                Modifier.onGloballyPositioned { coordinates ->
-                                                    inlineTagBounds[id] = coordinates.boundsInRoot()
-                                                    onInteractiveBoundsChanged(
-                                                            inlineTagBounds.values.toList()
-                                                    )
-                                                }
-                                )
+                                // Center the chip inside the slot at its intrinsic height so
+                                // CJK-tall lines (~21sp) don't stretch the chip background.
+                                Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                ) {
+                                    ThreadChip(
+                                            label = label,
+                                            color = threadMarkdownTagColor(tag.kind),
+                                            icon = null,
+                                            onClick = { onTagClick?.invoke(tag) },
+                                            verticalPaddingTop = ThreadInlineChipVerticalPaddingTop,
+                                            verticalPaddingBottom =
+                                                    ThreadInlineChipVerticalPaddingBottom,
+                                            modifier =
+                                                    Modifier.onGloballyPositioned { coordinates ->
+                                                        inlineTagBounds[id] =
+                                                                coordinates.boundsInRoot()
+                                                        onInteractiveBoundsChanged(
+                                                                inlineTagBounds.values.toList()
+                                                        )
+                                                    }
+                                    )
+                                }
                             }
                         }
                         val codeContent = inlineCodeById.mapValues { (_, match) ->
@@ -4939,7 +5035,12 @@ private fun ThreadOfficialMarkdown(
                                             placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter
                                     )
                             ) {
-                                ThreadInlineCodeChip(match.code)
+                                Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                ) {
+                                    ThreadInlineCodeChip(match.code)
+                                }
                             }
                         }
                         tagContent + codeContent
@@ -4979,87 +5080,94 @@ private fun ThreadOfficialMarkdown(
                         MarkdownParagraph(
                                 content = it.content,
                                 node = it.node,
-                                modifier = Modifier.padding(bottom = ThreadMarkdownParagraphSpacing),
+                                                                modifier = threadMarkdownParagraphModifier(it.node),
                                 style = it.typography.paragraph.copy(textAlign = textAlign)
                         )
                     },
                     checkbox = { MarkdownCheckBox(it.content, it.node, it.typography.text) }
             )
 
-    Markdown(
-            markdownState = markdownState,
-            colors =
-                    markdownColor(
-                            text = SlockColor.TextBlack,
-                            codeBackground = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f),
-                            inlineCodeBackground = SlockColor.BrandYellow.copy(alpha = 0.4f)
-                    ),
-            typography =
-                    markdownTypography(
-                            text = ThreadMessageBodyTextStyle.copy(textAlign = textAlign),
-                            paragraph = ThreadMessageBodyTextStyle.copy(textAlign = textAlign),
-                            h1 =
-                                    ThreadMessageBodyTextStyle.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 20.sp,
-                                            lineHeight = 26.sp,
-                                            textAlign = textAlign
-                                    ),
-                            h2 =
-                                    ThreadMessageBodyTextStyle.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 18.sp,
-                                            lineHeight = 24.sp,
-                                            textAlign = textAlign
-                                    ),
-                            h3 =
-                                    ThreadMessageBodyTextStyle.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 17.sp,
-                                            lineHeight = 23.sp,
-                                            textAlign = textAlign
-                                    ),
-                            h4 =
-                                    ThreadMessageBodyTextStyle.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 16.sp,
-                                            lineHeight = 22.sp,
-                                            textAlign = textAlign
-                                    ),
-                            h5 =
-                                    ThreadMessageBodyTextStyle.copy(
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 15.sp,
-                                            lineHeight = 21.sp,
-                                            textAlign = textAlign
-                                    ),
-                            h6 =
-                                    ThreadMessageBodyTextStyle.copy(
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 15.sp,
-                                            lineHeight = 21.sp,
-                                            textAlign = textAlign
-                                    ),
-                            code =
-                                    SlockType.Caption.copy(
-                                            fontFamily = FontFamily.Monospace,
-                                            lineHeight = 18.sp
-                                    ),
-                            inlineCode =
-                                    ThreadMessageBodyTextStyle.copy(
-                                            fontFamily = FontFamily.Monospace,
-                                            textAlign = textAlign
-                                    )
-                    ),
-            imageTransformer = Coil3ImageTransformerImpl,
-            annotator = annotator,
-            inlineContent = inlineContent,
-            components = components,
-            modifier = modifier.fillMaxWidth()
-    )
+    CompositionLocalProvider(LocalUriHandler provides uriHandler) {
+        Markdown(
+                markdownState = markdownState,
+                colors =
+                        markdownColor(
+                                text = SlockColor.TextBlack,
+                                codeBackground = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f),
+                                inlineCodeBackground = SlockColor.BrandYellow.copy(alpha = 0.4f)
+                        ),
+                typography =
+                        markdownTypography(
+                                text = ThreadMessageBodyTextStyle.copy(textAlign = textAlign),
+                                paragraph = ThreadMessageBodyTextStyle.copy(textAlign = textAlign),
+                                h1 =
+                                        ThreadMessageBodyTextStyle.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 20.sp,
+                                                lineHeight = 26.sp,
+                                                textAlign = textAlign
+                                        ),
+                                h2 =
+                                        ThreadMessageBodyTextStyle.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 18.sp,
+                                                lineHeight = 24.sp,
+                                                textAlign = textAlign
+                                        ),
+                                h3 =
+                                        ThreadMessageBodyTextStyle.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 17.sp,
+                                                lineHeight = 23.sp,
+                                                textAlign = textAlign
+                                        ),
+                                h4 =
+                                        ThreadMessageBodyTextStyle.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 16.sp,
+                                                lineHeight = 22.sp,
+                                                textAlign = textAlign
+                                        ),
+                                h5 =
+                                        ThreadMessageBodyTextStyle.copy(
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 15.sp,
+                                                lineHeight = 21.sp,
+                                                textAlign = textAlign
+                                        ),
+                                h6 =
+                                        ThreadMessageBodyTextStyle.copy(
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 15.sp,
+                                                lineHeight = 21.sp,
+                                                textAlign = textAlign
+                                        ),
+                                code =
+                                        SlockType.Caption.copy(
+                                                fontFamily = FontFamily.Monospace,
+                                                lineHeight = 18.sp
+                                        ),
+                                inlineCode =
+                                        ThreadMessageBodyTextStyle.copy(
+                                                fontFamily = FontFamily.Monospace,
+                                                textAlign = textAlign
+                                        )
+                        ),
+                imageTransformer = Coil3ImageTransformerImpl,
+                annotator = annotator,
+                inlineContent = inlineContent,
+                components = components,
+                modifier = modifier.fillMaxWidth()
+        )
+    }
 }
 
 private val ThreadMarkdownParagraphSpacing = 8.dp
+
+private fun threadMarkdownParagraphModifier(node: ASTNode): Modifier {
+        val isLastBlock = node.parent?.children?.lastOrNull() == node
+        return if (isLastBlock) Modifier else Modifier.padding(bottom = ThreadMarkdownParagraphSpacing)
+}
 
 @Composable
 private fun ThreadMarkdownCodeBlock(
@@ -5103,7 +5211,7 @@ private fun ThreadMarkdownCodeBlock(
                     color = SlockColor.TextMutedGray,
                     maxLines = 1
             )
-            CompactIconButton(iconRes = R.drawable.lucide_copy, contentDescription = "Copy code") {
+            ThreadMarkdownCopyButton {
                 clipboard.setText(AnnotatedString(code))
             }
         }
@@ -5113,6 +5221,23 @@ private fun ThreadMarkdownCodeBlock(
                 style = style,
                 highlightsBuilder = highlightsBuilder,
                 showHeader = false
+        )
+    }
+}
+
+@Composable
+private fun ThreadMarkdownCopyButton(onClick: () -> Unit) {
+    Box(
+            modifier =
+                    Modifier.size(28.dp)
+                            .clickable(role = Role.Button, onClick = onClick),
+            contentAlignment = Alignment.Center
+    ) {
+        Icon(
+                painter = painterResource(R.drawable.lucide_copy),
+                contentDescription = "Copy code",
+                tint = SlockColor.TextBlack,
+                modifier = Modifier.size(16.dp)
         )
     }
 }
@@ -5145,8 +5270,10 @@ private fun ThreadInlineCodeChip(code: String) {
                             .background(SlockColor.BrandYellow.copy(alpha = 0.4f))
                             .border(SlockStroke.Thin, SlockColor.BorderBlack)
                             .padding(
-                                    horizontal = ThreadInlineChipHorizontalPadding,
-                                    vertical = ThreadInlineChipVerticalPadding
+                                    start = ThreadInlineChipHorizontalPadding,
+                                    end = ThreadInlineChipHorizontalPadding,
+                                    top = ThreadInlineChipVerticalPaddingTop,
+                                    bottom = ThreadInlineChipVerticalPaddingBottom
                             ),
             contentAlignment = Alignment.CenterStart
     ) {
@@ -5332,6 +5459,8 @@ private fun ThreadChip(
         icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
         onClick: (() -> Unit)? = null,
         modifier: Modifier = Modifier,
+        verticalPaddingTop: Dp = ThreadFooterChipVerticalPadding,
+        verticalPaddingBottom: Dp = ThreadFooterChipVerticalPadding,
         maxLines: Int = 2,
         overflow: TextOverflow = TextOverflow.Clip
 ) {
@@ -5345,8 +5474,10 @@ private fun ThreadChip(
                             else Modifier
                     )
                     .padding(
-                            horizontal = ThreadInlineChipHorizontalPadding,
-                            vertical = ThreadInlineChipVerticalPadding
+                            start = ThreadInlineChipHorizontalPadding,
+                            end = ThreadInlineChipHorizontalPadding,
+                            top = verticalPaddingTop,
+                            bottom = verticalPaddingBottom
                     )
     Row(
             modifier = chipModifier,
@@ -6666,7 +6797,7 @@ private fun ThreadInlineTagsPreview() {
                                                 displayName = "Artin",
                                                 handle = "artin",
                                                 kind = MemberKind.Human,
-                                                roleDescription = "Owner"
+                                                description = "Owner"
                                         ),
                                 timestampLabel = "Now",
                                 body =
@@ -6693,7 +6824,8 @@ private fun ThreadMessageMarkdownPreview() {
                                                 displayName = "Android Developer",
                                                 handle = "android-developer",
                                                 kind = MemberKind.Agent,
-                                                roleDescription = "Agent"
+                                                description = "Markdown renderer",
+                                                roleDescription = "agent"
                                         ),
                                 timestampLabel = "Now",
                                 body =
@@ -6733,10 +6865,11 @@ private fun ThreadSharedMarkdownSamplesPreview() {
                                                                                 author =
                                                                                                 MemberProfile(
                                                                                                                 id = MemberId("shared-markdown-preview-author"),
-                                                                                                                displayName = sample.title,
-                                                                                                                handle = "markdown-preview",
-                                                                                                                kind = MemberKind.Agent,
-                                                                                                                roleDescription = sample.description
+	                                                                                                                displayName = sample.title,
+	                                                                                                                handle = "markdown-preview",
+	                                                                                                                kind = MemberKind.Agent,
+	                                                                                                                description = sample.description,
+                                                                                                                    roleDescription = "agent"
                                                                                                 ),
                                                                                 timestampLabel = "Preview",
                                                                                 body = sample.body,
@@ -6765,7 +6898,7 @@ private fun ThreadMessageRightAlignedPreview() {
                                                     displayName = "Artin With A Long Display Name",
                                                     handle = "artin",
                                                     kind = MemberKind.Human,
-                                                    roleDescription = "Owner"
+                                                    description = "Owner"
                                             ),
                                     timestampLabel = "2026-05-07T11:18:00Z",
                                     body = "Short right-aligned note.",

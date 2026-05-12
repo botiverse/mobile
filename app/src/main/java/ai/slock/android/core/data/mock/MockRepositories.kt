@@ -472,7 +472,7 @@ class MockMemberRepository(
                 ?: MockSeedData.memberSnapshot.members.first { it.kind == MemberKind.Agent }
             existing.copy(
                 displayName = request.displayName.trim(),
-                roleDescription = request.description?.trim()?.takeIf { it.isNotBlank() }
+                description = request.description?.trim()?.takeIf { it.isNotBlank() }
             )
         }
 

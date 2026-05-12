@@ -46,6 +46,7 @@ CREATE TABLE local_message (
   author_display_name TEXT NOT NULL,
   author_handle TEXT NOT NULL,
   author_kind TEXT NOT NULL,
+  author_description TEXT,
   timestamp_label TEXT NOT NULL,
   body TEXT NOT NULL,
   message_type TEXT NOT NULL,
@@ -109,6 +110,7 @@ CREATE TABLE local_member_snapshot (
   gravatar_hash TEXT,
   avatar_label TEXT,
   presence TEXT,
+  description TEXT,
   role_description TEXT,
   last_synced_at_ms INTEGER NOT NULL DEFAULT 0
 );
@@ -265,6 +267,7 @@ INSERT OR REPLACE INTO local_message(
   author_display_name,
   author_handle,
   author_kind,
+  author_description,
   timestamp_label,
   body,
   message_type,
@@ -275,7 +278,7 @@ INSERT OR REPLACE INTO local_message(
   parent_message_id,
   updated_at_label,
   last_synced_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteAttachmentsForMessage:
 DELETE FROM local_attachment
@@ -353,9 +356,10 @@ INSERT OR REPLACE INTO local_member_snapshot(
   gravatar_hash,
   avatar_label,
   presence,
+  description,
   role_description,
   last_synced_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectMemberSnapshot:
 SELECT *

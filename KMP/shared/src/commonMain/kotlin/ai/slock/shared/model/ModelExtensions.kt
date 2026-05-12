@@ -168,6 +168,7 @@ fun AgentProfile.toMemberProfile(): MemberProfile =
         displayName = displayName,
         handle = handle,
         kind = MemberKind.Agent,
+        description = description,
         roleDescription = roleDescription,
         avatarUrl = avatarUrl,
         avatar = avatar,

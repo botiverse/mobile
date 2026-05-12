@@ -46,7 +46,7 @@ data class SlockMemberPickerItem(
 )
 
 fun MemberProfile.toSlockMemberPickerItem(
-    role: String = roleDescription ?: when (kind) {
+    role: String = description ?: roleDescription ?: when (kind) {
         MemberKind.Agent -> "Agent"
         MemberKind.Human -> "Member"
         MemberKind.System -> "System"

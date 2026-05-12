@@ -49,7 +49,7 @@ data class AuthUser(
             displayName = bestDisplayName,
             handle = email,
             kind = MemberKind.Human,
-            roleDescription = description,
+            description = description,
             avatarUrl = avatarUrl,
             gravatarHash = gravatarHash,
             avatar = avatarUrl?.let { ai.slock.android.core.model.AvatarReference.fromWireValue(it) }

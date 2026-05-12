@@ -180,6 +180,65 @@ class SlockLocalWriteThroughTest {
     }
 
     @Test
+    fun writeHomeResultPreservesUnreadWhenRefreshOmitsUnreadFields() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 42L })
+        val server = ServerSummary(id = ServerId("server-1"), name = "Slock")
+        val currentMember = memberProfile("user-1", MemberKind.Human)
+        val unreadChannel =
+            conversation("channel-1").copy(
+                name = "all",
+                unreadCount = 3,
+                unreadCountKnown = true,
+                mentionCount = 1,
+                mentionCountKnown = true,
+                firstUnreadMessageId = MessageId("message-1")
+            )
+        writer.writeHomeResult(
+            DataResult.Content(
+                HomeSnapshot(
+                    server = server,
+                    currentMember = currentMember,
+                    channels = listOf(unreadChannel),
+                    directMessages = emptyList(),
+                    unreadTotal = 3
+                )
+            ),
+            source = "seed_home"
+        )
+
+        writer.writeHomeResult(
+            DataResult.Content(
+                HomeSnapshot(
+                    server = server,
+                    currentMember = currentMember,
+                    channels =
+                        listOf(
+                            conversation("channel-1").copy(
+                                name = "all refreshed without unread fields"
+                            )
+                        ),
+                    directMessages = emptyList(),
+                    unreadTotal = 0
+                )
+            ),
+            source = "refresh_home"
+        )
+
+        val cached =
+            writer.readHomeSnapshot(
+                serverId = ServerId("server-1"),
+                serverFallback = server,
+                currentMemberFallback = currentMember
+            )
+
+        assertEquals(3, cached?.channels?.single()?.unreadCount)
+        assertEquals(1, cached?.channels?.single()?.mentionCount)
+        assertEquals("message-1", cached?.channels?.single()?.firstUnreadMessageId?.value)
+        assertEquals(3, cached?.unreadTotal)
+    }
+
+    @Test
     fun clearConversationUnreadUpdatesHomeCache() {
         val store = createInMemoryStore()
         val writer = SlockLocalWriteThrough(store, clock = { 45L })
@@ -404,6 +463,100 @@ class SlockLocalWriteThroughTest {
         assertEquals(382, content.data.tasks.single().taskNumber)
         assertEquals(true, content.data.canLoadMoreBefore)
         assertEquals(false, content.data.canLoadMoreAfter)
+    }
+
+    @Test
+    fun writeThreadResultHydratesReplyThreadOriginFromFallbackParentMessage() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 44L })
+        val replyThreadId = ThreadId("reply-1")
+        val parentMessage =
+            message("parent-1", seq = 1).copy(
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
+                threadChannelId = ChannelId("reply-1")
+            )
+        val replyMessage =
+            message("message-1", seq = 2).copy(
+                threadId = replyThreadId,
+                channelId = ChannelId("reply-1")
+            )
+
+        writer.writeThreadResult(
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation = conversation("reply-1").copy(name = "reply-1"),
+                    messages = listOf(replyMessage)
+                )
+            ),
+            source = "reply_thread",
+            fallbackThreadId = replyThreadId,
+            fallbackParentMessage = parentMessage
+        )
+
+        val cached = store.getThreadTimeline(replyThreadId)
+
+        assertEquals("parent-1", cached?.parentMessage?.id?.value)
+        assertEquals("channel-1:parent-1", cached?.conversation?.threadId?.value)
+        assertEquals("channel-1", cached?.conversation?.thread?.parentChannelId?.value)
+        assertEquals("reply-1", cached?.conversation?.thread?.streamChannelId?.value)
+    }
+
+    @Test
+    fun writeThreadResultPreservesReplyThreadOriginAcrossRefreshes() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 44L })
+        val replyThreadId = ThreadId("reply-1")
+        val parentMessage =
+            message("parent-1", seq = 1).copy(
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
+                threadChannelId = ChannelId("reply-1")
+            )
+
+        writer.writeThreadResult(
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation = conversation("reply-1").copy(name = "reply-1"),
+                    messages =
+                        listOf(
+                            message("message-1", seq = 2).copy(
+                                threadId = replyThreadId,
+                                channelId = ChannelId("reply-1")
+                            )
+                        )
+                )
+            ),
+            source = "seed_reply_thread",
+            fallbackThreadId = replyThreadId,
+            fallbackParentMessage = parentMessage
+        )
+
+        writer.writeThreadResult(
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation = conversation("reply-1").copy(name = "reply-1 updated"),
+                    messages =
+                        listOf(
+                            message("message-2", seq = 3).copy(
+                                threadId = replyThreadId,
+                                channelId = ChannelId("reply-1")
+                            )
+                        )
+                )
+            ),
+            source = "refresh_reply_thread",
+            fallbackThreadId = replyThreadId
+        )
+
+        val cached = store.getThreadTimeline(replyThreadId)
+
+        assertEquals("parent-1", cached?.parentMessage?.id?.value)
+        assertEquals("channel-1:parent-1", cached?.conversation?.threadId?.value)
+        assertEquals(
+            listOf("message-1", "message-2"),
+            cached?.messages?.map { it.id.value }
+        )
     }
 
     @Test

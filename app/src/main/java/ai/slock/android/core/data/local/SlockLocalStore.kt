@@ -143,7 +143,10 @@ class SqlDelightSlockLocalStore(
         serverId: ServerId?
     ) {
         val storedConversation = getConversation(conversation.threadId)
-        val conversationToStore = conversation.withTitleFallback(storedConversation)
+        val conversationToStore =
+            conversation
+                .withTitleFallback(storedConversation)
+                .withUnreadFallback(storedConversation)
         val parentChannelId = conversationToStore.thread?.parentChannelId
             ?: conversationToStore.threadId.parentChannelIdOrNull()
         val parentMessageId = conversationToStore.thread?.parentMessageId
@@ -304,6 +307,7 @@ class SqlDelightSlockLocalStore(
                 author_display_name = message.author.displayName,
                 author_handle = message.author.handle,
                 author_kind = message.author.kind.wireValue,
+                author_description = message.author.description,
                 timestamp_label = message.timestampLabel,
                 body = message.body,
                 message_type = message.messageType.wireValue,
@@ -437,6 +441,7 @@ class SqlDelightSlockLocalStore(
             gravatar_hash = member.gravatarHash,
             avatar_label = member.avatarLabel,
             presence = member.presence.wireValue,
+            description = member.description,
             role_description = member.roleDescription,
             last_synced_at_ms = syncedAtMs
         )
@@ -560,7 +565,9 @@ private fun Local_conversation.toConversationSummary(): ConversationSummary =
         subtitle = subtitle,
         avatarUrl = avatar_url,
         unreadCount = unread_count.toInt(),
+        unreadCountKnown = true,
         mentionCount = mention_count.toInt(),
+        mentionCountKnown = true,
         lastMessageId = last_message_id?.let(::MessageId),
         firstUnreadMessageId = first_unread_message_id?.let(::MessageId),
         lastMessagePreview = last_message_preview,
@@ -599,6 +606,34 @@ private fun ConversationSummary.homeConversationKey(): String =
         else -> channelId?.value ?: threadId.value
     }
 
+private fun ConversationSummary.withUnreadFallback(
+    storedConversation: ConversationSummary?
+): ConversationSummary {
+    if (storedConversation == null) return this
+    return copy(
+        unreadCount =
+            when {
+                unreadCountKnown -> unreadCount
+                storedConversation.unreadCountKnown -> storedConversation.unreadCount
+                else -> unreadCount
+            },
+        unreadCountKnown = unreadCountKnown || storedConversation.unreadCountKnown,
+        mentionCount =
+            when {
+                mentionCountKnown -> mentionCount
+                storedConversation.mentionCountKnown -> storedConversation.mentionCount
+                else -> mentionCount
+            },
+        mentionCountKnown = mentionCountKnown || storedConversation.mentionCountKnown,
+        firstUnreadMessageId =
+            if (unreadCountKnown && unreadCount <= 0) {
+                null
+            } else {
+                firstUnreadMessageId ?: storedConversation.firstUnreadMessageId
+            }
+    )
+}
+
 private fun String?.toPresenceOrNull(): Presence? =
     enumValues<Presence>().firstOrNull { it.name == this }
 
@@ -619,7 +654,8 @@ private fun Local_message.toMessage(
             id = MemberId(author_id),
             displayName = author_display_name,
             handle = author_handle,
-            kind = author_kind.toMemberKind()
+            kind = author_kind.toMemberKind(),
+            description = author_description
         ),
         timestampLabel = timestamp_label,
         body = body,
@@ -676,6 +712,7 @@ private fun Local_member_snapshot.toMemberProfile(): MemberProfile =
         displayName = display_name,
         handle = handle,
         kind = kind.toMemberKind(),
+        description = description,
         roleDescription = role_description,
         avatarUrl = avatar_url,
         gravatarHash = gravatar_hash,

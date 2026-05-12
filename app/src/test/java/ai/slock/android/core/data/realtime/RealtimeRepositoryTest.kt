@@ -534,6 +534,38 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun mapperUsesSenderDescriptionFromMessageContract() {
+        val mapper = RealtimeEventMapper()
+        val event = mapper.map(
+            RealtimeSocketEvents.MessageNew,
+            JSONObject(
+                """
+                {
+                  "message": {
+                    "id": "message-agent-description",
+                    "threadId": "thread-agent",
+                    "channelId": "channel-agent",
+                    "content": "Agent payload",
+                    "senderType": "agent",
+                    "senderId": "agent-1",
+                    "senderName": "API Integration",
+                    "senderDescription": "Data contracts",
+                    "roleDescription": "agent"
+                  }
+                }
+                """.trimIndent()
+            )
+        )
+
+        assertTrue(event is MessageNew)
+        val message = (event as MessageNew).message
+        assertEquals("API Integration", message.author.displayName)
+        assertEquals("Data contracts", message.author.description)
+        assertEquals("agent", message.author.roleDescription)
+        assertEquals(MemberKind.Agent, message.author.kind)
+    }
+
+    @Test
     fun mapperPreservesSocketIoSystemMessageMetadata() {
         val mapper = RealtimeEventMapper()
         val event = mapper.map(

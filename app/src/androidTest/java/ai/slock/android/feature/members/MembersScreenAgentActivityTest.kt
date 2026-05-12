@@ -54,7 +54,8 @@ class MembersScreenAgentActivityTest {
             displayName = "Wide Agent",
             handle = "@wide-agent",
             kind = MemberKind.Agent,
-            roleDescription = "Checks wide layout",
+            description = "Checks wide layout",
+            roleDescription = "agent",
             presence = Presence.Active,
             agentStatus = AgentStatus.Online
         )
@@ -63,7 +64,7 @@ class MembersScreenAgentActivityTest {
             displayName = "Wide Human",
             handle = "@wide-human",
             kind = MemberKind.Human,
-            roleDescription = "Designer",
+            description = "Designer",
             presence = Presence.Away
         )
         val openedMembers = mutableListOf<String>()
@@ -122,7 +123,8 @@ class MembersScreenAgentActivityTest {
             displayName = "Activity Agent",
             handle = "@activity-agent",
             kind = MemberKind.Agent,
-            roleDescription = "Runs activity tests",
+            description = "Runs activity tests",
+            roleDescription = "agent",
             presence = Presence.Active,
             agentStatus = AgentStatus.Thinking
         )
@@ -255,7 +257,8 @@ class MembersScreenAgentActivityTest {
             displayName = "Single Identity Agent",
             handle = "@single-identity",
             kind = MemberKind.Agent,
-            roleDescription = "Keeps one header identity",
+            description = "Keeps one header identity",
+            roleDescription = "agent",
             presence = Presence.Active,
             agentStatus = AgentStatus.Online
         )
@@ -293,7 +296,8 @@ class MembersScreenAgentActivityTest {
                 displayName = "Editable Agent",
                 handle = "@editable-agent",
                 kind = MemberKind.Agent,
-                roleDescription = "Old description",
+                description = "Old description",
+                roleDescription = "agent",
                 presence = Presence.Active,
                 agentStatus = AgentStatus.Online
             )
@@ -318,7 +322,7 @@ class MembersScreenAgentActivityTest {
                         saveCalls += displayName to description
                         agentState.value = agentState.value.copy(
                             displayName = displayName,
-                            roleDescription = description
+                            description = description
                         )
                         saveState.value = AgentProfileSaveState.Saved
                     }

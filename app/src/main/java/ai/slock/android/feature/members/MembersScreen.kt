@@ -834,12 +834,12 @@ private fun MemberProfileDetail(
 ) {
     var displayName by rememberSaveable(member.id.value) { mutableStateOf(member.displayName) }
     var description by rememberSaveable(member.id.value) {
-        mutableStateOf(member.roleDescription.orEmpty())
+        mutableStateOf(member.description.orEmpty())
     }
     var editing by rememberSaveable(member.id.value) { mutableStateOf(false) }
-    LaunchedEffect(member.displayName, member.roleDescription) {
+    LaunchedEffect(member.displayName, member.description) {
         displayName = member.displayName
-        description = member.roleDescription.orEmpty()
+        description = member.description.orEmpty()
     }
     LaunchedEffect(saveState) {
         if (saveState == AgentProfileSaveState.Saved) {
@@ -850,7 +850,7 @@ private fun MemberProfileDetail(
     val trimmedDescription = description.trim()
     val hasChanges =
         trimmedDisplayName != member.displayName.trim() ||
-            trimmedDescription != member.roleDescription.orEmpty().trim()
+            trimmedDescription != member.description.orEmpty().trim()
     val isSaving = saveState is AgentProfileSaveState.Saving
     val canSave = trimmedDisplayName.isNotBlank() && hasChanges && !isSaving
     MemberDetailSection(title = "Profile") {
@@ -892,7 +892,7 @@ private fun MemberProfileDetail(
                         text = "Cancel",
                         onClick = {
                             displayName = member.displayName
-                            description = member.roleDescription.orEmpty()
+                            description = member.description.orEmpty()
                             editing = false
                         },
                         enabled = !isSaving,
@@ -913,7 +913,7 @@ private fun MemberProfileDetail(
                         MemberDetailLabeledValue("Display Name", member.displayName)
                         MemberDetailLabeledValue(
                             label = "Description",
-                            value = member.roleDescription.orEmpty().ifBlank { "No description" }
+                            value = member.description.orEmpty().ifBlank { "No description" }
                         )
                     }
                     SlockIconSquareButton(
@@ -921,7 +921,7 @@ private fun MemberProfileDetail(
                         contentDescription = "Edit agent profile",
                         onClick = {
                             displayName = member.displayName
-                            description = member.roleDescription.orEmpty()
+                            description = member.description.orEmpty()
                             editing = true
                         },
                         modifier = Modifier.size(38.dp)
@@ -1612,10 +1612,10 @@ private fun HumanMemberProfileDetail(member: MemberProfile) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                val roleDesc = member.roleDescription
-                if (!roleDesc.isNullOrBlank()) {
+                val description = member.description
+                if (!description.isNullOrBlank()) {
                     Text(
-                        text = roleDesc,
+                        text = description,
                         style = MembersDescriptionType,
                         color = SlockColor.TextBlack
                     )
@@ -1627,7 +1627,7 @@ private fun HumanMemberProfileDetail(member: MemberProfile) {
         Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
             MemberDetailLabeledValue("Display Name", member.displayName)
             MemberDetailLabeledValue("Handle", member.handle)
-            MemberDetailLabeledValue("Role", member.roleDescription ?: "No profile description")
+            MemberDetailLabeledValue("Description", member.description ?: "No profile description")
         }
     }
     MemberDetailSection(title = "Avatar") {
@@ -1908,7 +1908,7 @@ private fun AgentActivityEntry.activityTimelineKey(): String =
     id.ifBlank { "${type}:${timestamp.orEmpty()}:${body.orEmpty()}" }
 
 private val MemberProfile.inlineDescription: String
-    get() = roleDescription ?: handle
+    get() = description ?: handle
 
 private val membersPageSample = MembersUiState(
     loadState = ScreenLoadState.Content(
@@ -1920,7 +1920,8 @@ private val membersPageSample = MembersUiState(
                     displayName = "Cindy",
                     handle = "Onboarding Assistant",
                     kind = MemberKind.Agent,
-                    roleDescription = "Onboarding Assistant",
+                    description = "Onboarding Assistant",
+                    roleDescription = "agent",
                     avatarUrl = "pixel:heart",
                     avatarLabel = "C",
                     presence = Presence.Active
@@ -1930,7 +1931,8 @@ private val membersPageSample = MembersUiState(
                     displayName = "Product-UX-Designer",
                     handle = "负责把 @artin 的想法、截图和反馈整理成可执行的产品方案与交互设计",
                     kind = MemberKind.Agent,
-                    roleDescription = "负责把 @artin 的想法、截图...",
+                    description = "负责把 @artin 的想法、截图...",
+                    roleDescription = "agent",
                     avatarUrl = "random:product-ux-designer",
                     avatarLabel = "P",
                     presence = Presence.Away
@@ -1940,7 +1942,8 @@ private val membersPageSample = MembersUiState(
                     displayName = "Android-Developer",
                     handle = "负责在 ~/AndroidStudioProjects/Slock 中实现 Android app",
                     kind = MemberKind.Agent,
-                    roleDescription = "负责在 ~/AndroidStudioProjec...",
+                    description = "负责在 ~/AndroidStudioProjec...",
+                    roleDescription = "agent",
                     avatarUrl = "pixel:diamond",
                     avatarLabel = "A",
                     presence = Presence.Active
@@ -1950,7 +1953,8 @@ private val membersPageSample = MembersUiState(
                     displayName = "QA-Tester",
                     handle = "负责为 Android 多 agent 聊天 app 制定和执行测试",
                     kind = MemberKind.Agent,
-                    roleDescription = "负责为 Android 多 agent 聊天 app 制定和...",
+                    description = "负责为 Android 多 agent 聊天 app 制定和...",
+                    roleDescription = "agent",
                     avatarUrl = "pixel:star",
                     avatarLabel = "Q",
                     presence = Presence.Active
@@ -1960,7 +1964,8 @@ private val membersPageSample = MembersUiState(
                     displayName = "API-Integration-Developer",
                     handle = "负责 Slock Android 的数据与接口层开发",
                     kind = MemberKind.Agent,
-                    roleDescription = "负责 Slock Android 的...",
+                    description = "负责 Slock Android 的...",
+                    roleDescription = "agent",
                     avatarUrl = "random:api-integration-developer",
                     avatarLabel = "AI",
                     presence = Presence.Active
@@ -1970,7 +1975,8 @@ private val membersPageSample = MembersUiState(
                     displayName = "Android-App-Integrator",
                     handle = "负责 Slock Android 的真实 app 集成层",
                     kind = MemberKind.Agent,
-                    roleDescription = "负责 Slock Android 的真...",
+                    description = "负责 Slock Android 的真...",
+                    roleDescription = "agent",
                     avatarUrl = "pixel:robot",
                     avatarLabel = "AP",
                     presence = Presence.Away
@@ -1980,7 +1986,7 @@ private val membersPageSample = MembersUiState(
                     displayName = "artin (you)",
                     handle = "@artin",
                     kind = MemberKind.Human,
-                    roleDescription = null,
+                    description = null,
                     avatarUrl = "https://cdn.example.com/artin.png",
                     avatarLabel = "人",
                     presence = Presence.Offline
@@ -2014,7 +2020,8 @@ private fun MembersPageStatesPreview() {
                     displayName = "Very Long Agent Name With Mixed 中文 English",
                     handle = "A very long role line should ellipsis before the status dot",
                     kind = MemberKind.Agent,
-                    roleDescription = "Long role description with 中文 and English text that should truncate",
+                    description = "Long role description with 中文 and English text that should truncate",
+                    roleDescription = "agent",
                     avatarUrl = "random:long-agent",
                     avatarLabel = "L",
                     presence = Presence.Active

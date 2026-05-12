@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -658,6 +659,33 @@ class ThreadScreenPaginationTest {
 
         composeRule.runOnIdle {
             assertEquals(1, archiveClicks)
+        }
+    }
+
+    @Test
+    fun channelSettingsLeaveActionInvokesCallback() {
+        var leaveClicks = 0
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(messages = listOf(message(1)), canLoadMoreBefore = false)
+                        )
+                    ),
+                    onLeaveChannel = { leaveClicks += 1 }
+                )
+            }
+        }
+
+        composeRule.onAllNodesWithContentDescription("Leave").assertCountEquals(0)
+        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNodeWithText("Leave Channel").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Leave Channel").assertIsDisplayed().performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(1, leaveClicks)
         }
     }
 

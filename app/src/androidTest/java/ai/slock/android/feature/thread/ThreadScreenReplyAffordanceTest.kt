@@ -53,6 +53,8 @@ import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.ui.components.SlockMenuOverlayDefaults
 import ai.slock.android.ui.theme.SlockTheme
+import ai.slock.shared.markdown.ThreadMarkdownTag
+import ai.slock.shared.markdown.ThreadMarkdownTagKind
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -704,8 +706,9 @@ class ThreadScreenReplyAffordanceTest {
                             displayName = "Research Agent",
                             handle = "@research-agent",
                             kind = MemberKind.Agent,
-                            roleDescription =
+                            description =
                                 "Extremely long agent description that should never hide the author name or timestamp",
+                            roleDescription = "agent",
                             agentStatus = AgentStatus.Working
                         ),
                         timestampLabel = "2026-05-10T13:15:00+08:00"
@@ -730,6 +733,35 @@ class ThreadScreenReplyAffordanceTest {
         assertTrue(timeBounds.width > 0.dp)
         assertTrue(descriptionBounds.left >= nameBounds.right)
         assertTrue(timeBounds.left >= descriptionBounds.left)
+    }
+
+    @Test
+    fun roleDescriptionIsNotShownAsAuthorDescription() {
+        composeRule.setContent {
+            SlockTheme {
+                ThreadMessageItem(
+                    message = message(replyCount = 0).copy(
+                        author = MemberProfile(
+                            id = MemberId("agent-generic-description"),
+                            displayName = "Android Developer 2",
+                            handle = "@android-developer-2",
+                            kind = MemberKind.Agent,
+                            roleDescription = "agent",
+                            agentStatus = AgentStatus.Working
+                        ),
+                        timestampLabel = "2026-05-10T13:15:00+08:00"
+                    )
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Android Developer 2").assertIsDisplayed()
+        composeRule
+            .onNodeWithTag(THREAD_MESSAGE_HEADER_DESCRIPTION_TAG, useUnmergedTree = true)
+            .assertDoesNotExist()
+        composeRule
+            .onNodeWithTag(THREAD_MESSAGE_HEADER_TIME_TAG, useUnmergedTree = true)
+            .assertIsDisplayed()
     }
 
     @Test

@@ -35,6 +35,7 @@ import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.Response
@@ -913,6 +914,39 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
+    fun conversationRepositoryUsesSenderDescriptionFromMessageContract() {
+        val repository = RealConversationRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = FakeSlockApi(
+                channelMessagesJson = """
+                    {
+                      "messages": [
+                        {
+                          "id": "message-agent-description",
+                          "channelId": "channel-1",
+                          "content": "Uses real description",
+                          "agentId": "agent-2",
+                          "senderName": "Android Developer",
+                          "senderDescription": "负责 Android 客户端实现",
+                          "roleDescription": "agent"
+                        }
+                      ]
+                    }
+                """.trimIndent()
+            ),
+            warningLogger = {}
+        )
+
+        val result = runSuspend { repository.getThread(ThreadId("channel-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val message = (result as DataResult.Content).data.messages.single()
+        assertEquals("Android Developer", message.author.displayName)
+        assertEquals("负责 Android 客户端实现", message.author.description)
+        assertEquals("agent", message.author.roleDescription)
+    }
+
+    @Test
     fun conversationRepositoryMapsAuthorGravatarHash() {
         val repository = RealConversationRepository(
             store = InMemoryAuthSessionStore(sampleSession),
@@ -1561,10 +1595,11 @@ class RealSlockRepositoriesTest {
         assertTrue(result is DataResult.Content)
         val profile = (result as DataResult.Content).data
         assertEquals("Updated Agent", profile.displayName)
-        assertEquals("Updated description", profile.roleDescription)
+        assertEquals("Updated description", profile.description)
+        assertNull(profile.roleDescription)
         assertEquals(MemberKind.Agent, profile.kind)
         assertEquals(
-            """agent-9:{"name":"Updated Agent","displayName":"Updated Agent","description":"Updated description","roleDescription":"Updated description"}""",
+            """agent-9:{"name":"Updated Agent","displayName":"Updated Agent","description":"Updated description"}""",
             api.updatedAgents.single()
         )
     }

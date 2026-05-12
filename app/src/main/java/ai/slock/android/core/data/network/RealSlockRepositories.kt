@@ -813,8 +813,7 @@ class RealMemberRepository(
                             mapOf(
                                             "name" to displayName,
                                             "displayName" to displayName,
-                                            "description" to description,
-                                            "roleDescription" to description
+                                            "description" to description
                                     )
                                     .toJsonBody()
                     )
@@ -3084,6 +3083,7 @@ private fun JsonObject.toMemberProfile(): MemberProfile? {
             displayName = displayName,
             handle = memberHandle(displayName),
             kind = memberKind(),
+            description = memberDescription(),
             roleDescription = memberRoleDescription(),
             avatarUrl = avatarUrl,
             gravatarHash = gravatarHash,
@@ -3480,6 +3480,7 @@ private fun MemberProfile.withHumanProfile(profile: MemberProfile): MemberProfil
                             ?: displayName,
             handle = profile.handle.takeUnless { it.isBlank() || it == profile.id.value } ?: handle,
             kind = MemberKind.Human,
+            description = profile.description ?: description,
             roleDescription = profile.roleDescription ?: roleDescription,
             avatarUrl = mergedAvatarUrl,
             gravatarHash = mergedGravatarHash,
@@ -3540,8 +3541,12 @@ private fun JsonObject.memberHandle(displayName: String): String =
                 ?: nestedMemberObject()?.string("handle", "username", "email") ?: displayName
 
 private fun JsonObject.memberRoleDescription(): String? =
-        string("description", "roleDescription", "role")
-                ?: nestedMemberObject()?.string("description", "roleDescription", "role")
+        string("roleDescription", "role")
+                ?: nestedMemberObject()?.string("roleDescription", "role")
+
+private fun JsonObject.memberDescription(): String? =
+        string("description")
+                ?: nestedMemberObject()?.string("description")
 
 private fun JsonObject.memberAvatarUrl(): String? =
         avatarWireValue(
@@ -3815,7 +3820,8 @@ private fun JsonObject.toMessageAuthorProfile(): MemberProfile {
                     ?: nestedAuthor?.handle ?: displayName
     val isAgent =
             boolean("authorIsAgent", "senderIsAgent", "isAgent") == true ||
-                    string("authorKind", "senderKind", "kind", "type") == "agent" ||
+                    string("authorKind", "senderKind", "senderType", "kind", "type")
+                            ?.lowercase() == "agent" ||
                     string("agentId", "authorAgentId", "agentUserId") != null ||
                     nestedAuthor?.kind == MemberKind.Agent
     return MemberProfile(
@@ -3823,14 +3829,8 @@ private fun JsonObject.toMessageAuthorProfile(): MemberProfile {
             displayName = displayName,
             handle = handle,
             kind = if (isAgent) MemberKind.Agent else MemberKind.Human,
-            roleDescription =
-                    string(
-                            "authorDescription",
-                            "senderDescription",
-                            "agentDescription",
-                            "roleDescription"
-                    )
-                            ?: nestedAuthor?.roleDescription,
+            description = string("senderDescription") ?: nestedAuthor?.description,
+            roleDescription = string("roleDescription") ?: nestedAuthor?.roleDescription,
             avatarUrl =
                     avatarWireValue(
                             "authorAvatarUrl",

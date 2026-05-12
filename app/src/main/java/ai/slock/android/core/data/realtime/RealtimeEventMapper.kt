@@ -443,6 +443,7 @@ private fun JsonObject.toMemberProfile(): MemberProfile? {
         displayName = displayName,
         handle = memberHandle(displayName),
         kind = memberKind(),
+        description = memberDescription(),
         roleDescription = memberRoleDescription(),
         avatarUrl = memberAvatarUrl(),
         gravatarHash = memberGravatarHash(),
@@ -495,8 +496,12 @@ private fun JsonObject.memberHandle(displayName: String): String =
         ?: displayName
 
 private fun JsonObject.memberRoleDescription(): String? =
-    string("description", "roleDescription", "role")
-        ?: nestedMemberObject()?.string("description", "roleDescription", "role")
+    string("roleDescription", "role")
+        ?: nestedMemberObject()?.string("roleDescription", "role")
+
+private fun JsonObject.memberDescription(): String? =
+    string("description")
+        ?: nestedMemberObject()?.string("description")
 
 private fun JsonObject.memberAvatarUrl(): String? =
     avatarWireValue("avatarUrl", "avatar", "avatar_url", "imageUrl", "profileImageUrl", "profileAvatar")
@@ -574,7 +579,7 @@ private fun JsonObject.toMessageAuthorProfile(): MemberProfile {
         "email"
     ) ?: nestedAuthor?.handle ?: displayName
     val isAgent = boolean("authorIsAgent", "senderIsAgent", "isAgent") == true ||
-        string("authorKind", "senderKind", "kind", "type") == "agent" ||
+        string("authorKind", "senderKind", "senderType", "kind", "type")?.lowercase() == "agent" ||
         string("agentId", "authorAgentId", "agentUserId") != null ||
         nestedAuthor?.kind == MemberKind.Agent
     return MemberProfile(
@@ -582,8 +587,8 @@ private fun JsonObject.toMessageAuthorProfile(): MemberProfile {
         displayName = displayName,
         handle = handle,
         kind = if (isAgent) MemberKind.Agent else MemberKind.Human,
-        roleDescription = string("authorDescription", "senderDescription", "agentDescription", "roleDescription")
-            ?: nestedAuthor?.roleDescription,
+        description = string("senderDescription") ?: nestedAuthor?.description,
+        roleDescription = string("roleDescription") ?: nestedAuthor?.roleDescription,
         avatarUrl = avatarWireValue(
             "authorAvatarUrl",
             "authorAvatar",
