@@ -14,13 +14,23 @@ import ai.slock.android.core.model.InboxItemKind
 import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageType
 import ai.slock.android.core.model.RealtimeEvent
+import ai.slock.android.core.model.MessageNew
+import ai.slock.android.core.model.MessageUpdated
+import ai.slock.android.core.model.DirectMessageCreated
+import ai.slock.android.core.model.ThreadUpdated
+import ai.slock.android.core.model.TaskCreated
+import ai.slock.android.core.model.TaskUpdated
+import ai.slock.android.core.model.TaskDeleted
+import ai.slock.android.core.model.MemberPresenceUpdated
+import ai.slock.android.core.model.SyncResumeResponse
+import ai.slock.android.core.model.Heartbeat
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadConversation
-import ai.slock.android.core.model.parentChannelIdOrNull
-import ai.slock.android.core.model.threadIdentity
-import ai.slock.android.core.model.topLevelThreadId
+import ai.slock.shared.model.parentChannelIdOrNull
+import ai.slock.shared.model.threadIdentity
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.ScreenLoadState
+import ai.slock.shared.model.topLevelThreadId
 
 fun InboxUiState.visibleContent(): InboxContent? =
         (loadState as? ScreenLoadState.Content)?.data ?: previousContent
@@ -28,6 +38,15 @@ fun InboxUiState.visibleContent(): InboxContent? =
 fun InboxUiState.visibleUnreadCount(): Int? = visibleContent()?.totalUnreadCount
 
 fun InboxUiState.visibleTotalCount(): Int? = visibleContent()?.totalCount
+
+fun InboxUiState.contentOrNull(): InboxContent? =
+        (loadState as? ScreenLoadState.Content)?.data
+
+fun InboxContent.toInboxUiState(selectedFilter: InboxFilter = InboxFilter.All): InboxUiState =
+        InboxUiState(
+                loadState = ScreenLoadState.Content(this),
+                selectedFilter = selectedFilter
+        )
 
 fun InboxUiState.clearAllUnread(): InboxUiState {
     fun InboxContent.clearUnreadContent(): InboxContent {
@@ -55,8 +74,7 @@ fun InboxUiState.clearAllUnread(): InboxUiState {
 }
 
 fun DataResult<InboxSnapshot>.toInboxUiState(
-        selectedFilter: InboxFilter,
-        previousContent: InboxContent? = null
+        selectedFilter: InboxFilter
 ): InboxUiState =
         InboxUiState(
                 loadState =
@@ -76,12 +94,10 @@ fun DataResult<InboxSnapshot>.toInboxUiState(
                             is DataResult.NoPermission -> ScreenLoadState.NoPermission(blocker)
                         },
                 selectedFilter = selectedFilter,
-                nextOffset = (this as? DataResult.Content)?.data?.nextOffset,
-                previousContent = (this as? DataResult.Content)?.let { null } ?: previousContent
+                nextOffset = (this as? DataResult.Content)?.data?.nextOffset
         )
 
 fun DataResult<ThreadListSnapshot>.toFollowedThreadsUiState(
-        previousContent: InboxContent? = null
 ): InboxUiState =
         InboxUiState(
                 loadState =
@@ -102,12 +118,10 @@ fun DataResult<ThreadListSnapshot>.toFollowedThreadsUiState(
                             is DataResult.NoPermission -> ScreenLoadState.NoPermission(blocker)
                         },
                 selectedFilter = InboxFilter.All,
-                nextOffset = (this as? DataResult.Content)?.data?.nextOffset,
-                previousContent = (this as? DataResult.Content)?.let { null } ?: previousContent
+                nextOffset = (this as? DataResult.Content)?.data?.nextOffset
         )
 
 fun DataResult<SavedSnapshot>.toSavedInboxUiState(
-        previousContent: InboxContent? = null
 ): InboxUiState =
         InboxUiState(
                 loadState =
@@ -126,12 +140,10 @@ fun DataResult<SavedSnapshot>.toSavedInboxUiState(
                             is DataResult.NoPermission -> ScreenLoadState.NoPermission(blocker)
                         },
                 selectedFilter = InboxFilter.All,
-                nextOffset = (this as? DataResult.Content)?.data?.nextOffset,
-                previousContent = (this as? DataResult.Content)?.let { null } ?: previousContent
+                nextOffset = (this as? DataResult.Content)?.data?.nextOffset
         )
 
 fun DataResult<SearchSnapshot>.toSearchInboxUiState(
-        previousContent: InboxContent? = null
 ): InboxUiState =
         InboxUiState(
                 loadState =
@@ -150,8 +162,7 @@ fun DataResult<SearchSnapshot>.toSearchInboxUiState(
                             is DataResult.NoPermission -> ScreenLoadState.NoPermission(blocker)
                         },
                 selectedFilter = InboxFilter.All,
-                nextOffset = (this as? DataResult.Content)?.data?.nextOffset,
-                previousContent = (this as? DataResult.Content)?.let { null } ?: previousContent
+                nextOffset = (this as? DataResult.Content)?.data?.nextOffset
         )
 
 fun InboxUiState.applyRealtimeEvent(
@@ -159,24 +170,24 @@ fun InboxUiState.applyRealtimeEvent(
         query: String? = null
 ): InboxUiState =
         when (event) {
-            is RealtimeEvent.MessageNew -> applyRealtimeMessages(listOf(event.message), query)
-            is RealtimeEvent.MessageUpdated -> applyRealtimeMessages(listOf(event.message), query)
-            is RealtimeEvent.SyncResumeResponse -> applyRealtimeMessages(event.messages, query)
-            is RealtimeEvent.ThreadUpdated -> applyThreadUpdated(event)
+            is MessageNew -> applyRealtimeMessages(listOf(event.message), query)
+            is MessageUpdated -> applyRealtimeMessages(listOf(event.message), query)
+            is SyncResumeResponse -> applyRealtimeMessages(event.messages, query)
+            is ThreadUpdated -> applyThreadUpdated(event)
             else -> this
         }
 
 fun InboxUiState.applySavedRealtimeEvent(event: RealtimeEvent): InboxUiState =
         when (event) {
-            is RealtimeEvent.MessageUpdated -> updateExistingMessage(event.message)
-            is RealtimeEvent.SyncResumeResponse ->
+            is MessageUpdated -> updateExistingMessage(event.message)
+            is SyncResumeResponse ->
                     event.messages.fold(this) { state, message ->
                         state.updateExistingMessage(message)
                     }
             else -> this
         }
 
-private fun InboxUiState.applyThreadUpdated(event: RealtimeEvent.ThreadUpdated): InboxUiState {
+private fun InboxUiState.applyThreadUpdated(event: ThreadUpdated): InboxUiState {
     val contentState = loadState as? ScreenLoadState.Content ?: return this
     val content = contentState.data
     val updatedItems =
@@ -267,9 +278,11 @@ private fun Message.toInboxItem(): InboxItem =
         )
 
 fun InboxItem.toConversationSummary(): ConversationSummary {
+    val itemParentChannelId = parentChannelId
+    val itemParentMessageId = parentMessageId
     val threadId =
-            if (kind == InboxItemKind.Thread && parentChannelId != null && parentMessageId != null) {
-                threadIdentity(parentChannelId, parentMessageId)
+            if (kind == InboxItemKind.Thread && itemParentChannelId != null && itemParentMessageId != null) {
+                threadIdentity(itemParentChannelId, itemParentMessageId)
             } else {
                 topLevelThreadId(threadChannelId ?: channelId)
             }
@@ -280,12 +293,12 @@ fun InboxItem.toConversationSummary(): ConversationSummary {
             }
     return ConversationSummary(
             threadId = threadId,
-            channelId = parentChannelId ?: channelId,
+            channelId = itemParentChannelId ?: channelId,
             thread =
-                    if (kind == InboxItemKind.Thread && parentChannelId != null && parentMessageId != null) {
+                    if (kind == InboxItemKind.Thread && itemParentChannelId != null && itemParentMessageId != null) {
                         ThreadConversation(
-                                parentChannelId = parentChannelId,
-                                parentMessageId = parentMessageId,
+                                parentChannelId = itemParentChannelId,
+                                parentMessageId = itemParentMessageId,
                                 streamChannelId = threadChannelId
                         )
                     } else {

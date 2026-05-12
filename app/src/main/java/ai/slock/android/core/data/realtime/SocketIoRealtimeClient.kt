@@ -3,11 +3,23 @@ package ai.slock.android.core.data.realtime
 import ai.slock.android.core.data.repository.RealtimeSubscription
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.RealtimeEvent
+import ai.slock.android.core.model.MessageNew
+import ai.slock.android.core.model.MessageUpdated
+import ai.slock.android.core.model.DirectMessageCreated
+import ai.slock.android.core.model.ThreadUpdated
+import ai.slock.android.core.model.TaskCreated
+import ai.slock.android.core.model.TaskUpdated
+import ai.slock.android.core.model.TaskDeleted
+import ai.slock.android.core.model.MemberPresenceUpdated
+import ai.slock.android.core.model.SyncResumeResponse
+import ai.slock.android.core.model.Heartbeat
+import ai.slock.android.core.model.ServerId
 
 class SocketIoRealtimeClient(
     private val transport: RealtimeSocketTransport,
     private val eventMapper: RealtimeEventMapper = RealtimeEventMapper(),
-    private val logger: (String) -> Unit = {}
+    private val logger: (String) -> Unit = {},
+    private val diagnostics: RealtimeClientDiagnostics? = null
 ) {
     private val listeners = mutableSetOf<(RealtimeEvent) -> Unit>()
     private val transportSubscriptions = mutableListOf<RealtimeSubscription>()
@@ -28,6 +40,7 @@ class SocketIoRealtimeClient(
         }
         lastSeq = request.lastSeq
         state = RealtimeConnectionState.Connecting
+        diagnostics?.onConnectRequested(request.auth.serverId, request.lastSeq)
         ensureTransportListeners()
         logger("client_connect_start serverId=${request.auth.serverId.value} lastSeq=${request.lastSeq}")
         transport.connect(
@@ -42,6 +55,10 @@ class SocketIoRealtimeClient(
         logger("client_disconnect serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size}")
         transport.disconnect()
         state = RealtimeConnectionState.Disconnected
+        diagnostics?.onIntentionalDisconnect(
+                reason = "client_disconnect",
+                serverId = connectedServerId?.let(::ServerId)
+        )
         lastPresenceByMember.clear()
     }
 
@@ -60,25 +77,57 @@ class SocketIoRealtimeClient(
         if (transportSubscriptions.isNotEmpty()) return
         transportSubscriptions += transport.on(RealtimeSocketEvents.Connect) {
             state = RealtimeConnectionState.Connected
+            diagnostics?.onConnected(connectedServerId?.let(::ServerId), lastSeq.takeIf { it > 0L })
             logger("client_connected serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size}")
             rejoinChannels(reason = "connect")
+            emitSyncResume(reason = "connect")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.RoomsJoined) {
             state = RealtimeConnectionState.RoomsJoined
+            diagnostics?.onConnected(connectedServerId?.let(::ServerId), lastSeq.takeIf { it > 0L })
             logger("rooms_joined serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size} lastSeq=$lastSeq")
             rejoinChannels(reason = "rooms_joined")
-            if (lastSeq > 0) {
-                logger("sync_resume_emit serverId=${connectedServerId.orEmpty()} lastSeq=$lastSeq")
-                transport.emit(RealtimeSocketEvents.SyncResume, RealtimeResumeRequest(lastSeq).toWireMap())
-            }
+            emitSyncResume(reason = "rooms_joined")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.ConnectError) { payload ->
             state = RealtimeConnectionState.Failed(payload?.toString().orEmpty())
+            diagnostics?.onConnectionFailed(
+                    reason = payload?.toString().orEmpty(),
+                    serverId = connectedServerId?.let(::ServerId)
+            )
             logger("client_connect_error serverId=${connectedServerId.orEmpty()} reason=${payload?.javaClass?.simpleName.orEmpty()}")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.Disconnect) {
             state = RealtimeConnectionState.Disconnected
+            diagnostics?.onDisconnected(
+                    reason = "transport_disconnect",
+                    serverId = connectedServerId?.let(::ServerId)
+            )
             logger("client_disconnected serverId=${connectedServerId.orEmpty()}")
+        }
+        transportSubscriptions += transport.on(RealtimeSocketEvents.Reconnect) {
+            state = RealtimeConnectionState.Connected
+            diagnostics?.onConnected(connectedServerId?.let(::ServerId), lastSeq.takeIf { it > 0L })
+            logger("client_reconnected serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size} lastSeq=$lastSeq")
+            rejoinChannels(reason = "reconnect")
+            emitSyncResume(reason = "reconnect")
+        }
+        transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectAttempt) { payload ->
+            logger("client_reconnect_attempt serverId=${connectedServerId.orEmpty()} payload=${payload?.toString().orEmpty()}")
+        }
+        transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectError) { payload ->
+            diagnostics?.onConnectionFailed(
+                    reason = payload?.toString().orEmpty(),
+                    serverId = connectedServerId?.let(::ServerId)
+            )
+            logger("client_reconnect_error serverId=${connectedServerId.orEmpty()} reason=${payload?.javaClass?.simpleName.orEmpty()}")
+        }
+        transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectFailed) { payload ->
+            diagnostics?.onConnectionFailed(
+                    reason = payload?.toString().orEmpty(),
+                    serverId = connectedServerId?.let(::ServerId)
+            )
+            logger("client_reconnect_failed serverId=${connectedServerId.orEmpty()} reason=${payload?.javaClass?.simpleName.orEmpty()}")
         }
         RealtimeWireEventNames.forEach { eventName ->
             transportSubscriptions += transport.on(eventName) { payload ->
@@ -102,10 +151,16 @@ class SocketIoRealtimeClient(
         }
     }
 
+    private fun emitSyncResume(reason: String) {
+        if (lastSeq <= 0) return
+        logger("sync_resume_emit serverId=${connectedServerId.orEmpty()} lastSeq=$lastSeq reason=$reason")
+        transport.emit(RealtimeSocketEvents.SyncResume, RealtimeResumeRequest(lastSeq).toWireMap())
+    }
+
     private fun dispatch(event: RealtimeEvent) {
-        if (event is RealtimeEvent.Heartbeat) lastSeq = maxOf(lastSeq, event.seq)
-        if (event is RealtimeEvent.SyncResumeResponse) lastSeq = maxOf(lastSeq, event.currentSeq)
-        if (event is RealtimeEvent.MemberPresenceUpdated) {
+        if (event is Heartbeat) lastSeq = maxOf(lastSeq, event.seq)
+        if (event is SyncResumeResponse) lastSeq = maxOf(lastSeq, event.currentSeq)
+        if (event is MemberPresenceUpdated) {
             val key = event.memberId.value
             val next = event.presence to event.kind
             if (lastPresenceByMember[key] == next) {
@@ -141,32 +196,32 @@ class SocketIoRealtimeClient(
 }
 
 private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
-    is RealtimeEvent.MessageNew -> "message_new"
-    is RealtimeEvent.MessageUpdated -> "message_updated"
-    is RealtimeEvent.DirectMessageCreated -> "direct_message_created"
-    is RealtimeEvent.ThreadUpdated -> "thread_updated"
-    is RealtimeEvent.TaskCreated -> "task_created"
-    is RealtimeEvent.TaskUpdated -> "task_updated"
-    is RealtimeEvent.TaskDeleted -> "task_deleted"
-    is RealtimeEvent.MemberPresenceUpdated -> "member_presence_updated"
-    is RealtimeEvent.SyncResumeResponse -> "sync_resume_response"
-    is RealtimeEvent.Heartbeat -> "heartbeat"
+    is MessageNew -> "message_new"
+    is MessageUpdated -> "message_updated"
+    is DirectMessageCreated -> "direct_message_created"
+    is ThreadUpdated -> "thread_updated"
+    is TaskCreated -> "task_created"
+    is TaskUpdated -> "task_updated"
+    is TaskDeleted -> "task_deleted"
+    is MemberPresenceUpdated -> "member_presence_updated"
+    is SyncResumeResponse -> "sync_resume_response"
+    is Heartbeat -> "heartbeat"
 }
 
 private fun RealtimeEvent.realtimeDiagnosticFields(): String = when (this) {
-    is RealtimeEvent.MessageNew ->
+    is MessageNew ->
         "threadId=${message.threadId.value} channelId=${message.channelId?.value.orEmpty()} messageId=${message.id.value} seq=${message.seq ?: 0}"
-    is RealtimeEvent.MessageUpdated ->
+    is MessageUpdated ->
         "threadId=${message.threadId.value} channelId=${message.channelId?.value.orEmpty()} messageId=${message.id.value} seq=${message.seq ?: 0}"
-    is RealtimeEvent.DirectMessageCreated -> "channelId=${channelId.value}"
-    is RealtimeEvent.ThreadUpdated ->
+    is DirectMessageCreated -> "channelId=${channelId.value}"
+    is ThreadUpdated ->
         "threadId=${threadChannelId?.value.orEmpty()} messageId=${parentMessageId?.value.orEmpty()} replyCount=$replyCount"
-    is RealtimeEvent.TaskCreated -> "tasks=${tasks.size}"
-    is RealtimeEvent.TaskUpdated -> "taskId=${task.id.value}"
-    is RealtimeEvent.TaskDeleted -> "taskId=${taskId.value}"
-    is RealtimeEvent.MemberPresenceUpdated ->
+    is TaskCreated -> "tasks=${tasks.size}"
+    is TaskUpdated -> "taskId=${task.id.value}"
+    is TaskDeleted -> "taskId=${taskId.value}"
+    is MemberPresenceUpdated ->
         "memberId=${memberId.value} presence=$presence kind=${kind?.name.orEmpty()}"
-    is RealtimeEvent.SyncResumeResponse ->
+    is SyncResumeResponse ->
         "currentSeq=$currentSeq messages=${messages.size} hasMore=$hasMore"
-    is RealtimeEvent.Heartbeat -> "seq=$seq"
+    is Heartbeat -> "seq=$seq"
 }

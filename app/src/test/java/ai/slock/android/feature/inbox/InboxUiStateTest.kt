@@ -15,32 +15,33 @@ import org.junit.Test
 class InboxUiStateTest {
     @Test
     fun withFilterLoadingOptimisticallySwitchesFilterAndShowsLoading() {
+        val content =
+            InboxContent(
+                server = ServerSummary(
+                    id = ServerId("server-1"),
+                    name = "Workspace"
+                ),
+                items = emptyList(),
+                totalCount = 12,
+                totalUnreadCount = 4,
+                hasMore = true
+            )
         val state = InboxUiState(
-            loadState = ScreenLoadState.Content(
-                InboxContent(
-                    server = ServerSummary(
-                        id = ServerId("server-1"),
-                        name = "Workspace"
-                    ),
-                    items = emptyList(),
-                    totalCount = 12,
-                    totalUnreadCount = 4,
-                    hasMore = true
-                )
-            ),
+            loadState = ScreenLoadState.Content(content),
             selectedFilter = InboxFilter.All,
             focusedItemKey = "inbox-item",
             loadingMore = true,
             nextOffset = 20
         )
 
-        val loading = state.withFilterLoading(InboxFilter.Unread)
+        val loading = state.withFilterLoading(InboxFilter.Unread, renderCache = content)
 
         assertSame(ScreenLoadState.Loading, loading.loadState)
         assertEquals(InboxFilter.Unread, loading.selectedFilter)
         assertNull(loading.focusedItemKey)
         assertFalse(loading.loadingMore)
         assertNull(loading.nextOffset)
+        assertSame(content, loading.previousContent)
     }
 
     @Test

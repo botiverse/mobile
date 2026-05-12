@@ -13,6 +13,10 @@ import ai.slock.android.core.data.repository.AccountProfileUpdateRequest
 import ai.slock.android.core.data.repository.AccountSettingsSnapshot
 import ai.slock.android.core.data.repository.AgentReminderSnapshot
 import ai.slock.android.core.data.repository.AgentReminderSummary
+import ai.slock.android.core.data.repository.AgentSkillGroup
+import ai.slock.android.core.data.repository.AgentSkillPathGroup
+import ai.slock.android.core.data.repository.AgentSkillSummary
+import ai.slock.android.core.data.repository.AgentSkillsSnapshot
 import ai.slock.android.core.data.repository.AttachmentOpenTarget
 import ai.slock.android.core.data.repository.AttachmentUploadRequest
 import ai.slock.android.core.data.repository.AttachmentUploadResult
@@ -79,10 +83,10 @@ import ai.slock.android.core.model.SessionSnapshot
 import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.ThreadId
-import ai.slock.android.core.model.topLevelThreadId
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenError
+import ai.slock.shared.model.topLevelThreadId
 
 class MockAuthSessionRepository(
     private val scenario: MockScenario = MockScenario.Content
@@ -478,7 +482,8 @@ class MockMemberRepository(
                 agentId = agentId,
                 directMessages = mockAgentDms,
                 reminders = mockAgentReminders,
-                activity = mockAgentActivity
+                activity = mockAgentActivity,
+                skills = mockAgentSkills(agentId)
             )
         }
 
@@ -496,6 +501,9 @@ class MockMemberRepository(
         resultFor(scenario, EmptyReason.NoMembers) {
             AgentActivitySnapshot(agentId = agentId, activity = mockAgentActivity)
         }
+
+    override suspend fun getAgentSkills(agentId: MemberId): DataResult<AgentSkillsSnapshot> =
+        resultFor(scenario, EmptyReason.NoMembers) { mockAgentSkills(agentId) }
 
     override suspend fun getChannelMembers(channelId: ChannelId): DataResult<ChannelMemberSnapshot> =
         resultFor(scenario, EmptyReason.NoMembers) {
@@ -563,6 +571,29 @@ class MockMemberRepository(
             timestamp = "14:22"
         )
     )
+
+    private fun mockAgentSkills(agentId: MemberId): AgentSkillsSnapshot =
+        AgentSkillsSnapshot(
+            agentId = agentId,
+            groups = listOf(
+                AgentSkillGroup(
+                    title = "Global",
+                    count = 1,
+                    paths = listOf(
+                        AgentSkillPathGroup(
+                            path = "~/.codex/skills",
+                            count = 1,
+                            skills = listOf(
+                                AgentSkillSummary(
+                                    name = "mock-skill",
+                                    detail = "Mock skill from repository data."
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        )
 }
 
 class MockChannelRepository(

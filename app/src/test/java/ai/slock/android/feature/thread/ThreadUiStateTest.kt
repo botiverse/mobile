@@ -11,6 +11,7 @@ import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageId
 import ai.slock.android.core.model.RealtimeEvent
+import ai.slock.android.core.model.TaskCreated
 import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
@@ -136,6 +137,142 @@ class ThreadUiStateTest {
     }
 
     @Test
+    fun refreshedThreadSnapshotDoesNotMoveMissingSeqOlderMessageToBottom() {
+        val state =
+            ThreadUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        ThreadContent(
+                            header = conversation("thread-1"),
+                            messages =
+                                listOf(
+                                    message(
+                                        id = "message-middle",
+                                        seq = 20,
+                                        timestampLabel = "2026-05-11T10:10:00Z"
+                                    ),
+                                    message(
+                                        id = "message-latest",
+                                        seq = 30,
+                                        timestampLabel = "2026-05-11T10:20:00Z"
+                                    )
+                                )
+                        )
+                    )
+            )
+        val snapshot =
+            ThreadSnapshot(
+                conversation = conversation("thread-1"),
+                messages =
+                    listOf(
+                        message(
+                            id = "message-older-without-seq",
+                            seq = null,
+                            timestampLabel = "2026-05-11T10:00:00Z"
+                        ),
+                        message(
+                            id = "message-middle",
+                            seq = 20,
+                            timestampLabel = "2026-05-11T10:10:00Z",
+                            body = "edited"
+                        )
+                    )
+            )
+
+        val merged = state.mergeRefreshedThreadSnapshot(snapshot)
+        val content = (merged.loadState as ScreenLoadState.Content).data
+
+        assertEquals(
+            listOf("message-older-without-seq", "message-middle", "message-latest"),
+            content.messages.map { it.id.value }
+        )
+        assertEquals("edited", content.messages.first { it.id.value == "message-middle" }.body)
+    }
+
+    @Test
+    fun refreshedThreadSnapshotUsesTimeBeforeSeq() {
+        val state =
+            ThreadUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        ThreadContent(
+                            header = conversation("thread-1"),
+                            messages =
+                                listOf(
+                                    message(
+                                        id = "message-newer-low-seq",
+                                        seq = 10,
+                                        timestampLabel = "2026-05-11T10:20:00Z"
+                                    )
+                                )
+                        )
+                    )
+            )
+        val snapshot =
+            ThreadSnapshot(
+                conversation = conversation("thread-1"),
+                messages =
+                    listOf(
+                        message(
+                            id = "message-older-high-seq",
+                            seq = 99,
+                            timestampLabel = "2026-05-11T10:00:00Z"
+                        )
+                    )
+            )
+
+        val merged = state.mergeRefreshedThreadSnapshot(snapshot)
+        val content = (merged.loadState as ScreenLoadState.Content).data
+
+        assertEquals(
+            listOf("message-older-high-seq", "message-newer-low-seq"),
+            content.messages.map { it.id.value }
+        )
+    }
+
+    @Test
+    fun refreshedThreadSnapshotUsesTimestampWhenSeqIsMissingForNewMessage() {
+        val state =
+            ThreadUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        ThreadContent(
+                            header = conversation("thread-1"),
+                            messages =
+                                listOf(
+                                    message(
+                                        id = "zzz-existing-bottom",
+                                        seq = null,
+                                        timestampLabel = "2026-05-12T18:00:00Z"
+                                    )
+                                )
+                        )
+                    )
+            )
+        val snapshot =
+            ThreadSnapshot(
+                conversation = conversation("thread-1"),
+                messages =
+                    listOf(
+                        message(
+                            id = "aaa-new-sent",
+                            seq = null,
+                            timestampLabel = "2026-05-12T18:05:00Z",
+                            body = "new"
+                        )
+                    )
+            )
+
+        val merged = state.mergeRefreshedThreadSnapshot(snapshot)
+        val content = (merged.loadState as ScreenLoadState.Content).data
+
+        assertEquals(
+            listOf("zzz-existing-bottom", "aaa-new-sent"),
+            content.messages.map { it.id.value }
+        )
+    }
+
+    @Test
     fun refreshedThreadSnapshotPreservesCachedMemberCountWhenResponseOmitsIt() {
         val state = ThreadUiState(
             loadState = ScreenLoadState.Content(
@@ -183,7 +320,7 @@ class ThreadUiStateTest {
                     )
             )
 
-        val merged = state.mergeRealtimeTaskEvent(RealtimeEvent.TaskCreated(listOf(task)))
+        val merged = state.mergeRealtimeTaskEvent(TaskCreated(listOf(task)))
         val content = (merged.loadState as ScreenLoadState.Content).data
 
         assertEquals(382, content.messages.single().task?.taskNumber)
@@ -219,7 +356,7 @@ class ThreadUiStateTest {
                     )
             )
 
-        val merged = state.mergeRealtimeTaskEvent(RealtimeEvent.TaskCreated(listOf(task)))
+        val merged = state.mergeRealtimeTaskEvent(TaskCreated(listOf(task)))
         val content = (merged.loadState as ScreenLoadState.Content).data
 
         assertEquals(382, content.messages.first { it.id == targetMessage.id }.task?.taskNumber)
@@ -359,7 +496,8 @@ class ThreadUiStateTest {
 
     private fun message(
         id: String,
-        seq: Long,
+        seq: Long?,
+        timestampLabel: String = "9:41 AM",
         body: String = id
     ): Message =
         Message(
@@ -373,7 +511,7 @@ class ThreadUiStateTest {
                 handle = "@member-one",
                 kind = MemberKind.Human
             ),
-            timestampLabel = "9:41 AM",
+            timestampLabel = timestampLabel,
             body = body
         )
 }

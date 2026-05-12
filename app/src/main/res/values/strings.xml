@@ -123,6 +123,7 @@
     <string name="settings_about_notification_status">Permission=%1$b, enabled=%2$b, channel=%3$b, importance=%4$d</string>
     <string name="settings_about_copy_logs">Copy logs</string>
     <string name="settings_about_share_logs">Share logs</string>
+    <string name="settings_about_send_feedback">Send feedback</string>
     <string name="settings_about_clear_logs">Clear logs</string>
     <string name="settings_about_logs_clip_label">Slock diagnostics</string>
     <string name="settings_about_share_subject">Slock diagnostics</string>

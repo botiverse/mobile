@@ -49,6 +49,7 @@ import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
+import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.ui.components.SlockMenuOverlayDefaults
 import ai.slock.android.ui.theme.SlockTheme
@@ -462,6 +463,31 @@ class ThreadScreenReplyAffordanceTest {
         }
 
         composeRule.onNodeWithText("Join #preview-channel").assertIsDisplayed()
+    }
+
+    @Test
+    fun noPermissionThreadStillShowsJoinButtonAtComposerPosition() {
+        var joinedThreadId: ThreadId? = null
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.NoPermission(
+                            PermissionBlocker("join_required")
+                        )
+                    ),
+                    selectedThreadId = ThreadId("locked-channel"),
+                    onJoinChannel = { joinedThreadId = it.threadId }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("No permission").assertIsDisplayed()
+        composeRule.onNodeWithText("Join #locked-channel").assertIsDisplayed().performClick()
+        composeRule.runOnIdle {
+            assertEquals(ThreadId("locked-channel"), joinedThreadId)
+        }
     }
 
     @Test

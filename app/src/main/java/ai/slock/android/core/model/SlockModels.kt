@@ -1,332 +1,49 @@
 package ai.slock.android.core.model
 
-data class SessionSnapshot(
-    val currentServerId: ServerId,
-    val currentMember: MemberProfile,
-    val availableServers: List<ServerSummary>
-)
+// Re-export KMP identity types
+typealias ServerId = ai.slock.shared.model.ServerId
+typealias ChannelId = ai.slock.shared.model.ChannelId
+typealias ThreadId = ai.slock.shared.model.ThreadId
+typealias MessageId = ai.slock.shared.model.MessageId
+typealias TaskId = ai.slock.shared.model.TaskId
+typealias MemberId = ai.slock.shared.model.MemberId
+typealias AttachmentId = ai.slock.shared.model.AttachmentId
 
-data class ServerSummary(
-    val id: ServerId,
-    val name: String,
-    val slug: String? = null,
-    val role: String? = null,
-    val plan: String? = null,
-    val onboardingAgentId: String? = null,
-    val description: String? = null,
-    val unreadCount: Int = 0,
-    val permissions: ServerPermissions = ServerPermissions()
-)
+// Re-export KMP models that are fully compatible
+typealias SessionSnapshot = ai.slock.shared.model.SessionSnapshot
+typealias ServerSummary = ai.slock.shared.model.ServerSummary
+typealias ServerPermissions = ai.slock.shared.model.ServerPermissions
+typealias ConversationKind = ai.slock.shared.model.ConversationKind
+typealias ThreadConversation = ai.slock.shared.model.ThreadConversation
+typealias ConversationPermissions = ai.slock.shared.model.ConversationPermissions
+typealias MemberKind = ai.slock.shared.model.MemberKind
+typealias Presence = ai.slock.shared.model.Presence
+typealias AgentStatus = ai.slock.shared.model.AgentStatus
+typealias TaskStatus = ai.slock.shared.model.TaskStatus
+typealias AvatarReference = ai.slock.shared.model.AvatarReference
+typealias MemberProfile = ai.slock.shared.model.MemberProfile
+typealias AgentProfile = ai.slock.shared.model.AgentProfile
+typealias Message = ai.slock.shared.model.Message
+typealias MessageType = ai.slock.shared.model.MessageType
+typealias MessageDeliveryState = ai.slock.shared.model.MessageDeliveryState
+typealias Attachment = ai.slock.shared.model.Attachment
+typealias TaskSummary = ai.slock.shared.model.TaskSummary
+typealias InboxItemKind = ai.slock.shared.model.InboxItemKind
+typealias InboxItem = ai.slock.shared.model.InboxItem
+typealias RealtimeEvent = ai.slock.shared.model.RealtimeEvent
+typealias MessageNew = ai.slock.shared.model.MessageNew
+typealias MessageUpdated = ai.slock.shared.model.MessageUpdated
+typealias DirectMessageCreated = ai.slock.shared.model.DirectMessageCreated
+typealias ThreadUpdated = ai.slock.shared.model.ThreadUpdated
+typealias TaskCreated = ai.slock.shared.model.TaskCreated
+typealias TaskUpdated = ai.slock.shared.model.TaskUpdated
+typealias TaskDeleted = ai.slock.shared.model.TaskDeleted
+typealias MemberPresenceUpdated = ai.slock.shared.model.MemberPresenceUpdated
+typealias SyncResumeResponse = ai.slock.shared.model.SyncResumeResponse
+typealias Heartbeat = ai.slock.shared.model.Heartbeat
+typealias SettingsSummary = ai.slock.shared.model.SettingsSummary
 
-data class ServerPermissions(
-    val canCreateChannel: Boolean = true,
-    val canInviteMember: Boolean = true,
-    val canManageSettings: Boolean = false
-)
+// Android-specific ConversationSummary (extends KMP with Android-specific avatar handling)
+typealias ConversationSummary = ai.slock.shared.model.ConversationSummary
 
-enum class ConversationKind {
-    Channel,
-    Thread,
-    DirectMessage,
-    Inbox,
-    System
-}
-
-data class ThreadConversation(
-    val parentChannelId: ChannelId,
-    val parentMessageId: MessageId,
-    val streamChannelId: ChannelId? = null
-)
-
-data class ConversationSummary(
-    val threadId: ThreadId,
-    val channelId: ChannelId? = null,
-    val thread: ThreadConversation? = null,
-    val kind: ConversationKind,
-    val name: String,
-    val subtitle: String? = null,
-    val avatarUrl: String? = null,
-    val avatar: AvatarReference? = AvatarReference.fromWireValue(avatarUrl),
-    val unreadCount: Int = 0,
-    val unreadCountKnown: Boolean = false,
-    val mentionCount: Int = 0,
-    val mentionCountKnown: Boolean = false,
-    val lastMessageId: MessageId? = null,
-    val firstUnreadMessageId: MessageId? = null,
-    val lastMessagePreview: String? = null,
-    val lastMessageAt: String? = null,
-    val lastMessageSenderName: String? = null,
-    val presence: Presence? = null,
-    val agentStatus: AgentStatus? = null,
-    val presenceMemberId: MemberId? = null,
-    val hasDraft: Boolean = false,
-    val hasDraftKnown: Boolean = false,
-    val joined: Boolean = true,
-    val archived: Boolean = false,
-    val memberCount: Int? = null,
-    val permissions: ConversationPermissions = ConversationPermissions()
-)
-
-data class ConversationPermissions(
-    val canRead: Boolean = true,
-    val canSend: Boolean = true,
-    val canAttach: Boolean = true,
-    val canCreateTask: Boolean = true
-)
-
-enum class MemberKind {
-    Human,
-    Agent,
-    System
-}
-
-enum class Presence {
-    Active,
-    Away,
-    Offline
-}
-
-enum class AgentStatus(val label: String, val presence: Presence) {
-    Online("Online", Presence.Active),
-    Working("Working", Presence.Active),
-    Thinking("Thinking", Presence.Active),
-    Idle("Idle", Presence.Away),
-    Disconnected("Disconnected", Presence.Offline),
-    Offline("Offline", Presence.Offline),
-    Error("Error", Presence.Offline);
-
-    companion object {
-        fun fromWireValue(value: String?): AgentStatus? =
-            when (value?.trim()?.lowercase()?.replace('-', '_')) {
-                "online", "active", "available", "connected" -> Online
-                "working", "running", "busy" -> Working
-                "thinking" -> Thinking
-                "idle", "away" -> Idle
-                "disconnected", "not_connected", "notconnected" -> Disconnected
-                "offline", "inactive" -> Offline
-                "error", "failed", "failure" -> Error
-                else -> null
-            }
-    }
-}
-
-sealed interface AvatarReference {
-    val wireValue: String
-
-    data class Url(val url: String) : AvatarReference {
-        override val wireValue: String = url
-    }
-
-    data class Pixel(val key: String) : AvatarReference {
-        override val wireValue: String = "pixel:$key"
-    }
-
-    data class Random(val seed: String) : AvatarReference {
-        override val wireValue: String = "random:$seed"
-    }
-
-    companion object {
-        fun fromWireValue(value: String?): AvatarReference? {
-            val normalized = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
-            return when {
-                normalized.startsWith("pixel:") ->
-                    Pixel(normalized.removePrefix("pixel:").ifBlank { "robot" })
-                normalized.startsWith("random:") ->
-                    Random(normalized.removePrefix("random:").ifBlank { "default" })
-                normalized.startsWith("http://") || normalized.startsWith("https://") ->
-                    Url(normalized)
-                else -> null
-            }
-        }
-    }
-}
-
-data class MemberProfile(
-    val id: MemberId,
-    val displayName: String,
-    val handle: String,
-    val kind: MemberKind,
-    val roleDescription: String? = null,
-    val avatarUrl: String? = null,
-    val gravatarHash: String? = null,
-    val avatar: AvatarReference? = avatarUrl?.let(AvatarReference::fromWireValue)
-        ?: gravatarHash?.toGravatarAvatarReference(),
-    val avatarLabel: String = displayName.take(1).uppercase(),
-    val presence: Presence = Presence.Offline,
-    val agentStatus: AgentStatus? = null,
-    val permissionBadges: List<String> = emptyList()
-)
-
-data class AgentProfile(
-    val id: MemberId,
-    val userId: String,
-    val displayName: String,
-    val handle: String,
-    val roleDescription: String? = null,
-    val avatarUrl: String? = null,
-    val avatar: AvatarReference? = AvatarReference.fromWireValue(avatarUrl),
-    val avatarLabel: String = displayName.take(1).uppercase(),
-    val presence: Presence = Presence.Offline,
-    val agentStatus: AgentStatus? = null,
-    val statusLabel: String? = null,
-    val runtime: String? = null,
-    val model: String? = null,
-    val reasoning: String? = null,
-    val hasOnlineMachine: Boolean = false,
-    val permissionBadges: List<String> = emptyList()
-) {
-    fun toMemberProfile(): MemberProfile =
-        MemberProfile(
-            id = id,
-            displayName = displayName,
-            handle = handle,
-            kind = MemberKind.Agent,
-            roleDescription = roleDescription,
-            avatarUrl = avatarUrl,
-            avatar = avatar,
-            avatarLabel = avatarLabel,
-            presence = presence,
-            agentStatus = agentStatus,
-            permissionBadges = permissionBadges
-        )
-}
-
-fun String.toGravatarAvatarUrl(): String =
-    "https://www.gravatar.com/avatar/${trim().lowercase()}?s=52&d=404"
-
-fun String.toGravatarAvatarReference(): AvatarReference.Url =
-    AvatarReference.Url(toGravatarAvatarUrl())
-
-data class Message(
-    val id: MessageId,
-    val threadId: ThreadId,
-    val channelId: ChannelId? = null,
-    val threadChannelId: ChannelId? = null,
-    val seq: Long? = null,
-    val author: MemberProfile,
-    val timestampLabel: String,
-    val body: String,
-    val messageType: MessageType = MessageType.Chat,
-    val systemEventType: String? = null,
-    val metadata: Map<String, String> = emptyMap(),
-    val attachments: List<Attachment> = emptyList(),
-    val deliveryState: MessageDeliveryState = MessageDeliveryState.Sent,
-    val task: TaskSummary? = null,
-    val replyCount: Int = 0,
-    val parentMessageId: MessageId? = null,
-    val updatedAtLabel: String? = null
-)
-
-enum class MessageType {
-    Chat,
-    System
-}
-
-enum class MessageDeliveryState {
-    Sending,
-    Sent,
-    Failed
-}
-
-data class Attachment(
-    val id: AttachmentId,
-    val name: String,
-    val mimeType: String,
-    val sizeLabel: String,
-    val thumbnailUrl: String? = null
-)
-
-enum class TaskStatus {
-    Todo,
-    InProgress,
-    InReview,
-    Done,
-    Closed
-}
-
-data class TaskSummary(
-    val id: TaskId,
-    val title: String,
-    val status: TaskStatus,
-    val taskNumber: Int? = null,
-    val messageId: MessageId? = null,
-    val parentMessageId: MessageId? = null,
-    val channelId: ChannelId? = null,
-    val threadId: ThreadId? = null,
-    val isThreadTask: Boolean = false,
-    val assignee: MemberProfile? = null,
-    val channelName: String? = null,
-    val updatedAtLabel: String,
-    val canClaim: Boolean = true
-)
-
-enum class InboxItemKind {
-    Channel,
-    DirectMessage,
-    Thread,
-    System
-}
-
-data class InboxItem(
-    val key: String,
-    val kind: InboxItemKind,
-    val channelId: ChannelId,
-    val channelName: String,
-    val unreadCount: Int = 0,
-    val firstUnreadMessageId: MessageId? = null,
-    val lastMessageId: MessageId? = null,
-    val lastMessagePreview: String? = null,
-    val lastMessageAt: String? = null,
-    val lastMessageSenderName: String? = null,
-    val threadChannelId: ChannelId? = null,
-    val parentChannelId: ChannelId? = null,
-    val parentChannelName: String? = null,
-    val parentChannelKind: ConversationKind? = null,
-    val parentMessageId: MessageId? = null,
-    val parentMessagePreview: String? = null,
-    val latestActivityMessageId: MessageId? = null,
-    val latestActivityPreview: String? = null,
-    val latestActivityAt: String? = null,
-    val latestActivitySenderName: String? = null,
-    val replyCount: Int = 0,
-    val participantIds: List<MemberId> = emptyList(),
-    val taskNumber: Int? = null,
-    val taskStatus: TaskStatus? = null,
-    val taskClaimedByName: String? = null
-)
-
-sealed interface RealtimeEvent {
-    data class MessageNew(val message: Message) : RealtimeEvent
-    data class MessageUpdated(val message: Message) : RealtimeEvent
-    data class DirectMessageCreated(val channelId: ChannelId) : RealtimeEvent
-    data class ThreadUpdated(
-        val parentMessageId: MessageId,
-        val threadChannelId: ChannelId,
-        val replyCount: Int,
-        val lastReplyAt: String?,
-        val participantIds: List<MemberId>
-    ) : RealtimeEvent
-    data class TaskCreated(val tasks: List<TaskSummary>) : RealtimeEvent
-    data class TaskUpdated(val task: TaskSummary) : RealtimeEvent
-    data class TaskDeleted(val taskId: TaskId) : RealtimeEvent
-    data class MemberPresenceUpdated(
-        val memberId: MemberId,
-        val presence: Presence,
-        val kind: MemberKind? = null,
-        val agentStatus: AgentStatus? = null,
-        val statusLabel: String? = null
-    ) : RealtimeEvent
-    data class SyncResumeResponse(
-        val messages: List<Message>,
-        val currentSeq: Long,
-        val hasMore: Boolean
-    ) : RealtimeEvent
-    data class Heartbeat(val seq: Long) : RealtimeEvent
-}
-
-data class SettingsSummary(
-    val server: ServerSummary,
-    val notificationEnabled: Boolean,
-    val compactModeEnabled: Boolean,
-    val manageableSections: List<String>
-)
+// Extension functions are now in KMP - just import them from ai.slock.shared.model.*

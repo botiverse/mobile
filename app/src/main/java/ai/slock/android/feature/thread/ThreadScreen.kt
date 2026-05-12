@@ -80,7 +80,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -165,6 +164,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -176,12 +176,14 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.UriHandler
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextRange
@@ -204,13 +206,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.times
 import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
+import kotlin.math.abs
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.mikepenz.markdown.coil3.Coil3ImageTransformerImpl
 import com.mikepenz.markdown.compose.components.markdownComponents
-import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeBlock
-import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeFence
+import com.mikepenz.markdown.compose.elements.MarkdownCodeBlock
+import com.mikepenz.markdown.compose.elements.MarkdownCodeFence
+import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCode
+import com.mikepenz.markdown.compose.elements.MarkdownParagraph
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.elements.MarkdownCheckBox
 import com.mikepenz.markdown.m3.markdownColor
@@ -277,6 +282,7 @@ fun ThreadScreen(
         onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit = {},
         onOpenTask: (TaskSummary) -> Unit = {},
         onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit = { _, _ -> },
+        onSaveMessage: (Message) -> Unit = {},
         onRetryTasks: () -> Unit = {},
         attachmentOpenStates: Map<AttachmentId, AttachmentOpenUiState> = emptyMap(),
         attachmentPreviewState: AttachmentPreviewUiState? = null,
@@ -290,6 +296,7 @@ fun ThreadScreen(
         archiveChannelStatus: ThreadSettingsModalStatus = ThreadSettingsModalStatus.Default,
         onArchiveChannel: () -> Unit = {},
         onDeleteChannel: () -> Unit = {},
+        onLeaveChannel: () -> Unit = {},
         currentMemberId: MemberId? = null,
         myMessageAlignment: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Default,
         replyHeaderContext: ThreadReplyHeaderContext? = null,
@@ -301,7 +308,8 @@ fun ThreadScreen(
         showReplyActions: Boolean = true,
         headerNavigationIcon: ThreadHeaderNavigationIcon = ThreadHeaderNavigationIcon.Back,
         showTopBorder: Boolean = true,
-        showConversationActions: Boolean = true
+        showConversationActions: Boolean = true,
+        selectedThreadId: ThreadId? = null
 ) {
     var showMembersModal by rememberSaveable { mutableStateOf(false) }
     var showSettingsModal by rememberSaveable { mutableStateOf(false) }
@@ -318,6 +326,20 @@ fun ThreadScreen(
                 {
                     focusManager.clearFocus()
                     keyboardController?.hide()
+                }
+            }
+    val selectedThreadFallbackJoinHeader: () -> ConversationSummary? =
+            remember(selectedThreadId) {
+                {
+                    selectedThreadId?.let { threadId ->
+                        ConversationSummary(
+                                threadId = threadId,
+                                channelId = ChannelId(threadId.value),
+                                kind = ConversationKind.Channel,
+                                name = threadId.value,
+                                joined = false
+                        )
+                    }
                 }
             }
     val displayedMembers = membersPanelState.modalMembers
@@ -365,6 +387,7 @@ fun ThreadScreen(
                                     Modifier.dismissKeyboardOnPointerDown(dismissComposerKeyboard),
                             onBack = onBack,
                             onSettingsClick = { showSettingsModal = true },
+                            onLeaveChannel = onLeaveChannel,
                             membersCount = membersCount,
                             onMembersClick = { showMembersModal = true },
                             replyHeaderContext = replyHeaderContext,
@@ -419,13 +442,16 @@ fun ThreadScreen(
                             summary = header,
                             onBack = onBack,
                             onSettingsClick = { showSettingsModal = true },
+                            onLeaveChannel = onLeaveChannel,
                             membersCount = membersCount,
                             onMembersClick = { showMembersModal = true },
                             replyHeaderContext = replyHeaderContext,
                             parentJumpTarget = parentJumpTarget,
                             onOpenParentMessage = onOpenParentMessage,
                             navigationIcon = headerNavigationIcon,
-                            showConversationActions = showConversationActions
+                            showConversationActions = showConversationActions,
+                            refreshStatus = loadState.data.refreshStatus,
+                            refreshErrorCode = loadState.data.refreshErrorCode
                     )
                     if (showModeTabs) {
                         ThreadModeTabs(
@@ -433,13 +459,6 @@ fun ThreadScreen(
                                 onModeSelected = onModeSelected,
                                 modifier =
                                         Modifier.dismissKeyboardOnPointerDown(dismissComposerKeyboard)
-                        )
-                    }
-                    if (replyHeaderContext == null) {
-                        ThreadRefreshBanner(
-                                status = loadState.data.refreshStatus,
-                                errorCode = loadState.data.refreshErrorCode,
-                                onRetry = onRefreshThread
                         )
                     }
                     if (state.selectedTab == ThreadTab.Tasks) {
@@ -505,6 +524,7 @@ fun ThreadScreen(
                                     onOpenMarkdownTag = onOpenMarkdownTag,
                                     onOpenTask = onOpenTask,
                                     onTaskStatusChange = onTaskStatusChange,
+                                    onSaveMessage = onSaveMessage,
                                     onRetryThreadLoad = onRetryThreadLoad,
                                     attachmentOpenStates = attachmentOpenStates,
                                     onOpenAttachment = onOpenAttachment,
@@ -560,6 +580,7 @@ fun ThreadScreen(
                                 showModeTabs = showModeTabs,
                                 onBack = onBack,
                                 onSettingsClick = { showSettingsModal = true },
+                                onLeaveChannel = onLeaveChannel,
                                 membersCount = membersCount,
                                 onMembersClick = { showMembersModal = true },
                                 replyHeaderContext = replyHeaderContext,
@@ -578,6 +599,7 @@ fun ThreadScreen(
                                 showModeTabs = showModeTabs,
                                 onBack = onBack,
                                 onSettingsClick = { showSettingsModal = true },
+                                onLeaveChannel = onLeaveChannel,
                                 membersCount = membersCount,
                                 onMembersClick = { showMembersModal = true },
                                 replyHeaderContext = replyHeaderContext,
@@ -596,6 +618,7 @@ fun ThreadScreen(
                                     Modifier.dismissKeyboardOnPointerDown(dismissComposerKeyboard),
                             onBack = onBack,
                             onSettingsClick = { showSettingsModal = true },
+                            onLeaveChannel = onLeaveChannel,
                             membersCount = membersCount,
                             onMembersClick = { showMembersModal = true },
                             replyHeaderContext = replyHeaderContext,
@@ -627,21 +650,31 @@ fun ThreadScreen(
                         )
                     }
                     if (showComposer) {
-                        ThreadComposerBar(
-                                composerState =
-                                        state.composerState.copy(
-                                                enabled = false,
-                                                noPermissionCode = loadState.blocker.code
-                                        ),
-                                placeholder = "Message",
-                                onComposerChange = onComposerChange,
-                                onAsTaskChange = onAsTaskChange,
-                                onAttachImage = onAttachImage,
-                                onAttachFile = onAttachFile,
-                                onRemoveAttachment = onRemoveAttachment,
-                                onRetryAttachment = onRetryAttachment,
-                                onSend = onSend
-                        )
+                        val fallbackHeader = selectedThreadFallbackJoinHeader()
+                        if (fallbackHeader != null) {
+                            ThreadJoinComposerReplacement(
+                                    header = fallbackHeader,
+                                    status = state.channelJoinStatus,
+                                    errorCode = state.channelJoinErrorCode,
+                                    onJoin = { onJoinChannel(fallbackHeader) }
+                            )
+                        } else {
+                            ThreadComposerBar(
+                                    composerState =
+                                            state.composerState.copy(
+                                                    enabled = false,
+                                                    noPermissionCode = loadState.blocker.code
+                                            ),
+                                    placeholder = "Message",
+                                    onComposerChange = onComposerChange,
+                                    onAsTaskChange = onAsTaskChange,
+                                    onAttachImage = onAttachImage,
+                                    onAttachFile = onAttachFile,
+                                    onRemoveAttachment = onRemoveAttachment,
+                                    onRetryAttachment = onRetryAttachment,
+                                    onSend = onSend
+                            )
+                        }
                     }
                 }
             }
@@ -772,6 +805,7 @@ private fun ColumnScope.ThreadScreenLoadFailure(
         showModeTabs: Boolean,
         onBack: () -> Unit,
         onSettingsClick: () -> Unit,
+        onLeaveChannel: () -> Unit,
         membersCount: Int?,
         onMembersClick: () -> Unit,
         replyHeaderContext: ThreadReplyHeaderContext?,
@@ -788,6 +822,7 @@ private fun ColumnScope.ThreadScreenLoadFailure(
             modifier = Modifier.dismissKeyboardOnPointerDown(dismissComposerKeyboard),
             onBack = onBack,
             onSettingsClick = onSettingsClick,
+            onLeaveChannel = onLeaveChannel,
             membersCount = membersCount,
             onMembersClick = onMembersClick,
             replyHeaderContext = replyHeaderContext,
@@ -824,73 +859,6 @@ private fun ColumnScope.ThreadScreenLoadFailure(
             onRetryAttachment = {},
             onSend = {}
     )
-}
-
-@Composable
-private fun ThreadRefreshBanner(
-        status: ThreadRefreshStatus,
-        errorCode: String?,
-        onRetry: () -> Unit
-) {
-    if (status == ThreadRefreshStatus.Idle) return
-    Row(
-            modifier =
-                    Modifier.fillMaxWidth()
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                            .padding(
-                                    horizontal = threadHorizontalPadding(),
-                                    vertical = SlockSpacing.Sm
-                            ),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-    ) {
-        if (status == ThreadRefreshStatus.Loading) {
-            CircularProgressIndicator(
-                    modifier = Modifier.size(14.dp),
-                    strokeWidth = 1.5.dp,
-                    color = SlockColor.TextBlack
-            )
-        } else {
-            Icon(
-                    imageVector = SlockIcons.RefreshCw,
-                    contentDescription = null,
-                    tint = SlockColor.TextBlack,
-                    modifier = Modifier.size(14.dp)
-            )
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                    text =
-                            if (status == ThreadRefreshStatus.Loading) {
-                                "Refreshing messages..."
-                            } else {
-                                "Refresh failed"
-                            },
-                    style = SlockType.Caption,
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-            )
-            if (status == ThreadRefreshStatus.Error && !errorCode.isNullOrBlank()) {
-                Text(
-                        text = "Code: $errorCode",
-                        style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-        if (status == ThreadRefreshStatus.Error) {
-            SlockButton(
-                    text = "Retry",
-                    onClick = onRetry,
-                    variant = SlockButtonVariant.Outline,
-                    modifier = Modifier.widthIn(min = 88.dp)
-            )
-        }
-    }
 }
 
 private fun Modifier.dismissKeyboardOnPointerDown(onDismissKeyboard: () -> Unit): Modifier =
@@ -967,17 +935,20 @@ fun ThreadTopHeader(
         summary: ConversationSummary? = null,
         onBack: () -> Unit = {},
         onSettingsClick: () -> Unit = {},
+        onLeaveChannel: () -> Unit = {},
         membersCount: Int? = 4,
         onMembersClick: () -> Unit = {},
         replyHeaderContext: ThreadReplyHeaderContext? = null,
         parentJumpTarget: ThreadParentJumpTarget? = null,
         onOpenParentMessage: (ThreadParentJumpTarget) -> Unit = {},
         navigationIcon: ThreadHeaderNavigationIcon = ThreadHeaderNavigationIcon.Back,
-        showConversationActions: Boolean = true
+        showConversationActions: Boolean = true,
+        refreshStatus: ThreadRefreshStatus = ThreadRefreshStatus.Idle,
+        refreshErrorCode: String? = null
 ) {
     DeclareStatusBarColor(SlockColor.SurfaceWhite)
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val mobileLayout = maxWidth < 420.dp
+        val titleStatusInline = maxWidth >= 520.dp
         val horizontalPadding = threadHorizontalPadding()
         val subtitleMaxLines = 1
         val title =
@@ -997,10 +968,19 @@ fun ThreadTopHeader(
                 showConversationActions && replyHeaderContext == null && parentJumpTarget == null
         val showNavigationIconAtStart = navigationIcon == ThreadHeaderNavigationIcon.Back
         val showCloseActionAtEnd = navigationIcon == ThreadHeaderNavigationIcon.Close
+        val refreshText = when (refreshStatus) {
+            ThreadRefreshStatus.Loading -> "拉取最新信息..."
+            ThreadRefreshStatus.Error -> if (!refreshErrorCode.isNullOrBlank()) {
+                "刷新失败 ($refreshErrorCode)"
+            } else {
+                "刷新失败"
+            }
+            ThreadRefreshStatus.Idle -> null
+        }
         Row(
                 modifier =
                         Modifier.fillMaxWidth()
-                                .height(SlockSize.PageHeaderHeight)
+                                .heightIn(min = SlockSize.PageHeaderHeight)
                                 .background(SlockColor.SurfaceWhite)
                                 .drawBehind {
                                     val stroke = SlockStroke.Default.toPx()
@@ -1030,16 +1010,43 @@ fun ThreadTopHeader(
             }
             Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(if (mobileLayout) 2.dp else 0.dp)
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Text(
-                        text = title,
-                        style = SlockType.PageTitle,
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                )
-                if (!subtitle.isNullOrBlank()) {
+                if (refreshText != null && titleStatusInline) {
+                    Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+                    ) {
+                        Text(
+                                text = title,
+                                style = SlockType.PageTitle,
+                                color = SlockColor.TextBlack,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                        )
+                        ThreadHeaderRefreshLabel(
+                                text = refreshText,
+                                loading = refreshStatus == ThreadRefreshStatus.Loading,
+                                modifier = Modifier.weight(1f, fill = false)
+                        )
+                    }
+                } else {
+                    Text(
+                            text = title,
+                            style = SlockType.PageTitle,
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                    )
+                    if (refreshText != null) {
+                        ThreadHeaderRefreshLabel(
+                                text = refreshText,
+                                loading = refreshStatus == ThreadRefreshStatus.Loading
+                        )
+                    }
+                }
+                if (refreshText == null && !subtitle.isNullOrBlank()) {
                     Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
@@ -1067,10 +1074,38 @@ fun ThreadTopHeader(
             }
             if (showManagementActions && !isDirectMessage) {
                 HeaderIconButton(SlockIcons.Settings, "Settings", onClick = onSettingsClick)
-                HeaderIconButton(SlockIcons.LogOut, "Leave")
+                HeaderIconButton(SlockIcons.LogOut, "Leave", onClick = onLeaveChannel)
                 ThreadMembersButton(count = membersCount, onClick = onMembersClick)
             }
         }
+    }
+}
+
+@Composable
+private fun ThreadHeaderRefreshLabel(
+        text: String,
+        loading: Boolean,
+        modifier: Modifier = Modifier
+) {
+    Row(
+            modifier = modifier,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        if (loading) {
+            CircularProgressIndicator(
+                    modifier = Modifier.size(12.dp),
+                    strokeWidth = 1.5.dp,
+                    color = SlockColor.TextMutedGray
+            )
+        }
+        Text(
+                text = text,
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -1086,10 +1121,11 @@ private fun ThreadConversationAvatar(summary: ConversationSummary) {
                 fontSize = SlockType.Button.fontSize,
                 fallbackColor = SlockColor.AccentLavender
         )
-        if (summary.kind == ConversationKind.DirectMessage && summary.agentStatus != null) {
+        val agentStatus = summary.agentStatus
+        if (summary.kind == ConversationKind.DirectMessage && agentStatus != null) {
             SlockAgentStatusIndicator(
-                    status = summary.agentStatus,
-                    presence = summary.presence ?: summary.agentStatus.presence,
+                    status = agentStatus,
+                    presence = summary.presence ?: agentStatus.presence,
                     modifier = Modifier.align(Alignment.BottomEnd),
                     size = 12.dp
             )
@@ -1303,6 +1339,20 @@ private fun ThreadOriginFallbackMessage(
         parentJumpTarget: ThreadParentJumpTarget?,
         onOpenParentMessage: (ThreadParentJumpTarget) -> Unit
 ) {
+    val requestedParentMessageId = context.parentMessageId ?: parentJumpTarget?.parentMessageId
+    if (context.parentMessageRefreshing) {
+        ThreadOriginRefreshingMessage(requestedParentMessageId)
+        return
+    }
+    if (requestedParentMessageId != null) {
+        ThreadOriginMissingMessage(
+                context = context,
+                parentMessageId = requestedParentMessageId,
+                parentJumpTarget = parentJumpTarget,
+                onOpenParentMessage = onOpenParentMessage
+        )
+        return
+    }
     val preview = context.parentMessagePreview?.takeIf { it.isNotBlank() } ?: "Original message"
     val fallbackAuthor =
             MemberProfile(
@@ -1328,6 +1378,126 @@ private fun ThreadOriginFallbackMessage(
                     },
             onOpenAuthorProfile = null
     )
+}
+
+@Composable
+private fun ThreadOriginRefreshingMessage(parentMessageId: MessageId?) {
+    Row(
+            modifier =
+                    Modifier.fillMaxWidth()
+                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                            .background(SlockColor.SurfaceWhite)
+                            .padding(SlockSpacing.Md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = SlockColor.TextBlack
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                    text = "Refreshing original message...",
+                    style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+            )
+            parentMessageId?.value?.takeIf { it.isNotBlank() }?.let { id ->
+                Text(
+                        text = "parentMessageId=$id",
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadOriginMissingMessage(
+        context: ThreadReplyHeaderContext,
+        parentMessageId: MessageId,
+        parentJumpTarget: ThreadParentJumpTarget?,
+        onOpenParentMessage: (ThreadParentJumpTarget) -> Unit
+) {
+    val localContext = LocalContext.current
+    val diagnostics = remember(context, parentMessageId) {
+        context.originDiagnostics(parentMessageId)
+    }
+    Column(
+            modifier =
+                    Modifier.fillMaxWidth()
+                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                            .background(SlockColor.SurfaceWhite)
+                            .padding(SlockSpacing.Md),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Text(
+                text = "Missing original message: ${parentMessageId.value}",
+                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                color = SlockColor.TextBlack
+        )
+        if (!context.parentMessageRefreshErrorCode.isNullOrBlank()) {
+            Text(
+                    text = "Refresh failed: ${context.parentMessageRefreshErrorCode}",
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+            )
+        }
+        Text(
+                text = diagnostics,
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray,
+                maxLines = 8,
+                overflow = TextOverflow.Ellipsis
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+            parentJumpTarget?.let { target ->
+                SlockButton(
+                        text = "Open origin",
+                        onClick = { onOpenParentMessage(target) },
+                        variant = SlockButtonVariant.Outline,
+                        modifier = Modifier.weight(1f)
+                )
+            }
+            SlockButton(
+                    text = "Copy diagnostics",
+                    onClick = { localContext.copyThreadOriginDiagnostics(diagnostics) },
+                    variant = SlockButtonVariant.Outline,
+                    modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+private fun ThreadReplyHeaderContext.originDiagnostics(parentMessageId: MessageId): String =
+        buildString {
+            appendLine("missing_origin_message=true")
+            appendLine("parentMessageId=${parentMessageId.value}")
+            appendLine("parentChannelName=${parentChannelName.orEmpty()}")
+            appendLine("parentMessagePreview=${parentMessagePreview.orEmpty()}")
+            appendLine("parentMessagePresent=${parentMessage != null}")
+            appendLine("parentMessageBody=${parentMessage?.body.orEmpty()}")
+            appendLine("parentMessageThreadId=${parentMessage?.threadId?.value.orEmpty()}")
+            appendLine("parentMessageChannelId=${parentMessage?.channelId?.value.orEmpty()}")
+            appendLine("parentMessageThreadChannelId=${parentMessage?.threadChannelId?.value.orEmpty()}")
+            appendLine("parentMessageReplyCount=${parentMessage?.replyCount ?: 0}")
+            parentMessageRefreshErrorCode?.takeIf { it.isNotBlank() }?.let { errorCode ->
+                appendLine("parentMessageRefreshErrorCode=$errorCode")
+            }
+        }.trimEnd()
+
+private fun Context.copyThreadOriginDiagnostics(diagnostics: String) {
+    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("Slock origin diagnostics", diagnostics))
+    android.widget.Toast.makeText(this, "Origin diagnostics copied", android.widget.Toast.LENGTH_SHORT)
+            .show()
 }
 
 private data class ThreadMemberModalItem(
@@ -2420,6 +2590,35 @@ private fun CompactIconButton(
 }
 
 @Composable
+private fun CompactIconButton(
+        iconRes: Int,
+        contentDescription: String,
+        modifier: Modifier = Modifier,
+        enabled: Boolean = true,
+        onClick: () -> Unit = {}
+) {
+    Box(
+            modifier =
+                    modifier.size(28.dp)
+                            .background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
+                            .border(
+                                    SlockStroke.Default,
+                                    SlockColor.BorderBlack,
+                                    RoundedCornerShape(SlockRadius.Xs)
+                            )
+                            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+            contentAlignment = Alignment.Center
+    ) {
+        Icon(
+                painter = painterResource(iconRes),
+                contentDescription = contentDescription,
+                tint = SlockColor.TextBlack,
+                modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+@Composable
 private fun HeaderIconButton(
         icon: androidx.compose.ui.graphics.vector.ImageVector,
         contentDescription: String,
@@ -2593,6 +2792,7 @@ private fun ThreadMessageList(
         onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
         onOpenTask: (TaskSummary) -> Unit,
         onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
+        onSaveMessage: (Message) -> Unit,
         onRetryThreadLoad: () -> Unit,
         attachmentOpenStates: Map<AttachmentId, AttachmentOpenUiState>,
         onOpenAttachment: (Attachment) -> Unit,
@@ -2674,17 +2874,16 @@ private fun ThreadMessageList(
                                                         firstVisibleIndex <= bottomItemCount + 1
                 }
             }
-    val isNearBottom by remember {
+    val isNearBottom by remember(latestMessageListIndex, listState) {
         derivedStateOf {
-                        latestMessageListIndex == null || listState.isTargetItemAtBottom(latestMessageListIndex)
+            latestMessageListIndex == null || listState.isTargetItemAtBottom(latestMessageListIndex)
         }
     }
-    val showBackToBottom by
-            remember(latestMessageListIndex) {
-                derivedStateOf {
-                                        latestMessageListIndex != null && !listState.isTargetItemAtBottom(latestMessageListIndex)
-                }
-            }
+    val showBackToBottom by remember(latestMessageListIndex, listState) {
+        derivedStateOf {
+            latestMessageListIndex != null && !listState.isTargetItemAtBottom(latestMessageListIndex)
+        }
+    }
     val lastMessageId = content.messages.lastOrNull()?.id
     val coroutineScope = rememberCoroutineScope()
     val itemHeightCache = rememberThreadItemHeightCache()
@@ -2872,23 +3071,6 @@ private fun ThreadMessageList(
             onNearBottomChange(targetAtBottom)
         }
     }
-    LaunchedEffect(
-            content.messages.size,
-            latestMessageListIndex,
-            initialPositionApplied,
-            followNewMessages
-    ) {
-        if (initialPositionApplied && followNewMessages && latestMessageListIndex != null) {
-            scrollThreadListItemToRenderedBottom(
-                    listState = listState,
-                    targetIndex = latestMessageListIndex,
-                    threadId = threadId,
-                    reason = "message_count_changed",
-                    messageCount = content.messages.size,
-                    scrollToListBottom = true
-            )
-        }
-    }
     LaunchedEffect(latestMessageListIndex, initialPositionApplied, followNewMessages) {
         if (!initialPositionApplied || !followNewMessages || latestMessageListIndex == null) {
             return@LaunchedEffect
@@ -3058,6 +3240,7 @@ private fun ThreadMessageList(
                                                                         onOpenAuthorProfile = { onOpenMemberProfile(message.author) },
                                                                         onOpenTask = { onOpenTask(it) },
                                                                         onTaskStatusChange = onTaskStatusChange,
+                                                                        onSaveMessage = onSaveMessage,
                                                                         onOpenMarkdownTag = onOpenMarkdownTag,
                                                                         resolveMemberName = resolveMemberName
                                                         )
@@ -3269,7 +3452,8 @@ private suspend fun scrollThreadListItemToRenderedBottom(
         threadId: String,
         reason: String,
         messageCount: Int? = null,
-        scrollToListBottom: Boolean = false
+        scrollToListBottom: Boolean = false,
+        reverseLayout: Boolean = true
 ) {
     yield()
         if (scrollToListBottom) {
@@ -3281,7 +3465,30 @@ private suspend fun scrollThreadListItemToRenderedBottom(
                 if (listState.layoutInfo.totalItemsCount <= targetIndex) {
                         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                                         "SlockThreadScroll",
-                                        "scroll_item_to_rendered_bottom_deferred reason=$reason threadId=$threadId targetIndex=$targetIndex messageCount=${messageCount ?: -1} totalItems=${listState.layoutInfo.totalItemsCount} scrollToListBottom=true"
+                                        "scroll_item_to_rendered_bottom_deferred reason=$reason threadId=$threadId targetIndex=$targetIndex messageCount=${messageCount ?: -1} totalItems=${listState.layoutInfo.totalItemsCount} scrollToListBottom=true reverseLayout=$reverseLayout"
+                        )
+                        return
+                }
+                if (reverseLayout) {
+                        listState.scrollToItem(0, 0)
+                        repeat(6) {
+                                yield()
+                                if (listState.firstVisibleItemIndex == 0 &&
+                                                listState.firstVisibleItemScrollOffset <=
+                                                                ThreadRenderedBottomTolerancePx
+                                ) {
+                                        return@repeat
+                                }
+                                listState.scrollToItem(0, 0)
+                                delay(16)
+                        }
+                        val targetItem =
+                                        listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
+                        val targetTop = targetItem?.offset ?: -1
+                        val targetBottom = targetItem?.let { it.offset + it.size } ?: -1
+                        ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                                        "SlockThreadScroll",
+                                        "scroll_item_to_rendered_bottom reason=$reason threadId=$threadId targetIndex=$targetIndex messageCount=${messageCount ?: -1} firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} targetTop=$targetTop targetBottom=$targetBottom viewportTop=${listState.layoutInfo.viewportStartOffset} viewportBottom=${listState.layoutInfo.viewportEndOffset} totalItems=${listState.layoutInfo.totalItemsCount} scrollToListBottom=true reverseLayout=true bottomTolerancePx=$ThreadRenderedBottomTolerancePx"
                         )
                         return
                 }
@@ -3307,7 +3514,7 @@ private suspend fun scrollThreadListItemToRenderedBottom(
                 val targetBottom = targetItem?.let { it.offset + it.size } ?: -1
                 ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                                 "SlockThreadScroll",
-                                "scroll_item_to_rendered_bottom reason=$reason threadId=$threadId targetIndex=$targetIndex messageCount=${messageCount ?: -1} firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} targetBottom=$targetBottom viewportBottom=${listState.layoutInfo.viewportEndOffset} totalItems=${listState.layoutInfo.totalItemsCount} scrollToListBottom=true bottomTolerancePx=$ThreadRenderedBottomTolerancePx"
+                                "scroll_item_to_rendered_bottom reason=$reason threadId=$threadId targetIndex=$targetIndex messageCount=${messageCount ?: -1} firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} targetBottom=$targetBottom viewportBottom=${listState.layoutInfo.viewportEndOffset} totalItems=${listState.layoutInfo.totalItemsCount} scrollToListBottom=true reverseLayout=$reverseLayout bottomTolerancePx=$ThreadRenderedBottomTolerancePx"
                 )
                 return
         }
@@ -3324,13 +3531,14 @@ private suspend fun scrollThreadListItemToRenderedBottom(
         if (kotlin.math.abs(bottomDelta) <= 1) {
             return@repeat
         }
-        listState.scrollBy(bottomDelta.toFloat())
+        val scrollDelta = if (reverseLayout) -bottomDelta.toFloat() else bottomDelta.toFloat()
+        listState.scrollBy(scrollDelta)
     }
     val targetItem = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
     val targetBottom = targetItem?.let { it.offset + it.size } ?: -1
     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
             "SlockThreadScroll",
-            "scroll_item_to_rendered_bottom reason=$reason threadId=$threadId targetIndex=$targetIndex messageCount=${messageCount ?: -1} firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} targetBottom=$targetBottom viewportBottom=${listState.layoutInfo.viewportEndOffset} totalItems=${listState.layoutInfo.totalItemsCount} scrollToListBottom=false bottomTolerancePx=$ThreadRenderedBottomTolerancePx"
+            "scroll_item_to_rendered_bottom reason=$reason threadId=$threadId targetIndex=$targetIndex messageCount=${messageCount ?: -1} firstVisible=${listState.firstVisibleItemIndex} firstOffset=${listState.firstVisibleItemScrollOffset} targetBottom=$targetBottom viewportBottom=${listState.layoutInfo.viewportEndOffset} totalItems=${listState.layoutInfo.totalItemsCount} scrollToListBottom=false reverseLayout=$reverseLayout bottomTolerancePx=$ThreadRenderedBottomTolerancePx"
     )
 }
 
@@ -3339,15 +3547,15 @@ private const val ThreadMessageRenderWindowChunkSize = 30
 
 private fun LazyListState.isTargetItemAtBottom(targetIndex: Int): Boolean {
     val layoutInfo = layoutInfo
+    if (firstVisibleItemIndex == 0 &&
+                    firstVisibleItemScrollOffset <= ThreadRenderedBottomTolerancePx &&
+                    layoutInfo.visibleItemsInfo.any { it.index == targetIndex }
+    ) {
+        return true
+    }
     val targetItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
-    val lastItem = layoutInfo.visibleItemsInfo.lastOrNull()
     val targetBottom = targetItem?.let { it.offset + it.size } ?: return false
-    return targetItem != null &&
-            lastItem != null &&
-            (kotlin.math.abs(targetBottom - layoutInfo.viewportEndOffset) <=
-                    ThreadRenderedBottomTolerancePx ||
-                    (!canScrollBackward &&
-                            targetBottom <= layoutInfo.viewportEndOffset + ThreadRenderedBottomTolerancePx))
+    return kotlin.math.abs(targetBottom - layoutInfo.viewportEndOffset) <= ThreadRenderedBottomTolerancePx
 }
 
 private data class OlderTopProbe(
@@ -3416,25 +3624,51 @@ private fun Modifier.threadTabSwipe(
             this
         } else {
             pointerInput(selectedTab, onModeSelected) {
+                val requiredDistance = ThreadTabSwipeThreshold.toPx()
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    var targetTab: ThreadTab? = null
-                    awaitHorizontalTouchSlopOrCancellation(down.id) { change, overSlop ->
-                        targetTab =
-                                when {
-                                    overSlop < 0f && selectedTab != ThreadTab.Tasks ->
-                                            ThreadTab.Tasks
-                                    overSlop > 0f && selectedTab != ThreadTab.Chat -> ThreadTab.Chat
-                                    else -> null
-                                }
-                        if (targetTab != null) {
-                            change.consume()
+                    var totalX = 0f
+                    var totalY = 0f
+                    var switched = false
+                    while (!switched) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) break
+                        val delta = change.positionChange()
+                        totalX += delta.x
+                        totalY += delta.y
+                        val horizontalDistance = abs(totalX)
+                        val verticalDistance = abs(totalY)
+                        if (verticalDistance > horizontalDistance * ThreadTabSwipeVerticalTolerance) {
+                            break
+                        }
+                        if (horizontalDistance >= requiredDistance &&
+                                        horizontalDistance >
+                                                verticalDistance *
+                                                        ThreadTabSwipeHorizontalDominance
+                        ) {
+                            val targetTab =
+                                    when {
+                                        totalX < 0f && selectedTab != ThreadTab.Tasks ->
+                                                ThreadTab.Tasks
+                                        totalX > 0f && selectedTab != ThreadTab.Chat ->
+                                                ThreadTab.Chat
+                                        else -> null
+                                    }
+                            if (targetTab != null) {
+                                change.consume()
+                                onModeSelected(targetTab)
+                                switched = true
+                            }
                         }
                     }
-                    targetTab?.let(onModeSelected)
                 }
             }
         }
+
+private val ThreadTabSwipeThreshold = 56.dp
+private const val ThreadTabSwipeHorizontalDominance = 1.35f
+private const val ThreadTabSwipeVerticalTolerance = 1.1f
 
 @Composable
 private fun ThreadMessagePageState(
@@ -3580,6 +3814,7 @@ fun ThreadMessageItem(
         onOpenAuthorProfile: (() -> Unit)? = null,
         onOpenTask: ((TaskSummary) -> Unit)? = null,
         onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit = { _, _ -> },
+        onSaveMessage: (Message) -> Unit = {},
         onShareMessage: (Message) -> Unit = {},
         onCopyMessageLink: (Message) -> Unit = {},
         onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit = {},
@@ -3819,6 +4054,7 @@ fun ThreadMessageItem(
                             showMessageActions = false
                         },
                         onSave = {
+                            onSaveMessage(message)
                             saveFeedbackVisible = true
                             showMessageActions = false
                         },
@@ -4527,6 +4763,20 @@ private fun String.decodeBasicHtmlEntities(): String =
                 .replace("&#x27;", "'")
                 .replace("&#x2F;", "/")
 
+private val ThreadEscapedMarkdownLineBreakRegex =
+        Regex("""\\r?\\n(?:\\r?\\n|[-*+] |\d+\. |> |#|```|~~~)""")
+
+internal fun String.normalizeThreadMarkdownBody(): String {
+        if (!contains("\\n") && !contains("\\r")) return this
+
+        val shouldDecodeEscapedLineBreaks =
+                ThreadEscapedMarkdownLineBreakRegex.containsMatchIn(this) ||
+                        (!contains('\n') && !contains('\r') && contains("\\n"))
+        if (!shouldDecodeEscapedLineBreaks) return this
+
+        return replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\r")
+}
+
 data class ThreadMarkdownTag(val label: String, val kind: ThreadMarkdownTagKind)
 
 enum class ThreadMarkdownTagKind {
@@ -4651,8 +4901,9 @@ private fun ThreadMarkdownBody(
         onTagClick: ((ThreadMarkdownTag) -> Unit)? = null,
         onInteractiveBoundsChanged: (List<Rect>) -> Unit = {}
 ) {
+    val normalizedBody = remember(body) { body.normalizeThreadMarkdownBody() }
     ThreadOfficialMarkdown(
-            body = body,
+            body = normalizedBody,
             textAlign = textAlign,
             modifier = modifier,
             onTagClick = onTagClick,
@@ -4794,19 +5045,39 @@ private fun ThreadOfficialMarkdown(
     val components =
             markdownComponents(
                     codeBlock = {
-                        MarkdownHighlightedCodeBlock(
+                        MarkdownCodeBlock(
                                 content = it.content,
                                 node = it.node,
-                                highlightsBuilder = highlightsBuilder,
-                                showHeader = true
-                        )
+                                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace)
+                        ) { code, language, style ->
+                            ThreadMarkdownCodeBlock(
+                                    code = code,
+                                    language = language,
+                                    style = style,
+                                    highlightsBuilder = highlightsBuilder
+                            )
+                        }
                     },
                     codeFence = {
-                        MarkdownHighlightedCodeFence(
+                        MarkdownCodeFence(
                                 content = it.content,
                                 node = it.node,
-                                highlightsBuilder = highlightsBuilder,
-                                showHeader = true
+                                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace)
+                        ) { code, language, style ->
+                            ThreadMarkdownCodeBlock(
+                                    code = code,
+                                    language = language,
+                                    style = style,
+                                    highlightsBuilder = highlightsBuilder
+                            )
+                        }
+                    },
+                    paragraph = {
+                        MarkdownParagraph(
+                                content = it.content,
+                                node = it.node,
+                                modifier = Modifier.padding(bottom = ThreadMarkdownParagraphSpacing),
+                                style = it.typography.paragraph.copy(textAlign = textAlign)
                         )
                     },
                     checkbox = { MarkdownCheckBox(it.content, it.node, it.typography.text) }
@@ -4824,6 +5095,48 @@ private fun ThreadOfficialMarkdown(
                     markdownTypography(
                             text = ThreadMessageBodyTextStyle.copy(textAlign = textAlign),
                             paragraph = ThreadMessageBodyTextStyle.copy(textAlign = textAlign),
+                            h1 =
+                                    ThreadMessageBodyTextStyle.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 20.sp,
+                                            lineHeight = 26.sp,
+                                            textAlign = textAlign
+                                    ),
+                            h2 =
+                                    ThreadMessageBodyTextStyle.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 18.sp,
+                                            lineHeight = 24.sp,
+                                            textAlign = textAlign
+                                    ),
+                            h3 =
+                                    ThreadMessageBodyTextStyle.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 17.sp,
+                                            lineHeight = 23.sp,
+                                            textAlign = textAlign
+                                    ),
+                            h4 =
+                                    ThreadMessageBodyTextStyle.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp,
+                                            lineHeight = 22.sp,
+                                            textAlign = textAlign
+                                    ),
+                            h5 =
+                                    ThreadMessageBodyTextStyle.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 15.sp,
+                                            lineHeight = 21.sp,
+                                            textAlign = textAlign
+                                    ),
+                            h6 =
+                                    ThreadMessageBodyTextStyle.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 15.sp,
+                                            lineHeight = 21.sp,
+                                            textAlign = textAlign
+                                    ),
                             code =
                                     SlockType.Caption.copy(
                                             fontFamily = FontFamily.Monospace,
@@ -4841,6 +5154,64 @@ private fun ThreadOfficialMarkdown(
             components = components,
             modifier = modifier.fillMaxWidth()
     )
+}
+
+private val ThreadMarkdownParagraphSpacing = 8.dp
+
+@Composable
+private fun ThreadMarkdownCodeBlock(
+        code: String,
+        language: String?,
+        style: TextStyle,
+        highlightsBuilder: Highlights.Builder
+) {
+    val clipboard = LocalClipboardManager.current
+    Column(
+            modifier =
+                    Modifier.fillMaxWidth()
+                            .padding(vertical = SlockSpacing.Xs)
+                            .clip(RoundedCornerShape(SlockRadius.Xs))
+                            .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f))
+                            .border(
+                                    SlockStroke.Thin,
+                                    SlockColor.BorderBlack.copy(alpha = 0.16f),
+                                    RoundedCornerShape(SlockRadius.Xs)
+                            )
+    ) {
+        Row(
+                modifier =
+                        Modifier.fillMaxWidth()
+                                .padding(
+                                        start = SlockSpacing.Sm,
+                                        top = SlockSpacing.Xs,
+                                        end = SlockSpacing.Xs,
+                                        bottom = 4.dp
+                                ),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                    text = language?.takeIf { it.isNotBlank() }?.uppercase() ?: "CODE",
+                    style =
+                            SlockType.Caption.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.SemiBold
+                            ),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1
+            )
+            CompactIconButton(iconRes = R.drawable.lucide_copy, contentDescription = "Copy code") {
+                clipboard.setText(AnnotatedString(code))
+            }
+        }
+        MarkdownHighlightedCode(
+                code = code,
+                language = language,
+                style = style,
+                highlightsBuilder = highlightsBuilder,
+                showHeader = false
+        )
+    }
 }
 
 private val ThreadInlineCodeTextStyle: TextStyle
@@ -4889,7 +5260,7 @@ private fun ThreadInlineCodeChip(code: String) {
 
 private fun String.isPlainSingleLineMessage(): Boolean =
         isNotBlank() &&
-                !contains('\n') &&
+                !normalizeThreadMarkdownBody().contains('\n') &&
                 none { it == '`' || it == '*' || it == '[' || it == ']' || it == '>' }
 
 @Composable
@@ -5559,9 +5930,10 @@ private fun ComposerChannelSuggestionDropdown(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                     )
-                    if (!channel.subtitle.isNullOrBlank()) {
+                    val channelSubtitle = channel.subtitle
+                    if (!channelSubtitle.isNullOrBlank()) {
                         Text(
-                                text = channel.subtitle,
+                                text = channelSubtitle,
                                 style = SlockType.Caption,
                                 color = SlockColor.TextMutedGray,
                                 maxLines = 1,
@@ -6428,6 +6800,8 @@ private fun ThreadMessageMarkdownPreview() {
                     - lists stay left aligned
                     - `inline code #999` wraps with the text
                     - tags like #283 and #android-dev become clickable chips
+
+                    this paragraph should stay separated after two newlines
 
                     > quoted text remains inside the message column
 

@@ -117,6 +117,7 @@ Android implementation:
 Confirmed/inferred wrappers:
 
 - `members`
+- `humans`
 - `users`
 - `agents`
 - `items`
@@ -138,6 +139,7 @@ Android accepted fields:
 
 Semantics:
 
+- Channel member response from the current Web bundle reads split arrays as `agents` and `humans` from `GET /channels/{channelId}/members`; Android also keeps the older `users` alias for compatibility.
 - Human profile enrichment uses `GET /members/{memberId}/profile`.
 - Agent rows should not be fetched through member profile.
 - When a backend row contains both same id human and agent records, Android must keep them distinct by `(kind, id)`.

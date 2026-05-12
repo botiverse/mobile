@@ -1,5 +1,10 @@
 package ai.slock.android.core.model
 
+import ai.slock.shared.model.explicitMessageStreamChannelId
+import ai.slock.shared.model.isSameConversationAs
+import ai.slock.shared.model.messageStreamChannelId
+import ai.slock.shared.model.threadIdentity
+import ai.slock.shared.model.withTitleFallback
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

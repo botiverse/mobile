@@ -84,7 +84,8 @@ fun SettingsDiagnosticsScreen(
     modifier: Modifier = Modifier,
     onCopyLogs: () -> Unit = {},
     onShareLogs: () -> Unit = {},
-    onClearLogs: () -> Unit = {}
+    onClearLogs: () -> Unit = {},
+    onSendFeedback: () -> Unit = {}
 ) {
     Column(
         modifier = modifier
@@ -103,7 +104,8 @@ fun SettingsDiagnosticsScreen(
             logsAvailable = logs.isNotEmpty(),
             onCopyLogs = onCopyLogs,
             onShareLogs = onShareLogs,
-            onClearLogs = onClearLogs
+            onClearLogs = onClearLogs,
+            onSendFeedback = onSendFeedback
         )
         SettingsDiagnosticsText(logs = logs)
     }
@@ -193,7 +195,8 @@ private fun SettingsDiagnosticsActions(
     logsAvailable: Boolean,
     onCopyLogs: () -> Unit,
     onShareLogs: () -> Unit,
-    onClearLogs: () -> Unit
+    onClearLogs: () -> Unit,
+    onSendFeedback: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
         Row(
@@ -215,6 +218,13 @@ private fun SettingsDiagnosticsActions(
                 enabled = logsAvailable
             )
         }
+        SlockButton(
+            text = stringResource(R.string.settings_about_send_feedback),
+            onClick = onSendFeedback,
+            modifier = Modifier.fillMaxWidth(),
+            variant = SlockButtonVariant.Pink,
+            enabled = logsAvailable
+        )
         SlockButton(
             text = stringResource(R.string.settings_about_clear_logs),
             onClick = onClearLogs,

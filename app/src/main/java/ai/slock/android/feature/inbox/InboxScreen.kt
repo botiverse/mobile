@@ -109,6 +109,7 @@ fun SavedScreen(
     onBack: () -> Unit,
     onOpenThread: (InboxItem) -> Unit,
     modifier: Modifier = Modifier,
+    onRemoveSaved: (InboxItem) -> Unit = {},
     onLoadMore: () -> Unit = {},
     refreshing: Boolean = false,
     onRefresh: () -> Unit = {},
@@ -130,12 +131,31 @@ fun SavedScreen(
         onBack = onBack,
         onOpenThread = onOpenThread,
         modifier = modifier,
+        onMarkItemRead = onRemoveSaved,
         onLoadMore = onLoadMore,
         refreshing = refreshing,
         onRefresh = onRefresh,
         onRetry = onRetry
     )
 }
+
+fun InboxItem.savedMessageIdOrNull(): MessageId? =
+    latestActivityMessageId ?: lastMessageId ?: parentMessageId ?: firstUnreadMessageId
+
+fun InboxUiState.removeSavedMessage(messageId: MessageId): InboxUiState =
+    copy(
+        loadState =
+            (loadState as? ScreenLoadState.Content)?.let { contentState ->
+                ScreenLoadState.Content(
+                    contentState.data.copy(
+                        items =
+                            contentState.data.items.filterNot { item ->
+                                item.savedMessageIdOrNull() == messageId
+                            }
+                    )
+                )
+            } ?: loadState
+    )
 
 @Composable
 private fun InboxListScreen(

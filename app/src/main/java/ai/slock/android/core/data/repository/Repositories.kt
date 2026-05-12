@@ -85,6 +85,7 @@ interface MemberRepository {
     suspend fun getAgentDirectMessages(agentId: MemberId): DataResult<AgentDmSnapshot>
     suspend fun getAgentReminders(agentId: MemberId): DataResult<AgentReminderSnapshot>
     suspend fun getAgentActivity(agentId: MemberId): DataResult<AgentActivitySnapshot>
+    suspend fun getAgentSkills(agentId: MemberId): DataResult<AgentSkillsSnapshot>
     suspend fun getChannelMembers(channelId: ChannelId): DataResult<ChannelMemberSnapshot>
     suspend fun addChannelMember(request: AddChannelMemberRequest): DataResult<ChannelMemberActionResult>
     suspend fun removeChannelMember(request: RemoveChannelMemberRequest): DataResult<ChannelMemberActionResult>
@@ -146,6 +147,16 @@ interface SavedRepository {
         offset: Int,
         limit: Int = DEFAULT_PAGE_LIMIT
     ): DataResult<SavedSnapshot>
+
+    suspend fun saveMessage(
+        serverId: ServerId,
+        messageId: ai.slock.android.core.model.MessageId
+    ): DataResult<SavedMessageMutationResult>
+
+    suspend fun unsaveMessage(
+        serverId: ServerId,
+        messageId: ai.slock.android.core.model.MessageId
+    ): DataResult<SavedMessageMutationResult>
 }
 
 interface SearchRepository {

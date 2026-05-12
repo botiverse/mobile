@@ -14,12 +14,18 @@ import ai.slock.android.core.data.repository.DataResult
 import ai.slock.android.core.data.repository.RealtimeSubscription
 import ai.slock.android.core.model.AgentStatus
 import ai.slock.android.core.model.ChannelId
+import ai.slock.android.core.model.Heartbeat
 import ai.slock.android.core.model.MemberKind
+import ai.slock.android.core.model.MemberPresenceUpdated
+import ai.slock.android.core.model.MessageNew
 import ai.slock.android.core.model.MessageType
 import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ServerId
+import ai.slock.android.core.model.SyncResumeResponse
 import ai.slock.android.core.model.TaskStatus
+import ai.slock.android.core.model.TaskUpdated
+import ai.slock.android.core.model.ThreadUpdated
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
@@ -162,11 +168,11 @@ class RealtimeRepositoryTest {
 
         assertEquals(RealtimeSocketEvents.JoinChannel, transport.emitted.single().first)
         assertEquals("channel-1", transport.emitted.single().second["channelId"])
-        assertTrue(events[0] is RealtimeEvent.Heartbeat)
-        assertEquals(12L, (events[0] as RealtimeEvent.Heartbeat).seq)
-        assertEquals("Hello", (events[1] as RealtimeEvent.MessageNew).message.body)
-        assertEquals(14L, (events[2] as RealtimeEvent.SyncResumeResponse).currentSeq)
-        assertEquals("Resumed", (events[2] as RealtimeEvent.SyncResumeResponse).messages.single().body)
+        assertTrue(events[0] is Heartbeat)
+        assertEquals(12L, (events[0] as Heartbeat).seq)
+        assertEquals("Hello", (events[1] as MessageNew).message.body)
+        assertEquals(14L, (events[2] as SyncResumeResponse).currentSeq)
+        assertEquals("Resumed", (events[2] as SyncResumeResponse).messages.single().body)
     }
 
     @Test
@@ -197,6 +203,35 @@ class RealtimeRepositoryTest {
             listOf("channel-1", "channel-2"),
             transport.emitted.map { it.second["channelId"] }
         )
+    }
+
+    @Test
+    fun clientReplaysRoomsAndResumeAfterReconnect() {
+        val transport = FakeRealtimeSocketTransport()
+        val client = SocketIoRealtimeClient(transport)
+        val events = mutableListOf<RealtimeEvent>()
+        client.observeEvents { events += it }
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1"))
+            )
+        )
+        client.joinChannel(ChannelId("channel-1"))
+        client.joinChannel(ChannelId("thread-1"))
+        transport.receive(RealtimeSocketEvents.Heartbeat, mapOf("seq" to 88))
+        transport.emitted.clear()
+
+        transport.receive(RealtimeSocketEvents.Reconnect)
+
+        val joinRooms =
+            transport.emitted
+                .filter { it.first == RealtimeSocketEvents.JoinChannel }
+                .map { it.second["channelId"] }
+        val resume = transport.emitted.single { it.first == RealtimeSocketEvents.SyncResume }
+        assertEquals(listOf("channel-1", "thread-1"), joinRooms)
+        assertEquals(88L, resume.second["lastSeq"])
+        assertTrue(events.single() is Heartbeat)
     }
 
     @Test
@@ -247,12 +282,35 @@ class RealtimeRepositoryTest {
             )
         )
 
-        assertTrue(thread is RealtimeEvent.ThreadUpdated)
-        assertEquals("message-1", (thread as RealtimeEvent.ThreadUpdated).parentMessageId.value)
+        assertTrue(thread is ThreadUpdated)
+        assertEquals("message-1", (thread as ThreadUpdated).parentMessageId.value)
         assertEquals("thread-channel-1", thread.threadChannelId.value)
         assertEquals(3, thread.replyCount)
-        assertTrue(task is RealtimeEvent.TaskUpdated)
-        assertEquals(118, (task as RealtimeEvent.TaskUpdated).task.taskNumber)
+        assertTrue(task is TaskUpdated)
+        assertEquals(118, (task as TaskUpdated).task.taskNumber)
+    }
+
+    @Test
+    fun mapperPreservesMessageSequenceAliases() {
+        val mapper = RealtimeEventMapper()
+
+        val event =
+            mapper.map(
+                RealtimeSocketEvents.MessageNew,
+                mapOf(
+                    "message" to
+                        mapOf(
+                            "id" to "message-1",
+                            "channelId" to "channel-1",
+                            "threadId" to "channel-1",
+                            "logSeq" to 42,
+                            "content" to "Hello"
+                        )
+                )
+            )
+
+        assertTrue(event is MessageNew)
+        assertEquals(42L, (event as MessageNew).message.seq)
     }
 
     @Test
@@ -277,8 +335,8 @@ class RealtimeRepositoryTest {
             )
         )
 
-        assertTrue(task is RealtimeEvent.TaskUpdated)
-        val summary = (task as RealtimeEvent.TaskUpdated).task
+        assertTrue(task is TaskUpdated)
+        val summary = (task as TaskUpdated).task
         assertEquals(TaskStatus.Closed, summary.status)
         assertEquals("parent-channel-1", summary.channelId?.value)
         assertEquals("parent-message-1", summary.messageId?.value)
@@ -311,15 +369,15 @@ class RealtimeRepositoryTest {
             )
         )
 
-        assertTrue(agentActivity is RealtimeEvent.MemberPresenceUpdated)
-        val agent = agentActivity as RealtimeEvent.MemberPresenceUpdated
+        assertTrue(agentActivity is MemberPresenceUpdated)
+        val agent = agentActivity as MemberPresenceUpdated
         assertEquals("agent-1", agent.memberId.value)
         assertEquals(MemberKind.Agent, agent.kind)
         assertEquals(AgentStatus.Working, agent.agentStatus)
         assertEquals(Presence.Active, agent.presence)
         assertEquals("Running tests", agent.statusLabel)
-        assertTrue(memberUpdated is RealtimeEvent.MemberPresenceUpdated)
-        assertEquals(Presence.Away, (memberUpdated as RealtimeEvent.MemberPresenceUpdated).presence)
+        assertTrue(memberUpdated is MemberPresenceUpdated)
+        assertEquals(Presence.Away, (memberUpdated as MemberPresenceUpdated).presence)
 
         val disconnected = mapper.map(
             RealtimeSocketEvents.AgentActivity,
@@ -327,7 +385,7 @@ class RealtimeRepositoryTest {
                 "agentId" to "agent-1",
                 "activity" to "disconnected"
             )
-        ) as RealtimeEvent.MemberPresenceUpdated
+        ) as MemberPresenceUpdated
         assertEquals(AgentStatus.Disconnected, disconnected.agentStatus)
         assertEquals(Presence.Offline, disconnected.presence)
     }
@@ -357,8 +415,8 @@ class RealtimeRepositoryTest {
             )
         )
 
-        assertTrue(event is RealtimeEvent.MessageNew)
-        val message = (event as RealtimeEvent.MessageNew).message
+        assertTrue(event is MessageNew)
+        val message = (event as MessageNew).message
         assertEquals("message-json", message.id.value)
         assertEquals("thread-json", message.threadId.value)
         assertEquals("channel-json", message.channelId?.value)
@@ -403,8 +461,8 @@ class RealtimeRepositoryTest {
             )
         )
 
-        assertTrue(event is RealtimeEvent.MessageNew)
-        val message = (event as RealtimeEvent.MessageNew).message
+        assertTrue(event is MessageNew)
+        val message = (event as MessageNew).message
         assertEquals(2, message.attachments.size)
         assertEquals("image-1", message.attachments[0].id.value)
         assertEquals("preview.png", message.attachments[0].name)
@@ -431,8 +489,8 @@ class RealtimeRepositoryTest {
             )
         )
 
-        assertTrue(event is RealtimeEvent.MessageNew)
-        val message = (event as RealtimeEvent.MessageNew).message
+        assertTrue(event is MessageNew)
+        val message = (event as MessageNew).message
         assertEquals("android-dev-channel", message.threadId.value)
         assertEquals("a98ec1f2-1111-4222-8333-fedcba987654", message.threadChannelId?.value)
         assertEquals(7, message.replyCount)
@@ -466,8 +524,8 @@ class RealtimeRepositoryTest {
             )
         )
 
-        assertTrue(event is RealtimeEvent.MessageNew)
-        val message = (event as RealtimeEvent.MessageNew).message
+        assertTrue(event is MessageNew)
+        val message = (event as MessageNew).message
         assertEquals("API Integration", message.author.displayName)
         assertEquals("api-integration", message.author.handle)
         assertEquals(MemberKind.Agent, message.author.kind)
@@ -502,8 +560,8 @@ class RealtimeRepositoryTest {
             )
         )
 
-        assertTrue(event is RealtimeEvent.MessageNew)
-        val message = (event as RealtimeEvent.MessageNew).message
+        assertTrue(event is MessageNew)
+        val message = (event as MessageNew).message
         assertEquals(MessageType.System, message.messageType)
         assertEquals("task_moved", message.systemEventType)
         assertEquals("task-267", message.metadata["taskId"])

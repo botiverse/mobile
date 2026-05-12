@@ -212,6 +212,16 @@ interface SlockApi {
         @Query("offset") offset: Int
     ): Response<ResponseBody>
 
+    @POST("messages/{messageId}/save")
+    suspend fun saveMessage(
+        @Path("messageId") messageId: String
+    ): Response<ResponseBody>
+
+    @DELETE("messages/{messageId}/save")
+    suspend fun unsaveMessage(
+        @Path("messageId") messageId: String
+    ): Response<ResponseBody>
+
     @GET("messages/search")
     suspend fun searchMessages(
         @Query("q") query: String,

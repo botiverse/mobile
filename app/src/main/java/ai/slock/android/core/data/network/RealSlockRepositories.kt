@@ -15,6 +15,10 @@ import ai.slock.android.core.data.repository.AgentDmSummary
 import ai.slock.android.core.data.repository.AgentProfileUpdateRequest
 import ai.slock.android.core.data.repository.AgentReminderSnapshot
 import ai.slock.android.core.data.repository.AgentReminderSummary
+import ai.slock.android.core.data.repository.AgentSkillGroup
+import ai.slock.android.core.data.repository.AgentSkillPathGroup
+import ai.slock.android.core.data.repository.AgentSkillSummary
+import ai.slock.android.core.data.repository.AgentSkillsSnapshot
 import ai.slock.android.core.data.repository.AttachmentOpenTarget
 import ai.slock.android.core.data.repository.AttachmentUploadFile
 import ai.slock.android.core.data.repository.AttachmentUploadRequest
@@ -43,6 +47,7 @@ import ai.slock.android.core.data.repository.ReadReceiptRepository
 import ai.slock.android.core.data.repository.ReadReceiptResult
 import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
 import ai.slock.android.core.data.repository.SavedRepository
+import ai.slock.android.core.data.repository.SavedMessageMutationResult
 import ai.slock.android.core.data.repository.SavedSnapshot
 import ai.slock.android.core.data.repository.SearchRepository
 import ai.slock.android.core.data.repository.SearchSnapshot
@@ -74,6 +79,7 @@ import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageDeliveryState
 import ai.slock.android.core.model.MessageId
 import ai.slock.android.core.model.MessageType
+import ai.slock.shared.model.sortedByMessageTime
 import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
@@ -82,11 +88,10 @@ import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadConversation
-import ai.slock.android.core.model.parentChannelIdOrNull
-import ai.slock.android.core.model.parentMessageIdOrNull
-import ai.slock.android.core.model.threadIdentity
-import ai.slock.android.core.model.topLevelThreadId
-import ai.slock.android.core.model.toGravatarAvatarReference
+import ai.slock.shared.model.parentChannelIdOrNull
+import ai.slock.shared.model.parentMessageIdOrNull
+import ai.slock.shared.model.threadIdentity
+import ai.slock.shared.model.toGravatarAvatarReference
 import ai.slock.android.core.state.EmptyReason
 import com.google.gson.Gson
 import com.google.gson.JsonElement
@@ -103,6 +108,7 @@ import okhttp3.OkHttpClient
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Retrofit
+import ai.slock.shared.model.topLevelThreadId
 
 class RealChannelRepository(
         private val store: AuthSessionStore,
@@ -356,7 +362,7 @@ class RealChannelRepository(
                                                 warningLogger = warningLogger
                                         )?.takeUnless { it.archived }
                                     }
-                                }
+                                }.dedupeHomeConversations()
                         rememberConversationSummaries(context.server.id, channels)
                         ChannelSnapshot(
                                 server = context.server,
@@ -408,7 +414,7 @@ class RealChannelRepository(
                                                                 warningLogger = warningLogger
                                                         )
                                                     }
-                                                }
+                                                }.dedupeHomeConversations()
                                         rememberConversationSummaries(context.server.id, directMessages)
                                         DirectMessageSnapshot(
                                                 server = context.server,
@@ -831,27 +837,33 @@ class RealMemberRepository(
         val directMessages = getAgentDirectMessages(agentId)
         val reminders = getAgentReminders(agentId)
         val activity = getAgentActivity(agentId)
+        val skills = getAgentSkills(agentId)
         return when {
             directMessages is DataResult.Content &&
                     reminders is DataResult.Content &&
-                    activity is DataResult.Content ->
+                    activity is DataResult.Content &&
+                    skills is DataResult.Content ->
                     DataResult.Content(
                             AgentDetailSnapshot(
                                     agentId = agentId,
                                     directMessages = directMessages.data.directMessages,
                                     reminders = reminders.data.reminders,
-                                    activity = activity.data.activity
+                                    activity = activity.data.activity,
+                                    skills = skills.data
                             )
                     )
             directMessages is DataResult.NoPermission -> directMessages
             reminders is DataResult.NoPermission -> reminders
             activity is DataResult.NoPermission -> activity
+            skills is DataResult.NoPermission -> skills
             directMessages is DataResult.Error -> directMessages
             reminders is DataResult.Error -> reminders
             activity is DataResult.Error -> activity
+            skills is DataResult.Error -> skills
             directMessages is DataResult.Empty &&
                     reminders is DataResult.Empty &&
-                    activity is DataResult.Empty -> DataResult.Empty(EmptyReason.NoMembers)
+                    activity is DataResult.Empty &&
+                    skills is DataResult.Empty -> DataResult.Empty(EmptyReason.NoMembers)
             else -> DataResult.Empty(EmptyReason.NoMembers)
         }
     }
@@ -944,10 +956,31 @@ class RealMemberRepository(
         }
     }
 
+    override suspend fun getAgentSkills(agentId: MemberId): DataResult<AgentSkillsSnapshot> {
+        currentContext() ?: return authRequired()
+        if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        return execute(
+                emptyReason = EmptyReason.NoMembers,
+                block = { api.settingsAgents() },
+                source = "agent_skills",
+                warningLogger = warningLogger,
+                mapper = { json ->
+                    val agent =
+                            json.items("agents", "items", "data")
+                                    .mapNotNull { it.asObjectOrNull() }
+                                    .firstOrNull { it.memberId() == agentId.value }
+                                    ?: json.unwrap("agent", "data").takeIf {
+                                        it.memberId() == agentId.value
+                                    }
+                    agent?.toAgentSkillsSnapshot(agentId) ?: AgentSkillsSnapshot(agentId = agentId)
+                }
+        )
+    }
+
     override suspend fun getChannelMembers(
             channelId: ChannelId
     ): DataResult<ChannelMemberSnapshot> {
-        val context = currentContext() ?: return authRequired()
+        currentContext() ?: return authRequired()
         val result =
                 execute(
                         emptyReason = EmptyReason.NoMembers,
@@ -977,11 +1010,7 @@ class RealMemberRepository(
                                     result.data.copy(
                                             members =
                                                     enrichHumanProfiles(
-                                                            result.data.members
-                                                                    .withCurrentHumanMember(
-                                                                            context.session.user
-                                                                                    .toMemberProfile()
-                                                                    ),
+                                                            result.data.members,
                                                             source = "channel_members_profile"
                                                     )
                                     )
@@ -1117,15 +1146,6 @@ class RealMemberRepository(
         }
     }
 
-    private fun List<MemberProfile>.withCurrentHumanMember(
-            currentMember: MemberProfile
-    ): List<MemberProfile> =
-            if (any { it.memberKey == currentMember.memberKey }) {
-                this
-            } else {
-                listOf(currentMember) + this
-            }
-
     private suspend fun getHumanProfile(
             memberId: MemberId,
             source: String
@@ -1203,6 +1223,37 @@ class RealSavedRepository(private val store: AuthSessionStore, private val api: 
             offset: Int,
             limit: Int
     ): DataResult<SavedSnapshot> = load(serverId, limit, offset)
+
+    override suspend fun saveMessage(
+            serverId: ServerId,
+            messageId: MessageId
+    ): DataResult<SavedMessageMutationResult> =
+            mutateSavedMessage(serverId, messageId, save = true)
+
+    override suspend fun unsaveMessage(
+            serverId: ServerId,
+            messageId: MessageId
+    ): DataResult<SavedMessageMutationResult> =
+            mutateSavedMessage(serverId, messageId, save = false)
+
+    private suspend fun mutateSavedMessage(
+            serverId: ServerId,
+            messageId: MessageId,
+            save: Boolean
+    ): DataResult<SavedMessageMutationResult> {
+        store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
+        return execute(
+                emptyReason = EmptyReason.NoInboxItems,
+                block = {
+                    if (save) {
+                        api.saveMessage(messageId.value)
+                    } else {
+                        api.unsaveMessage(messageId.value)
+                    }
+                },
+                mapper = { SavedMessageMutationResult(messageId) }
+        )
+    }
 
     private suspend fun load(
             serverId: ServerId,
@@ -1302,7 +1353,7 @@ class RealConversationRepository(
                             context = context,
                             fallbackThreadId =
                                     ThreadId(
-                                            json.string("threadId", "threadChannelId", "channelId")
+                                            json.messageContextThreadId()
                                                     ?: messageId.value
                                     ),
                             highlightedMessageId = messageId
@@ -1785,7 +1836,8 @@ object RealSlockApiFactory {
                     )
     ): SlockApi {
         val sessionProvider = { runBlocking { store.readSession() } }
-        return Retrofit.Builder()
+        val retrofitFallback =
+                Retrofit.Builder()
                 .baseUrl(baseUrl)
                 .client(
                         OkHttpClient.Builder()
@@ -1797,6 +1849,12 @@ object RealSlockApiFactory {
                 )
                 .build()
                 .create(SlockApi::class.java)
+        return KmpSlockApiAdapter(
+                store = store,
+                fallback = retrofitFallback,
+                baseUrl = baseUrl,
+                tokenRefresher = tokenRefresher
+        )
     }
 }
 
@@ -2067,6 +2125,16 @@ private fun mergeDirectMessages(
                 }
     }
     return merged.values.toList()
+}
+
+private fun List<ConversationSummary>.dedupeHomeConversations(): List<ConversationSummary> {
+    val deduped = LinkedHashMap<String, ConversationSummary>()
+    for (conversation in this) {
+        val key = conversation.conversationCacheKey
+        deduped.remove(key)
+        deduped[key] = conversation
+    }
+    return deduped.values.toList()
 }
 
 private val ConversationSummary.conversationCacheKey: String
@@ -2487,28 +2555,55 @@ private fun JsonObject.toThreadSnapshot(
         fallbackConversationName: String? = null,
         highlightedMessageId: MessageId? = null
 ): ThreadSnapshot {
+    val unwrapped = unwrap("data", "context")
     val parentMessage =
-            firstObject(
+            (
+                    firstObject(
                             "parentMessage",
                             "parent",
                             "rootMessage",
                             "originMessage",
-                            "threadParentMessage"
+                            "threadParentMessage",
+                            "currentMessage",
+                            "targetMessage",
+                            "highlightedMessage",
+                            "requestedMessage"
                     )
+                            ?: unwrapped.firstObject(
+                                    "parentMessage",
+                                    "parent",
+                                    "rootMessage",
+                                    "originMessage",
+                                    "threadParentMessage",
+                                    "currentMessage",
+                                    "targetMessage",
+                                    "highlightedMessage",
+                                    "requestedMessage"
+                            )
+            )
                     ?.toMessage(fallbackThreadId)
+                    ?.takeIf { highlightedMessageId == null || it.id == highlightedMessageId ||
+                            listOf(
+                                    "parentMessage",
+                                    "parent",
+                                    "rootMessage",
+                                    "originMessage",
+                                    "threadParentMessage"
+                            ).any { name -> firstObject(name) != null || unwrapped.firstObject(name) != null }
+                    }
     val messages =
             messageItems()
                     .mapNotNull {
                         it.asObjectOrNull()?.toMessage(fallbackThreadId = fallbackThreadId)
                     }
                     .distinctBy { it.id }
-                    .sortedWith(
-                            compareBy<Message> { it.seq ?: Long.MAX_VALUE }.thenBy {
-                                it.timestampLabel
-                            }
-                    )
+                    .sortedForNetworkThreadTimeline()
     val mappedConversation =
-            unwrap("conversation", "channel", "thread")
+            (
+                    firstObject("conversation", "channel", "thread")
+                            ?: unwrapped.firstObject("conversation", "channel", "thread")
+                            ?: this
+            )
                     .toConversationOrDefault(
                             threadId = fallbackThreadId,
                             name = fallbackConversationName
@@ -2751,9 +2846,43 @@ private fun JsonObject.messageItems(): List<com.google.gson.JsonElement> {
     if (direct.isNotEmpty()) return direct
     val before = unwrapped.items("before", "previous")
     val after = unwrapped.items("after", "next")
-    val current = unwrapped.get("message")?.let(::listOf).orEmpty()
+    val current =
+            listOf(
+                            "message",
+                            "currentMessage",
+                            "targetMessage",
+                            "highlightedMessage",
+                            "requestedMessage"
+                    )
+                    .firstNotNullOfOrNull { name -> unwrapped.get(name) }
+                    ?.let(::listOf)
+                    .orEmpty()
     return before + current + after
 }
+
+private fun JsonObject.messageContextThreadId(): String? {
+    val unwrapped = unwrap("data", "context")
+    return string("threadId", "threadChannelId", "channelId")
+            ?: unwrapped.string("threadId", "threadChannelId", "channelId")
+            ?: firstObject("conversation", "channel", "thread")
+                    ?.string("id", "threadId", "threadChannelId", "channelId")
+            ?: unwrapped.firstObject("conversation", "channel", "thread")
+                    ?.string("id", "threadId", "threadChannelId", "channelId")
+            ?: unwrapped.firstObject(
+                            "message",
+                            "currentMessage",
+                            "targetMessage",
+                            "highlightedMessage",
+                            "requestedMessage",
+                            "parentMessage",
+                            "rootMessage",
+                            "originMessage"
+                    )
+                    ?.string("threadId", "threadChannelId", "channelId")
+}
+
+private fun List<Message>.sortedForNetworkThreadTimeline(): List<Message> =
+        sortedByMessageTime()
 
 private fun JsonObject.toMessage(fallbackThreadId: ThreadId): Message? {
     val id = string("id", "messageId", "_id") ?: return null
@@ -2865,7 +2994,9 @@ private fun JsonObject.toMessage(fallbackThreadId: ThreadId): Message? {
                             "serverSeq",
                             "server_seq",
                             "createdSeq",
-                            "created_seq"
+                            "created_seq",
+                            "logSeq",
+                            "log_seq"
                     ),
             author = author,
             timestampLabel = string("timestampLabel", "createdAt", "created_at", "updatedAt") ?: "",
@@ -3027,6 +3158,180 @@ private fun JsonObject.toAgentActivityEntry(): AgentActivityEntry? {
             details = entry.agentActivityDetails()
     )
 }
+
+private fun JsonObject.toAgentSkillsSnapshot(agentId: MemberId): AgentSkillsSnapshot {
+    val groups = agentSkillGroups()
+    return AgentSkillsSnapshot(agentId = agentId, groups = groups)
+}
+
+private fun JsonObject.agentSkillGroups(): List<AgentSkillGroup> {
+    val groupObjects =
+            listOfNotNull(
+                    firstObject("skillGroups", "skill_groups"),
+                    firstObject("skillsByScope", "skills_by_scope"),
+                    firstObject("skillsByPath", "skills_by_path")
+            )
+    val objectGroups =
+            groupObjects.flatMap { container ->
+                container.entrySet().mapNotNull { (key, value) ->
+                    value.toAgentSkillGroup(defaultTitle = key.toSkillGroupTitle())
+                }
+            }
+    val namedGroups =
+            items("skillGroups", "skill_groups", "groups")
+                    .mapNotNull { it.toAgentSkillGroup(defaultTitle = "Skills") }
+    val directSkills =
+            items("skills", "aiSkills", "ai_skills", "availableSkills", "available_skills", "codexSkills", "codex_skills", "installedSkills", "installed_skills")
+                    .mapNotNull { it.toParsedAgentSkill(defaultGroup = "Skills") }
+    val directGroup =
+            if (directSkills.isNotEmpty()) listOf(directSkills.toAgentSkillGroup("Skills")) else emptyList()
+    return (objectGroups + namedGroups + directGroup)
+            .filter { it.paths.any { path -> path.skills.isNotEmpty() } }
+            .mergeAgentSkillGroups()
+}
+
+private fun JsonElement.toAgentSkillGroup(defaultTitle: String): AgentSkillGroup? {
+    return when {
+        isJsonArray -> asJsonArray.toList()
+                .mapNotNull { it.toParsedAgentSkill(defaultGroup = defaultTitle) }
+                .toAgentSkillGroup(defaultTitle)
+        isJsonObject -> {
+            val obj = asJsonObject
+            val title = obj.string("title", "label", "name", "scope") ?: defaultTitle
+            val directSkills =
+                    obj.items("skills", "items", "data")
+                            .mapNotNull { it.toParsedAgentSkill(defaultGroup = title) }
+            val pathGroups =
+                    obj.items("paths", "pathGroups", "path_groups", "directories")
+                            .mapNotNull { it.toAgentSkillPathGroup(defaultGroup = title) } +
+                            obj.entrySet()
+                                    .filter { (_, value) -> value.isJsonArray }
+                                    .mapNotNull { (key, value) ->
+                                        value.asJsonArray.toList()
+                                                .mapNotNull {
+                                                    it.toParsedAgentSkill(
+                                                            defaultGroup = title,
+                                                            defaultPath = key
+                                                    )
+                                                }
+                                                .toAgentSkillPathGroup(key)
+                                    }
+            (directSkills.toAgentSkillGroup(title).paths + pathGroups)
+                    .mergeAgentSkillPathGroups()
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { paths ->
+                        AgentSkillGroup(
+                                title = title,
+                                count = obj.int("count") ?: paths.sumOf { it.count },
+                                paths = paths
+                        )
+                    }
+        }
+        else -> null
+    }
+}
+
+private fun JsonElement.toAgentSkillPathGroup(defaultGroup: String): AgentSkillPathGroup? {
+    if (!isJsonObject) return null
+    val obj = asJsonObject
+    val path = obj.string("path", "directory", "dir", "root", "source") ?: defaultGroup
+    return obj.items("skills", "items", "data")
+            .mapNotNull { it.toParsedAgentSkill(defaultGroup = defaultGroup, defaultPath = path) }
+            .toAgentSkillPathGroup(path)
+}
+
+private data class ParsedAgentSkill(
+        val group: String,
+        val path: String,
+        val name: String,
+        val detail: String?
+)
+
+private fun JsonElement.toParsedAgentSkill(
+        defaultGroup: String,
+        defaultPath: String? = null
+): ParsedAgentSkill? {
+    return when {
+        isJsonPrimitive && asJsonPrimitive.isString -> {
+            val name = asString.takeIf { it.isNotBlank() } ?: return null
+            ParsedAgentSkill(
+                    group = defaultGroup,
+                    path = defaultPath ?: defaultGroup,
+                    name = name,
+                    detail = null
+            )
+        }
+        isJsonObject -> {
+            val obj = asJsonObject
+            val name =
+                    obj.string("name", "id", "title", "skill", "slug", "displayName", "display_name")
+                            ?: return null
+            ParsedAgentSkill(
+                    group =
+                            obj.string("group", "scope", "source", "type")
+                                    ?.toSkillGroupTitle()
+                                    ?: defaultGroup,
+                    path =
+                            obj.string("path", "directory", "dir", "root", "sourcePath", "source_path")
+                                    ?: defaultPath
+                                    ?: defaultGroup,
+                    name = name,
+                    detail = obj.string("description", "detail", "summary", "readme", "prompt")
+            )
+        }
+        else -> null
+    }
+}
+
+private fun List<ParsedAgentSkill>.toAgentSkillGroup(title: String): AgentSkillGroup =
+        AgentSkillGroup(
+                title = title,
+                count = size,
+                paths =
+                        groupBy { it.path }
+                                .map { (path, skills) -> skills.toAgentSkillPathGroup(path) }
+                                .mergeAgentSkillPathGroups()
+        )
+
+private fun List<ParsedAgentSkill>.toAgentSkillPathGroup(path: String): AgentSkillPathGroup =
+        AgentSkillPathGroup(
+                path = path,
+                count = size,
+                skills =
+                        distinctBy { it.name }
+                                .map { AgentSkillSummary(name = it.name, detail = it.detail) }
+        )
+
+private fun List<AgentSkillGroup>.mergeAgentSkillGroups(): List<AgentSkillGroup> =
+        groupBy { it.title }
+                .map { (title, groups) ->
+                    val paths = groups.flatMap { it.paths }.mergeAgentSkillPathGroups()
+                    AgentSkillGroup(
+                            title = title,
+                            count = groups.sumOf { it.count }.takeIf { it > 0 }
+                                    ?: paths.sumOf { it.count },
+                            paths = paths
+                    )
+                }
+
+private fun List<AgentSkillPathGroup>.mergeAgentSkillPathGroups(): List<AgentSkillPathGroup> =
+        groupBy { it.path }
+                .map { (path, groups) ->
+                    val skills = groups.flatMap { it.skills }.distinctBy { it.name }
+                    AgentSkillPathGroup(
+                            path = path,
+                            count = groups.sumOf { it.count }.takeIf { it > 0 } ?: skills.size,
+                            skills = skills
+                    )
+                }
+
+private fun String.toSkillGroupTitle(): String =
+        split('_', '-', ' ')
+                .filter { it.isNotBlank() }
+                .joinToString(" ") { word ->
+                    word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                }
+                .ifBlank { this }
 
 private fun JsonObject.toCurrentAgentActivityEntry(): AgentActivityEntry? {
     val type = string("activity", "status").toAgentActivityTypeOrNull() ?: return null
@@ -3323,7 +3628,7 @@ private fun JsonObject.memberItems(): List<MemberProfile> {
             root.items("members", "items").filterNot {
                 it.asObjectOrNull()?.explicitMemberKindOrNull() == MemberKind.Agent
             }
-    val users = root.directArrayItems("users")
+    val users = root.directArrayItems("humans") + root.directArrayItems("users")
     val agents = root.directArrayItems("agents")
     val fallback =
             root.items("data").filterNot {

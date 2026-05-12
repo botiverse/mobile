@@ -1,9 +1,11 @@
 package ai.slock.android.core.data.local
 
 import ai.slock.android.core.model.Attachment
+import ai.slock.android.core.model.AgentStatus
 import ai.slock.android.core.model.AttachmentId
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationKind
+import ai.slock.android.core.model.ConversationPermissions
 import ai.slock.android.core.model.ConversationSummary
 import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberKind
@@ -13,16 +15,17 @@ import ai.slock.android.core.model.MessageDeliveryState
 import ai.slock.android.core.model.MessageId
 import ai.slock.android.core.model.MessageType
 import ai.slock.android.core.model.Presence
+import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadConversation
-import ai.slock.android.core.model.explicitMessageStreamChannelId
-import ai.slock.android.core.model.messageStreamChannelId
-import ai.slock.android.core.model.parentChannelIdOrNull
-import ai.slock.android.core.model.parentMessageIdOrNull
-import ai.slock.android.core.model.withTitleFallback
+import ai.slock.shared.model.messageStreamChannelId
+import ai.slock.shared.model.parentChannelIdOrNull
+import ai.slock.shared.model.parentMessageIdOrNull
+import ai.slock.shared.model.sortedByMessageTime
+import ai.slock.shared.model.withTitleFallback
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
@@ -30,16 +33,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import ai.slock.shared.model.explicitMessageStreamChannelId
 
 interface SlockLocalStore {
-    fun upsertConversation(conversation: ConversationSummary, syncedAtMs: Long)
+    fun upsertConversation(
+        conversation: ConversationSummary,
+        syncedAtMs: Long,
+        serverId: ServerId? = null
+    )
     fun getConversation(id: ThreadId): ConversationSummary?
+    fun getHomeConversations(serverId: ServerId): LocalHomeConversations
+    fun clearConversationUnread(channelId: ChannelId, syncedAtMs: Long)
     fun getThreadTimeline(threadId: ThreadId): LocalThreadTimeline?
     fun observeThreadTimeline(threadId: ThreadId): Flow<LocalThreadTimeline?>
     fun upsertMessage(message: Message, syncedAtMs: Long, streamChannelId: ChannelId? = null)
     fun getMessagesForThread(threadId: ThreadId): List<Message>
     fun upsertTaskReference(task: TaskSummary, syncedAtMs: Long)
     fun deleteTaskReference(taskId: TaskId)
+    fun getTaskContext(task: TaskSummary): LocalTaskContext
     fun getTaskReferencesForMessage(messageId: MessageId): List<TaskSummary>
     fun upsertMemberSnapshot(member: MemberProfile, syncedAtMs: Long)
     fun getMemberSnapshot(memberId: MemberId): MemberProfile?
@@ -66,8 +77,24 @@ interface SlockLocalStore {
 data class LocalThreadTimeline(
     val conversation: ConversationSummary,
     val messages: List<Message>,
+    val parentMessage: Message? = null,
     val tasks: List<TaskSummary> = emptyList(),
     val cursor: LocalSyncCursor? = null
+)
+
+data class LocalHomeConversations(
+    val channels: List<ConversationSummary>,
+    val directMessages: List<ConversationSummary>
+) {
+    val isNotEmpty: Boolean
+        get() = channels.isNotEmpty() || directMessages.isNotEmpty()
+}
+
+data class LocalTaskContext(
+    val task: TaskSummary,
+    val parentMessage: Message? = null,
+    val sourceConversation: ConversationSummary? = null,
+    val replyConversation: ConversationSummary? = null
 )
 
 data class LocalSyncCursor(
@@ -110,7 +137,11 @@ class SqlDelightSlockLocalStore(
 ) : SlockLocalStore {
     private val queries = database.slockDatabaseQueries
 
-    override fun upsertConversation(conversation: ConversationSummary, syncedAtMs: Long) {
+    override fun upsertConversation(
+        conversation: ConversationSummary,
+        syncedAtMs: Long,
+        serverId: ServerId?
+    ) {
         val storedConversation = getConversation(conversation.threadId)
         val conversationToStore = conversation.withTitleFallback(storedConversation)
         val parentChannelId = conversationToStore.thread?.parentChannelId
@@ -119,6 +150,10 @@ class SqlDelightSlockLocalStore(
             ?: conversationToStore.threadId.parentMessageIdOrNull()
         val storedChannelId = conversationToStore.channelId ?: parentChannelId
         val streamChannelId = conversationToStore.explicitMessageStreamChannelId()
+        val storedServerId =
+            serverId?.value
+                ?: selectStoredConversationServerId(conversationToStore.threadId).orEmpty()
+                    .takeIf(String::isNotBlank)
         requireValidLocalId(conversationToStore.threadId.value, "conversation.threadId")
         requireValidLocalId(storedChannelId?.value, "conversation.channelId")
         requireValidLocalId(streamChannelId?.value, "conversation.streamChannelId")
@@ -127,16 +162,45 @@ class SqlDelightSlockLocalStore(
             channel_id = storedChannelId?.value ?: conversationToStore.threadId.value,
             thread_id = conversationToStore.threadId.value,
             stream_channel_id = streamChannelId?.value,
+            server_id = storedServerId,
             kind = conversationToStore.kind.wireValue,
             name = conversationToStore.name,
+            subtitle = conversationToStore.subtitle,
             parent_channel_id = parentChannelId?.value,
             parent_message_id = parentMessageId?.value,
             avatar_url = conversationToStore.avatarUrl,
             unread_count = conversationToStore.unreadCount.toLong(),
+            mention_count = conversationToStore.mentionCount.toLong(),
+            last_message_id = conversationToStore.lastMessageId?.value,
+            first_unread_message_id = conversationToStore.firstUnreadMessageId?.value,
+            last_message_preview = conversationToStore.lastMessagePreview,
+            last_message_sender_name = conversationToStore.lastMessageSenderName,
+            presence = conversationToStore.presence?.name,
+            agent_status = conversationToStore.agentStatus?.name,
+            presence_member_id = conversationToStore.presenceMemberId?.value,
+            has_draft = if (conversationToStore.hasDraft) 1L else 0L,
+            joined = if (conversationToStore.joined) 1L else 0L,
+            archived = if (conversationToStore.archived) 1L else 0L,
+            member_count = conversationToStore.memberCount?.toLong(),
+            can_read = if (conversationToStore.permissions.canRead) 1L else 0L,
+            can_send = if (conversationToStore.permissions.canSend) 1L else 0L,
+            can_attach = if (conversationToStore.permissions.canAttach) 1L else 0L,
+            can_create_task = if (conversationToStore.permissions.canCreateTask) 1L else 0L,
             updated_at_label = conversationToStore.lastMessageAt,
             last_synced_at_ms = syncedAtMs
         )
     }
+
+    private fun selectStoredConversationServerId(id: ThreadId): String? =
+        queries.selectConversationServerId(
+            id.value,
+            id.value,
+            id.value,
+            id.value,
+            id.value,
+            id.value,
+            id.value
+        ).executeAsOneOrNull()?.server_id
 
     override fun getConversation(id: ThreadId): ConversationSummary? =
         queries.selectConversation(
@@ -149,16 +213,41 @@ class SqlDelightSlockLocalStore(
             id.value
         ).executeAsOneOrNull()?.toConversationSummary()
 
+    override fun getHomeConversations(serverId: ServerId): LocalHomeConversations {
+        val conversations =
+            queries.selectHomeConversations(serverId.value)
+                .executeAsList()
+                .map { it.toConversationSummary() }
+                .dedupeHomeConversations()
+        return LocalHomeConversations(
+            channels = conversations.filter { it.kind == ConversationKind.Channel },
+            directMessages = conversations.filter { it.kind == ConversationKind.DirectMessage }
+        )
+    }
+
+    override fun clearConversationUnread(channelId: ChannelId, syncedAtMs: Long) {
+        queries.clearConversationUnread(
+            last_synced_at_ms = syncedAtMs,
+            channel_id = channelId.value,
+            thread_id = channelId.value,
+            stream_channel_id = channelId.value,
+            id = channelId.value
+        )
+    }
+
     override fun getThreadTimeline(threadId: ThreadId): LocalThreadTimeline? {
         val conversation = getConversation(threadId) ?: return null
         val streamChannelId = conversation.explicitMessageStreamChannelId() ?: return null
         val messages = getMessagesForThread(ThreadId(streamChannelId.value))
+        val parentMessage =
+            conversation.thread?.parentMessageId?.let(::getMessage)
         val tasks = messages.flatMap { message -> getTaskReferencesForMessage(message.id) }
             .distinctBy { it.id }
         val cursor = getSyncCursor(streamChannelId.value)
         return LocalThreadTimeline(
             conversation = conversation,
             messages = messages,
+            parentMessage = parentMessage,
             tasks = tasks,
             cursor = cursor
         )
@@ -167,6 +256,17 @@ class SqlDelightSlockLocalStore(
     override fun observeThreadTimeline(threadId: ThreadId): Flow<LocalThreadTimeline?> =
         queries
             .selectThreadTimelineInvalidation(
+                threadId.value,
+                threadId.value,
+                threadId.value,
+                threadId.value,
+                threadId.value,
+                threadId.value,
+                threadId.value,
+                threadId.value,
+                threadId.value,
+                threadId.value,
+                threadId.value,
                 threadId.value,
                 threadId.value,
                 threadId.value,
@@ -241,6 +341,17 @@ class SqlDelightSlockLocalStore(
                 val task = getTaskReferencesForMessage(MessageId(row.id)).firstOrNull()
                 row.toMessage(attachments = attachments, task = task)
             }
+            .sortedForLocalThreadTimeline()
+
+    private fun getMessage(messageId: MessageId): Message? =
+        queries.selectMessage(messageId.value)
+            .executeAsOneOrNull()
+            ?.let { row ->
+                val attachments =
+                    queries.selectAttachmentsForMessage(row.id).executeAsList().map { it.toAttachment() }
+                val task = getTaskReferencesForMessage(MessageId(row.id)).firstOrNull()
+                row.toMessage(attachments = attachments, task = task)
+            }
 
     override fun upsertTaskReference(task: TaskSummary, syncedAtMs: Long) {
         val current = queries.selectTaskReference(task.id.value).executeAsOneOrNull()?.toTaskSummary()
@@ -270,6 +381,47 @@ class SqlDelightSlockLocalStore(
         queries.selectTaskReferencesForMessage(messageId.value, messageId.value)
             .executeAsList()
             .map { it.toTaskSummary() }
+
+    override fun getTaskContext(task: TaskSummary): LocalTaskContext {
+        val cachedTask =
+            queries.selectTaskContext(
+                id = task.id.value,
+                message_id = task.messageId?.value ?: task.id.value,
+                parent_message_id = task.parentMessageId?.value ?: task.id.value,
+                task_number = task.taskNumber?.toLong() ?: Long.MIN_VALUE
+            )
+                .executeAsOneOrNull()
+                ?.toTaskSummary()
+        val mergedTask = cachedTask?.withReferencesFrom(task) ?: task
+        val parentMessageId = mergedTask.parentMessageId ?: mergedTask.messageId
+        val parentMessage = parentMessageId?.let(::getMessage)
+        val sourceChannelId =
+            mergedTask.channelId
+                ?: parentMessage?.channelId
+                ?: parentMessage?.threadId?.parentChannelIdOrNull()
+        val replyThreadId =
+            mergedTask.threadId?.takeIf { threadId ->
+                sourceChannelId == null || threadId.value != sourceChannelId.value
+            }
+                ?: parentMessage?.threadChannelId?.let { ThreadId(it.value) }
+        return LocalTaskContext(
+            task =
+                mergedTask.copy(
+                    messageId = mergedTask.messageId ?: parentMessage?.task?.messageId ?: parentMessage?.id,
+                    parentMessageId = mergedTask.parentMessageId ?: parentMessage?.id,
+                    channelId = mergedTask.channelId ?: sourceChannelId,
+                    threadId = mergedTask.threadId ?: replyThreadId,
+                    isThreadTask =
+                        mergedTask.isThreadTask ||
+                            replyThreadId != null ||
+                            parentMessage?.threadChannelId != null,
+                    channelName = mergedTask.channelName ?: sourceChannelId?.value
+                ),
+            parentMessage = parentMessage,
+            sourceConversation = sourceChannelId?.let { getConversation(ThreadId(it.value)) },
+            replyConversation = replyThreadId?.let(::getConversation)
+        )
+    }
 
     override fun deleteTaskReference(taskId: TaskId) {
         queries.deleteTaskReference(taskId.value)
@@ -330,8 +482,8 @@ class SqlDelightSlockLocalStore(
     ) {
         queries.updateMessageThreadMetadata(
             thread_channel_id = threadChannelId.value,
-            value = replyCount.toLong(),
-            value_ = lastReplyAt,
+            reply_count = replyCount.toLong(),
+            value = lastReplyAt,
             last_synced_at_ms = syncedAtMs,
             id = parentMessageId.value
         )
@@ -405,10 +557,53 @@ private fun Local_conversation.toConversationSummary(): ConversationSummary =
             },
         kind = kind.toConversationKind(),
         name = name,
+        subtitle = subtitle,
         avatarUrl = avatar_url,
         unreadCount = unread_count.toInt(),
-        lastMessageAt = updated_at_label
+        mentionCount = mention_count.toInt(),
+        lastMessageId = last_message_id?.let(::MessageId),
+        firstUnreadMessageId = first_unread_message_id?.let(::MessageId),
+        lastMessagePreview = last_message_preview,
+        lastMessageAt = updated_at_label,
+        lastMessageSenderName = last_message_sender_name,
+        presence = presence.toPresenceOrNull(),
+        agentStatus = agent_status.toAgentStatusOrNull(),
+        presenceMemberId = presence_member_id?.let(::MemberId),
+        hasDraft = has_draft != 0L,
+        joined = joined != 0L,
+        archived = archived != 0L,
+        memberCount = member_count?.toInt(),
+        permissions =
+            ConversationPermissions(
+                canRead = can_read != 0L,
+                canSend = can_send != 0L,
+                canAttach = can_attach != 0L,
+                canCreateTask = can_create_task != 0L
+            )
     )
+
+private fun List<ConversationSummary>.dedupeHomeConversations(): List<ConversationSummary> {
+    val deduped = LinkedHashMap<String, ConversationSummary>()
+    for (conversation in this) {
+        val key = conversation.homeConversationKey()
+        if (key !in deduped) {
+            deduped[key] = conversation
+        }
+    }
+    return deduped.values.toList()
+}
+
+private fun ConversationSummary.homeConversationKey(): String =
+    when (kind) {
+        ConversationKind.Thread -> threadId.value
+        else -> channelId?.value ?: threadId.value
+    }
+
+private fun String?.toPresenceOrNull(): Presence? =
+    enumValues<Presence>().firstOrNull { it.name == this }
+
+private fun String?.toAgentStatusOrNull(): AgentStatus? =
+    enumValues<AgentStatus>().firstOrNull { it.name == this }
 
 private fun Local_message.toMessage(
     attachments: List<Attachment>,
@@ -437,6 +632,9 @@ private fun Local_message.toMessage(
         parentMessageId = parent_message_id?.let(::MessageId),
         updatedAtLabel = updated_at_label
     )
+
+private fun List<Message>.sortedForLocalThreadTimeline(): List<Message> =
+    sortedByMessageTime()
 
 private fun Local_attachment.toAttachment(): Attachment =
     Attachment(

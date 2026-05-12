@@ -43,19 +43,6 @@ fun resolveHomeShellContent(
         }
         ?: fallbackContent
 
-fun HomeContent.withPreservedConversationUnread(previous: HomeContent?): HomeContent {
-    if (previous == null) return this
-    val preservedChannels = channels.map { it.withPreservedUnread(previous.conversationUnreadFor(it)) }
-    val preservedDirectMessages = directMessages.map { it.withPreservedUnread(previous.conversationUnreadFor(it)) }
-    val rowTotal = preservedChannels.sumOf { it.unreadCount } + preservedDirectMessages.sumOf { it.unreadCount }
-    return copy(
-        channels = preservedChannels,
-        directMessages = preservedDirectMessages,
-        unreadTotal = rowTotal,
-        serverUnreadCount = maxOf(serverUnreadCount, rowTotal)
-    )
-}
-
 fun HomeContent.withAgentDirectMessagePresence(members: List<MemberProfile>): HomeContent {
     val agents = members.filter { it.kind == MemberKind.Agent }
     if (agents.isEmpty()) return this
@@ -76,29 +63,6 @@ fun HomeContent.withAgentDirectMessagePresence(members: List<MemberProfile>): Ho
         }
     }
     return copy(directMessages = updatedDirectMessages)
-}
-
-private fun HomeContent.conversationUnreadFor(conversation: ConversationSummary): ConversationSummary? {
-    val candidates = if (conversation.kind == ai.slock.android.core.model.ConversationKind.DirectMessage) {
-        directMessages
-    } else {
-        channels
-    }
-    return candidates.firstOrNull { existing ->
-        existing.threadId == conversation.threadId ||
-            (existing.channelId != null && existing.channelId == conversation.channelId) ||
-            (conversation.channelId != null && existing.threadId.value == conversation.channelId.value) ||
-            (existing.channelId != null && existing.channelId.value == conversation.threadId.value)
-    }
-}
-
-private fun ConversationSummary.withPreservedUnread(previous: ConversationSummary?): ConversationSummary {
-    if (previous == null || unreadCount > 0 || previous.unreadCount <= 0) return this
-    return copy(
-        unreadCount = previous.unreadCount,
-        mentionCount = previous.mentionCount,
-        firstUnreadMessageId = previous.firstUnreadMessageId
-    )
 }
 
 private fun HomeContent.clearDraftIndicators(): HomeContent =

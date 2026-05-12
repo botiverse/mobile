@@ -1,20 +1,35 @@
 package ai.slock.android.core.data.repository
 
 import ai.slock.android.core.model.AgentProfile
+import ai.slock.shared.model.toMemberProfile
 import ai.slock.android.core.model.Attachment
+import ai.slock.shared.model.toMemberProfile
 import ai.slock.android.core.model.AttachmentId
+import ai.slock.shared.model.toMemberProfile
 import ai.slock.android.core.model.ChannelId
+import ai.slock.shared.model.toMemberProfile
 import ai.slock.android.core.model.ConversationSummary
+import ai.slock.shared.model.toMemberProfile
 import ai.slock.android.core.model.InboxItem
+import ai.slock.shared.model.toMemberProfile
 import ai.slock.android.core.model.MemberId
+import ai.slock.shared.model.toMemberProfile
 import ai.slock.android.core.model.MemberProfile
+import ai.slock.shared.model.toMemberProfile
 import ai.slock.android.core.model.Message
+import ai.slock.shared.model.toMemberProfile
 import ai.slock.android.core.model.MessageId
+import ai.slock.shared.model.toMemberProfile
 import ai.slock.android.core.model.ServerId
+import ai.slock.shared.model.toMemberProfile
 import ai.slock.android.core.model.ServerSummary
+import ai.slock.shared.model.toMemberProfile
 import ai.slock.android.core.model.SettingsSummary
+import ai.slock.shared.model.toMemberProfile
 import ai.slock.android.core.model.TaskStatus
+import ai.slock.shared.model.toMemberProfile
 import ai.slock.android.core.model.TaskSummary
+import ai.slock.shared.model.toMemberProfile
 
 data class HomeSnapshot(
     val server: ServerSummary,
@@ -91,7 +106,8 @@ data class AgentDetailSnapshot(
     val agentId: MemberId,
     val directMessages: List<AgentDmSummary>,
     val reminders: List<AgentReminderSummary>,
-    val activity: List<AgentActivityEntry>
+    val activity: List<AgentActivityEntry>,
+    val skills: AgentSkillsSnapshot = AgentSkillsSnapshot(agentId = agentId)
 )
 
 data class AgentDmSnapshot(
@@ -107,6 +123,28 @@ data class AgentReminderSnapshot(
 data class AgentActivitySnapshot(
     val agentId: MemberId,
     val activity: List<AgentActivityEntry>
+)
+
+data class AgentSkillsSnapshot(
+    val agentId: MemberId,
+    val groups: List<AgentSkillGroup> = emptyList()
+)
+
+data class AgentSkillGroup(
+    val title: String,
+    val count: Int = 0,
+    val paths: List<AgentSkillPathGroup> = emptyList()
+)
+
+data class AgentSkillPathGroup(
+    val path: String,
+    val count: Int = 0,
+    val skills: List<AgentSkillSummary> = emptyList()
+)
+
+data class AgentSkillSummary(
+    val name: String,
+    val detail: String? = null
 )
 
 data class AgentDmSummary(
@@ -216,6 +254,10 @@ data class SavedSnapshot(
     val totalCount: Int = items.size,
     val hasMore: Boolean = false,
     val nextOffset: Int? = null
+)
+
+data class SavedMessageMutationResult(
+    val messageId: ai.slock.android.core.model.MessageId
 )
 
 data class SearchSnapshot(

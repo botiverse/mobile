@@ -26,27 +26,36 @@ enum class InboxFilter {
     Unread
 }
 
-fun InboxUiState.withFilterLoading(filter: InboxFilter): InboxUiState =
+fun InboxUiState.withFilterLoading(
+    filter: InboxFilter,
+    renderCache: InboxContent? = null
+): InboxUiState =
     copy(
         loadState = ScreenLoadState.Loading,
         selectedFilter = filter,
         focusedItemKey = null,
         loadingMore = false,
         nextOffset = null,
-        previousContent = (loadState as? ScreenLoadState.Content)?.data ?: previousContent
+        previousContent = renderCache
     )
 
-fun InboxUiState.withBodyLoading(filter: InboxFilter = selectedFilter): InboxUiState =
+fun InboxUiState.withBodyLoading(
+    filter: InboxFilter = selectedFilter,
+    renderCache: InboxContent? = null
+): InboxUiState =
     InboxUiState(
         loadState = ScreenLoadState.Loading,
         selectedFilter = filter,
-        previousContent = (loadState as? ScreenLoadState.Content)?.data ?: previousContent
+        previousContent = renderCache
     )
 
-fun InboxUiState.withSilentRefresh(filter: InboxFilter = selectedFilter): InboxUiState =
+fun InboxUiState.withSilentRefresh(
+    filter: InboxFilter = selectedFilter,
+    renderCache: InboxContent? = null
+): InboxUiState =
     copy(
         selectedFilter = filter,
         focusedItemKey = null,
         loadingMore = false,
-        previousContent = null
+        previousContent = renderCache
     )

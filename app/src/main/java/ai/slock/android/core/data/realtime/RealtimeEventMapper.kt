@@ -12,6 +12,16 @@ import ai.slock.android.core.model.MessageId
 import ai.slock.android.core.model.MessageType
 import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.RealtimeEvent
+import ai.slock.android.core.model.MessageNew
+import ai.slock.android.core.model.MessageUpdated
+import ai.slock.android.core.model.DirectMessageCreated
+import ai.slock.android.core.model.ThreadUpdated
+import ai.slock.android.core.model.TaskCreated
+import ai.slock.android.core.model.TaskUpdated
+import ai.slock.android.core.model.TaskDeleted
+import ai.slock.android.core.model.MemberPresenceUpdated
+import ai.slock.android.core.model.SyncResumeResponse
+import ai.slock.android.core.model.Heartbeat
 import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
@@ -29,24 +39,24 @@ class RealtimeEventMapper(
     fun map(eventName: String, payload: Any?): RealtimeEvent? {
         val root = payload.toJsonObject()
         return when (eventName) {
-            RealtimeSocketEvents.MessageNew -> root.unwrap("message").toMessage()?.let(RealtimeEvent::MessageNew)
+            RealtimeSocketEvents.MessageNew -> root.unwrap("message").toMessage()?.let(::MessageNew)
             RealtimeSocketEvents.DirectMessageNew ->
-                root.unwrap("message").toMessage()?.let(RealtimeEvent::MessageNew)
+                root.unwrap("message").toMessage()?.let(::MessageNew)
                     ?: root.string("channelId", "channel_id", "id")?.let {
-                        RealtimeEvent.DirectMessageCreated(ChannelId(it))
+                        DirectMessageCreated(ChannelId(it))
                     }
-            RealtimeSocketEvents.MessageUpdated -> root.unwrap("message").toMessage()?.let(RealtimeEvent::MessageUpdated)
+            RealtimeSocketEvents.MessageUpdated -> root.unwrap("message").toMessage()?.let(::MessageUpdated)
             RealtimeSocketEvents.ThreadUpdated -> root.toThreadUpdated()
             RealtimeSocketEvents.TaskCreated -> root.toTasksCreated()
-            RealtimeSocketEvents.TaskUpdated -> root.unwrap("task").toTaskSummary()?.let(RealtimeEvent::TaskUpdated)
-            RealtimeSocketEvents.TaskDeleted -> root.string("taskId", "id")?.let { RealtimeEvent.TaskDeleted(TaskId(it)) }
+            RealtimeSocketEvents.TaskUpdated -> root.unwrap("task").toTaskSummary()?.let(::TaskUpdated)
+            RealtimeSocketEvents.TaskDeleted -> root.string("taskId", "id")?.let { TaskDeleted(TaskId(it)) }
             RealtimeSocketEvents.AgentActivity -> root.toMemberPresenceUpdated(defaultKind = MemberKind.Agent)
             RealtimeSocketEvents.ServerMemberAdded,
             RealtimeSocketEvents.ServerMemberUpdated,
             RealtimeSocketEvents.ServerMemberLeft,
             RealtimeSocketEvents.ServerMemberRemoved -> root.toMemberPresenceUpdated()
             RealtimeSocketEvents.SyncResumeResponse -> root.toSyncResumeResponse()
-            RealtimeSocketEvents.Heartbeat -> root.long("seq")?.let(RealtimeEvent::Heartbeat)
+            RealtimeSocketEvents.Heartbeat -> root.long("seq")?.let(::Heartbeat)
             else -> null
         }
     }
@@ -71,7 +81,7 @@ class RealtimeEventMapper(
             ?: JsonObject()
 }
 
-private fun JsonObject.toThreadUpdated(): RealtimeEvent.ThreadUpdated? {
+private fun JsonObject.toThreadUpdated(): ThreadUpdated? {
     val parentMessageId = string(
         "parentMessageId",
         "parent_message_id",
@@ -97,7 +107,7 @@ private fun JsonObject.toThreadUpdated(): RealtimeEvent.ThreadUpdated? {
         "channel_id"
     )
         ?: return null
-    return RealtimeEvent.ThreadUpdated(
+    return ThreadUpdated(
         parentMessageId = MessageId(parentMessageId),
         threadChannelId = ChannelId(threadChannelId),
         replyCount = int(
@@ -120,18 +130,18 @@ private fun JsonObject.toThreadUpdated(): RealtimeEvent.ThreadUpdated? {
     )
 }
 
-private fun JsonObject.toTasksCreated(): RealtimeEvent.TaskCreated? {
+private fun JsonObject.toTasksCreated(): TaskCreated? {
     val tasks = when {
         get("tasks")?.isJsonArray == true -> getAsJsonArray("tasks").mapNotNull { it.asObject().toTaskSummary() }
         get("task")?.isJsonObject == true -> listOfNotNull(getAsJsonObject("task").toTaskSummary())
         else -> listOfNotNull(toTaskSummary())
     }
-    return RealtimeEvent.TaskCreated(tasks).takeIf { tasks.isNotEmpty() }
+    return TaskCreated(tasks).takeIf { tasks.isNotEmpty() }
 }
 
 private fun JsonObject.toMemberPresenceUpdated(
     defaultKind: MemberKind? = null
-): RealtimeEvent.MemberPresenceUpdated? {
+): MemberPresenceUpdated? {
     val profileObject = firstObject("member", "user", "agent", "profile") ?: this
     val memberId = string("memberId", "userId", "agentId", "id")
         ?: profileObject.string("memberId", "userId", "agentId", "id", "_id")
@@ -160,7 +170,7 @@ private fun JsonObject.toMemberPresenceUpdated(
         firstObject("user", "member") != null -> MemberKind.Human
         else -> null
     }
-    return RealtimeEvent.MemberPresenceUpdated(
+    return MemberPresenceUpdated(
         memberId = MemberId(memberId),
         presence = presence,
         kind = kind,
@@ -170,9 +180,9 @@ private fun JsonObject.toMemberPresenceUpdated(
     )
 }
 
-private fun JsonObject.toSyncResumeResponse(): RealtimeEvent.SyncResumeResponse {
+private fun JsonObject.toSyncResumeResponse(): SyncResumeResponse {
     val messages = items("messages", "items").mapNotNull { it.asObject().toMessage() }
-    return RealtimeEvent.SyncResumeResponse(
+    return SyncResumeResponse(
         messages = messages,
         currentSeq = long("currentSeq", "seq", "lastSeq") ?: messages.maxOfOrNull { it.seq ?: 0L } ?: 0L,
         hasMore = boolean("hasMore") ?: false
@@ -254,7 +264,21 @@ private fun JsonObject.toMessage(): Message? {
         threadId = ThreadId(threadId),
         channelId = string("channelId", "channel_id")?.let(::ChannelId),
         threadChannelId = (explicitThreadChannelId ?: topLevelReplyThreadId)?.let(::ChannelId),
-        seq = long("seq"),
+        seq =
+            long(
+                "seq",
+                "sequence",
+                "sequenceNumber",
+                "sequence_number",
+                "messageSeq",
+                "message_seq",
+                "serverSeq",
+                "server_seq",
+                "createdSeq",
+                "created_seq",
+                "logSeq",
+                "log_seq"
+            ),
         author = author,
         timestampLabel = string("timestampLabel", "createdAt", "updatedAt") ?: "",
         body = string("body", "content", "text") ?: "",

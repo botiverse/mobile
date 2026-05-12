@@ -34,6 +34,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.Response
@@ -311,10 +312,10 @@ class RealSlockRepositoriesTest {
         assertEquals(false, snapshot.channels.single().permissions.canSend)
         assertEquals("Ready", snapshot.channels.single().lastMessagePreview)
         assertEquals("random:android-dev-agent", snapshot.channels.single().avatar?.wireValue)
-        assertTrue(snapshot.channels.single().avatar is AvatarReference.Random)
+        assertTrue(snapshot.channels.single().avatar is ai.slock.shared.model.AvatarReference.Random)
         assertEquals(1, snapshot.directMessages.size)
         assertEquals("Android-Developer", snapshot.directMessages.single().name)
-        assertTrue(snapshot.directMessages.single().avatar is AvatarReference.Url)
+        assertTrue(snapshot.directMessages.single().avatar is ai.slock.shared.model.AvatarReference.Url)
         assertEquals(5, snapshot.unreadTotal)
         assertTrue(warnings.none { it.contains("token", ignoreCase = true) || it.contains("Bearer") })
     }
@@ -1359,7 +1360,7 @@ class RealSlockRepositoriesTest {
                 {
                   "data": {
                     "canAddMembers": true,
-                    "users": [
+                    "humans": [
                       {"user":{"id":"user-2","displayName":"Artin","handle":"artin","avatar_url":"https://cdn.example/artin.png"},"role":"owner","presence":"away"}
                     ],
                     "agents": [
@@ -1415,10 +1416,8 @@ class RealSlockRepositoriesTest {
         assertEquals("Artin Agent", sameIdAgent.displayName)
         assertTrue(channelMembers is DataResult.Content)
         val members = (channelMembers as DataResult.Content).data.members
-        assertEquals(4, members.size)
-        val currentHuman = members.first { it.id.value == "user-1" }
-        assertEquals(MemberKind.Human, currentHuman.kind)
-        assertEquals("Artin Profile", currentHuman.displayName)
+        assertEquals(3, members.size)
+        assertFalse(members.any { it.id.value == "user-1" })
         assertEquals(Presence.Offline, members.first { it.id.value == "user-2" }.presence)
         val agent = members.first { it.id.value == "agent-1" }
         assertEquals(MemberKind.Agent, agent.kind)
@@ -1475,6 +1474,57 @@ class RealSlockRepositoriesTest {
         val agent = members.single { it.id.value == "agent-9" }
         assertEquals(MemberKind.Agent, agent.kind)
         assertEquals("Runtime Agent", agent.displayName)
+    }
+
+    @Test
+    fun memberRepositoryLoadsAgentSkillsFromAgentsEndpoint() {
+        val api = FakeSlockApi(
+            settingsAgentsJson = """
+                {
+                  "agents": [
+                    {
+                      "id": "agent-1",
+                      "name": "Android Developer",
+                      "handle": "android-dev",
+                      "skills": {
+                        "global": [
+                          {
+                            "name": "openai-docs",
+                            "description": "Use official OpenAI documentation.",
+                            "path": "~/.codex/skills/.system"
+                          }
+                        ],
+                        "workspace": [
+                          {
+                            "name": "android-regression",
+                            "detail": "Run focused Android regression checks.",
+                            "path": "/repo/.codex/skills"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+            """.trimIndent()
+        )
+        val repository = RealMemberRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val result = runSuspend { repository.getAgentSkills(MemberId("agent-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val groups = (result as DataResult.Content).data.groups
+        assertEquals(2, groups.size)
+        val global = groups.first { it.title == "Global" }
+        assertEquals("~/.codex/skills/.system", global.paths.single().path)
+        assertEquals("openai-docs", global.paths.single().skills.single().name)
+        assertEquals("Use official OpenAI documentation.", global.paths.single().skills.single().detail)
+        val workspace = groups.first { it.title == "Workspace" }
+        assertEquals("/repo/.codex/skills", workspace.paths.single().path)
+        assertEquals("android-regression", workspace.paths.single().skills.single().name)
     }
 
     @Test
@@ -1781,6 +1831,49 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
+    fun conversationRepositoryMapsNestedMessageContextTargetMessage() {
+        val api =
+                FakeSlockApi(
+                        messageContextJson =
+                                """
+                                {
+                                  "data": {
+                                    "channel": {"id":"kmp-channel","name":"KMP"},
+                                    "targetMessage": {
+                                      "id":"d98c61a1-03c4-4239-923e-f84572d0b534",
+                                      "channelId":"kmp-channel",
+                                      "threadId":"kmp-channel",
+                                      "body":"Define the KMP realtime transport contract",
+                                      "createdAt":"2026-05-12T05:00:00.000Z"
+                                    }
+                                  }
+                                }
+                                """
+                                        .trimIndent()
+                )
+        val repository =
+                RealConversationRepository(
+                        store = InMemoryAuthSessionStore(sampleSession),
+                        api = api,
+                        warningLogger = {}
+                )
+
+        val result =
+                runSuspend {
+                    repository.getMessageContext(
+                            MessageId("d98c61a1-03c4-4239-923e-f84572d0b534")
+                    )
+                }
+
+        assertTrue(result is DataResult.Content)
+        val snapshot = (result as DataResult.Content).data
+        assertEquals("kmp-channel", snapshot.conversation.channelId?.value)
+        assertEquals("KMP", snapshot.conversation.name)
+        assertEquals(MessageId("d98c61a1-03c4-4239-923e-f84572d0b534"), snapshot.parentMessage?.id)
+        assertEquals("Define the KMP realtime transport contract", snapshot.parentMessage?.body)
+    }
+
+    @Test
     fun conversationRepositoryDoesNotUseGenericActionIdAsThreadChannelId() {
         val api = FakeSlockApi(
             createThreadJson =
@@ -2047,6 +2140,12 @@ class RealSlockRepositoriesTest {
 
         override suspend fun saved(limit: Int, offset: Int): Response<ResponseBody> =
             response(savedJson)
+
+        override suspend fun saveMessage(messageId: String): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
+        override suspend fun unsaveMessage(messageId: String): Response<ResponseBody> =
+            response("""{"ok":true}""")
 
         override suspend fun searchMessages(query: String, limit: Int, offset: Int): Response<ResponseBody> =
             response(searchJson)

@@ -47,6 +47,11 @@ class ThreadInlineTagParsingTest {
     }
 
     @Test
+    fun `list item hash word becomes channel tag`() {
+        assertEquals(listOf(channel("#xx")), "- #xx".matchTags())
+    }
+
+    @Test
     fun `literal #task text becomes channel tag`() {
         assertEquals(listOf(channel("#task")), "#task".matchTags())
     }
@@ -72,6 +77,19 @@ class ThreadInlineTagParsingTest {
     @Test
     fun `base offset is included in placeholder id`() {
         assertEquals("slock:25", "review #42".threadInlineTagMatches(baseOffset = 18).single().id)
+    }
+
+    @Test
+    fun `escaped double newlines normalize into markdown paragraphs`() {
+        assertEquals("hello\n\nworld", "hello\\n\\nworld".normalizeThreadMarkdownBody())
+    }
+
+    @Test
+    fun `escaped list item markdown normalizes before tag parsing`() {
+        val normalized = "todo\\n- #xx".normalizeThreadMarkdownBody()
+
+        assertEquals("todo\n- #xx", normalized)
+        assertEquals(listOf(channel("#xx")), normalized.matchTags())
     }
 
     @Test

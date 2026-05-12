@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -861,6 +862,12 @@ class ThreadScreenPaginationTest {
         composeRule.onNodeWithTag(THREAD_BACK_TO_BOTTOM_TAG).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Message 60").assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag(THREAD_BACK_TO_BOTTOM_TAG)
+                .fetchSemanticsNodes()
+                .isEmpty()
+        }
+        composeRule.onAllNodesWithTag(THREAD_BACK_TO_BOTTOM_TAG).assertCountEquals(0)
 
         composeRule.onNodeWithTag(THREAD_MESSAGE_LIST_TAG).performScrollToIndex(0)
         composeRule.waitForIdle()

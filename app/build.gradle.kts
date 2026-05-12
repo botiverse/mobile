@@ -26,7 +26,7 @@ android {
     buildTypes {
         create("connectedTest") {
             initWith(getByName("debug"))
-            applicationIdSuffix = ".test"
+            applicationIdSuffix = ".alpha"
             buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
             matchingFallbacks += listOf("debug")
         }
@@ -70,6 +70,9 @@ sqldelight {
 }
 
 dependencies {
+    // KMP Shared Module
+    implementation("ai.slock.shared:shared-android:1.0.0")
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -90,8 +93,12 @@ dependencies {
     implementation(libs.markdown.renderer.coil3)
     implementation(libs.markdown.renderer.code)
     implementation(libs.sqldelight.android.driver)
+    implementation(libs.sqldelight.coroutines.extensions)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.okhttp)
+    testImplementation(libs.ktor.client.mock)
     testImplementation(libs.junit)
     testImplementation(libs.sqldelight.sqlite.driver)
     androidTestImplementation(libs.androidx.junit)

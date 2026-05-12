@@ -57,13 +57,15 @@ import ai.slock.android.core.data.repository.AgentActivitySnapshot
 import ai.slock.android.core.data.repository.AgentActivityEntry
 import ai.slock.android.core.data.repository.AgentDmSnapshot
 import ai.slock.android.core.data.repository.AgentReminderSnapshot
+import ai.slock.android.core.data.repository.AgentSkillGroup
+import ai.slock.android.core.data.repository.AgentSkillPathGroup
+import ai.slock.android.core.data.repository.AgentSkillsSnapshot
 import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
-import ai.slock.android.core.model.toGravatarAvatarUrl
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenError
@@ -101,6 +103,7 @@ import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
 import ai.slock.android.ui.theme.SlockType
 import ai.slock.android.ui.theme.slockHardShadow
+import ai.slock.shared.model.toGravatarAvatarUrl
 
 private val MemberAvatarSize = 34.dp
 private val MemberPresenceSize = 12.dp
@@ -256,6 +259,7 @@ fun MembersRouteScreen(
                 agentDmsState = state.selectedAgentDmsState,
                 agentRemindersState = state.selectedAgentRemindersState,
                 agentActivityState = state.selectedAgentActivityState,
+                agentSkillsState = state.selectedAgentSkillsState,
                 agentProfileSaveState = state.agentProfileSaveState,
                 onBack = closeDetail,
                 onOpenAgentDirectMessage = { onOpenAgentDirectMessage(selectedMember) },
@@ -345,6 +349,7 @@ private fun MembersWideRouteScreen(
                 agentDmsState = state.selectedAgentDmsState,
                 agentRemindersState = state.selectedAgentRemindersState,
                 agentActivityState = state.selectedAgentActivityState,
+                agentSkillsState = state.selectedAgentSkillsState,
                 agentProfileSaveState = state.agentProfileSaveState,
                 onBack = onCloseDetail,
                 closeMode = true,
@@ -639,6 +644,7 @@ private fun MemberDetailScreen(
     agentDmsState: ScreenLoadState<AgentDmSnapshot>,
     agentRemindersState: ScreenLoadState<AgentReminderSnapshot>,
     agentActivityState: ScreenLoadState<AgentActivitySnapshot>,
+    agentSkillsState: ScreenLoadState<AgentSkillsSnapshot>,
     agentProfileSaveState: AgentProfileSaveState,
     onBack: () -> Unit,
     closeMode: Boolean = false,
@@ -673,6 +679,7 @@ private fun MemberDetailScreen(
                             MemberProfileDetail(
                                 member = member,
                                 saveState = agentProfileSaveState,
+                                skillsState = agentSkillsState,
                                 onSave = onSaveAgentProfile
                             )
                         MemberDetailTab.AgentDms -> AgentDirectMessagesPanel(
@@ -822,6 +829,7 @@ private fun MemberDetailTabs(
 private fun MemberProfileDetail(
     member: MemberProfile,
     saveState: AgentProfileSaveState,
+    skillsState: ScreenLoadState<AgentSkillsSnapshot>,
     onSave: (String, String) -> Unit
 ) {
     var displayName by rememberSaveable(member.id.value) { mutableStateOf(member.displayName) }
@@ -962,7 +970,7 @@ private fun MemberProfileDetail(
             MemberDetailChip("high", SlockColor.BrandYellow)
         }
     }
-    MemberSkillsSection()
+    MemberSkillsSection(state = skillsState)
     MemberDetailPanel(title = "Actions") {
         Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
             MemberDetailActionButton("Stop Agent", SlockColor.SurfaceWhite)
@@ -1011,45 +1019,44 @@ private fun MemberWorkspaceDetail(
 }
 
 @Composable
-private fun MemberSkillsSection() {
+private fun MemberSkillsSection(state: ScreenLoadState<AgentSkillsSnapshot>) {
     MemberDetailPanel(title = "Skills") {
-        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Lg)) {
-            MemberSkillGroup(
-                icon = SlockIcons.Globe,
-                title = "Global",
-                count = 7
-            ) {
-                MemberSkillPathGroup(
-                    path = "~/.codex/skills",
-                    count = 2,
-                    skills = listOf(
-                        "generate2dmap" to "Generate and revise production-oriented 2D game maps with built-in image generation.",
-                        "generate2dsprite" to "Generate and postprocess general 2D game assets and animation sheets."
-                    )
-                )
-                MemberSkillPathGroup(
-                    path = "~/.codex/skills/.system",
-                    count = 5,
-                    skills = listOf(
-                        "imagegen" to "Generate or edit raster images for bitmap assets and visual variants.",
-                        "openai-docs" to "Use official OpenAI documentation for up-to-date API and model guidance.",
-                        "skill-creator" to "Guide for creating effective Codex skills."
-                    )
-                )
+        when (state) {
+            ScreenLoadState.Loading -> MemberSkillsStateText("Loading real skills...")
+            is ScreenLoadState.Content -> {
+                if (state.data.groups.isEmpty()) {
+                    MemberSkillsStateText("No skills reported by this agent.")
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Lg)) {
+                        state.data.groups.forEach { group ->
+                            MemberSkillGroup(
+                                icon = group.skillGroupIcon,
+                                title = group.title,
+                                count = group.count
+                            ) {
+                                group.paths.forEach { pathGroup ->
+                                    MemberSkillPathGroup(pathGroup = pathGroup)
+                                }
+                            }
+                        }
+                    }
+                }
             }
-            MemberSkillGroup(
-                icon = SlockIcons.FolderOpen,
-                title = "Workspace",
-                count = 0
-            ) {
-                Text(
-                    text = "No skills in this agent's workspace",
-                    style = MembersCaptionType.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
-                    color = SlockColor.TextMutedGray
-                )
-            }
+            is ScreenLoadState.Empty -> MemberSkillsStateText("No skills reported by this agent.")
+            is ScreenLoadState.Error -> MemberSkillsStateText("Unable to load skills: ${state.error.code}")
+            is ScreenLoadState.NoPermission ->
+                MemberSkillsStateText("Unable to load skills: ${state.blocker.code}")
         }
     }
+}
+
+@Composable
+private fun MemberSkillsStateText(text: String) {
+    Text(
+        text = text,
+        style = MembersCaptionType.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
+        color = SlockColor.TextMutedGray
+    )
 }
 
 @Composable
@@ -1087,9 +1094,7 @@ private fun MemberSkillGroup(
 
 @Composable
 private fun MemberSkillPathGroup(
-    path: String,
-    count: Int,
-    skills: List<Pair<String, String>>
+    pathGroup: AgentSkillPathGroup
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
         Row(
@@ -1097,21 +1102,29 @@ private fun MemberSkillPathGroup(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             Text(
-                text = path,
+                text = pathGroup.path,
                 style = MembersCaptionType.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
                 color = SlockColor.TextMutedGray
             )
             Text(
-                text = "($count)",
+                text = "(${pathGroup.count})",
                 style = MembersCaptionType.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
                 color = SlockColor.TextMutedGray
             )
         }
-        skills.forEach { (name, detail) ->
-            MemberSkillCard(name = name, detail = detail)
+        pathGroup.skills.forEach { skill ->
+            MemberSkillCard(name = skill.name, detail = skill.detail.orEmpty())
         }
     }
 }
+
+private val AgentSkillGroup.skillGroupIcon: ImageVector
+    get() =
+        if (title.contains("workspace", ignoreCase = true)) {
+            SlockIcons.FolderOpen
+        } else {
+            SlockIcons.Globe
+        }
 
 @Composable
 private fun MemberSkillCard(
@@ -1599,9 +1612,10 @@ private fun HumanMemberProfileDetail(member: MemberProfile) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (!member.roleDescription.isNullOrBlank()) {
+                val roleDesc = member.roleDescription
+                if (!roleDesc.isNullOrBlank()) {
                     Text(
-                        text = member.roleDescription,
+                        text = roleDesc,
                         style = MembersDescriptionType,
                         color = SlockColor.TextBlack
                     )

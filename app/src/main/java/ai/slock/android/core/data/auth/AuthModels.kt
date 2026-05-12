@@ -6,7 +6,7 @@ import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
-import ai.slock.android.core.model.toGravatarAvatarReference
+import ai.slock.shared.model.toGravatarAvatarReference
 import com.google.gson.annotations.SerializedName
 
 data class AuthUser(

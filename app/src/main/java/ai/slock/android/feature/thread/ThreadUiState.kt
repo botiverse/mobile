@@ -1,18 +1,32 @@
 package ai.slock.android.feature.thread
 
 import ai.slock.android.core.model.ConversationSummary
-import ai.slock.android.core.model.withPreviewMembershipFallback
-import ai.slock.android.core.model.withTitleFallback
+import ai.slock.shared.model.withPreviewMembershipFallback
+import ai.slock.shared.model.withTitleFallback
 import ai.slock.android.core.model.AttachmentId
 import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageId
 import ai.slock.android.core.model.RealtimeEvent
+import ai.slock.android.core.model.MessageNew
+import ai.slock.android.core.model.MessageUpdated
+import ai.slock.android.core.model.DirectMessageCreated
+import ai.slock.android.core.model.ThreadUpdated
+import ai.slock.android.core.model.TaskCreated
+import ai.slock.android.core.model.TaskUpdated
+import ai.slock.android.core.model.TaskDeleted
+import ai.slock.android.core.model.MemberPresenceUpdated
+import ai.slock.android.core.model.SyncResumeResponse
+import ai.slock.android.core.model.Heartbeat
 import ai.slock.android.core.data.repository.ThreadSnapshot
 import ai.slock.android.feature.tasks.TasksUiState
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.state.ScreenLoadState
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
 
 data class ThreadUiState(
     val loadState: ScreenLoadState<ThreadContent>,
@@ -81,7 +95,7 @@ fun ThreadContent.withRefreshStatus(
 fun ThreadContent.mergeRefreshedThreadSnapshot(next: ThreadSnapshot): ThreadContent {
     val mergedMessages = (next.messages + messages)
         .distinctBy { it.id }
-        .sortedBy { it.seq ?: Long.MAX_VALUE }
+        .sortedForThreadTimeline()
     return copy(
         header = next.conversation.withTitleFallback(header).withPreviewMembershipFallback(header),
         messages = mergedMessages,
@@ -101,10 +115,51 @@ fun ThreadContent.mergeRefreshedThreadSnapshot(next: ThreadSnapshot): ThreadCont
     )
 }
 
+fun List<Message>.sortedForThreadTimeline(): List<Message> =
+    sortedWith(MessageTimelineComparator)
+
+private val MessageTimelineComparator =
+    Comparator<Message> { left, right ->
+        val leftTime = left.timestampLabel.toThreadMessageEpochMillisOrNull()
+        val rightTime = right.timestampLabel.toThreadMessageEpochMillisOrNull()
+        when {
+            leftTime != null && rightTime != null ->
+                compareValues(leftTime, rightTime).takeIf { it != 0 } ?: 0
+            leftTime != null && rightTime == null -> -1
+            leftTime == null && rightTime != null -> 1
+            left.seq != null && right.seq != null ->
+                compareValues(left.seq, right.seq).takeIf { it != 0 } ?: 0
+            left.seq != null && right.seq == null -> -1
+            left.seq == null && right.seq != null -> 1
+            else -> 0
+        }
+    }
+
+private fun String.toThreadMessageEpochMillisOrNull(): Long? {
+    val trimmed = trim()
+    if (trimmed.isBlank()) return null
+    return parseThreadMessageTimeOrNull(trimmed)
+}
+
+private fun parseThreadMessageTimeOrNull(value: String): Long? {
+    val zoneId = ZoneId.systemDefault()
+    return runCatching { Instant.parse(value).toEpochMilli() }.getOrNull()
+        ?: runCatching { OffsetDateTime.parse(value).toInstant().toEpochMilli() }.getOrNull()
+        ?: runCatching { LocalDateTime.parse(value).atZone(zoneId).toInstant().toEpochMilli() }.getOrNull()
+        ?: runCatching {
+            val normalized = value.replace(" ", "T")
+            OffsetDateTime.parse(normalized).toInstant().toEpochMilli()
+        }.getOrNull()
+        ?: runCatching {
+            val normalized = value.replace(" ", "T")
+            LocalDateTime.parse(normalized).atZone(zoneId).toInstant().toEpochMilli()
+        }.getOrNull()
+}
+
 fun ThreadUiState.mergeRealtimeTaskEvent(event: RealtimeEvent): ThreadUiState =
     when (event) {
-        is RealtimeEvent.TaskCreated -> mergeRealtimeTasks(event.tasks)
-        is RealtimeEvent.TaskUpdated -> mergeRealtimeTasks(listOf(event.task))
+        is TaskCreated -> mergeRealtimeTasks(event.tasks)
+        is TaskUpdated -> mergeRealtimeTasks(listOf(event.task))
         else -> this
     }
 
@@ -189,7 +244,10 @@ private fun TaskSummary.withMessageTaskReference(incomingTask: TaskSummary): Tas
 data class ThreadReplyHeaderContext(
     val parentChannelName: String?,
     val parentMessagePreview: String?,
-    val parentMessage: Message? = null
+    val parentMessage: Message? = null,
+    val parentMessageId: MessageId? = parentMessage?.id,
+    val parentMessageRefreshing: Boolean = false,
+    val parentMessageRefreshErrorCode: String? = null
 )
 
 data class ThreadParentJumpTarget(

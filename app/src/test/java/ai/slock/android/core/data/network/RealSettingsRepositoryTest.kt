@@ -532,6 +532,12 @@ class RealSettingsRepositoryTest {
 
         override suspend fun saved(limit: Int, offset: Int): Response<ResponseBody> = response("""{"items":[]}""")
 
+        override suspend fun saveMessage(messageId: String): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
+        override suspend fun unsaveMessage(messageId: String): Response<ResponseBody> =
+            response("""{"ok":true}""")
+
         override suspend fun searchMessages(query: String, limit: Int, offset: Int): Response<ResponseBody> =
             response("""{"results":[]}""")
 
