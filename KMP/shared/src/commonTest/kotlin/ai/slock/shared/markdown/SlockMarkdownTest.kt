@@ -16,6 +16,7 @@ class SlockMarkdownTest {
         assertEquals(listOf(task("#22")), "#22".matchTags())
         assertEquals(listOf(channel("#task")), "#task".matchTags())
         assertEquals(listOf(channel("#对话流专修")), "#对话流专修".matchTags())
+        assertEquals(listOf(mention("@KMP-专家")), "大家好！我是 @KMP-专家".matchTags())
         assertEquals(
             listOf(mention("@alice"), channel("#general"), task("#42")),
             "ping @alice on #general about #42".matchTags()

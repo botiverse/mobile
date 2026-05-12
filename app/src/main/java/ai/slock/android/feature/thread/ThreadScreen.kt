@@ -196,6 +196,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.TextMeasurer
@@ -4798,7 +4799,9 @@ private val ThreadInlineChipTextStyle: TextStyle
         get() =
                         SlockType.Caption.copy(
                                         fontSize = 14.sp,
-                                        lineHeight = 16.sp
+                                        lineHeight = 16.sp,
+                                        platformStyle =
+                                                PlatformTextStyle(includeFontPadding = false)
                         )
 
 @Composable
@@ -4904,7 +4907,7 @@ private fun ThreadOfficialMarkdown(
                                             width = width,
                                             height = threadInlineChipPlaceholderHeightSp(density),
                                             placeholderVerticalAlign =
-                                                    PlaceholderVerticalAlign.Center
+                                                    PlaceholderVerticalAlign.TextCenter
                                     )
                             ) {
                                 ThreadChip(
@@ -4933,7 +4936,7 @@ private fun ThreadOfficialMarkdown(
                                     Placeholder(
                                             width = width,
                                             height = threadInlineChipPlaceholderHeightSp(density),
-                                            placeholderVerticalAlign = PlaceholderVerticalAlign.Center
+                                            placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter
                                     )
                             ) {
                                 ThreadInlineCodeChip(match.code)

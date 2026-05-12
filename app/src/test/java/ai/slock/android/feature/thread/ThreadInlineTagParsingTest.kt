@@ -69,6 +69,11 @@ class ThreadInlineTagParsingTest {
     }
 
     @Test
+    fun `at-mention with Chinese characters keeps full label`() {
+        assertEquals(listOf(mention("@KMP-专家")), "大家好！我是 @KMP-专家".matchTags())
+    }
+
+    @Test
     fun `mixed tags keep source order`() {
         assertEquals(
                 listOf(mention("@alice"), channel("#general"), task("#42")),

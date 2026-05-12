@@ -100,7 +100,7 @@ fun threadMarkdownTagDisplayLabel(label: String): String {
 
 private val ThreadInlineTagRegex =
     Regex(
-        """(?<![\p{L}\p{N}_])@[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}|(?<![\p{L}\p{N}_])#\d+|(?<![\p{L}\p{N}_])#[\p{L}][\p{L}\p{N}_-]{0,63}"""
+        """(?<![\p{L}\p{N}_])@[\p{L}\p{N}][\p{L}\p{N}_.\-]{0,63}|(?<![\p{L}\p{N}_])#\d+|(?<![\p{L}\p{N}_])#[\p{L}][\p{L}\p{N}_-]{0,63}"""
     )
 
 private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
