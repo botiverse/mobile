@@ -940,6 +940,7 @@ private fun SlockAppContent(
     var composerAsTask by rememberSaveable {
         mutableStateOf(SlockStateSamples.threadContent.composerState.asTask)
     }
+    var composerFocusRequestNonce by rememberSaveable { mutableStateOf(0) }
     var localComposerMessages by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
     var pendingAttachmentFiles by remember {
         mutableStateOf<List<AttachmentUploadFile>>(emptyList())
@@ -5659,6 +5660,7 @@ private fun SlockAppContent(
                                     followedThreadsState = followedThreadsState,
                                     selectedThreadState = selectedThreadState,
                                     selectedThreadId = selectedThreadId,
+                                    composerFocusRequestNonce = composerFocusRequestNonce,
                                     replyThreadBackStack = replyThreadBackStack,
                                     replyHeaderContext =
                                             replyThreadBackStack
@@ -6673,6 +6675,7 @@ private fun SlockAppContent(
                                                 composerAsTask = false
                                                 pendingAttachmentFiles = listOf(logAttachment)
                                                 failedAttachmentIds = emptySet()
+                                                composerFocusRequestNonce += 1
                                                 selectedThreadState =
                                                         selectedThreadState.withComposerStatus(
                                                                 status = ComposerStatus.Ready
@@ -7425,6 +7428,7 @@ private fun HomeRouteScreen(
         followedThreadsState: InboxUiState,
         selectedThreadState: ThreadUiState,
         selectedThreadId: String?,
+        composerFocusRequestNonce: Int,
         replyThreadBackStack: List<ReplyThreadBackStackEntry>,
         replyHeaderContext: ThreadReplyHeaderContext?,
         parentJumpTarget: ThreadParentJumpTarget?,
@@ -7771,6 +7775,7 @@ private fun HomeRouteScreen(
                                 showTopBorder = false,
                                 showConversationActions = false,
                                 selectedThreadId = selectedThreadId?.let(::ThreadId),
+                                composerFocusRequestNonce = composerFocusRequestNonce,
                                 channelSuggestions =
                                         (homeState.loadState as? ScreenLoadState.Content)
                                                 ?.data?.channels.orEmpty()
@@ -7831,6 +7836,7 @@ private fun HomeRouteScreen(
                     onOpenParentMessage = onOpenParentMessage,
                     onRetryThreadLoad = onRetryThreadLoad,
                     selectedThreadId = selectedThreadId?.let(::ThreadId),
+                    composerFocusRequestNonce = composerFocusRequestNonce,
                     channelSuggestions =
                             (homeState.loadState as? ScreenLoadState.Content)
                                     ?.data?.channels.orEmpty()
@@ -8086,11 +8092,6 @@ private fun HomeShellScreen(
     var lastVisibleHomeContent by remember { mutableStateOf<HomeContent?>(null) }
     val currentHomeContent = (homeState.loadState as? ScreenLoadState.Content)?.data
             ?.withDraftIndicators(draftThreadIds)
-    LaunchedEffect(currentHomeContent) {
-        if (currentHomeContent != null) {
-            lastVisibleHomeContent = currentHomeContent
-        }
-    }
     val content =
             resolveHomeShellContent(
                     currentContent = currentHomeContent,
@@ -8103,6 +8104,11 @@ private fun HomeShellScreen(
                                     selectedServerId = homeState.selectedServerId
                             )
             )
+    LaunchedEffect(currentHomeContent, content) {
+        if (currentHomeContent != null) {
+            lastVisibleHomeContent = content
+        }
+    }
     HomeStructuralContent(
             onOpenThread = onOpenThread,
             onOpenInbox = onOpenInbox,

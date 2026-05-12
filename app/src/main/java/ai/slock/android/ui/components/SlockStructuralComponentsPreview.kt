@@ -28,17 +28,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -200,6 +204,13 @@ fun SlockStructuralHomeShell(
     onChannelClick: (String) -> Unit = {}
 ) {
     val labels = SlockHomeShellLabels.defaults()
+    var channelsExpanded by rememberSaveable { mutableStateOf(true) }
+    var directMessagesExpanded by rememberSaveable { mutableStateOf(true) }
+    var channelsReversed by rememberSaveable { mutableStateOf(false) }
+    var directMessagesReversed by rememberSaveable { mutableStateOf(false) }
+    val displayedChannels = if (channelsReversed) channels.asReversed() else channels
+    val displayedDirectMessages =
+        if (directMessagesReversed) directMessages.asReversed() else directMessages
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -259,15 +270,18 @@ fun SlockStructuralHomeShell(
                     SectionBlock(
                         label = labels.channels,
                         count = channels.size,
+                        expanded = channelsExpanded,
+                        onExpandedChange = { channelsExpanded = it },
+                        onSortClick = { channelsReversed = !channelsReversed },
                         action = {
-                            MiniSquareIcon(
-                                icon = Icons.Outlined.Add,
+                            HeaderIconAction(
+                                iconRes = R.drawable.lucide_plus,
                                 contentDescription = labels.addChannel,
                                 onClick = onCreateChannelClick
                             )
                         }
                     ) {
-                        channels.forEach { channel ->
+                        displayedChannels.forEach { channel ->
                             ChannelRow(
                                 name = channel.name,
                                 joined = channel.joined,
@@ -284,9 +298,12 @@ fun SlockStructuralHomeShell(
                     }
                     SectionBlock(
                         label = labels.directMessages,
-                        count = directMessages.size
+                        count = directMessages.size,
+                        expanded = directMessagesExpanded,
+                        onExpandedChange = { directMessagesExpanded = it },
+                        onSortClick = { directMessagesReversed = !directMessagesReversed }
                     ) {
-                        directMessages.forEach { directMessage ->
+                        displayedDirectMessages.forEach { directMessage ->
                             ChannelRow(
                                 name = directMessage.name,
                                 avatarLabel = directMessage.avatarLabel,
@@ -584,6 +601,9 @@ private fun SectionBlock(
     label: String,
     count: Int,
     modifier: Modifier = Modifier,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onSortClick: () -> Unit,
     action: (@Composable BoxScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit = {}
 ) {
@@ -594,9 +614,14 @@ private fun SectionBlock(
         SidebarSectionHeader(
             label = label,
             count = count,
+            expanded = expanded,
+            onExpandedChange = onExpandedChange,
+            onSortClick = onSortClick,
             action = action
         )
-        content()
+        if (expanded) {
+            content()
+        }
     }
 }
 
@@ -604,16 +629,20 @@ private fun SectionBlock(
 private fun SidebarSectionHeader(
     label: String,
     count: Int,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onSortClick: () -> Unit,
     action: (@Composable BoxScope.() -> Unit)?
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 34.dp),
+            .heightIn(min = 34.dp)
+            .clickable { onExpandedChange(!expanded) },
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = SlockIcons.ChevronDown,
+            imageVector = if (expanded) SlockIcons.ChevronDown else SlockIcons.ChevronRight,
             contentDescription = null,
             tint = SlockColor.TextBlack,
             modifier = Modifier.size(SectionChevronSize)
@@ -631,9 +660,35 @@ private fun SidebarSectionHeader(
             modifier = Modifier.padding(start = SlockSpacing.Xs)
         )
         Spacer(modifier = Modifier.weight(1f))
+        HeaderIconAction(
+            iconRes = R.drawable.lucide_arrow_up_down,
+            contentDescription = "Sort $label",
+            onClick = onSortClick
+        )
         if (action != null) {
             Box(content = action)
         }
+    }
+}
+
+@Composable
+private fun HeaderIconAction(
+    iconRes: Int,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(MiniActionSize)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = contentDescription,
+            tint = SlockColor.TextBlack,
+            modifier = Modifier.size(MiniActionIconSize)
+        )
     }
 }
 
@@ -1196,29 +1251,6 @@ private fun CountPill(
             color = SlockColor.SurfaceWhite,
             maxLines = 1,
             textAlign = TextAlign.Center
-        )
-    }
-}
-
-@Composable
-private fun MiniSquareIcon(
-    icon: ImageVector,
-    contentDescription: String,
-    onClick: (() -> Unit)? = null
-) {
-    SlockKeySurface(
-        onClick = onClick ?: {},
-        enabled = onClick != null,
-        dimmed = false,
-        restingShadow = SlockShadow.Small,
-        pressedShadow = SlockShadow.None,
-        surfaceModifier = Modifier.size(MiniActionSize)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = SlockColor.TextBlack,
-            modifier = Modifier.size(MiniActionIconSize)
         )
     }
 }

@@ -37,11 +37,29 @@ fun resolveHomeShellContent(
     homeRefreshInProgress: Boolean,
     fallbackContent: HomeContent
 ): HomeContent =
-    currentContent
+    currentContent?.withDirectMessagePresenceFallback(lastVisibleContent)
         ?: lastVisibleContent?.takeIf {
             homeRefreshInProgress || homeLoadState == ScreenLoadState.Loading
         }
         ?: fallbackContent
+
+fun HomeContent.withDirectMessagePresenceFallback(previous: HomeContent?): HomeContent {
+    if (previous == null || previous.directMessages.isEmpty()) return this
+    val previousByKey =
+        previous.directMessages.associateBy { it.directMessagePresenceFallbackKey() }
+    val updatedDirectMessages =
+        directMessages.map { conversation ->
+            val previousConversation =
+                previousByKey[conversation.directMessagePresenceFallbackKey()]
+                    ?: return@map conversation
+            conversation.copy(
+                presence = conversation.presence ?: previousConversation.presence,
+                agentStatus = conversation.agentStatus ?: previousConversation.agentStatus,
+                presenceMemberId = conversation.presenceMemberId ?: previousConversation.presenceMemberId
+            )
+        }
+    return copy(directMessages = updatedDirectMessages)
+}
 
 fun HomeContent.withAgentDirectMessagePresence(members: List<MemberProfile>): HomeContent {
     val agents = members.filter { it.kind == MemberKind.Agent }
@@ -77,6 +95,9 @@ private fun ConversationSummary.withDraftIndicator(draftThreadIds: Set<String>):
             threadId.value in draftThreadIds ||
                 channelId?.value?.let { it in draftThreadIds } == true
     )
+
+private fun ConversationSummary.directMessagePresenceFallbackKey(): String =
+    channelId?.value ?: threadId.value
 
 private fun MemberProfile.matchesDirectMessage(conversation: ConversationSummary): Boolean =
     conversation.presenceMemberId == id ||

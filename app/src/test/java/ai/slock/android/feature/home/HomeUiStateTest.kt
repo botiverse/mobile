@@ -47,6 +47,54 @@ class HomeUiStateTest {
     }
 
     @Test
+    fun resolveHomeShellContentPreservesVisibleDirectMessagePresence() {
+        val lastVisible = homeContent(
+            channels = emptyList(),
+            directMessages = listOf(
+                directMessage(
+                    id = "dm-1",
+                    threadId = "dm-thread-1",
+                    name = "Android-Developer",
+                    presenceMemberId = MemberId("agent-android")
+                ).copy(
+                    presence = Presence.Active,
+                    agentStatus = AgentStatus.Thinking
+                )
+            ),
+            unreadTotal = 0
+        )
+        val refreshed = homeContent(
+            channels = emptyList(),
+            directMessages = listOf(
+                directMessage(
+                    id = "dm-1",
+                    threadId = "dm-thread-1",
+                    name = "Android-Developer",
+                    presenceMemberId = null
+                )
+            ),
+            unreadTotal = 0
+        )
+        val fallback = homeContent(
+            channels = emptyList(),
+            directMessages = emptyList(),
+            unreadTotal = 0
+        )
+
+        val resolved = resolveHomeShellContent(
+            currentContent = refreshed,
+            lastVisibleContent = lastVisible,
+            homeLoadState = ScreenLoadState.Content(refreshed),
+            homeRefreshInProgress = false,
+            fallbackContent = fallback
+        )
+
+        assertEquals(Presence.Active, resolved.directMessages.single().presence)
+        assertEquals(AgentStatus.Thinking, resolved.directMessages.single().agentStatus)
+        assertEquals("agent-android", resolved.directMessages.single().presenceMemberId?.value)
+    }
+
+    @Test
     fun resolveHomeShellContentFallsBackWhenNoVisibleContentExists() {
         val fallback = homeContent(
             channels = emptyList(),

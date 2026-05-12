@@ -156,6 +156,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -324,7 +326,8 @@ fun ThreadScreen(
         headerNavigationIcon: ThreadHeaderNavigationIcon = ThreadHeaderNavigationIcon.Back,
         showTopBorder: Boolean = true,
         showConversationActions: Boolean = true,
-        selectedThreadId: ThreadId? = null
+        selectedThreadId: ThreadId? = null,
+        composerFocusRequestNonce: Int = 0
 ) {
     var showMembersModal by rememberSaveable { mutableStateOf(false) }
     var showSettingsModal by rememberSaveable { mutableStateOf(false) }
@@ -443,7 +446,8 @@ fun ThreadScreen(
                                 onAttachFile = onAttachFile,
                                 onRemoveAttachment = onRemoveAttachment,
                                 onRetryAttachment = onRetryAttachment,
-                                onSend = onSend
+                                onSend = onSend,
+                                focusRequestNonce = composerFocusRequestNonce
                         )
                     }
                 }
@@ -585,6 +589,7 @@ fun ThreadScreen(
                                 onRemoveAttachment = onRemoveAttachment,
                                 onRetryAttachment = onRetryAttachment,
                                 onSend = onSend,
+                                focusRequestNonce = composerFocusRequestNonce,
                                 memberSuggestions = memberSuggestions,
                                 channelSuggestions = channelSuggestions
                         )
@@ -5516,17 +5521,33 @@ fun ThreadComposerBar(
         modifier: Modifier = Modifier,
         memberSuggestions: List<MemberProfile> = emptyList(),
         channelSuggestions: List<ConversationSummary> = emptyList(),
-        onComposerTextToolbarShown: () -> Unit = {}
+        onComposerTextToolbarShown: () -> Unit = {},
+        focusRequestNonce: Int = 0
 ) {
     var composerFieldValue by remember { mutableStateOf(TextFieldValue(composerState.value)) }
     var pendingPreviewAttachmentId by rememberSaveable { mutableStateOf<String?>(null) }
     var restoreComposerToolbarAfterSelectAll by rememberSaveable { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
     if (composerFieldValue.text != composerState.value) {
         composerFieldValue =
                 TextFieldValue(
                         text = composerState.value,
                         selection = TextRange(composerState.value.length)
                 )
+    }
+    LaunchedEffect(focusRequestNonce) {
+        if (focusRequestNonce <= 0 || composerState.value.isBlank() || !composerState.enabled) {
+            return@LaunchedEffect
+        }
+        withFrameNanos { }
+        composerFieldValue =
+                TextFieldValue(
+                        text = composerState.value,
+                        selection = TextRange(composerState.value.length)
+                )
+        focusRequester.requestFocus()
+        keyboardController?.show()
     }
     val horizontalPadding = threadHorizontalPadding()
     val bottomPadding = threadComposerBottomPadding()
@@ -5766,7 +5787,8 @@ fun ThreadComposerBar(
                                     }
                             ),
                     inputModifier =
-                            Modifier.threadComposerNewlineInput(
+                            Modifier.focusRequester(focusRequester)
+                                    .threadComposerNewlineInput(
                                             composerValueProvider,
                                             handleComposerFieldValueChange
                                     ),

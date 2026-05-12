@@ -13,8 +13,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
@@ -81,6 +83,44 @@ class SlockStructuralHomeShellTest {
         composeRule.onNodeWithText("Saved").assertIsDisplayed()
         composeRule.onNodeWithText("4").assertIsDisplayed()
         composeRule.onNodeWithText("12").assertIsDisplayed()
+    }
+
+    @Test
+    fun homeSectionsCollapseExpandAndSortConversations() {
+        composeRule.setContent {
+            SlockTheme {
+                SlockStructuralHomeShell(
+                    channels = listOf(
+                        SlockHomeConversationItem(id = "channel-a", name = "alpha"),
+                        SlockHomeConversationItem(id = "channel-b", name = "beta")
+                    ),
+                    directMessages = listOf(
+                        SlockHomeConversationItem(id = "dm-a", name = "Agent A", avatarLabel = "A"),
+                        SlockHomeConversationItem(id = "dm-b", name = "Agent B", avatarLabel = "B")
+                    ),
+                    selectedChannelId = null,
+                    showBottomBar = false
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("CHANNELS").performClick()
+        composeRule.onNodeWithText("alpha").assertDoesNotExist()
+        composeRule.onNodeWithText("CHANNELS").performClick()
+        composeRule.onNodeWithText("alpha").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Sort CHANNELS").performClick()
+        val betaTop = composeRule.onNodeWithText("beta").getUnclippedBoundsInRoot().top
+        val alphaTop = composeRule.onNodeWithText("alpha").getUnclippedBoundsInRoot().top
+        assertTrue("Expected beta above alpha after channel sort", betaTop < alphaTop)
+
+        composeRule.onNodeWithText("DIRECT MESSAGES").performClick()
+        composeRule.onNodeWithText("Agent A").assertDoesNotExist()
+        composeRule.onNodeWithText("DIRECT MESSAGES").performClick()
+        composeRule.onNodeWithContentDescription("Sort DIRECT MESSAGES").performClick()
+        val agentBTop = composeRule.onNodeWithText("Agent B").getUnclippedBoundsInRoot().top
+        val agentATop = composeRule.onNodeWithText("Agent A").getUnclippedBoundsInRoot().top
+        assertTrue("Expected Agent B above Agent A after DM sort", agentBTop < agentATop)
     }
 
     @Test
