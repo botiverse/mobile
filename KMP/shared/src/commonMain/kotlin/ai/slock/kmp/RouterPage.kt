@@ -166,6 +166,31 @@ internal class RouterPage : BasePager() {
                 attr {
                     allCenter()
                     margin(20f)
+                    marginTop(0f)
+                }
+                Text {
+                    attr {
+                        fontSize(20f)
+                        text("Markdown预览")
+                        textDecorationUnderLine()
+                        backgroundLinearGradient(
+                            Direction.TO_RIGHT,
+                            ColorStop(Color(0xFFAD37FE), 0f),
+                            ColorStop(Color(0xFF23D3FD), 1f)
+                        )
+                    }
+                }
+                event {
+                    click {
+                        ctx.jumpPage("markdown_preview")
+                    }
+                }
+            }
+
+            View {
+                attr {
+                    allCenter()
+                    margin(20f)
                 }
                 Text {
                     attr {

@@ -61,6 +61,16 @@ import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
 import ai.slock.android.ui.theme.SlockType
 import ai.slock.android.ui.theme.slockHardShadow
+import ai.slock.shared.markdown.SlockMarkdownPreviewSamples
+import ai.slock.shared.markdown.ThreadInlineCodeMatch
+import ai.slock.shared.markdown.ThreadInlineTagMatch
+import ai.slock.shared.markdown.ThreadMarkdownTag
+import ai.slock.shared.markdown.ThreadMarkdownTagKind
+import ai.slock.shared.markdown.normalizeThreadMarkdownBody
+import ai.slock.shared.markdown.threadInlineCodeMatches
+import ai.slock.shared.markdown.threadInlineTagMatches
+import ai.slock.shared.markdown.threadMarkdownTagDisplayLabel
+import ai.slock.shared.markdown.threadMarkdownTaskReferenceKey
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -3723,6 +3733,8 @@ internal const val THREAD_BACK_TO_BOTTOM_TAG = "thread-back-to-bottom"
 internal const val THREAD_COMPOSER_TEXT_AREA_TAG = "thread-composer-text-area"
 internal const val THREAD_COMPOSER_SUGGESTIONS_TAG = "thread-composer-suggestions"
 internal const val THREAD_INLINE_CODE_TAG = "thread-inline-code"
+internal const val THREAD_MESSAGE_HEADER_DESCRIPTION_TAG = "thread-message-header-description"
+internal const val THREAD_MESSAGE_HEADER_TIME_TAG = "thread-message-header-time"
 
 private fun List<TaskSummary>.toThreadTasksUiState(): TasksUiState =
         if (isEmpty()) {
@@ -3855,6 +3867,9 @@ fun ThreadMessageItem(
             isCurrentUserMessage && myMessageAlignment == MyMessageAlignmentPreference.Right
     val messageMaxWidthFraction = if (alignCurrentUserRight) 0.82f else 1f
     val bodyFillWidth = !alignCurrentUserRight || !message.body.isPlainSingleLineMessage()
+    val authorDescription =
+            message.author.roleDescription?.trim()?.takeIf { it.isNotBlank() }
+                    ?: message.author.kind.name.lowercase()
     Row(
             modifier =
                     modifier.fillMaxWidth()
@@ -3924,34 +3939,23 @@ fun ThreadMessageItem(
                                 Arrangement.spacedBy(SlockSpacing.Sm)
                             }
             ) {
-                if (!alignCurrentUserRight) {
-                    Text(
-                            text = message.author.displayName,
-                            style = SlockType.Button,
-                            color = SlockColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                    )
-                }
-                if (alignCurrentUserRight) {
-                    Text(
-                            text = message.author.displayName,
-                            style = SlockType.Button,
-                            color = SlockColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                    )
-                }
                 Text(
-                        text = message.author.roleDescription
-                                        ?: message.author.kind.name.lowercase(),
+                        text = message.author.displayName,
+                        style = SlockType.Button,
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 220.dp)
+                )
+                Text(
+                        text = authorDescription,
                         style = SlockType.Caption,
                         color = SlockColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        modifier =
+                                Modifier.weight(1f)
+                                        .testTag(THREAD_MESSAGE_HEADER_DESCRIPTION_TAG)
                 )
                 if (message.timestampLabel.isNotBlank()) {
                     Text(
@@ -3959,7 +3963,8 @@ fun ThreadMessageItem(
                             style = SlockType.Caption,
                             color = SlockColor.TextMutedGray,
                             maxLines = 1,
-                            overflow = TextOverflow.Clip
+                            overflow = TextOverflow.Clip,
+                            modifier = Modifier.testTag(THREAD_MESSAGE_HEADER_TIME_TAG)
                     )
                 }
                 if (message.deliveryState != MessageDeliveryState.Sent) {
@@ -4763,38 +4768,12 @@ private fun String.decodeBasicHtmlEntities(): String =
                 .replace("&#x27;", "'")
                 .replace("&#x2F;", "/")
 
-private val ThreadEscapedMarkdownLineBreakRegex =
-        Regex("""\\r?\\n(?:\\r?\\n|[-*+] |\d+\. |> |#|```|~~~)""")
-
-internal fun String.normalizeThreadMarkdownBody(): String {
-        if (!contains("\\n") && !contains("\\r")) return this
-
-        val shouldDecodeEscapedLineBreaks =
-                ThreadEscapedMarkdownLineBreakRegex.containsMatchIn(this) ||
-                        (!contains('\n') && !contains('\r') && contains("\\n"))
-        if (!shouldDecodeEscapedLineBreaks) return this
-
-        return replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\r")
-}
-
-data class ThreadMarkdownTag(val label: String, val kind: ThreadMarkdownTagKind)
-
-enum class ThreadMarkdownTagKind {
-    Channel,
-    Task,
-    UserMention
-}
-
-internal fun threadMarkdownTaskReferenceKey(label: String): String =
-        label.removePrefix("#").trim().lowercase()
-
-internal fun threadMarkdownTagDisplayLabel(label: String): String {
-    val trimmed = label.trim()
-    if (trimmed.isEmpty()) return trimmed
-    val prefix = if (trimmed.startsWith("@")) "@" else if (trimmed.startsWith("#")) "#" else ""
-    if (prefix.isEmpty()) return trimmed
-    return prefix + trimmed.dropWhile { it == prefix.first() }
-}
+private fun threadMarkdownTagColor(kind: ThreadMarkdownTagKind): Color =
+        when (kind) {
+            ThreadMarkdownTagKind.Channel -> SlockColor.AccentCyan
+            ThreadMarkdownTagKind.Task -> SlockColor.AccentOrange
+            ThreadMarkdownTagKind.UserMention -> SlockColor.AccentLavender
+        }
 
 private fun threadInlineTagPlaceholderWidthDp(
         label: String,
@@ -4821,77 +4800,6 @@ private val ThreadInlineChipTextStyle: TextStyle
                                         fontSize = 14.sp,
                                         lineHeight = 16.sp
                         )
-
-private val ThreadInlineTagRegex =
-        Regex(
-                """(?<![\p{L}\p{N}_])@[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}|(?<![\p{L}\p{N}_])#\d+|(?<![\p{L}\p{N}_])#[\p{L}][\p{L}\p{N}_-]{0,63}"""
-        )
-
-internal data class ThreadInlineTagMatch(
-        val id: String,
-        val tag: ThreadMarkdownTag,
-        val range: IntRange
-)
-
-internal data class ThreadInlineCodeMatch(
-        val id: String,
-        val code: String,
-        val range: IntRange
-)
-
-private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
-        when {
-            startsWith('@') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.UserMention)
-            drop(1).all { it.isDigit() } -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.Task)
-            startsWith('#') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.Channel)
-            else -> null
-        }
-
-internal fun String.threadInlineTagMatches(baseOffset: Int = 0): List<ThreadInlineTagMatch> =
-        ThreadInlineTagRegex.findAll(this).mapNotNull { match ->
-            match.value.toThreadMarkdownTagOrNull()?.let { tag ->
-                ThreadInlineTagMatch(
-                        id = "slock:${baseOffset + match.range.first}",
-                        tag = tag,
-                        range = match.range
-                )
-            }
-        }.toList()
-
-internal fun String.threadInlineCodeMatches(baseOffset: Int = 0): List<ThreadInlineCodeMatch> {
-        val matches = mutableListOf<ThreadInlineCodeMatch>()
-        var cursor = 0
-        while (cursor < length) {
-                val start = indexOf('`', startIndex = cursor)
-                if (start < 0) break
-                val tickCount = countBackticks(start)
-                val fence = "`".repeat(tickCount)
-                val end = indexOf(fence, startIndex = start + tickCount)
-                if (end < 0) break
-                val rawCode = substring(start + tickCount, end)
-                matches +=
-                                ThreadInlineCodeMatch(
-                                                id = "slock-code:${baseOffset + start}",
-                                                code = rawCode.normalizeMarkdownInlineCodeText(),
-                                                range = start until end + tickCount
-                                )
-                cursor = end + tickCount
-        }
-        return matches
-}
-
-private fun String.countBackticks(start: Int): Int {
-        var count = 0
-        while (start + count < length && this[start + count] == '`') count++
-        return count
-}
-
-private fun String.normalizeMarkdownInlineCodeText(): String =
-                if (length >= 2 && first() == ' ' && last() == ' ' && any { it != ' ' }) {
-                        substring(1, lastIndex)
-                } else {
-                        this
-                }
 
 @Composable
 private fun ThreadMarkdownBody(
@@ -5001,15 +4909,7 @@ private fun ThreadOfficialMarkdown(
                             ) {
                                 ThreadChip(
                                         label = label,
-                                        color =
-                                                when (tag.kind) {
-                                                    ThreadMarkdownTagKind.Channel ->
-                                                            SlockColor.AccentCyan
-                                                    ThreadMarkdownTagKind.Task ->
-                                                            SlockColor.AccentOrange
-                                                    ThreadMarkdownTagKind.UserMention ->
-                                                            SlockColor.AccentLavender
-                                                },
+                                        color = threadMarkdownTagColor(tag.kind),
                                         icon = null,
                                         onClick = { onTagClick?.invoke(tag) },
                                         modifier =
@@ -6813,6 +6713,36 @@ private fun ThreadMessageMarkdownPreview() {
                         )
         )
     }
+}
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 1000)
+@Composable
+private fun ThreadSharedMarkdownSamplesPreview() {
+        SlockTheme {
+                Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
+                        SlockMarkdownPreviewSamples.all.forEachIndexed { index, sample ->
+                                ThreadMessageItem(
+                                                message =
+                                                                Message(
+                                                                                id = MessageId("shared-markdown-preview-$index"),
+                                                                                threadId = ThreadId("shared-markdown-preview-thread"),
+                                                                                channelId = ChannelId("shared-markdown-preview-channel"),
+                                                                                author =
+                                                                                                MemberProfile(
+                                                                                                                id = MemberId("shared-markdown-preview-author"),
+                                                                                                                displayName = sample.title,
+                                                                                                                handle = "markdown-preview",
+                                                                                                                kind = MemberKind.Agent,
+                                                                                                                roleDescription = sample.description
+                                                                                                ),
+                                                                                timestampLabel = "Preview",
+                                                                                body = sample.body,
+                                                                                replyCount = 0
+                                                                )
+                                )
+                        }
+                }
+        }
 }
 
 @Preview(showBackground = true, widthDp = 360)

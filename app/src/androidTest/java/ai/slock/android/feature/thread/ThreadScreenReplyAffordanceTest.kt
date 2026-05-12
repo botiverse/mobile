@@ -716,11 +716,20 @@ class ThreadScreenReplyAffordanceTest {
 
         val nameBounds = composeRule.onNodeWithText("Research Agent").assertIsDisplayed()
             .getUnclippedBoundsInRoot()
-        val timeBounds = composeRule.onNodeWithText("13:15").assertIsDisplayed()
+        val descriptionBounds = composeRule
+            .onNodeWithTag(THREAD_MESSAGE_HEADER_DESCRIPTION_TAG, useUnmergedTree = true)
+            .assertIsDisplayed()
+            .getUnclippedBoundsInRoot()
+        val timeBounds = composeRule
+            .onNodeWithTag(THREAD_MESSAGE_HEADER_TIME_TAG, useUnmergedTree = true)
+            .assertIsDisplayed()
             .getUnclippedBoundsInRoot()
 
         assertTrue(nameBounds.width > 0.dp)
+        assertTrue(descriptionBounds.width > 0.dp)
         assertTrue(timeBounds.width > 0.dp)
+        assertTrue(descriptionBounds.left >= nameBounds.right)
+        assertTrue(timeBounds.left >= descriptionBounds.left)
     }
 
     @Test

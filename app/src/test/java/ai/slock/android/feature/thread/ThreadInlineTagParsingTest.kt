@@ -1,5 +1,12 @@
 package ai.slock.android.feature.thread
 
+import ai.slock.shared.markdown.ThreadMarkdownTag
+import ai.slock.shared.markdown.ThreadMarkdownTagKind
+import ai.slock.shared.markdown.normalizeThreadMarkdownBody
+import ai.slock.shared.markdown.threadInlineCodeMatches
+import ai.slock.shared.markdown.threadInlineTagMatches
+import ai.slock.shared.markdown.threadMarkdownTagDisplayLabel
+import ai.slock.shared.markdown.threadMarkdownTaskReferenceKey
 import java.time.LocalDate
 import java.time.ZoneId
 import org.junit.Assert.assertEquals

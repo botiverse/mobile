@@ -218,8 +218,6 @@ import ai.slock.android.feature.thread.MessagePageStatus
 import ai.slock.android.feature.thread.PendingAttachment
 import ai.slock.android.feature.thread.PendingAttachmentStatus
 import ai.slock.android.feature.thread.ThreadContent
-import ai.slock.android.feature.thread.ThreadMarkdownTag
-import ai.slock.android.feature.thread.ThreadMarkdownTagKind
 import ai.slock.android.feature.thread.ThreadMemberAddStatus
 import ai.slock.android.feature.thread.ThreadMemberRemoveStatus
 import ai.slock.android.feature.thread.ThreadMembersPanelContent
@@ -235,7 +233,6 @@ import ai.slock.android.feature.thread.ThreadTab
 import ai.slock.android.feature.thread.ThreadUiState
 import ai.slock.android.feature.thread.mergeRefreshedThreadSnapshot
 import ai.slock.android.feature.thread.sortedForThreadTimeline
-import ai.slock.android.feature.thread.threadMarkdownTaskReferenceKey
 import ai.slock.android.feature.thread.mergeRealtimeTaskEvent
 import ai.slock.android.feature.thread.withTaskStatusUpdate
 import ai.slock.android.feature.thread.withThreadRefreshStatus
@@ -248,6 +245,9 @@ import ai.slock.android.ui.components.SlockIcons
 import ai.slock.android.ui.components.SlockMemberPickerSection
 import ai.slock.android.ui.components.SlockMemberPickerMessage
 import ai.slock.android.ui.components.SlockMemberPickerItem
+import ai.slock.shared.markdown.ThreadMarkdownTag
+import ai.slock.shared.markdown.ThreadMarkdownTagKind
+import ai.slock.shared.markdown.threadMarkdownTaskReferenceKey
 import ai.slock.android.ui.components.SlockModal
 import ai.slock.android.ui.components.SlockModalAction
 import ai.slock.android.ui.components.SlockModalActionStyle
