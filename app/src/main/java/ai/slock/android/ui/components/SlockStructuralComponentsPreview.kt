@@ -66,20 +66,20 @@ import ai.slock.android.ui.theme.SlockType
 import ai.slock.android.ui.theme.slockHardShadow
 
 private val SidebarActionIconSize = 14.dp
-private val SidebarActionIconBoxSize = 24.dp
-private val SidebarActionRowHeight = 46.dp
-private val SidebarRowHorizontalPadding = 12.dp
-private val SidebarActionLabelGap = 14.dp
-private val ChannelSymbolWidth = 24.dp
-private val ChannelSymbolFontSize = 17.sp
-private val ChannelAvatarSize = 22.dp
+private val SidebarActionIconBoxSize = 22.dp
+private val SidebarActionRowHeight = 38.dp
+private val SidebarRowHorizontalPadding = 8.dp
+private val SidebarActionLabelGap = 10.dp
+private val ChannelSymbolWidth = 22.dp
+private val ChannelSymbolFontSize = 16.sp
+private val ChannelAvatarSize = 20.dp
 private val ChannelAvatarFontSize = 11.sp
-private val ChannelRowHeight = 36.dp
-private val HomeBottomTabListReserve = SlockSize.BottomBarHeight + SlockSpacing.Xl
-private val ChannelRowHorizontalPadding = 10.dp
-private val SectionChevronSize = 14.dp
-private val MiniActionSize = 36.dp
-private val MiniActionIconSize = 18.dp
+private val ChannelRowHeight = 32.dp
+private val HomeBottomTabListReserve = SlockSize.BottomBarHeight + SlockSpacing.Md
+private val ChannelRowHorizontalPadding = 8.dp
+private val SectionChevronSize = 12.dp
+private val MiniActionSize = 30.dp
+private val MiniActionIconSize = 16.dp
 private val CountPillMinWidth = 20.dp
 private val CountPillHeight = 18.dp
 
@@ -159,10 +159,10 @@ private fun SlockBottomTabBarFramePreview() {
             SlockBottomTabBar(
                 items =
                     listOf(
-                        SlockBottomTabItem("home", "HOME", R.drawable.lucide_house),
-                        SlockBottomTabItem("tasks", "TASKS", R.drawable.lucide_square_check_big),
-                        SlockBottomTabItem("members", "MEMBERS", R.drawable.lucide_users),
-                        SlockBottomTabItem("settings", "SETTINGS", R.drawable.lucide_settings)
+                        SlockBottomTabItem("home", "HOME", SlockIcons.House),
+                        SlockBottomTabItem("tasks", "TASKS", SlockIcons.SquareCheckBig),
+                        SlockBottomTabItem("members", "MEMBERS", SlockIcons.Users),
+                        SlockBottomTabItem("settings", "SETTINGS", SlockIcons.Settings)
                     ),
                 selectedKey = "tasks",
                 onSelected = {},
@@ -242,12 +242,12 @@ fun SlockStructuralHomeShell(
                         .offset(y = it)
                         .verticalScroll(rememberScrollState())
                         .padding(
-                            start = SlockSpacing.Lg,
-                            top = SlockSpacing.Lg,
-                            end = SlockSpacing.Lg,
+                            start = SlockSpacing.Md,
+                            top = SlockSpacing.Md,
+                            end = SlockSpacing.Md,
                             bottom = bottomContentPadding
                         ),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     SidebarActionRow(
                         icon = SlockIcons.Search,
@@ -275,7 +275,7 @@ fun SlockStructuralHomeShell(
                         onSortClick = { channelsReversed = !channelsReversed },
                         action = {
                             HeaderIconAction(
-                                iconRes = R.drawable.lucide_plus,
+                                icon = SlockIcons.Plus,
                                 contentDescription = labels.addChannel,
                                 onClick = onCreateChannelClick
                             )
@@ -349,10 +349,10 @@ fun SlockStructuralHomeShell(
             ) {
                 SlockBottomTabBar(
                     items = listOf(
-                        SlockBottomTabItem("home", "HOME", R.drawable.lucide_house),
-                        SlockBottomTabItem("tasks", "TASKS", R.drawable.lucide_square_check_big),
-                        SlockBottomTabItem("members", "MEMBERS", R.drawable.lucide_users),
-                        SlockBottomTabItem("settings", "SETTINGS", R.drawable.lucide_settings)
+                        SlockBottomTabItem("home", "HOME", SlockIcons.House),
+                        SlockBottomTabItem("tasks", "TASKS", SlockIcons.SquareCheckBig),
+                        SlockBottomTabItem("members", "MEMBERS", SlockIcons.Users),
+                        SlockBottomTabItem("settings", "SETTINGS", SlockIcons.Settings)
                     ),
                     selectedKey = selectedTabKey,
                     onSelected = onTabSelected,
@@ -609,7 +609,7 @@ private fun SectionBlock(
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        verticalArrangement = Arrangement.spacedBy(1.dp)
     ) {
         SidebarSectionHeader(
             label = label,
@@ -637,7 +637,7 @@ private fun SidebarSectionHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 34.dp)
+            .heightIn(min = 30.dp)
             .clickable { onExpandedChange(!expanded) },
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -661,7 +661,7 @@ private fun SidebarSectionHeader(
         )
         Spacer(modifier = Modifier.weight(1f))
         HeaderIconAction(
-            iconRes = R.drawable.lucide_arrow_up_down,
+            icon = SlockIcons.ArrowUpDown,
             contentDescription = "Sort $label",
             onClick = onSortClick
         )
@@ -673,7 +673,7 @@ private fun SidebarSectionHeader(
 
 @Composable
 private fun HeaderIconAction(
-    iconRes: Int,
+    icon: ImageVector,
     contentDescription: String,
     onClick: () -> Unit
 ) {
@@ -684,7 +684,7 @@ private fun HeaderIconAction(
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            painter = painterResource(iconRes),
+            imageVector = icon,
             contentDescription = contentDescription,
             tint = SlockColor.TextBlack,
             modifier = Modifier.size(MiniActionIconSize)

@@ -19,6 +19,12 @@ import ai.slock.android.core.data.repository.SettingsServerAdminSnapshot
 import ai.slock.android.core.data.repository.SettingsServerProfileSnapshot
 import ai.slock.android.core.data.repository.SettingsServerSectionSnapshot
 import ai.slock.android.core.data.repository.SettingsServerSnapshot
+import ai.slock.android.core.model.AgentStatus
+import ai.slock.android.core.model.MemberId
+import ai.slock.android.core.model.MemberKind
+import ai.slock.android.core.model.MemberProfile
+import ai.slock.android.core.model.Presence
+import ai.slock.android.feature.members.MemberFlatRow
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
@@ -347,34 +353,14 @@ private fun WorkspaceCard(workspace: SettingsComputerWorkspaceSnapshot) {
 
 @Composable
 private fun AgentCard(agent: SettingsComputerAgentSnapshot) {
-    Column(
+    MemberFlatRow(
+            member = agent.toMemberProfile(),
             modifier =
                     Modifier.fillMaxWidth()
                             .background(SlockColor.SurfaceWhite)
                             .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .padding(SlockSpacing.Md),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(
-                text = agent.name,
-                style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-        )
-        Text(
-                text =
-                        listOfNotNull(agent.statusLabel, agent.ownerLabel)
-                                .joinToString(" / ")
-                                .ifBlank {
-                                    stringResource(R.string.settings_computer_detail_unknown)
-                                },
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-        )
-    }
+                            .padding(horizontal = SlockSpacing.Md)
+    )
 }
 
 @Composable
@@ -391,6 +377,46 @@ private fun OnlineDot(online: Boolean) {
                             .border(SlockStroke.Thin, SlockColor.BorderBlack, CircleShape)
     )
 }
+
+private fun SettingsComputerAgentSnapshot.toMemberProfile(): MemberProfile =
+        MemberProfile(
+                id = MemberId(id),
+                displayName = name,
+                handle =
+                        listOfNotNull(statusLabel?.toSettingsAgentSubtitle(), ownerLabel)
+                                .joinToString(" / ")
+                                .ifBlank {
+                                    "Agent"
+                                },
+                kind = MemberKind.Agent,
+                description =
+                        listOfNotNull(statusLabel?.toSettingsAgentSubtitle(), ownerLabel)
+                                .joinToString(" / ")
+                                .ifBlank { null },
+                roleDescription = "agent",
+                avatarLabel = name.firstOrNull()?.uppercase() ?: "A",
+                presence = statusLabel.toSettingsAgentPresence(),
+                agentStatus = statusLabel.toSettingsAgentStatus()
+        )
+
+private fun String?.toSettingsAgentSubtitle(): String? =
+        this?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() }
+
+private fun String?.toSettingsAgentStatus(): AgentStatus =
+        when (this?.lowercase()) {
+            "thinking" -> AgentStatus.Thinking
+            "working", "running", "busy" -> AgentStatus.Working
+            "idle" -> AgentStatus.Idle
+            "offline", "disconnected" -> AgentStatus.Offline
+            else -> AgentStatus.Online
+        }
+
+private fun String?.toSettingsAgentPresence(): Presence =
+        when (toSettingsAgentStatus()) {
+            AgentStatus.Offline, AgentStatus.Disconnected -> Presence.Offline
+            AgentStatus.Idle -> Presence.Away
+            else -> Presence.Active
+        }
 
 @Composable
 fun SettingsServerManagementScreen(

@@ -10,12 +10,10 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
-import okhttp3.ResponseBody
-import retrofit2.Response
 
 internal suspend fun <T> execute(
     emptyReason: EmptyReason,
-    block: suspend () -> Response<ResponseBody>,
+    block: suspend () -> ApiResponse,
     emptyWhen: (T) -> Boolean = { false },
     source: String? = null,
     warningLogger: (String) -> Unit = {},
@@ -51,7 +49,7 @@ internal suspend fun <T> execute(
     }
 }
 
-internal fun <T> Response<ResponseBody>.toDataError(): DataResult<T> =
+internal fun <T> ApiResponse.toDataError(): DataResult<T> =
     when (code()) {
         401 -> authRequired()
         403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))

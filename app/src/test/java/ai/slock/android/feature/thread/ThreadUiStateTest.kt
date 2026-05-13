@@ -26,6 +26,38 @@ import org.junit.Test
 
 class ThreadUiStateTest {
     @Test
+    fun readyComposerWithAttachmentShowsStableReadyLabel() {
+        val composer =
+            ComposerState(
+                status = ComposerStatus.Ready,
+                attachmentIds = listOf(AttachmentId("attachment-1"))
+            )
+
+        assertEquals("1 attachment ready", composer.activityLabel)
+    }
+
+    @Test
+    fun sendingComposerWithAttachmentsUsesAttachmentCountLabel() {
+        val composer =
+            ComposerState(
+                status = ComposerStatus.Sending,
+                attachmentIds = listOf(
+                    AttachmentId("attachment-1"),
+                    AttachmentId("attachment-2")
+                )
+            )
+
+        assertEquals("Sending 2 attachments", composer.activityLabel)
+    }
+
+    @Test
+    fun sendingComposerWithoutAttachmentsKeepsMessageLabel() {
+        val composer = ComposerState(status = ComposerStatus.Sending)
+
+        assertEquals("Sending message", composer.activityLabel)
+    }
+
+    @Test
     fun failedComposerWithTextCanSendForRetry() {
         val composer = ComposerState(
             value = "Retry this message",

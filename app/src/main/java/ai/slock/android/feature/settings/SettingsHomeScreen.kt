@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +28,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import ai.slock.android.ui.components.SlockIcons
 import ai.slock.android.ui.components.SlockTitledPageHeader
@@ -64,6 +67,7 @@ fun SettingsHomeScreen(
     title: String = "Settings",
     subtitle: String = "Slock Android",
     showSelection: Boolean = true,
+    bottomContentPadding: Dp = 0.dp,
     onItemClick: (String) -> Unit = {}
 ) {
     Column(
@@ -75,6 +79,9 @@ fun SettingsHomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = bottomContentPadding)
                 .drawBehind {
                     val stroke = SlockStroke.Default.toPx()
                     drawLine(

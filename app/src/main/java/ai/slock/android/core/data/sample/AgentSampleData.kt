@@ -1,13 +1,13 @@
 package ai.slock.android.core.data.sample
 
 import ai.slock.android.core.model.AgentProfile
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.MemberId
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.MemberProfile
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.Presence
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 
 object AgentSampleData {
     val androidDeveloper = AgentProfile(

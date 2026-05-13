@@ -1,9 +1,12 @@
 package ai.slock.android.core.data.local
 
 import ai.slock.android.core.data.repository.DataResult
+import ai.slock.android.core.data.repository.ChannelUnreadSnapshot
 import ai.slock.android.core.data.repository.HomeSnapshot
 import ai.slock.android.core.data.repository.SendMessageResult
 import ai.slock.android.core.data.repository.ThreadSnapshot
+import ai.slock.android.core.model.Attachment
+import ai.slock.android.core.model.AttachmentId
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationKind
 import ai.slock.android.core.model.ConversationPermissions
@@ -15,6 +18,7 @@ import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageId
 import ai.slock.android.core.model.MessageNew
+import ai.slock.android.core.model.MessageType
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
@@ -26,6 +30,7 @@ import ai.slock.android.core.model.TaskUpdated
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadUpdated
 import ai.slock.android.core.state.EmptyReason
+import ai.slock.compose.model.AvatarReference
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
@@ -180,6 +185,68 @@ class SlockLocalWriteThroughTest {
     }
 
     @Test
+    fun writeAgentDirectMessagePresenceUpdatesHomeProjection() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 42L })
+        val server = ServerSummary(id = ServerId("server-1"), name = "Slock")
+        val currentMember = memberProfile("user-1", MemberKind.Human)
+        writer.writeHomeResult(
+            DataResult.Content(
+                HomeSnapshot(
+                    server = server,
+                    currentMember = currentMember,
+                    channels = emptyList(),
+                    directMessages =
+                        listOf(
+                            ConversationSummary(
+                                threadId = ThreadId("dm-1"),
+                                channelId = ChannelId("dm-1"),
+                                kind = ConversationKind.DirectMessage,
+                                name = "Android-Developer",
+                                presenceMemberId = MemberId("agent-android")
+                            )
+                        ),
+                    unreadTotal = 0
+                )
+            ),
+            source = "seed_home"
+        )
+
+        val changed =
+            writer.writeAgentDirectMessagePresence(
+                serverId = ServerId("server-1"),
+                members =
+                    listOf(
+                        memberProfile("agent-android", MemberKind.Agent).copy(
+                            displayName = "Android-Developer",
+                            handle = "Android-Developer",
+                            presence = ai.slock.android.core.model.Presence.Active,
+                            agentStatus = ai.slock.android.core.model.AgentStatus.Thinking
+                        )
+                    ),
+                source = "members_presence_home"
+            )
+
+        val cached =
+            writer.readHomeSnapshot(
+                serverId = ServerId("server-1"),
+                serverFallback = server,
+                currentMemberFallback = currentMember
+            )
+
+        assertEquals(true, changed)
+        assertEquals(
+            ai.slock.android.core.model.Presence.Active,
+            cached?.directMessages?.single()?.presence
+        )
+        assertEquals(
+            ai.slock.android.core.model.AgentStatus.Thinking,
+            cached?.directMessages?.single()?.agentStatus
+        )
+        assertEquals("agent-android", cached?.directMessages?.single()?.presenceMemberId?.value)
+    }
+
+    @Test
     fun writeHomeResultPreservesUnreadWhenRefreshOmitsUnreadFields() {
         val store = createInMemoryStore()
         val writer = SlockLocalWriteThrough(store, clock = { 42L })
@@ -236,6 +303,65 @@ class SlockLocalWriteThroughTest {
         assertEquals(1, cached?.channels?.single()?.mentionCount)
         assertEquals("message-1", cached?.channels?.single()?.firstUnreadMessageId?.value)
         assertEquals(3, cached?.unreadTotal)
+    }
+
+    @Test
+    fun writeUnreadCountsUpdatesHomeProjectionAndPreservesMissingRows() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 42L })
+        val server = ServerSummary(id = ServerId("server-1"), name = "Slock")
+        val currentMember = memberProfile("user-1", MemberKind.Human)
+        val channel =
+            conversation("channel-1").copy(
+                unreadCount = 3,
+                unreadCountKnown = true,
+                firstUnreadMessageId = MessageId("message-1")
+            )
+        val dm =
+            ConversationSummary(
+                threadId = ThreadId("dm-1"),
+                channelId = ChannelId("dm-1"),
+                kind = ConversationKind.DirectMessage,
+                name = "Cindy",
+                unreadCount = 2,
+                unreadCountKnown = true,
+                firstUnreadMessageId = MessageId("dm-message-1")
+            )
+        writer.writeHomeResult(
+            DataResult.Content(
+                HomeSnapshot(
+                    server = server,
+                    currentMember = currentMember,
+                    channels = listOf(channel),
+                    directMessages = listOf(dm),
+                    unreadTotal = 5
+                )
+            ),
+            source = "seed_home"
+        )
+
+        writer.writeUnreadCounts(
+            DataResult.Content(
+                ChannelUnreadSnapshot(
+                    server = server,
+                    unreadCounts = mapOf(ChannelId("channel-1") to 0)
+                )
+            ),
+            source = "reconcile"
+        )
+
+        val cached =
+            writer.readHomeSnapshot(
+                serverId = ServerId("server-1"),
+                serverFallback = server,
+                currentMemberFallback = currentMember
+            )
+
+        assertEquals(0, cached?.channels?.single()?.unreadCount)
+        assertEquals(null, cached?.channels?.single()?.firstUnreadMessageId)
+        assertEquals(2, cached?.directMessages?.single()?.unreadCount)
+        assertEquals("dm-message-1", cached?.directMessages?.single()?.firstUnreadMessageId?.value)
+        assertEquals(2, cached?.unreadTotal)
     }
 
     @Test
@@ -417,6 +543,275 @@ class SlockLocalWriteThroughTest {
     }
 
     @Test
+    fun threadRefreshPreservesStoredAttachmentsWhenSnapshotOmitsThem() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 44L })
+        val attachment =
+            Attachment(
+                id = AttachmentId("attachment-1"),
+                name = "screenshot.jpg",
+                mimeType = "image/jpeg",
+                sizeLabel = "42 KB",
+                thumbnailUrl = "https://cdn.example/screenshot.jpg"
+            )
+        writer.writeSendResult(
+            DataResult.Content(
+                SendMessageResult(
+                    message("message-with-image", seq = 10).copy(attachments = listOf(attachment))
+                )
+            ),
+            source = "send"
+        )
+
+        writer.writeThreadResult(
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation = conversation("thread-1"),
+                    messages =
+                        listOf(
+                            message("message-with-image", seq = 10).copy(
+                                body = "refreshed",
+                                attachments = emptyList()
+                            )
+                        )
+                )
+            ),
+            source = "refresh"
+        )
+
+        val cached = store.getMessagesForThread(ThreadId("thread-1")).single()
+
+        assertEquals("refreshed", cached.body)
+        assertEquals(listOf("attachment-1"), cached.attachments.map { it.id.value })
+        assertEquals("screenshot.jpg", cached.attachments.single().name)
+        assertEquals("https://cdn.example/screenshot.jpg", cached.attachments.single().thumbnailUrl)
+    }
+
+    @Test
+    fun threadRefreshPreservesReplyMetadataWhenSnapshotOmitsIt() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 44L })
+        writer.writeThreadResult(
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation = conversation("thread-1"),
+                    messages =
+                        listOf(
+                            message("message-with-task-replies", seq = 10).copy(
+                                task = task("task-1").copy(
+                                    messageId = MessageId("message-with-task-replies")
+                                ),
+                                threadChannelId = ChannelId("thread-replies-1"),
+                                replyCount = 3
+                            )
+                        )
+                )
+            ),
+            source = "initial"
+        )
+
+        writer.writeThreadResult(
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation = conversation("thread-1"),
+                    messages =
+                        listOf(
+                            message("message-with-task-replies", seq = 10).copy(
+                                task = task("task-1").copy(
+                                    status = TaskStatus.Done,
+                                    messageId = MessageId("message-with-task-replies")
+                                ),
+                                replyCount = 0,
+                                threadChannelId = null
+                            )
+                        )
+                )
+            ),
+            source = "task_status_refresh"
+        )
+
+        val cached = store.getMessagesForThread(ThreadId("thread-1")).single()
+
+        assertEquals(TaskStatus.Done, cached.task?.status)
+        assertEquals("thread-replies-1", cached.threadChannelId?.value)
+        assertEquals(3, cached.replyCount)
+    }
+
+    @Test
+    fun threadRefreshPreservesStoredMessageContentWhenSnapshotOmitsFields() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 44L })
+        val storedMessage =
+            message("message-rich", seq = 10).copy(
+                author =
+                    memberProfile("user-real", MemberKind.Human).copy(
+                        displayName = "Real User",
+                        handle = "real-user",
+                        description = "Original author"
+                    ),
+                timestampLabel = "2026-05-13T11:30:00Z",
+                body = "important body",
+                messageType = MessageType.System,
+                systemEventType = "task:updated",
+                metadata = mapOf("taskId" to "task-1", "to" to "done"),
+                parentMessageId = MessageId("parent-1"),
+                updatedAtLabel = "2026-05-13T11:31:00Z"
+            )
+        writer.writeThreadResult(
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation = conversation("thread-1"),
+                    messages = listOf(storedMessage)
+                )
+            ),
+            source = "seed_rich_message"
+        )
+
+        writer.writeThreadResult(
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation = conversation("thread-1"),
+                    messages =
+                        listOf(
+                            message("message-rich", seq = 11).copy(
+                                seq = null,
+                                author = memberProfile("unknown-author", MemberKind.Human),
+                                timestampLabel = "",
+                                body = "",
+                                messageType = MessageType.Chat,
+                                systemEventType = null,
+                                metadata = emptyMap(),
+                                parentMessageId = null,
+                                updatedAtLabel = null
+                            )
+                        )
+                )
+            ),
+            source = "sparse_refresh"
+        )
+
+        val cached = store.getMessagesForThread(ThreadId("thread-1")).single()
+
+        assertEquals(10L, cached.seq)
+        assertEquals("user-real", cached.author.id.value)
+        assertEquals("Real User", cached.author.displayName)
+        assertEquals("real-user", cached.author.handle)
+        assertEquals("Original author", cached.author.description)
+        assertEquals("2026-05-13T11:30:00Z", cached.timestampLabel)
+        assertEquals("important body", cached.body)
+        assertEquals(MessageType.System, cached.messageType)
+        assertEquals("task:updated", cached.systemEventType)
+        assertEquals("task-1", cached.metadata["taskId"])
+        assertEquals("done", cached.metadata["to"])
+        assertEquals("parent-1", cached.parentMessageId?.value)
+        assertEquals("2026-05-13T11:31:00Z", cached.updatedAtLabel)
+    }
+
+    @Test
+    fun threadProjectionEnrichesMessageAuthorsFromMemberSnapshots() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 44L })
+        store.upsertMemberSnapshot(
+            memberProfile("agent-1", MemberKind.Agent).copy(
+                displayName = "Android Developer",
+                handle = "Android-Developer-2",
+                avatarUrl = "pixel:diamond",
+                gravatarHash = "abc123",
+                avatar = AvatarReference.fromWireValue("pixel:diamond"),
+                avatarLabel = "AD"
+            ),
+            syncedAtMs = 1L
+        )
+        assertEquals("AD", store.getMemberSnapshot(MemberId("agent-1"))?.avatarLabel)
+
+        writer.writeThreadResult(
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation = conversation("thread-1"),
+                    messages =
+                        listOf(
+                            message("message-agent", seq = 10).copy(
+                                author = memberProfile("agent-1", MemberKind.Agent)
+                            )
+                        )
+                )
+            ),
+            source = "sparse_thread"
+        )
+
+        val cached = store.getMessagesForThread(ThreadId("thread-1")).single()
+
+        assertEquals("Android Developer", cached.author.displayName)
+        assertEquals("Android-Developer-2", cached.author.handle)
+        assertEquals("pixel:diamond", cached.author.avatarUrl)
+        assertEquals("abc123", cached.author.gravatarHash)
+        assertEquals(AvatarReference.fromWireValue("pixel:diamond"), cached.author.avatar)
+        assertEquals("AD", cached.author.avatarLabel)
+    }
+
+    @Test
+    fun threadProjectionPreservesTaskAssigneeSnapshotsAcrossSparseUpdates() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 44L })
+        val richAssignee =
+            memberProfile("agent-1", MemberKind.Agent).copy(
+                displayName = "Android Developer",
+                handle = "Android-Developer-2",
+                avatarUrl = "pixel:diamond",
+                avatar = AvatarReference.fromWireValue("pixel:diamond"),
+                avatarLabel = "AD"
+            )
+        writer.writeThreadResult(
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation = conversation("thread-1"),
+                    messages =
+                        listOf(
+                            message("message-with-task", seq = 10).copy(
+                                task =
+                                    task("task-1").copy(
+                                        messageId = MessageId("message-with-task"),
+                                        assignee = richAssignee
+                                    )
+                            )
+                        )
+                )
+            ),
+            source = "initial_task"
+        )
+
+        writer.writeThreadResult(
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation = conversation("thread-1"),
+                    messages =
+                        listOf(
+                            message("message-with-task", seq = 10).copy(
+                                task =
+                                    task("task-1").copy(
+                                        status = TaskStatus.Done,
+                                        messageId = MessageId("message-with-task"),
+                                        assignee = memberProfile("agent-1", MemberKind.Agent)
+                                    )
+                            )
+                        )
+                )
+            ),
+            source = "sparse_task_update"
+        )
+
+        val cached = store.getMessagesForThread(ThreadId("thread-1")).single()
+        val assignee = cached.task?.assignee
+
+        assertEquals(TaskStatus.Done, cached.task?.status)
+        assertEquals("Android Developer", assignee?.displayName)
+        assertEquals("Android-Developer-2", assignee?.handle)
+        assertEquals("pixel:diamond", assignee?.avatarUrl)
+        assertEquals(AvatarReference.fromWireValue("pixel:diamond"), assignee?.avatar)
+        assertEquals("AD", assignee?.avatarLabel)
+    }
+
+    @Test
     fun sendResultWithoutChannelIdIsLoggedAndSkipped() {
         val store = createInMemoryStore()
         val logs = mutableListOf<String>()
@@ -588,6 +983,26 @@ class SlockLocalWriteThroughTest {
             ),
             source = "broken_snapshot"
         )
+    }
+
+    @Test
+    fun readTaskSnapshotDeletesOnlyKnownLegacySampleTasks() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 46L })
+        val realTaskWithSampleText =
+            task("real-task-1").copy(
+                title = "Verify sample import",
+                channelId = ChannelId("thread-1"),
+                threadId = ThreadId("thread-1"),
+                channelName = "sample-review"
+            )
+        store.upsertTaskReference(task("sample-task"), syncedAtMs = 1L)
+        store.upsertTaskReference(realTaskWithSampleText, syncedAtMs = 2L)
+
+        val snapshot = writer.readTaskSnapshot()
+
+        assertEquals(listOf("real-task-1"), snapshot?.tasks?.map { it.id.value })
+        assertEquals(listOf(realTaskWithSampleText), store.getTaskReferences())
     }
 
     @Test

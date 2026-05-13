@@ -51,8 +51,10 @@ fun ForgotPasswordScreen(
     modifier: Modifier = Modifier,
     initialEmail: String = "",
     status: ForgotPasswordStatus = ForgotPasswordStatus.Default,
+    errorMessage: String? = null,
     onSendResetLink: (String) -> Unit = {},
-    onBackToSignIn: () -> Unit = {}
+    onBackToSignIn: () -> Unit = {},
+    onOpenSharedAuth: (() -> Unit)? = null
 ) {
     var email by rememberSaveable(initialEmail) { mutableStateOf(initialEmail) }
     val sending = status == ForgotPasswordStatus.Sending
@@ -78,7 +80,7 @@ fun ForgotPasswordScreen(
                 label = stringResource(R.string.auth_email_label),
                 enabled = !sending && !disabled,
                 isError = isError,
-                errorText = if (isError) stringResource(R.string.auth_reset_invalid_email_error) else null,
+                errorText = if (isError) errorMessage ?: stringResource(R.string.auth_reset_invalid_email_error) else null,
                 forceFocused = status == ForgotPasswordStatus.Default,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
             )
@@ -93,6 +95,15 @@ fun ForgotPasswordScreen(
                 enabled = email.isNotBlank() && !disabled && status != ForgotPasswordStatus.Success,
                 loading = sending
             )
+            if (onOpenSharedAuth != null) {
+                AuthActionButton(
+                    text = stringResource(R.string.auth_open_shared_auth),
+                    onClick = onOpenSharedAuth,
+                    background = SlockColor.AccentCyan,
+                    contentColor = SlockColor.TextBlack,
+                    enabled = !sending
+                )
+            }
             Text(
                 text = stringResource(R.string.auth_back_to_sign_in),
                 style = SlockType.Body.copy(

@@ -1,6 +1,6 @@
 package ai.slock.android.core.data.diagnostics
 
-import ai.slock.android.core.data.auth.RetrofitAuthRepository
+import ai.slock.android.core.data.auth.KtorAuthRepository
 import ai.slock.android.core.data.realtime.RealtimeClientDiagnostics
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.android.core.data.repository.DataResult
@@ -10,21 +10,21 @@ import ai.slock.android.core.model.MessageUpdated
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.SyncResumeResponse
-import ai.slock.shared.network.model.ConnectionHealth
-import ai.slock.shared.network.model.NetworkDiagnosticsSnapshot
-import ai.slock.shared.network.model.NetworkIssue
-import ai.slock.shared.network.model.NetworkIssueClassifier
-import ai.slock.shared.network.model.NetworkIssueKind
-import ai.slock.shared.network.model.NetworkStatus
-import ai.slock.shared.network.model.RealtimeConnectionPhase
-import ai.slock.shared.network.model.RealtimeConnectionState
-import ai.slock.shared.network.realtime.RealtimeConnectionEvent
-import ai.slock.shared.network.realtime.RealtimeConnectionIntent
-import ai.slock.shared.network.realtime.RealtimeConnectionReducer
+import ai.slock.compose.network.model.ConnectionHealth
+import ai.slock.compose.network.model.NetworkDiagnosticsSnapshot
+import ai.slock.compose.network.model.NetworkIssue
+import ai.slock.compose.network.model.NetworkIssueClassifier
+import ai.slock.compose.network.model.NetworkIssueKind
+import ai.slock.compose.network.model.NetworkStatus
+import ai.slock.compose.network.model.RealtimeConnectionPhase
+import ai.slock.compose.network.model.RealtimeConnectionState
+import ai.slock.compose.network.realtime.RealtimeConnectionEvent
+import ai.slock.compose.network.realtime.RealtimeConnectionIntent
+import ai.slock.compose.network.realtime.RealtimeConnectionReducer
 import java.util.concurrent.atomic.AtomicReference
 
 class NetworkDiagnosticsBridge(
-        private val baseUrl: String = RetrofitAuthRepository.BASE_URL,
+        private val baseUrl: String = KtorAuthRepository.BASE_URL,
         private val socketUrl: String = SocketIoRealtimeClient.DEFAULT_SOCKET_URL,
         private val buildLabel: String? = null,
         private val nowMillis: () -> Long = System::currentTimeMillis,

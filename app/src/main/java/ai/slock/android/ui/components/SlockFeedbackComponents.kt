@@ -3,14 +3,21 @@ package ai.slock.android.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.drawscope.Stroke
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
@@ -59,6 +66,49 @@ fun SlockEmptyState(
         if (action != null) {
             action()
         }
+    }
+}
+
+@Composable
+fun SlockLoadingState(
+    title: String,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.fillMaxSize().padding(SlockSpacing.Lg),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = title,
+            style = SlockType.Button,
+            color = SlockColor.TextBlack,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+fun SlockInlineLoading(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(16.dp),
+            strokeWidth = 2.dp,
+            color = SlockColor.TextBlack,
+            trackColor = SlockColor.BorderBlack.copy(alpha = 0.18f)
+        )
+        Text(
+            text = text,
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray,
+            maxLines = 1
+        )
     }
 }
 

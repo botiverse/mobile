@@ -1,35 +1,37 @@
 package ai.slock.android.core.data.repository
 
 import ai.slock.android.core.model.AgentProfile
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.Attachment
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.AttachmentId
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.ChannelId
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.ConversationSummary
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.InboxItem
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.MemberId
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.MemberProfile
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.Message
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.MessageId
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.ServerId
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.ServerSummary
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.SettingsSummary
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.TaskStatus
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.TaskSummary
-import ai.slock.shared.model.toMemberProfile
+import ai.slock.compose.model.toMemberProfile
+import ai.slock.compose.model.SlockWorkspaceFilePreview
+import ai.slock.compose.model.SlockWorkspaceNode
 
 data class HomeSnapshot(
     val server: ServerSummary,
@@ -123,6 +125,31 @@ data class AgentReminderSnapshot(
 data class AgentActivitySnapshot(
     val agentId: MemberId,
     val activity: List<AgentActivityEntry>
+)
+
+data class AgentWorkspaceSnapshot(
+    val agentId: MemberId,
+    val computerId: String? = null,
+    val computerName: String? = null,
+    val workspaces: List<SettingsComputerWorkspaceSnapshot> = emptyList()
+)
+
+data class AgentWorkspaceTreeSnapshot(
+    val agentId: MemberId,
+    val rootPath: String,
+    val root: SlockWorkspaceNode
+)
+
+data class AgentWorkspaceChildrenSnapshot(
+    val agentId: MemberId,
+    val dirPath: String,
+    val children: List<SlockWorkspaceNode>
+)
+
+data class AgentWorkspaceFilePreviewSnapshot(
+    val agentId: MemberId,
+    val path: String,
+    val preview: SlockWorkspaceFilePreview
 )
 
 data class AgentSkillsSnapshot(

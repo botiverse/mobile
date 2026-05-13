@@ -53,6 +53,7 @@ import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.components.SlockIconSquareButton
 import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.components.SlockLoadingState
 import ai.slock.android.ui.components.SlockPullRefreshContainer
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
@@ -89,6 +90,7 @@ fun InboxScreen(
     InboxListScreen(
         state = state,
         copy = copy,
+        showHeader = true,
         showFilters = true,
         onBack = onBack,
         onOpenThread = onOpenThread,
@@ -96,6 +98,40 @@ fun InboxScreen(
         onFilterSelected = onFilterSelected,
         onMarkItemRead = onMarkItemRead,
         onMarkAllRead = onMarkAllRead,
+        onLoadMore = onLoadMore,
+        refreshing = refreshing,
+        onRefresh = onRefresh,
+        onRetry = onRetry
+    )
+}
+
+@Composable
+fun SearchResultsListScreen(
+    state: InboxUiState,
+    onOpenThread: (InboxItem) -> Unit,
+    modifier: Modifier = Modifier,
+    onLoadMore: () -> Unit = {},
+    refreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
+    onRetry: () -> Unit = {}
+) {
+    val copy = InboxScreenCopy(
+        title = stringResource(R.string.home_search),
+        loadingTitle = stringResource(R.string.search_loading_title),
+        loadingDetail = stringResource(R.string.search_loading_detail),
+        emptyTitle = stringResource(R.string.search_empty_title),
+        emptyDetail = stringResource(R.string.search_empty_detail),
+        noPermissionTitle = stringResource(R.string.inbox_no_permission_title),
+        errorTitle = stringResource(R.string.search_error_title)
+    )
+    InboxListScreen(
+        state = state,
+        copy = copy,
+        showHeader = false,
+        showFilters = false,
+        onBack = {},
+        onOpenThread = onOpenThread,
+        modifier = modifier,
         onLoadMore = onLoadMore,
         refreshing = refreshing,
         onRefresh = onRefresh,
@@ -127,6 +163,7 @@ fun SavedScreen(
     InboxListScreen(
         state = state,
         copy = copy,
+        showHeader = true,
         showFilters = false,
         onBack = onBack,
         onOpenThread = onOpenThread,
@@ -161,6 +198,7 @@ fun InboxUiState.removeSavedMessage(messageId: MessageId): InboxUiState =
 private fun InboxListScreen(
     state: InboxUiState,
     copy: InboxScreenCopy,
+    showHeader: Boolean,
     showFilters: Boolean,
     onBack: () -> Unit,
     onOpenThread: (InboxItem) -> Unit,
@@ -182,6 +220,7 @@ private fun InboxListScreen(
             ScreenLoadState.Loading -> InboxStateContent(
                 copy = copy,
                 state = state,
+                showHeader = showHeader,
                 onBack = onBack
             ) {
                 InboxLoadingBody(overlay = state.previousContent != null)
@@ -190,6 +229,7 @@ private fun InboxListScreen(
                 state = state,
                 copy = copy,
                 content = loadState.data,
+                showHeader = showHeader,
                 showFilters = showFilters,
                 onBack = onBack,
                 onOpenThread = onOpenThread,
@@ -203,6 +243,7 @@ private fun InboxListScreen(
             is ScreenLoadState.Empty -> InboxStateContent(
                 copy = copy,
                 state = state,
+                showHeader = showHeader,
                 onBack = onBack
             ) {
                 InboxEmptyBody(title = copy.emptyTitle, detail = copy.emptyDetail)
@@ -211,12 +252,14 @@ private fun InboxListScreen(
                 copy = copy,
                 state = state,
                 error = loadState.error,
+                showHeader = showHeader,
                 onBack = onBack,
                 onRetry = onRetry
             )
             is ScreenLoadState.NoPermission -> InboxStateContent(
                 copy = copy,
                 state = state,
+                showHeader = showHeader,
                 onBack = onBack
             ) {
                 InboxEmptyBody(
@@ -396,6 +439,7 @@ private fun InboxLoadedContent(
     state: InboxUiState,
     copy: InboxScreenCopy,
     content: InboxContent,
+    showHeader: Boolean,
     showFilters: Boolean,
     onBack: () -> Unit,
     onOpenThread: (InboxItem) -> Unit,
@@ -411,11 +455,13 @@ private fun InboxLoadedContent(
         InboxFilter.Unread -> content.items.filter { it.unreadCount > 0 }
     }
 
-    InboxHeader(
-        title = copy.title,
-        content = content,
-        onBack = onBack
-    )
+    if (showHeader) {
+        InboxHeader(
+            title = copy.title,
+            content = content,
+            onBack = onBack
+        )
+    }
     if (showFilters) {
         InboxFilterRow(
             selectedFilter = state.selectedFilter,
@@ -746,7 +792,8 @@ private fun InboxReplyActivityLine(activity: InboxActivityPreview.Reply) {
                 color = SlockColor.TextMutedGray
             )
             Text(
-                text = "${activity.sender}: ${activity.replyBody}",
+                text = activity.sender?.let { sender -> "$sender: ${activity.replyBody}" }
+                    ?: activity.replyBody,
                 style = SlockType.Caption,
                 color = SlockColor.TextBlack,
                 maxLines = 1,
@@ -797,7 +844,7 @@ private fun InboxItemFooter(
 
 private sealed interface InboxActivityPreview {
     data class NewMessage(val body: String) : InboxActivityPreview
-    data class Reply(val parentBody: String, val sender: String, val replyBody: String) :
+    data class Reply(val parentBody: String, val sender: String?, val replyBody: String) :
             InboxActivityPreview
     data class System(val body: String) : InboxActivityPreview
 }
@@ -904,14 +951,17 @@ private fun InboxReplyChip(
 private fun InboxStateContent(
     copy: InboxScreenCopy,
     state: InboxUiState,
+    showHeader: Boolean = true,
     onBack: () -> Unit,
     body: @Composable () -> Unit
 ) {
-    InboxHeader(
-        title = copy.title,
-        content = state.previousContent ?: copy.placeholderContent,
-        onBack = onBack
-    )
+    if (showHeader) {
+        InboxHeader(
+            title = copy.title,
+            content = state.previousContent ?: copy.placeholderContent,
+            onBack = onBack
+        )
+    }
     body()
 }
 
@@ -921,14 +971,17 @@ private fun InboxErrorContent(
     state: InboxUiState,
     error: ScreenError,
     title: String? = null,
+    showHeader: Boolean = true,
     onBack: () -> Unit,
     onRetry: () -> Unit
 ) {
-    InboxHeader(
-        title = copy.title,
-        content = state.previousContent ?: copy.placeholderContent,
-        onBack = onBack
-    )
+    if (showHeader) {
+        InboxHeader(
+            title = copy.title,
+            content = state.previousContent ?: copy.placeholderContent,
+            onBack = onBack
+        )
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -945,22 +998,14 @@ private fun InboxErrorContent(
 
 @Composable
 private fun InboxLoadingBody(overlay: Boolean) {
-    Box(
-        modifier = Modifier.fillMaxSize().padding(SlockSpacing.Lg),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text =
-                if (overlay) {
-                    stringResource(R.string.inbox_refreshing_body)
-                } else {
-                    stringResource(R.string.inbox_loading_body)
-                },
-            style = SlockType.Button,
-            color = SlockColor.TextBlack,
-            maxLines = 1
-        )
-    }
+    SlockLoadingState(
+        title =
+            if (overlay) {
+                stringResource(R.string.inbox_refreshing_body)
+            } else {
+                stringResource(R.string.inbox_loading_body)
+            }
+    )
 }
 
 private val InboxScreenCopy.placeholderContent: InboxContent
@@ -1011,13 +1056,15 @@ private fun InboxItem.activityPreview(): InboxActivityPreview {
     val fallback = stringResource(R.string.inbox_no_preview)
     if (kind == InboxItemKind.System) {
         return InboxActivityPreview.System(
-            body = latestActivityPreview ?: lastMessagePreview ?: parentMessagePreview ?: fallback
+            body =
+                (latestActivityPreview ?: lastMessagePreview ?: parentMessagePreview)
+                    .toInboxPreviewTextOrNull() ?: fallback
         )
     }
-    val parent = parentMessagePreview?.takeIf { it.isNotBlank() }
-    val reply = latestActivityPreview?.takeIf { it.isNotBlank() }
+    val parent = parentMessagePreview.toInboxPreviewTextOrNull()
+    val reply = latestActivityPreview.toInboxPreviewTextOrNull()
     val sender = latestActivitySenderName ?: lastMessageSenderName
-    if (kind == InboxItemKind.Thread && parent != null && reply != null && reply != parent && sender != null) {
+    if (kind == InboxItemKind.Thread && parent != null && reply != null && reply != parent) {
         return InboxActivityPreview.Reply(
             parentBody = parent,
             sender = sender,
@@ -1025,9 +1072,21 @@ private fun InboxItem.activityPreview(): InboxActivityPreview {
         )
     }
     return InboxActivityPreview.NewMessage(
-        body = lastMessagePreview ?: latestActivityPreview ?: parentMessagePreview ?: fallback
+        body =
+            (lastMessagePreview ?: latestActivityPreview ?: parentMessagePreview)
+                .toInboxPreviewTextOrNull() ?: fallback
     )
 }
+
+private fun String?.toInboxPreviewTextOrNull(): String? =
+    this?.sanitizeInboxPreviewText()?.takeIf { it.isNotBlank() }
+
+private fun String.sanitizeInboxPreviewText(): String =
+    replace("☑", "✅")
+        .replace("✔", "✅")
+        .replace("✓", "✅")
+        .replace(Regex("""\s+"""), " ")
+        .trim()
 
 private fun InboxItem.metadataTimestamp(): String? =
     latestActivityAt ?: lastMessageAt

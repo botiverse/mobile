@@ -8,6 +8,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
@@ -20,9 +21,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
@@ -55,6 +58,8 @@ import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.components.SlockCheckbox
 import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.components.SlockInlineLoading
+import ai.slock.android.ui.components.SlockLoadingState
 import ai.slock.android.ui.components.SlockStatusSelector
 import ai.slock.android.ui.components.SlockTaskBoard
 import ai.slock.android.ui.components.SlockTaskCardData
@@ -167,7 +172,8 @@ private fun TasksPanel(
         when (val loadState = lastVisibleContent) {
             ScreenLoadState.Loading -> TasksStateBody(
                 title = copy.loadingTitle,
-                detail = copy.loadingDetail
+                detail = copy.loadingDetail,
+                loading = true
             )
             is ScreenLoadState.Content -> TasksLoadedBody(
                 state = state,
@@ -242,66 +248,77 @@ private fun TasksLoadedBody(
         }
     }
     val modeSwitching = renderedMode != selectedMode
-    val contentScrollState = rememberScrollState()
     val listFilterScrollState = rememberScrollState()
     val boardScrollState = rememberScrollState()
 
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(contentScrollState)
-            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md),
+            .background(SlockColor.SurfaceWhite),
+        contentPadding = PaddingValues(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
-        TasksSummaryBar(content = channelScopedContent, copy = copy)
+        item(key = "summary") {
+            TasksSummaryBar(content = channelScopedContent, copy = copy)
+        }
         state.navigationErrorCode?.let { code ->
-            TasksNavigationNotice(
-                title = copy.navigationFailedTitle,
-                detail = copy.navigationErrorDetail(code)
-            )
+            item(key = "navigation-error") {
+                TasksNavigationNotice(
+                    title = copy.navigationFailedTitle,
+                    detail = copy.navigationErrorDetail(code)
+                )
+            }
         }
         state.statusUpdateErrorCode?.let { code ->
-            TasksNavigationNotice(
-                title = copy.statusUpdateFailedTitle,
-                detail = copy.statusUpdateErrorDetail(code)
+            item(key = "status-error") {
+                TasksNavigationNotice(
+                    title = copy.statusUpdateFailedTitle,
+                    detail = copy.statusUpdateErrorDetail(code)
+                )
+            }
+        }
+        item(key = "toolbar") {
+            TasksToolbar(
+                state = state,
+                copy = copy,
+                filterScrollState = listFilterScrollState,
+                channelOptions = channelOptions,
+                selectedChannelNames = selectedChannels,
+                channelSelectorExpanded = channelSelectorExpanded,
+                selectedMode = selectedMode,
+                showChannelFilter = showChannelFilter,
+                onFilterSelected = onFilterSelected,
+                onChannelSelectorExpandedChange = { channelSelectorExpanded = it },
+                onChannelToggled = { channelName ->
+                    selectedChannelNames = if (channelName in selectedChannels) {
+                        selectedChannels - channelName
+                    } else {
+                        selectedChannels + channelName
+                    }
+                },
+                onClearChannels = { selectedChannelNames = emptySet() },
+                onModeSelected = { selectedMode = it }
             )
         }
-        TasksToolbar(
-            state = state,
-            copy = copy,
-            filterScrollState = listFilterScrollState,
-            channelOptions = channelOptions,
-            selectedChannelNames = selectedChannels,
-            channelSelectorExpanded = channelSelectorExpanded,
-            selectedMode = selectedMode,
-            showChannelFilter = showChannelFilter,
-            onFilterSelected = onFilterSelected,
-            onChannelSelectorExpandedChange = { channelSelectorExpanded = it },
-            onChannelToggled = { channelName ->
-                selectedChannelNames = if (channelName in selectedChannels) {
-                    selectedChannels - channelName
-                } else {
-                    selectedChannels + channelName
-                }
-            },
-            onClearChannels = { selectedChannelNames = emptySet() },
-            onModeSelected = { selectedMode = it }
-        )
         if (refreshing || modeSwitching) {
-            TasksContentLoadingSection(mode = selectedMode, copy = copy)
+            item(key = "loading-section") {
+                TasksContentLoadingSection(mode = selectedMode, copy = copy)
+            }
         } else {
             when (renderedMode) {
                 TasksViewMode.Board ->
-                    TasksBoardSection(
-                        content = filteredContent,
-                        copy = copy,
-                        boardScrollState = boardScrollState,
-                        onTaskClick = onTaskClick,
-                        onTaskStatusChange = onTaskStatusChange,
-                        updatingTaskId = state.statusUpdatingTaskId
-                    )
+                    item(key = "board-section") {
+                        TasksBoardSection(
+                            content = filteredContent,
+                            copy = copy,
+                            boardScrollState = boardScrollState,
+                            onTaskClick = onTaskClick,
+                            onTaskStatusChange = onTaskStatusChange,
+                            updatingTaskId = state.statusUpdatingTaskId
+                        )
+                    }
                 TasksViewMode.List ->
-                    TasksListSection(
+                    tasksListSection(
                         tasks = filteredTasks,
                         copy = copy,
                         onTaskClick = onTaskClick,
@@ -765,7 +782,7 @@ private enum class TasksViewMode {
 @Composable
 private fun TasksCompactAction(
     label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector
+    icon: ImageVector
 ) {
     val shadow = SlockShadow.Small
     Row(
@@ -803,19 +820,16 @@ private fun TasksBoardSection(
     onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
     updatingTaskId: String?
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-        TasksSectionHeader(title = copy.board, detail = copy.boardDetail)
-        SlockTaskBoard(
-            columns =
-                content.toTaskColumns(
-                    copy = copy,
-                    onTaskClick = onTaskClick,
-                    onTaskStatusChange = onTaskStatusChange,
-                    updatingTaskId = updatingTaskId
-                ),
-            scrollState = boardScrollState
-        )
-    }
+    SlockTaskBoard(
+        columns =
+            content.toTaskColumns(
+                copy = copy,
+                onTaskClick = onTaskClick,
+                onTaskStatusChange = onTaskStatusChange,
+                updatingTaskId = updatingTaskId
+            ),
+        scrollState = boardScrollState
+    )
 }
 
 @Composable
@@ -839,46 +853,40 @@ private fun TasksContentLoadingSection(
                 .border(SlockStroke.Thin, SlockColor.EmptyStateGray),
             contentAlignment = Alignment.Center
         ) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(20.dp),
-                strokeWidth = 2.dp,
-                color = SlockColor.TextBlack,
-                trackColor = SlockColor.BorderBlack.copy(alpha = 0.18f)
-            )
+            SlockInlineLoading(text = copy.loadingDetail)
         }
     }
 }
 
-@Composable
-private fun TasksListSection(
+private fun LazyListScope.tasksListSection(
     tasks: List<TaskSummary>,
     copy: TasksScreenCopy,
     onTaskClick: (TaskSummary) -> Unit,
     onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
     updatingTaskId: String?
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+    item(key = "list-header") {
         TasksSectionHeader(title = copy.list, detail = copy.visibleCount(tasks.size))
-        if (tasks.isEmpty()) {
+    }
+    if (tasks.isEmpty()) {
+        item(key = "list-empty") {
             SlockEmptyState(
                 title = copy.noMatchingTitle,
                 detail = copy.noMatchingDetail
             )
-        } else {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-            ) {
-                tasks.forEach { task ->
-                    TasksListRow(
-                        task = task,
-                        copy = copy,
-                        updating = updatingTaskId == task.id.value,
-                        onClick = { onTaskClick(task) },
-                        onStatusChange = { status -> onTaskStatusChange(task, status) }
-                    )
-                }
-            }
+        }
+    } else {
+        items(
+            items = tasks,
+            key = { task -> task.id.value }
+        ) { task ->
+            TasksListRow(
+                task = task,
+                copy = copy,
+                updating = updatingTaskId == task.id.value,
+                onClick = { onTaskClick(task) },
+                onStatusChange = { status -> onTaskStatusChange(task, status) }
+            )
         }
     }
 }
@@ -929,7 +937,7 @@ private fun TasksListRow(
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                text = listOfNotNull(task.taskNumber?.let { "#$it" }, task.title).joinToString(" "),
+                text = task.tasksDisplayTitle(),
                 style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
@@ -938,7 +946,7 @@ private fun TasksListRow(
             Text(
                 text = listOfNotNull(
                     task.channelName?.let { "#$it" },
-                    task.assignee?.displayName ?: copy.unassigned,
+                    task.tasksAssigneeDisplayName() ?: copy.unassigned,
                     task.updatedAtLabel.toThreadTimestampLabel()
                 ).joinToString(" · "),
                 style = SlockType.Caption,
@@ -978,14 +986,18 @@ private fun TasksListRow(
 }
 
 @Composable
-private fun TasksStateBody(title: String, detail: String) {
+private fun TasksStateBody(title: String, detail: String, loading: Boolean = false) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(SlockSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
-        SlockEmptyState(title = title, detail = detail)
+        if (loading) {
+            SlockLoadingState(title = title)
+        } else {
+            SlockEmptyState(title = title, detail = detail)
+        }
     }
 }
 
@@ -1075,9 +1087,9 @@ private fun TaskSummary.toTaskCardData(
     updatingTaskId: String?
 ): SlockTaskCardData {
     return SlockTaskCardData(
-        title = listOfNotNull(taskNumber?.let { "#$it" }, title).joinToString(" "),
+        title = tasksDisplayTitle(),
         source = channelName?.let { "#$it" } ?: copy.sampleState,
-        owner = assignee?.displayName ?: copy.unassigned,
+        owner = tasksAssigneeDisplayName() ?: copy.unassigned,
         updatedAt = updatedAtLabel.toThreadTimestampLabel(),
         status = status.toSlockTaskStatus(),
         onClick = { onTaskClick(this) },
@@ -1087,6 +1099,44 @@ private fun TaskSummary.toTaskCardData(
         updatingLabel = copy.statusUpdating
     )
 }
+
+internal fun TaskSummary.tasksDisplayTitle(): String {
+    val numberLabel = taskNumber?.let { "#$it" }
+    val meaningfulTitle = title.tasksMeaningfulTitle(taskNumber)
+    return when {
+        numberLabel != null && meaningfulTitle != null -> "$numberLabel $meaningfulTitle"
+        numberLabel != null -> "Task $numberLabel"
+        meaningfulTitle != null -> meaningfulTitle
+        else -> "Task"
+    }
+}
+
+internal fun TaskSummary.tasksAssigneeDisplayName(): String? =
+    assignee?.displayName
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?.takeUnless { it.isUuidLike() }
+        ?.takeUnless { assignee?.id?.value == it }
+
+private fun String.tasksMeaningfulTitle(taskNumber: Int?): String? {
+    val trimmed = trim()
+    if (trimmed.isBlank()) return null
+    val number = taskNumber ?: return trimmed
+    val placeholders =
+        setOf(
+            "#$number",
+            number.toString(),
+            "task #$number",
+            "task $number"
+        )
+    return trimmed.takeUnless { it.lowercase(Locale.ROOT) in placeholders }
+}
+
+private fun String.isUuidLike(): Boolean =
+    uuidLikeRegex.matches(trim())
+
+private val uuidLikeRegex =
+    Regex("""[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}""")
 
 private fun TaskStatus.toSlockTaskStatus(): SlockTaskStatus {
     return when (this) {

@@ -1,7 +1,5 @@
 package ai.slock.android.feature.home
 
-import ai.slock.android.core.model.AgentStatus
-import ai.slock.android.core.model.AvatarReference
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationKind
 import ai.slock.android.core.model.ConversationPermissions
@@ -14,146 +12,10 @@ import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
 import ai.slock.android.core.model.ThreadId
-import ai.slock.android.core.state.EmptyReason
-import ai.slock.android.core.state.ScreenLoadState
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class HomeUiStateTest {
-    @Test
-    fun resolveHomeShellContentKeepsLastVisibleContentWhileLoadingEvenWithoutRefreshFlag() {
-        val lastVisible = homeContent(
-            channels = listOf(
-                unreadChannel(id = "channel-1", threadId = "thread-1", unreadCount = 3)
-            ),
-            directMessages = emptyList(),
-            unreadTotal = 3
-        )
-        val fallback = homeContent(
-            channels = emptyList(),
-            directMessages = emptyList(),
-            unreadTotal = 0
-        )
-
-        val resolved = resolveHomeShellContent(
-            currentContent = null,
-            lastVisibleContent = lastVisible,
-            homeLoadState = ScreenLoadState.Loading,
-            homeRefreshInProgress = false,
-            fallbackContent = fallback
-        )
-
-        assertEquals(lastVisible, resolved)
-    }
-
-    @Test
-    fun resolveHomeShellContentPreservesVisibleDirectMessagePresence() {
-        val lastVisible = homeContent(
-            channels = emptyList(),
-            directMessages = listOf(
-                directMessage(
-                    id = "dm-1",
-                    threadId = "dm-thread-1",
-                    name = "Android-Developer",
-                    presenceMemberId = MemberId("agent-android")
-                ).copy(
-                    presence = Presence.Active,
-                    agentStatus = AgentStatus.Thinking
-                )
-            ),
-            unreadTotal = 0
-        )
-        val refreshed = homeContent(
-            channels = emptyList(),
-            directMessages = listOf(
-                directMessage(
-                    id = "dm-1",
-                    threadId = "dm-thread-1",
-                    name = "Android-Developer",
-                    presenceMemberId = null
-                )
-            ),
-            unreadTotal = 0
-        )
-        val fallback = homeContent(
-            channels = emptyList(),
-            directMessages = emptyList(),
-            unreadTotal = 0
-        )
-
-        val resolved = resolveHomeShellContent(
-            currentContent = refreshed,
-            lastVisibleContent = lastVisible,
-            homeLoadState = ScreenLoadState.Content(refreshed),
-            homeRefreshInProgress = false,
-            fallbackContent = fallback
-        )
-
-        assertEquals(Presence.Active, resolved.directMessages.single().presence)
-        assertEquals(AgentStatus.Thinking, resolved.directMessages.single().agentStatus)
-        assertEquals("agent-android", resolved.directMessages.single().presenceMemberId?.value)
-    }
-
-    @Test
-    fun resolveHomeShellContentFallsBackWhenNoVisibleContentExists() {
-        val fallback = homeContent(
-            channels = emptyList(),
-            directMessages = emptyList(),
-            unreadTotal = 0
-        )
-
-        val resolved = resolveHomeShellContent(
-            currentContent = null,
-            lastVisibleContent = null,
-            homeLoadState = ScreenLoadState.Empty(EmptyReason.NoInboxItems),
-            homeRefreshInProgress = false,
-            fallbackContent = fallback
-        )
-
-        assertEquals(fallback, resolved)
-    }
-
-    @Test
-    fun withAgentDirectMessagePresenceFillsMissingAgentPresence() {
-        val content = homeContent(
-            channels = emptyList(),
-            directMessages = listOf(
-                directMessage(
-                    id = "dm-1",
-                    threadId = "dm-thread-1",
-                    name = "Android-Developer",
-                    presenceMemberId = MemberId("agent-android")
-                )
-            ),
-            unreadTotal = 0
-        )
-        val members = listOf(
-            MemberProfile(
-                id = MemberId("agent-android"),
-                displayName = "Android-Developer",
-                handle = "Android-Developer",
-                kind = MemberKind.Agent,
-                avatarUrl = null,
-                presence = Presence.Active,
-                agentStatus = AgentStatus.Thinking
-            ),
-            MemberProfile(
-                id = MemberId("human-1"),
-                displayName = "Human",
-                handle = "human",
-                kind = MemberKind.Human,
-                avatarUrl = null,
-                presence = Presence.Offline
-            )
-        )
-
-        val merged = content.withAgentDirectMessagePresence(members)
-
-        assertEquals(Presence.Active, merged.directMessages.single().presence)
-        assertEquals(AgentStatus.Thinking, merged.directMessages.single().agentStatus)
-        assertEquals("agent-android", merged.directMessages.single().presenceMemberId?.value)
-    }
-
     @Test
     fun withDraftIndicatorsMarksChannelsAndDirectMessagesByThreadId() {
         val content = homeContent(

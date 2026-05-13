@@ -18,7 +18,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import retrofit2.Response
+import ai.slock.android.core.data.network.ApiResponse
 
 class RealSettingsRepositoryTest {
     @Test
@@ -390,15 +390,15 @@ class RealSettingsRepositoryTest {
         var workspacesMachineId: String? = null
             private set
 
-        override suspend fun settingsAccount(): Response<ResponseBody> = response(accountJson)
+        override suspend fun settingsAccount(): ApiResponse = response(accountJson)
 
-        override suspend fun updateSettingsAccount(body: RequestBody): Response<ResponseBody> = response(accountJson)
+        override suspend fun updateSettingsAccount(body: RequestBody): ApiResponse = response(accountJson)
 
-        override suspend fun settingsSessions(): Response<ResponseBody> = response(sessionsJson)
+        override suspend fun settingsSessions(): ApiResponse = response(sessionsJson)
 
-        override suspend fun revokeSettingsSession(sessionId: String): Response<ResponseBody> = response(revokeJson)
+        override suspend fun revokeSettingsSession(sessionId: String): ApiResponse = response(revokeJson)
 
-        override suspend fun settingsMachines(serverId: String): Response<ResponseBody> {
+        override suspend fun settingsMachines(serverId: String): ApiResponse {
             machinesServerId = serverId
             return response(machinesJson, machinesResponseCode ?: responseCode)
         }
@@ -406,195 +406,201 @@ class RealSettingsRepositoryTest {
         override suspend fun settingsMachineWorkspaces(
             serverId: String,
             machineId: String
-        ): Response<ResponseBody> {
+        ): ApiResponse {
             workspacesMachineId = machineId
             return response(workspacesJson, workspacesResponseCode ?: responseCode)
         }
 
-        override suspend fun settingsAgents(): Response<ResponseBody> =
+        override suspend fun settingsAgents(): ApiResponse =
             response(agentsJson, agentsResponseCode ?: responseCode)
 
         override suspend fun updateAgent(
             agentId: String,
             body: RequestBody
-        ): Response<ResponseBody> = response("""{"ok":true}""")
+        ): ApiResponse = response("""{"ok":true}""")
 
-        override suspend fun channels(archived: String?): Response<ResponseBody> = response("""{"channels":[]}""")
+        override suspend fun channels(archived: String?): ApiResponse = response("""{"channels":[]}""")
 
-        override suspend fun createChannel(body: RequestBody): Response<ResponseBody> =
+        override suspend fun createChannel(body: RequestBody): ApiResponse =
             response("""{"id":"channel-1","name":"android-dev"}""")
 
-        override suspend fun joinChannel(channelId: String): Response<ResponseBody> =
+        override suspend fun joinChannel(channelId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun archiveChannel(channelId: String): Response<ResponseBody> =
+        override suspend fun archiveChannel(channelId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun deleteChannel(channelId: String): Response<ResponseBody> =
+        override suspend fun deleteChannel(channelId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun serverMembers(serverId: String): Response<ResponseBody> =
+        override suspend fun serverMembers(serverId: String): ApiResponse =
             response(membersJson)
 
         override suspend fun updateSettingsServerProfile(
             serverId: String,
             body: RequestBody
-        ): Response<ResponseBody> =
+        ): ApiResponse =
             response("""{"id":"$serverId","name":"Slock Android"}""")
 
-        override suspend fun settingsServerUsage(serverId: String): Response<ResponseBody> =
+        override suspend fun settingsServerUsage(serverId: String): ApiResponse =
             response(usageJson)
 
-        override suspend fun settingsBillingSubscription(): Response<ResponseBody> =
+        override suspend fun settingsBillingSubscription(): ApiResponse =
             response(billingSubscriptionJson)
 
         override suspend fun createSettingsServerInvite(
             serverId: String,
             body: RequestBody
-        ): Response<ResponseBody> =
+        ): ApiResponse =
             response("""{"invite":{}}""")
 
         override suspend fun settingsServerOnboardingSettings(
             serverId: String
-        ): Response<ResponseBody> =
+        ): ApiResponse =
             response(onboardingJson)
 
         override suspend fun updateSettingsServerOnboardingSettings(
             serverId: String,
             body: RequestBody
-        ): Response<ResponseBody> =
+        ): ApiResponse =
             response("""{"settings":{}}""")
 
-        override suspend fun deleteSettingsServer(serverId: String): Response<ResponseBody> =
+        override suspend fun deleteSettingsServer(serverId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun memberProfile(memberId: String): Response<ResponseBody> =
+        override suspend fun memberProfile(memberId: String): ApiResponse =
             response("""{"profile":{"id":"$memberId","displayName":"Member","presence":"offline"}}""")
 
-        override suspend fun agentDirectMessages(agentId: String): Response<ResponseBody> =
+        override suspend fun agentWorkspaceFiles(agentId: String, dirPath: String?): ApiResponse =
+            response("""{"files":[]}""")
+
+        override suspend fun readAgentWorkspaceFile(agentId: String, path: String): ApiResponse =
+            response("""{"file":{"path":"$path","content":""}}""")
+
+        override suspend fun agentDirectMessages(agentId: String): ApiResponse =
             response("""{"directMessages":[]}""")
 
-        override suspend fun reminders(ownerAgentId: String, status: String): Response<ResponseBody> =
+        override suspend fun reminders(ownerAgentId: String, status: String): ApiResponse =
             response("""{"reminders":[]}""")
 
-        override suspend fun agentActivityLog(agentId: String, limit: Int): Response<ResponseBody> =
+        override suspend fun agentActivityLog(agentId: String, limit: Int): ApiResponse =
             response("""{"trajectoryLogs":[]}""")
 
-        override suspend fun channelMembers(channelId: String): Response<ResponseBody> =
+        override suspend fun channelMembers(channelId: String): ApiResponse =
             response("""{"members":[]}""")
 
-        override suspend fun addChannelMember(channelId: String, body: RequestBody): Response<ResponseBody> =
+        override suspend fun addChannelMember(channelId: String, body: RequestBody): ApiResponse =
             response("""{"ok":true}""")
 
         override suspend fun removeChannelMember(
             channelId: String,
             kind: String,
             memberId: String
-        ): Response<ResponseBody> =
+        ): ApiResponse =
             response("""{"ok":true,"removed":{"id":"$memberId","kind":"$kind"}}""")
 
-        override suspend fun directMessages(): Response<ResponseBody> = response("""[]""")
+        override suspend fun directMessages(): ApiResponse = response("""[]""")
 
-        override suspend fun openDirectMessage(body: RequestBody): Response<ResponseBody> =
+        override suspend fun openDirectMessage(body: RequestBody): ApiResponse =
             response("""{"channel":{"id":"dm-1","name":"Direct message","type":"dm"}}""")
 
-        override suspend fun channelUnreadCounts(): Response<ResponseBody> = response("""{}""")
+        override suspend fun channelUnreadCounts(): ApiResponse = response("""{}""")
 
-        override suspend fun markChannelReadToSeq(channelId: String, body: RequestBody): Response<ResponseBody> =
+        override suspend fun markChannelReadToSeq(channelId: String, body: RequestBody): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun markChannelReadAll(channelId: String): Response<ResponseBody> =
+        override suspend fun markChannelReadAll(channelId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun markChannelUnread(channelId: String): Response<ResponseBody> =
+        override suspend fun markChannelUnread(channelId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun inbox(filter: String, limit: Int, offset: Int): Response<ResponseBody> =
+        override suspend fun inbox(filter: String, limit: Int, offset: Int): ApiResponse =
             response("""{"items":[]}""")
 
-        override suspend fun markInboxReadAll(): Response<ResponseBody> =
+        override suspend fun markInboxReadAll(): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun serverTasks(): Response<ResponseBody> =
+        override suspend fun serverTasks(): ApiResponse =
             response("""{"tasks":[]}""")
 
-        override suspend fun channelTasks(channelId: String): Response<ResponseBody> =
+        override suspend fun channelTasks(channelId: String): ApiResponse =
             response("""{"tasks":[]}""")
 
-        override suspend fun claimTask(taskId: String): Response<ResponseBody> =
+        override suspend fun claimTask(taskId: String): ApiResponse =
             response("""{"task":{}}""")
 
         override suspend fun updateTaskStatus(
             taskId: String,
             body: RequestBody
-        ): Response<ResponseBody> =
+        ): ApiResponse =
             response("""{"task":{}}""")
 
-        override suspend fun saved(limit: Int, offset: Int): Response<ResponseBody> = response("""{"items":[]}""")
+        override suspend fun saved(limit: Int, offset: Int): ApiResponse = response("""{"items":[]}""")
 
-        override suspend fun saveMessage(messageId: String): Response<ResponseBody> =
+        override suspend fun saveMessage(messageId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun unsaveMessage(messageId: String): Response<ResponseBody> =
+        override suspend fun unsaveMessage(messageId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun searchMessages(query: String, limit: Int, offset: Int): Response<ResponseBody> =
+        override suspend fun searchMessages(query: String, limit: Int, offset: Int): ApiResponse =
             response("""{"results":[]}""")
 
         override suspend fun channelMessages(
             channelId: String,
             limit: Int,
             beforeSeq: Long?
-        ): Response<ResponseBody> = response("""{"messages":[]}""")
+        ): ApiResponse = response("""{"messages":[]}""")
 
-        override suspend fun messageContext(messageId: String): Response<ResponseBody> =
+        override suspend fun messageContext(messageId: String): ApiResponse =
             response("""{"messages":[]}""")
 
         override suspend fun messageSync(
             sinceSeq: Long,
             limit: Int,
             channelId: String?
-        ): Response<ResponseBody> = response("""{"messages":[]}""")
+        ): ApiResponse = response("""{"messages":[]}""")
 
-        override suspend fun sendMessage(body: RequestBody): Response<ResponseBody> =
+        override suspend fun sendMessage(body: RequestBody): ApiResponse =
             response("""{"message":{}}""")
 
         override suspend fun uploadAttachments(
             channelId: RequestBody,
             files: List<okhttp3.MultipartBody.Part>
-        ): Response<ResponseBody> = response("""{"attachments":[]}""")
+        ): ApiResponse = response("""{"attachments":[]}""")
 
-        override suspend fun attachmentUrl(attachmentId: String): Response<ResponseBody> =
+        override suspend fun attachmentUrl(attachmentId: String): ApiResponse =
             response("""{"url":"https://example.invalid/attachments/$attachmentId"}""")
 
-        override suspend fun channelThreads(channelId: String, limit: Int): Response<ResponseBody> =
+        override suspend fun channelThreads(channelId: String, limit: Int): ApiResponse =
             response("""{"threads":[]}""")
 
-        override suspend fun createOrOpenThread(channelId: String, body: RequestBody): Response<ResponseBody> =
+        override suspend fun createOrOpenThread(channelId: String, body: RequestBody): ApiResponse =
             response("""{"threadChannelId":"thread-1","replyCount":1}""")
 
-        override suspend fun followedThreads(limit: Int): Response<ResponseBody> =
+        override suspend fun followedThreads(limit: Int): ApiResponse =
             response("""{"threads":[]}""")
 
-        override suspend fun followThread(body: RequestBody): Response<ResponseBody> =
+        override suspend fun followThread(body: RequestBody): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun unfollowThread(body: RequestBody): Response<ResponseBody> =
+        override suspend fun unfollowThread(body: RequestBody): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun markThreadDone(body: RequestBody): Response<ResponseBody> =
+        override suspend fun markThreadDone(body: RequestBody): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun markThreadUndone(body: RequestBody): Response<ResponseBody> =
+        override suspend fun markThreadUndone(body: RequestBody): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun serverUnreadSummary(): Response<ResponseBody> = response("""{"unreadCount":0}""")
+        override suspend fun serverUnreadSummary(): ApiResponse = response("""{"unreadCount":0}""")
 
-        private fun response(json: String, code: Int = responseCode): Response<ResponseBody> =
+        private fun response(json: String, code: Int = responseCode): ApiResponse =
             if (code in 200..299) {
-                Response.success(json.jsonBody())
+                ApiResponse.success(json.jsonBody())
             } else {
-                Response.error(code, """{"error":"failed"}""".jsonBody())
+                ApiResponse.error(code, """{"error":"failed"}""".jsonBody())
             }
     }
 

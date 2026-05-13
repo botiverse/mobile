@@ -254,7 +254,9 @@ WHERE message_id IN (
   FROM local_conversation
   WHERE id = ? OR thread_id = ? OR channel_id = ? OR stream_channel_id = ?
   LIMIT 1
-);
+)
+UNION
+SELECT id FROM local_member_snapshot;
 
 upsertMessage:
 INSERT OR REPLACE INTO local_message(
@@ -332,6 +334,13 @@ SELECT *
 FROM local_task_reference
 WHERE message_id = ? OR parent_message_id = ?
 ORDER BY COALESCE(task_number, 9223372036854775807), id;
+
+selectAllTaskReferences:
+SELECT *
+FROM local_task_reference
+ORDER BY COALESCE(updated_at_label, '') DESC,
+         COALESCE(task_number, 9223372036854775807),
+         id;
 
 selectTaskContext:
 SELECT *

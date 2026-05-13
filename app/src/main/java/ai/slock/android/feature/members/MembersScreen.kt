@@ -60,6 +60,8 @@ import ai.slock.android.core.data.repository.AgentReminderSnapshot
 import ai.slock.android.core.data.repository.AgentSkillGroup
 import ai.slock.android.core.data.repository.AgentSkillPathGroup
 import ai.slock.android.core.data.repository.AgentSkillsSnapshot
+import ai.slock.android.core.data.repository.AgentWorkspaceSnapshot
+import ai.slock.android.core.data.repository.SettingsComputerWorkspaceSnapshot
 import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
@@ -78,18 +80,18 @@ import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
+import ai.slock.android.ui.components.SlockLoadingState
+import ai.slock.android.ui.components.SlockWorkspaceFileTree
+import ai.slock.android.ui.components.SlockWorkspaceTreeState
 import ai.slock.android.ui.components.SlockAvatar
 import ai.slock.android.ui.components.SlockIconSquareButton
 import ai.slock.android.ui.components.SlockIcons
 import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.components.SlockMemberAvatar
 import ai.slock.android.ui.components.SlockPageDivider
+import ai.slock.android.ui.components.SlockSectionHeader
 import ai.slock.android.ui.components.SlockTextField
 import ai.slock.android.ui.components.SlockTitledPageHeader
-import ai.slock.android.ui.components.SlockWorkspaceFileTree
-import ai.slock.android.ui.components.SlockWorkspaceNode
-import ai.slock.android.ui.components.SlockWorkspaceSamples
-import ai.slock.android.ui.components.SlockWorkspaceTreeState
 import ai.slock.android.ui.components.SlockWindowLayoutMode
 import ai.slock.android.ui.components.agentStatusLabel
 import ai.slock.android.ui.components.defaultAvatarColor
@@ -103,7 +105,8 @@ import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
 import ai.slock.android.ui.theme.SlockType
 import ai.slock.android.ui.theme.slockHardShadow
-import ai.slock.shared.model.toGravatarAvatarUrl
+import ai.slock.compose.model.SlockWorkspaceNode
+import ai.slock.compose.model.toGravatarAvatarUrl
 
 private val MemberAvatarSize = 34.dp
 private val MemberPresenceSize = 12.dp
@@ -139,7 +142,8 @@ fun MembersPageShell(
             ScreenLoadState.Loading -> MembersFeedback(
                 title = "Loading members",
                 detail = "Preparing local sample state.",
-                onBack = onBack
+                onBack = onBack,
+                loading = true
             )
             is ScreenLoadState.Content -> {
                 MembersContentView(
@@ -180,6 +184,11 @@ fun MembersRouteScreen(
     onDetailVisibleChange: (Boolean) -> Unit = {},
     onOpenMemberProfile: (MemberProfile) -> Unit = {},
     onOpenAgentDirectMessage: (MemberProfile) -> Unit = {},
+    onToggleAgentWorkspaceFolder: (SlockWorkspaceNode) -> Unit = {},
+    onSelectAgentWorkspaceFile: (SlockWorkspaceNode) -> Unit = {},
+    onBackToAgentWorkspaceTree: () -> Unit = {},
+    onCopyAgentWorkspacePath: () -> Unit = {},
+    onRefreshAgentWorkspaceTree: () -> Unit = {},
     onSaveAgentProfile: (MemberProfile, String, String) -> Unit = { _, _, _ -> },
     onAddHuman: () -> Unit = {},
     onRetry: () -> Unit = {}
@@ -227,6 +236,11 @@ fun MembersRouteScreen(
             onOpenAgentDirectMessage = {
                 selectedMember?.let(onOpenAgentDirectMessage)
             },
+            onToggleAgentWorkspaceFolder = onToggleAgentWorkspaceFolder,
+            onSelectAgentWorkspaceFile = onSelectAgentWorkspaceFile,
+            onBackToAgentWorkspaceTree = onBackToAgentWorkspaceTree,
+            onCopyAgentWorkspacePath = onCopyAgentWorkspacePath,
+            onRefreshAgentWorkspaceTree = onRefreshAgentWorkspaceTree,
             onSaveAgentProfile = { member, displayName, description ->
                 onSaveAgentProfile(member, displayName, description)
             },
@@ -259,10 +273,17 @@ fun MembersRouteScreen(
                 agentDmsState = state.selectedAgentDmsState,
                 agentRemindersState = state.selectedAgentRemindersState,
                 agentActivityState = state.selectedAgentActivityState,
+                agentWorkspaceState = state.selectedAgentWorkspaceState,
+                agentWorkspaceTreeState = state.selectedAgentWorkspaceTreeState,
                 agentSkillsState = state.selectedAgentSkillsState,
                 agentProfileSaveState = state.agentProfileSaveState,
                 onBack = closeDetail,
                 onOpenAgentDirectMessage = { onOpenAgentDirectMessage(selectedMember) },
+                onToggleAgentWorkspaceFolder = onToggleAgentWorkspaceFolder,
+                onSelectAgentWorkspaceFile = onSelectAgentWorkspaceFile,
+                onBackToAgentWorkspaceTree = onBackToAgentWorkspaceTree,
+                onCopyAgentWorkspacePath = onCopyAgentWorkspacePath,
+                onRefreshAgentWorkspaceTree = onRefreshAgentWorkspaceTree,
                 onSaveAgentProfile = { displayName, description ->
                     onSaveAgentProfile(selectedMember, displayName, description)
                 },
@@ -291,6 +312,11 @@ private fun MembersWideRouteScreen(
     onCloseDetail: () -> Unit,
     onMemberClick: (MemberProfile) -> Unit,
     onOpenAgentDirectMessage: () -> Unit,
+    onToggleAgentWorkspaceFolder: (SlockWorkspaceNode) -> Unit,
+    onSelectAgentWorkspaceFile: (SlockWorkspaceNode) -> Unit,
+    onBackToAgentWorkspaceTree: () -> Unit,
+    onCopyAgentWorkspacePath: () -> Unit,
+    onRefreshAgentWorkspaceTree: () -> Unit,
     onSaveAgentProfile: (MemberProfile, String, String) -> Unit,
     onBack: () -> Unit,
     onAddHuman: () -> Unit,
@@ -349,11 +375,18 @@ private fun MembersWideRouteScreen(
                 agentDmsState = state.selectedAgentDmsState,
                 agentRemindersState = state.selectedAgentRemindersState,
                 agentActivityState = state.selectedAgentActivityState,
+                agentWorkspaceState = state.selectedAgentWorkspaceState,
+                agentWorkspaceTreeState = state.selectedAgentWorkspaceTreeState,
                 agentSkillsState = state.selectedAgentSkillsState,
                 agentProfileSaveState = state.agentProfileSaveState,
                 onBack = onCloseDetail,
                 closeMode = true,
                 onOpenAgentDirectMessage = onOpenAgentDirectMessage,
+                onToggleAgentWorkspaceFolder = onToggleAgentWorkspaceFolder,
+                onSelectAgentWorkspaceFile = onSelectAgentWorkspaceFile,
+                onBackToAgentWorkspaceTree = onBackToAgentWorkspaceTree,
+                onCopyAgentWorkspacePath = onCopyAgentWorkspacePath,
+                onRefreshAgentWorkspaceTree = onRefreshAgentWorkspaceTree,
                 onSaveAgentProfile = { displayName, description ->
                     onSaveAgentProfile(selectedMember, displayName, description)
                 },
@@ -394,6 +427,8 @@ private fun MembersContentView(
             MemberKind.System -> MemberSection.Agents
         }
     }
+    var agentsExpanded by rememberSaveable(content.server.id.value) { mutableStateOf(true) }
+    var humansExpanded by rememberSaveable(content.server.id.value) { mutableStateOf(true) }
 
     MembersHeader(content = content)
     Column(
@@ -406,12 +441,16 @@ private fun MembersContentView(
         MembersSection(
             section = MemberSection.Agents,
             members = grouped[MemberSection.Agents].orEmpty(),
+            expanded = agentsExpanded,
+            onExpandedChange = { agentsExpanded = it },
             onAdd = onAddHuman,
             onMemberClick = onMemberClick
         )
         MembersSection(
             section = MemberSection.Humans,
             members = grouped[MemberSection.Humans].orEmpty(),
+            expanded = humansExpanded,
+            onExpandedChange = { humansExpanded = it },
             onAdd = onAddHuman,
             onMemberClick = onMemberClick
         )
@@ -428,6 +467,8 @@ private fun MembersDivider() {
 private fun MembersSection(
     section: MemberSection,
     members: List<MemberProfile>,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
     onAdd: () -> Unit,
     onMemberClick: (MemberProfile) -> Unit
 ) {
@@ -435,49 +476,43 @@ private fun MembersSection(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        MembersSectionHeader(
-            title = section.label,
+        SlockSectionHeader(
+            label = section.label,
             count = members.size,
-            onAdd = onAdd
+            expanded = expanded,
+            onExpandedChange = onExpandedChange,
+            modifier = Modifier.fillMaxWidth(),
+            trailingContent = {
+                MembersSectionAddButton(onClick = onAdd)
+            }
         )
-        members.forEach { member ->
-            MemberFlatRow(member = member, onClick = { onMemberClick(member) })
+        if (expanded) {
+            if (section == MemberSection.Agents) {
+                members.groupAgentMembersByComputer().forEach { group ->
+                    MembersAgentComputerHeader(group.label)
+                    group.members.forEach { member ->
+                        MemberFlatRow(member = member, onClick = { onMemberClick(member) })
+                    }
+                }
+            } else {
+                members.forEach { member ->
+                    MemberFlatRow(member = member, onClick = { onMemberClick(member) })
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun MembersSectionHeader(
-    title: String,
-    count: Int,
-    onAdd: () -> Unit
-) {
-    Row(
+private fun MembersAgentComputerHeader(label: String) {
+    Text(
+        text = label,
+        style = MembersCaptionType,
+        color = SlockColor.TextMutedGray,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = SlockSpacing.Xs),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-    ) {
-        Icon(
-            imageVector = SlockIcons.ChevronDown,
-            contentDescription = null,
-            tint = SlockColor.TextBlack,
-            modifier = Modifier.size(14.dp)
-        )
-        Text(
-            text = title,
-            style = SlockType.SectionLabel,
-            color = SlockColor.TextBlack
-        )
-        Text(
-            text = count.toString(),
-            style = MembersBodyStrongType,
-            color = SlockColor.TextMutedGray
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        MembersSectionAddButton(onClick = onAdd)
-    }
+            .padding(top = SlockSpacing.Xs)
+    )
 }
 
 @Composable
@@ -568,16 +603,21 @@ private fun MemberKindBadge(kind: MemberKind) {
 private fun MembersFeedback(
     title: String,
     detail: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    loading: Boolean = false
 ) {
     MembersStateHeader(onBack = onBack)
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(SlockSpacing.Lg),
-        contentAlignment = Alignment.Center
-    ) {
-        SlockEmptyState(title = title, detail = detail)
+    if (loading) {
+        SlockLoadingState(title = title)
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(SlockSpacing.Lg),
+            contentAlignment = Alignment.Center
+        ) {
+            SlockEmptyState(title = title, detail = detail)
+        }
     }
 }
 
@@ -644,17 +684,21 @@ private fun MemberDetailScreen(
     agentDmsState: ScreenLoadState<AgentDmSnapshot>,
     agentRemindersState: ScreenLoadState<AgentReminderSnapshot>,
     agentActivityState: ScreenLoadState<AgentActivitySnapshot>,
+    agentWorkspaceState: ScreenLoadState<AgentWorkspaceSnapshot>,
+    agentWorkspaceTreeState: SlockWorkspaceTreeState,
     agentSkillsState: ScreenLoadState<AgentSkillsSnapshot>,
     agentProfileSaveState: AgentProfileSaveState,
     onBack: () -> Unit,
     closeMode: Boolean = false,
     onOpenAgentDirectMessage: () -> Unit,
+    onToggleAgentWorkspaceFolder: (SlockWorkspaceNode) -> Unit,
+    onSelectAgentWorkspaceFile: (SlockWorkspaceNode) -> Unit,
+    onBackToAgentWorkspaceTree: () -> Unit,
+    onCopyAgentWorkspacePath: () -> Unit,
+    onRefreshAgentWorkspaceTree: () -> Unit,
     onSaveAgentProfile: (String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var workspaceExpandedIds by rememberSaveable { mutableStateOf(SlockWorkspaceSamples.expandedIds.toList()) }
-    var workspaceSelectedFileId by rememberSaveable { mutableStateOf("readme") }
-    var workspacePreviewVisible by rememberSaveable { mutableStateOf(false) }
     val tabSwipeModifier = Modifier.memberDetailTabSwipe(selectedTab, onTabSelected)
 
     Column(
@@ -687,23 +731,16 @@ private fun MemberDetailScreen(
                             onOpenAgentDirectMessage = onOpenAgentDirectMessage
                         )
                         MemberDetailTab.Reminders -> AgentRemindersPanel(state = agentRemindersState)
-                        MemberDetailTab.Workspace -> MemberWorkspaceDetail(
-                            expandedIds = workspaceExpandedIds.toSet(),
-                            selectedFileId = workspaceSelectedFileId,
-                            showPreview = workspacePreviewVisible,
-                            onToggleFolder = { folder ->
-                                workspaceExpandedIds = if (workspaceExpandedIds.contains(folder.id)) {
-                                    workspaceExpandedIds - folder.id
-                                } else {
-                                    workspaceExpandedIds + folder.id
-                                }
-                            },
-                            onSelectFile = { file ->
-                                workspaceSelectedFileId = file.id
-                                workspacePreviewVisible = true
-                            },
-                            onBackToTree = { workspacePreviewVisible = false }
-                        )
+                        MemberDetailTab.Workspace ->
+                            MemberWorkspaceDetail(
+                                state = agentWorkspaceState,
+                                treeState = agentWorkspaceTreeState,
+                                onToggleFolder = onToggleAgentWorkspaceFolder,
+                                onSelectFile = onSelectAgentWorkspaceFile,
+                                onBackToTree = onBackToAgentWorkspaceTree,
+                                onCopyPath = onCopyAgentWorkspacePath,
+                                onRefreshTree = onRefreshAgentWorkspaceTree
+                            )
                         MemberDetailTab.Activity -> Unit
                     }
                     Spacer(modifier = Modifier.height(180.dp))
@@ -995,26 +1032,99 @@ private fun MemberProfileDetail(
 
 @Composable
 private fun MemberWorkspaceDetail(
-    expandedIds: Set<String>,
-    selectedFileId: String,
-    showPreview: Boolean,
+    state: ScreenLoadState<AgentWorkspaceSnapshot>,
+    treeState: SlockWorkspaceTreeState,
     onToggleFolder: (SlockWorkspaceNode) -> Unit,
     onSelectFile: (SlockWorkspaceNode) -> Unit,
-    onBackToTree: () -> Unit
+    onBackToTree: () -> Unit,
+    onCopyPath: () -> Unit,
+    onRefreshTree: () -> Unit
 ) {
-    MemberDetailPanel {
-        SlockWorkspaceFileTree(
-            state = SlockWorkspaceTreeState.Content(
-                rootPath = SlockWorkspaceSamples.root.path,
-                root = SlockWorkspaceSamples.root,
-                expandedNodeIds = expandedIds,
-                selectedFileId = selectedFileId,
-                showPreview = showPreview
-            ),
-            onToggleFolder = onToggleFolder,
-            onSelectFile = onSelectFile,
-            onBackToTree = onBackToTree
+    MemberDetailPanel(title = "Workspace") {
+        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
+            when (state) {
+            ScreenLoadState.Loading -> MemberSkillsStateText("Loading real workspaces...")
+            is ScreenLoadState.Content -> {
+                state.data.computerName
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { computerName ->
+                        MemberDetailLabeledValue("Computer", computerName)
+                    }
+                if (state.data.workspaces.isEmpty()) {
+                    MemberSkillsStateText("This agent is not reporting any workspaces yet.")
+                } else {
+                    state.data.workspaces.forEach { workspace ->
+                        MemberWorkspaceRow(workspace = workspace)
+                    }
+                }
+            }
+            is ScreenLoadState.Empty ->
+                MemberSkillsStateText(
+                    when (state.reason) {
+                        EmptyReason.NoMembers -> "No workspaces were returned for this agent."
+                        else -> "Workspace data is unavailable."
+                    }
+                )
+            is ScreenLoadState.Error ->
+                MemberSkillsStateText("Workspace failed to load: ${state.error.code}")
+            is ScreenLoadState.NoPermission ->
+                MemberSkillsStateText(
+                    "Workspace requires permission: ${state.blocker.code.ifBlank { "forbidden" }}"
+                )
+            }
+            SlockWorkspaceFileTree(
+                state = treeState,
+                onToggleFolder = onToggleFolder,
+                onSelectFile = onSelectFile,
+                onBackToTree = onBackToTree,
+                onCopyPath = onCopyPath,
+                onRefresh = onRefreshTree
+            )
+        }
+    }
+}
+
+@Composable
+private fun MemberWorkspaceRow(workspace: SettingsComputerWorkspaceSnapshot) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sm))
+            .background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Sm))
+            .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        Text(
+            text = workspace.name,
+            style = MembersBodyStrongType,
+            color = SlockColor.TextBlack
         )
+        workspace.path?.takeIf { it.isNotBlank() }?.let { path ->
+            Text(
+                text = path,
+                style = MembersCaptionType,
+                color = SlockColor.TextMutedGray
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Lg)
+        ) {
+            workspace.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
+                MemberDetailLabeledValue(
+                    label = "Status",
+                    value = status.replaceFirstChar { it.uppercase() },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            workspace.lastActiveLabel?.takeIf { it.isNotBlank() }?.let { lastActiveAt ->
+                MemberDetailLabeledValue(
+                    label = "Last Active",
+                    value = lastActiveAt.toThreadTimestampLabel(),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
     }
 }
 
@@ -1869,6 +1979,15 @@ private enum class MemberSection(val label: String) {
     Humans("HUMANS")
 }
 
+private data class AgentComputerGroup(
+    val label: String,
+    val members: List<MemberProfile>
+)
+
+private fun List<MemberProfile>.groupAgentMembersByComputer(): List<AgentComputerGroup> =
+    groupBy { it.membersComputerLabel }
+        .map { (label, members) -> AgentComputerGroup(label = label, members = members) }
+
 private fun String?.activitySortKey(): Long =
     when {
         isNullOrBlank() -> Long.MIN_VALUE
@@ -1909,6 +2028,16 @@ private fun AgentActivityEntry.activityTimelineKey(): String =
 
 private val MemberProfile.inlineDescription: String
     get() = description ?: handle
+
+private val MemberProfile.membersComputerLabel: String
+    get() =
+        permissionBadges
+            .firstNotNullOfOrNull { it.memberComputerLabelOrNull() }
+            ?: "Unknown computer"
+
+private fun String.memberComputerLabelOrNull(): String? =
+    removePrefix("computer:")
+        .takeIf { startsWith("computer:") && it.isNotBlank() }
 
 private val membersPageSample = MembersUiState(
     loadState = ScreenLoadState.Content(

@@ -72,7 +72,6 @@ fun SettingsAccountScreen(
         connectedAccounts: List<SettingsConnectedAccount>,
         modifier: Modifier = Modifier,
         showOuterBorder: Boolean = true,
-        bottomPadding: androidx.compose.ui.unit.Dp = 0.dp,
         onLogout: () -> Unit = {}
 ) {
     Column(
@@ -88,8 +87,7 @@ fun SettingsAccountScreen(
                                     }
                             )
                             .verticalScroll(rememberScrollState())
-                            .padding(SlockSpacing.Md)
-                            .padding(bottom = bottomPadding),
+                            .padding(SlockSpacing.Md),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
         SettingsAccountHeader(profile = profile)

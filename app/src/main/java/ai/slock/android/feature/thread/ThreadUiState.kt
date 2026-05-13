@@ -1,8 +1,8 @@
 package ai.slock.android.feature.thread
 
 import ai.slock.android.core.model.ConversationSummary
-import ai.slock.shared.model.withPreviewMembershipFallback
-import ai.slock.shared.model.withTitleFallback
+import ai.slock.compose.model.withPreviewMembershipFallback
+import ai.slock.compose.model.withTitleFallback
 import ai.slock.android.core.model.AttachmentId
 import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberProfile
@@ -16,7 +16,6 @@ import ai.slock.android.core.model.ThreadUpdated
 import ai.slock.android.core.model.TaskCreated
 import ai.slock.android.core.model.TaskUpdated
 import ai.slock.android.core.model.TaskDeleted
-import ai.slock.android.core.model.MemberPresenceUpdated
 import ai.slock.android.core.model.SyncResumeResponse
 import ai.slock.android.core.model.Heartbeat
 import ai.slock.android.core.data.repository.ThreadSnapshot
@@ -324,6 +323,33 @@ enum class PendingAttachmentStatus {
     Uploading,
     Failed
 }
+
+internal val ComposerState.activityLabel: String?
+    get() {
+        val attachmentCount =
+            pendingAttachments.size.takeIf { it > 0 }
+                ?: attachmentIds.size.takeIf { it > 0 }
+        if (attachmentCount != null) {
+            val attachmentLabel = if (attachmentCount == 1) "attachment" else "attachments"
+            return when (status) {
+                ComposerStatus.IdleEmpty, ComposerStatus.Ready ->
+                    "$attachmentCount $attachmentLabel ready"
+                ComposerStatus.Uploading -> "Uploading $attachmentCount $attachmentLabel"
+                ComposerStatus.Sending -> "Sending $attachmentCount $attachmentLabel"
+                ComposerStatus.Failed -> "Send failed: ${errorCode ?: "retry"}"
+                ComposerStatus.NoPermission ->
+                    "No permission: ${noPermissionCode ?: "channel_readonly"}"
+            }
+        }
+        return when (status) {
+            ComposerStatus.Uploading -> "Uploading attachment"
+            ComposerStatus.Sending -> "Sending message"
+            ComposerStatus.Failed -> "Send failed: ${errorCode ?: "retry"}"
+            ComposerStatus.NoPermission ->
+                "No permission: ${noPermissionCode ?: "channel_readonly"}"
+            ComposerStatus.IdleEmpty, ComposerStatus.Ready -> null
+        }
+    }
 
 data class AttachmentOpenUiState(
     val status: AttachmentOpenStatus = AttachmentOpenStatus.Idle,

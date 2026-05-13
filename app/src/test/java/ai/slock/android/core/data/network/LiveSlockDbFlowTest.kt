@@ -4,7 +4,7 @@ import ai.slock.android.core.data.auth.AuthRepository
 import ai.slock.android.core.data.auth.AuthResult
 import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthSessionStore
-import ai.slock.android.core.data.auth.RetrofitAuthRepository
+import ai.slock.android.core.data.auth.KtorAuthRepository
 import ai.slock.android.core.data.local.SlockDatabase
 import ai.slock.android.core.data.local.SlockLocalWriteThrough
 import ai.slock.android.core.data.local.SqlDelightSlockLocalStore
@@ -27,12 +27,12 @@ class LiveSlockDbFlowTest {
         assumeTrue("Set SLOCK_LIVE_TESTS=true to run live Slock API tests.", env("SLOCK_LIVE_TESTS") == "true")
         val email = requireEnv("SLOCK_TEST_EMAIL")
         val password = requireEnv("SLOCK_TEST_PASSWORD")
-        val baseUrl = env("SLOCK_BASE_URL") ?: RetrofitAuthRepository.BASE_URL
+        val baseUrl = env("SLOCK_BASE_URL") ?: KtorAuthRepository.BASE_URL
 
         val authStore = InMemoryAuthSessionStore()
-        val authRepository: AuthRepository = RetrofitAuthRepository(
+        val authRepository: AuthRepository = KtorAuthRepository(
             store = authStore,
-            api = RetrofitAuthRepository.createAuthApi(baseUrl)
+            api = KtorAuthRepository.createAuthApi(baseUrl)
         )
 
         val login = runSuspend { authRepository.login(email, password) }

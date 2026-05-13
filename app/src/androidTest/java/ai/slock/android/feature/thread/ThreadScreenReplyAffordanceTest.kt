@@ -2,6 +2,7 @@ package ai.slock.android.feature.thread
 
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -52,9 +53,10 @@ import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.ui.components.SlockMenuOverlayDefaults
+import ai.slock.android.ui.components.SlockTextField
 import ai.slock.android.ui.theme.SlockTheme
-import ai.slock.shared.markdown.ThreadMarkdownTag
-import ai.slock.shared.markdown.ThreadMarkdownTagKind
+import ai.slock.compose.markdown.ThreadMarkdownTag
+import ai.slock.compose.markdown.ThreadMarkdownTagKind
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -179,6 +181,72 @@ class ThreadScreenReplyAffordanceTest {
         composeRule.runOnIdle {
             assertEquals(true, openedThread)
         }
+    }
+
+    @Test
+    fun nestedReplyPaneHidesMessageReplyCountAffordance() {
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            ThreadContent(
+                                header = ConversationSummary(
+                                    threadId = ThreadId("nested-reply-pane-message"),
+                                    channelId = ChannelId("nested-reply-pane-message-channel"),
+                                    kind = ConversationKind.Channel,
+                                    name = "reply-pane-message"
+                                ),
+                                messages = listOf(message(replyCount = 4))
+                            )
+                        )
+                    ),
+                    replyHeaderContext = ThreadReplyHeaderContext(
+                        parentChannelName = "android-dev",
+                        parentMessagePreview = "Parent message"
+                    ),
+                    parentJumpTarget = ThreadParentJumpTarget(MessageId("parent-message"))
+                )
+            }
+        }
+
+        composeRule.onAllNodesWithText("4 replies").assertCountEquals(0)
+        composeRule.onAllNodesWithTag(THREAD_MESSAGE_FOOTER_REPLIES_TAG, useUnmergedTree = true)
+            .assertCountEquals(0)
+    }
+
+    @Test
+    fun nestedReplyPaneHidesSystemMessageReplyCountAffordance() {
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            ThreadContent(
+                                header = ConversationSummary(
+                                    threadId = ThreadId("nested-reply-pane-system"),
+                                    channelId = ChannelId("nested-reply-pane-system-channel"),
+                                    kind = ConversationKind.Channel,
+                                    name = "reply-pane-system"
+                                ),
+                                messages = listOf(
+                                    message(replyCount = 3).copy(messageType = MessageType.System)
+                                )
+                            )
+                        )
+                    ),
+                    replyHeaderContext = ThreadReplyHeaderContext(
+                        parentChannelName = "android-dev",
+                        parentMessagePreview = "Parent system message"
+                    ),
+                    parentJumpTarget = ThreadParentJumpTarget(MessageId("parent-system-message"))
+                )
+            }
+        }
+
+        composeRule.onAllNodesWithText("3 replies").assertCountEquals(0)
+        composeRule.onAllNodesWithTag(THREAD_MESSAGE_FOOTER_REPLIES_TAG, useUnmergedTree = true)
+            .assertCountEquals(0)
     }
 
     @Test
@@ -596,6 +664,55 @@ class ThreadScreenReplyAffordanceTest {
 
         composeRule.runOnIdle {
             assertEquals(AttachmentId("attachment-click"), openedAttachment)
+        }
+        composeRule.onAllNodesWithText("Copy markdown").assertCountEquals(0)
+    }
+
+    @Test
+    fun replyThreadOriginAttachmentClickOpensAttachmentPreview() {
+        var openedAttachment: AttachmentId? = null
+        val attachment = Attachment(
+            id = AttachmentId("origin-attachment-click"),
+            name = "origin-preview.png",
+            mimeType = "image/png",
+            sizeLabel = "8 KB",
+            thumbnailUrl = "https://example.invalid/origin-preview.png"
+        )
+        val originMessage = message(replyCount = 1).copy(
+            id = MessageId("origin-with-attachment"),
+            body = "Original message with image",
+            attachments = listOf(attachment)
+        )
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(
+                                messages = listOf(message(replyCount = 0)),
+                                canLoadMoreBefore = false
+                            )
+                        )
+                    ),
+                    replyHeaderContext = ThreadReplyHeaderContext(
+                        parentChannelName = "android-dev",
+                        parentMessagePreview = "Original message with image",
+                        parentMessage = originMessage
+                    ),
+                    parentJumpTarget = ThreadParentJumpTarget(MessageId("origin-with-attachment")),
+                    onOpenAttachment = { openedAttachment = it.id }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Expand origin").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("origin-preview.png")
+            .assertIsDisplayed()
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(AttachmentId("origin-attachment-click"), openedAttachment)
         }
         composeRule.onAllNodesWithText("Copy markdown").assertCountEquals(0)
     }
@@ -1210,6 +1327,28 @@ class ThreadScreenReplyAffordanceTest {
     }
 
     @Test
+    fun replyThreadComposerHidesAsTaskToggle() {
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(messages = emptyList(), canLoadMoreBefore = false)
+                        )
+                    ),
+                    replyHeaderContext = ThreadReplyHeaderContext(
+                        parentChannelName = "all",
+                        parentMessagePreview = "Original message"
+                    )
+                )
+            }
+        }
+
+        composeRule.onAllNodesWithText("As Task").assertCountEquals(0)
+        composeRule.onNodeWithContentDescription("Send").assertIsDisplayed()
+    }
+
+    @Test
     fun composerHashSuggestionsDoNotShrinkTextArea() {
         val composerValue = mutableStateOf("")
         val channelSuggestions =
@@ -1333,6 +1472,84 @@ class ThreadScreenReplyAffordanceTest {
     }
 
     @Test
+    fun composerMemberSuggestionsBottomAlignsWithComposerFieldTop() {
+        val composerValue = mutableStateOf("")
+        val memberSuggestions =
+            listOf(
+                MemberProfile(
+                    id = MemberId("member-artin"),
+                    displayName = "artin",
+                    handle = "artin",
+                    kind = MemberKind.Human,
+                    roleDescription = "Member"
+                ),
+                MemberProfile(
+                    id = MemberId("member-android-developer-4"),
+                    displayName = "Android-Developer-4",
+                    handle = "Android-Developer-4",
+                    kind = MemberKind.Agent,
+                    roleDescription = "Agent"
+                )
+            )
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadComposerBar(
+                    composerState = ComposerState(
+                        value = composerValue.value,
+                        status = ComposerStatus.Ready
+                    ),
+                    placeholder = "Message",
+                    onComposerChange = { composerValue.value = it },
+                    onAsTaskChange = {},
+                    onSend = {},
+                    memberSuggestions = memberSuggestions
+                )
+            }
+        }
+
+        composeRule.onNode(hasSetTextAction()).performTextReplacement("@")
+
+        val suggestionBounds =
+            composeRule.onNodeWithTag(THREAD_COMPOSER_SUGGESTIONS_TAG)
+                .assertIsDisplayed()
+                .getUnclippedBoundsInRoot()
+        val composerFieldBounds =
+            composeRule.onNodeWithTag(THREAD_COMPOSER_FIELD_TAG, useUnmergedTree = true)
+                .assertIsDisplayed()
+                .getUnclippedBoundsInRoot()
+
+        assertTrue(abs((composerFieldBounds.top - suggestionBounds.bottom).value) < 1f)
+    }
+
+    @Test
+    fun composerReadyAttachmentShowsStableActivityLabel() {
+        composeRule.setContent {
+            SlockTheme {
+                ThreadComposerBar(
+                    composerState = ComposerState(
+                        status = ComposerStatus.Ready,
+                        pendingAttachments = listOf(
+                            PendingAttachment(
+                                id = "pending-image",
+                                fileName = "preview.png",
+                                mimeType = "image/png",
+                                previewUri = "content://pending-image-preview"
+                            )
+                        )
+                    ),
+                    placeholder = "Message",
+                    onComposerChange = {},
+                    onAsTaskChange = {},
+                    onSend = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("1 attachment ready").assertIsDisplayed()
+    }
+
+    @Test
     fun composerPendingImagePreviewOpensFromThumbnailTap() {
         composeRule.setContent {
             SlockTheme {
@@ -1417,6 +1634,49 @@ class ThreadScreenReplyAffordanceTest {
 
         composeRule.runOnIdle {
             assertEquals(1, toolbarShownCount)
+        }
+    }
+
+    @Test
+    fun composerFocusLossHidesTextToolbarBubble() {
+        var toolbarShownCount = 0
+        var toolbarHiddenCount = 0
+        val otherFieldValue = mutableStateOf("")
+        composeRule.setContent {
+            SlockTheme {
+                Column {
+                    ThreadComposerBar(
+                        composerState = ComposerState(
+                            value = "Focus change composer",
+                            status = ComposerStatus.Ready
+                        ),
+                        placeholder = "Message",
+                        onComposerChange = {},
+                        onAsTaskChange = {},
+                        onSend = {},
+                        onComposerTextToolbarShown = { toolbarShownCount += 1 },
+                        onComposerTextToolbarHidden = { toolbarHiddenCount += 1 }
+                    )
+                    SlockTextField(
+                        value = otherFieldValue.value,
+                        onValueChange = { otherFieldValue.value = it },
+                        placeholder = "Other field",
+                        inputModifier = Modifier.testTag("other-field-input")
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(THREAD_COMPOSER_TEXT_AREA_TAG, useUnmergedTree = true)
+            .performTouchInput {
+                doubleClick()
+            }
+        composeRule.onNodeWithTag("other-field-input", useUnmergedTree = true)
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(1, toolbarShownCount)
+            assertEquals(1, toolbarHiddenCount)
         }
     }
 

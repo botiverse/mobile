@@ -38,7 +38,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import retrofit2.Response
+import ai.slock.android.core.data.network.ApiResponse
 
 class RealSlockRepositoriesTest {
     @Test
@@ -313,10 +313,10 @@ class RealSlockRepositoriesTest {
         assertEquals(false, snapshot.channels.single().permissions.canSend)
         assertEquals("Ready", snapshot.channels.single().lastMessagePreview)
         assertEquals("random:android-dev-agent", snapshot.channels.single().avatar?.wireValue)
-        assertTrue(snapshot.channels.single().avatar is ai.slock.shared.model.AvatarReference.Random)
+        assertTrue(snapshot.channels.single().avatar is ai.slock.compose.model.AvatarReference.Random)
         assertEquals(1, snapshot.directMessages.size)
         assertEquals("Android-Developer", snapshot.directMessages.single().name)
-        assertTrue(snapshot.directMessages.single().avatar is ai.slock.shared.model.AvatarReference.Url)
+        assertTrue(snapshot.directMessages.single().avatar is ai.slock.compose.model.AvatarReference.Url)
         assertEquals(5, snapshot.unreadTotal)
         assertTrue(warnings.none { it.contains("token", ignoreCase = true) || it.contains("Bearer") })
     }
@@ -1254,6 +1254,36 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
+    fun taskRepositoryPrefersMeaningfulTaskTextOverNumberPlaceholderTitle() {
+        val api = FakeSlockApi(
+            serverTasksJson = """
+                {
+                  "tasks": [
+                    {
+                      "id": "task-placeholder-title",
+                      "title": "#20",
+                      "content": "Fix the Tasks list display",
+                      "status": "in_review",
+                      "taskNumber": 20
+                    }
+                  ]
+                }
+            """.trimIndent()
+        )
+        val repository = RealTaskRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val tasks = runSuspend { repository.getTasks(ServerId("server-1"), TaskFilter()) }
+
+        assertTrue(tasks is DataResult.Content)
+        val snapshot = (tasks as DataResult.Content).data
+        assertEquals("Fix the Tasks list display", snapshot.tasks.single().title)
+    }
+
+    @Test
     fun taskRepositoryMapsChannelScopedTasks() {
         val api = FakeSlockApi(
             channelTasksJson = """
@@ -1490,7 +1520,14 @@ class RealSlockRepositoriesTest {
             settingsAgentsJson = """
                 {
                   "items": [
-                    {"id":"agent-9","name":"Runtime Agent","handle":"runtime-agent","role":"worker","presence":"online"}
+                    {
+                      "id":"agent-9",
+                      "name":"Runtime Agent",
+                      "handle":"runtime-agent",
+                      "role":"worker",
+                      "presence":"online",
+                      "machineName":"Jiachengs-MacBook-Pro.local"
+                    }
                   ]
                 }
             """.trimIndent()
@@ -1508,6 +1545,47 @@ class RealSlockRepositoriesTest {
         val agent = members.single { it.id.value == "agent-9" }
         assertEquals(MemberKind.Agent, agent.kind)
         assertEquals("Runtime Agent", agent.displayName)
+        assertTrue(agent.permissionBadges.contains("computer:Jiachengs-MacBook-Pro.local"))
+    }
+
+    @Test
+    fun memberRepositoryResolvesMachineIdBadgesToMachineNames() {
+        val api = FakeSlockApi(
+            serverMembersJson = """{"members":[]}""",
+            settingsAgentsJson = """
+                {
+                  "agents": [
+                    {
+                      "id":"agent-9",
+                      "name":"Runtime Agent",
+                      "handle":"runtime-agent",
+                      "role":"worker",
+                      "presence":"online",
+                      "machineId":"machine-9"
+                    }
+                  ]
+                }
+            """.trimIndent(),
+            settingsMachinesJson = """
+                {
+                  "machines": [
+                    {"id":"machine-9","displayName":"Mac Studio"}
+                  ]
+                }
+            """.trimIndent()
+        )
+        val repository = RealMemberRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val result = runSuspend { repository.getMembers(ServerId("server-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val agent = (result as DataResult.Content).data.members.single { it.id.value == "agent-9" }
+        assertTrue(agent.permissionBadges.contains("computer:Mac Studio"))
+        assertFalse(agent.permissionBadges.any { it.contains("machine-9") })
     }
 
     @Test
@@ -1559,6 +1637,53 @@ class RealSlockRepositoriesTest {
         val workspace = groups.first { it.title == "Workspace" }
         assertEquals("/repo/.codex/skills", workspace.paths.single().path)
         assertEquals("android-regression", workspace.paths.single().skills.single().name)
+    }
+
+    @Test
+    fun memberRepositoryLoadsAgentWorkspacesFromMachineEndpoint() {
+        val api = FakeSlockApi(
+            settingsAgentsJson = """
+                {
+                  "agents": [
+                    {
+                      "id": "agent-1",
+                      "name": "Android Developer",
+                      "machineId": "machine-7",
+                      "machineName": "Mac Studio"
+                    }
+                  ]
+                }
+            """.trimIndent(),
+            settingsMachineWorkspacesJson = """
+                {
+                  "workspaces": [
+                    {
+                      "id": "workspace-1",
+                      "name": "Slock",
+                      "path": "/Users/artin/AndroidStudioProjects/Slock",
+                      "status": "active",
+                      "activeTaskCount": 3,
+                      "lastActiveAt": "2026-05-13T19:30:00Z"
+                    }
+                  ]
+                }
+            """.trimIndent()
+        )
+        val repository = RealMemberRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val result = runSuspend { repository.getAgentWorkspaces(MemberId("agent-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val snapshot = (result as DataResult.Content).data
+        assertEquals("machine-7", snapshot.computerId)
+        assertEquals("Mac Studio", snapshot.computerName)
+        assertEquals(1, snapshot.workspaces.size)
+        assertEquals("/Users/artin/AndroidStudioProjects/Slock", snapshot.workspaces.single().path)
+        assertEquals(listOf("server-1:machine-7"), api.settingsMachineWorkspaceCalls)
     }
 
     @Test
@@ -1909,6 +2034,50 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
+    fun conversationRepositoryKeepsParentOnlyMessageContext() {
+        val api =
+                FakeSlockApi(
+                        messageContextJson =
+                                """
+                                {
+                                  "data": {
+                                    "channel": {"id":"tips-and-tricks","name":"tips-and-tricks"},
+                                    "parentMessage": {
+                                      "id":"04fcdf5e-d868-440a-aaf2-2944b5c0e539",
+                                      "channelId":"tips-and-tricks",
+                                      "threadId":"tips-and-tricks",
+                                      "body":"Share tips and tricks here",
+                                      "createdAt":"2026-05-13T07:00:00.000Z",
+                                      "threadChannelId":"reply-thread-1"
+                                    }
+                                  }
+                                }
+                                """
+                                        .trimIndent()
+                )
+        val repository =
+                RealConversationRepository(
+                        store = InMemoryAuthSessionStore(sampleSession),
+                        api = api,
+                        warningLogger = {}
+                )
+
+        val result =
+                runSuspend {
+                    repository.getMessageContext(
+                            MessageId("04fcdf5e-d868-440a-aaf2-2944b5c0e539")
+                    )
+                }
+
+        assertTrue(result is DataResult.Content)
+        val snapshot = (result as DataResult.Content).data
+        assertTrue(snapshot.messages.isEmpty())
+        assertEquals(MessageId("04fcdf5e-d868-440a-aaf2-2944b5c0e539"), snapshot.parentMessage?.id)
+        assertEquals("Share tips and tricks here", snapshot.parentMessage?.body)
+        assertEquals("reply-thread-1", snapshot.parentMessage?.threadChannelId?.value)
+    }
+
+    @Test
     fun conversationRepositoryDoesNotUseGenericActionIdAsThreadChannelId() {
         val api = FakeSlockApi(
             createThreadJson =
@@ -1943,6 +2112,8 @@ class RealSlockRepositoriesTest {
         private val settingsSessionsJson: String = """{"sessions":[]}""",
         private val revokeSessionJson: String = """{"ok":true}""",
         private val settingsAgentsJson: String = """{"agents":[]}""",
+        private val settingsMachinesJson: String = """{"machines":[]}""",
+        private val settingsMachineWorkspacesJson: String = """{"workspaces":[]}""",
         var channelsJson: String = """{"channels":[]}""",
         private val createChannelJson: String = """{"id":"channel-1","name":"android-dev"}""",
         private val joinChannelJson: String = """{"ok":true}""",
@@ -1998,116 +2169,126 @@ class RealSlockRepositoriesTest {
         val updatedTaskStatusBodies = mutableListOf<String>()
         val channelMessagesBeforeSeqCalls = mutableListOf<Long?>()
         val channelArchivedQueries = mutableListOf<String?>()
+        val settingsMachineWorkspaceCalls = mutableListOf<String>()
         var inboxReadAllCallCount = 0
             private set
 
-        override suspend fun settingsAccount(): Response<ResponseBody> =
+        override suspend fun settingsAccount(): ApiResponse =
             response(settingsAccountJson)
 
-        override suspend fun updateSettingsAccount(body: RequestBody): Response<ResponseBody> =
+        override suspend fun updateSettingsAccount(body: RequestBody): ApiResponse =
             response(settingsAccountJson)
 
-        override suspend fun settingsSessions(): Response<ResponseBody> =
+        override suspend fun settingsSessions(): ApiResponse =
             response(settingsSessionsJson)
 
-        override suspend fun revokeSettingsSession(sessionId: String): Response<ResponseBody> =
+        override suspend fun revokeSettingsSession(sessionId: String): ApiResponse =
             response(revokeSessionJson)
 
-        override suspend fun settingsMachines(serverId: String): Response<ResponseBody> =
-            response("""{"machines":[]}""")
+        override suspend fun settingsMachines(serverId: String): ApiResponse =
+            response(settingsMachinesJson)
 
         override suspend fun settingsMachineWorkspaces(
             serverId: String,
             machineId: String
-        ): Response<ResponseBody> = response("""{"workspaces":[]}""")
+        ): ApiResponse {
+            settingsMachineWorkspaceCalls += "$serverId:$machineId"
+            return response(settingsMachineWorkspacesJson)
+        }
 
-        override suspend fun settingsAgents(): Response<ResponseBody> =
+        override suspend fun settingsAgents(): ApiResponse =
             response(settingsAgentsJson)
 
         override suspend fun updateAgent(
             agentId: String,
             body: RequestBody
-        ): Response<ResponseBody> {
+        ): ApiResponse {
             updatedAgents += "$agentId:${body.bodyAsString()}"
             return response(updateAgentJson)
         }
 
-        override suspend fun channels(archived: String?): Response<ResponseBody> {
+        override suspend fun channels(archived: String?): ApiResponse {
             channelArchivedQueries += archived
             return response(channelsJson)
         }
 
-        override suspend fun createChannel(body: RequestBody): Response<ResponseBody> =
+        override suspend fun createChannel(body: RequestBody): ApiResponse =
             response(createChannelJson)
 
-        override suspend fun joinChannel(channelId: String): Response<ResponseBody> {
+        override suspend fun joinChannel(channelId: String): ApiResponse {
             joinedChannelIds += channelId
             return response(joinChannelJson)
         }
 
-        override suspend fun archiveChannel(channelId: String): Response<ResponseBody> {
+        override suspend fun archiveChannel(channelId: String): ApiResponse {
             archivedChannelIds += channelId
             return response(archiveChannelJson)
         }
 
-        override suspend fun deleteChannel(channelId: String): Response<ResponseBody> {
+        override suspend fun deleteChannel(channelId: String): ApiResponse {
             deletedChannelIds += channelId
             return response(deleteChannelJson)
         }
 
-        override suspend fun serverMembers(serverId: String): Response<ResponseBody> =
+        override suspend fun serverMembers(serverId: String): ApiResponse =
             response(serverMembersJson)
 
         override suspend fun updateSettingsServerProfile(
             serverId: String,
             body: RequestBody
-        ): Response<ResponseBody> =
+        ): ApiResponse =
             response("""{"id":"$serverId","name":"Slock Android"}""")
 
-        override suspend fun settingsServerUsage(serverId: String): Response<ResponseBody> =
+        override suspend fun settingsServerUsage(serverId: String): ApiResponse =
             response("""{"usage":{}}""")
 
-        override suspend fun settingsBillingSubscription(): Response<ResponseBody> =
+        override suspend fun settingsBillingSubscription(): ApiResponse =
             response("""{"subscription":{}}""")
 
         override suspend fun createSettingsServerInvite(
             serverId: String,
             body: RequestBody
-        ): Response<ResponseBody> =
+        ): ApiResponse =
             response("""{"invite":{}}""")
 
         override suspend fun settingsServerOnboardingSettings(
             serverId: String
-        ): Response<ResponseBody> =
+        ): ApiResponse =
             response("""{"settings":{}}""")
 
         override suspend fun updateSettingsServerOnboardingSettings(
             serverId: String,
             body: RequestBody
-        ): Response<ResponseBody> =
+        ): ApiResponse =
             response("""{"settings":{}}""")
 
-        override suspend fun deleteSettingsServer(serverId: String): Response<ResponseBody> =
+        override suspend fun deleteSettingsServer(serverId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun memberProfile(memberId: String): Response<ResponseBody> {
+        override suspend fun memberProfile(memberId: String): ApiResponse {
             memberProfileCalls += memberId
             return response(memberProfileJson)
         }
 
-        override suspend fun agentDirectMessages(agentId: String): Response<ResponseBody> =
+        override suspend fun agentWorkspaceFiles(agentId: String, dirPath: String?): ApiResponse =
+            response("""{"files":[]}""")
+
+        override suspend fun readAgentWorkspaceFile(agentId: String, path: String): ApiResponse =
+            response("""{"file":{"path":"$path","content":""}}""")
+
+        override suspend fun agentDirectMessages(agentId: String): ApiResponse =
             response("""{"directMessages":[]}""")
 
-        override suspend fun reminders(ownerAgentId: String, status: String): Response<ResponseBody> =
+        override suspend fun reminders(ownerAgentId: String, status: String): ApiResponse =
             response("""{"reminders":[]}""")
 
-        override suspend fun agentActivityLog(agentId: String, limit: Int): Response<ResponseBody> =
+        override suspend fun agentActivityLog(agentId: String, limit: Int): ApiResponse =
             response(agentActivityLogJson).also { agentActivityLogCalls += "$agentId:$limit" }
 
-        override suspend fun channelMembers(channelId: String): Response<ResponseBody> =
+        override suspend fun channelMembers(channelId: String): ApiResponse =
             response(channelMembersJson)
 
-        override suspend fun addChannelMember(channelId: String, body: RequestBody): Response<ResponseBody> {
+        override suspend fun addChannelMember(channelId: String, body: RequestBody): ApiResponse {
             addedMembers += "$channelId:${body.bodyAsString()}"
             return response(addChannelMemberJson)
         }
@@ -2116,51 +2297,51 @@ class RealSlockRepositoriesTest {
             channelId: String,
             kind: String,
             memberId: String
-        ): Response<ResponseBody> {
+        ): ApiResponse {
             removedMembers += "$channelId/$kind/$memberId"
             return response("""{"ok":true,"removed":{"id":"$memberId","kind":"$kind"}}""")
         }
 
-        override suspend fun directMessages(): Response<ResponseBody> =
+        override suspend fun directMessages(): ApiResponse =
             directMessagesFailure?.let { throw it } ?:
             response(directMessagesJson)
 
-        override suspend fun openDirectMessage(body: RequestBody): Response<ResponseBody> {
+        override suspend fun openDirectMessage(body: RequestBody): ApiResponse {
             openDirectMessageBodies += body.bodyAsString()
             return response(openDirectMessageJson)
         }
 
-        override suspend fun channelUnreadCounts(): Response<ResponseBody> =
+        override suspend fun channelUnreadCounts(): ApiResponse =
             response(unreadCountsJson)
 
-        override suspend fun markChannelReadToSeq(channelId: String, body: RequestBody): Response<ResponseBody> {
+        override suspend fun markChannelReadToSeq(channelId: String, body: RequestBody): ApiResponse {
             seqReadRequests += "$channelId:${body.bodyAsString().substringAfter(":").substringBefore("}")}"
             return response(readReceiptJson)
         }
 
-        override suspend fun markChannelReadAll(channelId: String): Response<ResponseBody> {
+        override suspend fun markChannelReadAll(channelId: String): ApiResponse {
             readAllRequests += channelId
             return response(readReceiptJson)
         }
 
-        override suspend fun markChannelUnread(channelId: String): Response<ResponseBody> =
+        override suspend fun markChannelUnread(channelId: String): ApiResponse =
             response(readReceiptJson)
 
-        override suspend fun inbox(filter: String, limit: Int, offset: Int): Response<ResponseBody> =
+        override suspend fun inbox(filter: String, limit: Int, offset: Int): ApiResponse =
             response(inboxJson)
 
-        override suspend fun markInboxReadAll(): Response<ResponseBody> =
+        override suspend fun markInboxReadAll(): ApiResponse =
             response(readReceiptJson).also { inboxReadAllCallCount += 1 }
 
-        override suspend fun serverTasks(): Response<ResponseBody> =
+        override suspend fun serverTasks(): ApiResponse =
             response(serverTasksJson)
 
-        override suspend fun channelTasks(channelId: String): Response<ResponseBody> {
+        override suspend fun channelTasks(channelId: String): ApiResponse {
             channelTaskCalls += channelId
             return response(channelTasksJson)
         }
 
-        override suspend fun claimTask(taskId: String): Response<ResponseBody> {
+        override suspend fun claimTask(taskId: String): ApiResponse {
             claimedTaskIds += taskId
             return response(claimTaskJson)
         }
@@ -2168,86 +2349,86 @@ class RealSlockRepositoriesTest {
         override suspend fun updateTaskStatus(
             taskId: String,
             body: RequestBody
-        ): Response<ResponseBody> {
+        ): ApiResponse {
             updatedTaskStatusBodies += "$taskId:${body.bodyAsString()}"
             return response(updateTaskStatusJson)
         }
 
-        override suspend fun saved(limit: Int, offset: Int): Response<ResponseBody> =
+        override suspend fun saved(limit: Int, offset: Int): ApiResponse =
             response(savedJson)
 
-        override suspend fun saveMessage(messageId: String): Response<ResponseBody> =
+        override suspend fun saveMessage(messageId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun unsaveMessage(messageId: String): Response<ResponseBody> =
+        override suspend fun unsaveMessage(messageId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun searchMessages(query: String, limit: Int, offset: Int): Response<ResponseBody> =
+        override suspend fun searchMessages(query: String, limit: Int, offset: Int): ApiResponse =
             response(searchJson)
 
         override suspend fun channelMessages(
             channelId: String,
             limit: Int,
             beforeSeq: Long?
-        ): Response<ResponseBody> {
+        ): ApiResponse {
             channelMessagesBeforeSeqCalls += beforeSeq
             return response(channelMessagesJson)
         }
 
-        override suspend fun messageContext(messageId: String): Response<ResponseBody> =
+        override suspend fun messageContext(messageId: String): ApiResponse =
             response(messageContextJson)
 
         override suspend fun messageSync(
             sinceSeq: Long,
             limit: Int,
             channelId: String?
-        ): Response<ResponseBody> = response(messageSyncJson)
+        ): ApiResponse = response(messageSyncJson)
 
-        override suspend fun sendMessage(body: RequestBody): Response<ResponseBody> =
+        override suspend fun sendMessage(body: RequestBody): ApiResponse =
             response(sendMessageJson)
 
         override suspend fun uploadAttachments(
             channelId: RequestBody,
             files: List<okhttp3.MultipartBody.Part>
-        ): Response<ResponseBody> =
+        ): ApiResponse =
             response("""{"attachments":[{"id":"attachment-1","filename":"sample.png","mimeType":"image/png","sizeLabel":"12 KB"}]}""")
 
-        override suspend fun attachmentUrl(attachmentId: String): Response<ResponseBody> =
+        override suspend fun attachmentUrl(attachmentId: String): ApiResponse =
             response(attachmentUrlJson)
 
-        override suspend fun channelThreads(channelId: String, limit: Int): Response<ResponseBody> =
+        override suspend fun channelThreads(channelId: String, limit: Int): ApiResponse =
             response(channelThreadsJson)
 
-        override suspend fun createOrOpenThread(channelId: String, body: RequestBody): Response<ResponseBody> {
+        override suspend fun createOrOpenThread(channelId: String, body: RequestBody): ApiResponse {
             createThreadBodies += body.bodyAsString()
             return response(createThreadJson)
         }
 
-        override suspend fun followedThreads(limit: Int): Response<ResponseBody> =
+        override suspend fun followedThreads(limit: Int): ApiResponse =
             response(followedThreadsJson)
 
-        override suspend fun followThread(body: RequestBody): Response<ResponseBody> {
+        override suspend fun followThread(body: RequestBody): ApiResponse {
             followThreadBodies += body.bodyAsString()
             return response(threadActionJson)
         }
 
-        override suspend fun unfollowThread(body: RequestBody): Response<ResponseBody> =
+        override suspend fun unfollowThread(body: RequestBody): ApiResponse =
             response(threadActionJson)
 
-        override suspend fun markThreadDone(body: RequestBody): Response<ResponseBody> =
+        override suspend fun markThreadDone(body: RequestBody): ApiResponse =
             response(threadActionJson)
 
-        override suspend fun markThreadUndone(body: RequestBody): Response<ResponseBody> =
+        override suspend fun markThreadUndone(body: RequestBody): ApiResponse =
             response(threadActionJson)
 
-        override suspend fun serverUnreadSummary(): Response<ResponseBody> =
+        override suspend fun serverUnreadSummary(): ApiResponse =
             response(unreadSummaryJson).also { unreadSummaryCallCount += 1 }
 
-        private fun response(json: String): Response<ResponseBody> =
+        private fun response(json: String): ApiResponse =
             if (responseCode in 200..299) {
-                Response.success(json.jsonBody())
+                ApiResponse.success(json.jsonBody())
             } else {
-                Response.error(responseCode, """{"error":"failed"}""".jsonBody())
+                ApiResponse.error(responseCode, """{"error":"failed"}""".jsonBody())
             }
     }
 

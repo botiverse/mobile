@@ -51,8 +51,10 @@ fun CreateAccountScreen(
     initialName: String = "",
     initialEmail: String = "",
     status: CreateAccountStatus = CreateAccountStatus.Default,
+    errorMessage: String? = null,
     onCreateAccount: (name: String, email: String, password: String) -> Unit = { _, _, _ -> },
-    onBackToSignIn: () -> Unit = {}
+    onBackToSignIn: () -> Unit = {},
+    onOpenSharedAuth: (() -> Unit)? = null
 ) {
     var name by rememberSaveable(initialName) { mutableStateOf(initialName) }
     var email by rememberSaveable(initialEmail) { mutableStateOf(initialEmail) }
@@ -110,6 +112,13 @@ fun CreateAccountScreen(
             style = SlockType.Caption,
             color = SlockColor.TextMutedGray
         )
+        if (isError && !errorMessage.isNullOrBlank()) {
+            Text(
+                text = errorMessage,
+                style = SlockType.Body.copy(fontSize = 16.sp, lineHeight = 22.sp),
+                color = SlockColor.AccentRed
+            )
+        }
         AuthActionButton(
             text = if (saving) stringResource(R.string.auth_create_creating_account) else stringResource(R.string.auth_create_title),
             onClick = { onCreateAccount(name, email, password) },
@@ -118,6 +127,15 @@ fun CreateAccountScreen(
             enabled = formEnabled && name.isNotBlank() && email.isNotBlank() && password.isNotBlank(),
             loading = saving
         )
+        if (onOpenSharedAuth != null) {
+            AuthActionButton(
+                text = stringResource(R.string.auth_open_shared_auth),
+                onClick = onOpenSharedAuth,
+                background = SlockColor.AccentCyan,
+                contentColor = SlockColor.TextBlack,
+                enabled = !saving
+            )
+        }
         Row(
             modifier = Modifier.align(Alignment.CenterHorizontally),
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),

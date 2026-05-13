@@ -12,7 +12,7 @@ import okio.ByteString.Companion.decodeBase64
 
 class AuthTokenRefresher(
     private val store: AuthSessionStore,
-    private val api: AuthApi = RetrofitAuthRepository.createAuthApi(),
+    private val api: AuthApi = KtorAuthRepository.createAuthApi(),
     private val refreshSoonThresholdMillis: Long = DEFAULT_REFRESH_SOON_THRESHOLD_MILLIS,
     private val clockMillis: () -> Long = { System.currentTimeMillis() },
     private val logger: (String) -> Unit = { message -> ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(TAG, message) },

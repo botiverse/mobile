@@ -12,9 +12,9 @@ import ai.slock.android.core.model.MessageNew
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.state.ScreenError
-import ai.slock.shared.network.model.NetworkStatus
-import ai.slock.shared.network.model.RealtimeConnectionPhase
-import ai.slock.shared.network.realtime.RealtimeConnectionIntent
+import ai.slock.compose.network.model.NetworkStatus
+import ai.slock.compose.network.model.RealtimeConnectionPhase
+import ai.slock.compose.network.realtime.RealtimeConnectionIntent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

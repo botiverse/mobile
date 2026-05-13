@@ -1,11 +1,9 @@
 package ai.slock.android.core.data.network
 
-import ai.slock.android.core.data.auth.AuthHeaderInterceptor
-import ai.slock.android.core.data.auth.AuthRefreshInterceptor
 import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthSessionStore
 import ai.slock.android.core.data.auth.AuthTokenRefresher
-import ai.slock.android.core.data.auth.RetrofitAuthRepository
+import ai.slock.android.core.data.auth.KtorAuthRepository
 import ai.slock.android.core.data.repository.AddChannelMemberRequest
 import ai.slock.android.core.data.repository.AgentActivityEntry
 import ai.slock.android.core.data.repository.AgentActivitySnapshot
@@ -19,6 +17,10 @@ import ai.slock.android.core.data.repository.AgentSkillGroup
 import ai.slock.android.core.data.repository.AgentSkillPathGroup
 import ai.slock.android.core.data.repository.AgentSkillSummary
 import ai.slock.android.core.data.repository.AgentSkillsSnapshot
+import ai.slock.android.core.data.repository.AgentWorkspaceChildrenSnapshot
+import ai.slock.android.core.data.repository.AgentWorkspaceFilePreviewSnapshot
+import ai.slock.android.core.data.repository.AgentWorkspaceSnapshot
+import ai.slock.android.core.data.repository.AgentWorkspaceTreeSnapshot
 import ai.slock.android.core.data.repository.AttachmentOpenTarget
 import ai.slock.android.core.data.repository.AttachmentUploadFile
 import ai.slock.android.core.data.repository.AttachmentUploadRequest
@@ -55,6 +57,7 @@ import ai.slock.android.core.data.repository.SendMessageResult
 import ai.slock.android.core.data.repository.ServerUnreadRepository
 import ai.slock.android.core.data.repository.ServerUnreadSummary
 import ai.slock.android.core.data.repository.ServerUnreadSummarySnapshot
+import ai.slock.android.core.data.repository.SettingsComputerWorkspaceSnapshot
 import ai.slock.android.core.data.repository.TaskActionResult
 import ai.slock.android.core.data.repository.TaskFilter
 import ai.slock.android.core.data.repository.TaskRepository
@@ -79,7 +82,7 @@ import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageDeliveryState
 import ai.slock.android.core.model.MessageId
 import ai.slock.android.core.model.MessageType
-import ai.slock.shared.model.sortedByMessageTime
+import ai.slock.compose.model.sortedByMessageTime
 import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
@@ -88,27 +91,27 @@ import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadConversation
-import ai.slock.shared.model.parentChannelIdOrNull
-import ai.slock.shared.model.parentMessageIdOrNull
-import ai.slock.shared.model.threadIdentity
-import ai.slock.shared.model.toGravatarAvatarReference
+import ai.slock.compose.model.SlockWorkspaceFileKind
+import ai.slock.compose.model.SlockWorkspaceFilePreview
+import ai.slock.compose.model.SlockWorkspaceNode
+import ai.slock.compose.model.parentChannelIdOrNull
+import ai.slock.compose.model.parentMessageIdOrNull
+import ai.slock.compose.model.threadIdentity
+import ai.slock.compose.model.toGravatarAvatarReference
 import ai.slock.android.core.state.EmptyReason
 import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import retrofit2.Retrofit
-import ai.slock.shared.model.topLevelThreadId
+import ai.slock.compose.model.topLevelThreadId
 
 class RealChannelRepository(
         private val store: AuthSessionStore,
@@ -763,10 +766,23 @@ class RealMemberRepository(
                         warningLogger = warningLogger,
                         mapper = { json -> json.agentMemberItems() }
                 )
+        val machineNameResult =
+                execute(
+                        emptyReason = EmptyReason.NoMembers,
+                        block = { api.settingsMachines(serverId.value) },
+                        source = "server_agent_machines",
+                        warningLogger = warningLogger,
+                        mapper = { json -> json.machineNameMap() }
+                )
         val mergedResult =
                 when (result) {
                     is DataResult.Content -> {
-                        val agents = (agentResult as? DataResult.Content)?.data.orEmpty()
+                        val machineNames = (machineNameResult as? DataResult.Content)?.data.orEmpty()
+                        val agents =
+                                (agentResult as? DataResult.Content)
+                                        ?.data
+                                        .orEmpty()
+                                        .resolveComputerLabels(machineNames)
                         val humans =
                                 enrichHumanProfiles(
                                         result.data.members,
@@ -955,6 +971,177 @@ class RealMemberRepository(
         }
     }
 
+    override suspend fun getAgentWorkspaces(agentId: MemberId): DataResult<AgentWorkspaceSnapshot> {
+        val context = currentContext() ?: return authRequired()
+        if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        val lookupResult =
+                execute(
+                        emptyReason = EmptyReason.NoMembers,
+                        block = { api.settingsAgents() },
+                        source = "agent_workspaces_lookup",
+                        warningLogger = warningLogger,
+                        mapper = { json ->
+                            val agent =
+                                    json.agentObjects()
+                                            .firstOrNull { it.memberId() == agentId.value }
+                                            ?: json.unwrap("agent", "data").takeIf {
+                                                it.memberId() == agentId.value
+                                            }
+                            AgentWorkspaceLookup(
+                                    computerId = agent?.memberComputerId(),
+                                    computerName = agent?.memberComputerName(),
+                                    directWorkspaces = agent?.agentWorkspaceSnapshots().orEmpty(),
+                                    fallbackWorkspaces =
+                                            agent?.agentSkillWorkspaceSnapshots().orEmpty()
+                            )
+                        }
+                )
+        return when (lookupResult) {
+            is DataResult.Content -> {
+                val lookup = lookupResult.data
+                val baseSnapshot =
+                        AgentWorkspaceSnapshot(
+                                agentId = agentId,
+                                computerId = lookup.computerId,
+                                computerName = lookup.computerName
+                        )
+                when {
+                    lookup.directWorkspaces.isNotEmpty() ->
+                            DataResult.Content(baseSnapshot.copy(workspaces = lookup.directWorkspaces))
+                    !lookup.computerId.isNullOrBlank() -> {
+                        val machineResult =
+                                execute(
+                                        emptyReason = EmptyReason.NoMembers,
+                                        block = {
+                                            api.settingsMachineWorkspaces(
+                                                    context.server.id.value,
+                                                    lookup.computerId
+                                            )
+                                        },
+                                        source = "agent_workspaces_machine",
+                                        warningLogger = warningLogger,
+                                        mapper = { json -> json.toAgentWorkspaceSnapshots() }
+                                )
+                        when (machineResult) {
+                            is DataResult.Content ->
+                                    DataResult.Content(
+                                            baseSnapshot.copy(workspaces = machineResult.data)
+                                    )
+                            is DataResult.Empty ->
+                                    if (lookup.fallbackWorkspaces.isNotEmpty()) {
+                                        DataResult.Content(
+                                                baseSnapshot.copy(
+                                                        workspaces = lookup.fallbackWorkspaces
+                                                )
+                                        )
+                                    } else {
+                                        machineResult
+                                    }
+                            is DataResult.Error ->
+                                    if (lookup.fallbackWorkspaces.isNotEmpty()) {
+                                        DataResult.Content(
+                                                baseSnapshot.copy(
+                                                        workspaces = lookup.fallbackWorkspaces
+                                                )
+                                        )
+                                    } else {
+                                        machineResult
+                                    }
+                            is DataResult.NoPermission ->
+                                    if (lookup.fallbackWorkspaces.isNotEmpty()) {
+                                        DataResult.Content(
+                                                baseSnapshot.copy(
+                                                        workspaces = lookup.fallbackWorkspaces
+                                                )
+                                        )
+                                    } else {
+                                        machineResult
+                                    }
+                        }
+                    }
+                    lookup.fallbackWorkspaces.isNotEmpty() ->
+                            DataResult.Content(baseSnapshot.copy(workspaces = lookup.fallbackWorkspaces))
+                    else -> DataResult.Empty(EmptyReason.NoMembers)
+                }
+            }
+            is DataResult.Empty -> lookupResult
+            is DataResult.Error -> lookupResult
+            is DataResult.NoPermission -> lookupResult
+        }
+    }
+
+    override suspend fun getAgentWorkspaceTree(
+            agentId: MemberId
+    ): DataResult<AgentWorkspaceTreeSnapshot> {
+        currentContext() ?: return authRequired()
+        if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        return execute(
+                emptyReason = EmptyReason.NoMembers,
+                block = { api.agentWorkspaceFiles(agentId.value) },
+                source = "agent_workspace_root",
+                warningLogger = warningLogger,
+                mapper = { json ->
+                    AgentWorkspaceTreeSnapshot(
+                            agentId = agentId,
+                            rootPath = "Workspace",
+                            root =
+                                    SlockWorkspaceNode(
+                                            id = "/",
+                                            name = "workspace",
+                                            path = "/",
+                                            kind = SlockWorkspaceFileKind.Folder,
+                                            children = json.toWorkspaceFileNodes()
+                                    )
+                    )
+                }
+        )
+    }
+
+    override suspend fun getAgentWorkspaceChildren(
+            agentId: MemberId,
+            dirPath: String
+    ): DataResult<AgentWorkspaceChildrenSnapshot> {
+        currentContext() ?: return authRequired()
+        if (agentId.value.isBlank() || dirPath.isBlank()) {
+            return DataResult.Empty(EmptyReason.NoMembers)
+        }
+        return execute(
+                emptyReason = EmptyReason.NoMembers,
+                block = { api.agentWorkspaceFiles(agentId.value, dirPath) },
+                source = "agent_workspace_children",
+                warningLogger = warningLogger,
+                mapper = { json ->
+                    AgentWorkspaceChildrenSnapshot(
+                            agentId = agentId,
+                            dirPath = dirPath,
+                            children = json.toWorkspaceFileNodes()
+                    )
+                }
+        )
+    }
+
+    override suspend fun readAgentWorkspaceFile(
+            agentId: MemberId,
+            path: String
+    ): DataResult<AgentWorkspaceFilePreviewSnapshot> {
+        currentContext() ?: return authRequired()
+        if (agentId.value.isBlank() || path.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        return execute(
+                emptyReason = EmptyReason.NoMembers,
+                block = { api.readAgentWorkspaceFile(agentId.value, path) },
+                source = "agent_workspace_file_read",
+                warningLogger = warningLogger,
+                mapper = { json ->
+                    val payload = json.unwrap("file", "data")
+                    AgentWorkspaceFilePreviewSnapshot(
+                            agentId = agentId,
+                            path = payload.string("path") ?: path,
+                            preview = payload.toWorkspaceFilePreview(path)
+                    )
+                }
+        )
+    }
+
     override suspend fun getAgentSkills(agentId: MemberId): DataResult<AgentSkillsSnapshot> {
         currentContext() ?: return authRequired()
         if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
@@ -965,8 +1152,7 @@ class RealMemberRepository(
                 warningLogger = warningLogger,
                 mapper = { json ->
                     val agent =
-                            json.items("agents", "items", "data")
-                                    .mapNotNull { it.asObjectOrNull() }
+                            json.agentObjects()
                                     .firstOrNull { it.memberId() == agentId.value }
                                     ?: json.unwrap("agent", "data").takeIf {
                                         it.memberId() == agentId.value
@@ -1167,6 +1353,13 @@ class RealMemberRepository(
             )
 }
 
+private data class AgentWorkspaceLookup(
+        val computerId: String?,
+        val computerName: String?,
+        val directWorkspaces: List<SettingsComputerWorkspaceSnapshot>,
+        val fallbackWorkspaces: List<SettingsComputerWorkspaceSnapshot>
+)
+
 class RealInboxRepository(private val store: AuthSessionStore, private val api: SlockApi) :
         InboxRepository {
     override suspend fun loadInitial(
@@ -1344,7 +1537,7 @@ class RealConversationRepository(
         return execute(
                 emptyReason = EmptyReason.NoMessages,
                 block = { api.messageContext(messageId.value) },
-                emptyWhen = { it.messages.isEmpty() },
+                emptyWhen = { it.messages.isEmpty() && it.parentMessage == null },
                 source = "messages_context",
                 warningLogger = warningLogger,
                 mapper = { json ->
@@ -1568,7 +1761,7 @@ class RealConversationRepository(
     private suspend fun loadChannelMessages(
             context: NetworkServerContext,
             threadId: ThreadId,
-            block: suspend () -> retrofit2.Response<okhttp3.ResponseBody>,
+            block: suspend () -> ApiResponse,
             source: String
     ): DataResult<ThreadSnapshot> = coroutineScope {
         val messagesDeferred =
@@ -1656,7 +1849,7 @@ class RealConversationRepository(
     private suspend fun threadAction(
             threadChannelId: ChannelId,
             source: String,
-            block: suspend () -> retrofit2.Response<okhttp3.ResponseBody>
+            block: suspend () -> ApiResponse
     ): DataResult<ThreadActionResult> =
             threadAction(
                     fallbackThreadChannelId = threadChannelId,
@@ -1669,7 +1862,7 @@ class RealConversationRepository(
             fallbackThreadChannelId: ChannelId?,
             fallbackParentMessageId: MessageId?,
             source: String,
-            block: suspend () -> retrofit2.Response<okhttp3.ResponseBody>
+            block: suspend () -> ApiResponse
     ): DataResult<ThreadActionResult> {
         currentContext() ?: return authRequired()
         return execute(
@@ -1812,49 +2005,19 @@ class RealServerUnreadRepository(
 
 object RealSlockApiFactory {
     fun create(
-            sessionProvider: () -> AuthSession?,
-            baseUrl: String = RetrofitAuthRepository.BASE_URL
-    ): SlockApi =
-            Retrofit.Builder()
-                    .baseUrl(baseUrl)
-                    .client(
-                            OkHttpClient.Builder()
-                                    .addInterceptor(AuthHeaderInterceptor(sessionProvider))
-                                    .build()
-                    )
-                    .build()
-                    .create(SlockApi::class.java)
-
-    fun create(
             store: AuthSessionStore,
-            baseUrl: String = RetrofitAuthRepository.BASE_URL,
+            baseUrl: String = KtorAuthRepository.BASE_URL,
             tokenRefresher: AuthTokenRefresher =
                     AuthTokenRefresher(
                             store = store,
-                            api = RetrofitAuthRepository.createAuthApi(baseUrl)
+                            api = KtorAuthRepository.createAuthApi(baseUrl)
                     )
-    ): SlockApi {
-        val sessionProvider = { runBlocking { store.readSession() } }
-        val retrofitFallback =
-                Retrofit.Builder()
-                .baseUrl(baseUrl)
-                .client(
-                        OkHttpClient.Builder()
-                                .addInterceptor(AuthHeaderInterceptor(sessionProvider))
-                                .addInterceptor(
-                                        AuthRefreshInterceptor(sessionProvider, tokenRefresher)
-                                )
-                                .build()
-                )
-                .build()
-                .create(SlockApi::class.java)
-        return KmpSlockApiAdapter(
+    ): SlockApi =
+        KmpSlockApiAdapter(
                 store = store,
-                fallback = retrofitFallback,
                 baseUrl = baseUrl,
                 tokenRefresher = tokenRefresher
         )
-    }
 }
 
 private data class NetworkServerContext(val session: AuthSession, val server: ServerSummary)
@@ -3089,7 +3252,8 @@ private fun JsonObject.toMemberProfile(): MemberProfile? {
             gravatarHash = gravatarHash,
             avatarLabel = displayName.take(1).uppercase(),
             presence = memberPresence(),
-            agentStatus = memberAgentStatus()
+            agentStatus = memberAgentStatus(),
+            permissionBadges = memberPermissionBadgesWithComputerName()
     )
 }
 
@@ -3169,7 +3333,18 @@ private fun JsonObject.agentSkillGroups(): List<AgentSkillGroup> {
             listOfNotNull(
                     firstObject("skillGroups", "skill_groups"),
                     firstObject("skillsByScope", "skills_by_scope"),
-                    firstObject("skillsByPath", "skills_by_path")
+                    firstObject("skillsByPath", "skills_by_path"),
+                    firstObject(
+                            "skills",
+                            "aiSkills",
+                            "ai_skills",
+                            "availableSkills",
+                            "available_skills",
+                            "codexSkills",
+                            "codex_skills",
+                            "installedSkills",
+                            "installed_skills"
+                    )
             )
     val objectGroups =
             groupObjects.flatMap { container ->
@@ -3613,11 +3788,21 @@ private fun JsonObject.toChannelMemberProfile(defaultKind: MemberKind? = null): 
     val role =
             string("role", "channelRole", "memberRole", "roleDescription")
                     ?: profile.roleDescription
+    val computerName = memberComputerName()
     val agentStatus = memberAgentStatus() ?: profile.agentStatus
     val presence =
             agentStatus?.presence
                     ?: string("presence", "status", "availability").toPresence(profile.presence)
-    val badges = listOfNotNull(role).filter { it.isNotBlank() }
+    val badges =
+            buildList {
+                profile.permissionBadges
+                        .filterNot { it.startsWith(MemberComputerBadgePrefix) }
+                        .filterNot { it.startsWith(MemberComputerIdBadgePrefix) }
+                        .forEach(::add)
+                role?.takeIf { it.isNotBlank() }?.let(::add)
+                computerName?.takeIf { it.isNotBlank() }?.let { add(it.toMemberComputerBadge()) }
+                memberComputerId()?.takeIf { it.isNotBlank() }?.let { add(it.toMemberComputerIdBadge()) }
+            }.distinct()
     return profile.copy(
             kind = defaultKind ?: explicitMemberKindOrNull() ?: profile.kind,
             roleDescription = role,
@@ -3626,6 +3811,299 @@ private fun JsonObject.toChannelMemberProfile(defaultKind: MemberKind? = null): 
             permissionBadges = if (badges.isNotEmpty()) badges else profile.permissionBadges
     )
 }
+
+private fun JsonObject.memberPermissionBadgesWithComputerName(): List<String> =
+        buildList {
+            memberComputerName()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { add(it.toMemberComputerBadge()) }
+            memberComputerId()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { add(it.toMemberComputerIdBadge()) }
+        }
+
+private fun String.toMemberComputerBadge(): String = "$MemberComputerBadgePrefix$this"
+private fun String.toMemberComputerIdBadge(): String = "$MemberComputerIdBadgePrefix$this"
+private fun String.memberComputerLabelOrNull(): String? =
+        removePrefix(MemberComputerBadgePrefix)
+                .takeIf { startsWith(MemberComputerBadgePrefix) && it.isNotBlank() }
+private fun String.memberComputerIdOrNull(): String? =
+        removePrefix(MemberComputerIdBadgePrefix)
+                .takeIf { startsWith(MemberComputerIdBadgePrefix) && it.isNotBlank() }
+
+private const val MemberComputerBadgePrefix = "computer:"
+private const val MemberComputerIdBadgePrefix = "computer-id:"
+
+private fun JsonObject.memberComputerName(): String? {
+    val direct =
+            string(
+                    "computerName",
+                    "computer_name",
+                    "machineName",
+                    "machine_name",
+                    "deviceName",
+                    "device_name",
+                    "hostname",
+                    "hostName"
+            )
+    if (!direct.isNullOrBlank()) return direct
+    val nested =
+            firstObject("computer", "machine", "daemon", "host")
+                    ?.string(
+                            "name",
+                            "displayName",
+                            "computerName",
+                            "machineName",
+                            "deviceName",
+                            "hostname",
+                            "hostName"
+                    )
+    if (!nested.isNullOrBlank()) return nested
+    return null
+}
+
+private fun JsonObject.memberComputerId(): String? {
+    val direct =
+            string(
+                    "computerId",
+                    "computer_id",
+                    "machineId",
+                    "machine_id",
+                    "daemonId",
+                    "daemon_id"
+            )
+    if (!direct.isNullOrBlank()) return direct
+    val nested =
+            firstObject("computer", "machine", "daemon", "host")
+                    ?.string(
+                            "id",
+                            "computerId",
+                            "computer_id",
+                            "machineId",
+                            "machine_id",
+                            "daemonId",
+                            "daemon_id"
+                    )
+    if (!nested.isNullOrBlank()) return nested
+    return nestedMemberObject()?.memberComputerId()
+}
+
+private fun JsonObject.agentWorkspaceSnapshots(): List<SettingsComputerWorkspaceSnapshot> {
+    val direct =
+            items(
+                            "workspaces",
+                            "workspace",
+                            "workspaceRoots",
+                            "workspace_roots",
+                            "workspaceDirectories",
+                            "workspace_directories",
+                            "workspacePaths",
+                            "workspace_paths"
+                    )
+                    .mapNotNull { it.toAgentWorkspaceSnapshot() }
+    return if (direct.isNotEmpty()) {
+        direct.distinctBy { it.id }
+    } else {
+        emptyList()
+    }
+}
+
+private fun JsonObject.machineNameMap(): Map<String, String> =
+        items("machines", "computers", "items", "nodes", "records", "rows", "list", "results", "data")
+                .mapNotNull { it.asObjectOrNull() }
+                .mapNotNull { machine ->
+                    val id = machine.string("id", "machineId", "computerId", "uuid") ?: return@mapNotNull null
+                    val label =
+                            machine.string(
+                                    "name",
+                                    "displayName",
+                                    "deviceName",
+                                    "hostname",
+                                    "hostName"
+                            ) ?: return@mapNotNull null
+                    id to label
+                }
+                .toMap()
+
+private fun List<MemberProfile>.resolveComputerLabels(
+        machineNames: Map<String, String>
+): List<MemberProfile> = map { it.resolveComputerLabel(machineNames) }
+
+private fun MemberProfile.resolveComputerLabel(machineNames: Map<String, String>): MemberProfile {
+    val badgesWithoutIds =
+            permissionBadges.filterNot { it.startsWith(MemberComputerIdBadgePrefix) }
+    val currentComputerLabel =
+            permissionBadges.firstNotNullOfOrNull { it.memberComputerLabelOrNull() }
+    if (!currentComputerLabel.isNullOrBlank()) {
+        return if (badgesWithoutIds == permissionBadges) this else copy(permissionBadges = badgesWithoutIds)
+    }
+    val machineId =
+            permissionBadges.firstNotNullOfOrNull { it.memberComputerIdOrNull() } ?: return this
+    val resolvedName = machineNames[machineId]?.takeIf { it.isNotBlank() }
+    return if (resolvedName != null) {
+        copy(permissionBadges = badgesWithoutIds + resolvedName.toMemberComputerBadge())
+    } else if (badgesWithoutIds == permissionBadges) {
+        this
+    } else {
+        copy(permissionBadges = badgesWithoutIds)
+    }
+}
+
+private fun JsonObject.agentSkillWorkspaceSnapshots(): List<SettingsComputerWorkspaceSnapshot> =
+        agentSkillGroups()
+                .filter { it.title.equals("workspace", ignoreCase = true) }
+                .flatMap { group ->
+                    group.paths.map { pathGroup ->
+                        SettingsComputerWorkspaceSnapshot(
+                                id = pathGroup.path,
+                                name = pathGroup.path.substringAfterLast('/').ifBlank {
+                                    pathGroup.path
+                                },
+                                path = pathGroup.path
+                        )
+                    }
+                }
+                .distinctBy { it.id }
+
+private fun JsonObject.toAgentWorkspaceSnapshots(): List<SettingsComputerWorkspaceSnapshot> =
+        items("workspaces", "items", "data")
+                .mapNotNull { it.asObjectOrNull()?.toAgentWorkspaceSnapshotFromObject() }
+                .distinctBy { it.id }
+
+private fun JsonElement.toAgentWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot? =
+        when {
+            isJsonPrimitive && asJsonPrimitive.isString -> {
+                val path = asString.takeIf { it.isNotBlank() } ?: return null
+                SettingsComputerWorkspaceSnapshot(
+                        id = path,
+                        name = path.substringAfterLast('/').ifBlank { path },
+                        path = path
+                )
+            }
+            isJsonObject -> asJsonObject.toAgentWorkspaceSnapshotFromObject()
+            else -> null
+        }
+
+private fun JsonObject.toAgentWorkspaceSnapshotFromObject(): SettingsComputerWorkspaceSnapshot? {
+    val path = string("path", "workspacePath", "workspace_path", "root", "directory", "dir")
+    val id = string("id", "_id", "workspaceId", "workspace_id") ?: path
+    if (id.isNullOrBlank()) return null
+    return SettingsComputerWorkspaceSnapshot(
+            id = id,
+            name =
+                    string("name", "title", "label")
+                            ?: path?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+                            ?: id,
+            path = path.orEmpty(),
+            statusLabel =
+                    string("status", "state", "health")
+                            ?: if (boolean("active", "online") == true) "active" else null,
+            lastActiveLabel = string("lastActiveAt", "last_active_at", "updatedAt", "updated_at")
+    )
+}
+
+private fun JsonObject.toWorkspaceFileNodes(): List<SlockWorkspaceNode> {
+    val root = unwrap("data", "files", "tree")
+    val entries = root.items("files", "children", "items", "nodes", "entries", "data")
+    return entries.mapNotNull { it.asObjectOrNull()?.toWorkspaceFileNode() }
+}
+
+private fun JsonObject.toWorkspaceFileNode(): SlockWorkspaceNode? {
+    val path = string("path", "fullPath", "full_path", "relativePath", "relative_path")
+        ?: string("id", "name")
+        ?: return null
+    val name = string("name", "basename", "label") ?: path.substringAfterLast('/').ifBlank { path }
+    val kind = workspaceFileKind(path)
+    return SlockWorkspaceNode(
+        id = string("id", "_id") ?: path,
+        name = name,
+        path = path,
+        kind = kind,
+        meta = sizeNumberLabel() ?: string("mimeType", "mime_type", "type"),
+        preview = firstObject("preview", "file")?.toWorkspaceFilePreview(path),
+        children =
+            items("children", "files", "items", "nodes", "entries")
+                .mapNotNull { it.asObjectOrNull()?.toWorkspaceFileNode() }
+    )
+}
+
+private fun JsonObject.toWorkspaceFilePreview(fallbackPath: String): SlockWorkspaceFilePreview {
+    val path = string("path", "fullPath", "full_path", "relativePath", "relative_path") ?: fallbackPath
+    val mimeType = string("mimeType", "mime_type", "contentType", "content_type")
+    val sizeBytes = long("sizeBytes", "size_bytes", "size")
+    val modifiedAt = string("modifiedAt", "modified_at", "updatedAt", "updated_at")
+    val content = string("content", "text", "body", "source")
+    if (content != null) {
+        val markdown =
+            boolean("markdown", "isMarkdown", "is_markdown")
+                ?: mimeType?.contains("markdown", ignoreCase = true)
+                ?: path.endsWith(".md", ignoreCase = true)
+        return SlockWorkspaceFilePreview.Text(
+            path = path,
+            content = content,
+            markdown = markdown,
+            sizeBytes = sizeBytes,
+            modifiedAt = modifiedAt,
+            mimeType = mimeType
+        )
+    }
+    val imageUrl =
+            avatarWireValue(
+                    "imageUrl",
+                    "image_url",
+                    "url",
+                    "href",
+                    "src",
+                    "downloadUrl",
+                    "download_url"
+            )
+    if (imageUrl != null) {
+        return SlockWorkspaceFilePreview.Image(
+            path = path,
+            imageUrl = imageUrl,
+            sampleAssetKey = string("sampleAssetKey", "sample_asset_key"),
+            sizeBytes = sizeBytes,
+            modifiedAt = modifiedAt,
+            mimeType = mimeType,
+            description = string("description", "alt", "caption")
+        )
+    }
+    if (path.isImagePath()) {
+        return SlockWorkspaceFilePreview.Unsupported(
+            path = path,
+            reason = "Binary image preview is not available in the current mobile contract.",
+            sizeBytes = sizeBytes,
+            modifiedAt = modifiedAt,
+            mimeType = mimeType
+        )
+    }
+    return SlockWorkspaceFilePreview.Unsupported(
+        path = path,
+        reason = string("reason", "message", "error") ?: "Preview unavailable",
+        sizeBytes = sizeBytes,
+        modifiedAt = modifiedAt,
+        mimeType = mimeType
+    )
+}
+
+private fun JsonObject.workspaceFileKind(path: String): SlockWorkspaceFileKind {
+    val type = string("kind", "type", "fileType", "file_type")?.lowercase()
+    return when {
+        type in setOf("dir", "directory", "folder") -> SlockWorkspaceFileKind.Folder
+        type in setOf("markdown", "md") || path.endsWith(".md", ignoreCase = true) -> SlockWorkspaceFileKind.Markdown
+        type in setOf("image", "photo") || path.isImagePath() -> SlockWorkspaceFileKind.Image
+        type in setOf("file", "text") -> SlockWorkspaceFileKind.Text
+        else -> SlockWorkspaceFileKind.Unsupported
+    }
+}
+
+private fun String.isImagePath(): Boolean =
+    endsWith(".png", ignoreCase = true) ||
+        endsWith(".jpg", ignoreCase = true) ||
+        endsWith(".jpeg", ignoreCase = true) ||
+        endsWith(".gif", ignoreCase = true) ||
+        endsWith(".webp", ignoreCase = true) ||
+        endsWith(".heic", ignoreCase = true)
 
 private fun JsonObject.memberItems(): List<MemberProfile> {
     val root = unwrap("data")
@@ -3877,7 +4355,8 @@ private fun JsonObject.toMessageAuthorProfile(): MemberProfile {
 
 private fun JsonObject.toTaskSummary(): TaskSummary? {
     val id = string("id", "taskId") ?: return null
-    val title = string("title", "body", "content") ?: return null
+    val taskNumber = int("taskNumber", "number")
+    val title = taskDisplayTitle(taskNumber) ?: return null
     val assignee =
             firstObject(
                             "assignee",
@@ -3923,7 +4402,7 @@ private fun JsonObject.toTaskSummary(): TaskSummary? {
             id = TaskId(id),
             title = title,
             status = string("status", "taskStatus")?.toTaskStatus() ?: TaskStatus.Todo,
-            taskNumber = int("taskNumber", "number"),
+            taskNumber = taskNumber,
             messageId = messageId,
             parentMessageId = parentMessageId,
             channelId = channelId?.let(::ChannelId),
@@ -3952,6 +4431,36 @@ private fun JsonObject.toTaskSummary(): TaskSummary? {
                     ) ?: "",
             canClaim = boolean("canClaim") ?: true
     )
+}
+
+private fun JsonObject.taskDisplayTitle(taskNumber: Int?): String? {
+    val candidates =
+            listOfNotNull(
+                    string("title"),
+                    string("content"),
+                    string("description"),
+                    string("body"),
+                    string("text"),
+                    firstObject("message", "parentMessage", "sourceMessage")
+                            ?.string("body", "content", "text", "title")
+            )
+    return candidates.firstNotNullOfOrNull { candidate ->
+        candidate.takeMeaningfulTaskTitle(taskNumber)
+    }
+}
+
+private fun String.takeMeaningfulTaskTitle(taskNumber: Int?): String? {
+    val trimmed = trim()
+    if (trimmed.isBlank()) return null
+    val number = taskNumber ?: return trimmed
+    val placeholders =
+            setOf(
+                    "#$number",
+                    number.toString(),
+                    "task #$number",
+                    "task $number"
+            )
+    return trimmed.takeUnless { it.lowercase() in placeholders }
 }
 
 private fun JsonObject.toTaskSnapshot(): TaskSnapshot {

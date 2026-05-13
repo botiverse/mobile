@@ -1,8 +1,10 @@
 package ai.slock.android.core.data.local
 
 import ai.slock.android.core.data.repository.DataResult
+import ai.slock.android.core.data.repository.ChannelUnreadSnapshot
 import ai.slock.android.core.data.repository.HomeSnapshot
 import ai.slock.android.core.data.repository.SendMessageResult
+import ai.slock.android.core.data.repository.TaskSnapshot
 import ai.slock.android.core.data.repository.ThreadSnapshot
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationKind
@@ -18,6 +20,7 @@ import ai.slock.android.core.model.ThreadUpdated
 import ai.slock.android.core.model.TaskCreated
 import ai.slock.android.core.model.TaskUpdated
 import ai.slock.android.core.model.TaskDeleted
+import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.MemberPresenceUpdated
 import ai.slock.android.core.model.SyncResumeResponse
 import ai.slock.android.core.model.Heartbeat
@@ -26,16 +29,17 @@ import ai.slock.android.core.model.ServerSummary
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadConversation
-import ai.slock.shared.model.messageStreamChannelId
-import ai.slock.shared.model.threadIdentity
-import ai.slock.shared.model.withTitleFallback
+import ai.slock.compose.model.messageStreamChannelId
+import ai.slock.compose.model.threadIdentity
+import ai.slock.compose.model.withTitleFallback
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.thread.ComposerState
 import ai.slock.android.feature.thread.ComposerStatus
 import ai.slock.android.feature.thread.ThreadContent
 import ai.slock.android.feature.thread.ThreadUiState
 import kotlinx.coroutines.flow.Flow
-import ai.slock.shared.model.explicitMessageStreamChannelId
+import kotlinx.coroutines.flow.map
+import ai.slock.compose.model.explicitMessageStreamChannelId
 
 class SlockLocalWriteThrough(
     private val store: SlockLocalStore,
@@ -51,16 +55,9 @@ class SlockLocalWriteThrough(
         logger(
             "read_home serverId=${serverId.value} hit=${home.isNotEmpty} channels=${home.channels.size} directMessages=${home.directMessages.size}"
         )
-        if (!home.isNotEmpty) return null
-        val unreadTotal =
-            home.channels.sumOf { it.unreadCount } +
-                home.directMessages.sumOf { it.unreadCount }
-        return HomeSnapshot(
-            server = serverFallback.copy(unreadCount = maxOf(serverFallback.unreadCount, unreadTotal)),
-            currentMember = currentMemberFallback,
-            channels = home.channels,
-            directMessages = home.directMessages,
-            unreadTotal = unreadTotal
+        return home.toHomeSnapshot(
+            serverFallback = serverFallback,
+            currentMemberFallback = currentMemberFallback
         )
     }
 
@@ -81,6 +78,34 @@ class SlockLocalWriteThrough(
     fun observeThreadTimeline(threadId: ThreadId): Flow<LocalThreadTimeline?> =
         store.observeThreadTimeline(threadId)
 
+    fun readTaskSnapshot(): TaskSnapshot? {
+        deleteLegacySampleTaskReferences()
+        val tasks = store.getTaskReferences()
+        logger("read_tasks hit=${tasks.isNotEmpty()} count=${tasks.size}")
+        return tasks.takeIf { it.isNotEmpty() }?.toTaskSnapshot()
+    }
+
+    fun observeTaskSnapshot(): Flow<TaskSnapshot?> =
+        store.observeTaskReferences()
+            .map { tasks ->
+                val cleanedTasks = tasks.withoutLegacySampleTaskReferences()
+                logger("observe_tasks_emit count=${cleanedTasks.size}")
+                cleanedTasks.takeIf { it.isNotEmpty() }?.toTaskSnapshot()
+            }
+
+    fun observeHomeSnapshot(
+        serverId: ServerId,
+        serverFallback: ServerSummary,
+        currentMemberFallback: MemberProfile
+    ): Flow<HomeSnapshot?> =
+        store.observeHomeConversations(serverId)
+            .map { home ->
+                home.toHomeSnapshot(
+                    serverFallback = serverFallback,
+                    currentMemberFallback = currentMemberFallback
+                )
+            }
+
     fun readThreadUiState(
         threadId: ThreadId,
         fallbackHeader: ConversationSummary? = null,
@@ -94,6 +119,95 @@ class SlockLocalWriteThrough(
     fun clearConversationUnread(channelId: ChannelId, source: String) {
         store.clearConversationUnread(channelId, clock())
         logger("clear_home_unread source=$source channelId=${channelId.value}")
+    }
+
+    fun clearAllHomeUnread(serverId: ServerId, source: String) {
+        val home = store.getHomeConversations(serverId)
+        if (!home.isNotEmpty) {
+            logger("clear_home_unread_all_skip source=$source serverId=${serverId.value} reason=missing_home")
+            return
+        }
+        val syncedAtMs = clock()
+        (home.channels + home.directMessages)
+            .mapNotNull { it.channelId ?: ChannelId(it.threadId.value) }
+            .distinct()
+            .forEach { channelId -> store.clearConversationUnread(channelId, syncedAtMs) }
+        logger("clear_home_unread_all source=$source serverId=${serverId.value}")
+    }
+
+    fun writeHomeConversations(
+        serverId: ServerId,
+        conversations: List<ConversationSummary>,
+        source: String
+    ) {
+        if (conversations.isEmpty()) return
+        val syncedAtMs = clock()
+        conversations.forEach { conversation ->
+            store.upsertConversation(conversation, syncedAtMs, serverId)
+        }
+        logger(
+            "write_home_conversations source=$source serverId=${serverId.value} count=${conversations.size}"
+        )
+    }
+
+    fun writeAgentDirectMessagePresence(
+        serverId: ServerId,
+        members: List<MemberProfile>,
+        source: String
+    ): Boolean {
+        val agents = members.filter { it.kind == MemberKind.Agent }
+        if (agents.isEmpty()) return false
+        val home = store.getHomeConversations(serverId)
+        if (!home.isNotEmpty) {
+            logger("write_home_presence_skip source=$source serverId=${serverId.value} reason=missing_home")
+            return false
+        }
+        val syncedAtMs = clock()
+        var changed = false
+        home.directMessages
+            .map { conversation ->
+                if (conversation.presence != null) {
+                    conversation
+                } else {
+                    val agent = agents.firstOrNull { it.matchesDirectMessage(conversation) }
+                    if (agent != null) {
+                        changed = true
+                        conversation.copy(
+                            presence = agent.presence,
+                            agentStatus = agent.agentStatus,
+                            presenceMemberId = conversation.presenceMemberId ?: agent.id
+                        )
+                    } else {
+                        conversation
+                    }
+                }
+            }
+            .forEach { conversation -> store.upsertConversation(conversation, syncedAtMs, serverId) }
+        logger(
+            "write_home_presence source=$source serverId=${serverId.value} changed=$changed agents=${agents.size}"
+        )
+        return changed
+    }
+
+    fun writeUnreadCounts(result: DataResult<ChannelUnreadSnapshot>, source: String) {
+        val snapshot = (result as? DataResult.Content)?.data
+        if (snapshot == null) {
+            logger("write_home_unread_skip source=$source reason=${result.localWriteSkipReason()}")
+            return
+        }
+        val serverId = snapshot.server.id
+        val home = store.getHomeConversations(serverId)
+        if (!home.isNotEmpty) {
+            logger("write_home_unread_skip source=$source reason=missing_home serverId=${serverId.value}")
+            return
+        }
+        val syncedAtMs = clock()
+        (home.channels + home.directMessages)
+            .map { conversation -> conversation.withUnreadCounts(snapshot.unreadCounts) }
+            .forEach { conversation -> store.upsertConversation(conversation, syncedAtMs, serverId) }
+        logger(
+            "write_home_unread source=$source serverId=${serverId.value} counts=${snapshot.unreadCounts.size} total=${snapshot.totalUnreadCount}"
+        )
     }
 
     fun writeThreadResult(
@@ -133,7 +247,7 @@ class SlockLocalWriteThrough(
                 val previous =
                     existingDirectMessages[conversation.channelId?.value ?: conversation.threadId.value]
                 if (previous != null) {
-                    conversation.withDirectMessagePresenceFallback(previous)
+                    conversation.withStoredDirectMessagePresence(previous)
                 } else {
                     conversation
                 }
@@ -156,13 +270,22 @@ class SlockLocalWriteThrough(
         writeMessages(listOf(message), source)
     }
 
-    private fun ConversationSummary.withDirectMessagePresenceFallback(
+    private fun ConversationSummary.withStoredDirectMessagePresence(
         previous: ConversationSummary
     ): ConversationSummary =
         copy(
             presence = presence ?: previous.presence,
             agentStatus = agentStatus ?: previous.agentStatus,
             presenceMemberId = presenceMemberId ?: previous.presenceMemberId
+        )
+
+    private fun List<TaskSummary>.toTaskSnapshot(): TaskSnapshot =
+        TaskSnapshot(
+            tasks = this,
+            summaryCounts =
+                ai.slock.android.core.model.TaskStatus.entries.associateWith { status ->
+                    count { task -> task.status == status }
+                }
         )
 
     fun writeRealtimeEvent(serverId: ServerId, event: RealtimeEvent) {
@@ -185,6 +308,12 @@ class SlockLocalWriteThrough(
             is ThreadUpdated -> updateThreadMetadata(event, "socket_thread_updated")
             is MemberPresenceUpdated -> updateHomePresence(serverId, event)
             else -> Unit
+        }
+    }
+
+    fun writeTaskResult(result: DataResult<TaskSnapshot>, source: String) {
+        (result as? DataResult.Content)?.data?.tasks?.let { tasks ->
+            writeTasks(tasks, source)
         }
     }
 
@@ -342,6 +471,21 @@ class SlockLocalWriteThrough(
         logger("write_tasks source=$source deleted=${taskId.value}")
     }
 
+    private fun deleteLegacySampleTaskReferences() {
+        legacySampleTaskReferenceIds.forEach { taskId ->
+            store.deleteTaskReference(taskId)
+        }
+    }
+
+    private fun List<TaskSummary>.withoutLegacySampleTaskReferences(): List<TaskSummary> {
+        val legacyIds = legacySampleTaskReferenceIds.mapTo(mutableSetOf()) { it.value }
+        val cleaned = filterNot { task -> task.id.value in legacyIds }
+        if (cleaned.size != size) {
+            deleteLegacySampleTaskReferences()
+        }
+        return cleaned
+    }
+
     private fun updateThreadMetadata(event: ThreadUpdated, source: String) {
         store.updateMessageThreadMetadata(
             parentMessageId = event.parentMessageId,
@@ -423,6 +567,31 @@ class SlockLocalWriteThrough(
         store.upsertMessage(message, syncedAtMs, streamChannelId)
         return true
     }
+
+    private companion object {
+        val legacySampleTaskReferenceIds =
+            listOf(
+                TaskId("sample-task"),
+                TaskId("task-6"),
+                TaskId("task-9"),
+                TaskId("task-review")
+            )
+    }
+}
+
+private fun LocalHomeConversations.toHomeSnapshot(
+    serverFallback: ServerSummary,
+    currentMemberFallback: MemberProfile
+): HomeSnapshot? {
+    if (!isNotEmpty) return null
+    val unreadTotal = channels.sumOf { it.unreadCount } + directMessages.sumOf { it.unreadCount }
+    return HomeSnapshot(
+        server = serverFallback.copy(unreadCount = maxOf(serverFallback.unreadCount, unreadTotal)),
+        currentMember = currentMemberFallback,
+        channels = channels,
+        directMessages = directMessages,
+        unreadTotal = unreadTotal
+    )
 }
 
 private fun requireValidSnapshotId(value: String?, fieldName: String, source: String) {
@@ -458,6 +627,20 @@ private fun ConversationSummary.mergeHomeMessage(
     )
 }
 
+private fun ConversationSummary.withUnreadCounts(
+    unreadCounts: Map<ChannelId, Int>
+): ConversationSummary {
+    val id = channelId ?: ChannelId(threadId.value)
+    val count = unreadCounts[id] ?: return this
+    return copy(
+        unreadCount = count,
+        unreadCountKnown = true,
+        mentionCount = 0,
+        mentionCountKnown = true,
+        firstUnreadMessageId = firstUnreadMessageId.takeIf { count > 0 }
+    )
+}
+
 private fun ConversationSummary.matchesPresenceMember(
     event: MemberPresenceUpdated
 ): Boolean =
@@ -466,6 +649,14 @@ private fun ConversationSummary.matchesPresenceMember(
         (presenceMemberId == event.memberId ||
             channelId?.value == event.memberId.value ||
             threadId.value == event.memberId.value)
+
+private fun MemberProfile.matchesDirectMessage(conversation: ConversationSummary): Boolean =
+    conversation.presenceMemberId == id ||
+        conversation.channelId?.value == id.value ||
+        conversation.threadId.value == id.value ||
+        handle.equals(conversation.name, ignoreCase = true) ||
+        displayName.equals(conversation.name, ignoreCase = true) ||
+        handle.equals(conversation.name.removePrefix("@"), ignoreCase = true)
 
 fun LocalThreadTimeline.toThreadUiState(
     fallbackHeader: ConversationSummary? = null,

@@ -7,7 +7,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.ResponseBody
-import retrofit2.Response
+import ai.slock.android.core.data.network.ApiResponse
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
@@ -76,8 +76,8 @@ class AuthServerRepositoryTest {
     fun createServerPostsRequestAndSelectsCreatedServer() {
         val store = InMemoryAuthSessionStore(sampleSession)
         val api = FakeAuthApi(
-            createResponse = Response.success("""{"server":$createdServerJson}""".jsonBody()),
-            serversResponse = Response.success("""{"servers":[${sampleServerJson("server-1", "Slock One", "slock-one")},$createdServerJson]}""".jsonBody())
+            createResponse = ApiResponse.success("""{"server":$createdServerJson}""".jsonBody()),
+            serversResponse = ApiResponse.success("""{"servers":[${sampleServerJson("server-1", "Slock One", "slock-one")},$createdServerJson]}""".jsonBody())
         )
         val repository = AuthServerRepository(store, FakeAuthRepository(), api)
 
@@ -122,6 +122,16 @@ class AuthServerRepositoryTest {
         override suspend fun login(email: String, password: String): AuthResult<AuthSessionSummary> =
             AuthResult.Failure(AuthErrorCode.Validation, "Not used in this test.")
 
+        override suspend fun register(
+            name: String,
+            email: String,
+            password: String
+        ): AuthResult<AuthSessionSummary> =
+            AuthResult.Failure(AuthErrorCode.Validation, "Not used in this test.")
+
+        override suspend fun forgotPassword(email: String): AuthResult<Unit> =
+            AuthResult.Failure(AuthErrorCode.Validation, "Not used in this test.")
+
         override suspend fun restoreSession(): AuthResult<AuthSessionSummary> =
             AuthResult.Failure(AuthErrorCode.Validation, "Not used in this test.")
 
@@ -136,30 +146,36 @@ class AuthServerRepositoryTest {
     }
 
     private class FakeAuthApi(
-        private val createResponse: Response<ResponseBody>,
-        private val serversResponse: Response<ResponseBody>
+        private val createResponse: ApiResponse,
+        private val serversResponse: ApiResponse
     ) : AuthApi {
         var createBody: String? = null
 
-        override suspend fun login(body: RequestBody): Response<ResponseBody> =
-            Response.success("""{}""".jsonBody())
+        override suspend fun login(body: RequestBody): ApiResponse =
+            ApiResponse.success("""{}""".jsonBody())
 
-        override suspend fun currentUser(authorization: String): Response<ResponseBody> =
-            Response.success("""{}""".jsonBody())
+        override suspend fun register(body: RequestBody): ApiResponse =
+            ApiResponse.success("""{}""".jsonBody())
 
-        override suspend fun refresh(body: RequestBody): Response<ResponseBody> =
-            Response.success("""{}""".jsonBody())
+        override suspend fun forgotPassword(body: RequestBody): ApiResponse =
+            ApiResponse.success("""{}""".jsonBody())
 
-        override suspend fun logout(body: RequestBody): Response<ResponseBody> =
-            Response.success("""{}""".jsonBody())
+        override suspend fun currentUser(authorization: String): ApiResponse =
+            ApiResponse.success("""{}""".jsonBody())
 
-        override suspend fun servers(authorization: String): Response<ResponseBody> =
+        override suspend fun refresh(body: RequestBody): ApiResponse =
+            ApiResponse.success("""{}""".jsonBody())
+
+        override suspend fun logout(body: RequestBody): ApiResponse =
+            ApiResponse.success("""{}""".jsonBody())
+
+        override suspend fun servers(authorization: String): ApiResponse =
             serversResponse
 
         override suspend fun createServer(
             authorization: String,
             body: RequestBody
-        ): Response<ResponseBody> {
+        ): ApiResponse {
             val buffer = okio.Buffer()
             body.writeTo(buffer)
             createBody = buffer.readUtf8()

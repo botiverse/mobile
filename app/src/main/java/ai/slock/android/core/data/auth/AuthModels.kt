@@ -6,7 +6,7 @@ import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
-import ai.slock.shared.model.toGravatarAvatarReference
+import ai.slock.compose.model.toGravatarAvatarReference
 import com.google.gson.annotations.SerializedName
 
 data class AuthUser(
@@ -124,10 +124,20 @@ data class LoginRequest(
     val password: String
 )
 
+data class RegisterRequest(
+    val email: String,
+    val password: String,
+    val name: String
+)
+
 data class LoginResponse(
     val user: AuthUser,
     val accessToken: String,
     val refreshToken: String
+)
+
+data class ForgotPasswordRequest(
+    val email: String
 )
 
 data class RefreshRequest(

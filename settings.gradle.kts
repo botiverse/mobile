@@ -16,7 +16,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // Add mavenLocal to consume KMP shared module
+        // Add mavenLocal to consume the Kuikly Compose shared module
         mavenLocal()
         // Add Tencent Maven repository for KuiklyUI dependencies
         maven {
@@ -27,4 +27,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "Slock"
 include(":app")
- 

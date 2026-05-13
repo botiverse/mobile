@@ -1,5 +1,6 @@
 package ai.slock.android.core.data.auth
 
+import ai.slock.android.core.data.network.ApiResponse
 import ai.slock.android.core.data.repository.ChannelSnapshot
 import ai.slock.android.core.data.repository.CreateServerRequest
 import ai.slock.android.core.data.repository.DataResult
@@ -18,13 +19,11 @@ import com.google.gson.JsonObject
 import java.io.IOException
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.ResponseBody
-import retrofit2.Response
 
 class AuthServerRepository(
     private val store: AuthSessionStore,
     private val authRepository: AuthRepository,
-    private val api: AuthApi = RetrofitAuthRepository.createAuthApi()
+    private val api: AuthApi = KtorAuthRepository.createAuthApi()
 ) : ServerRepository {
     private val gson = Gson()
 
@@ -125,7 +124,7 @@ class AuthServerRepository(
     private fun List<AuthServer>.upsert(server: AuthServer): List<AuthServer> =
         (this.filterNot { it.id == server.id } + server)
 
-    private fun Response<ResponseBody>.parseCreatedServer(): AuthServer {
+    private fun ApiResponse.parseCreatedServer(): AuthServer {
         val root = parseJsonRoot()
         val serverJson = if (root.isJsonObject) {
             val objectRoot = root.asJsonObject
@@ -136,7 +135,7 @@ class AuthServerRepository(
         return gson.fromJson(serverJson, AuthServer::class.java)
     }
 
-    private fun Response<ResponseBody>.parseAuthServers(): List<AuthServer> {
+    private fun ApiResponse.parseAuthServers(): List<AuthServer> {
         val root = parseJsonRoot()
         val serversJson = when {
             root.isJsonArray -> root.asJsonArray
@@ -151,7 +150,7 @@ class AuthServerRepository(
         return serversJson.map { gson.fromJson(it, AuthServer::class.java) }
     }
 
-    private fun Response<ResponseBody>.parseJsonRoot(): JsonElement {
+    private fun ApiResponse.parseJsonRoot(): JsonElement {
         if (!isSuccessful) {
             throw ServerHttpException(code())
         }

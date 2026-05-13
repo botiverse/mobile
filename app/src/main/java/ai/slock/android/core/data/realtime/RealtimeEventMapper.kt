@@ -366,7 +366,8 @@ private fun JsonObject.sizeNumberLabel(): String? =
 
 private fun JsonObject.toTaskSummary(): TaskSummary? {
     val id = string("id", "taskId") ?: return null
-    val title = string("title", "body", "content") ?: return null
+    val taskNumber = int("taskNumber", "number")
+    val title = taskDisplayTitle(taskNumber) ?: return null
     val messageId = string("messageId")?.let(::MessageId)
     val explicitThreadId = string(
         "threadChannelId",
@@ -398,7 +399,7 @@ private fun JsonObject.toTaskSummary(): TaskSummary? {
         id = TaskId(id),
         title = title,
         status = string("status", "taskStatus")?.toTaskStatus() ?: TaskStatus.Todo,
-        taskNumber = int("taskNumber", "number"),
+        taskNumber = taskNumber,
         messageId = messageId,
         parentMessageId = parentMessageId,
         channelId = channelId?.let(::ChannelId),
@@ -416,6 +417,36 @@ private fun JsonObject.toTaskSummary(): TaskSummary? {
         updatedAtLabel = string("updatedAt", "createdAt") ?: "",
         canClaim = boolean("canClaim") ?: true
     )
+}
+
+private fun JsonObject.taskDisplayTitle(taskNumber: Int?): String? {
+    val candidates =
+        listOfNotNull(
+            string("title"),
+            string("content"),
+            string("description"),
+            string("body"),
+            string("text"),
+            firstObject("message", "parentMessage", "sourceMessage")
+                ?.string("body", "content", "text", "title")
+        )
+    return candidates.firstNotNullOfOrNull { candidate ->
+        candidate.takeMeaningfulTaskTitle(taskNumber)
+    }
+}
+
+private fun String.takeMeaningfulTaskTitle(taskNumber: Int?): String? {
+    val trimmed = trim()
+    if (trimmed.isBlank()) return null
+    val number = taskNumber ?: return trimmed
+    val placeholders =
+        setOf(
+            "#$number",
+            number.toString(),
+            "task #$number",
+            "task $number"
+        )
+    return trimmed.takeUnless { it.lowercase() in placeholders }
 }
 
 private fun JsonObject.claimedByFallback(): MemberProfile? {

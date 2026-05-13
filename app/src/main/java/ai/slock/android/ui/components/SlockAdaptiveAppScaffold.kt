@@ -34,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -351,7 +350,7 @@ private fun SlockNavigationRailItem(
         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
     ) {
         Icon(
-            painter = painterResource(item.icon),
+            imageVector = item.icon,
             contentDescription = item.contentDescription,
             tint = SlockColor.TextBlack,
             modifier = Modifier.size(20.dp)

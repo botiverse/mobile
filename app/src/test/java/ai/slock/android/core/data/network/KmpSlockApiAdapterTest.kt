@@ -16,18 +16,16 @@ import io.ktor.client.request.header
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import java.lang.reflect.Proxy
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import retrofit2.Response
+import ai.slock.android.core.data.network.ApiResponse
 
 class KmpSlockApiAdapterTest {
     @Test
@@ -47,7 +45,6 @@ class KmpSlockApiAdapterTest {
         val api =
                 KmpSlockApiAdapter(
                         store = InMemoryAuthSessionStore(sampleSession),
-                        fallback = unusedFallback(),
                         baseUrl = "https://api.example.test/api/",
                         httpClient = client
                 )
@@ -88,7 +85,6 @@ class KmpSlockApiAdapterTest {
         val api =
                 KmpSlockApiAdapter(
                         store = InMemoryAuthSessionStore(sampleSession),
-                        fallback = unusedFallback(),
                         baseUrl = "https://api.example.test/api/",
                         httpClient = client
                 )
@@ -129,7 +125,6 @@ class KmpSlockApiAdapterTest {
         val api =
                 KmpSlockApiAdapter(
                         store = store,
-                        fallback = unusedFallback(),
                         baseUrl = "https://api.example.test/api/",
                         tokenRefresher =
                                 AuthTokenRefresher(
@@ -151,6 +146,44 @@ class KmpSlockApiAdapterTest {
     }
 
     @Test
+    fun clearsSessionWhenRetriedRequestIsStillUnauthorized() {
+        val authorizations = mutableListOf<String?>()
+        val client =
+                HttpClient(
+                        MockEngine { request ->
+                            authorizations += request.headers["Authorization"]
+                            respond(
+                                    content = """{"error":"unauthorized"}""",
+                                    status = HttpStatusCode.Unauthorized,
+                                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                            )
+                        }
+                )
+        val store = InMemoryAuthSessionStore(sampleSession)
+        val api =
+                KmpSlockApiAdapter(
+                        store = store,
+                        baseUrl = "https://api.example.test/api/",
+                        tokenRefresher =
+                                AuthTokenRefresher(
+                                        store = store,
+                                        api = RefreshingAuthApi(),
+                                        logger = {},
+                                        warningLogger = {}
+                                ),
+                        httpClient = client,
+                        logger = {},
+                        warningLogger = {}
+                )
+
+        val response = runBlocking { api.channels() }
+
+        assertEquals(401, response.code())
+        assertEquals(listOf("Bearer old-access", "Bearer new-access"), authorizations)
+        assertEquals(null, runBlocking { store.readSession() })
+    }
+
+    @Test
     fun uploadAttachmentsUsesKmpMultipartBody() {
         var captured: HttpRequestData? = null
         val client =
@@ -168,7 +201,6 @@ class KmpSlockApiAdapterTest {
         val api =
                 KmpSlockApiAdapter(
                         store = InMemoryAuthSessionStore(sampleSession),
-                        fallback = unusedFallback(),
                         baseUrl = "https://api.example.test/api/",
                         httpClient = client
                 )
@@ -219,30 +251,36 @@ class KmpSlockApiAdapterTest {
     }
 
     private class RefreshingAuthApi : AuthApi {
-        override suspend fun login(body: RequestBody): Response<ResponseBody> =
+        override suspend fun login(body: RequestBody): ApiResponse =
                 unsupported()
 
-        override suspend fun currentUser(authorization: String): Response<ResponseBody> =
+        override suspend fun register(body: RequestBody): ApiResponse =
                 unsupported()
 
-        override suspend fun refresh(body: RequestBody): Response<ResponseBody> =
-                Response.success(
+        override suspend fun forgotPassword(body: RequestBody): ApiResponse =
+                unsupported()
+
+        override suspend fun currentUser(authorization: String): ApiResponse =
+                unsupported()
+
+        override suspend fun refresh(body: RequestBody): ApiResponse =
+                ApiResponse.success(
                         """{"accessToken":"new-access","refreshToken":"new-refresh"}"""
                                 .toResponseBody()
                 )
 
-        override suspend fun logout(body: RequestBody): Response<ResponseBody> =
+        override suspend fun logout(body: RequestBody): ApiResponse =
                 unsupported()
 
-        override suspend fun servers(authorization: String): Response<ResponseBody> =
+        override suspend fun servers(authorization: String): ApiResponse =
                 unsupported()
 
         override suspend fun createServer(
                 authorization: String,
                 body: RequestBody
-        ): Response<ResponseBody> = unsupported()
+        ): ApiResponse = unsupported()
 
-        private fun unsupported(): Response<ResponseBody> =
+        private fun unsupported(): ApiResponse =
                 error("Unexpected auth API call")
     }
 
@@ -278,13 +316,5 @@ class KmpSlockApiAdapterTest {
                                         )
                                 )
                 )
-
-        private fun unusedFallback(): SlockApi =
-                Proxy.newProxyInstance(
-                        SlockApi::class.java.classLoader,
-                        arrayOf(SlockApi::class.java)
-                ) { _, method, _ ->
-                    error("Unexpected fallback call: ${method.name}")
-                } as SlockApi
     }
 }

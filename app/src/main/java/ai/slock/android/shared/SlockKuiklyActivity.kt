@@ -1,0 +1,300 @@
+package ai.slock.android.shared
+
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
+import android.os.Bundle
+import android.util.Base64
+import android.util.Log
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import ai.slock.android.BuildConfig
+import ai.slock.android.R
+import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
+import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext
+import com.tencent.kuikly.core.render.android.adapter.HRImageLoadOption
+import com.tencent.kuikly.core.render.android.adapter.IKRFontAdapter
+import com.tencent.kuikly.core.render.android.adapter.IKRImageAdapter
+import com.tencent.kuikly.core.render.android.adapter.IKRLogAdapter
+import com.tencent.kuikly.core.render.android.adapter.IKRRouterAdapter
+import com.tencent.kuikly.core.render.android.adapter.IKRThreadAdapter
+import com.tencent.kuikly.core.render.android.adapter.IKRUncaughtExceptionHandlerAdapter
+import com.tencent.kuikly.core.render.android.adapter.KuiklyRenderAdapterManager
+import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegator
+import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegatorDelegate
+import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
+import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
+import java.util.concurrent.Executors
+import org.json.JSONObject
+
+class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDelegate {
+
+    private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
+
+    private val pageName: String
+        get() = intent.getStringExtra(KEY_PAGE_NAME).takeUnless { it.isNullOrBlank() } ?: PAGE_ROUTER
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        SlockKuiklyAdapters.init(applicationContext)
+        setContentView(R.layout.activity_slock_kuikly)
+        setupImmersiveMode()
+        val container = findViewById<ViewGroup>(R.id.slock_kuikly_container)
+        kuiklyRenderViewDelegator.onAttach(container, "", pageName, createPageData())
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        kuiklyRenderViewDelegator.onDetach()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        kuiklyRenderViewDelegator.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        kuiklyRenderViewDelegator.onResume()
+    }
+
+    override fun registerExternalModule(kuiklyRenderExport: IKuiklyRenderExport) {
+        super.registerExternalModule(kuiklyRenderExport)
+        kuiklyRenderExport.moduleExport(SlockKuiklyBridgeModule.MODULE_NAME) {
+            SlockKuiklyBridgeModule(applicationContext)
+        }
+    }
+
+    private fun createPageData(): Map<String, Any> {
+        return argsToMap().apply {
+            put("appId", 1)
+        }
+    }
+
+    private fun argsToMap(): MutableMap<String, Any> {
+        val jsonStr = intent.getStringExtra(KEY_PAGE_DATA) ?: return mutableMapOf()
+        return JSONObject(jsonStr).toMap().toMutableMap()
+    }
+
+    private fun setupImmersiveMode() {
+        window?.apply {
+            addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+            statusBarColor = Color.TRANSPARENT
+            decorView.systemUiVisibility =
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                            View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        }
+    }
+
+    companion object {
+        const val PAGE_LOGIN = "compose_login"
+        const val PAGE_REGISTER = "compose_register"
+        const val PAGE_FORGOT_PASSWORD = "compose_forgot_password"
+        const val PAGE_ROUTER = "router"
+
+        private const val KEY_PAGE_NAME = "pageName"
+        private const val KEY_PAGE_DATA = "pageData"
+
+        fun start(context: Context, pageName: String, pageData: JSONObject = JSONObject()) {
+            SlockKuiklyAdapters.init(context.applicationContext)
+            val starter =
+                    Intent(context, SlockKuiklyActivity::class.java)
+                            .putExtra(KEY_PAGE_NAME, pageName)
+                            .putExtra(KEY_PAGE_DATA, pageData.toString())
+            if (context !is Activity) {
+                starter.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(starter)
+        }
+    }
+}
+
+private object SlockKuiklyAdapters {
+    private var initialized = false
+
+    fun init(context: Context) {
+        if (initialized) {
+            return
+        }
+        initialized = true
+        with(KuiklyRenderAdapterManager) {
+            krImageAdapter = SlockKuiklyImageAdapter(context.applicationContext)
+            krLogAdapter = SlockKuiklyLogAdapter
+            krUncaughtExceptionHandlerAdapter = SlockKuiklyExceptionAdapter
+            krFontAdapter = SlockKuiklyFontAdapter
+            krRouterAdapter = SlockKuiklyRouterAdapter
+            krThreadAdapter = SlockKuiklyThreadAdapter
+        }
+    }
+}
+
+private object SlockKuiklyRouterAdapter : IKRRouterAdapter {
+    override fun openPage(context: Context, pageName: String, pageData: JSONObject) {
+        SlockKuiklyActivity.start(context, pageName, pageData)
+    }
+
+    override fun closePage(context: Context) {
+        (context as? Activity)?.finish()
+    }
+}
+
+private object SlockKuiklyLogAdapter : IKRLogAdapter {
+    override val asyncLogEnable: Boolean = true
+
+    override fun i(tag: String, msg: String) {
+        Log.i(tag, msg)
+    }
+
+    override fun d(tag: String, msg: String) {
+        Log.d(tag, msg)
+    }
+
+    override fun e(tag: String, msg: String) {
+        Log.e(tag, msg)
+    }
+}
+
+private object SlockKuiklyExceptionAdapter : IKRUncaughtExceptionHandlerAdapter {
+    override fun uncaughtException(throwable: Throwable) {
+        if (BuildConfig.DEBUG) {
+            throw throwable
+        }
+        Log.e("SlockKuikly", "Kuikly render error", throwable)
+    }
+}
+
+private object SlockKuiklyFontAdapter : IKRFontAdapter {
+    override fun getTypeface(fontFamily: String, result: (Typeface?) -> Unit) {
+        result(null)
+    }
+}
+
+private object SlockKuiklyThreadAdapter : IKRThreadAdapter {
+    private val executor = Executors.newFixedThreadPool(2)
+
+    override fun executeOnSubThread(task: () -> Unit) {
+        executor.execute(task)
+    }
+}
+
+private class SlockKuiklyImageAdapter(
+        private val context: Context
+) : IKRImageAdapter {
+    override fun fetchDrawable(
+            imageLoadOption: HRImageLoadOption,
+            callback: (drawable: Drawable?) -> Unit
+    ) {
+        when {
+            imageLoadOption.isBase64() -> loadFromBase64(imageLoadOption, callback)
+            imageLoadOption.isAssets() -> loadFromAssets(imageLoadOption, callback)
+            else -> callback(null)
+        }
+    }
+
+    override fun getDrawableWidth(
+            kuiklyRenderViewContext: KuiklyRenderViewContext,
+            drawable: Drawable
+    ): Float = drawable.intrinsicWidth.toFloat()
+
+    override fun getDrawableHeight(
+            kuiklyRenderViewContext: KuiklyRenderViewContext,
+            drawable: Drawable
+    ): Float = drawable.intrinsicHeight.toFloat()
+
+    private fun loadFromBase64(
+            imageLoadOption: HRImageLoadOption,
+            callback: (drawable: Drawable?) -> Unit
+    ) {
+        SlockKuiklyThreadAdapter.executeOnSubThread {
+            runCatching {
+                        val bytes = Base64.decode(imageLoadOption.src.substringAfter(","), Base64.DEFAULT)
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    }
+                    .onSuccess { bitmap ->
+                        callback(BitmapDrawable(context.resources, bitmap))
+                    }
+                    .onFailure {
+                        callback(null)
+                    }
+        }
+    }
+
+    private fun loadFromAssets(
+            imageLoadOption: HRImageLoadOption,
+            callback: (drawable: Drawable?) -> Unit
+    ) {
+        SlockKuiklyThreadAdapter.executeOnSubThread {
+            runCatching {
+                        val assetPath = imageLoadOption.src.substring(HRImageLoadOption.SCHEME_ASSETS.length)
+                        context.assets.open(assetPath).use { input ->
+                            BitmapFactory.decodeStream(input)
+                        }
+                    }
+                    .onSuccess { bitmap ->
+                        callback(BitmapDrawable(context.resources, bitmap))
+                    }
+                    .onFailure {
+                        callback(null)
+                    }
+        }
+    }
+}
+
+private class SlockKuiklyBridgeModule(
+        private val appContext: Context
+) : KuiklyRenderBaseModule() {
+    override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
+        return when (method) {
+            "toast" -> toast(params)
+            "closePage" -> {
+                activity?.finish()
+                null
+            }
+            "log" -> {
+                Log.i("SlockKuikly", JSONObject(params ?: "{}").optString("content"))
+                null
+            }
+            "currentTimestamp" -> System.currentTimeMillis().toString()
+            else -> {
+                callback?.invoke(mapOf("code" to -1, "message" to "Method not implemented"))
+                null
+            }
+        }
+    }
+
+    private fun toast(params: String?): Any? {
+        val content = JSONObject(params ?: "{}").optString("content")
+        if (content.isNotBlank()) {
+            Toast.makeText(appContext, content, Toast.LENGTH_SHORT).show()
+        }
+        return null
+    }
+
+    companion object {
+        const val MODULE_NAME = "HRBridgeModule"
+    }
+}
+
+private fun JSONObject.toMap(): Map<String, Any> {
+    val map = mutableMapOf<String, Any>()
+    val keys = keys()
+    while (keys.hasNext()) {
+        val key = keys.next()
+        when (val value = opt(key)) {
+            is JSONObject -> map[key] = value.toMap()
+            null -> Unit
+            else -> map[key] = value
+        }
+    }
+    return map
+}

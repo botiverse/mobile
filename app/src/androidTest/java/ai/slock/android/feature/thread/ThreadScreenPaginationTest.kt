@@ -1,6 +1,7 @@
 package ai.slock.android.feature.thread
 
 import androidx.activity.ComponentActivity
+import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertCountEquals
@@ -952,6 +953,65 @@ class ThreadScreenPaginationTest {
                 .isNotEmpty()
         }
         composeRule.onNodeWithText("Message 20", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun mainThreadScrollPositionSurvivesReplyRouteRoundTrip() {
+        val showMainThread = mutableStateOf(true)
+        val mainState = ThreadUiState(
+            loadState = ScreenLoadState.Content(
+                content(
+                    messages = (1L..80L).map(::message),
+                    canLoadMoreBefore = false
+                )
+            )
+        )
+
+        composeRule.setContent {
+            SlockTheme {
+                if (showMainThread.value) {
+                    ThreadScreen(
+                        state = mainState,
+                        currentMemberId = MemberId("current-user")
+                    )
+                } else {
+                    Text("Reply screen")
+                }
+            }
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Message 80", useUnmergedTree = true)
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithText("Message 80", useUnmergedTree = true).assertIsDisplayed()
+
+        composeRule.onNodeWithTag(THREAD_MESSAGE_LIST_TAG).performScrollToIndex(20)
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Message 60", useUnmergedTree = true)
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithText("Message 60", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag(THREAD_BACK_TO_BOTTOM_TAG).assertIsDisplayed()
+
+        composeRule.runOnIdle {
+            showMainThread.value = false
+        }
+        composeRule.onNodeWithText("Reply screen").assertIsDisplayed()
+
+        composeRule.runOnIdle {
+            showMainThread.value = true
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Message 60", useUnmergedTree = true)
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithText("Message 60", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag(THREAD_BACK_TO_BOTTOM_TAG).assertIsDisplayed()
     }
 
     private data class OlderLoadRequest(

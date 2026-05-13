@@ -75,6 +75,7 @@ fun LoginScreen(
         modifier: Modifier = Modifier,
         onForgotPassword: () -> Unit = {},
         onCreateAccount: () -> Unit = {},
+        onOpenSharedAuth: (() -> Unit)? = null,
         onAuthProviderUnavailable: (String) -> Unit = {},
         isSubmitting: Boolean = false,
         errorMessage: String? = null
@@ -152,6 +153,15 @@ fun LoginScreen(
                     loading = isSubmitting,
                     preserveDisabledVisual = isSubmitting
             )
+            if (onOpenSharedAuth != null) {
+                AuthActionButton(
+                        text = stringResource(R.string.auth_open_shared_auth),
+                        onClick = onOpenSharedAuth,
+                        background = SlockColor.AccentCyan,
+                        contentColor = SlockColor.TextBlack,
+                        enabled = !isSubmitting
+                )
+            }
             Box(
                     modifier =
                             Modifier.fillMaxWidth()

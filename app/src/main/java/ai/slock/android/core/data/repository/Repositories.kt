@@ -85,6 +85,16 @@ interface MemberRepository {
     suspend fun getAgentDirectMessages(agentId: MemberId): DataResult<AgentDmSnapshot>
     suspend fun getAgentReminders(agentId: MemberId): DataResult<AgentReminderSnapshot>
     suspend fun getAgentActivity(agentId: MemberId): DataResult<AgentActivitySnapshot>
+    suspend fun getAgentWorkspaces(agentId: MemberId): DataResult<AgentWorkspaceSnapshot>
+    suspend fun getAgentWorkspaceTree(agentId: MemberId): DataResult<AgentWorkspaceTreeSnapshot>
+    suspend fun getAgentWorkspaceChildren(
+        agentId: MemberId,
+        dirPath: String
+    ): DataResult<AgentWorkspaceChildrenSnapshot>
+    suspend fun readAgentWorkspaceFile(
+        agentId: MemberId,
+        path: String
+    ): DataResult<AgentWorkspaceFilePreviewSnapshot>
     suspend fun getAgentSkills(agentId: MemberId): DataResult<AgentSkillsSnapshot>
     suspend fun getChannelMembers(channelId: ChannelId): DataResult<ChannelMemberSnapshot>
     suspend fun addChannelMember(request: AddChannelMemberRequest): DataResult<ChannelMemberActionResult>

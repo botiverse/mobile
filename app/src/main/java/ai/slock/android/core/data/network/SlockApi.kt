@@ -1,297 +1,178 @@
 package ai.slock.android.core.data.network
 
 import okhttp3.RequestBody
-import okhttp3.ResponseBody
-import retrofit2.Response
-import retrofit2.http.Body
-import retrofit2.http.DELETE
-import retrofit2.http.GET
-import retrofit2.http.Multipart
-import retrofit2.http.PATCH
-import retrofit2.http.Part
-import retrofit2.http.POST
-import retrofit2.http.Path
-import retrofit2.http.Query
 
 interface SlockApi {
-    @GET("auth/me")
-    suspend fun settingsAccount(): Response<ResponseBody>
-
-    @PATCH("auth/me")
-    suspend fun updateSettingsAccount(@Body body: RequestBody): Response<ResponseBody>
-
-    @GET("auth/sessions")
-    suspend fun settingsSessions(): Response<ResponseBody>
-
-    @DELETE("auth/sessions/{sessionId}")
+    suspend fun settingsAccount(): ApiResponse
+    suspend fun updateSettingsAccount(body: RequestBody): ApiResponse
+    suspend fun settingsSessions(): ApiResponse
     suspend fun revokeSettingsSession(
-        @Path("sessionId") sessionId: String
-    ): Response<ResponseBody>
-
-    @GET("servers/{serverId}/machines")
+        sessionId: String
+    ): ApiResponse
     suspend fun settingsMachines(
-        @Path("serverId") serverId: String
-    ): Response<ResponseBody>
-
-    @GET("servers/{serverId}/machines/{machineId}/workspaces")
+        serverId: String
+    ): ApiResponse
     suspend fun settingsMachineWorkspaces(
-        @Path("serverId") serverId: String,
-        @Path("machineId") machineId: String
-    ): Response<ResponseBody>
-
-    @GET("agents")
-    suspend fun settingsAgents(): Response<ResponseBody>
-
-    @PATCH("agents/{agentId}")
+        serverId: String,
+        machineId: String
+    ): ApiResponse
+    suspend fun settingsAgents(): ApiResponse
     suspend fun updateAgent(
-        @Path("agentId") agentId: String,
-        @Body body: RequestBody
-    ): Response<ResponseBody>
-
-    @GET("channels")
+        agentId: String,
+        body: RequestBody
+    ): ApiResponse
     suspend fun channels(
-        @Query("archived") archived: String? = null
-    ): Response<ResponseBody>
-
-    @GET("servers/{serverId}/members")
+        archived: String? = null
+    ): ApiResponse
     suspend fun serverMembers(
-        @Path("serverId") serverId: String
-    ): Response<ResponseBody>
-
-    @PATCH("servers/{serverId}")
+        serverId: String
+    ): ApiResponse
     suspend fun updateSettingsServerProfile(
-        @Path("serverId") serverId: String,
-        @Body body: RequestBody
-    ): Response<ResponseBody>
-
-    @GET("servers/{serverId}/usage")
+        serverId: String,
+        body: RequestBody
+    ): ApiResponse
     suspend fun settingsServerUsage(
-        @Path("serverId") serverId: String
-    ): Response<ResponseBody>
-
-    @GET("billing/subscription")
-    suspend fun settingsBillingSubscription(): Response<ResponseBody>
-
-    @POST("servers/{serverId}/invites")
+        serverId: String
+    ): ApiResponse
+    suspend fun settingsBillingSubscription(): ApiResponse
     suspend fun createSettingsServerInvite(
-        @Path("serverId") serverId: String,
-        @Body body: RequestBody
-    ): Response<ResponseBody>
-
-    @GET("servers/{serverId}/onboarding-settings")
+        serverId: String,
+        body: RequestBody
+    ): ApiResponse
     suspend fun settingsServerOnboardingSettings(
-        @Path("serverId") serverId: String
-    ): Response<ResponseBody>
-
-    @PATCH("servers/{serverId}/onboarding-settings")
+        serverId: String
+    ): ApiResponse
     suspend fun updateSettingsServerOnboardingSettings(
-        @Path("serverId") serverId: String,
-        @Body body: RequestBody
-    ): Response<ResponseBody>
-
-    @DELETE("servers/{serverId}")
+        serverId: String,
+        body: RequestBody
+    ): ApiResponse
     suspend fun deleteSettingsServer(
-        @Path("serverId") serverId: String
-    ): Response<ResponseBody>
-
-    @GET("members/{memberId}/profile")
+        serverId: String
+    ): ApiResponse
     suspend fun memberProfile(
-        @Path("memberId") memberId: String
-    ): Response<ResponseBody>
-
-    @GET("agents/{agentId}/agent-dms")
+        memberId: String
+    ): ApiResponse
+    suspend fun agentWorkspaceFiles(
+        agentId: String,
+        dirPath: String? = null
+    ): ApiResponse
+    suspend fun readAgentWorkspaceFile(
+        agentId: String,
+        path: String
+    ): ApiResponse
     suspend fun agentDirectMessages(
-        @Path("agentId") agentId: String
-    ): Response<ResponseBody>
-
-    @GET("reminders")
+        agentId: String
+    ): ApiResponse
     suspend fun reminders(
-        @Query("ownerAgentId") ownerAgentId: String,
-        @Query("status") status: String = "scheduled"
-    ): Response<ResponseBody>
-
-    @GET("agents/{agentId}/activity-log")
+        ownerAgentId: String,
+        status: String = "scheduled"
+    ): ApiResponse
     suspend fun agentActivityLog(
-        @Path("agentId") agentId: String,
-        @Query("limit") limit: Int = 50
-    ): Response<ResponseBody>
-
-    @GET("channels/{channelId}/members")
+        agentId: String,
+        limit: Int = 50
+    ): ApiResponse
     suspend fun channelMembers(
-        @Path("channelId") channelId: String
-    ): Response<ResponseBody>
-
-    @POST("channels")
-    suspend fun createChannel(@Body body: RequestBody): Response<ResponseBody>
-
-    @POST("channels/{channelId}/join")
+        channelId: String
+    ): ApiResponse
+    suspend fun createChannel(body: RequestBody): ApiResponse
     suspend fun joinChannel(
-        @Path("channelId") channelId: String
-    ): Response<ResponseBody>
-
-    @POST("channels/{channelId}/archive")
+        channelId: String
+    ): ApiResponse
     suspend fun archiveChannel(
-        @Path("channelId") channelId: String
-    ): Response<ResponseBody>
-
-    @DELETE("channels/{channelId}")
+        channelId: String
+    ): ApiResponse
     suspend fun deleteChannel(
-        @Path("channelId") channelId: String
-    ): Response<ResponseBody>
-
-    @POST("channels/{channelId}/members")
+        channelId: String
+    ): ApiResponse
     suspend fun addChannelMember(
-        @Path("channelId") channelId: String,
-        @Body body: RequestBody
-    ): Response<ResponseBody>
-
-    @DELETE("channels/{channelId}/members/{kind}/{memberId}")
+        channelId: String,
+        body: RequestBody
+    ): ApiResponse
     suspend fun removeChannelMember(
-        @Path("channelId") channelId: String,
-        @Path("kind") kind: String,
-        @Path("memberId") memberId: String
-    ): Response<ResponseBody>
-
-    @GET("channels/dm")
-    suspend fun directMessages(): Response<ResponseBody>
-
-    @POST("channels/dm")
-    suspend fun openDirectMessage(@Body body: RequestBody): Response<ResponseBody>
-
-    @GET("channels/unread")
-    suspend fun channelUnreadCounts(): Response<ResponseBody>
-
-    @POST("channels/{channelId}/read")
+        channelId: String,
+        kind: String,
+        memberId: String
+    ): ApiResponse
+    suspend fun directMessages(): ApiResponse
+    suspend fun openDirectMessage(body: RequestBody): ApiResponse
+    suspend fun channelUnreadCounts(): ApiResponse
     suspend fun markChannelReadToSeq(
-        @Path("channelId") channelId: String,
-        @Body body: RequestBody
-    ): Response<ResponseBody>
-
-    @POST("channels/{channelId}/read-all")
+        channelId: String,
+        body: RequestBody
+    ): ApiResponse
     suspend fun markChannelReadAll(
-        @Path("channelId") channelId: String
-    ): Response<ResponseBody>
-
-    @POST("channels/{channelId}/unread")
+        channelId: String
+    ): ApiResponse
     suspend fun markChannelUnread(
-        @Path("channelId") channelId: String
-    ): Response<ResponseBody>
-
-    @GET("channels/inbox")
+        channelId: String
+    ): ApiResponse
     suspend fun inbox(
-        @Query("filter") filter: String,
-        @Query("limit") limit: Int,
-        @Query("offset") offset: Int
-    ): Response<ResponseBody>
-
-    @POST("channels/inbox/read-all")
-    suspend fun markInboxReadAll(): Response<ResponseBody>
-
-    @GET("tasks/server")
-    suspend fun serverTasks(): Response<ResponseBody>
-
-    @GET("tasks/channel/{channelId}")
+        filter: String,
+        limit: Int,
+        offset: Int
+    ): ApiResponse
+    suspend fun markInboxReadAll(): ApiResponse
+    suspend fun serverTasks(): ApiResponse
     suspend fun channelTasks(
-        @Path("channelId") channelId: String
-    ): Response<ResponseBody>
-
-    @PATCH("tasks/{taskId}/claim")
+        channelId: String
+    ): ApiResponse
     suspend fun claimTask(
-        @Path("taskId") taskId: String
-    ): Response<ResponseBody>
-
-    @PATCH("tasks/{taskId}/status")
+        taskId: String
+    ): ApiResponse
     suspend fun updateTaskStatus(
-        @Path("taskId") taskId: String,
-        @Body body: RequestBody
-    ): Response<ResponseBody>
-
-    @GET("channels/saved")
+        taskId: String,
+        body: RequestBody
+    ): ApiResponse
     suspend fun saved(
-        @Query("limit") limit: Int,
-        @Query("offset") offset: Int
-    ): Response<ResponseBody>
-
-    @POST("messages/{messageId}/save")
+        limit: Int,
+        offset: Int
+    ): ApiResponse
     suspend fun saveMessage(
-        @Path("messageId") messageId: String
-    ): Response<ResponseBody>
-
-    @DELETE("messages/{messageId}/save")
+        messageId: String
+    ): ApiResponse
     suspend fun unsaveMessage(
-        @Path("messageId") messageId: String
-    ): Response<ResponseBody>
-
-    @GET("messages/search")
+        messageId: String
+    ): ApiResponse
     suspend fun searchMessages(
-        @Query("q") query: String,
-        @Query("limit") limit: Int,
-        @Query("offset") offset: Int
-    ): Response<ResponseBody>
-
-    @GET("messages/channel/{channelId}")
+        query: String,
+        limit: Int,
+        offset: Int
+    ): ApiResponse
     suspend fun channelMessages(
-        @Path("channelId") channelId: String,
-        @Query("limit") limit: Int,
-        @Query("before") beforeSeq: Long? = null
-    ): Response<ResponseBody>
-
-    @GET("messages/context/{messageId}")
+        channelId: String,
+        limit: Int,
+        beforeSeq: Long? = null
+    ): ApiResponse
     suspend fun messageContext(
-        @Path("messageId") messageId: String
-    ): Response<ResponseBody>
-
-    @GET("messages/sync")
+        messageId: String
+    ): ApiResponse
     suspend fun messageSync(
-        @Query("since_seq") sinceSeq: Long,
-        @Query("limit") limit: Int,
-        @Query("channel_id") channelId: String? = null
-    ): Response<ResponseBody>
-
-    @POST("messages")
-    suspend fun sendMessage(@Body body: RequestBody): Response<ResponseBody>
-
-    @Multipart
-    @POST("attachments/upload")
+        sinceSeq: Long,
+        limit: Int,
+        channelId: String? = null
+    ): ApiResponse
+    suspend fun sendMessage(body: RequestBody): ApiResponse
     suspend fun uploadAttachments(
-        @Part("channelId") channelId: RequestBody,
-        @Part files: List<okhttp3.MultipartBody.Part>
-    ): Response<ResponseBody>
-
-    @GET("attachments/{attachmentId}/url")
+        channelId: RequestBody,
+        files: List<okhttp3.MultipartBody.Part>
+    ): ApiResponse
     suspend fun attachmentUrl(
-        @Path("attachmentId") attachmentId: String
-    ): Response<ResponseBody>
-
-    @GET("channels/{channelId}/threads")
+        attachmentId: String
+    ): ApiResponse
     suspend fun channelThreads(
-        @Path("channelId") channelId: String,
-        @Query("limit") limit: Int
-    ): Response<ResponseBody>
-
-    @POST("channels/{channelId}/threads")
+        channelId: String,
+        limit: Int
+    ): ApiResponse
     suspend fun createOrOpenThread(
-        @Path("channelId") channelId: String,
-        @Body body: RequestBody
-    ): Response<ResponseBody>
-
-    @GET("channels/threads/followed")
+        channelId: String,
+        body: RequestBody
+    ): ApiResponse
     suspend fun followedThreads(
-        @Query("limit") limit: Int
-    ): Response<ResponseBody>
-
-    @POST("channels/threads/follow")
-    suspend fun followThread(@Body body: RequestBody): Response<ResponseBody>
-
-    @POST("channels/threads/unfollow")
-    suspend fun unfollowThread(@Body body: RequestBody): Response<ResponseBody>
-
-    @POST("channels/threads/done")
-    suspend fun markThreadDone(@Body body: RequestBody): Response<ResponseBody>
-
-    @POST("channels/threads/undone")
-    suspend fun markThreadUndone(@Body body: RequestBody): Response<ResponseBody>
-
-    @GET("servers/unread-summary")
-    suspend fun serverUnreadSummary(): Response<ResponseBody>
+        limit: Int
+    ): ApiResponse
+    suspend fun followThread(body: RequestBody): ApiResponse
+    suspend fun unfollowThread(body: RequestBody): ApiResponse
+    suspend fun markThreadDone(body: RequestBody): ApiResponse
+    suspend fun markThreadUndone(body: RequestBody): ApiResponse
+    suspend fun serverUnreadSummary(): ApiResponse
 }

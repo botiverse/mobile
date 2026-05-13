@@ -8,6 +8,7 @@ import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageId
 import ai.slock.android.core.model.ThreadId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -47,6 +48,24 @@ class ThreadItemHeightCacheTest {
         assertNull(cache.get(first.id, first.threadItemHeightSignature(false), widthPx = 360))
         assertEquals(110, cache.get(second.id, second.threadItemHeightSignature(false), widthPx = 360))
         assertEquals(120, cache.get(third.id, third.threadItemHeightSignature(false), widthPx = 360))
+    }
+
+    @Test
+    fun signatureChangesWhenReplyAffordanceVisibilityChanges() {
+        val message = message("reply-affordance").copy(replyCount = 4)
+
+        val visibleSignature =
+                message.threadItemHeightSignature(
+                        highlighted = false,
+                        showReplyAffordance = true
+                )
+        val hiddenSignature =
+                message.threadItemHeightSignature(
+                        highlighted = false,
+                        showReplyAffordance = false
+                )
+
+        assertNotEquals(visibleSignature, hiddenSignature)
     }
 
     private companion object {

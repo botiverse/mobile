@@ -28,6 +28,8 @@ import ai.slock.android.core.data.repository.AgentActivityEntry
 import ai.slock.android.core.data.repository.AgentActivitySnapshot
 import ai.slock.android.core.data.repository.AgentDmSnapshot
 import ai.slock.android.core.data.repository.AgentReminderSnapshot
+import ai.slock.android.core.data.repository.AgentWorkspaceSnapshot
+import ai.slock.android.core.data.repository.SettingsComputerWorkspaceSnapshot
 import ai.slock.android.core.model.AgentStatus
 import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberKind
@@ -56,6 +58,7 @@ class MembersScreenAgentActivityTest {
             kind = MemberKind.Agent,
             description = "Checks wide layout",
             roleDescription = "agent",
+            permissionBadges = listOf("computer:Jiachengs-MacBook-Pro.local"),
             presence = Presence.Active,
             agentStatus = AgentStatus.Online
         )
@@ -114,6 +117,60 @@ class MembersScreenAgentActivityTest {
         composeRule.onNodeWithText("Wide Agent").assertIsDisplayed()
         composeRule.onAllNodesWithTag(MEMBERS_WIDE_DETAIL_PANE_TAG).assertCountEquals(0)
         composeRule.onAllNodesWithTag(MEMBERS_WIDE_DIVIDER_TAG).assertCountEquals(0)
+    }
+
+    @Test
+    fun membersPageGroupsAgentsByComputerName() {
+        val macAgent = MemberProfile(
+            id = MemberId("agent-mac"),
+            displayName = "Mac Agent",
+            handle = "@mac-agent",
+            kind = MemberKind.Agent,
+            roleDescription = "agent",
+            permissionBadges = listOf("computer:Jiachengs-MacBook-Pro.local"),
+            presence = Presence.Active,
+            agentStatus = AgentStatus.Online
+        )
+        val ciAgent = MemberProfile(
+            id = MemberId("agent-ci"),
+            displayName = "CI Agent",
+            handle = "@ci-agent",
+            kind = MemberKind.Agent,
+            roleDescription = "agent",
+            permissionBadges = listOf("computer:CI runner"),
+            presence = Presence.Away,
+            agentStatus = AgentStatus.Idle
+        )
+        val human = MemberProfile(
+            id = MemberId("human-grouping"),
+            displayName = "Human Member",
+            handle = "@human-member",
+            kind = MemberKind.Human,
+            presence = Presence.Active
+        )
+
+        composeRule.setContent {
+            SlockTheme {
+                MembersPageShell(
+                    state = MembersUiState(
+                        loadState = ScreenLoadState.Content(
+                            MembersContent(
+                                server = ServerSummary(ServerId("server-grouping"), "Slock"),
+                                members = listOf(macAgent, ciAgent, human)
+                            )
+                        )
+                    )
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("AGENTS").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Jiachengs-MacBook-Pro.local").assertCountEquals(1)
+        composeRule.onAllNodesWithText("CI runner").assertCountEquals(1)
+        composeRule.onNodeWithText("Mac Agent").assertIsDisplayed()
+        composeRule.onNodeWithText("CI Agent").assertIsDisplayed()
+        composeRule.onNodeWithText("HUMANS").assertIsDisplayed()
+        composeRule.onNodeWithText("Human Member").assertIsDisplayed()
     }
 
     @Test
@@ -248,6 +305,60 @@ class MembersScreenAgentActivityTest {
 
         composeRule.onNodeWithText("No scheduled reminders").performTouchInput { swipeRight() }
         composeRule.onNode(hasText("AGENT DMS") and hasClickAction()).assertIsSelected()
+    }
+
+    @Test
+    fun workspaceTabShowsRealWorkspaceRows() {
+        val agent = MemberProfile(
+            id = MemberId("agent-workspace"),
+            displayName = "Workspace Agent",
+            handle = "@workspace-agent",
+            kind = MemberKind.Agent,
+            description = "Uses a real workspace snapshot",
+            roleDescription = "agent",
+            presence = Presence.Active,
+            agentStatus = AgentStatus.Working
+        )
+
+        composeRule.setContent {
+            SlockTheme {
+                MembersRouteScreen(
+                    state = MembersUiState(
+                        loadState = ScreenLoadState.Content(
+                            MembersContent(
+                                server = ServerSummary(ServerId("server-1"), "Slock"),
+                                members = listOf(agent)
+                            )
+                        ),
+                        selectedAgentWorkspaceState = ScreenLoadState.Content(
+                            AgentWorkspaceSnapshot(
+                                agentId = agent.id,
+                                computerName = "Mac Studio",
+                                workspaces = listOf(
+                                    SettingsComputerWorkspaceSnapshot(
+                                        id = "workspace-1",
+                                        name = "Slock",
+                                        path = "/Users/artin/AndroidStudioProjects/Slock",
+                                        statusLabel = "active",
+                                        lastActiveLabel = "2026-05-13T19:30:00Z"
+                                    )
+                                )
+                            )
+                        )
+                    ),
+                    initialSelectedMemberId = agent.id.value,
+                    initialSelectedDetailTab = "Workspace"
+                )
+            }
+        }
+
+        composeRule.onNode(hasText("WORKSPACE") and hasClickAction()).assertIsSelected()
+        composeRule.onNodeWithText("Computer").assertIsDisplayed()
+        composeRule.onNodeWithText("Mac Studio").assertIsDisplayed()
+        composeRule.onNodeWithText("Slock").assertIsDisplayed()
+        composeRule.onNodeWithText("/Users/artin/AndroidStudioProjects/Slock").assertIsDisplayed()
+        composeRule.onNodeWithText("Status").assertIsDisplayed()
+        composeRule.onNodeWithText("Active").assertIsDisplayed()
     }
 
     @Test

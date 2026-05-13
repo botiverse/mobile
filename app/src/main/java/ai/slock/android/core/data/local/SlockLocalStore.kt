@@ -3,6 +3,7 @@ package ai.slock.android.core.data.local
 import ai.slock.android.core.model.Attachment
 import ai.slock.android.core.model.AgentStatus
 import ai.slock.android.core.model.AttachmentId
+import ai.slock.android.core.model.AvatarReference
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationKind
 import ai.slock.android.core.model.ConversationPermissions
@@ -21,19 +22,23 @@ import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadConversation
-import ai.slock.shared.model.messageStreamChannelId
-import ai.slock.shared.model.parentChannelIdOrNull
-import ai.slock.shared.model.parentMessageIdOrNull
-import ai.slock.shared.model.sortedByMessageTime
-import ai.slock.shared.model.withTitleFallback
+import ai.slock.compose.model.messageStreamChannelId
+import ai.slock.compose.model.parentChannelIdOrNull
+import ai.slock.compose.model.parentMessageIdOrNull
+import ai.slock.compose.model.sortedByMessageTime
+import ai.slock.compose.model.toGravatarAvatarReference
+import ai.slock.compose.model.withTitleFallback
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
+import com.google.gson.Gson
+import com.google.gson.JsonSyntaxException
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
-import ai.slock.shared.model.explicitMessageStreamChannelId
+import ai.slock.compose.model.explicitMessageStreamChannelId
 
 interface SlockLocalStore {
     fun upsertConversation(
@@ -43,6 +48,7 @@ interface SlockLocalStore {
     )
     fun getConversation(id: ThreadId): ConversationSummary?
     fun getHomeConversations(serverId: ServerId): LocalHomeConversations
+    fun observeHomeConversations(serverId: ServerId): Flow<LocalHomeConversations>
     fun clearConversationUnread(channelId: ChannelId, syncedAtMs: Long)
     fun getThreadTimeline(threadId: ThreadId): LocalThreadTimeline?
     fun observeThreadTimeline(threadId: ThreadId): Flow<LocalThreadTimeline?>
@@ -50,6 +56,8 @@ interface SlockLocalStore {
     fun getMessagesForThread(threadId: ThreadId): List<Message>
     fun upsertTaskReference(task: TaskSummary, syncedAtMs: Long)
     fun deleteTaskReference(taskId: TaskId)
+    fun getTaskReferences(): List<TaskSummary>
+    fun observeTaskReferences(): Flow<List<TaskSummary>>
     fun getTaskContext(task: TaskSummary): LocalTaskContext
     fun getTaskReferencesForMessage(messageId: MessageId): List<TaskSummary>
     fun upsertMemberSnapshot(member: MemberProfile, syncedAtMs: Long)
@@ -228,6 +236,14 @@ class SqlDelightSlockLocalStore(
         )
     }
 
+    override fun observeHomeConversations(serverId: ServerId): Flow<LocalHomeConversations> =
+        queries
+            .selectHomeConversations(serverId.value)
+            .asFlow()
+            .mapToList(Dispatchers.IO)
+            .map { getHomeConversations(serverId) }
+            .onStart { emit(getHomeConversations(serverId)) }
+
     override fun clearConversationUnread(channelId: ChannelId, syncedAtMs: Long) {
         queries.clearConversationUnread(
             last_synced_at_ms = syncedAtMs,
@@ -297,30 +313,60 @@ class SqlDelightSlockLocalStore(
         }
         requireValidLocalId(storedChannelId.value, "message.channelId")
         database.transaction {
+            val currentMessage = queries.selectMessage(message.id.value).executeAsOneOrNull()
+            val currentAuthorSnapshot = getMemberSnapshot(message.author.id)
+                ?: currentMessage?.author_id?.let { getMemberSnapshot(MemberId(it)) }
+            val storedAuthor = message.author
+                .withStoredFallback(currentMessage)
+                .withProfileFallback(currentAuthorSnapshot)
+            val storedThreadChannelId = message.threadChannelId?.value ?: currentMessage?.thread_channel_id
+            val storedReplyCount =
+                if (message.replyCount > 0 || message.threadChannelId != null) {
+                    message.replyCount.toLong()
+                } else {
+                    currentMessage?.reply_count ?: 0L
+                }
+            val storedMessageType =
+                if (message.messageType == MessageType.Chat &&
+                    message.systemEventType == null &&
+                    currentMessage?.system_event_type != null
+                ) {
+                    currentMessage.message_type
+                } else {
+                    message.messageType.wireValue
+                }
             queries.upsertMessage(
                 id = message.id.value,
                 thread_id = message.threadId.value,
                 channel_id = storedChannelId.value,
-                thread_channel_id = message.threadChannelId?.value,
-                seq = message.seq,
-                author_id = message.author.id.value,
-                author_display_name = message.author.displayName,
-                author_handle = message.author.handle,
-                author_kind = message.author.kind.wireValue,
-                author_description = message.author.description,
-                timestamp_label = message.timestampLabel,
-                body = message.body,
-                message_type = message.messageType.wireValue,
-                system_event_type = message.systemEventType,
-                metadata_json = "{}",
+                thread_channel_id = storedThreadChannelId,
+                seq = message.seq ?: currentMessage?.seq,
+                author_id = storedAuthor.id.value,
+                author_display_name = storedAuthor.displayName,
+                author_handle = storedAuthor.handle,
+                author_kind = storedAuthor.kind.wireValue,
+                author_description = storedAuthor.description,
+                timestamp_label = message.timestampLabel.ifBlank {
+                    currentMessage?.timestamp_label.orEmpty()
+                },
+                body = message.body.ifBlank { currentMessage?.body.orEmpty() },
+                message_type = storedMessageType,
+                system_event_type = message.systemEventType ?: currentMessage?.system_event_type,
+                metadata_json = message.metadata.toMetadataJson(currentMessage?.metadata_json),
                 delivery_state = message.deliveryState.wireValue,
-                reply_count = message.replyCount.toLong(),
-                parent_message_id = message.parentMessageId?.value,
-                updated_at_label = message.updatedAtLabel,
+                reply_count = storedReplyCount,
+                parent_message_id = message.parentMessageId?.value ?: currentMessage?.parent_message_id,
+                updated_at_label = message.updatedAtLabel ?: currentMessage?.updated_at_label,
                 last_synced_at_ms = syncedAtMs
             )
+            val attachmentsToStore =
+                message.attachments.ifEmpty {
+                    queries.selectAttachmentsForMessage(message.id.value)
+                        .executeAsList()
+                        .map { it.toAttachment() }
+                }
             queries.deleteAttachmentsForMessage(message.id.value)
-            message.attachments.forEachIndexed { index, attachment ->
+            attachmentsToStore.forEachIndexed { index, attachment ->
                 queries.insertAttachment(
                     id = attachment.id.value,
                     message_id = message.id.value,
@@ -332,7 +378,7 @@ class SqlDelightSlockLocalStore(
                 )
             }
             message.task?.let { upsertTaskReference(it, syncedAtMs) }
-            upsertMemberSnapshot(message.author, syncedAtMs)
+            upsertMemberSnapshot(storedAuthor, syncedAtMs)
         }
     }
 
@@ -344,6 +390,7 @@ class SqlDelightSlockLocalStore(
                     queries.selectAttachmentsForMessage(row.id).executeAsList().map { it.toAttachment() }
                 val task = getTaskReferencesForMessage(MessageId(row.id)).firstOrNull()
                 row.toMessage(attachments = attachments, task = task)
+                    .withLocalAuthorSnapshot()
             }
             .sortedForLocalThreadTimeline()
 
@@ -355,11 +402,24 @@ class SqlDelightSlockLocalStore(
                     queries.selectAttachmentsForMessage(row.id).executeAsList().map { it.toAttachment() }
                 val task = getTaskReferencesForMessage(MessageId(row.id)).firstOrNull()
                 row.toMessage(attachments = attachments, task = task)
+                    .withLocalAuthorSnapshot()
             }
 
+    private fun Message.withLocalAuthorSnapshot(): Message =
+        copy(author = author.withProfileFallback(getMemberSnapshot(author.id)))
+
+    private fun TaskSummary.withLocalAssigneeSnapshot(): TaskSummary =
+        assignee?.let { assignee ->
+            copy(assignee = assignee.withProfileFallback(getMemberSnapshot(assignee.id)))
+        } ?: this
+
     override fun upsertTaskReference(task: TaskSummary, syncedAtMs: Long) {
-        val current = queries.selectTaskReference(task.id.value).executeAsOneOrNull()?.toTaskSummary()
-        val merged = current?.withReferencesFrom(task) ?: task
+        val current = queries.selectTaskReference(task.id.value)
+            .executeAsOneOrNull()
+            ?.toTaskSummary()
+            ?.withLocalAssigneeSnapshot()
+        val incoming = task.withLocalAssigneeSnapshot()
+        val merged = current?.withReferencesFrom(incoming)?.withLocalAssigneeSnapshot() ?: incoming
         queries.upsertTaskReference(
             id = merged.id.value,
             message_id = merged.messageId?.value,
@@ -379,12 +439,25 @@ class SqlDelightSlockLocalStore(
             can_claim = merged.canClaim.toLongFlag(),
             last_synced_at_ms = syncedAtMs
         )
+        merged.assignee?.let { upsertMemberSnapshot(it, syncedAtMs) }
     }
 
     override fun getTaskReferencesForMessage(messageId: MessageId): List<TaskSummary> =
         queries.selectTaskReferencesForMessage(messageId.value, messageId.value)
             .executeAsList()
-            .map { it.toTaskSummary() }
+            .map { it.toTaskSummary().withLocalAssigneeSnapshot() }
+
+    override fun getTaskReferences(): List<TaskSummary> =
+        queries.selectAllTaskReferences()
+            .executeAsList()
+            .map { it.toTaskSummary().withLocalAssigneeSnapshot() }
+
+    override fun observeTaskReferences(): Flow<List<TaskSummary>> =
+        queries.selectAllTaskReferences()
+            .asFlow()
+            .mapToList(Dispatchers.IO)
+            .map { getTaskReferences() }
+            .onStart { emit(getTaskReferences()) }
 
     override fun getTaskContext(task: TaskSummary): LocalTaskContext {
         val cachedTask =
@@ -396,7 +469,8 @@ class SqlDelightSlockLocalStore(
             )
                 .executeAsOneOrNull()
                 ?.toTaskSummary()
-        val mergedTask = cachedTask?.withReferencesFrom(task) ?: task
+                ?.withLocalAssigneeSnapshot()
+        val mergedTask = cachedTask?.withReferencesFrom(task.withLocalAssigneeSnapshot()) ?: task.withLocalAssigneeSnapshot()
         val parentMessageId = mergedTask.parentMessageId ?: mergedTask.messageId
         val parentMessage = parentMessageId?.let(::getMessage)
         val sourceChannelId =
@@ -432,17 +506,18 @@ class SqlDelightSlockLocalStore(
     }
 
     override fun upsertMemberSnapshot(member: MemberProfile, syncedAtMs: Long) {
+        val merged = member.withProfileFallback(getMemberSnapshot(member.id))
         queries.upsertMemberSnapshot(
-            id = member.id.value,
-            display_name = member.displayName,
-            handle = member.handle,
-            kind = member.kind.wireValue,
-            avatar_url = member.avatarUrl,
-            gravatar_hash = member.gravatarHash,
-            avatar_label = member.avatarLabel,
-            presence = member.presence.wireValue,
-            description = member.description,
-            role_description = member.roleDescription,
+            id = merged.id.value,
+            display_name = merged.displayName,
+            handle = merged.handle,
+            kind = merged.kind.wireValue,
+            avatar_url = merged.avatarUrl,
+            gravatar_hash = merged.gravatarHash,
+            avatar_label = merged.avatarLabel,
+            presence = merged.presence.wireValue,
+            description = merged.description,
+            role_description = merged.roleDescription,
             last_synced_at_ms = syncedAtMs
         )
     }
@@ -661,6 +736,7 @@ private fun Local_message.toMessage(
         body = body,
         messageType = message_type.toMessageType(),
         systemEventType = system_event_type,
+        metadata = metadata_json.toMetadataMap(),
         attachments = attachments,
         deliveryState = delivery_state.toMessageDeliveryState(),
         task = task,
@@ -680,6 +756,119 @@ private fun Local_attachment.toAttachment(): Attachment =
         sizeLabel = size_label,
         thumbnailUrl = thumbnail_url
     )
+
+private val metadataGson = Gson()
+
+private val metadataMapType = object : TypeToken<Map<String, String>>() {}.type
+
+private fun Map<String, String>.toMetadataJson(storedJson: String?): String =
+    if (isNotEmpty()) {
+        metadataGson.toJson(this)
+    } else {
+        storedJson?.takeIf { it.isNotBlank() } ?: "{}"
+    }
+
+private fun String.toMetadataMap(): Map<String, String> =
+    try {
+        metadataGson.fromJson<Map<String, String>>(this, metadataMapType) ?: emptyMap()
+    } catch (_: JsonSyntaxException) {
+        emptyMap()
+    }
+
+private fun MemberProfile.withStoredFallback(currentMessage: Local_message?): MemberProfile {
+    if (currentMessage == null) return this
+    val incomingUnknown = id.value == "unknown-author"
+    val currentId = MemberId(currentMessage.author_id)
+    val resolvedId = if (incomingUnknown) currentId else id
+    val resolvedDisplayName =
+        displayName.takeUnless { it.isBlank() || it == id.value || incomingUnknown }
+            ?: currentMessage.author_display_name
+    val resolvedHandle =
+        handle.takeUnless { it.isBlank() || it == id.value || incomingUnknown }
+            ?: currentMessage.author_handle
+    return copy(
+        id = resolvedId,
+        displayName = resolvedDisplayName,
+        handle = resolvedHandle,
+        kind = if (incomingUnknown) currentMessage.author_kind.toMemberKind() else kind,
+        description = description ?: currentMessage.author_description
+    )
+}
+
+private fun MemberProfile.withProfileFallback(fallback: MemberProfile?): MemberProfile {
+    if (fallback == null) return withResolvedAvatar()
+    val incomingUnknown = id.isUnknownMemberId()
+    val fallbackAvatarUrl = fallback.avatarUrl?.takeIf { it.isNotBlank() }
+    val fallbackGravatarHash = fallback.gravatarHash?.takeIf { it.isNotBlank() }
+    val mergedAvatarUrl = avatarUrl?.takeIf { it.isNotBlank() } ?: fallbackAvatarUrl
+    val mergedGravatarHash = gravatarHash?.takeIf { it.isNotBlank() } ?: fallbackGravatarHash
+    val mergedAvatar =
+        avatar
+            ?: fallback.avatar
+            ?: AvatarReference.fromWireValue(mergedAvatarUrl)
+            ?: mergedGravatarHash?.toGravatarAvatarReference()
+    val incomingHasIdentityDetail =
+        avatar != null ||
+            !avatarUrl.isNullOrBlank() ||
+            !gravatarHash.isNullOrBlank() ||
+            displayName.isMeaningfulProfileText(id, incomingUnknown)
+    val resolvedDisplayName =
+        displayName.takeIf { it.isMeaningfulProfileText(id, incomingUnknown) }
+            ?: fallback.displayName
+    val resolvedHandle =
+        handle.takeIf { it.isMeaningfulProfileText(id, incomingUnknown) }
+            ?: fallback.handle
+    val resolvedAvatarLabel =
+        avatarLabel.takeIf {
+            incomingHasIdentityDetail && it.isMeaningfulAvatarLabel(id, displayName, incomingUnknown)
+        }
+            ?: fallback.avatarLabel
+    return copy(
+        id = if (incomingUnknown) fallback.id else id,
+        displayName = resolvedDisplayName,
+        handle = resolvedHandle,
+        kind = if (incomingUnknown) fallback.kind else kind,
+        description = description ?: fallback.description,
+        roleDescription = roleDescription ?: fallback.roleDescription,
+        avatarUrl = mergedAvatarUrl,
+        gravatarHash = mergedGravatarHash,
+        avatar = mergedAvatar,
+        avatarLabel = resolvedAvatarLabel,
+        presence = if (presence == Presence.Offline && fallback.presence != Presence.Offline) fallback.presence else presence,
+        agentStatus = agentStatus ?: fallback.agentStatus,
+        permissionBadges = permissionBadges.ifEmpty { fallback.permissionBadges }
+    )
+}
+
+private fun MemberProfile.withResolvedAvatar(): MemberProfile {
+    val resolvedAvatar =
+        avatar
+            ?: AvatarReference.fromWireValue(avatarUrl)
+            ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarReference()
+    return if (resolvedAvatar == avatar) this else copy(avatar = resolvedAvatar)
+}
+
+private fun MemberId.isUnknownMemberId(): Boolean =
+    value == "unknown-author" || value == "unknown-member" || value == "unknown-assignee"
+
+private fun String.isMeaningfulProfileText(memberId: MemberId, incomingUnknown: Boolean): Boolean =
+    isNotBlank() &&
+        !incomingUnknown &&
+        this != memberId.value &&
+        !equals("unknown", ignoreCase = true) &&
+        !startsWith("unknown-", ignoreCase = true)
+
+private fun String.isMeaningfulAvatarLabel(
+    memberId: MemberId,
+    displayName: String,
+    incomingUnknown: Boolean
+): Boolean =
+    isNotBlank() &&
+        !incomingUnknown &&
+        this != memberId.value &&
+        this != displayName &&
+        this != displayName.take(1).uppercase() &&
+        !equals("U", ignoreCase = true)
 
 private fun Local_task_reference.toTaskSummary(): TaskSummary =
     TaskSummary(
@@ -716,6 +905,9 @@ private fun Local_member_snapshot.toMemberProfile(): MemberProfile =
         roleDescription = role_description,
         avatarUrl = avatar_url,
         gravatarHash = gravatar_hash,
+        avatar =
+            AvatarReference.fromWireValue(avatar_url)
+                ?: gravatar_hash?.takeIf { it.isNotBlank() }?.toGravatarAvatarReference(),
         avatarLabel = avatar_label ?: display_name.take(1).uppercase(),
         presence = presence?.toPresence() ?: Presence.Offline
     )
@@ -754,7 +946,7 @@ private fun TaskSummary.withReferencesFrom(incoming: TaskSummary): TaskSummary =
         channelId = incoming.channelId ?: channelId,
         threadId = incoming.threadId ?: threadId,
         isThreadTask = incoming.isThreadTask || isThreadTask,
-        assignee = incoming.assignee ?: assignee,
+        assignee = incoming.assignee?.withProfileFallback(assignee) ?: assignee,
         channelName = incoming.channelName ?: channelName,
         updatedAtLabel = incoming.updatedAtLabel.ifBlank { updatedAtLabel },
         canClaim = incoming.canClaim

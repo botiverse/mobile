@@ -70,8 +70,8 @@ sqldelight {
 }
 
 dependencies {
-    // KMP Shared Module
-    implementation("ai.slock.shared:shared-android:1.0.0")
+    // Kuikly Compose shared module
+    implementation("ai.slock.compose:shared-android:1.0.0")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
@@ -84,7 +84,7 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
-    implementation(libs.retrofit)
+    implementation(libs.androidx.recyclerview)
     implementation(libs.okhttp)
     implementation(libs.gson)
     implementation(libs.socket.io.client)

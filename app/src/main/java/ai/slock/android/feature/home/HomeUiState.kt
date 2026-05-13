@@ -1,7 +1,6 @@
 package ai.slock.android.feature.home
 
 import ai.slock.android.core.model.ConversationSummary
-import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.ServerSummary
 import ai.slock.android.core.state.ScreenLoadState
@@ -30,59 +29,6 @@ fun HomeContent.withDraftIndicators(draftThreadIds: Set<String>): HomeContent {
     )
 }
 
-fun resolveHomeShellContent(
-    currentContent: HomeContent?,
-    lastVisibleContent: HomeContent?,
-    homeLoadState: ScreenLoadState<HomeContent>,
-    homeRefreshInProgress: Boolean,
-    fallbackContent: HomeContent
-): HomeContent =
-    currentContent?.withDirectMessagePresenceFallback(lastVisibleContent)
-        ?: lastVisibleContent?.takeIf {
-            homeRefreshInProgress || homeLoadState == ScreenLoadState.Loading
-        }
-        ?: fallbackContent
-
-fun HomeContent.withDirectMessagePresenceFallback(previous: HomeContent?): HomeContent {
-    if (previous == null || previous.directMessages.isEmpty()) return this
-    val previousByKey =
-        previous.directMessages.associateBy { it.directMessagePresenceFallbackKey() }
-    val updatedDirectMessages =
-        directMessages.map { conversation ->
-            val previousConversation =
-                previousByKey[conversation.directMessagePresenceFallbackKey()]
-                    ?: return@map conversation
-            conversation.copy(
-                presence = conversation.presence ?: previousConversation.presence,
-                agentStatus = conversation.agentStatus ?: previousConversation.agentStatus,
-                presenceMemberId = conversation.presenceMemberId ?: previousConversation.presenceMemberId
-            )
-        }
-    return copy(directMessages = updatedDirectMessages)
-}
-
-fun HomeContent.withAgentDirectMessagePresence(members: List<MemberProfile>): HomeContent {
-    val agents = members.filter { it.kind == MemberKind.Agent }
-    if (agents.isEmpty()) return this
-    val updatedDirectMessages = directMessages.map { conversation ->
-        if (conversation.presence != null) {
-            conversation
-        } else {
-            val agent = agents.firstOrNull { it.matchesDirectMessage(conversation) }
-            if (agent != null) {
-                conversation.copy(
-                    presence = agent.presence,
-                    agentStatus = agent.agentStatus,
-                    presenceMemberId = conversation.presenceMemberId ?: agent.id
-                )
-            } else {
-                conversation
-            }
-        }
-    }
-    return copy(directMessages = updatedDirectMessages)
-}
-
 private fun HomeContent.clearDraftIndicators(): HomeContent =
     copy(
         channels = channels.map { it.copy(hasDraft = false) },
@@ -93,16 +39,5 @@ private fun ConversationSummary.withDraftIndicator(draftThreadIds: Set<String>):
     copy(
         hasDraft =
             threadId.value in draftThreadIds ||
-                channelId?.value?.let { it in draftThreadIds } == true
+        channelId?.value?.let { it in draftThreadIds } == true
     )
-
-private fun ConversationSummary.directMessagePresenceFallbackKey(): String =
-    channelId?.value ?: threadId.value
-
-private fun MemberProfile.matchesDirectMessage(conversation: ConversationSummary): Boolean =
-    conversation.presenceMemberId == id ||
-        conversation.channelId?.value == id.value ||
-        conversation.threadId.value == id.value ||
-        handle.equals(conversation.name, ignoreCase = true) ||
-        displayName.equals(conversation.name, ignoreCase = true) ||
-        handle.equals(conversation.name.removePrefix("@"), ignoreCase = true)

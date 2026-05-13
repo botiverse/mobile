@@ -26,11 +26,11 @@ import ai.slock.android.core.model.SyncResumeResponse
 import ai.slock.android.core.model.Heartbeat
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadConversation
-import ai.slock.shared.model.parentChannelIdOrNull
-import ai.slock.shared.model.threadIdentity
+import ai.slock.compose.model.parentChannelIdOrNull
+import ai.slock.compose.model.threadIdentity
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.ScreenLoadState
-import ai.slock.shared.model.topLevelThreadId
+import ai.slock.compose.model.topLevelThreadId
 
 fun InboxUiState.visibleContent(): InboxContent? =
         (loadState as? ScreenLoadState.Content)?.data ?: previousContent

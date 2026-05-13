@@ -34,6 +34,7 @@ import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.components.SlockLoadingState
 import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.components.SlockLabeledCheckbox
 import ai.slock.android.ui.components.SlockMemberAvatar
@@ -61,16 +62,16 @@ import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
 import ai.slock.android.ui.theme.SlockType
 import ai.slock.android.ui.theme.slockHardShadow
-import ai.slock.shared.markdown.SlockMarkdownPreviewSamples
-import ai.slock.shared.markdown.ThreadInlineCodeMatch
-import ai.slock.shared.markdown.ThreadInlineTagMatch
-import ai.slock.shared.markdown.ThreadMarkdownTag
-import ai.slock.shared.markdown.ThreadMarkdownTagKind
-import ai.slock.shared.markdown.normalizeThreadMarkdownBody
-import ai.slock.shared.markdown.threadInlineCodeMatches
-import ai.slock.shared.markdown.threadInlineTagMatches
-import ai.slock.shared.markdown.threadMarkdownTagDisplayLabel
-import ai.slock.shared.markdown.threadMarkdownTaskReferenceKey
+import ai.slock.compose.markdown.SlockMarkdownPreviewSamples
+import ai.slock.compose.markdown.ThreadInlineCodeMatch
+import ai.slock.compose.markdown.ThreadInlineTagMatch
+import ai.slock.compose.markdown.ThreadMarkdownTag
+import ai.slock.compose.markdown.ThreadMarkdownTagKind
+import ai.slock.compose.markdown.normalizeThreadMarkdownBody
+import ai.slock.compose.markdown.threadInlineCodeMatches
+import ai.slock.compose.markdown.threadInlineTagMatches
+import ai.slock.compose.markdown.threadMarkdownTagDisplayLabel
+import ai.slock.compose.markdown.threadMarkdownTaskReferenceKey
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -122,7 +123,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -137,6 +137,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
@@ -158,6 +159,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -188,7 +190,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.UriHandler
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -215,7 +216,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.times
 import androidx.compose.ui.zIndex
@@ -223,6 +226,7 @@ import kotlin.math.roundToInt
 import kotlin.math.abs
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.mikepenz.markdown.coil3.Coil3ImageTransformerImpl
 import com.mikepenz.markdown.compose.components.markdownComponents
@@ -427,14 +431,8 @@ fun ThreadScreen(
                                     Modifier.weight(1f)
                                             .fillMaxWidth()
                                             .dismissKeyboardOnPointerDown(dismissComposerKeyboard)
-                                            .padding(SlockSpacing.Md),
-                            contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                                "Loading thread...",
-                                style = SlockType.Button,
-                                color = SlockColor.TextMutedGray
-                        )
+                        SlockLoadingState(title = "Loading thread")
                     }
                     if (showComposer) {
                         ThreadComposerBar(
@@ -516,6 +514,8 @@ fun ThreadScreen(
                                         context = replyHeaderContext,
                                         parentJumpTarget = parentJumpTarget,
                                         onOpenParentMessage = onOpenParentMessage,
+                                        attachmentOpenStates = attachmentOpenStates,
+                                        onOpenAttachment = onOpenAttachment,
                                         modifier =
                                                 Modifier.dismissKeyboardOnPointerDown(
                                                         dismissComposerKeyboard
@@ -591,7 +591,8 @@ fun ThreadScreen(
                                 onSend = onSend,
                                 focusRequestNonce = composerFocusRequestNonce,
                                 memberSuggestions = memberSuggestions,
-                                channelSuggestions = channelSuggestions
+                                channelSuggestions = channelSuggestions,
+                                showAsTaskToggle = replyHeaderContext == null
                         )
                     }
                 }
@@ -1172,6 +1173,8 @@ private fun ThreadOriginPanel(
         context: ThreadReplyHeaderContext,
         parentJumpTarget: ThreadParentJumpTarget?,
         onOpenParentMessage: (ThreadParentJumpTarget) -> Unit,
+        attachmentOpenStates: Map<AttachmentId, AttachmentOpenUiState>,
+        onOpenAttachment: (Attachment) -> Unit,
         modifier: Modifier = Modifier
 ) {
     var originExpanded by remember(context.parentMessage?.id, context.parentMessagePreview) {
@@ -1210,6 +1213,8 @@ private fun ThreadOriginPanel(
             ) {
                 ThreadMessageItem(
                         message = parentMessage,
+                        attachmentOpenStates = attachmentOpenStates,
+                        onOpenAttachment = onOpenAttachment,
                         onOpenThread =
                                 parentJumpTarget?.let {
                                     { onOpenParentMessage(it) }
@@ -2659,35 +2664,6 @@ private fun CompactIconButton(
 }
 
 @Composable
-private fun CompactIconButton(
-        iconRes: Int,
-        contentDescription: String,
-        modifier: Modifier = Modifier,
-        enabled: Boolean = true,
-        onClick: () -> Unit = {}
-) {
-    Box(
-            modifier =
-                    modifier.size(28.dp)
-                            .background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
-                            .border(
-                                    SlockStroke.Default,
-                                    SlockColor.BorderBlack,
-                                    RoundedCornerShape(SlockRadius.Xs)
-                            )
-                            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
-            contentAlignment = Alignment.Center
-    ) {
-        Icon(
-                painter = painterResource(iconRes),
-                contentDescription = contentDescription,
-                tint = SlockColor.TextBlack,
-                modifier = Modifier.size(16.dp)
-        )
-    }
-}
-
-@Composable
 private fun HeaderIconButton(
         icon: androidx.compose.ui.graphics.vector.ImageVector,
         contentDescription: String,
@@ -2881,7 +2857,6 @@ private fun ThreadMessageList(
             (if (showOlderPageState) 1 else 0) +
                     (if (content.historyLimited || content.hasGap) 1 else 0) +
                     (if (content.replyActionErrorCode != null) 1 else 0)
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = 0)
     val highlightedMessageIndex =
             content.highlightedMessageId?.let { highlightedId ->
                 content.messages.indexOfFirst { it.id == highlightedId }.takeIf { it >= 0 }
@@ -2892,12 +2867,70 @@ private fun ThreadMessageList(
             highlightedMessageIndex?.let { minOf(latestWindowStartIndex, it) }
                     ?: latestWindowStartIndex
     val highlightedMessageKey = content.highlightedMessageId?.value.orEmpty()
-    var oldestRenderedMessageIndex by remember(threadId, highlightedMessageKey) {
-        mutableStateOf(initialOldestRenderedMessageIndex)
+    val scrollStateKey = remember(threadId, highlightedMessageKey) {
+        ThreadMessageScrollStateKey(
+                threadId = threadId,
+                highlightedMessageId = highlightedMessageKey
+        )
     }
-        var initialPositionApplied by remember(threadId, highlightedMessageKey) { mutableStateOf(false) }
-        var observedLastMessageId by remember(threadId, highlightedMessageKey) { mutableStateOf<MessageId?>(null) }
-        var followNewMessages by remember(threadId, highlightedMessageKey) { mutableStateOf(true) }
+    val restoredScrollState = remember(scrollStateKey) {
+        ThreadMessageScrollStateStore.restore(scrollStateKey)
+    }
+    val listState = remember(scrollStateKey) {
+        LazyListState(
+                firstVisibleItemIndex = restoredScrollState?.firstVisibleItemIndex ?: 0,
+                firstVisibleItemScrollOffset = restoredScrollState?.firstVisibleItemScrollOffset ?: 0
+        )
+    }
+    var oldestRenderedMessageIndex by remember(scrollStateKey) {
+        mutableStateOf(restoredScrollState?.oldestRenderedMessageIndex ?: initialOldestRenderedMessageIndex)
+    }
+    var initialPositionApplied by remember(scrollStateKey) {
+        mutableStateOf(restoredScrollState?.initialPositionApplied ?: false)
+    }
+    var observedLastMessageIdValue by remember(scrollStateKey) {
+        mutableStateOf(restoredScrollState?.observedLastMessageId)
+    }
+    var followNewMessages by remember(scrollStateKey) {
+        mutableStateOf(restoredScrollState?.followNewMessages ?: true)
+    }
+    val observedLastMessageId = observedLastMessageIdValue?.let(::MessageId)
+    LaunchedEffect(
+            scrollStateKey,
+            listState,
+            oldestRenderedMessageIndex,
+            initialPositionApplied,
+            observedLastMessageIdValue,
+            followNewMessages
+    ) {
+        snapshotFlow {
+            ThreadMessageScrollStateSnapshot(
+                    firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                    firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
+                    oldestRenderedMessageIndex = oldestRenderedMessageIndex,
+                    initialPositionApplied = initialPositionApplied,
+                    observedLastMessageId = observedLastMessageIdValue,
+                    followNewMessages = followNewMessages
+            )
+        }.collect { snapshot ->
+            ThreadMessageScrollStateStore.save(scrollStateKey, snapshot)
+        }
+    }
+    DisposableEffect(scrollStateKey, listState) {
+        onDispose {
+            ThreadMessageScrollStateStore.save(
+                    scrollStateKey,
+                    ThreadMessageScrollStateSnapshot(
+                            firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                            firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
+                            oldestRenderedMessageIndex = oldestRenderedMessageIndex,
+                            initialPositionApplied = initialPositionApplied,
+                            observedLastMessageId = observedLastMessageIdValue,
+                            followNewMessages = followNewMessages
+                    )
+            )
+        }
+    }
     LaunchedEffect(content.messages.size, highlightedMessageIndex, followNewMessages) {
         val nextLatestWindowStartIndex =
                 (content.messages.size - ThreadMessageRenderWindowChunkSize).coerceAtLeast(0)
@@ -3094,7 +3127,7 @@ private fun ThreadMessageList(
                     scrollToListBottom = content.highlightedMessageId == null
             )
             initialPositionApplied = true
-            observedLastMessageId = lastMessageId
+            observedLastMessageIdValue = lastMessageId?.value
             followNewMessages = content.highlightedMessageId == null
         }
     }
@@ -3235,11 +3268,11 @@ private fun ThreadMessageList(
                         scrollToListBottom = true
                 )
             }
-            observedLastMessageId = lastMessageId
+            observedLastMessageIdValue = lastMessageId.value
             followNewMessages = shouldFollow
         } else if (lastMessageId != null && observedLastMessageId == null && initialPositionApplied
         ) {
-            observedLastMessageId = lastMessageId
+            observedLastMessageIdValue = lastMessageId.value
         }
     }
 
@@ -3277,6 +3310,7 @@ private fun ThreadMessageList(
                                 ThreadMessageListItemHeightCache(
                                                 message = message,
                                                 highlighted = message.id == content.highlightedMessageId,
+                                                showReplyAffordance = showReplyAction,
                                                 cache = itemHeightCache,
                                                 onHeightChanged = { measuredLayoutRevision += 1 }
                                 ) {
@@ -3285,6 +3319,7 @@ private fun ThreadMessageList(
                                                         ThreadSystemMessageItem(
                                                                         message = message,
                                                                         highlighted = message.id == content.highlightedMessageId,
+                                                                        showReplyAffordance = showReplyAction,
                                                                         onOpenThread =
                                                                                         if (showReplyAction) {
                                                                                                 { onOpenMessageThread(message) }
@@ -3301,6 +3336,7 @@ private fun ThreadMessageList(
                                                                         highlighted = message.id == content.highlightedMessageId,
                                                                         attachmentOpenStates = attachmentOpenStates,
                                                                         onOpenAttachment = onOpenAttachment,
+                                                                        showReplyAffordance = showReplyAction,
                                                                         onOpenThread =
                                                                                         if (showReplyAction) {
                                                                                                 { onOpenMessageThread(message) }
@@ -3398,6 +3434,7 @@ private fun rememberThreadItemHeightCache(): ThreadItemHeightCache =
 internal fun ThreadMessageListItemHeightCache(
         message: Message,
         highlighted: Boolean,
+        showReplyAffordance: Boolean = true,
         cache: ThreadItemHeightCache,
         onHeightChanged: () -> Unit = {},
         content: @Composable () -> Unit
@@ -3405,8 +3442,11 @@ internal fun ThreadMessageListItemHeightCache(
     BoxWithConstraints {
         val density = LocalDensity.current
         val widthPx = with(density) { maxWidth.roundToPx() }
-        val signature = remember(message, highlighted) {
-            message.threadItemHeightSignature(highlighted)
+        val signature = remember(message, highlighted, showReplyAffordance) {
+            message.threadItemHeightSignature(
+                highlighted = highlighted,
+                showReplyAffordance = showReplyAffordance
+            )
         }
         val cachedHeight = cache.get(message.id, signature, widthPx)
         var measuredHeightPx by remember(message.id, signature, widthPx) {
@@ -3476,7 +3516,10 @@ private data class ThreadItemHeightCacheEntry(
         val heightPx: Int
 )
 
-internal fun Message.threadItemHeightSignature(highlighted: Boolean): Int =
+internal fun Message.threadItemHeightSignature(
+        highlighted: Boolean,
+        showReplyAffordance: Boolean = true
+): Int =
         listOf(
                         threadId.value,
                         channelId?.value.orEmpty(),
@@ -3511,9 +3554,10 @@ internal fun Message.threadItemHeightSignature(highlighted: Boolean): Int =
                         task?.assignee?.id?.value.orEmpty(),
                         task?.assignee?.displayName.orEmpty(),
                         task?.assignee?.handle.orEmpty(),
-                        replyCount,
+                        if (showReplyAffordance) replyCount else 0,
                         parentMessageId?.value.orEmpty(),
                         updatedAtLabel.orEmpty(),
+                        showReplyAffordance,
                         highlighted
                 )
                 .hashCode()
@@ -3616,6 +3660,42 @@ private suspend fun scrollThreadListItemToRenderedBottom(
 
 private const val ThreadRenderedBottomTolerancePx = 24
 private const val ThreadMessageRenderWindowChunkSize = 30
+private const val ThreadMessageScrollStateStoreMaxSize = 64
+
+private data class ThreadMessageScrollStateKey(
+        val threadId: String,
+        val highlightedMessageId: String
+)
+
+private data class ThreadMessageScrollStateSnapshot(
+        val firstVisibleItemIndex: Int,
+        val firstVisibleItemScrollOffset: Int,
+        val oldestRenderedMessageIndex: Int,
+        val initialPositionApplied: Boolean,
+        val observedLastMessageId: String?,
+        val followNewMessages: Boolean
+)
+
+private object ThreadMessageScrollStateStore {
+    private val snapshots =
+            LinkedHashMap<ThreadMessageScrollStateKey, ThreadMessageScrollStateSnapshot>(
+                    ThreadMessageScrollStateStoreMaxSize,
+                    0.75f,
+                    true
+            )
+
+    @Synchronized
+    fun restore(key: ThreadMessageScrollStateKey): ThreadMessageScrollStateSnapshot? = snapshots[key]
+
+    @Synchronized
+    fun save(key: ThreadMessageScrollStateKey, snapshot: ThreadMessageScrollStateSnapshot) {
+        snapshots[key] = snapshot
+        while (snapshots.size > ThreadMessageScrollStateStoreMaxSize) {
+            val oldestKey = snapshots.entries.firstOrNull()?.key ?: return
+            snapshots.remove(oldestKey)
+        }
+    }
+}
 
 private fun LazyListState.isTargetItemAtBottom(targetIndex: Int): Boolean {
     val layoutInfo = layoutInfo
@@ -3792,6 +3872,7 @@ private val ThreadContent.shouldShowOlderPageState: Boolean
 
 internal const val THREAD_MESSAGE_LIST_TAG = "thread-message-list"
 internal const val THREAD_BACK_TO_BOTTOM_TAG = "thread-back-to-bottom"
+internal const val THREAD_COMPOSER_FIELD_TAG = "thread-composer-field"
 internal const val THREAD_COMPOSER_TEXT_AREA_TAG = "thread-composer-text-area"
 internal const val THREAD_COMPOSER_SUGGESTIONS_TAG = "thread-composer-suggestions"
 internal const val THREAD_INLINE_CODE_TAG = "thread-inline-code"
@@ -3884,6 +3965,7 @@ fun ThreadMessageItem(
         highlighted: Boolean = false,
         attachmentOpenStates: Map<AttachmentId, AttachmentOpenUiState> = emptyMap(),
         onOpenAttachment: (Attachment) -> Unit = {},
+        showReplyAffordance: Boolean = true,
         onOpenThread: (() -> Unit)? = null,
         onOpenAuthorProfile: (() -> Unit)? = null,
         onOpenTask: ((TaskSummary) -> Unit)? = null,
@@ -3930,7 +4012,7 @@ fun ThreadMessageItem(
             isCurrentUserMessage && myMessageAlignment == MyMessageAlignmentPreference.Right
     val messageMaxWidthFraction = if (alignCurrentUserRight) 0.82f else 1f
     val bodyFillWidth = !alignCurrentUserRight || !message.body.isPlainSingleLineMessage()
-    val hasFooterMeta = message.task != null || message.replyCount > 0
+    val hasFooterMeta = message.task != null || (showReplyAffordance && message.replyCount > 0)
     val authorDescription =
             message.author.description
                     ?.trim()
@@ -4094,6 +4176,7 @@ fun ThreadMessageItem(
                         message = message,
                         onTaskStatusChange = onTaskStatusChange,
                         onOpenThread = onOpenThread,
+                        showReplyAffordance = showReplyAffordance,
                         alignEnd = alignCurrentUserRight,
                         modifier =
                                 Modifier.messageContentWidth(messageMaxWidthFraction)
@@ -4330,7 +4413,7 @@ private fun Message.threadMessageActions(
             add(
                     SlockMenuOverlayAction(
                             label = "Share messages...",
-                            icon = R.drawable.lucide_share_2,
+                            icon = SlockIcons.Share2,
                             group = "share",
                             onClick = onShare
                     )
@@ -4338,7 +4421,7 @@ private fun Message.threadMessageActions(
             add(
                     SlockMenuOverlayAction(
                             label = "Copy link",
-                            icon = R.drawable.lucide_link,
+                            icon = SlockIcons.Link,
                             group = "message-copy",
                             onClick = onCopyLink
                     )
@@ -4346,7 +4429,7 @@ private fun Message.threadMessageActions(
             add(
                     SlockMenuOverlayAction(
                             label = "Copy markdown",
-                            icon = R.drawable.lucide_copy,
+                            icon = SlockIcons.Copy,
                             group = "message-copy",
                             onClick = onCopy
                     )
@@ -4354,7 +4437,7 @@ private fun Message.threadMessageActions(
             add(
                     SlockMenuOverlayAction(
                             label = "Save message",
-                            icon = R.drawable.lucide_bookmark,
+                            icon = SlockIcons.Bookmark,
                             group = "message",
                             onClick = onSave
                     )
@@ -4363,7 +4446,7 @@ private fun Message.threadMessageActions(
                 add(
                         SlockMenuOverlayAction(
                                 label = "Reply",
-                                icon = R.drawable.lucide_message_square,
+                                icon = SlockIcons.MessageSquare,
                                 group = "message",
                                 onClick = onReply
                         )
@@ -4382,8 +4465,8 @@ private fun Message.threadMessageActions(
                         }
                 val actionIcon =
                         when (task.status) {
-                            TaskStatus.Done, TaskStatus.Closed -> R.drawable.lucide_refresh_cw
-                            else -> R.drawable.lucide_circle_check_big
+                            TaskStatus.Done, TaskStatus.Closed -> SlockIcons.RefreshCw
+                            else -> SlockIcons.CircleCheckBig
                         }
                 add(
                         SlockMenuOverlayAction(
@@ -4410,11 +4493,13 @@ private fun ThreadMessageFooterMeta(
         message: Message,
         onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
         onOpenThread: (() -> Unit)?,
+        showReplyAffordance: Boolean,
         alignEnd: Boolean,
         modifier: Modifier = Modifier
 ) {
         val task = message.task?.withMessageThreadContext(message)
-        val replyLabel = message.replyCount.takeIf { it > 0 }?.let { "$it replies" }
+        val replyLabel =
+                message.replyCount.takeIf { showReplyAffordance && it > 0 }?.let { "$it replies" }
         if (task == null && replyLabel == null) return
     if (replyLabel != null) {
         LaunchedEffect(message.id, message.threadChannelId, message.replyCount, replyLabel) {
@@ -4496,7 +4581,7 @@ private fun ThreadTaskStatusChip(
                                 TaskStatus.entries.map { status ->
                                     SlockMenuOverlayAction(
                                             label = status.threadLabel,
-                                            icon = R.drawable.lucide_check.takeIf {
+                                            icon = SlockIcons.Check.takeIf {
                                                 status == task.status
                                             },
                                             onClick = {
@@ -4717,6 +4802,7 @@ internal fun ThreadSystemMessageItem(
         message: Message,
         modifier: Modifier = Modifier,
         highlighted: Boolean = false,
+        showReplyAffordance: Boolean = true,
         onOpenThread: (() -> Unit)? = null
 ) {
     val timestamp = message.timestampLabel.toThreadTimestampLabel()
@@ -4757,11 +4843,12 @@ internal fun ThreadSystemMessageItem(
         if (expanded) {
             ThreadSystemMessageExpandedContent(message)
         }
-        if (message.task != null || message.replyCount > 0) {
+        if (message.task != null || (showReplyAffordance && message.replyCount > 0)) {
             ThreadMessageFooterMeta(
                     message = message,
                     onTaskStatusChange = { _, _ -> },
                     onOpenThread = onOpenThread,
+                    showReplyAffordance = showReplyAffordance,
                     alignEnd = false,
                     modifier = Modifier.fillMaxWidth()
             )
@@ -4852,7 +4939,8 @@ private fun threadInlineTagPlaceholderWidthDp(
     val iconWidth = if (hasIcon) 14.dp + SlockSpacing.Xs else 0.dp
     return with(density) {
                 textMeasurer.measure(text = label, style = ThreadInlineChipTextStyle).size.width.toDp()
-        } + ThreadInlineChipHorizontalPadding * 2 + iconWidth
+        } + ThreadInlineChipHorizontalPadding * 2 + iconWidth +
+            SlockStroke.Thin * 2 + ThreadInlineTagPlaceholderSlack
 }
 
 // Slot height must equal body lineHeight EXACTLY (no sp<->dp round-trip), otherwise
@@ -4865,6 +4953,7 @@ private val ThreadInlineChipHorizontalPadding = 10.dp
 private val ThreadInlineChipVerticalPaddingTop = 1.dp
 private val ThreadInlineChipVerticalPaddingBottom = 4.dp
 private val ThreadFooterChipVerticalPadding = 3.dp
+private val ThreadInlineTagPlaceholderSlack = 8.dp
 
 private val ThreadInlineChipTextStyle: TextStyle
         get() =
@@ -5014,6 +5103,7 @@ private fun ThreadOfficialMarkdown(
                                             verticalPaddingTop = ThreadInlineChipVerticalPaddingTop,
                                             verticalPaddingBottom =
                                                     ThreadInlineChipVerticalPaddingBottom,
+                                            maxLines = 1,
                                             modifier =
                                                     Modifier.onGloballyPositioned { coordinates ->
                                                         inlineTagBounds[id] =
@@ -5239,7 +5329,7 @@ private fun ThreadMarkdownCopyButton(onClick: () -> Unit) {
             contentAlignment = Alignment.Center
     ) {
         Icon(
-                painter = painterResource(R.drawable.lucide_copy),
+                imageVector = SlockIcons.Copy,
                 contentDescription = "Copy code",
                 tint = SlockColor.TextBlack,
                 modifier = Modifier.size(16.dp)
@@ -5521,7 +5611,9 @@ fun ThreadComposerBar(
         modifier: Modifier = Modifier,
         memberSuggestions: List<MemberProfile> = emptyList(),
         channelSuggestions: List<ConversationSummary> = emptyList(),
+        showAsTaskToggle: Boolean = true,
         onComposerTextToolbarShown: () -> Unit = {},
+        onComposerTextToolbarHidden: () -> Unit = {},
         focusRequestNonce: Int = 0
 ) {
     var composerFieldValue by remember { mutableStateOf(TextFieldValue(composerState.value)) }
@@ -5582,6 +5674,7 @@ fun ThreadComposerBar(
         composerFieldValue = nextValue
         onComposerChange(nextValue.text)
     }
+    var composerFieldBounds by remember { mutableStateOf<Rect?>(null) }
     var composerTextAreaBounds by remember { mutableStateOf<Rect?>(null) }
     val suggestionTrigger = remember(composerFieldValue) {
         detectComposerSuggestionTrigger(composerFieldValue)
@@ -5593,7 +5686,7 @@ fun ThreadComposerBar(
                     val q = trigger.query.lowercase()
                     member.displayName.lowercase().contains(q) ||
                             member.handle.lowercase().contains(q)
-                }.take(6)
+                }
             else -> emptyList()
         }
     }
@@ -5611,6 +5704,19 @@ fun ThreadComposerBar(
             composerState.pendingAttachments.firstOrNull { attachment ->
                 attachment.id == pendingPreviewAttachmentId && attachment.hasLocalImagePreview
             }
+    val insertComposerNewline = {
+        handleComposerFieldValueChange(composerFieldValue.insertTextAtSelection("\n"))
+    }
+    val textToolbar =
+            rememberComposerTextToolbar(
+                    onInsertNewline = insertComposerNewline,
+                    onToolbarHidden = onComposerTextToolbarHidden
+            )
+    DisposableEffect(textToolbar) {
+        onDispose {
+            textToolbar.hide()
+        }
+    }
     LaunchedEffect(pendingPreviewAttachmentId, composerState.pendingAttachments) {
         if (pendingPreviewAttachmentId != null && pendingPreviewAttachment == null) {
             pendingPreviewAttachmentId = null
@@ -5620,12 +5726,36 @@ fun ThreadComposerBar(
     val showChannelSuggestions = filteredChannelSuggestions.isNotEmpty()
     Column(modifier = modifier.fillMaxWidth().navigationBarsPadding()) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val suggestionPopupOffsetY = with(density) { -(SlockSpacing.Xs + 244.dp).roundToPx() }
             val suggestionDropdownWidth = maxWidth - horizontalPadding * 2
+            val suggestionPopupPositionProvider =
+                    remember(composerFieldBounds, density, horizontalPadding) {
+                        object : PopupPositionProvider {
+                            override fun calculatePosition(
+                                    anchorBounds: IntRect,
+                                    windowSize: IntSize,
+                                    layoutDirection: LayoutDirection,
+                                    popupContentSize: IntSize
+                            ): IntOffset {
+                                val horizontalPaddingPx =
+                                        with(density) { horizontalPadding.roundToPx() }
+                                val fieldTopPx =
+                                        composerFieldBounds?.top?.roundToInt()
+                                                ?: popupContentSize.height
+                                return IntOffset(
+                                        x =
+                                                horizontalPaddingPx.coerceIn(
+                                                        0,
+                                                        (windowSize.width - popupContentSize.width)
+                                                                .coerceAtLeast(0)
+                                                ),
+                                        y = (fieldTopPx - popupContentSize.height).coerceAtLeast(0)
+                                )
+                            }
+                        }
+                    }
             if (showMemberSuggestions || showChannelSuggestions) {
                 Popup(
-                        alignment = Alignment.TopCenter,
-                        offset = IntOffset(0, suggestionPopupOffsetY),
+                        popupPositionProvider = suggestionPopupPositionProvider,
                         properties =
                                 PopupProperties(
                                         focusable = false,
@@ -5707,7 +5837,7 @@ fun ThreadComposerBar(
                                 ),
                 verticalArrangement = Arrangement.spacedBy(composerSectionSpacing)
         ) {
-            val statusLabel = composerState.statusLabel
+            val statusLabel = composerState.activityLabel
             if (statusLabel != null) {
                 Text(
                         text = statusLabel,
@@ -5729,10 +5859,6 @@ fun ThreadComposerBar(
                         onPreviewAttachment = { pendingPreviewAttachmentId = it }
                 )
             }
-            val insertComposerNewline = {
-                handleComposerFieldValueChange(composerFieldValue.insertTextAtSelection("\n"))
-            }
-            val textToolbar = rememberComposerTextToolbar(onInsertNewline = insertComposerNewline)
             val showComposerToolbar = {
                 onComposerTextToolbarShown()
                 textToolbar.showComposerMenu(
@@ -5788,10 +5914,28 @@ fun ThreadComposerBar(
                             ),
                     inputModifier =
                             Modifier.focusRequester(focusRequester)
+                                    .testTag(THREAD_COMPOSER_FIELD_TAG)
                                     .threadComposerNewlineInput(
                                             composerValueProvider,
                                             handleComposerFieldValueChange
-                                    ),
+                                    )
+                                    .onFocusChanged { focusState ->
+                                        if (!focusState.isFocused) {
+                                            textToolbar.hide()
+                                        }
+                                    }
+                                    .onGloballyPositioned { coordinates ->
+                                        val position = coordinates.positionInWindow()
+                                        composerFieldBounds =
+                                                Rect(
+                                                        left = position.x,
+                                                        top = position.y,
+                                                        right = position.x + coordinates.size.width,
+                                                        bottom =
+                                                                position.y +
+                                                                        coordinates.size.height
+                                                )
+                                    },
                     textAreaModifier =
                             Modifier.testTag(THREAD_COMPOSER_TEXT_AREA_TAG)
                                     .threadComposerDoubleTapToolbar(showComposerToolbar)
@@ -5813,6 +5957,7 @@ fun ThreadComposerBar(
                                 enabled = enabled,
                                 onAttachImage = onAttachImage,
                                 onAttachFile = onAttachFile,
+                                showAsTaskToggle = showAsTaskToggle,
                                 onAsTaskChange = onAsTaskChange,
                                 onSend = onSend
                         )
@@ -5821,13 +5966,6 @@ fun ThreadComposerBar(
                     contentPaddingVertical = composerTextFieldVerticalPadding,
                     inputFontWeight = FontWeight.Normal,
                     inputFontFamily = SlockNormalFontFamily
-                )
-            }
-            if (composerState.attachmentIds.isNotEmpty() && composerState.pendingAttachments.isEmpty()) {
-                Text(
-                        text = "${composerState.attachmentIds.size} files",
-                        style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray
                 )
             }
         }
@@ -6009,6 +6147,7 @@ private fun ThreadComposerInlineActions(
         enabled: Boolean,
         onAttachImage: () -> Unit,
         onAttachFile: () -> Unit,
+        showAsTaskToggle: Boolean,
         onAsTaskChange: (Boolean) -> Unit,
         onSend: () -> Unit
 ) {
@@ -6039,15 +6178,17 @@ private fun ThreadComposerInlineActions(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            SlockLabeledCheckbox(
-                    label = "As Task",
-                    checked = composerState.asTask,
-                    onCheckedChange = onAsTaskChange,
-                    enabled = enabled,
-                    size = 18.dp,
-                    labelSpacing = SlockSpacing.Xs,
-                    labelStyle = SlockType.Button
-            )
+            if (showAsTaskToggle) {
+                SlockLabeledCheckbox(
+                        label = "As Task",
+                        checked = composerState.asTask,
+                        onCheckedChange = onAsTaskChange,
+                        enabled = enabled,
+                        size = 18.dp,
+                        labelSpacing = SlockSpacing.Xs,
+                        labelStyle = SlockType.Button
+                )
+            }
             ThreadSendButton(
                     state = composerState.sendVisualState,
                     onClick = onSend
@@ -6112,15 +6253,20 @@ private fun TextFieldValue.selectedText(): String? {
 private fun TextFieldValue.selectAll(): TextFieldValue = copy(selection = TextRange(0, text.length))
 
 @Composable
-private fun rememberComposerTextToolbar(onInsertNewline: () -> Unit): TextToolbar {
+private fun rememberComposerTextToolbar(
+        onInsertNewline: () -> Unit,
+        onToolbarHidden: () -> Unit = {}
+): TextToolbar {
     val view = LocalView.current
     val insertNewlineState = rememberUpdatedState(onInsertNewline)
+    val toolbarHiddenState = rememberUpdatedState(onToolbarHidden)
     val insertNewlineLabel = stringResource(R.string.thread_composer_insert_newline)
     return remember(view, insertNewlineLabel) {
         ComposerTextToolbar(
                 view = view,
                 insertNewlineLabel = insertNewlineLabel,
-                onInsertNewline = { insertNewlineState.value() }
+                onInsertNewline = { insertNewlineState.value() },
+                onToolbarHidden = { toolbarHiddenState.value() }
         )
     }
 }
@@ -6181,11 +6327,19 @@ private fun TextToolbar.showComposerMenu(
 private class ComposerTextToolbar(
         private val view: View,
         private val insertNewlineLabel: String,
-        private val onInsertNewline: () -> Unit
+        private val onInsertNewline: () -> Unit,
+        private val onToolbarHidden: () -> Unit
 ) : TextToolbar {
     private var actionMode: ActionMode? = null
     override var status: TextToolbarStatus = TextToolbarStatus.Hidden
         private set
+
+    private fun markHidden() {
+        if (status != TextToolbarStatus.Hidden) {
+            status = TextToolbarStatus.Hidden
+            onToolbarHidden()
+        }
+    }
 
     override fun showMenu(
             rect: Rect,
@@ -6206,7 +6360,7 @@ private class ComposerTextToolbar(
                             hide()
                         },
                         onActionModeDestroyed = {
-                            status = TextToolbarStatus.Hidden
+                            markHidden()
                             actionMode = null
                         },
                         insertNewlineLabel = insertNewlineLabel,
@@ -6222,7 +6376,7 @@ private class ComposerTextToolbar(
     }
 
     override fun hide() {
-        status = TextToolbarStatus.Hidden
+        markHidden()
         actionMode?.finish()
         actionMode = null
     }
@@ -6246,7 +6400,6 @@ private class ComposerTextActionModeCallback(
         }
         if (onCopyRequested != null) {
             menu.add(0, android.R.id.copy, 2, android.R.string.copy)
-                                        .setIcon(R.drawable.lucide_copy)
                     .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         }
         if (onPasteRequested != null) {
@@ -6623,17 +6776,6 @@ private val ComposerState.sendVisualState: ComposerSendVisualState
                 ComposerStatus.Sending -> ComposerSendVisualState.Sending
                 ComposerStatus.Failed -> ComposerSendVisualState.Failed
                 ComposerStatus.NoPermission -> ComposerSendVisualState.NoPermission
-            }
-
-private val ComposerState.statusLabel: String?
-    get() =
-            when (status) {
-                ComposerStatus.Uploading -> "Uploading attachment"
-                ComposerStatus.Sending -> "Sending message"
-                ComposerStatus.Failed -> "Send failed: ${errorCode ?: "retry"}"
-                ComposerStatus.NoPermission ->
-                        "No permission: ${noPermissionCode ?: "channel_readonly"}"
-                ComposerStatus.IdleEmpty, ComposerStatus.Ready -> null
             }
 
 @Preview(showBackground = true, widthDp = 360, heightDp = 800)

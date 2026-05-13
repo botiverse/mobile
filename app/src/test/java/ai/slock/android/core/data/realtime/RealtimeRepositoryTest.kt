@@ -34,7 +34,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import retrofit2.Response
+import ai.slock.android.core.data.network.ApiResponse
 
 class RealtimeRepositoryTest {
     @Test
@@ -650,30 +650,36 @@ class RealtimeRepositoryTest {
     private class FakeAuthApi(
         private val refreshFailure: Throwable? = null
     ) : AuthApi {
-        override suspend fun login(body: RequestBody): Response<ResponseBody> =
-            Response.error(404, "".toResponseBody(json))
+        override suspend fun login(body: RequestBody): ApiResponse =
+            ApiResponse.error(404, "".toResponseBody(json))
 
-        override suspend fun currentUser(authorization: String): Response<ResponseBody> =
-            Response.error(404, "".toResponseBody(json))
+        override suspend fun register(body: RequestBody): ApiResponse =
+            ApiResponse.error(404, "".toResponseBody(json))
 
-        override suspend fun refresh(body: RequestBody): Response<ResponseBody> {
+        override suspend fun forgotPassword(body: RequestBody): ApiResponse =
+            ApiResponse.error(404, "".toResponseBody(json))
+
+        override suspend fun currentUser(authorization: String): ApiResponse =
+            ApiResponse.error(404, "".toResponseBody(json))
+
+        override suspend fun refresh(body: RequestBody): ApiResponse {
             refreshFailure?.let { throw it }
-            return Response.success(
+            return ApiResponse.success(
                 """{"accessToken":"socket-new-access","refreshToken":"socket-new-refresh"}""".toResponseBody(json)
             )
         }
 
-        override suspend fun logout(body: RequestBody): Response<ResponseBody> =
-            Response.success("""{"ok":true}""".toResponseBody(json))
+        override suspend fun logout(body: RequestBody): ApiResponse =
+            ApiResponse.success("""{"ok":true}""".toResponseBody(json))
 
-        override suspend fun servers(authorization: String): Response<ResponseBody> =
-            Response.error(404, "".toResponseBody(json))
+        override suspend fun servers(authorization: String): ApiResponse =
+            ApiResponse.error(404, "".toResponseBody(json))
 
         override suspend fun createServer(
             authorization: String,
             body: RequestBody
-        ): Response<ResponseBody> =
-            Response.error(404, "".toResponseBody(json))
+        ): ApiResponse =
+            ApiResponse.error(404, "".toResponseBody(json))
     }
 
     companion object {

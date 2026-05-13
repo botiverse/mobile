@@ -10,8 +10,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -92,6 +96,9 @@ fun SlockTaskColumn(
     copy: SlockTaskBoardCopy = SlockTaskBoardCopy.defaults(),
     modifier: Modifier = Modifier
 ) {
+    var collapsed by rememberSaveable(status) {
+        mutableStateOf(status == SlockTaskStatus.Done || status == SlockTaskStatus.Closed)
+    }
     Column(
         modifier = modifier
             .background(SlockColor.SurfaceWhite)
@@ -99,22 +106,51 @@ fun SlockTaskColumn(
             .padding(SlockSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-            SlockStatusLabel(status = status, label = copy.statusLabel(status))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(role = Role.Button, onClick = { collapsed = !collapsed }),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            Icon(
+                imageVector = if (collapsed) SlockIcons.ChevronRight else SlockIcons.ChevronDown,
+                contentDescription = null,
+                tint = SlockColor.TextBlack,
+                modifier = Modifier.size(14.dp)
+            )
+            SlockStatusLabel(
+                status = status,
+                label = copy.statusLabel(status),
+                modifier = Modifier.weight(1f, fill = false)
+            )
             Text(
                 text = tasks.size.toString(),
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray
             )
         }
-        if (tasks.isEmpty()) {
+        if (collapsed) {
+            Text(
+                text = if (tasks.size == 1) "1 task hidden" else "${tasks.size} tasks hidden",
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        } else if (tasks.isEmpty()) {
             SlockEmptyState(
                 title = copy.emptyColumnTitle(status),
                 detail = copy.emptyColumnDetail
             )
         } else {
-            tasks.forEach { task ->
-                SlockTaskCard(task = task, statusLabel = copy.statusLabel(task.status))
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 640.dp),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+            ) {
+                items(tasks) { task ->
+                    SlockTaskCard(task = task, statusLabel = copy.statusLabel(task.status))
+                }
             }
         }
     }
@@ -218,7 +254,7 @@ fun SlockStatusSelector(
                         SlockTaskStatus.entries.map { option ->
                             SlockMenuOverlayAction(
                                 label = option.displayLabel,
-                                icon = R.drawable.lucide_check.takeIf { option == status },
+                                icon = SlockIcons.Check.takeIf { option == status },
                                 onClick = {
                                     onExpandedChange(false)
                                     onStatusSelected(option)

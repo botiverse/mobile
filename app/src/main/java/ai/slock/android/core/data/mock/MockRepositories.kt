@@ -17,6 +17,10 @@ import ai.slock.android.core.data.repository.AgentSkillGroup
 import ai.slock.android.core.data.repository.AgentSkillPathGroup
 import ai.slock.android.core.data.repository.AgentSkillSummary
 import ai.slock.android.core.data.repository.AgentSkillsSnapshot
+import ai.slock.android.core.data.repository.AgentWorkspaceSnapshot
+import ai.slock.android.core.data.repository.AgentWorkspaceChildrenSnapshot
+import ai.slock.android.core.data.repository.AgentWorkspaceFilePreviewSnapshot
+import ai.slock.android.core.data.repository.AgentWorkspaceTreeSnapshot
 import ai.slock.android.core.data.repository.AttachmentOpenTarget
 import ai.slock.android.core.data.repository.AttachmentUploadRequest
 import ai.slock.android.core.data.repository.AttachmentUploadResult
@@ -54,6 +58,7 @@ import ai.slock.android.core.data.repository.SettingsBillingPlanSnapshot
 import ai.slock.android.core.data.repository.SettingsBillingSnapshot
 import ai.slock.android.core.data.repository.SettingsPlanUsageSnapshot
 import ai.slock.android.core.data.repository.SettingsMobileSnapshot
+import ai.slock.android.core.data.repository.SettingsComputerWorkspaceSnapshot
 import ai.slock.android.core.data.repository.SettingsRepository
 import ai.slock.android.core.data.repository.SettingsServerActionResult
 import ai.slock.android.core.data.repository.SettingsServerDeleteRequest
@@ -86,7 +91,10 @@ import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenError
-import ai.slock.shared.model.topLevelThreadId
+import ai.slock.compose.model.SlockWorkspaceFileKind
+import ai.slock.compose.model.SlockWorkspaceFilePreview
+import ai.slock.compose.model.SlockWorkspaceNode
+import ai.slock.compose.model.topLevelThreadId
 
 class MockAuthSessionRepository(
     private val scenario: MockScenario = MockScenario.Content
@@ -502,6 +510,61 @@ class MockMemberRepository(
             AgentActivitySnapshot(agentId = agentId, activity = mockAgentActivity)
         }
 
+    override suspend fun getAgentWorkspaces(agentId: MemberId): DataResult<AgentWorkspaceSnapshot> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            AgentWorkspaceSnapshot(
+                agentId = agentId,
+                computerId = "mbp-14",
+                computerName = "MacBook Pro",
+                workspaces = listOf(
+                    SettingsComputerWorkspaceSnapshot(
+                        id = "slock-android",
+                        name = "Slock",
+                        path = "/Users/artin/AndroidStudioProjects/Slock",
+                        statusLabel = "Active",
+                        lastActiveLabel = "2026-05-13T19:30:00Z"
+                    )
+                )
+            )
+        }
+
+    override suspend fun getAgentWorkspaceTree(agentId: MemberId): DataResult<AgentWorkspaceTreeSnapshot> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            AgentWorkspaceTreeSnapshot(
+                agentId = agentId,
+                rootPath = "/Users/artin/AndroidStudioProjects/Slock",
+                root = mockWorkspaceRoot
+            )
+        }
+
+    override suspend fun getAgentWorkspaceChildren(
+        agentId: MemberId,
+        dirPath: String
+    ): DataResult<AgentWorkspaceChildrenSnapshot> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            AgentWorkspaceChildrenSnapshot(
+                agentId = agentId,
+                dirPath = dirPath,
+                children = mockWorkspaceRoot.findByPath(dirPath)?.children.orEmpty()
+            )
+        }
+
+    override suspend fun readAgentWorkspaceFile(
+        agentId: MemberId,
+        path: String
+    ): DataResult<AgentWorkspaceFilePreviewSnapshot> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            AgentWorkspaceFilePreviewSnapshot(
+                agentId = agentId,
+                path = path,
+                preview = mockWorkspaceRoot.findByPath(path)?.preview
+                    ?: SlockWorkspaceFilePreview.Unsupported(
+                        path = path,
+                        reason = "Mock preview unavailable."
+                    )
+            )
+        }
+
     override suspend fun getAgentSkills(agentId: MemberId): DataResult<AgentSkillsSnapshot> =
         resultFor(scenario, EmptyReason.NoMembers) { mockAgentSkills(agentId) }
 
@@ -594,6 +657,50 @@ class MockMemberRepository(
                 )
             )
         )
+
+    private val mockWorkspaceRoot = SlockWorkspaceNode(
+        id = "/",
+        name = "workspace",
+        path = "/",
+        kind = SlockWorkspaceFileKind.Folder,
+        children = listOf(
+            SlockWorkspaceNode(
+                id = "README.md",
+                name = "README.md",
+                path = "README.md",
+                kind = SlockWorkspaceFileKind.Markdown,
+                preview = SlockWorkspaceFilePreview.Text(
+                    path = "README.md",
+                    content = "# Slock\n\nMock workspace preview.",
+                    markdown = true
+                )
+            ),
+            SlockWorkspaceNode(
+                id = "app",
+                name = "app",
+                path = "app",
+                kind = SlockWorkspaceFileKind.Folder,
+                children = listOf(
+                    SlockWorkspaceNode(
+                        id = "app/build.gradle.kts",
+                        name = "build.gradle.kts",
+                        path = "app/build.gradle.kts",
+                        kind = SlockWorkspaceFileKind.Text,
+                        preview = SlockWorkspaceFilePreview.Text(
+                            path = "app/build.gradle.kts",
+                            content = "plugins { /* mock */ }",
+                            markdown = false
+                        )
+                    )
+                )
+            )
+        )
+    )
+
+    private fun SlockWorkspaceNode.findByPath(targetPath: String): SlockWorkspaceNode? {
+        if (path == targetPath) return this
+        return children.firstNotNullOfOrNull { it.findByPath(targetPath) }
+    }
 }
 
 class MockChannelRepository(
