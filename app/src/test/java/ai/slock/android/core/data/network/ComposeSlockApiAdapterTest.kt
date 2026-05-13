@@ -27,7 +27,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import ai.slock.android.core.data.network.ApiResponse
 
-class KmpSlockApiAdapterTest {
+class ComposeSlockApiAdapterTest {
     @Test
     fun channelMessagesUsesKmpHttpClientWithAuthHeadersAndQuery() {
         var captured: HttpRequestData? = null
@@ -43,7 +43,7 @@ class KmpSlockApiAdapterTest {
                         }
                 )
         val api =
-                KmpSlockApiAdapter(
+                ComposeSlockApiAdapter(
                         store = InMemoryAuthSessionStore(sampleSession),
                         baseUrl = "https://api.example.test/api/",
                         httpClient = client
@@ -83,7 +83,7 @@ class KmpSlockApiAdapterTest {
                     }
                 }
         val api =
-                KmpSlockApiAdapter(
+                ComposeSlockApiAdapter(
                         store = InMemoryAuthSessionStore(sampleSession),
                         baseUrl = "https://api.example.test/api/",
                         httpClient = client
@@ -123,7 +123,7 @@ class KmpSlockApiAdapterTest {
                 )
         val store = InMemoryAuthSessionStore(sampleSession)
         val api =
-                KmpSlockApiAdapter(
+                ComposeSlockApiAdapter(
                         store = store,
                         baseUrl = "https://api.example.test/api/",
                         tokenRefresher =
@@ -161,7 +161,7 @@ class KmpSlockApiAdapterTest {
                 )
         val store = InMemoryAuthSessionStore(sampleSession)
         val api =
-                KmpSlockApiAdapter(
+                ComposeSlockApiAdapter(
                         store = store,
                         baseUrl = "https://api.example.test/api/",
                         tokenRefresher =
@@ -199,7 +199,7 @@ class KmpSlockApiAdapterTest {
                         }
                 )
         val api =
-                KmpSlockApiAdapter(
+                ComposeSlockApiAdapter(
                         store = InMemoryAuthSessionStore(sampleSession),
                         baseUrl = "https://api.example.test/api/",
                         httpClient = client

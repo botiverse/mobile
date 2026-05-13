@@ -11,6 +11,7 @@ import ai.slock.compose.network.HttpClientConfig
 import ai.slock.compose.network.KmpHttpResponse
 import ai.slock.compose.network.MultipartFile
 import ai.slock.compose.network.SlockApiClient
+import ai.slock.compose.network.SlockRequestScheduler
 import ai.slock.compose.network.TimeoutConfig
 import ai.slock.compose.network.createHttpClient
 import io.ktor.client.HttpClient
@@ -20,7 +21,7 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okio.Buffer
 
-class KmpSlockApiAdapter(
+class ComposeSlockApiAdapter(
         store: AuthSessionStore,
         baseUrl: String = KtorAuthRepository.BASE_URL,
         tokenRefresher: AuthTokenRefresher =
@@ -34,7 +35,7 @@ class KmpSlockApiAdapter(
                                 timeout = TimeoutConfig()
                         )
                 ),
-        logger: (String) -> Unit = { message ->
+        private val logger: (String) -> Unit = { message ->
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(TAG, message)
         },
         private val warningLogger: (String) -> Unit = { message ->
@@ -52,7 +53,11 @@ class KmpSlockApiAdapter(
                                                         tokenRefresher = tokenRefresher,
                                                         warningLogger = warningLogger
                                                 ),
-                                        logger = { message -> logger("kmp_$message") }
+                                        logger = { message -> logger("compose_$message") }
+                                ),
+                        requestScheduler =
+                                SlockRequestScheduler(
+                                        logger = { message -> logger("request_pool_$message") }
                                 ),
                         warningLogger = warningLogger
                 )
@@ -166,7 +171,7 @@ class KmpSlockApiAdapter(
             } catch (io: IOException) {
                 throw io
             } catch (error: Exception) {
-                warningLogger("kmp_api_failed reason=${error::class.java.simpleName}")
+                warningLogger("compose_api_failed reason=${error::class.java.simpleName}")
                 throw IOException(error)
             }
 
@@ -198,7 +203,7 @@ class KmpSlockApiAdapter(
     }
 
     private companion object {
-        const val TAG = "SlockKmpApi"
+        const val TAG = "SlockComposeApi"
     }
 }
 
@@ -220,7 +225,7 @@ private class AndroidAuthTokenProvider(
                         current != null &&
                         current.accessToken == failedAccessToken
         ) {
-            warningLogger("kmp_api_retry_unauthorized_clearing_session")
+            warningLogger("compose_api_retry_unauthorized_clearing_session")
             store.clearSession()
         }
     }

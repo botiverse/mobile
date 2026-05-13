@@ -2013,7 +2013,7 @@ object RealSlockApiFactory {
                             api = KtorAuthRepository.createAuthApi(baseUrl)
                     )
     ): SlockApi =
-        KmpSlockApiAdapter(
+        ComposeSlockApiAdapter(
                 store = store,
                 baseUrl = baseUrl,
                 tokenRefresher = tokenRefresher

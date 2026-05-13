@@ -15,12 +15,14 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import kotlinx.coroutines.CancellationException
+import kotlin.coroutines.coroutineContext
 
 class SlockApiClient(
     private val baseUrl: String,
     private val httpClient: HttpClient = createHttpClient(HttpClientConfig(timeout = TimeoutConfig())),
     private val authTransport: AuthenticatedKtorTransport,
-    private val warningLogger: (String) -> Unit = {}
+    private val warningLogger: (String) -> Unit = {},
+    private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler()
 ) {
     suspend fun settingsAccount(): KmpHttpResponse = get("auth/me")
     suspend fun updateSettingsAccount(body: String): KmpHttpResponse = patch("auth/me", body)
@@ -133,13 +135,29 @@ class SlockApiClient(
         query: List<Pair<String, String>> = emptyList(),
         body: String? = null
     ): KmpHttpResponse =
-        authTransport.executeWithAuthRetry { tokens ->
-            executeKtor(method, path, query, body, tokens)
+        coroutineContext[SlockRequestPriorityElement].let { priority ->
+            requestScheduler.run(
+                priority = priority?.priority ?: SlockRequestPriority.Visible,
+                key = priority?.requestKey,
+                reason = priority?.reason
+            ) {
+                authTransport.executeWithAuthRetry { tokens ->
+                    executeKtor(method, path, query, body, tokens)
+                }
+            }
         }.toKmpHttpResponse()
 
     private suspend fun multipart(path: String, formData: MultipartFormData): KmpHttpResponse =
-        authTransport.executeWithAuthRetry { tokens ->
-            executeMultipart(path, formData, tokens)
+        coroutineContext[SlockRequestPriorityElement].let { priority ->
+            requestScheduler.run(
+                priority = priority?.priority ?: SlockRequestPriority.Visible,
+                key = priority?.requestKey,
+                reason = priority?.reason
+            ) {
+                authTransport.executeWithAuthRetry { tokens ->
+                    executeMultipart(path, formData, tokens)
+                }
+            }
         }.toKmpHttpResponse()
 
     private suspend fun executeKtor(
