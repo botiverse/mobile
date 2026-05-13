@@ -17,6 +17,7 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.core.content.res.ResourcesCompat
 import ai.slock.android.BuildConfig
 import ai.slock.android.R
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
@@ -131,6 +132,7 @@ private object SlockKuiklyAdapters {
             krImageAdapter = SlockKuiklyImageAdapter(context.applicationContext)
             krLogAdapter = SlockKuiklyLogAdapter
             krUncaughtExceptionHandlerAdapter = SlockKuiklyExceptionAdapter
+            SlockKuiklyFontAdapter.init(context.applicationContext)
             krFontAdapter = SlockKuiklyFontAdapter
             krRouterAdapter = SlockKuiklyRouterAdapter
             krThreadAdapter = SlockKuiklyThreadAdapter
@@ -174,8 +176,26 @@ private object SlockKuiklyExceptionAdapter : IKRUncaughtExceptionHandlerAdapter 
 }
 
 private object SlockKuiklyFontAdapter : IKRFontAdapter {
+    private var context: Context? = null
+
+    fun init(context: Context) {
+        this.context = context.applicationContext
+    }
+
     override fun getTypeface(fontFamily: String, result: (Typeface?) -> Unit) {
-        result(null)
+        val fontName = fontFamily.substringBefore(",").trim()
+        val fontRes = when (fontName) {
+            "space_grotesk_bold" -> R.font.space_grotesk_bold
+            "space_grotesk_medium" -> R.font.space_grotesk_medium
+            "space_grotesk_regular" -> R.font.space_grotesk_regular
+            "space_grotesk_light" -> R.font.space_grotesk_light
+            "space_grotesk" -> R.font.space_grotesk
+            else -> null
+        }
+        val typeface = fontRes?.let { resId ->
+            context?.let { ResourcesCompat.getFont(it, resId) }
+        }
+        result(typeface)
     }
 }
 
