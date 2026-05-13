@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -131,7 +133,8 @@ fun MembersPageShell(
     onBack: () -> Unit = {},
     onMemberClick: (MemberProfile) -> Unit = {},
     onAddHuman: () -> Unit = {},
-    onRetry: () -> Unit = {}
+    onRetry: () -> Unit = {},
+    loadHumanProfile: (suspend (MemberId) -> MemberProfile?)? = null
 ) {
     Column(
         modifier = modifier
@@ -140,7 +143,7 @@ fun MembersPageShell(
     ) {
         when (val loadState = state.loadState) {
             ScreenLoadState.Loading -> MembersFeedback(
-                title = "Loading members",
+                title = "Loading...",
                 detail = "Preparing local sample state.",
                 onBack = onBack,
                 loading = true
@@ -150,7 +153,8 @@ fun MembersPageShell(
                     content = loadState.data,
                     onBack = onBack,
                     onAddHuman = onAddHuman,
-                    onMemberClick = onMemberClick
+                    onMemberClick = onMemberClick,
+                    loadHumanProfile = loadHumanProfile
                 )
             }
             is ScreenLoadState.Empty -> MembersFeedback(
@@ -191,7 +195,8 @@ fun MembersRouteScreen(
     onRefreshAgentWorkspaceTree: () -> Unit = {},
     onSaveAgentProfile: (MemberProfile, String, String) -> Unit = { _, _, _ -> },
     onAddHuman: () -> Unit = {},
-    onRetry: () -> Unit = {}
+    onRetry: () -> Unit = {},
+    loadHumanProfile: (suspend (MemberId) -> MemberProfile?)? = null
 ) {
     var selectedMemberId by rememberSaveable { mutableStateOf(initialSelectedMemberId) }
     var selectedDetailTab by rememberSaveable {
@@ -247,6 +252,7 @@ fun MembersRouteScreen(
             onBack = onBack,
             onAddHuman = onAddHuman,
             onRetry = onRetry,
+            loadHumanProfile = loadHumanProfile,
             modifier = modifier
         )
         return
@@ -298,7 +304,8 @@ fun MembersRouteScreen(
             onBack = onBack,
             onMemberClick = openDetail,
             onAddHuman = onAddHuman,
-            onRetry = onRetry
+            onRetry = onRetry,
+            loadHumanProfile = loadHumanProfile
         )
     }
 }
@@ -321,6 +328,7 @@ private fun MembersWideRouteScreen(
     onBack: () -> Unit,
     onAddHuman: () -> Unit,
     onRetry: () -> Unit,
+    loadHumanProfile: (suspend (MemberId) -> MemberProfile?)? = null,
     modifier: Modifier = Modifier
 ) {
     if (selectedMember == null) {
@@ -330,7 +338,8 @@ private fun MembersWideRouteScreen(
             onBack = onBack,
             onMemberClick = onMemberClick,
             onAddHuman = onAddHuman,
-            onRetry = onRetry
+            onRetry = onRetry,
+            loadHumanProfile = loadHumanProfile
         )
         return
     }
@@ -348,7 +357,8 @@ private fun MembersWideRouteScreen(
             onBack = onBack,
             onMemberClick = onMemberClick,
             onAddHuman = onAddHuman,
-            onRetry = onRetry
+            onRetry = onRetry,
+            loadHumanProfile = loadHumanProfile
         )
         Box(
             modifier = Modifier
@@ -411,7 +421,8 @@ private fun MembersContentView(
     content: MembersContent,
     onBack: () -> Unit,
     onAddHuman: () -> Unit,
-    onMemberClick: (MemberProfile) -> Unit
+    onMemberClick: (MemberProfile) -> Unit,
+    loadHumanProfile: (suspend (MemberId) -> MemberProfile?)? = null
 ) {
     LaunchedEffect(content.server.id, content.members) {
         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
@@ -429,33 +440,73 @@ private fun MembersContentView(
     }
     var agentsExpanded by rememberSaveable(content.server.id.value) { mutableStateOf(true) }
     var humansExpanded by rememberSaveable(content.server.id.value) { mutableStateOf(true) }
+    val agents = grouped[MemberSection.Agents].orEmpty()
+    val humans = grouped[MemberSection.Humans].orEmpty()
+    val agentGroups = agents.groupAgentMembersByComputer()
 
     MembersHeader(content = content)
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = MembersPageInset, vertical = SlockSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = MembersPageInset, vertical = SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        MembersSection(
-            section = MemberSection.Agents,
-            members = grouped[MemberSection.Agents].orEmpty(),
-            expanded = agentsExpanded,
-            onExpandedChange = { agentsExpanded = it },
-            onAdd = onAddHuman,
-            onMemberClick = onMemberClick
-        )
-        MembersSection(
-            section = MemberSection.Humans,
-            members = grouped[MemberSection.Humans].orEmpty(),
-            expanded = humansExpanded,
-            onExpandedChange = { humansExpanded = it },
-            onAdd = onAddHuman,
-            onMemberClick = onMemberClick
-        )
-        Spacer(modifier = Modifier.height(180.dp))
+        item(key = "agents_header") {
+            SlockSectionHeader(
+                label = MemberSection.Agents.label,
+                count = agents.size,
+                expanded = agentsExpanded,
+                onExpandedChange = { agentsExpanded = it },
+                modifier = Modifier.fillMaxWidth(),
+                trailingContent = { MembersSectionAddButton(onClick = onAddHuman) }
+            )
+        }
+        if (agentsExpanded) {
+            agentGroups.forEach { group ->
+                item(key = "agent_group_${group.label}") {
+                    MembersAgentComputerHeader(group.label)
+                }
+                items(group.members, key = { "agent_${it.id.value}" }) { member ->
+                    MemberFlatRow(member = member, onClick = { onMemberClick(member) })
+                }
+            }
+        }
+        item(key = "humans_header") {
+            Spacer(modifier = Modifier.height(SlockSpacing.Sm))
+            SlockSectionHeader(
+                label = MemberSection.Humans.label,
+                count = humans.size,
+                expanded = humansExpanded,
+                onExpandedChange = { humansExpanded = it },
+                modifier = Modifier.fillMaxWidth(),
+                trailingContent = { MembersSectionAddButton(onClick = onAddHuman) }
+            )
+        }
+        if (humansExpanded) {
+            items(humans, key = { "human_${it.id.value}" }) { member ->
+                HumanMemberRow(
+                    member = member,
+                    loadHumanProfile = loadHumanProfile,
+                    onMemberClick = onMemberClick
+                )
+            }
+        }
+        item(key = "bottom_spacer") { Spacer(modifier = Modifier.height(180.dp)) }
     }
+}
+
+@Composable
+private fun HumanMemberRow(
+    member: MemberProfile,
+    loadHumanProfile: (suspend (MemberId) -> MemberProfile?)?,
+    onMemberClick: (MemberProfile) -> Unit
+) {
+    var displayMember by remember(member.id) { mutableStateOf(member) }
+    LaunchedEffect(member.id.value) {
+        if (displayMember.avatar == null && displayMember.avatarUrl == null) {
+            loadHumanProfile?.invoke(member.id)?.let { displayMember = it }
+        }
+    }
+    MemberFlatRow(member = displayMember, onClick = { onMemberClick(displayMember) })
 }
 
 @Composable

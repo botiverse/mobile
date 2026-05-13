@@ -783,11 +783,7 @@ class RealMemberRepository(
                                         ?.data
                                         .orEmpty()
                                         .resolveComputerLabels(machineNames)
-                        val humans =
-                                enrichHumanProfiles(
-                                        result.data.members,
-                                        source = "server_members_profile"
-                                )
+                        val humans = result.data.members
                         val mergedMembers = (humans + agents).distinctBy { it.memberKey }
                         if (mergedMembers.isEmpty()) {
                             DataResult.Empty(EmptyReason.NoMembers)
@@ -1316,18 +1312,26 @@ class RealMemberRepository(
             source: String
     ): List<MemberProfile> {
         if (members.none { it.kind == MemberKind.Human }) return members
+        val uniqueHumanIds = members
+                .filter { it.kind == MemberKind.Human }
+                .map { it.id }
+                .distinct()
+        val profileById: Map<MemberId, MemberProfile> = coroutineScope {
+            uniqueHumanIds.map { memberId ->
+                async {
+                    val profileResult = getHumanProfile(memberId, source = source)
+                    val profile = (profileResult as? DataResult.Content)?.data
+                    logger(
+                            "human_profile_merge source=$source memberId=${memberId.value} " +
+                                    "result=${profileResult.memberResultName()}"
+                    )
+                    memberId to profile
+                }
+            }.map { it.await() }
+        }.mapNotNull { (id, profile) -> profile?.let { id to it } }.toMap()
         return members.map { member ->
-            if (member.kind != MemberKind.Human) {
-                member
-            } else {
-                val profileResult = getHumanProfile(member.id, source = source)
-                val profile = (profileResult as? DataResult.Content)?.data
-                logger(
-                        "human_profile_merge source=$source memberId=${member.id.value} " +
-                                "result=${profileResult.memberResultName()}"
-                )
-                profile?.let { member.withHumanProfile(it) } ?: member
-            }
+            if (member.kind != MemberKind.Human) member
+            else profileById[member.id]?.let { member.withHumanProfile(it) } ?: member
         }
     }
 
@@ -1389,7 +1393,7 @@ class RealInboxRepository(private val store: AuthSessionStore, private val api: 
                 mapper = { json ->
                     val items =
                             json.items("items", "messages", "results", "data")
-                                    .mapNotNull { it.asObjectOrNull()?.toInboxItem() }
+                                    .mapNotNull { element -> element.asObjectOrNull()?.toInboxItem() }
                                     .distinctBy { it.key }
                     InboxSnapshot(
                             server = context.server,

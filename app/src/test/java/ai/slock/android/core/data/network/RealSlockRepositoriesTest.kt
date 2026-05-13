@@ -399,20 +399,21 @@ class RealSlockRepositoriesTest {
 
     @Test
     fun inboxRepositoryMapsPagingMetadataAndStableThreadKeys() {
+        val api = FakeSlockApi(
+            inboxJson = """
+                {
+                  "items": [
+                    {"kind":"thread","channelId":"thread-1","channelName":"Thread","threadChannelId":"thread-1","parentChannelId":"channel-1","parentChannelName":"android-dev","unreadCount":4,"replyCount":7,"taskStatus":"in_review"}
+                  ],
+                  "hasMore": true,
+                  "totalCount": 12,
+                  "totalUnreadCount": 4
+                }
+            """.trimIndent()
+        )
         val repository = RealInboxRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(
-                inboxJson = """
-                    {
-                      "items": [
-                        {"kind":"thread","channelId":"thread-1","channelName":"Thread","threadChannelId":"thread-1","parentChannelId":"channel-1","parentChannelName":"android-dev","unreadCount":4,"replyCount":7,"taskStatus":"in_review"}
-                      ],
-                      "hasMore": true,
-                      "totalCount": 12,
-                      "totalUnreadCount": 4
-                    }
-                """.trimIndent()
-            )
+            api = api
         )
 
         val result = runSuspend {
@@ -2327,8 +2328,9 @@ class RealSlockRepositoriesTest {
         override suspend fun markChannelUnread(channelId: String): ApiResponse =
             response(readReceiptJson)
 
-        override suspend fun inbox(filter: String, limit: Int, offset: Int): ApiResponse =
-            response(inboxJson)
+        override suspend fun inbox(filter: String, limit: Int, offset: Int): ApiResponse {
+            return response(inboxJson)
+        }
 
         override suspend fun markInboxReadAll(): ApiResponse =
             response(readReceiptJson).also { inboxReadAllCallCount += 1 }

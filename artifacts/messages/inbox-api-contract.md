@@ -7,6 +7,7 @@ No auth token or server id is recorded here. This document only records payload 
 ## Endpoint
 
 - `GET /api/channels/inbox?filter={all|unread}&limit={n}&offset={n}`
+  - Android sends current server context through the authenticated KMP transport `X-Server-Id` header.
 
 ## Top-Level Shape
 

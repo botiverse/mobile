@@ -1005,6 +1005,7 @@ private fun SlockAppContent(
     }
     var followedThreadsSnapshot by remember { mutableStateOf<InboxContent?>(null) }
     var selectedThreadId by rememberSaveable { mutableStateOf<String?>(null) }
+    var threadNavigationGeneration by remember { mutableStateOf(0) }
     var selectedThreadState by remember {
         mutableStateOf<ThreadUiState>(ThreadUiState(ScreenLoadState.Loading))
     }
@@ -1690,12 +1691,43 @@ private fun SlockAppContent(
     fun isCurrentMainThread(threadId: ThreadId): Boolean =
             homeRoute == HomeRoute.Thread && selectedThreadId == threadId.value
 
-    fun logStaleMainThreadResult(source: String, threadId: ThreadId) {
-        ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
-                "SlockThreadLifecycle",
-                "stale_result_skip source=$source threadId=${threadId.value} selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute"
-        )
+    fun nextThreadNavigationGeneration(): Int {
+        threadNavigationGeneration += 1
+        return threadNavigationGeneration
     }
+
+    fun isCurrentThreadNavigationGeneration(generation: Int): Boolean =
+            threadNavigationGeneration == generation
+
+    class UiResultOwner(
+            private val source: String,
+            private val isCurrent: () -> Boolean,
+            private val staleDetail: () -> String,
+            private val onStale: () -> Unit = {}
+    ) {
+        fun isCurrentOrSkip(): Boolean {
+            if (isCurrent()) return true
+            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                    "SlockUiResultOwner",
+                    "stale_skip source=$source ${staleDetail()}"
+            )
+            onStale()
+            return false
+        }
+    }
+
+    fun uiResultOwner(
+            source: String,
+            isCurrent: () -> Boolean,
+            staleDetail: () -> String,
+            onStale: () -> Unit = {}
+    ): UiResultOwner =
+            UiResultOwner(
+                    source = source,
+                    isCurrent = isCurrent,
+                    staleDetail = staleDetail,
+                    onStale = onStale
+            )
 
     LaunchedEffect(taskReferenceCacheVersion) {
         if (taskReferenceCacheVersion == 0) return@LaunchedEffect
@@ -1844,6 +1876,7 @@ private fun SlockAppContent(
     }
 
     fun openThread(conversation: ConversationSummary, fromParentPane: Boolean = false) {
+        nextThreadNavigationGeneration()
         val streamThreadId = ThreadId(conversation.messageStreamChannelId().value)
         if (!fromParentPane) {
             replyThreadBackStack = emptyList()
@@ -1900,10 +1933,14 @@ private fun SlockAppContent(
                     fallbackHeader = conversation
             )
             result.rememberTaskReferences()
-            if (!isCurrentMainThread(streamThreadId)) {
-                logStaleMainThreadResult("open_thread", streamThreadId)
-                return@launch
-            }
+            if (!uiResultOwner(
+                            source = "open_thread",
+                            isCurrent = { isCurrentMainThread(streamThreadId) },
+                            staleDetail = {
+                                "threadId=${streamThreadId.value} selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute"
+                            }
+                    ).isCurrentOrSkip()
+            ) return@launch
             selectedThreadState =
                     (localThreadUiState(streamThreadId, fallbackHeader = conversation)
                                     ?: result.toThreadUiState(fallbackHeader = conversation))
@@ -2058,6 +2095,7 @@ private fun SlockAppContent(
 
     fun openAgentDirectMessage(member: MemberProfile) {
         if (member.kind != MemberKind.Agent) return
+        val navigationGeneration = nextThreadNavigationGeneration()
         coroutineScope.launch {
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                     "SlockDirectMessage",
@@ -2065,6 +2103,16 @@ private fun SlockAppContent(
             )
             when (val result = channelRepository.openAgentDirectMessage(member.id)) {
                 is DataResult.Content -> {
+                    if (!uiResultOwner(
+                                    source = "open_agent_dm",
+                                    isCurrent = {
+                                        isCurrentThreadNavigationGeneration(navigationGeneration)
+                                    },
+                                    staleDetail = {
+                                        "generation=$navigationGeneration currentGeneration=$threadNavigationGeneration selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute destination=$destination"
+                                    }
+                            ).isCurrentOrSkip()
+                    ) return@launch
                     val conversation =
                             result.data.conversation.withAgentDirectMessageIdentity(member)
                     val serverId =
@@ -2170,6 +2218,17 @@ private fun SlockAppContent(
             )
             when (result) {
                 is DataResult.Content -> {
+                    if (!uiResultOwner(
+                                    source = "archive",
+                                    isCurrent = { selectedThreadChannelId() == channelId },
+                                    staleDetail = {
+                                        "channelId=${channelId.value} selectedChannelId=${selectedThreadChannelId()?.value.orEmpty()}"
+                                    },
+                                    onStale = {
+                                        archiveChannelStatus = ThreadSettingsModalStatus.Default
+                                    }
+                            ).isCurrentOrSkip()
+                    ) return@launch
                     homeState = homeState.withArchivedChannel(channelId)
                     selectedThreadId = null
                     selectedThreadState = ThreadUiState(ScreenLoadState.Loading)
@@ -2224,6 +2283,17 @@ private fun SlockAppContent(
             )
             when (result) {
                 is DataResult.Content -> {
+                    if (!uiResultOwner(
+                                    source = "delete",
+                                    isCurrent = { selectedThreadChannelId() == channelId },
+                                    staleDetail = {
+                                        "channelId=${channelId.value} selectedChannelId=${selectedThreadChannelId()?.value.orEmpty()}"
+                                    },
+                                    onStale = {
+                                        archiveChannelStatus = ThreadSettingsModalStatus.Default
+                                    }
+                            ).isCurrentOrSkip()
+                    ) return@launch
                     homeState = homeState.withArchivedChannel(channelId)
                     selectedThreadId = null
                     selectedThreadState = ThreadUiState(ScreenLoadState.Loading)
@@ -2292,6 +2362,17 @@ private fun SlockAppContent(
             )
             when (result) {
                 is DataResult.Content -> {
+                    if (!uiResultOwner(
+                                    source = "leave",
+                                    isCurrent = { selectedThreadChannelId() == channelId },
+                                    staleDetail = {
+                                        "channelId=${channelId.value} selectedChannelId=${selectedThreadChannelId()?.value.orEmpty()}"
+                                    },
+                                    onStale = {
+                                        archiveChannelStatus = ThreadSettingsModalStatus.Default
+                                    }
+                            ).isCurrentOrSkip()
+                    ) return@launch
                     homeState = homeState.withArchivedChannel(channelId)
                     selectedThreadId = null
                     selectedThreadState = ThreadUiState(ScreenLoadState.Loading)
@@ -2482,6 +2563,7 @@ private fun SlockAppContent(
             memberDetailReturnDestination = destination
             memberDetailReturnHomeRoute = homeRoute.takeIf { destination == AppDestination.Home }
         }
+        val requestedMemberId = member.id
         membersDetailSelectedMemberId = member.id.value
         membersDetailVisible = true
         destination = AppDestination.Members
@@ -2490,10 +2572,18 @@ private fun SlockAppContent(
             if (member.kind == MemberKind.Human) {
                 when (val profileResult = memberRepository.getMemberProfile(member.id)) {
                     is DataResult.Content -> {
+                        if (!uiResultOwner(
+                                        source = "profile",
+                                        isCurrent = {
+                                            membersDetailSelectedMemberId == requestedMemberId.value
+                                        },
+                                        staleDetail = {
+                                            "memberId=${requestedMemberId.value} selectedMemberId=${membersDetailSelectedMemberId.orEmpty()}"
+                                        }
+                                ).isCurrentOrSkip()
+                        ) return@launch
                         membersState = membersState.withMemberProfile(profileResult.data)
-                        if (membersDetailSelectedMemberId == member.id.value) {
-                            membersDetailSelectedMemberId = profileResult.data.id.value
-                        }
+                        membersDetailSelectedMemberId = profileResult.data.id.value
                     }
                     else -> Unit
                 }
@@ -2524,6 +2614,16 @@ private fun SlockAppContent(
                                     skills = skillsD.await()
                             )
                         }
+                if (!uiResultOwner(
+                                source = "agent_detail",
+                                isCurrent = {
+                                    membersDetailSelectedMemberId == requestedMemberId.value
+                                },
+                                staleDetail = {
+                                    "memberId=${requestedMemberId.value} selectedMemberId=${membersDetailSelectedMemberId.orEmpty()}"
+                                }
+                        ).isCurrentOrSkip()
+                ) return@launch
                 val workspacesState = workspaces.toAgentWorkspacesLoadState()
                 membersState =
                         membersState.copy(
@@ -2575,7 +2675,14 @@ private fun SlockAppContent(
         if (node.children.isNotEmpty()) return
         coroutineScope.launch {
             val result = memberRepository.getAgentWorkspaceChildren(agentId, node.path)
-            if (membersDetailSelectedMemberId != agentId.value) return@launch
+            if (!uiResultOwner(
+                            source = "workspace_tree",
+                            isCurrent = { membersDetailSelectedMemberId == agentId.value },
+                            staleDetail = {
+                                "memberId=${agentId.value} selectedMemberId=${membersDetailSelectedMemberId.orEmpty()}"
+                            }
+                    ).isCurrentOrSkip()
+            ) return@launch
             val latest =
                     membersState.selectedAgentWorkspaceTreeState as? SlockWorkspaceTreeState.Content
                             ?: return@launch
@@ -2602,7 +2709,14 @@ private fun SlockAppContent(
                 )
         coroutineScope.launch {
             val result = memberRepository.readAgentWorkspaceFile(agentId, node.path)
-            if (membersDetailSelectedMemberId != agentId.value) return@launch
+            if (!uiResultOwner(
+                            source = "workspace_children",
+                            isCurrent = { membersDetailSelectedMemberId == agentId.value },
+                            staleDetail = {
+                                "memberId=${agentId.value} selectedMemberId=${membersDetailSelectedMemberId.orEmpty()}"
+                            }
+                    ).isCurrentOrSkip()
+            ) return@launch
             val latest =
                     membersState.selectedAgentWorkspaceTreeState as? SlockWorkspaceTreeState.Content
                             ?: return@launch
@@ -2729,6 +2843,7 @@ private fun SlockAppContent(
     }
 
     fun openThreadItem(item: InboxItem) {
+        nextThreadNavigationGeneration()
         replyThreadBackStack = emptyList()
         threadParentJumpTarget = item.parentMessageId?.value
         clearThreadReturnTarget()
@@ -2811,10 +2926,14 @@ private fun SlockAppContent(
                     parentMessage = parentMessage
             )
             result.rememberTaskReferences()
-            if (!isCurrentMainThread(ThreadId(threadChannelId.value))) {
-                logStaleMainThreadResult("open_inbox_thread", ThreadId(threadChannelId.value))
-                return@launch
-            }
+            if (!uiResultOwner(
+                            source = "open_inbox_thread",
+                            isCurrent = { isCurrentMainThread(ThreadId(threadChannelId.value)) },
+                            staleDetail = {
+                                "threadId=${threadChannelId.value} selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute"
+                            }
+                    ).isCurrentOrSkip()
+            ) return@launch
             selectedThreadState =
                     (localThreadUiState(
                                     ThreadId(threadChannelId.value),
@@ -3412,6 +3531,14 @@ private fun SlockAppContent(
             when (result) {
                 is DataResult.Content -> {
                     val membersResult = memberRepository.getChannelMembers(channelId)
+                    if (!uiResultOwner(
+                                    source = "add_member",
+                                    isCurrent = { selectedThreadChannelId() == channelId },
+                                    staleDetail = {
+                                        "channelId=${channelId.value} selectedChannelId=${selectedThreadChannelId()?.value.orEmpty()}"
+                                    }
+                            ).isCurrentOrSkip()
+                    ) return@launch
                     threadMembersPanelState =
                             threadMembersPanelState.copy(
                                     loadState = membersResult.toThreadMembersPanelLoadState(),
@@ -3473,6 +3600,14 @@ private fun SlockAppContent(
             when (result) {
                 is DataResult.Content -> {
                     val membersResult = memberRepository.getChannelMembers(channelId)
+                    if (!uiResultOwner(
+                                    source = "remove_member",
+                                    isCurrent = { selectedThreadChannelId() == channelId },
+                                    staleDetail = {
+                                        "channelId=${channelId.value} selectedChannelId=${selectedThreadChannelId()?.value.orEmpty()}"
+                                    }
+                            ).isCurrentOrSkip()
+                    ) return@launch
                     threadMembersPanelState =
                             threadMembersPanelState.copy(
                                     loadState = membersResult.toThreadMembersPanelLoadState(),
@@ -3588,6 +3723,7 @@ private fun SlockAppContent(
     }
 
     fun openMessageThread(message: Message, fromParentPane: Boolean = false) {
+        nextThreadNavigationGeneration()
         composerDrafts =
                 composerDrafts.saveComposerDraft(
                         selectedThreadId,
@@ -3653,13 +3789,16 @@ private fun SlockAppContent(
                         parentMessage = message
                 )
                 result.rememberTaskReferences()
-                if (!isCurrentMainThread(ThreadId(existingThreadChannelId.value))) {
-                    logStaleMainThreadResult(
-                            "open_existing_reply_thread",
-                            ThreadId(existingThreadChannelId.value)
-                    )
-                    return@launch
-                }
+                if (!uiResultOwner(
+                                source = "open_existing_reply_thread",
+                                isCurrent = {
+                                    isCurrentMainThread(ThreadId(existingThreadChannelId.value))
+                                },
+                                staleDetail = {
+                                    "threadId=${existingThreadChannelId.value} selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute"
+                                }
+                        ).isCurrentOrSkip()
+                ) return@launch
                 selectedThreadState =
                         localThreadUiState(
                                 ThreadId(existingThreadChannelId.value),
@@ -3695,10 +3834,18 @@ private fun SlockAppContent(
             selectedThreadState = selectedThreadState.withReplyActionError(null)
         }
         val replyOpenSourceThreadId = selectedThreadId
+        val replyOpenOwner =
+                uiResultOwner(
+                        source = "open_message_thread",
+                        isCurrent = {
+                            homeRoute == HomeRoute.Thread &&
+                                    selectedThreadId == replyOpenSourceThreadId
+                        },
+                        staleDetail = {
+                            "messageId=${message.id.value} sourceThreadId=${replyOpenSourceThreadId.orEmpty()} selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute"
+                        }
+                )
         coroutineScope.launch {
-            fun isReplyOpenSourceCurrent(): Boolean =
-                    homeRoute == HomeRoute.Thread && selectedThreadId == replyOpenSourceThreadId
-
             val parentChannelIdCandidate =
                     message.channelId
                             ?: message.threadId.parentChannelIdOrNull()
@@ -3735,13 +3882,7 @@ private fun SlockAppContent(
                                 "messageThreadId=${message.threadId.value} " +
                                 "contextThreadId=${contextSnapshot?.conversation?.threadId?.value.orEmpty()}"
                 )
-                if (!isReplyOpenSourceCurrent()) {
-                    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
-                            "SlockThreadReplies",
-                            "open_message_thread_stale_skip stage=missing_parent_channel messageId=${message.id.value} sourceThreadId=${replyOpenSourceThreadId.orEmpty()} selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute"
-                    )
-                    return@launch
-                }
+                if (!replyOpenOwner.isCurrentOrSkip()) return@launch
                 selectedThreadState =
                         selectedThreadState.withReplyActionError("missing_parent_channel")
                 return@launch
@@ -3768,13 +3909,7 @@ private fun SlockAppContent(
                             parentMessageId = message.id
                     )
             if (createResult !is DataResult.Content) {
-                if (!isReplyOpenSourceCurrent()) {
-                    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
-                            "SlockThreadReplies",
-                            "open_message_thread_stale_skip stage=create_error messageId=${message.id.value} sourceThreadId=${replyOpenSourceThreadId.orEmpty()} selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute"
-                    )
-                    return@launch
-                }
+                if (!replyOpenOwner.isCurrentOrSkip()) return@launch
                 if (openingReplyFromParentPane && parentPaneEntry != null) {
                     replyThreadBackStack =
                             replyThreadBackStack.dropLast(1) +
@@ -3795,13 +3930,7 @@ private fun SlockAppContent(
                 return@launch
             }
             val action = createResult.data
-            if (!isReplyOpenSourceCurrent()) {
-                ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
-                        "SlockThreadReplies",
-                        "open_message_thread_stale_skip stage=create_success messageId=${message.id.value} sourceThreadId=${replyOpenSourceThreadId.orEmpty()} selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute"
-                )
-                return@launch
-            }
+            if (!replyOpenOwner.isCurrentOrSkip()) return@launch
             if (openingReplyFromParentPane && parentPaneEntry != null) {
                 replyThreadBackStack =
                         replyThreadBackStack.dropLast(1) +
@@ -3858,13 +3987,16 @@ private fun SlockAppContent(
                     fallbackThreadId = ThreadId(action.threadChannelId.value)
             )
             result.rememberTaskReferences()
-            if (!isCurrentMainThread(ThreadId(action.threadChannelId.value))) {
-                logStaleMainThreadResult(
-                        "open_created_reply_thread",
-                        ThreadId(action.threadChannelId.value)
-                )
-                return@launch
-            }
+            if (!uiResultOwner(
+                            source = "open_created_reply_thread",
+                            isCurrent = {
+                                isCurrentMainThread(ThreadId(action.threadChannelId.value))
+                            },
+                            staleDetail = {
+                                "threadId=${action.threadChannelId.value} selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute"
+                            }
+                    ).isCurrentOrSkip()
+            ) return@launch
             selectedThreadState =
                     (localThreadUiState(
                                     ThreadId(action.threadChannelId.value),
@@ -3891,7 +4023,7 @@ private fun SlockAppContent(
         }
     }
 
-        fun openTaskContext(task: TaskSummary, fromParentPane: Boolean = false) {
+    fun openTaskContext(task: TaskSummary, fromParentPane: Boolean = false) {
         val localTaskContext = localWriteThrough.taskContext(task)
         val resolvedTask = localTaskContext.task
         val parentMessageId = resolvedTask.parentMessageId ?: resolvedTask.messageId
@@ -3905,6 +4037,17 @@ private fun SlockAppContent(
             )
             return
         }
+        val navigationGeneration = nextThreadNavigationGeneration()
+        val navigationOwner =
+                uiResultOwner(
+                        source = "open_task_context",
+                        isCurrent = {
+                            isCurrentThreadNavigationGeneration(navigationGeneration)
+                        },
+                        staleDetail = {
+                            "generation=$navigationGeneration currentGeneration=$threadNavigationGeneration selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute destination=$destination"
+                        }
+                )
         tasksState = tasksState.copy(navigationErrorCode = null)
         coroutineScope.launch {
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
@@ -3970,6 +4113,7 @@ private fun SlockAppContent(
                                 result
                             }
                     if (displayResult !is DataResult.Content) {
+                        if (!navigationOwner.isCurrentOrSkip()) return@launch
                         selectedThreadRetryAction = { openTaskContext(resolvedTask, fromParentPane) }
                         tasksState =
                                 tasksState.copy(
@@ -3991,6 +4135,7 @@ private fun SlockAppContent(
                             resolvedTask.toConversationSummary(
                                     sourceHeader ?: displayResult.data.conversation
                             )
+                    if (!navigationOwner.isCurrentOrSkip()) return@launch
                     captureThreadReturnTarget()
                     composerDrafts =
                             composerDrafts.saveComposerDraft(
@@ -4055,6 +4200,7 @@ private fun SlockAppContent(
                     )
                 }
                 is DataResult.Empty -> {
+                    if (!navigationOwner.isCurrentOrSkip()) return@launch
                     tasksState = tasksState.copy(navigationErrorCode = result.reason.name)
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                             "SlockTasksNav",
@@ -4062,6 +4208,7 @@ private fun SlockAppContent(
                     )
                 }
                 is DataResult.Error -> {
+                    if (!navigationOwner.isCurrentOrSkip()) return@launch
                     tasksState = tasksState.copy(navigationErrorCode = result.error.code)
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                             "SlockTasksNav",
@@ -4069,6 +4216,7 @@ private fun SlockAppContent(
                     )
                 }
                 is DataResult.NoPermission -> {
+                    if (!navigationOwner.isCurrentOrSkip()) return@launch
                     tasksState = tasksState.copy(navigationErrorCode = result.blocker.code)
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                             "SlockTasksNav",
@@ -4081,7 +4229,20 @@ private fun SlockAppContent(
 
     fun openThreadParentMessage(target: ThreadParentJumpTarget) {
         val previousThreadState = selectedThreadState
+        val navigationGeneration = nextThreadNavigationGeneration()
         val requestedFromThreadId = selectedThreadId
+        val navigationOwner =
+                uiResultOwner(
+                        source = "open_thread_parent_message",
+                        isCurrent = {
+                            selectedThreadId == requestedFromThreadId &&
+                                    homeRoute == HomeRoute.Thread &&
+                                    isCurrentThreadNavigationGeneration(navigationGeneration)
+                        },
+                        staleDetail = {
+                            "generation=$navigationGeneration currentGeneration=$threadNavigationGeneration requestedFromThreadId=${requestedFromThreadId.orEmpty()} selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute"
+                        }
+                )
         composerDrafts =
                 composerDrafts.saveComposerDraft(
                         selectedThreadId,
@@ -4122,15 +4283,7 @@ private fun SlockAppContent(
             )
             when (val result = conversationRepository.getMessageContext(target.parentMessageId)) {
                 is DataResult.Content -> {
-                    if (selectedThreadId != requestedFromThreadId ||
-                                    homeRoute != HomeRoute.Thread
-                    ) {
-                        ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
-                                "SlockTasksNav",
-                                "open_parent_stale_skip parentMessageId=${target.parentMessageId.value} requestedFromThreadId=${requestedFromThreadId.orEmpty()} selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute"
-                        )
-                        return@launch
-                    }
+                    if (!navigationOwner.isCurrentOrSkip()) return@launch
                     localWriteThrough.writeThreadResult(
                             result,
                             source = "open_thread_parent_message",
@@ -4281,6 +4434,18 @@ private fun SlockAppContent(
     }
 
     fun openAttachment(attachment: Attachment) {
+        val attachmentThreadId = selectedThreadId?.let(::ThreadId)
+        val attachmentOwner =
+                uiResultOwner(
+                        source = "open_attachment",
+                        isCurrent = {
+                            attachmentThreadId == null || isCurrentMainThread(attachmentThreadId)
+                        },
+                        staleDetail = {
+                            "attachmentId=${attachment.id.value} threadId=${attachmentThreadId?.value.orEmpty()} selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute"
+                        }
+                )
+
         attachmentOpenStates =
                 attachmentOpenStates +
                         (attachment.id to
@@ -4298,6 +4463,7 @@ private fun SlockAppContent(
                 is DataResult.Content -> {
                     val openResultName =
                             if (attachment.mimeType.startsWith("image/")) {
+                                if (!attachmentOwner.isCurrentOrSkip()) return@launch
                                 attachmentOpenStates = attachmentOpenStates - attachment.id
                                 attachmentPreviewState =
                                         AttachmentPreviewUiState(
@@ -4310,6 +4476,7 @@ private fun SlockAppContent(
                                         )
                                 "preview"
                             } else {
+                                if (!attachmentOwner.isCurrentOrSkip()) return@launch
                                 val opened =
                                         activityActions.openAttachmentUri(
                                                 result.data.url,
@@ -4340,6 +4507,7 @@ private fun SlockAppContent(
                     )
                 }
                 is DataResult.Empty -> {
+                    if (!attachmentOwner.isCurrentOrSkip()) return@launch
                     attachmentOpenStates =
                             attachmentOpenStates +
                                     (attachment.id to
@@ -4353,6 +4521,7 @@ private fun SlockAppContent(
                     )
                 }
                 is DataResult.Error -> {
+                    if (!attachmentOwner.isCurrentOrSkip()) return@launch
                     attachmentOpenStates =
                             attachmentOpenStates +
                                     (attachment.id to
@@ -4366,6 +4535,7 @@ private fun SlockAppContent(
                     )
                 }
                 is DataResult.NoPermission -> {
+                    if (!attachmentOwner.isCurrentOrSkip()) return@launch
                     attachmentOpenStates =
                             attachmentOpenStates +
                                     (attachment.id to
@@ -4448,10 +4618,14 @@ private fun SlockAppContent(
                     "SlockThreadPaging",
                     result.toOlderPageLog(threadId.value, beforeSeq)
             )
-            if (!isCurrentMainThread(threadId)) {
-                logStaleMainThreadResult("page_older", threadId)
-                return@launch
-            }
+            if (!uiResultOwner(
+                            source = "page_older",
+                            isCurrent = { isCurrentMainThread(threadId) },
+                            staleDetail = {
+                                "threadId=${threadId.value} selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute"
+                            }
+                    ).isCurrentOrSkip()
+            ) return@launch
             selectedThreadState =
                     mergeOlderThreadPage(current = selectedThreadState, next = result)
                             .withCachedTaskReferences()
@@ -4475,10 +4649,14 @@ private fun SlockAppContent(
                     }
             localWriteThrough.writeThreadResult(result, source = "page_newer", fallbackThreadId = threadId)
             result.rememberTaskReferences()
-            if (!isCurrentMainThread(threadId)) {
-                logStaleMainThreadResult("page_newer", threadId)
-                return@launch
-            }
+            if (!uiResultOwner(
+                            source = "page_newer",
+                            isCurrent = { isCurrentMainThread(threadId) },
+                            staleDetail = {
+                                "threadId=${threadId.value} selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute"
+                            }
+                    ).isCurrentOrSkip()
+            ) return@launch
             selectedThreadState =
                     mergeNewerThreadPage(
                             current = selectedThreadState,
@@ -5394,10 +5572,14 @@ private fun SlockAppContent(
                                         "SlockRealtime",
                                         "gap_sync_result threadId=${threadId.value} result=${newerResult.realtimeResultName()}"
                                 )
-                                if (!isCurrentMainThread(threadId)) {
-                                    logStaleMainThreadResult("gap_sync", threadId)
-                                    return@launch
-                                }
+                                if (!uiResultOwner(
+                                                source = "gap_sync",
+                                                isCurrent = { isCurrentMainThread(threadId) },
+                                                staleDetail = {
+                                                    "threadId=${threadId.value} selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute"
+                                                }
+                                        ).isCurrentOrSkip()
+                                ) return@launch
                                 selectedThreadState =
                                         mergeNewerThreadPage(
                                                 current =
@@ -6240,6 +6422,7 @@ private fun SlockAppContent(
 
     fun openSlockWebLink(url: String, fromParentPane: Boolean = false): Boolean {
         val target = url.toSlockWebLinkTarget() ?: return false
+        val navigationGeneration = nextThreadNavigationGeneration()
         val channelThreadId = ThreadId(target.channelId.value)
         val homeContent = (homeState.loadState as? ScreenLoadState.Content)?.data
         val fallbackHeader =
@@ -6332,6 +6515,18 @@ private fun SlockAppContent(
                     )
                             ?: resolved.contextSnapshot?.conversation?.withTitleFallback(fallbackHeader)
                             ?: fallbackHeader
+            if (!uiResultOwner(
+                            source = "open_slock_web_link",
+                            isCurrent = {
+                                selectedThreadId == channelThreadId.value &&
+                                        homeRoute == HomeRoute.Thread &&
+                                        isCurrentThreadNavigationGeneration(navigationGeneration)
+                            },
+                            staleDetail = {
+                                "threadId=${channelThreadId.value} generation=$navigationGeneration currentGeneration=$threadNavigationGeneration selectedThreadId=${selectedThreadId.orEmpty()} homeRoute=$homeRoute destination=$destination"
+                            }
+                    ).isCurrentOrSkip()
+            ) return@launch
             if (!fromParentPane) {
                 replyThreadBackStack =
                         if (resolved.replyParentMessage != null) {
@@ -7596,7 +7791,10 @@ private fun SlockAppContent(
                                     onBackToAgentWorkspaceTree = ::backToAgentWorkspaceTree,
                                     onCopyAgentWorkspacePath = ::copyAgentWorkspacePath,
                                     onRefreshAgentWorkspaceTree = ::refreshSelectedAgentWorkspaceTree,
-                                    onSaveAgentProfile = ::saveAgentProfile
+                                    onSaveAgentProfile = ::saveAgentProfile,
+                                    loadHumanProfile = { memberId ->
+                                        (memberRepository.getMemberProfile(memberId) as? DataResult.Content)?.data
+                                    }
                             )
                     AppDestination.Settings ->
                             SettingsScreen(
