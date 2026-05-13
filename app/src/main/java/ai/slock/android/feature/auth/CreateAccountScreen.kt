@@ -65,7 +65,7 @@ fun CreateAccountScreen(
     val formEnabled = !saving && !disabled
 
     AuthScaffold(modifier = modifier) {
-        AuthBrandBlock()
+        AuthBrandBlock(onLogoTripleClick = onOpenSharedAuth)
         Spacer(modifier = Modifier.height(14.dp))
         Text(
             text = stringResource(R.string.auth_create_title),
@@ -127,15 +127,6 @@ fun CreateAccountScreen(
             enabled = formEnabled && name.isNotBlank() && email.isNotBlank() && password.isNotBlank(),
             loading = saving
         )
-        if (onOpenSharedAuth != null) {
-            AuthActionButton(
-                text = stringResource(R.string.auth_open_shared_auth),
-                onClick = onOpenSharedAuth,
-                background = SlockColor.AccentCyan,
-                contentColor = SlockColor.TextBlack,
-                enabled = !saving
-            )
-        }
         Row(
             modifier = Modifier.align(Alignment.CenterHorizontally),
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),

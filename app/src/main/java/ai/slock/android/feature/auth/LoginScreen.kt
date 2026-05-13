@@ -92,7 +92,7 @@ fun LoginScreen(
     }
 
     AuthScaffold(modifier = modifier) {
-        AuthBrandBlock()
+        AuthBrandBlock(onLogoTripleClick = onOpenSharedAuth)
         Spacer(modifier = Modifier.height(22.dp))
         Text(
                 text = stringResource(R.string.auth_sign_in),
@@ -153,15 +153,6 @@ fun LoginScreen(
                     loading = isSubmitting,
                     preserveDisabledVisual = isSubmitting
             )
-            if (onOpenSharedAuth != null) {
-                AuthActionButton(
-                        text = stringResource(R.string.auth_open_shared_auth),
-                        onClick = onOpenSharedAuth,
-                        background = SlockColor.AccentCyan,
-                        contentColor = SlockColor.TextBlack,
-                        enabled = !isSubmitting
-                )
-            }
             Box(
                     modifier =
                             Modifier.fillMaxWidth()
@@ -295,13 +286,28 @@ fun AuthScaffold(modifier: Modifier = Modifier, content: @Composable ColumnScope
 }
 
 @Composable
-fun AuthBrandBlock(modifier: Modifier = Modifier) {
+fun AuthBrandBlock(modifier: Modifier = Modifier, onLogoTripleClick: (() -> Unit)? = null) {
+    var logoTapCount by rememberSaveable { mutableStateOf(0) }
+    val logoModifier =
+            if (onLogoTripleClick == null) {
+                Modifier
+            } else {
+                Modifier.clickable {
+                    val nextCount = logoTapCount + 1
+                    if (nextCount >= 3) {
+                        logoTapCount = 0
+                        onLogoTripleClick()
+                    } else {
+                        logoTapCount = nextCount
+                    }
+                }
+            }
     Column(
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.Start
     ) {
-        AuthLogoBadge(text = stringResource(R.string.auth_logo))
+        AuthLogoBadge(text = stringResource(R.string.auth_logo), modifier = logoModifier)
         Text(
                 text = stringResource(R.string.auth_tagline),
                 style =

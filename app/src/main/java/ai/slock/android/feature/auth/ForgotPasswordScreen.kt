@@ -62,7 +62,7 @@ fun ForgotPasswordScreen(
     val isError = status == ForgotPasswordStatus.Error
 
     AuthScaffold(modifier = modifier) {
-            AuthBrandBlock()
+            AuthBrandBlock(onLogoTripleClick = onOpenSharedAuth)
             Spacer(modifier = Modifier.height(14.dp))
             Text(
                 text = stringResource(R.string.auth_reset_title),
@@ -95,15 +95,6 @@ fun ForgotPasswordScreen(
                 enabled = email.isNotBlank() && !disabled && status != ForgotPasswordStatus.Success,
                 loading = sending
             )
-            if (onOpenSharedAuth != null) {
-                AuthActionButton(
-                    text = stringResource(R.string.auth_open_shared_auth),
-                    onClick = onOpenSharedAuth,
-                    background = SlockColor.AccentCyan,
-                    contentColor = SlockColor.TextBlack,
-                    enabled = !sending
-                )
-            }
             Text(
                 text = stringResource(R.string.auth_back_to_sign_in),
                 style = SlockType.Body.copy(

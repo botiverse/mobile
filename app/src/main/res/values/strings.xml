@@ -42,7 +42,6 @@
     <string name="auth_state_disabled">Disabled</string>
     <string name="auth_state_sending">Sending</string>
     <string name="auth_state_success">Success</string>
-    <string name="auth_open_shared_auth">Open shared auth</string>
     <string name="settings_server_title">Server</string>
     <string name="settings_server_profile_section">PROFILE</string>
     <string name="settings_server_admins_section">ADMINS (%1$d)</string>
