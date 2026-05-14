@@ -94,6 +94,30 @@ class InboxUiStateTest {
         assertEquals(0, content.totalUnreadCount)
     }
 
+    @Test
+    fun clearAllUnreadRemovesRowsInMentionsFilter() {
+        val state =
+            InboxUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        InboxContent(
+                            server = server,
+                            items = listOf(inboxItem("channel-1", unreadCount = 2).copy(hasMention = true)),
+                            totalCount = 1,
+                            totalUnreadCount = 2
+                        )
+                    ),
+                selectedFilter = InboxFilter.Mentions
+            )
+
+        val cleared = state.clearAllUnread()
+        val content = (cleared.loadState as ScreenLoadState.Content).data
+
+        assertEquals(emptyList<InboxItem>(), content.items)
+        assertEquals(0, content.totalCount)
+        assertEquals(0, content.totalUnreadCount)
+    }
+
     private val server =
         ServerSummary(
             id = ServerId("server-1"),

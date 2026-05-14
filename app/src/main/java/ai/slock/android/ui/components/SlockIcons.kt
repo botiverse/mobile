@@ -21,6 +21,7 @@ object SlockIcons {
     val ChevronLeft get() = LucideIcons.ChevronLeft
     val ChevronRight get() = LucideIcons.ChevronRight
     val Circle get() = LucideIcons.Circle
+    val CircleArrowUp get() = LucideIcons.CircleArrowUp
     val CircleCheckBig get() = LucideIcons.CircleCheckBig
     val Columns3 get() = LucideIcons.Columns3
     val Copy get() = LucideIcons.Copy
@@ -56,6 +57,7 @@ object SlockIcons {
     val Smartphone get() = LucideIcons.Smartphone
     val Square get() = LucideIcons.Square
     val SquareCheckBig get() = LucideIcons.SquareCheckBig
+    val TriangleAlert get() = LucideIcons.TriangleAlert
     val Trash get() = LucideIcons.Trash
     val User get() = LucideIcons.User
     val Users get() = LucideIcons.Users

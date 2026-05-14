@@ -14,6 +14,10 @@ import ai.slock.android.core.model.MemberPresenceUpdated
 import ai.slock.android.core.model.SyncResumeResponse
 import ai.slock.android.core.model.Heartbeat
 import ai.slock.android.core.model.ServerId
+import com.google.gson.Gson
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
+import org.json.JSONObject
 
 class SocketIoRealtimeClient(
     private val transport: RealtimeSocketTransport,
@@ -24,6 +28,7 @@ class SocketIoRealtimeClient(
     private val listeners = mutableSetOf<(RealtimeEvent) -> Unit>()
     private val transportSubscriptions = mutableListOf<RealtimeSubscription>()
     private val joinedChannels = linkedSetOf<ChannelId>()
+    private val gson = Gson()
     private var lastSeq: Long = 0
     private var connectedServerId: String? = null
     // Deduplicate MemberPresenceUpdated: agent:activity fires multiple times per second for the
@@ -65,6 +70,7 @@ class SocketIoRealtimeClient(
     fun joinChannel(channelId: ChannelId) {
         val added = joinedChannels.add(channelId)
         logger("join_room channelId=${channelId.value} replay=false added=$added")
+        if (!added) return
         emitJoinChannel(channelId)
     }
 
@@ -131,6 +137,14 @@ class SocketIoRealtimeClient(
         }
         RealtimeWireEventNames.forEach { eventName ->
             transportSubscriptions += transport.on(eventName) { payload ->
+                val payloadServerId = payload.serverIdOrNull()
+                val currentServerId = connectedServerId
+                if (payloadServerId != null && currentServerId != null && payloadServerId != currentServerId) {
+                    logger(
+                        "event_skip reason=server_mismatch eventName=$eventName payloadServerId=$payloadServerId connectedServerId=$currentServerId payloadType=${payload?.javaClass?.simpleName.orEmpty()}"
+                    )
+                    return@on
+                }
                 val event = eventMapper.map(eventName, payload)
                 logger(
                     "event_received eventName=$eventName serverId=${connectedServerId.orEmpty()} mapped=${event?.realtimeDiagnosticName().orEmpty()} ${event?.realtimeDiagnosticFields().orEmpty()} payloadType=${payload?.javaClass?.simpleName.orEmpty()}"
@@ -193,6 +207,53 @@ class SocketIoRealtimeClient(
             RealtimeSocketEvents.Heartbeat
         )
     }
+
+    private fun Any?.serverIdOrNull(): String? =
+        when (this) {
+            null -> null
+            is JsonObject -> serverIdFromJsonObject()
+            is JsonElement -> takeIf { isJsonObject }?.asJsonObject?.serverIdFromJsonObject()
+            is JSONObject -> optServerId()
+            is Map<*, *> -> mapServerId()
+            is String -> runCatching { JSONObject(this).optServerId() }.getOrNull()
+            else -> runCatching { gson.toJsonTree(this).asJsonObject.serverIdFromJsonObject() }.getOrNull()
+        }
+
+    private fun JsonObject.serverIdFromJsonObject(): String? =
+        stringField("serverId", "server_id")
+            ?: firstObject("server", "workspace")?.stringField("id", "serverId", "server_id")
+            ?: firstObject("message", "task", "member", "data")?.serverIdFromJsonObject()
+
+    private fun JsonObject.firstObject(vararg names: String): JsonObject? =
+        names.firstNotNullOfOrNull { name ->
+            get(name)?.takeIf { it.isJsonObject }?.asJsonObject
+        }
+
+    private fun JsonObject.stringField(vararg names: String): String? =
+        names.firstNotNullOfOrNull { name ->
+            get(name)
+                ?.takeIf { it.isJsonPrimitive }
+                ?.asJsonPrimitive
+                ?.takeIf { it.isString }
+                ?.asString
+                ?.takeIf(String::isNotBlank)
+        }
+
+    private fun JSONObject.optServerId(): String? =
+        optString("serverId").takeIf(String::isNotBlank)
+            ?: optString("server_id").takeIf(String::isNotBlank)
+            ?: optJSONObject("server")?.optString("id")?.takeIf(String::isNotBlank)
+            ?: optJSONObject("workspace")?.optString("id")?.takeIf(String::isNotBlank)
+            ?: listOf("message", "task", "member", "data")
+                .firstNotNullOfOrNull { key -> optJSONObject(key)?.optServerId() }
+
+    private fun Map<*, *>.mapServerId(): String? =
+        (this["serverId"] as? String)?.takeIf(String::isNotBlank)
+            ?: (this["server_id"] as? String)?.takeIf(String::isNotBlank)
+            ?: (this["server"] as? Map<*, *>)?.mapServerId()
+            ?: (this["workspace"] as? Map<*, *>)?.mapServerId()
+            ?: listOf("message", "task", "member", "data")
+                .firstNotNullOfOrNull { key -> (this[key] as? Map<*, *>)?.mapServerId() }
 }
 
 private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {

@@ -453,6 +453,7 @@ private fun InboxLoadedContent(
     val visibleItems = when (state.selectedFilter) {
         InboxFilter.All -> content.items
         InboxFilter.Unread -> content.items.filter { it.unreadCount > 0 }
+        InboxFilter.Mentions -> content.items.filter { it.hasUnreadMention }
     }
 
     if (showHeader) {
@@ -478,16 +479,22 @@ private fun InboxLoadedContent(
         if (visibleItems.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().offset(y = offset)) {
                 InboxEmptyBody(
-                    title = if (showFilters && state.selectedFilter == InboxFilter.Unread) {
-                        stringResource(R.string.inbox_no_unread_title)
-                    } else {
-                        copy.emptyTitle
-                    },
-                    detail = if (showFilters && state.selectedFilter == InboxFilter.Unread) {
-                        stringResource(R.string.inbox_no_unread_detail)
-                    } else {
-                        copy.emptyDetail
-                    }
+                    title =
+                            when {
+                                showFilters && state.selectedFilter == InboxFilter.Unread ->
+                                        stringResource(R.string.inbox_no_unread_title)
+                                showFilters && state.selectedFilter == InboxFilter.Mentions ->
+                                        stringResource(R.string.inbox_no_mentions_title)
+                                else -> copy.emptyTitle
+                            },
+                    detail =
+                            when {
+                                showFilters && state.selectedFilter == InboxFilter.Unread ->
+                                        stringResource(R.string.inbox_no_unread_detail)
+                                showFilters && state.selectedFilter == InboxFilter.Mentions ->
+                                        stringResource(R.string.inbox_no_mentions_detail)
+                                else -> copy.emptyDetail
+                            }
                 )
             }
         } else {
@@ -617,6 +624,11 @@ private fun InboxFilterRow(
             label = stringResource(R.string.inbox_filter_unread),
             selected = selectedFilter == InboxFilter.Unread,
             onClick = { onFilterSelected(InboxFilter.Unread) }
+        )
+        InboxFilterButton(
+            label = stringResource(R.string.inbox_filter_mentions),
+            selected = selectedFilter == InboxFilter.Mentions,
+            onClick = { onFilterSelected(InboxFilter.Mentions) }
         )
         Spacer(modifier = Modifier.weight(1f))
         InboxMarkAllReadButton(onClick = onMarkAllRead)
@@ -786,10 +798,13 @@ private fun InboxReplyActivityLine(activity: InboxActivityPreview.Reply) {
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(
-                text = "↳",
-                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
-                color = SlockColor.TextMutedGray
+            Icon(
+                imageVector = SlockIcons.MessageSquare,
+                contentDescription = null,
+                tint = SlockColor.TextMutedGray,
+                modifier = Modifier
+                    .padding(top = 1.dp)
+                    .size(12.dp)
             )
             Text(
                 text = activity.sender?.let { sender -> "$sender: ${activity.replyBody}" }
@@ -829,6 +844,9 @@ private fun InboxItemFooter(
     ) {
         if (unread) {
             InboxBadge(text = stringResource(R.string.inbox_badge_new), color = SlockColor.AccentPink)
+        }
+        if (item.hasUnreadMention) {
+            InboxBadge(text = stringResource(R.string.inbox_badge_you), color = SlockColor.BrandYellow)
         }
         item.unreadCount.takeIf { it > 0 }?.let {
             InboxBadge(text = stringResource(R.string.inbox_unread_count, it), color = SlockColor.BrandYellow)
@@ -947,6 +965,9 @@ private fun InboxReplyChip(
     }
 }
 
+private val InboxItem.hasUnreadMention: Boolean
+    get() = hasMention && unreadCount > 0
+
 @Composable
 private fun InboxStateContent(
     copy: InboxScreenCopy,
@@ -1058,11 +1079,11 @@ private fun InboxItem.activityPreview(): InboxActivityPreview {
         return InboxActivityPreview.System(
             body =
                 (latestActivityPreview ?: lastMessagePreview ?: parentMessagePreview)
-                    .toInboxPreviewTextOrNull() ?: fallback
+                    .toInboxPreviewTextOrNull("ui_system") ?: fallback
         )
     }
-    val parent = parentMessagePreview.toInboxPreviewTextOrNull()
-    val reply = latestActivityPreview.toInboxPreviewTextOrNull()
+    val parent = parentMessagePreview.toInboxPreviewTextOrNull("ui_parent")
+    val reply = latestActivityPreview.toInboxPreviewTextOrNull("ui_reply")
     val sender = latestActivitySenderName ?: lastMessageSenderName
     if (kind == InboxItemKind.Thread && parent != null && reply != null && reply != parent) {
         return InboxActivityPreview.Reply(
@@ -1074,12 +1095,14 @@ private fun InboxItem.activityPreview(): InboxActivityPreview {
     return InboxActivityPreview.NewMessage(
         body =
             (lastMessagePreview ?: latestActivityPreview ?: parentMessagePreview)
-                .toInboxPreviewTextOrNull() ?: fallback
+                .toInboxPreviewTextOrNull("ui_body") ?: fallback
     )
 }
 
-private fun String?.toInboxPreviewTextOrNull(): String? =
-    this?.sanitizeInboxPreviewText()?.takeIf { it.isNotBlank() }
+private fun String?.toInboxPreviewTextOrNull(source: String): String? =
+    this?.let { raw ->
+        raw.sanitizeInboxPreviewText()
+    }?.takeIf { it.isNotBlank() }
 
 private fun String.sanitizeInboxPreviewText(): String =
     replace("☑", "✅")

@@ -54,7 +54,7 @@ class RealSettingsRepository(
         val session = store.readSession() ?: return authRequired()
         return execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsAccount() },
+            block = { api.settingsAccount(currentSlockApiPriority()) },
             mapper = { json -> json.toAccountSettingsSnapshot(session) }
         )
     }
@@ -63,7 +63,7 @@ class RealSettingsRepository(
         val session = store.readSession() ?: return authRequired()
         return execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.updateSettingsAccount(request.toJsonBody()) },
+            block = { api.updateSettingsAccount(currentSlockApiPriority(), request.toJsonBody()) },
             mapper = { json -> json.toAccountSettingsSnapshot(session) }
         )
     }
@@ -72,7 +72,7 @@ class RealSettingsRepository(
         store.readSession() ?: return authRequired()
         return execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsSessions() },
+            block = { api.settingsSessions(currentSlockApiPriority()) },
             emptyWhen = { it.sessions.isEmpty() },
             mapper = { json -> json.toSessionSettingsSnapshot() }
         ).mapSettingsContractMismatch("settings_sessions_contract_mismatch")
@@ -83,7 +83,7 @@ class RealSettingsRepository(
         store.readSession() ?: return authRequired()
         return execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.revokeSettingsSession(sessionId) },
+            block = { api.revokeSettingsSession(currentSlockApiPriority(), sessionId) },
             mapper = { json ->
                 SessionActionResult(
                     sessionId = json.string("sessionId", "id") ?: sessionId,
@@ -102,7 +102,7 @@ class RealSettingsRepository(
         logger("machines_fetch_start serverId=$serverId")
         val result = execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsMachines(serverId) },
+            block = { api.settingsMachines(currentSlockApiPriority(), serverId) },
             emptyWhen = { it.computers.isEmpty() },
             source = "settings_machines",
             warningLogger = warningLogger,
@@ -130,7 +130,7 @@ class RealSettingsRepository(
         logger("machine_detail_section_start serverId=$serverId machineId=$machineId section=machines")
         val machines = execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsMachines(serverId) },
+            block = { api.settingsMachines(currentSlockApiPriority(), serverId) },
             emptyWhen = { it.computers.isEmpty() },
             source = "settings_machine_detail_machines",
             warningLogger = warningLogger,
@@ -150,7 +150,7 @@ class RealSettingsRepository(
         logger("machine_detail_section_start serverId=$serverId machineId=$machineId section=workspaces")
         val workspaces = execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsMachineWorkspaces(serverId, machineId) },
+            block = { api.settingsMachineWorkspaces(currentSlockApiPriority(), serverId, machineId) },
             source = "settings_machine_workspaces",
             warningLogger = warningLogger,
             mapper = { json -> json.toSettingsComputerWorkspaces(warningLogger) }
@@ -166,7 +166,7 @@ class RealSettingsRepository(
         logger("machine_detail_section_start serverId=$serverId machineId=$machineId section=agents")
         val agents = execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsAgents() },
+            block = { api.settingsAgents(currentSlockApiPriority()) },
             source = "settings_machine_agents",
             warningLogger = warningLogger,
             mapper = { json -> json.toSettingsComputerAgents(machineId, warningLogger) }
@@ -354,7 +354,7 @@ class RealSettingsRepository(
     ): DataResult<List<SettingsServerAdminSnapshot>> =
         execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.serverMembers(serverId) },
+            block = { api.serverMembers(currentSlockApiPriority(), serverId) },
             source = "settings_server_members",
             warningLogger = warningLogger,
             mapper = { json -> json.toSettingsServerAdmins() }
@@ -363,7 +363,7 @@ class RealSettingsRepository(
     private suspend fun fetchServerUsage(serverId: String): DataResult<List<SettingsPlanUsageSnapshot>> =
         execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsServerUsage(serverId) },
+            block = { api.settingsServerUsage(currentSlockApiPriority(), serverId) },
             source = "settings_server_usage",
             warningLogger = warningLogger,
             mapper = { json -> json.toSettingsServerUsageRows() }
@@ -372,7 +372,7 @@ class RealSettingsRepository(
     private suspend fun fetchServerBilling(): DataResult<String?> =
         execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsBillingSubscription() },
+            block = { api.settingsBillingSubscription(currentSlockApiPriority()) },
             source = "settings_server_billing_subscription",
             warningLogger = warningLogger,
             mapper = { json -> json.toSettingsServerBillingPlanName() }
@@ -383,7 +383,7 @@ class RealSettingsRepository(
     ): DataResult<SettingsServerOnboardingSnapshot> =
         execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsServerOnboardingSettings(serverId) },
+            block = { api.settingsServerOnboardingSettings(currentSlockApiPriority(), serverId) },
             source = "settings_server_onboarding_settings",
             warningLogger = warningLogger,
             mapper = { json -> json.toSettingsServerOnboardingSnapshot() }
@@ -474,7 +474,7 @@ class RealSettingsRepository(
             execute(
                 emptyReason = EmptyReason.NoSettingsAvailable,
                 block = {
-                    api.updateSettingsServerProfile(
+                    api.updateSettingsServerProfile(currentSlockApiPriority(),
                         server.id,
                         mapOf("name" to name).toJsonBody()
                     )
@@ -509,7 +509,7 @@ class RealSettingsRepository(
         return execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
             block = {
-                api.createSettingsServerInvite(
+                api.createSettingsServerInvite(currentSlockApiPriority(),
                     server.id,
                     mapOf("email" to email).toJsonBody()
                 )
@@ -543,7 +543,7 @@ class RealSettingsRepository(
         }
         return execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.deleteSettingsServer(server.id) },
+            block = { api.deleteSettingsServer(currentSlockApiPriority(), server.id) },
             source = "settings_server_delete",
             warningLogger = warningLogger,
             mapper = { json ->
@@ -694,7 +694,8 @@ private fun JsonObject.toSettingsComputersSnapshot(warningLogger: (String) -> Un
     return SettingsComputersSnapshot(
         computers = computers,
         canAddComputer = boolean("canAddComputer", "canCreate", "canRegisterMachine") ?: false,
-        addComputerUnavailableReason = string("addComputerUnavailableReason", "unavailableReason")
+        addComputerUnavailableReason = string("addComputerUnavailableReason", "unavailableReason"),
+        latestDaemonVersion = string("latestDaemonVersion", "latest_daemon_version")
     )
 }
 

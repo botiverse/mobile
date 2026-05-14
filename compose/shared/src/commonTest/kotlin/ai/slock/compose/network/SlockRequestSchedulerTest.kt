@@ -3,6 +3,7 @@ package ai.slock.compose.network
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -12,6 +13,36 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 class SlockRequestSchedulerTest {
+    @Test
+    fun requestTimeoutReleasesLanePermit() = runBlocking {
+        val scheduler =
+                SlockRequestScheduler(
+                        maxVisibleRequests = 1,
+                        requestTimeoutMillis = 50
+                )
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+
+        val first =
+                async {
+                    assertFailsWith<SlockRequestTimeoutException> {
+                        scheduler.run(SlockRequestPriority.Visible, key = "slow") {
+                            firstStarted.complete(Unit)
+                            releaseFirst.await()
+                        }
+                    }
+                }
+        firstStarted.await()
+        first.await()
+
+        var secondStarted = false
+        scheduler.run(SlockRequestPriority.Visible, key = "next") {
+            secondStarted = true
+        }
+
+        assertTrue(secondStarted)
+    }
+
     @Test
     fun foregroundStartsBeforeQueuedBackgroundRequests() = runBlocking {
         val scheduler = SlockRequestScheduler(maxBackgroundRequests = 1)
@@ -79,6 +110,60 @@ class SlockRequestSchedulerTest {
         foreground.await()
         background.await()
         assertTrue(events.indexOf("fg-end") < events.indexOf("bg-start"))
+    }
+
+    @Test
+    fun waitingForegroundStartsBeforeBackgroundRequests() = runBlocking {
+        val scheduler = SlockRequestScheduler(maxForegroundRequests = 1, maxBackgroundRequests = 1)
+        val firstForegroundStarted = CompletableDeferred<Unit>()
+        val releaseFirstForeground = CompletableDeferred<Unit>()
+        val secondForegroundStarted = CompletableDeferred<Unit>()
+        val releaseSecondForeground = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+
+        val firstForeground =
+                async {
+                    scheduler.run(SlockRequestPriority.Foreground, key = "fg-1") {
+                        events += "fg-1-start"
+                        firstForegroundStarted.complete(Unit)
+                        releaseFirstForeground.await()
+                        events += "fg-1-end"
+                    }
+                }
+        firstForegroundStarted.await()
+
+        val secondForeground =
+                async {
+                    scheduler.run(SlockRequestPriority.Foreground, key = "fg-2") {
+                        events += "fg-2-start"
+                        secondForegroundStarted.complete(Unit)
+                        releaseSecondForeground.await()
+                        events += "fg-2-end"
+                    }
+                }
+        delay(75)
+
+        val background =
+                async {
+                    scheduler.run(SlockRequestPriority.Background, key = "bg") {
+                        events += "bg-start"
+                    }
+                }
+        delay(75)
+        assertFalse("bg-start" in events)
+
+        releaseFirstForeground.complete(Unit)
+        secondForegroundStarted.await()
+        delay(75)
+        assertFalse("bg-start" in events)
+
+        releaseSecondForeground.complete(Unit)
+        firstForeground.await()
+        secondForeground.await()
+        background.await()
+
+        assertTrue(events.indexOf("fg-2-start") < events.indexOf("bg-start"))
+        assertTrue(events.indexOf("fg-2-end") < events.indexOf("bg-start"))
     }
 
     @Test

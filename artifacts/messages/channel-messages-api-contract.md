@@ -111,7 +111,7 @@ These fields are set on messages that carry or create a task. All are null when 
 
 ### Attachments
 
-`attachments` is always present as an array (empty `[]` when there are none).
+`attachments` is the canonical field and is usually present as an array (empty `[]` when there are none). Android should also tolerate equivalent attachment arrays surfaced under `files`, `images`, or `media` on message rows, because newer payloads may use those aliases for image-heavy messages.
 
 ```json
 {

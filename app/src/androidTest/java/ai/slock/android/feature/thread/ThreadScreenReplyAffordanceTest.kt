@@ -1,6 +1,7 @@
 package ai.slock.android.feature.thread
 
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,6 +14,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
@@ -27,10 +31,12 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
@@ -50,6 +56,7 @@ import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
+import ai.slock.android.core.model.withUnreadReplyCount
 import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.ui.components.SlockMenuOverlayDefaults
@@ -80,6 +87,101 @@ class ThreadScreenReplyAffordanceTest {
 
         composeRule.onNodeWithText("4 replies").assertIsDisplayed()
         composeRule.onAllNodesWithText("Reply").assertCountEquals(0)
+    }
+
+    @Test
+    fun messageRowShowsUnreadReplyCountWhenRepliesRemainUnread() {
+        composeRule.setContent {
+            SlockTheme {
+                ThreadMessageItem(
+                    message = message(replyCount = 4).withUnreadReplyCount(2),
+                    onOpenThread = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("4 replies · 2 new").assertIsDisplayed()
+    }
+
+    @Test
+    fun threadRouteHidesReplyCountAffordanceForMessagesWithReplies() {
+        val originMessage = message(replyCount = 1).copy(
+            id = MessageId("reply-thread-parent"),
+            body = "Parent message"
+        )
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(
+                                messages = listOf(message(replyCount = 4).withUnreadReplyCount(2)),
+                                canLoadMoreBefore = false
+                            )
+                        )
+                    ),
+                    replyHeaderContext = ThreadReplyHeaderContext(
+                        parentChannelName = "android-dev",
+                        parentMessagePreview = "Parent message",
+                        parentMessage = originMessage
+                    )
+                )
+            }
+        }
+
+        composeRule.onAllNodesWithText("4 replies").assertCountEquals(0)
+        composeRule.onAllNodesWithText("4 replies · 2 new").assertCountEquals(0)
+    }
+
+    @Test
+    fun conversationFlowKeepsReplyCountAffordance() {
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(
+                                messages = listOf(message(replyCount = 4).withUnreadReplyCount(2)),
+                                canLoadMoreBefore = false
+                            )
+                        )
+                    )
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("4 replies · 2 new").assertIsDisplayed()
+    }
+
+    @Test
+    fun replyThreadOriginDoesNotShowReplyCountAffordance() {
+        val originMessage = message(replyCount = 4).withUnreadReplyCount(2).copy(
+            id = MessageId("origin-hide-replies"),
+            body = "Original message"
+        )
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Content(
+                            content(
+                                messages = listOf(message(replyCount = 0)),
+                                canLoadMoreBefore = false
+                            )
+                        )
+                    ),
+                    replyHeaderContext = ThreadReplyHeaderContext(
+                        parentChannelName = "android-dev",
+                        parentMessagePreview = "Original message",
+                        parentMessage = originMessage
+                    )
+                )
+            }
+        }
+
+        composeRule.onAllNodesWithText("4 replies").assertCountEquals(0)
+        composeRule.onAllNodesWithText("4 replies · 2 new").assertCountEquals(0)
     }
 
     @Test
@@ -114,6 +216,64 @@ class ThreadScreenReplyAffordanceTest {
         composeRule.onNodeWithContentDescription("Members").assertIsDisplayed()
         composeRule.onNodeWithText("--").assertIsDisplayed()
         composeRule.onAllNodesWithText("0").assertCountEquals(0)
+    }
+
+    @Test
+    fun systemBackDismissesMembersModalBeforeThreadBack() {
+        var threadBackCount = 0
+        var parentBackCount = 0
+        val member =
+            MemberProfile(
+                id = MemberId("back-modal-member"),
+                displayName = "Back Modal Member",
+                handle = "back-modal-member",
+                kind = MemberKind.Agent,
+                roleDescription = "Agent"
+            )
+        val membersState =
+            ThreadMembersPanelState(
+                loadState =
+                    ScreenLoadState.Content(
+                        ThreadMembersPanelContent(members = listOf(member), canAddMembers = true)
+                    ),
+                candidatesLoadState =
+                    ScreenLoadState.Content(ThreadMembersPickerContent(candidates = emptyList()))
+            )
+
+        composeRule.setContent {
+            SlockTheme {
+                BackHandler {
+                    parentBackCount += 1
+                }
+                ThreadScreen(
+                        state =
+                                ThreadUiState(
+                                        loadState =
+                                                ScreenLoadState.Content(
+                                                        content(
+                                                                messages = listOf(message(1)),
+                                                                canLoadMoreBefore = false
+                                                        )
+                                                )
+                                ),
+                        membersPanelState = membersState,
+                        onBack = { threadBackCount += 1 }
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Members").performClick()
+        composeRule.onNodeWithText("MEMBERS (1)").assertIsDisplayed()
+
+        composeRule.runOnIdle {
+            composeRule.activity.onBackPressedDispatcher.onBackPressed()
+        }
+
+        composeRule.onNodeWithText("MEMBERS (1)").assertDoesNotExist()
+        composeRule.runOnIdle {
+            assertEquals(0, threadBackCount)
+            assertEquals(0, parentBackCount)
+        }
     }
 
     @Test
@@ -783,6 +943,46 @@ class ThreadScreenReplyAffordanceTest {
     }
 
     @Test
+    fun multipleImageAttachmentsRenderAndSecondAttachmentOpensItsOwnPreview() {
+        var openedAttachment: AttachmentId? = null
+        val attachments = listOf(
+            Attachment(
+                id = AttachmentId("attachment-click-1"),
+                name = "preview-1.png",
+                mimeType = "image/png",
+                sizeLabel = "8 KB",
+                thumbnailUrl = "https://example.invalid/preview-1.png"
+            ),
+            Attachment(
+                id = AttachmentId("attachment-click-2"),
+                name = "preview-2.png",
+                mimeType = "image/png",
+                sizeLabel = "9 KB",
+                thumbnailUrl = "https://example.invalid/preview-2.png"
+            )
+        )
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadMessageItem(
+                    message = message(replyCount = 0).copy(attachments = attachments),
+                    onOpenAttachment = { openedAttachment = it.id }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("preview-1.png").assertIsDisplayed()
+        composeRule.onNodeWithText("preview-2.png")
+            .assertIsDisplayed()
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(AttachmentId("attachment-click-2"), openedAttachment)
+        }
+        composeRule.onAllNodesWithText("Copy markdown").assertCountEquals(0)
+    }
+
+    @Test
     fun doneTaskActionShowsReopenAndMovesBackToInProgress() {
         var statusChange: Pair<TaskId, TaskStatus>? = null
         val task = TaskSummary(
@@ -1349,6 +1549,40 @@ class ThreadScreenReplyAffordanceTest {
     }
 
     @Test
+    fun loadingThreadAllowsComposerSendWhenHeaderIdentityIsKnown() {
+        var sent = false
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadScreen(
+                    state = ThreadUiState(
+                        loadState = ScreenLoadState.Loading,
+                        composerState = ComposerState(
+                            value = "Send before refresh finishes",
+                            status = ComposerStatus.Ready
+                        )
+                    ),
+                    fallbackComposerHeader = ConversationSummary(
+                        threadId = ThreadId("loading-thread"),
+                        channelId = ChannelId("loading-channel"),
+                        kind = ConversationKind.Channel,
+                        name = "loading",
+                        joined = true
+                    ),
+                    onSend = { sent = true }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Message #loading").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Send").assertIsDisplayed().performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(true, sent)
+        }
+    }
+
+    @Test
     fun composerHashSuggestionsDoNotShrinkTextArea() {
         val composerValue = mutableStateOf("")
         val channelSuggestions =
@@ -1520,6 +1754,180 @@ class ThreadScreenReplyAffordanceTest {
                 .getUnclippedBoundsInRoot()
 
         assertTrue(abs((composerFieldBounds.top - suggestionBounds.bottom).value) < 1f)
+    }
+
+    @Test
+    fun composerMemberSuggestionsKeepFocusWhenPressingArrowUp() {
+        val composerValue = mutableStateOf("")
+        val otherFieldValue = mutableStateOf("")
+        val memberSuggestions =
+            listOf(
+                MemberProfile(
+                    id = MemberId("member-artin"),
+                    displayName = "artin",
+                    handle = "artin",
+                    kind = MemberKind.Human,
+                    roleDescription = "Member"
+                )
+            )
+
+        composeRule.setContent {
+            SlockTheme {
+                Column {
+                    SlockTextField(
+                        value = otherFieldValue.value,
+                        onValueChange = { otherFieldValue.value = it },
+                        placeholder = "Other field",
+                        inputModifier = Modifier.testTag("other-field-input")
+                    )
+                    ThreadComposerBar(
+                        composerState = ComposerState(
+                            value = composerValue.value,
+                            status = ComposerStatus.Ready
+                        ),
+                        placeholder = "Message",
+                        onComposerChange = { composerValue.value = it },
+                        onAsTaskChange = {},
+                        onSend = {},
+                        memberSuggestions = memberSuggestions
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(THREAD_COMPOSER_FIELD_TAG, useUnmergedTree = true)
+            .performTextReplacement("@")
+        composeRule.onNodeWithTag(THREAD_COMPOSER_FIELD_TAG, useUnmergedTree = true)
+            .performKeyInput {
+            pressKey(Key.DirectionUp)
+        }
+
+        composeRule.onNodeWithTag(THREAD_COMPOSER_FIELD_TAG, useUnmergedTree = true)
+            .assertIsFocused()
+        composeRule.onNodeWithTag("other-field-input", useUnmergedTree = true)
+            .assertIsNotFocused()
+        composeRule.onNodeWithTag(THREAD_COMPOSER_SUGGESTIONS_TAG)
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun composerMemberSuggestionsSupportArrowSelectionThenEnterToApply() {
+        val composerValue = mutableStateOf("")
+        var sendCount = 0
+        val memberSuggestions =
+            listOf(
+                MemberProfile(
+                    id = MemberId("member-artin"),
+                    displayName = "artin",
+                    handle = "artin",
+                    kind = MemberKind.Human,
+                    roleDescription = "Member"
+                ),
+                MemberProfile(
+                    id = MemberId("member-cindy"),
+                    displayName = "Cindy",
+                    handle = "Cindy",
+                    kind = MemberKind.Agent,
+                    roleDescription = "Agent"
+                )
+            )
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadComposerBar(
+                    composerState = ComposerState(
+                        value = composerValue.value,
+                        status = ComposerStatus.Ready
+                    ),
+                    placeholder = "Message",
+                    onComposerChange = { composerValue.value = it },
+                    onAsTaskChange = {},
+                    onSend = { sendCount += 1 },
+                    memberSuggestions = memberSuggestions
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(THREAD_COMPOSER_FIELD_TAG, useUnmergedTree = true)
+            .performTextReplacement("@")
+        composeRule.onNodeWithTag(THREAD_COMPOSER_FIELD_TAG, useUnmergedTree = true)
+            .performKeyInput {
+                pressKey(Key.DirectionDown)
+                pressKey(Key.Enter)
+            }
+
+        composeRule.runOnIdle {
+            assertEquals("@Cindy ", composerValue.value)
+            assertEquals(0, sendCount)
+        }
+
+        composeRule.onNodeWithTag(THREAD_COMPOSER_FIELD_TAG, useUnmergedTree = true)
+            .performKeyInput {
+                pressKey(Key.Enter)
+            }
+
+        composeRule.runOnIdle {
+            assertEquals(1, sendCount)
+        }
+    }
+
+    @Test
+    fun composerChannelSuggestionsSupportArrowSelectionThenEnterToApply() {
+        val composerValue = mutableStateOf("")
+        var sendCount = 0
+        val channelSuggestions =
+            listOf(
+                ConversationSummary(
+                    threadId = ThreadId("all-thread"),
+                    channelId = ChannelId("all-channel"),
+                    kind = ConversationKind.Channel,
+                    name = "all"
+                ),
+                ConversationSummary(
+                    threadId = ThreadId("product-thread"),
+                    channelId = ChannelId("product-channel"),
+                    kind = ConversationKind.Channel,
+                    name = "product"
+                )
+            )
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadComposerBar(
+                    composerState = ComposerState(
+                        value = composerValue.value,
+                        status = ComposerStatus.Ready
+                    ),
+                    placeholder = "Message",
+                    onComposerChange = { composerValue.value = it },
+                    onAsTaskChange = {},
+                    onSend = { sendCount += 1 },
+                    channelSuggestions = channelSuggestions
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(THREAD_COMPOSER_FIELD_TAG, useUnmergedTree = true)
+            .performTextReplacement("#")
+        composeRule.onNodeWithTag(THREAD_COMPOSER_FIELD_TAG, useUnmergedTree = true)
+            .performKeyInput {
+                pressKey(Key.DirectionDown)
+                pressKey(Key.Enter)
+            }
+
+        composeRule.runOnIdle {
+            assertEquals("#product ", composerValue.value)
+            assertEquals(0, sendCount)
+        }
+
+        composeRule.onNodeWithTag(THREAD_COMPOSER_FIELD_TAG, useUnmergedTree = true)
+            .performKeyInput {
+                pressKey(Key.Enter)
+            }
+
+        composeRule.runOnIdle {
+            assertEquals(1, sendCount)
+        }
     }
 
     @Test

@@ -23,7 +23,8 @@ data class InboxContent(
 
 enum class InboxFilter {
     All,
-    Unread
+    Unread,
+    Mentions
 }
 
 fun InboxUiState.withFilterLoading(

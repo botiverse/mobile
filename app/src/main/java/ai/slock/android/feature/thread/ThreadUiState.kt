@@ -1,27 +1,32 @@
 package ai.slock.android.feature.thread
 
-import ai.slock.android.core.model.ConversationSummary
-import ai.slock.compose.model.withPreviewMembershipFallback
-import ai.slock.compose.model.withTitleFallback
+import ai.slock.android.core.data.repository.ChannelUnreadSnapshot
+import ai.slock.android.core.data.repository.ChannelFileItem
+import ai.slock.android.core.data.repository.ThreadSnapshot
 import ai.slock.android.core.model.AttachmentId
+import ai.slock.android.core.model.ChannelId
+import ai.slock.android.core.model.ConversationSummary
+import ai.slock.android.core.model.DirectMessageCreated
+import ai.slock.android.core.model.Heartbeat
 import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Message
 import ai.slock.android.core.model.MessageId
-import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.MessageNew
 import ai.slock.android.core.model.MessageUpdated
-import ai.slock.android.core.model.DirectMessageCreated
-import ai.slock.android.core.model.ThreadUpdated
-import ai.slock.android.core.model.TaskCreated
-import ai.slock.android.core.model.TaskUpdated
-import ai.slock.android.core.model.TaskDeleted
+import ai.slock.android.core.model.RealtimeEvent
+import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.SyncResumeResponse
-import ai.slock.android.core.model.Heartbeat
-import ai.slock.android.core.data.repository.ThreadSnapshot
-import ai.slock.android.feature.tasks.TasksUiState
+import ai.slock.android.core.model.TaskCreated
+import ai.slock.android.core.model.TaskDeleted
+import ai.slock.android.core.model.ThreadUpdated
+import ai.slock.android.core.model.TaskUpdated
 import ai.slock.android.core.model.TaskSummary
+import ai.slock.android.core.model.withUnreadReplyCount
 import ai.slock.android.core.state.ScreenLoadState
+import ai.slock.android.feature.tasks.TasksUiState
+import ai.slock.compose.model.withPreviewMembershipFallback
+import ai.slock.compose.model.withTitleFallback
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -29,9 +34,11 @@ import java.time.ZoneId
 
 data class ThreadUiState(
     val loadState: ScreenLoadState<ThreadContent>,
+    val serverId: ServerId? = null,
     val composerState: ComposerState = ComposerState(),
     val selectedTab: ThreadTab = ThreadTab.Chat,
     val tasksState: TasksUiState? = null,
+    val filesState: ThreadFilesUiState? = null,
     val channelJoinStatus: ChannelJoinStatus = ChannelJoinStatus.Idle,
     val channelJoinErrorCode: String? = null
 )
@@ -56,6 +63,17 @@ data class ThreadContent(
     val refreshStatus: ThreadRefreshStatus = ThreadRefreshStatus.Idle,
     val refreshErrorCode: String? = null,
     val parentMessage: Message? = null
+)
+
+data class ThreadFilesUiState(
+    val loadState: ScreenLoadState<ThreadFilesContent>,
+    val loadingMore: Boolean = false,
+    val nextCursor: String? = null
+)
+
+data class ThreadFilesContent(
+    val items: List<ChannelFileItem>,
+    val hasMore: Boolean = false
 )
 
 fun ThreadUiState.withThreadRefreshStatus(
@@ -111,6 +129,38 @@ fun ThreadContent.mergeRefreshedThreadSnapshot(next: ThreadSnapshot): ThreadCont
         refreshStatus = ThreadRefreshStatus.Idle,
         refreshErrorCode = null,
         parentMessage = next.parentMessage ?: parentMessage
+    )
+}
+
+fun ThreadUiState.clearReplyUnread(channelId: ChannelId): ThreadUiState =
+    updateReplyUnreadCounts { message ->
+        if (message.threadChannelId == channelId) {
+            message.withUnreadReplyCount(0)
+        } else {
+            message
+        }
+    }
+
+fun ThreadUiState.applyReplyUnreadCounts(snapshot: ChannelUnreadSnapshot): ThreadUiState =
+    updateReplyUnreadCounts { message ->
+        val replyThreadChannelId = message.threadChannelId ?: return@updateReplyUnreadCounts message
+        val count = snapshot.unreadCounts[replyThreadChannelId] ?: return@updateReplyUnreadCounts message
+        message.withUnreadReplyCount(count)
+    }
+
+private inline fun ThreadUiState.updateReplyUnreadCounts(
+    transform: (Message) -> Message
+): ThreadUiState {
+    val contentState = loadState as? ScreenLoadState.Content ?: return this
+    val content = contentState.data
+    return copy(
+        loadState =
+            ScreenLoadState.Content(
+                content.copy(
+                    messages = content.messages.map(transform),
+                    parentMessage = content.parentMessage?.let(transform)
+                )
+            )
     )
 }
 
@@ -369,8 +419,12 @@ data class AttachmentPreviewUiState(
     val url: String? = null,
     val thumbnailUrl: String? = null,
     val mimeType: String? = null,
+    val textContent: String? = null,
     val errorCode: String? = null
-)
+) {
+    val isTextPreview: Boolean
+        get() = textContent != null
+}
 
 enum class AttachmentPreviewStatus {
     Idle,
@@ -423,5 +477,6 @@ enum class ThreadMemberRemoveStatus {
 
 enum class ThreadTab {
     Chat,
-    Tasks
+    Tasks,
+    Files
 }

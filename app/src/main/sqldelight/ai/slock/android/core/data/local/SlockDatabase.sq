@@ -38,6 +38,7 @@ CREATE INDEX local_conversation_server_kind ON local_conversation(server_id, kin
 
 CREATE TABLE local_message (
   id TEXT NOT NULL PRIMARY KEY,
+  server_id TEXT NOT NULL DEFAULT '',
   thread_id TEXT NOT NULL,
   channel_id TEXT NOT NULL,
   thread_channel_id TEXT,
@@ -62,6 +63,7 @@ CREATE TABLE local_message (
 CREATE INDEX local_message_thread_seq ON local_message(thread_id, seq);
 CREATE INDEX local_message_thread_id_id ON local_message(thread_id, id);
 CREATE INDEX local_message_channel_seq ON local_message(channel_id, seq);
+CREATE INDEX local_message_server_channel_seq ON local_message(server_id, channel_id, seq);
 CREATE INDEX local_message_thread_channel_id ON local_message(thread_channel_id);
 CREATE INDEX local_message_parent_message_id ON local_message(parent_message_id);
 
@@ -79,6 +81,7 @@ CREATE INDEX local_attachment_message_id ON local_attachment(message_id);
 
 CREATE TABLE local_task_reference (
   id TEXT NOT NULL PRIMARY KEY,
+  server_id TEXT NOT NULL DEFAULT '',
   message_id TEXT,
   parent_message_id TEXT,
   channel_id TEXT,
@@ -100,9 +103,11 @@ CREATE TABLE local_task_reference (
 CREATE INDEX local_task_reference_message_id ON local_task_reference(message_id);
 CREATE INDEX local_task_reference_parent_message_id ON local_task_reference(parent_message_id);
 CREATE INDEX local_task_reference_task_number ON local_task_reference(task_number);
+CREATE INDEX local_task_reference_server_id ON local_task_reference(server_id);
 
 CREATE TABLE local_member_snapshot (
-  id TEXT NOT NULL PRIMARY KEY,
+  id TEXT NOT NULL,
+  server_id TEXT NOT NULL DEFAULT '',
   display_name TEXT NOT NULL,
   handle TEXT NOT NULL,
   kind TEXT NOT NULL,
@@ -112,22 +117,26 @@ CREATE TABLE local_member_snapshot (
   presence TEXT,
   description TEXT,
   role_description TEXT,
-  last_synced_at_ms INTEGER NOT NULL DEFAULT 0
+  last_synced_at_ms INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (server_id, id)
 );
 
 CREATE TABLE local_sync_cursor (
-  scope_id TEXT NOT NULL PRIMARY KEY,
+  scope_id TEXT NOT NULL,
+  server_id TEXT NOT NULL DEFAULT '',
   scope_kind TEXT NOT NULL,
   latest_seq INTEGER,
   oldest_loaded_seq INTEGER,
   newest_loaded_seq INTEGER,
   has_loaded_oldest INTEGER NOT NULL DEFAULT 0,
   has_loaded_newest INTEGER NOT NULL DEFAULT 1,
-  updated_at_ms INTEGER NOT NULL
+  updated_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (server_id, scope_id)
 );
 
 CREATE TABLE local_outbox_message (
   local_id TEXT NOT NULL PRIMARY KEY,
+  server_id TEXT NOT NULL DEFAULT '',
   channel_id TEXT NOT NULL,
   thread_id TEXT NOT NULL,
   body TEXT NOT NULL,
@@ -217,7 +226,8 @@ WHERE id = ?;
 selectMessagesForThread:
 SELECT *
 FROM local_message
-WHERE channel_id = ?
+WHERE server_id = ?
+  AND channel_id = ?
 ORDER BY CASE WHEN timestamp_label = '' THEN 1 ELSE 0 END,
          timestamp_label,
          COALESCE(seq, -9223372036854775808),
@@ -225,42 +235,37 @@ ORDER BY CASE WHEN timestamp_label = '' THEN 1 ELSE 0 END,
 
 selectThreadTimelineInvalidation:
 SELECT id FROM local_conversation
-WHERE id = ? OR thread_id = ? OR channel_id = ? OR stream_channel_id = ?
+WHERE server_id = ?
+  AND (id = ? OR thread_id = ? OR channel_id = ? OR stream_channel_id = ?)
 UNION
 SELECT id FROM local_message
-WHERE channel_id = (
-  SELECT COALESCE(stream_channel_id, channel_id, id)
-  FROM local_conversation
-  WHERE id = ? OR thread_id = ? OR channel_id = ? OR stream_channel_id = ?
-  LIMIT 1
-) OR id = (
-  SELECT parent_message_id
-  FROM local_conversation
-  WHERE id = ? OR thread_id = ? OR channel_id = ? OR stream_channel_id = ?
-  LIMIT 1
-)
+WHERE server_id = ?
+  AND (thread_id = ? OR channel_id = ? OR thread_channel_id = ? OR parent_message_id = ?)
 UNION
 SELECT id FROM local_task_reference
-WHERE message_id IN (
-  SELECT id FROM local_message
-  WHERE channel_id = (
-    SELECT COALESCE(stream_channel_id, channel_id, id)
-    FROM local_conversation
-    WHERE id = ? OR thread_id = ? OR channel_id = ? OR stream_channel_id = ?
-    LIMIT 1
+WHERE server_id = ?
+  AND (
+    thread_id = ?
+    OR channel_id = ?
+    OR message_id IN (
+      SELECT id FROM local_message
+      WHERE server_id = ?
+        AND (thread_id = ? OR channel_id = ? OR thread_channel_id = ?)
+    )
+    OR parent_message_id IN (
+      SELECT id FROM local_message
+      WHERE server_id = ?
+        AND (thread_id = ? OR channel_id = ? OR thread_channel_id = ?)
+    )
   )
-) OR parent_message_id = (
-  SELECT parent_message_id
-  FROM local_conversation
-  WHERE id = ? OR thread_id = ? OR channel_id = ? OR stream_channel_id = ?
-  LIMIT 1
-)
 UNION
-SELECT id FROM local_member_snapshot;
+SELECT id FROM local_member_snapshot
+WHERE server_id = ?;
 
 upsertMessage:
 INSERT OR REPLACE INTO local_message(
   id,
+  server_id,
   thread_id,
   channel_id,
   thread_channel_id,
@@ -280,7 +285,7 @@ INSERT OR REPLACE INTO local_message(
   parent_message_id,
   updated_at_label,
   last_synced_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteAttachmentsForMessage:
 DELETE FROM local_attachment
@@ -306,11 +311,13 @@ ORDER BY sort_order, id;
 selectTaskReference:
 SELECT *
 FROM local_task_reference
-WHERE id = ?;
+WHERE server_id = ?
+  AND id = ?;
 
 upsertTaskReference:
 INSERT OR REPLACE INTO local_task_reference(
   id,
+  server_id,
   message_id,
   parent_message_id,
   channel_id,
@@ -327,17 +334,19 @@ INSERT OR REPLACE INTO local_task_reference(
   updated_at_label,
   can_claim,
   last_synced_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectTaskReferencesForMessage:
 SELECT *
 FROM local_task_reference
-WHERE message_id = ? OR parent_message_id = ?
+WHERE server_id = ?
+  AND (message_id = ? OR parent_message_id = ?)
 ORDER BY COALESCE(task_number, 9223372036854775807), id;
 
 selectAllTaskReferences:
 SELECT *
 FROM local_task_reference
+WHERE server_id = ?
 ORDER BY COALESCE(updated_at_label, '') DESC,
          COALESCE(task_number, 9223372036854775807),
          id;
@@ -345,19 +354,24 @@ ORDER BY COALESCE(updated_at_label, '') DESC,
 selectTaskContext:
 SELECT *
 FROM local_task_reference
-WHERE id = ?
-   OR message_id = ?
-   OR parent_message_id = ?
-   OR task_number = ?
+WHERE server_id = ?
+  AND (
+    id = ?
+    OR message_id = ?
+    OR parent_message_id = ?
+    OR task_number = ?
+  )
 LIMIT 1;
 
 deleteTaskReference:
 DELETE FROM local_task_reference
-WHERE id = ?;
+WHERE server_id = ?
+  AND id = ?;
 
 upsertMemberSnapshot:
 INSERT OR REPLACE INTO local_member_snapshot(
   id,
+  server_id,
   display_name,
   handle,
   kind,
@@ -368,19 +382,21 @@ INSERT OR REPLACE INTO local_member_snapshot(
   description,
   role_description,
   last_synced_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectMemberSnapshot:
 SELECT *
 FROM local_member_snapshot
-WHERE id = ?;
+WHERE server_id = ?
+  AND id = ?;
 
 updateMemberPresence:
 UPDATE local_member_snapshot
 SET presence = ?,
     kind = COALESCE(?, kind),
     last_synced_at_ms = ?
-WHERE id = ?;
+WHERE server_id = ?
+  AND id = ?;
 
 updateMessageThreadMetadata:
 UPDATE local_message
@@ -388,7 +404,8 @@ SET thread_channel_id = ?,
     reply_count = ?,
     updated_at_label = COALESCE(?, updated_at_label),
     last_synced_at_ms = ?
-WHERE id = ?;
+WHERE server_id = ?
+  AND id = ?;
 
 clearConversationUnread:
 UPDATE local_conversation
@@ -396,14 +413,18 @@ SET unread_count = 0,
     mention_count = 0,
     first_unread_message_id = NULL,
     last_synced_at_ms = ?
-WHERE channel_id = ?
-   OR thread_id = ?
-   OR stream_channel_id = ?
-   OR id = ?;
+WHERE server_id = ?
+  AND (
+    channel_id = ?
+    OR thread_id = ?
+    OR stream_channel_id = ?
+    OR id = ?
+  );
 
 upsertSyncCursor:
 INSERT OR REPLACE INTO local_sync_cursor(
   scope_id,
+  server_id,
   scope_kind,
   latest_seq,
   oldest_loaded_seq,
@@ -411,16 +432,18 @@ INSERT OR REPLACE INTO local_sync_cursor(
   has_loaded_oldest,
   has_loaded_newest,
   updated_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectSyncCursor:
 SELECT *
 FROM local_sync_cursor
-WHERE scope_id = ?;
+WHERE server_id = ?
+  AND scope_id = ?;
 
 insertOutboxMessage:
 INSERT INTO local_outbox_message(
   local_id,
+  server_id,
   channel_id,
   thread_id,
   body,
@@ -429,7 +452,7 @@ INSERT INTO local_outbox_message(
   status,
   created_at_ms,
   last_error_code
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateOutboxStatus:
 UPDATE local_outbox_message
@@ -439,5 +462,6 @@ WHERE local_id = ?;
 selectPendingOutboxMessages:
 SELECT *
 FROM local_outbox_message
-WHERE status IN ('pending', 'failed')
+WHERE server_id = ?
+  AND status IN ('pending', 'failed')
 ORDER BY created_at_ms, local_id;

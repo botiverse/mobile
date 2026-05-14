@@ -1088,7 +1088,7 @@ private fun TaskSummary.toTaskCardData(
 ): SlockTaskCardData {
     return SlockTaskCardData(
         title = tasksDisplayTitle(),
-        source = channelName?.let { "#$it" } ?: copy.sampleState,
+        source = tasksSourceLabel().orEmpty(),
         owner = tasksAssigneeDisplayName() ?: copy.unassigned,
         updatedAt = updatedAtLabel.toThreadTimestampLabel(),
         status = status.toSlockTaskStatus(),
@@ -1099,6 +1099,9 @@ private fun TaskSummary.toTaskCardData(
         updatingLabel = copy.statusUpdating
     )
 }
+
+internal fun TaskSummary.tasksSourceLabel(): String? =
+    channelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
 
 internal fun TaskSummary.tasksDisplayTitle(): String {
     val numberLabel = taskNumber?.let { "#$it" }
@@ -1182,7 +1185,6 @@ private data class TasksScreenCopy(
     val failedTitle: String,
     val retry: String,
     val unassigned: String,
-    val sampleState: String,
     val channelFilterLabel: String,
     val allChannels: String,
     val clearAll: String,
@@ -1229,7 +1231,6 @@ private data class TasksScreenCopy(
                 failedTitle = stringResource(R.string.tasks_failed_title),
                 retry = stringResource(R.string.tasks_retry),
                 unassigned = stringResource(R.string.tasks_unassigned),
-                sampleState = stringResource(R.string.tasks_sample_state),
                 channelFilterLabel = stringResource(R.string.tasks_channel_filter_label),
                 allChannels = stringResource(R.string.tasks_all_channels),
                 clearAll = stringResource(R.string.tasks_clear_all_channels),

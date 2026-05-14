@@ -206,6 +206,26 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun clientDoesNotEmitDuplicateJoinForAlreadyJoinedChannel() {
+        val transport = FakeRealtimeSocketTransport()
+        val client = SocketIoRealtimeClient(transport)
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1"))
+            )
+        )
+        client.joinChannel(ChannelId("channel-1"))
+        client.joinChannel(ChannelId("channel-1"))
+        client.joinChannel(ChannelId("channel-1"))
+
+        assertEquals(
+            listOf("channel-1"),
+            transport.emitted.map { it.second["channelId"] }
+        )
+    }
+
+    @Test
     fun clientReplaysRoomsAndResumeAfterReconnect() {
         val transport = FakeRealtimeSocketTransport()
         val client = SocketIoRealtimeClient(transport)
@@ -255,6 +275,35 @@ class RealtimeRepositoryTest {
         transport.receive(RealtimeSocketEvents.Connect)
 
         assertTrue(transport.emitted.isEmpty())
+    }
+
+    @Test
+    fun clientDropsEventsWhosePayloadServerDoesNotMatchConnectedServer() {
+        val transport = FakeRealtimeSocketTransport()
+        val client = SocketIoRealtimeClient(transport)
+        val events = mutableListOf<RealtimeEvent>()
+        client.observeEvents { events += it }
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1"))
+            )
+        )
+        transport.receive(
+            RealtimeSocketEvents.MessageNew,
+            mapOf(
+                "serverId" to "server-2",
+                "message" to mapOf(
+                    "id" to "message-1",
+                    "threadId" to "thread-1",
+                    "channelId" to "channel-1",
+                    "body" to "Wrong server",
+                    "author" to mapOf("id" to "user-1", "displayName" to "Artin")
+                )
+            )
+        )
+
+        assertTrue(events.isEmpty())
     }
 
     @Test

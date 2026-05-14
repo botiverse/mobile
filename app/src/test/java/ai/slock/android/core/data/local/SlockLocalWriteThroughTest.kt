@@ -306,7 +306,7 @@ class SlockLocalWriteThroughTest {
     }
 
     @Test
-    fun writeUnreadCountsUpdatesHomeProjectionAndPreservesMissingRows() {
+    fun writeUnreadCountsUpdatesHomeProjectionAndClearsMissingRows() {
         val store = createInMemoryStore()
         val writer = SlockLocalWriteThrough(store, clock = { 42L })
         val server = ServerSummary(id = ServerId("server-1"), name = "Slock")
@@ -359,9 +359,9 @@ class SlockLocalWriteThroughTest {
 
         assertEquals(0, cached?.channels?.single()?.unreadCount)
         assertEquals(null, cached?.channels?.single()?.firstUnreadMessageId)
-        assertEquals(2, cached?.directMessages?.single()?.unreadCount)
-        assertEquals("dm-message-1", cached?.directMessages?.single()?.firstUnreadMessageId?.value)
-        assertEquals(2, cached?.unreadTotal)
+        assertEquals(0, cached?.directMessages?.single()?.unreadCount)
+        assertEquals(null, cached?.directMessages?.single()?.firstUnreadMessageId)
+        assertEquals(0, cached?.unreadTotal)
     }
 
     @Test
@@ -390,7 +390,7 @@ class SlockLocalWriteThroughTest {
             source = "seed_home"
         )
 
-        writer.clearConversationUnread(ChannelId("thread-1"), source = "test_read")
+        writer.clearConversationUnread(ChannelId("thread-1"), source = "test_read", serverId = ServerId("server-1"))
 
         val cached =
             writer.readHomeSnapshot(
@@ -419,11 +419,11 @@ class SlockLocalWriteThroughTest {
             )
         )
 
-        val messages = store.getMessagesForThread(ThreadId("thread-1"))
-        val task = store.getTaskReferencesForMessage(MessageId("message-1")).single()
+        val messages = store.getMessagesForThread(ThreadId("thread-1"), ServerId("server-1"))
+        val task = store.getTaskReferencesForMessage(MessageId("message-1"), ServerId("server-1")).single()
 
         assertEquals("message-1", messages.single().id.value)
-        assertEquals(9L, store.getSyncCursor("thread-1")?.latestSeq)
+        assertEquals(9L, store.getSyncCursor("thread-1", ServerId("server-1"))?.latestSeq)
         assertEquals(TaskStatus.Done, task.status)
         assertEquals(382, task.taskNumber)
     }
@@ -439,7 +439,8 @@ class SlockLocalWriteThroughTest {
                     messages = listOf(message("message-1", seq = 9).copy(task = task("task-1")))
                 )
             ),
-            source = "seed_thread"
+            source = "seed_thread",
+            serverId = ServerId("server-1")
         )
 
         writer.writeRealtimeEvent(
@@ -454,15 +455,15 @@ class SlockLocalWriteThroughTest {
         )
         writer.writeRealtimeEvent(ServerId("server-1"), TaskDeleted(TaskId("task-1")))
 
-        val threadMessage = store.getMessagesForThread(ThreadId("thread-1")).single()
-        val threadState = writer.readThreadUiState(ThreadId("thread-1"))
+        val threadMessage = store.getMessagesForThread(ThreadId("thread-1"), ServerId("server-1")).single()
+        val threadState = writer.readThreadUiState(ThreadId("thread-1"), serverId = ServerId("server-1"))
         val content =
             threadState?.loadState as ai.slock.android.core.state.ScreenLoadState.Content
 
         assertEquals("thread-replies-1", threadMessage.threadChannelId?.value)
         assertEquals(4, threadMessage.replyCount)
         assertEquals("Now", threadMessage.updatedAtLabel)
-        assertTrue(store.getTaskReferencesForMessage(MessageId("message-1")).isEmpty())
+        assertTrue(store.getTaskReferencesForMessage(MessageId("message-1"), ServerId("server-1")).isEmpty())
         assertTrue(content.data.tasks.isEmpty())
         assertEquals(null, content.data.messages.single().task)
     }
@@ -996,13 +997,13 @@ class SlockLocalWriteThroughTest {
                 threadId = ThreadId("thread-1"),
                 channelName = "sample-review"
             )
-        store.upsertTaskReference(task("sample-task"), syncedAtMs = 1L)
-        store.upsertTaskReference(realTaskWithSampleText, syncedAtMs = 2L)
+        store.upsertTaskReference(task("sample-task"), syncedAtMs = 1L, serverId = ServerId("server-1"))
+        store.upsertTaskReference(realTaskWithSampleText, syncedAtMs = 2L, serverId = ServerId("server-1"))
 
-        val snapshot = writer.readTaskSnapshot()
+        val snapshot = writer.readTaskSnapshot(ServerId("server-1"))
 
         assertEquals(listOf("real-task-1"), snapshot?.tasks?.map { it.id.value })
-        assertEquals(listOf(realTaskWithSampleText), store.getTaskReferences())
+        assertEquals(listOf(realTaskWithSampleText), store.getTaskReferences(ServerId("server-1")))
     }
 
     @Test
@@ -1022,11 +1023,12 @@ class SlockLocalWriteThroughTest {
                     messages = listOf(message("message-1", seq = 1))
                 )
             ),
-            source = "test_initial"
+            source = "test_initial",
+            serverId = serverId
         )
 
         // Start observing the timeline
-        val flow = store.observeThreadTimeline(threadId)
+        val flow = store.observeThreadTimeline(threadId, serverId)
 
         // Verify initial emission
         val initial = withTimeout(1000) { flow.first() }

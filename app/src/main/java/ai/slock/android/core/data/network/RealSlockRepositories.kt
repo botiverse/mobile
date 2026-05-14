@@ -27,6 +27,8 @@ import ai.slock.android.core.data.repository.AttachmentUploadRequest
 import ai.slock.android.core.data.repository.AttachmentUploadResult
 import ai.slock.android.core.data.repository.ChannelArchiveResult
 import ai.slock.android.core.data.repository.ChannelDeleteResult
+import ai.slock.android.core.data.repository.ChannelFileItem
+import ai.slock.android.core.data.repository.ChannelFilesSnapshot
 import ai.slock.android.core.data.repository.ChannelJoinResult
 import ai.slock.android.core.data.repository.ChannelMemberActionResult
 import ai.slock.android.core.data.repository.ChannelMemberSnapshot
@@ -91,6 +93,7 @@ import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadConversation
+import ai.slock.android.core.model.withUnreadReplyCount
 import ai.slock.compose.model.SlockWorkspaceFileKind
 import ai.slock.compose.model.SlockWorkspaceFilePreview
 import ai.slock.compose.model.SlockWorkspaceNode
@@ -98,6 +101,7 @@ import ai.slock.compose.model.parentChannelIdOrNull
 import ai.slock.compose.model.parentMessageIdOrNull
 import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.model.toGravatarAvatarReference
+import ai.slock.compose.network.SlockRequestPriority
 import ai.slock.android.core.state.EmptyReason
 import com.google.gson.Gson
 import com.google.gson.JsonElement
@@ -186,7 +190,7 @@ class RealChannelRepository(
                 execute(
                         emptyReason = EmptyReason.NoChannels,
                         block = {
-                            api.createChannel(
+                            api.createChannel(currentSlockApiPriority(),
                                     mapOf(
                                                     "name" to name,
                                                     "description" to
@@ -258,7 +262,7 @@ class RealChannelRepository(
         if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
         return execute(
                 emptyReason = EmptyReason.NoChannels,
-                block = { api.joinChannel(channelId.value) },
+                block = { api.joinChannel(currentSlockApiPriority(), channelId.value) },
                 source = "channel_join",
                 warningLogger = warningLogger,
                 mapper = { json ->
@@ -281,7 +285,7 @@ class RealChannelRepository(
         if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
         return execute(
                 emptyReason = EmptyReason.NoChannels,
-                block = { api.archiveChannel(channelId.value) },
+                block = { api.archiveChannel(currentSlockApiPriority(), channelId.value) },
                 source = "channel_archive",
                 warningLogger = warningLogger,
                 mapper = { json ->
@@ -304,7 +308,7 @@ class RealChannelRepository(
         if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
         return execute(
                 emptyReason = EmptyReason.NoChannels,
-                block = { api.deleteChannel(channelId.value) },
+                block = { api.deleteChannel(currentSlockApiPriority(), channelId.value) },
                 source = "channel_delete",
                 warningLogger = warningLogger,
                 mapper = {
@@ -326,7 +330,7 @@ class RealChannelRepository(
             execute(
                     emptyReason = EmptyReason.NoMembers,
                     block = {
-                        api.addChannelMember(
+                        api.addChannelMember(currentSlockApiPriority(),
                                 channelId.value,
                                 mapOf(fieldName to memberId).toJsonBody()
                         )
@@ -339,7 +343,7 @@ class RealChannelRepository(
     private suspend fun fetchChannels(context: NetworkServerContext): DataResult<ChannelSnapshot> =
             execute(
                     emptyReason = EmptyReason.NoChannels,
-                    block = { api.channels() },
+                    block = { api.channels(currentSlockApiPriority()) },
                     emptyWhen = { it.channels.isEmpty() },
                     source = "home_channels",
                     warningLogger = warningLogger,
@@ -381,7 +385,7 @@ class RealChannelRepository(
                     val result =
                             execute(
                                     emptyReason = EmptyReason.NoChannels,
-                                    block = { api.directMessages() },
+                                    block = { api.directMessages(currentSlockApiPriority()) },
                                     emptyWhen = { it.directMessages.isEmpty() },
                                     source = "home_direct_messages",
                                     warningLogger = warningLogger,
@@ -451,7 +455,7 @@ class RealChannelRepository(
                 execute(
                         emptyReason = EmptyReason.NoChannels,
                         block = {
-                            api.openDirectMessage(mapOf(fieldName to memberId.value).toJsonBody())
+                            api.openDirectMessage(currentSlockApiPriority(), mapOf(fieldName to memberId.value).toJsonBody())
                         },
                         source = source,
                         warningLogger = warningLogger,
@@ -576,7 +580,7 @@ class RealReadReceiptRepository(
         val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoInboxItems,
-                block = { api.channelUnreadCounts() },
+                block = { api.channelUnreadCounts(currentSlockApiPriority()) },
                 source = "read_unread_counts",
                 warningLogger = warningLogger,
                 mapper = { json ->
@@ -598,7 +602,7 @@ class RealReadReceiptRepository(
         return execute(
                 emptyReason = EmptyReason.NoMessages,
                 block = {
-                    api.markChannelReadToSeq(channelId.value, mapOf("seq" to seq).toJsonBody())
+                    api.markChannelReadToSeq(currentSlockApiPriority(), channelId.value, mapOf("seq" to seq).toJsonBody())
                 },
                 source = "read_channel_seq",
                 warningLogger = warningLogger,
@@ -612,7 +616,7 @@ class RealReadReceiptRepository(
         currentContext() ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoMessages,
-                block = { api.markChannelReadAll(channelId.value) },
+                block = { api.markChannelReadAll(currentSlockApiPriority(), channelId.value) },
                 source = "read_channel_all",
                 warningLogger = warningLogger,
                 mapper = { json -> json.toReadReceiptResult(fallbackChannelId = channelId) }
@@ -623,7 +627,7 @@ class RealReadReceiptRepository(
         currentContext() ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoMessages,
-                block = { api.markChannelUnread(channelId.value) },
+                block = { api.markChannelUnread(currentSlockApiPriority(), channelId.value) },
                 source = "read_channel_unread",
                 warningLogger = warningLogger,
                 mapper = { json -> json.toReadReceiptResult(fallbackChannelId = channelId) }
@@ -634,7 +638,7 @@ class RealReadReceiptRepository(
         store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoInboxItems,
-                block = { api.markInboxReadAll() },
+                block = { api.markInboxReadAll(currentSlockApiPriority()) },
                 source = "read_inbox_all",
                 warningLogger = warningLogger,
                 mapper = { json -> json.toReadReceiptResult() }
@@ -662,7 +666,7 @@ class RealTaskRepository(
         val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoTasks,
-                block = { api.serverTasks() },
+                block = { api.serverTasks(currentSlockApiPriority()) },
                 emptyWhen = { it.tasks.isEmpty() },
                 source = "tasks_server",
                 warningLogger = warningLogger,
@@ -681,7 +685,7 @@ class RealTaskRepository(
         val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoTasks,
-                block = { api.channelTasks(channelId.value) },
+                block = { api.channelTasks(currentSlockApiPriority(), channelId.value) },
                 emptyWhen = { it.tasks.isEmpty() },
                 source = "tasks_channel",
                 warningLogger = warningLogger,
@@ -696,7 +700,7 @@ class RealTaskRepository(
         currentContext() ?: return authRequired()
         return execute(
             emptyReason = EmptyReason.NoTasks,
-            block = { api.claimTask(taskId.value) },
+            block = { api.claimTask(currentSlockApiPriority(), taskId.value) },
                 source = "tasks_claim",
                 warningLogger = warningLogger,
                 mapper = { json ->
@@ -717,7 +721,7 @@ class RealTaskRepository(
         currentContext() ?: return authRequired()
         return execute(
             emptyReason = EmptyReason.NoTasks,
-            block = { api.updateTaskStatus(taskId.value, mapOf("status" to status.toApiValue()).toJsonBody()) },
+            block = { api.updateTaskStatus(currentSlockApiPriority(), taskId.value, mapOf("status" to status.toApiValue()).toJsonBody()) },
             source = "tasks_status",
             warningLogger = warningLogger,
             mapper = { json ->
@@ -746,12 +750,15 @@ class RealMemberRepository(
     private val agentActivityCacheMutex = Mutex()
     private val agentActivityCache = mutableMapOf<MemberId, List<AgentActivityEntry>>()
 
-    override suspend fun getMembers(serverId: ServerId): DataResult<MemberSnapshot> {
+    override suspend fun getMembers(
+            priority: SlockRequestPriority,
+            serverId: ServerId
+    ): DataResult<MemberSnapshot> {
         val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
         val result =
                 execute(
                         emptyReason = EmptyReason.NoMembers,
-                        block = { api.serverMembers(serverId.value) },
+                        block = { api.serverMembers(priority, serverId.value) },
                         source = "server_members",
                         warningLogger = warningLogger,
                         mapper = { json ->
@@ -761,7 +768,7 @@ class RealMemberRepository(
         val agentResult =
                 execute(
                         emptyReason = EmptyReason.NoMembers,
-                        block = { api.settingsAgents() },
+                        block = { api.settingsAgents(priority) },
                         source = "server_agents",
                         warningLogger = warningLogger,
                         mapper = { json -> json.agentMemberItems() }
@@ -769,7 +776,7 @@ class RealMemberRepository(
         val machineNameResult =
                 execute(
                         emptyReason = EmptyReason.NoMembers,
-                        block = { api.settingsMachines(serverId.value) },
+                        block = { api.settingsMachines(priority, serverId.value) },
                         source = "server_agent_machines",
                         warningLogger = warningLogger,
                         mapper = { json -> json.machineNameMap() }
@@ -805,12 +812,16 @@ class RealMemberRepository(
         return mergedResult
     }
 
-    override suspend fun getMemberProfile(memberId: MemberId): DataResult<MemberProfile> {
+    override suspend fun getMemberProfile(
+            priority: SlockRequestPriority,
+            memberId: MemberId
+    ): DataResult<MemberProfile> {
         currentContext() ?: return authRequired()
-        return getHumanProfile(memberId, source = "member_profile")
+        return getHumanProfile(priority, memberId, source = "member_profile")
     }
 
     override suspend fun updateAgentProfile(
+            priority: SlockRequestPriority,
             request: AgentProfileUpdateRequest
     ): DataResult<MemberProfile> {
         currentContext() ?: return authRequired()
@@ -820,7 +831,7 @@ class RealMemberRepository(
         return execute(
                 emptyReason = EmptyReason.NoMembers,
                 block = {
-                    api.updateAgent(
+                    api.updateAgent(priority,
                             request.agentId.value,
                             mapOf(
                                             "name" to displayName,
@@ -843,12 +854,15 @@ class RealMemberRepository(
         )
     }
 
-    override suspend fun getAgentDetail(agentId: MemberId): DataResult<AgentDetailSnapshot> {
+    override suspend fun getAgentDetail(
+            priority: SlockRequestPriority,
+            agentId: MemberId
+    ): DataResult<AgentDetailSnapshot> {
         currentContext() ?: return authRequired()
-        val directMessages = getAgentDirectMessages(agentId)
-        val reminders = getAgentReminders(agentId)
-        val activity = getAgentActivity(agentId)
-        val skills = getAgentSkills(agentId)
+        val directMessages = getAgentDirectMessages(priority, agentId)
+        val reminders = getAgentReminders(priority, agentId)
+        val activity = getAgentActivity(priority, agentId)
+        val skills = getAgentSkills(priority, agentId)
         return when {
             directMessages is DataResult.Content &&
                     reminders is DataResult.Content &&
@@ -879,11 +893,14 @@ class RealMemberRepository(
         }
     }
 
-    override suspend fun getAgentDirectMessages(agentId: MemberId): DataResult<AgentDmSnapshot> {
+    override suspend fun getAgentDirectMessages(
+            priority: SlockRequestPriority,
+            agentId: MemberId
+    ): DataResult<AgentDmSnapshot> {
         currentContext() ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoMembers,
-                block = { api.agentDirectMessages(agentId.value) },
+                block = { api.agentDirectMessages(priority, agentId.value) },
                 source = "agent_direct_messages",
                 warningLogger = warningLogger,
                 mapper = { json ->
@@ -896,11 +913,14 @@ class RealMemberRepository(
         )
     }
 
-    override suspend fun getAgentReminders(agentId: MemberId): DataResult<AgentReminderSnapshot> {
+    override suspend fun getAgentReminders(
+            priority: SlockRequestPriority,
+            agentId: MemberId
+    ): DataResult<AgentReminderSnapshot> {
         currentContext() ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoMembers,
-                block = { api.reminders(agentId.value) },
+                block = { api.reminders(priority, agentId.value) },
                 source = "agent_reminders",
                 warningLogger = warningLogger,
                 mapper = { json ->
@@ -913,12 +933,15 @@ class RealMemberRepository(
         )
     }
 
-    override suspend fun getAgentActivity(agentId: MemberId): DataResult<AgentActivitySnapshot> {
+    override suspend fun getAgentActivity(
+            priority: SlockRequestPriority,
+            agentId: MemberId
+    ): DataResult<AgentActivitySnapshot> {
         currentContext() ?: return authRequired()
         val logResult =
                 execute(
                         emptyReason = EmptyReason.NoMembers,
-                        block = { api.agentActivityLog(agentId.value, limit = 50) },
+                        block = { api.agentActivityLog(priority, agentId.value, limit = 50) },
                         source = "agent_activity",
                         warningLogger = warningLogger,
                         mapper = { json ->
@@ -941,7 +964,7 @@ class RealMemberRepository(
                             AgentActivitySnapshot(agentId = agentId, activity = items)
                         }
                 )
-        val fallbackEntries = fetchAgentCurrentActivityFallback(agentId)
+        val fallbackEntries = fetchAgentCurrentActivityFallback(priority, agentId)
         return when (logResult) {
             is DataResult.Content -> {
                 val mergedInput = fallbackEntries + logResult.data.activity
@@ -967,13 +990,16 @@ class RealMemberRepository(
         }
     }
 
-    override suspend fun getAgentWorkspaces(agentId: MemberId): DataResult<AgentWorkspaceSnapshot> {
+    override suspend fun getAgentWorkspaces(
+            priority: SlockRequestPriority,
+            agentId: MemberId
+    ): DataResult<AgentWorkspaceSnapshot> {
         val context = currentContext() ?: return authRequired()
         if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
         val lookupResult =
                 execute(
                         emptyReason = EmptyReason.NoMembers,
-                        block = { api.settingsAgents() },
+                        block = { api.settingsAgents(priority) },
                         source = "agent_workspaces_lookup",
                         warningLogger = warningLogger,
                         mapper = { json ->
@@ -1009,7 +1035,7 @@ class RealMemberRepository(
                                 execute(
                                         emptyReason = EmptyReason.NoMembers,
                                         block = {
-                                            api.settingsMachineWorkspaces(
+                                            api.settingsMachineWorkspaces(priority,
                                                     context.server.id.value,
                                                     lookup.computerId
                                             )
@@ -1067,13 +1093,14 @@ class RealMemberRepository(
     }
 
     override suspend fun getAgentWorkspaceTree(
+            priority: SlockRequestPriority,
             agentId: MemberId
     ): DataResult<AgentWorkspaceTreeSnapshot> {
         currentContext() ?: return authRequired()
         if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
         return execute(
                 emptyReason = EmptyReason.NoMembers,
-                block = { api.agentWorkspaceFiles(agentId.value) },
+                block = { api.agentWorkspaceFiles(priority, agentId.value) },
                 source = "agent_workspace_root",
                 warningLogger = warningLogger,
                 mapper = { json ->
@@ -1094,6 +1121,7 @@ class RealMemberRepository(
     }
 
     override suspend fun getAgentWorkspaceChildren(
+            priority: SlockRequestPriority,
             agentId: MemberId,
             dirPath: String
     ): DataResult<AgentWorkspaceChildrenSnapshot> {
@@ -1103,7 +1131,7 @@ class RealMemberRepository(
         }
         return execute(
                 emptyReason = EmptyReason.NoMembers,
-                block = { api.agentWorkspaceFiles(agentId.value, dirPath) },
+                block = { api.agentWorkspaceFiles(priority, agentId.value, dirPath) },
                 source = "agent_workspace_children",
                 warningLogger = warningLogger,
                 mapper = { json ->
@@ -1117,6 +1145,7 @@ class RealMemberRepository(
     }
 
     override suspend fun readAgentWorkspaceFile(
+            priority: SlockRequestPriority,
             agentId: MemberId,
             path: String
     ): DataResult<AgentWorkspaceFilePreviewSnapshot> {
@@ -1124,7 +1153,7 @@ class RealMemberRepository(
         if (agentId.value.isBlank() || path.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
         return execute(
                 emptyReason = EmptyReason.NoMembers,
-                block = { api.readAgentWorkspaceFile(agentId.value, path) },
+                block = { api.readAgentWorkspaceFile(priority, agentId.value, path) },
                 source = "agent_workspace_file_read",
                 warningLogger = warningLogger,
                 mapper = { json ->
@@ -1138,12 +1167,15 @@ class RealMemberRepository(
         )
     }
 
-    override suspend fun getAgentSkills(agentId: MemberId): DataResult<AgentSkillsSnapshot> {
+    override suspend fun getAgentSkills(
+            priority: SlockRequestPriority,
+            agentId: MemberId
+    ): DataResult<AgentSkillsSnapshot> {
         currentContext() ?: return authRequired()
         if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
         return execute(
                 emptyReason = EmptyReason.NoMembers,
-                block = { api.settingsAgents() },
+                block = { api.settingsAgents(priority) },
                 source = "agent_skills",
                 warningLogger = warningLogger,
                 mapper = { json ->
@@ -1159,13 +1191,14 @@ class RealMemberRepository(
     }
 
     override suspend fun getChannelMembers(
+            priority: SlockRequestPriority,
             channelId: ChannelId
     ): DataResult<ChannelMemberSnapshot> {
         currentContext() ?: return authRequired()
         val result =
                 execute(
                         emptyReason = EmptyReason.NoMembers,
-                        block = { api.channelMembers(channelId.value) },
+                        block = { api.channelMembers(priority, channelId.value) },
                         emptyWhen = { it.members.isEmpty() },
                         source = "channel_members",
                         warningLogger = warningLogger,
@@ -1173,7 +1206,7 @@ class RealMemberRepository(
                             val root = json.unwrap("data", "channel")
                             ChannelMemberSnapshot(
                                     channelId = channelId,
-                                    members = json.memberItems(),
+                                    members = root.memberItems(),
                                     canAddMembers =
                                             root.boolean(
                                                     "canAddMembers",
@@ -1184,29 +1217,16 @@ class RealMemberRepository(
                             )
                         }
                 )
-        val enrichedResult =
-                when (result) {
-                    is DataResult.Content ->
-                            DataResult.Content(
-                                    result.data.copy(
-                                            members =
-                                                    enrichHumanProfiles(
-                                                            result.data.members,
-                                                            source = "channel_members_profile"
-                                                    )
-                                    )
-                            )
-                    else -> result
-                }
-        enrichedResult.logChannelMemberCounts(
+        result.logChannelMemberCounts(
                 source = "channel_members",
                 channelId = channelId.value,
                 logger = logger
         )
-        return enrichedResult
+        return result
     }
 
     override suspend fun addChannelMember(
+            priority: SlockRequestPriority,
             request: AddChannelMemberRequest
     ): DataResult<ChannelMemberActionResult> {
         currentContext() ?: return authRequired()
@@ -1214,7 +1234,7 @@ class RealMemberRepository(
         return execute(
                 emptyReason = EmptyReason.NoMembers,
                 block = {
-                    api.addChannelMember(
+                    api.addChannelMember(priority,
                             request.channelId.value,
                             mapOf(fieldName to request.memberId.value).toJsonBody()
                     )
@@ -1237,13 +1257,14 @@ class RealMemberRepository(
     }
 
     override suspend fun removeChannelMember(
+            priority: SlockRequestPriority,
             request: RemoveChannelMemberRequest
     ): DataResult<ChannelMemberActionResult> {
         currentContext() ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoMembers,
                 block = {
-                    api.removeChannelMember(
+                    api.removeChannelMember(priority,
                             channelId = request.channelId.value,
                             kind = request.kind.channelMemberPathSegment,
                             memberId = request.memberId.value
@@ -1283,12 +1304,13 @@ class RealMemberRepository(
             }
 
     private suspend fun fetchAgentCurrentActivityFallback(
+            priority: SlockRequestPriority,
             agentId: MemberId
     ): List<AgentActivityEntry> {
         val result =
                 execute<List<AgentActivityEntry>>(
                         emptyReason = EmptyReason.NoMembers,
-                        block = { api.settingsAgents() },
+                        block = { api.settingsAgents(priority) },
                         source = "agent_activity_current_fallback",
                         warningLogger = warningLogger,
                         mapper = { json ->
@@ -1308,6 +1330,7 @@ class RealMemberRepository(
     }
 
     private suspend fun enrichHumanProfiles(
+            priority: SlockRequestPriority,
             members: List<MemberProfile>,
             source: String
     ): List<MemberProfile> {
@@ -1319,7 +1342,7 @@ class RealMemberRepository(
         val profileById: Map<MemberId, MemberProfile> = coroutineScope {
             uniqueHumanIds.map { memberId ->
                 async {
-                    val profileResult = getHumanProfile(memberId, source = source)
+                    val profileResult = getHumanProfile(priority, memberId, source = source)
                     val profile = (profileResult as? DataResult.Content)?.data
                     logger(
                             "human_profile_merge source=$source memberId=${memberId.value} " +
@@ -1336,12 +1359,13 @@ class RealMemberRepository(
     }
 
     private suspend fun getHumanProfile(
+            priority: SlockRequestPriority,
             memberId: MemberId,
             source: String
     ): DataResult<MemberProfile> =
             execute(
                     emptyReason = EmptyReason.NoMembers,
-                    block = { api.memberProfile(memberId.value) },
+                    block = { api.memberProfile(priority, memberId.value) },
                     source = source,
                     warningLogger = warningLogger,
                     mapper = { json ->
@@ -1388,19 +1412,38 @@ class RealInboxRepository(private val store: AuthSessionStore, private val api: 
         val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoInboxItems,
-                block = { api.inbox(filter.wireValue, limit, offset) },
+                block = { api.inbox(currentSlockApiPriority(), filter.wireValue, limit, offset) },
                 emptyWhen = { it.items.isEmpty() },
                 mapper = { json ->
                     val items =
                             json.items("items", "messages", "results", "data")
                                     .mapNotNull { element -> element.asObjectOrNull()?.toInboxItem() }
                                     .distinctBy { it.key }
+                    val wireTotalCount = json.int("totalCount")
+                    val wireTotalUnreadCount = json.int("totalUnreadCount")
+                    val derivedTotalCount = items.size
+                    val derivedTotalUnreadCount = items.sumOf { it.unreadCount }
+                    val totalCount = maxOf(wireTotalCount ?: derivedTotalCount, derivedTotalCount)
+                    val totalUnreadCount =
+                            maxOf(
+                                    wireTotalUnreadCount ?: derivedTotalUnreadCount,
+                                    derivedTotalUnreadCount
+                            )
+                    if (
+                            (wireTotalCount != null && wireTotalCount != derivedTotalCount) ||
+                                    (wireTotalUnreadCount != null &&
+                                            wireTotalUnreadCount != derivedTotalUnreadCount)
+                    ) {
+                        ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                                "SlockInboxScope",
+                                "inbox_count_override serverId=${serverId.value} filter=${filter.wireValue} offset=$offset wireTotal=${wireTotalCount ?: -1} wireUnread=${wireTotalUnreadCount ?: -1} itemCount=$derivedTotalCount itemUnread=$derivedTotalUnreadCount"
+                        )
+                    }
                     InboxSnapshot(
                             server = context.server,
                             items = items,
-                            totalCount = json.int("totalCount") ?: items.size,
-                            totalUnreadCount = json.int("totalUnreadCount")
-                                            ?: items.sumOf { it.unreadCount },
+                            totalCount = totalCount,
+                            totalUnreadCount = totalUnreadCount,
                             hasMore = json.boolean("hasMore") ?: false,
                             nextOffset = offset + items.size
                     )
@@ -1442,9 +1485,9 @@ class RealSavedRepository(private val store: AuthSessionStore, private val api: 
                 emptyReason = EmptyReason.NoInboxItems,
                 block = {
                     if (save) {
-                        api.saveMessage(messageId.value)
+                        api.saveMessage(currentSlockApiPriority(), messageId.value)
                     } else {
-                        api.unsaveMessage(messageId.value)
+                        api.unsaveMessage(currentSlockApiPriority(), messageId.value)
                     }
                 },
                 mapper = { SavedMessageMutationResult(messageId) }
@@ -1459,7 +1502,7 @@ class RealSavedRepository(private val store: AuthSessionStore, private val api: 
         val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoInboxItems,
-                block = { api.saved(limit, offset) },
+                block = { api.saved(currentSlockApiPriority(), limit, offset) },
                 emptyWhen = { it.items.isEmpty() },
                 mapper = { json ->
                     val items =
@@ -1493,7 +1536,7 @@ class RealSearchRepository(private val store: AuthSessionStore, private val api:
         val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoSearchResults,
-                block = { api.searchMessages(query.trim(), limit, offset) },
+                block = { api.searchMessages(currentSlockApiPriority(), query.trim(), limit, offset) },
                 emptyWhen = { it.items.isEmpty() },
                 mapper = { json ->
                     val items =
@@ -1531,7 +1574,7 @@ class RealConversationRepository(
         return loadChannelMessages(
                 context = context,
                 threadId = threadId,
-                block = { api.channelMessages(threadId.value, MESSAGE_PAGE_LIMIT) },
+                block = { api.channelMessages(currentSlockApiPriority(), threadId.value, MESSAGE_PAGE_LIMIT) },
                 source = "messages_channel"
         )
     }
@@ -1540,7 +1583,7 @@ class RealConversationRepository(
         val context = currentContext() ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoMessages,
-                block = { api.messageContext(messageId.value) },
+                block = { api.messageContext(currentSlockApiPriority(), messageId.value) },
                 emptyWhen = { it.messages.isEmpty() && it.parentMessage == null },
                 source = "messages_context",
                 warningLogger = warningLogger,
@@ -1567,7 +1610,7 @@ class RealConversationRepository(
                 context = context,
                 threadId = threadId,
                 block = {
-                    api.channelMessages(threadId.value, MESSAGE_PAGE_LIMIT, beforeSeq = beforeSeq)
+                    api.channelMessages(currentSlockApiPriority(), threadId.value, MESSAGE_PAGE_LIMIT, beforeSeq = beforeSeq)
                 },
                 source = "messages_channel_older"
         )
@@ -1581,7 +1624,7 @@ class RealConversationRepository(
         return execute(
                 emptyReason = EmptyReason.NoMessages,
                 block = {
-                    api.messageSync(
+                    api.messageSync(currentSlockApiPriority(),
                             sinceSeq = afterSeq,
                             limit = SYNC_PAGE_LIMIT,
                             channelId = threadId.value
@@ -1607,7 +1650,7 @@ class RealConversationRepository(
         val context = currentContext() ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoInboxItems,
-                block = { api.channelThreads(channelId.value, limit) },
+                block = { api.channelThreads(currentSlockApiPriority(), channelId.value, limit) },
                 emptyWhen = { it.threads.isEmpty() },
                 source = "channel_threads",
                 warningLogger = warningLogger,
@@ -1622,7 +1665,7 @@ class RealConversationRepository(
         val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoInboxItems,
-                block = { api.followedThreads(limit) },
+                block = { api.followedThreads(currentSlockApiPriority(), limit) },
                 emptyWhen = { it.threads.isEmpty() },
                 source = "followed_threads",
                 warningLogger = warningLogger,
@@ -1639,7 +1682,7 @@ class RealConversationRepository(
                     fallbackParentMessageId = parentMessageId,
                     source = "thread_create_or_open"
             ) {
-                api.createOrOpenThread(channelId.value, parentMessageId.toParentMessageThreadBody())
+                api.createOrOpenThread(currentSlockApiPriority(), channelId.value, parentMessageId.toParentMessageThreadBody())
             }
 
     override suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult> =
@@ -1647,32 +1690,32 @@ class RealConversationRepository(
                     fallbackThreadChannelId = null,
                     fallbackParentMessageId = parentMessageId,
                     source = "thread_follow_parent"
-            ) { api.followThread(parentMessageId.toParentMessageThreadBody()) }
+            ) { api.followThread(currentSlockApiPriority(), parentMessageId.toParentMessageThreadBody()) }
 
     override suspend fun followThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
             threadAction(threadChannelId, source = "thread_follow") {
-                api.followThread(threadChannelId.toThreadActionBody())
+                api.followThread(currentSlockApiPriority(), threadChannelId.toThreadActionBody())
             }
 
     override suspend fun unfollowThread(
             threadChannelId: ChannelId
     ): DataResult<ThreadActionResult> =
             threadAction(threadChannelId, source = "thread_unfollow") {
-                api.unfollowThread(threadChannelId.toThreadActionBody())
+                api.unfollowThread(currentSlockApiPriority(), threadChannelId.toThreadActionBody())
             }
 
     override suspend fun markThreadDone(
             threadChannelId: ChannelId
     ): DataResult<ThreadActionResult> =
             threadAction(threadChannelId, source = "thread_done") {
-                api.markThreadDone(threadChannelId.toThreadActionBody())
+                api.markThreadDone(currentSlockApiPriority(), threadChannelId.toThreadActionBody())
             }
 
     override suspend fun markThreadUndone(
             threadChannelId: ChannelId
     ): DataResult<ThreadActionResult> =
             threadAction(threadChannelId, source = "thread_undone") {
-                api.markThreadUndone(threadChannelId.toThreadActionBody())
+                api.markThreadUndone(currentSlockApiPriority(), threadChannelId.toThreadActionBody())
             }
 
     override suspend fun uploadAttachments(
@@ -1683,7 +1726,7 @@ class RealConversationRepository(
         return execute(
                 emptyReason = EmptyReason.NoMessages,
                 block = {
-                    api.uploadAttachments(
+                    api.uploadAttachments(currentSlockApiPriority(),
                             channelId = request.channelId.value.toRequestBody(textMediaType),
                             files = request.files.map { it.toMultipartPart() }
                     )
@@ -1708,7 +1751,7 @@ class RealConversationRepository(
         currentContext() ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoMessages,
-                block = { api.attachmentUrl(attachmentId.value) },
+                block = { api.attachmentUrl(currentSlockApiPriority(), attachmentId.value) },
                 source = "attachment_open_url",
                 warningLogger = warningLogger,
                 mapper = { json ->
@@ -1719,6 +1762,40 @@ class RealConversationRepository(
                     )
                 },
                 emptyWhen = { it.url.isBlank() }
+        )
+    }
+
+    override suspend fun getChannelFiles(
+            channelId: ChannelId,
+            limit: Int,
+            cursor: String?
+    ): DataResult<ChannelFilesSnapshot> {
+        currentContext() ?: return authRequired()
+        return execute(
+                emptyReason = EmptyReason.NoMessages,
+                block = { api.channelFiles(currentSlockApiPriority(), channelId.value, limit, cursor) },
+                source = "channel_files",
+                warningLogger = warningLogger,
+                mapper = { json ->
+                    val items =
+                            json.items("files", "items", "attachments", "data")
+                                    .mapNotNull { element ->
+                                        element.asObjectOrNull()?.toChannelFileItem()
+                                    }
+                    ChannelFilesSnapshot(
+                            channelId = channelId,
+                            items = items,
+                            hasMore = json.boolean("hasMore") ?: false,
+                            nextCursor =
+                                    json.string(
+                                            "nextCursor",
+                                            "next_cursor",
+                                            "cursor",
+                                            "next"
+                                    )
+                    )
+                },
+                emptyWhen = { it.items.isEmpty() }
         )
     }
 
@@ -1733,7 +1810,7 @@ class RealConversationRepository(
                 return DataResult.Empty(EmptyReason.NoMessages)
         return execute(
                 emptyReason = EmptyReason.NoMessages,
-                block = { api.sendMessage(sendMessageBody(channelId, body, attachmentIds, asTask)) },
+                block = { api.sendMessage(currentSlockApiPriority(), sendMessageBody(channelId, body, attachmentIds, asTask)) },
                 source = "messages_send",
                 warningLogger = warningLogger,
                 mapper = { json ->
@@ -1790,7 +1867,7 @@ class RealConversationRepository(
                 async {
                     execute(
                             emptyReason = EmptyReason.NoInboxItems,
-                            block = { api.channelThreads(threadId.value, MESSAGE_PAGE_LIMIT) },
+                            block = { api.channelThreads(currentSlockApiPriority(), threadId.value, MESSAGE_PAGE_LIMIT) },
                             emptyWhen = { false },
                             source = "${source}_thread_summaries",
                             warningLogger = warningLogger,
@@ -1801,7 +1878,7 @@ class RealConversationRepository(
                 async {
                     execute(
                             emptyReason = EmptyReason.NoInboxItems,
-                            block = { api.followedThreads(MESSAGE_PAGE_LIMIT) },
+                            block = { api.followedThreads(currentSlockApiPriority(), MESSAGE_PAGE_LIMIT) },
                             emptyWhen = { false },
                             source = "${source}_followed_summaries",
                             warningLogger = warningLogger,
@@ -1965,7 +2042,7 @@ class RealServerUnreadRepository(
             val result =
                     execute(
                             emptyReason = EmptyReason.NoInboxItems,
-                            block = { api.serverUnreadSummary() },
+                            block = { api.serverUnreadSummary(currentSlockApiPriority()) },
                             mapper = { json -> json.toServerUnreadSummarySnapshot(context.server) }
                     )
             when (result) {
@@ -2468,6 +2545,27 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
                 kind == InboxItemKind.System -> "system:$channelId:${string("lastMessageId", "latestActivityMessageId", "messageId", "id").orEmpty()}"
                 else -> "channel:$channelId"
             }
+    val lastMessagePreview =
+            string("lastMessagePreview", "preview", "content", "body")
+                    ?: messagePreviewFrom("lastMessage", "latestMessage", "message")
+    val parentMessagePreview =
+            string("parentMessagePreview", "rootMessagePreview", "originalMessagePreview")
+                    ?: messagePreviewFrom("parentMessage", "rootMessage", "originalMessage")
+    val latestActivityPreview =
+            string("latestActivityPreview", "latestReplyPreview", "lastReplyPreview")
+                    ?: messagePreviewFrom(
+                            "latestActivity",
+                            "latestMessage",
+                            "lastMessage",
+                            "reply",
+                            "lastReply",
+                            "message"
+                    )
+    val mentionCount = int("mentionCount", "mentions")
+    val hasMention =
+            boolean("hasMention", "has_mention")
+                    ?: (mentionCount?.let { it > 0 })
+                    ?: firstObject("mentions") != null
     return InboxItem(
             key = string("key") ?: key,
             kind = kind,
@@ -2484,12 +2582,11 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
                     )
                             ?: channelId,
             unreadCount = int("unreadCount", "unread") ?: 0,
+            hasMention = hasMention,
             firstUnreadMessageId = string("firstUnreadMessageId")?.let(::MessageId),
             lastMessageId =
                     string("lastMessageId", "latestMessageId", "messageId", "id")?.let(::MessageId),
-            lastMessagePreview =
-                    string("lastMessagePreview", "preview", "content", "body")
-                            ?: messagePreviewFrom("lastMessage", "latestMessage", "message"),
+            lastMessagePreview = lastMessagePreview,
             lastMessageAt =
                     timestampString(
                             "lastMessageAt",
@@ -2531,9 +2628,7 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
             parentMessageId =
                     string("parentMessageId", "parentId", "rootMessageId", "messageId")
                             ?.let(::MessageId),
-            parentMessagePreview =
-                    string("parentMessagePreview", "rootMessagePreview", "originalMessagePreview")
-                            ?: messagePreviewFrom("parentMessage", "rootMessage", "originalMessage"),
+            parentMessagePreview = parentMessagePreview,
             latestActivityMessageId =
                     string("latestActivityMessageId", "latestReplyMessageId", "lastReplyMessageId")
                             ?.let(::MessageId)
@@ -2546,16 +2641,7 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
                                             "message"
                                     )
                                     ?.let(::MessageId),
-            latestActivityPreview =
-                    string("latestActivityPreview", "latestReplyPreview", "lastReplyPreview")
-                            ?: messagePreviewFrom(
-                                    "latestActivity",
-                                    "latestMessage",
-                                    "lastMessage",
-                                    "reply",
-                                    "lastReply",
-                                    "message"
-                            ),
+            latestActivityPreview = latestActivityPreview,
             latestActivityAt =
                     timestampString(
                             "latestActivityAt",
@@ -2615,6 +2701,21 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
             taskNumber = int("taskNumber"),
             taskStatus = string("taskStatus")?.toTaskStatus(),
             taskClaimedByName = string("taskClaimedByName", "claimedByName")
+    )
+}
+
+private fun JsonObject.toChannelFileItem(): ChannelFileItem? {
+    val attachment = toAttachment() ?: return null
+    val source = firstObject("source")
+    return ChannelFileItem(
+            attachment = attachment,
+            createdAt = timestampString("createdAt", "created_at", "timestamp", "time"),
+            messageId = string("messageId", "message_id")?.let(::MessageId),
+            sourceType = source?.string("type", "kind"),
+            sourceParentMessageId =
+                    source?.string("parentMessageId", "parent_message_id")?.let(::MessageId),
+            sourceParentMessageShortId =
+                    source?.string("parentMessageShortId", "parent_message_short_id")
     )
 }
 
@@ -2965,12 +3066,13 @@ private fun ThreadSnapshot.withReplySummaries(
                                 "channelId=${message.channelId?.value.orEmpty()} " +
                                 "threadChannelId=${summaryThreadChannelId.value} " +
                                 "replyCount=${maxOf(message.replyCount, summary.replyCount)} " +
+                                "unreadCount=${summary.unreadCount} " +
                                 "source=channel_threads"
                 )
                 message.copy(
                         threadChannelId = message.threadChannelId ?: summaryThreadChannelId,
                         replyCount = maxOf(message.replyCount, summary.replyCount)
-                )
+                ).withUnreadReplyCount(summary.unreadCount)
             }
     return copy(messages = updatedMessages)
 }
@@ -3170,7 +3272,7 @@ private fun JsonObject.toMessage(fallbackThreadId: ThreadId): Message? {
             messageType = toMessageType(),
             systemEventType = systemEventType(),
             metadata = systemMetadata(),
-            attachments = items("attachments").mapNotNull { it.asObjectOrNull()?.toAttachment() },
+            attachments = attachmentItems().mapNotNull { it.asObjectOrNull()?.toAttachment() },
             deliveryState = MessageDeliveryState.Sent,
             task =
                     run {
@@ -3239,6 +3341,9 @@ private fun JsonObject.toMessage(fallbackThreadId: ThreadId): Message? {
             updatedAtLabel = string("updatedAt")
     )
 }
+
+private fun JsonObject.attachmentItems(): List<JsonElement> =
+        items("attachments", "files", "images", "media")
 
 private fun JsonObject.toMemberProfile(): MemberProfile? {
     val id = memberId() ?: return null
@@ -4110,16 +4215,30 @@ private fun String.isImagePath(): Boolean =
         endsWith(".heic", ignoreCase = true)
 
 private fun JsonObject.memberItems(): List<MemberProfile> {
-    val root = unwrap("data")
+    val root = unwrap("data", "channel")
+    val containers = listOf(root) + listOfNotNull(root.firstObject("members", "participants", "channelMembers"))
     val direct =
-            root.items("members", "items").filterNot {
-                it.asObjectOrNull()?.explicitMemberKindOrNull() == MemberKind.Agent
+            containers.flatMap { container ->
+                container.items("members", "items").filterNot {
+                    it.asObjectOrNull()?.explicitMemberKindOrNull() == MemberKind.Agent
+                }
             }
-    val users = root.directArrayItems("humans") + root.directArrayItems("users")
-    val agents = root.directArrayItems("agents")
+    val users =
+            containers.flatMap { container ->
+                container.directArrayItems("humans") +
+                        container.directArrayItems("users") +
+                        container.directArrayItems("humanMembers")
+            }
+    val agents =
+            containers.flatMap { container ->
+                container.directArrayItems("agents") +
+                        container.directArrayItems("agentMembers")
+            }
     val fallback =
-            root.items("data").filterNot {
-                it.asObjectOrNull()?.explicitMemberKindOrNull() == MemberKind.Agent
+            containers.flatMap { container ->
+                container.items("data").filterNot {
+                    it.asObjectOrNull()?.explicitMemberKindOrNull() == MemberKind.Agent
+                }
             }
     val directMembers = direct.mapNotNull { it.asObjectOrNull()?.toChannelMemberProfile() }
     val splitMembers =

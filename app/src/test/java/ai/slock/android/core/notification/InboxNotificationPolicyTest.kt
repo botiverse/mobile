@@ -36,6 +36,18 @@ class InboxNotificationPolicyTest {
     }
 
     @Test
+    fun suppressesNotificationsWhileAppIsForeground() {
+        val result = shouldShowInboxNotification(
+            message = message(authorId = MemberId("other")),
+            currentMemberId = MemberId("me"),
+            isVisibleThread = false,
+            isAppInForeground = true
+        )
+
+        assertEquals(false, result)
+    }
+
+    @Test
     fun allowsNotificationsForOtherUnreadInboxMessages() {
         val result = shouldShowInboxNotification(
             message = message(authorId = MemberId("other")),

@@ -11,6 +11,10 @@ import kotlinx.coroutines.launch
 class ReadReceiptCoordinator(
         private val scope: CoroutineScope,
         private val repository: ReadReceiptRepository,
+        private val requestRunner:
+                suspend (ReadReceiptRequest, suspend () -> DataResult<ReadReceiptResult>) ->
+                        DataResult<ReadReceiptResult> =
+                { _, block -> block() },
         private val onOptimisticRead: (ChannelId) -> Unit = {},
         private val onResult: (ReadReceiptRequest, DataResult<ReadReceiptResult>) -> Unit = { _, _ -> },
         private val onFailure: (ReadReceiptRequest, DataResult<ReadReceiptResult>) -> Unit = { _, _ -> }
@@ -56,10 +60,12 @@ class ReadReceiptCoordinator(
                             else -> break
                         }
                 val result =
-                        when (request) {
-                            is ReadReceiptRequest.ToSeq ->
-                                    repository.markChannelReadToSeq(channelId, request.seq)
-                            is ReadReceiptRequest.All -> repository.markChannelReadAll(channelId)
+                        requestRunner(request) {
+                            when (request) {
+                                is ReadReceiptRequest.ToSeq ->
+                                        repository.markChannelReadToSeq(channelId, request.seq)
+                                is ReadReceiptRequest.All -> repository.markChannelReadAll(channelId)
+                            }
                         }
                 onResult(request, result)
                 if (result !is DataResult.Content) {

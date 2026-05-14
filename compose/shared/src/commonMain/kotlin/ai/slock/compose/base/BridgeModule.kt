@@ -71,6 +71,14 @@ internal class BridgeModule : Module() {
         callNativeMethod("toast", methodArgs, null)
     }
 
+    fun filesEvent(instanceId: String, action: String, attachmentId: String? = null) {
+        val methodArgs = JSONObject()
+        methodArgs.put("instanceId", instanceId)
+        methodArgs.put("action", action)
+        attachmentId?.let { methodArgs.put("attachmentId", it) }
+        callNativeMethod("filesEvent", methodArgs, null)
+    }
+
     fun openPage(
         url: String,
         closeCurPage: Boolean = false,

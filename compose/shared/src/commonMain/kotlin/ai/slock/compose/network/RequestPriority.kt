@@ -4,16 +4,20 @@ import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 enum class SlockRequestPriority {
     Foreground,
     Visible,
     Background
 }
+
+class SlockRequestTimeoutException(message: String) : Exception(message)
 
 class SlockRequestPriorityElement(
     val priority: SlockRequestPriority,
@@ -34,6 +38,7 @@ class SlockRequestScheduler(
     private val maxForegroundRequests: Int = 6,
     private val maxVisibleRequests: Int = 3,
     private val maxBackgroundRequests: Int = 1,
+    private val requestTimeoutMillis: Long = 30_000,
     private val logger: (String) -> Unit = {}
 ) {
     private val mutex = Mutex()
@@ -79,7 +84,7 @@ class SlockRequestScheduler(
             }
             startedAtMs = queuedAt.elapsedNow().inWholeMilliseconds
             logStart(priority, key, reason, startedAtMs)
-            return block()
+            return runWithTimeout(priority, key, reason, block)
         } finally {
             val finishedAtMs = queuedAt.elapsedNow().inWholeMilliseconds
             mutex.withLock {
@@ -109,25 +114,62 @@ class SlockRequestScheduler(
         block: suspend () -> T
     ): T {
         val queuedAt = TimeSource.Monotonic.markNow()
-        backgroundSemaphore.acquire()
+        var acquired = false
+        var started = false
         var startedAtMs = queuedAt.elapsedNow().inWholeMilliseconds
         try {
-            while (hasForegroundOrVisibleWork()) {
-                delay(25)
-            }
+            waitForForegroundOrVisibleIdle(priority, key, reason)
+            backgroundSemaphore.acquire()
+            acquired = true
+            waitForForegroundOrVisibleIdle(priority, key, reason)
             startedAtMs = queuedAt.elapsedNow().inWholeMilliseconds
             logStart(priority, key, reason, startedAtMs)
-            return block()
+            started = true
+            return runWithTimeout(priority, key, reason, block)
         } finally {
             val finishedAtMs = queuedAt.elapsedNow().inWholeMilliseconds
-            logFinish(
-                priority = priority,
-                key = key,
-                reason = reason,
-                queuedMs = startedAtMs,
-                runningMs = finishedAtMs - startedAtMs
+            if (started) {
+                logFinish(
+                    priority = priority,
+                    key = key,
+                    reason = reason,
+                    queuedMs = startedAtMs,
+                    runningMs = finishedAtMs - startedAtMs
+                )
+            }
+            if (acquired) {
+                backgroundSemaphore.release()
+            }
+        }
+    }
+
+    private suspend fun <T> runWithTimeout(
+        priority: SlockRequestPriority,
+        key: String?,
+        reason: String?,
+        block: suspend () -> T
+    ): T =
+        try {
+            withTimeout(requestTimeoutMillis) { block() }
+        } catch (timeout: TimeoutCancellationException) {
+            throw SlockRequestTimeoutException(
+                "Slock request timed out after ${requestTimeoutMillis}ms " +
+                    "priority=$priority key=${key.orEmpty()} reason=${reason.orEmpty()}"
             )
-            backgroundSemaphore.release()
+        }
+
+    private suspend fun waitForForegroundOrVisibleIdle(
+        priority: SlockRequestPriority,
+        key: String?,
+        reason: String?
+    ) {
+        var loggedPause = false
+        while (hasForegroundOrVisibleWork()) {
+            if (!loggedPause) {
+                logPause(priority, key, reason)
+                loggedPause = true
+            }
+            delay(25)
         }
     }
 
@@ -156,6 +198,17 @@ class SlockRequestScheduler(
         logger(
             "request_finish priority=$priority lane=${priority.laneName()} " +
                 "key=${key.orEmpty()} reason=${reason.orEmpty()} queuedMs=$queuedMs runningMs=$runningMs"
+        )
+    }
+
+    private fun logPause(
+        priority: SlockRequestPriority,
+        key: String?,
+        reason: String?
+    ) {
+        logger(
+            "request_pause priority=$priority lane=${priority.laneName()} " +
+                "key=${key.orEmpty()} reason=${reason.orEmpty()} waitingFor=foreground_or_visible"
         )
     }
 

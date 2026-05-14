@@ -87,6 +87,29 @@ class ReadReceiptCoordinatorTest {
         scope.cancel()
     }
 
+    @Test
+    fun requestsRunThroughInjectedRunner() = runBlocking {
+        val repository = FakeReadReceiptRepository()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val runnerRequests = mutableListOf<ReadReceiptRequest>()
+        val coordinator =
+                ReadReceiptCoordinator(
+                        scope = scope,
+                        repository = repository,
+                        requestRunner = { request, block ->
+                            runnerRequests += request
+                            block()
+                        }
+                )
+        val channelId = ChannelId("channel-4")
+
+        coordinator.markReadToSeq(channelId, 7L)
+        repository.completeNext()
+
+        assertEquals(listOf(ReadReceiptRequest.ToSeq(channelId, 7L)), runnerRequests)
+        scope.cancel()
+    }
+
     private class FakeReadReceiptRepository(
             private val nextResult: DataResult<ReadReceiptResult> =
                     DataResult.Content(ReadReceiptResult())

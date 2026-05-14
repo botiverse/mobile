@@ -172,6 +172,21 @@ private fun SlockBottomTabBarFramePreview() {
     }
 }
 
+data class SlockHomeNotificationItem(
+    val id: String,
+    val title: String,
+    val body: String,
+    val actionLabel: String = "View",
+    val targetId: String? = null,
+    val kind: SlockHomeNotificationKind = SlockHomeNotificationKind.Warning
+)
+
+enum class SlockHomeNotificationKind {
+    Warning,
+    Info,
+    Error
+}
+
 @Composable
 fun SlockStructuralHomeShell(
     modifier: Modifier = Modifier,
@@ -184,6 +199,7 @@ fun SlockStructuralHomeShell(
     serverUnreadCount: Int = 5,
     inboxUnreadCount: Int = 0,
     savedCount: Int = 0,
+    notifications: List<SlockHomeNotificationItem> = emptyList(),
     serverSwitcherExpanded: Boolean = false,
     contentRefreshing: Boolean = false,
     contentRefreshEnabled: Boolean = true,
@@ -201,6 +217,8 @@ fun SlockStructuralHomeShell(
     onFollowedThreadsClick: () -> Unit = {},
     onSavedClick: () -> Unit = {},
     onSearchClick: () -> Unit = {},
+    onNotificationView: (SlockHomeNotificationItem) -> Unit = {},
+    onNotificationDismiss: (SlockHomeNotificationItem) -> Unit = {},
     onChannelClick: (String) -> Unit = {}
 ) {
     val labels = SlockHomeShellLabels.defaults()
@@ -217,127 +235,140 @@ fun SlockStructuralHomeShell(
             .background(SlockColor.AppBgLightBlue)
             .padding(outerPadding)
     ) {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-        ) {
-            HomeWorkspaceHeader(
-                serverName = currentServerName,
-                serverUnreadCount = serverUnreadCount,
-                onServerBadgeClick = onServerBadgeClick
-            )
-            HomeRefreshableContent(
-                refreshing = contentRefreshing,
-                refreshEnabled = contentRefreshEnabled,
-                onRefresh = onContentRefresh,
-                modifier = Modifier
+        Box(
+            modifier =
+                Modifier
                     .weight(1f)
                     .fillMaxWidth()
-            ) {
-                Column(
+                    .background(SlockColor.SurfaceWhite)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                HomeWorkspaceHeader(
+                    serverName = currentServerName,
+                    serverUnreadCount = serverUnreadCount,
+                    onServerBadgeClick = onServerBadgeClick
+                )
+                HomeRefreshableContent(
+                    refreshing = contentRefreshing,
+                    refreshEnabled = contentRefreshEnabled,
+                    onRefresh = onContentRefresh,
                     modifier = Modifier
-                        .fillMaxSize()
-                        .offset(y = it)
-                        .verticalScroll(rememberScrollState())
-                        .padding(
-                            start = SlockSpacing.Md,
-                            top = SlockSpacing.Md,
-                            end = SlockSpacing.Md,
-                            bottom = bottomContentPadding
-                        ),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                        .weight(1f)
+                        .fillMaxWidth()
                 ) {
-                    SidebarActionRow(
-                        icon = SlockIcons.Search,
-                        label = labels.search,
-                        onClick = onSearchClick
-                    )
-                    SidebarActionRow(
-                        icon = SlockIcons.Inbox,
-                        label = labels.inbox,
-                        badge = inboxUnreadCount.takeIf { it > 0 }?.toString(),
-                        onClick = onInboxClick
-                    )
-                    SidebarActionRow(
-                        icon = SlockIcons.Bookmark,
-                        label = labels.saved,
-                        trailingText = savedCount.takeIf { it > 0 }?.toString(),
-                        onClick = onSavedClick
-                    )
-                    Spacer(modifier = Modifier.height(SlockSpacing.Xs))
-                    SectionBlock(
-                        label = labels.channels,
-                        count = channels.size,
-                        expanded = channelsExpanded,
-                        onExpandedChange = { channelsExpanded = it },
-                        onSortClick = { channelsReversed = !channelsReversed },
-                        action = {
-                            HeaderIconAction(
-                                icon = SlockIcons.Plus,
-                                contentDescription = labels.addChannel,
-                                onClick = onCreateChannelClick
-                            )
-                        }
-                    ) {
-                        displayedChannels.forEach { channel ->
-                            ChannelRow(
-                                name = channel.name,
-                                joined = channel.joined,
-                                hasDraft = channel.hasDraft,
-                                badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
-                                interactionState = if (channel.id == selectedChannelId) {
-                                    ChannelRowInteractionState.Selected
-                                } else {
-                                    ChannelRowInteractionState.Default
-                                },
-                                onClick = { onChannelClick(channel.id) }
-                            )
-                        }
-                    }
-                    SectionBlock(
-                        label = labels.directMessages,
-                        count = directMessages.size,
-                        expanded = directMessagesExpanded,
-                        onExpandedChange = { directMessagesExpanded = it },
-                        onSortClick = { directMessagesReversed = !directMessagesReversed }
-                    ) {
-                        displayedDirectMessages.forEach { directMessage ->
-                            ChannelRow(
-                                name = directMessage.name,
-                                avatarLabel = directMessage.avatarLabel,
-                                avatarUrl = directMessage.avatarUrl,
-                                avatar = directMessage.avatar,
-                                presence = directMessage.presence,
-                                hasDraft = directMessage.hasDraft,
-                                badge = directMessage.unreadCount.takeIf { it > 0 }?.toString(),
-                                onClick = { onChannelClick(directMessage.id) }
-                            )
-                        }
-                    }
-                }
-                if (serverSwitcherExpanded) {
-                    Box(
+                    Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = onServerBadgeClick
-                            )
-                    )
-                    ServerSwitcherPanel(
-                        servers = servers,
-                        currentServerId = currentServerId,
-                        labels = labels,
-                        onServerSelected = onServerSelected,
-                        onCreateServerClick = onCreateServerClick,
-                        modifier = Modifier
-                            .padding(start = SlockSpacing.Lg, top = SlockSpacing.Xs)
-                            .zIndex(1f)
-                    )
+                            .offset(y = it)
+                            .verticalScroll(rememberScrollState())
+                            .padding(
+                                start = SlockSpacing.Md,
+                                top = SlockSpacing.Md,
+                                end = SlockSpacing.Md,
+                                bottom = bottomContentPadding
+                            ),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        SidebarActionRow(
+                            icon = SlockIcons.Search,
+                            label = labels.search,
+                            onClick = onSearchClick
+                        )
+                        SidebarActionRow(
+                            icon = SlockIcons.Inbox,
+                            label = labels.inbox,
+                            badge = inboxUnreadCount.takeIf { it > 0 }?.toString(),
+                            onClick = onInboxClick
+                        )
+                        SidebarActionRow(
+                            icon = SlockIcons.Bookmark,
+                            label = labels.saved,
+                            trailingText = savedCount.takeIf { it > 0 }?.toString(),
+                            onClick = onSavedClick
+                        )
+                        Spacer(modifier = Modifier.height(SlockSpacing.Xs))
+                        SectionBlock(
+                            label = labels.channels,
+                            count = channels.size,
+                            expanded = channelsExpanded,
+                            onExpandedChange = { channelsExpanded = it },
+                            onSortClick = { channelsReversed = !channelsReversed },
+                            action = {
+                                HeaderIconAction(
+                                    icon = SlockIcons.Plus,
+                                    contentDescription = labels.addChannel,
+                                    onClick = onCreateChannelClick
+                                )
+                            }
+                        ) {
+                            displayedChannels.forEach { channel ->
+                                ChannelRow(
+                                    name = channel.name,
+                                    joined = channel.joined,
+                                    hasDraft = channel.hasDraft,
+                                    badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
+                                    interactionState = if (channel.id == selectedChannelId) {
+                                        ChannelRowInteractionState.Selected
+                                    } else {
+                                        ChannelRowInteractionState.Default
+                                    },
+                                    onClick = { onChannelClick(channel.id) }
+                                )
+                            }
+                        }
+                        SectionBlock(
+                            label = labels.directMessages,
+                            count = directMessages.size,
+                            expanded = directMessagesExpanded,
+                            onExpandedChange = { directMessagesExpanded = it },
+                            onSortClick = { directMessagesReversed = !directMessagesReversed }
+                        ) {
+                            displayedDirectMessages.forEach { directMessage ->
+                                ChannelRow(
+                                    name = directMessage.name,
+                                    avatarLabel = directMessage.avatarLabel,
+                                    avatarUrl = directMessage.avatarUrl,
+                                    avatar = directMessage.avatar,
+                                    presence = directMessage.presence,
+                                    hasDraft = directMessage.hasDraft,
+                                    badge = directMessage.unreadCount.takeIf { it > 0 }?.toString(),
+                                    onClick = { onChannelClick(directMessage.id) }
+                                )
+                            }
+                        }
+                    }
                 }
+            }
+            HomeNotificationCenter(
+                notifications = notifications,
+                onView = onNotificationView,
+                onDismiss = onNotificationDismiss,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = SlockSpacing.Lg, end = SlockSpacing.Lg)
+                        .zIndex(3f)
+            )
+            if (serverSwitcherExpanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onServerBadgeClick
+                        )
+                )
+                ServerSwitcherPanel(
+                    servers = servers,
+                    currentServerId = currentServerId,
+                    labels = labels,
+                    onServerSelected = onServerSelected,
+                    onCreateServerClick = onCreateServerClick,
+                    modifier = Modifier
+                        .padding(start = SlockSpacing.Lg, top = SlockSpacing.Xs)
+                        .zIndex(1f)
+                )
             }
         }
         if (showBottomBar) {
@@ -416,18 +447,237 @@ private fun HomeWorkspaceHeader(
                 showDropdown = true
             )
             if (serverUnreadCount > 0) {
-                Box(
-                    modifier = Modifier
+                ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ServerUnreadMarker(
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .offset(x = 3.dp, y = (-3).dp)
+            .size(9.dp)
+            .drawBehind {
+                drawRect(SlockColor.AccentRed)
+                drawRect(
+                    color = SlockColor.BorderBlack,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = SlockStroke.Thin.toPx()
+                    )
+                )
+            }
+    )
+}
+
+@Composable
+private fun HomeNotificationCenter(
+    notifications: List<SlockHomeNotificationItem>,
+    onView: (SlockHomeNotificationItem) -> Unit,
+    onDismiss: (SlockHomeNotificationItem) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (notifications.isEmpty()) return
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val activeKind = notifications.first().kind
+    Box(modifier = modifier) {
+        Box(
+            modifier =
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = SlockShadow.Small.offsetX, bottom = SlockShadow.Small.offsetY)
+                    .slockHardShadow(SlockShadow.Small)
+                    .size(36.dp)
+                    .background(activeKind.notificationColor())
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .clickable { expanded = !expanded },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = SlockIcons.TriangleAlert,
+                contentDescription = "Notification center (${notifications.size} active)",
+                tint = SlockColor.TextBlack,
+                modifier = Modifier.size(18.dp)
+            )
+            ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
+        }
+        if (expanded) {
+            HomeNotificationPopover(
+                notifications = notifications,
+                onView = {
+                    expanded = false
+                    onView(it)
+                },
+                onDismiss = onDismiss,
+                modifier =
+                    Modifier
                         .align(Alignment.TopEnd)
-                        .offset(x = 3.dp, y = (-3).dp)
-                        .size(9.dp)
-                        .background(SlockColor.AccentRed)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                        .offset(y = 44.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeNotificationPopover(
+    notifications: List<SlockHomeNotificationItem>,
+    onView: (SlockHomeNotificationItem) -> Unit,
+    onDismiss: (SlockHomeNotificationItem) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier =
+            modifier
+                .widthIn(min = 280.dp, max = 340.dp)
+                .padding(end = SlockShadow.Default.offsetX, bottom = SlockShadow.Default.offsetY)
+                .slockHardShadow(SlockShadow.Default)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceWhite)
+                    .drawBehind {
+                        val stroke = SlockStroke.Default.toPx()
+                        drawLine(
+                            color = SlockColor.BorderBlack,
+                            start = Offset(0f, size.height - stroke / 2f),
+                            end = Offset(size.width, size.height - stroke / 2f),
+                            strokeWidth = stroke
+                        )
+                    }
+                    .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "NOTIFICATIONS",
+                style = SlockType.SectionLabel,
+                color = SlockColor.TextMutedGray,
+                maxLines = 1
+            )
+            Text(
+                text = "${notifications.size} ${if (notifications.size == 1) "item" else "items"}",
+                style = SlockType.Button,
+                color = SlockColor.TextMutedGray,
+                maxLines = 1
+            )
+        }
+        notifications.forEachIndexed { index, notification ->
+            if (index > 0) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(SlockStroke.Default)
+                            .background(SlockColor.BorderBlack)
+                )
+            }
+            HomeNotificationRow(
+                notification = notification,
+                onView = { onView(notification) },
+                onDismiss = { onDismiss(notification) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeNotificationRow(
+    notification: SlockHomeNotificationItem,
+    onView: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(SlockSpacing.Md),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(24.dp)
+                    .background(notification.kind.notificationColor())
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector =
+                    when (notification.kind) {
+                        SlockHomeNotificationKind.Warning -> SlockIcons.CircleArrowUp
+                        SlockHomeNotificationKind.Info -> SlockIcons.BellRing
+                        SlockHomeNotificationKind.Error -> SlockIcons.TriangleAlert
+                    },
+                contentDescription = null,
+                tint = SlockColor.TextBlack,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            Text(
+                text = notification.title,
+                style = SlockType.Button.copy(fontWeight = FontWeight.Bold),
+                color = SlockColor.TextBlack,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = 3
+            )
+            Text(
+                text = notification.body,
+                style = SlockType.Button,
+                color = SlockColor.TextMutedGray,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = 3
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+                HomeNotificationActionButton(
+                    text = notification.actionLabel,
+                    color = SlockColor.AccentPink,
+                    onClick = onView
+                )
+                HomeNotificationActionButton(
+                    text = "Dismiss",
+                    color = SlockColor.SurfaceWhite,
+                    onClick = onDismiss
                 )
             }
         }
     }
 }
+
+@Composable
+private fun HomeNotificationActionButton(
+    text: String,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Text(
+        text = text,
+        style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+        color = SlockColor.TextBlack,
+        modifier =
+            Modifier
+                .background(color)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .clickable(onClick = onClick)
+                .padding(horizontal = SlockSpacing.Sm, vertical = 6.dp),
+        maxLines = 1
+    )
+}
+
+private fun SlockHomeNotificationKind.notificationColor(): Color =
+    when (this) {
+        SlockHomeNotificationKind.Warning -> SlockColor.AccentOrange
+        SlockHomeNotificationKind.Info -> SlockColor.BrandYellow
+        SlockHomeNotificationKind.Error -> SlockColor.AccentRed
+    }
 
 @Composable
 private fun ServerSwitcherPanel(

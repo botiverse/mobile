@@ -2,7 +2,7 @@
 
 Task: #386
 
-This doc records the analyzed contract for reply counts on message rows and the thread-summary join path that backfills those counts into visible rows.
+This doc records the analyzed contract for reply counts on message rows and the thread-summary join path that backfills those counts into visible rows. As of 2026-05-14, the same summary join also carries unread reply counts for the Web-style `x replies, x unread` footer.
 
 Source of truth:
 
@@ -55,6 +55,7 @@ The REST sources above may return reply-count data directly on the message objec
 - `toThreadSnapshot()` builds the visible thread message list from the REST message snapshot
 - `withReplySummaries()` merges the combined thread-summary list back into visible message rows
 - merge rule: preserve the larger value with `maxOf(message.replyCount, summary.replyCount)`
+- unread rule: propagate `summary.unreadCount` onto the visible parent-message footer metadata when a matching thread summary row exists
 
 #### Dual-source join (updated 2026-05-09)
 
@@ -115,6 +116,7 @@ Realtime message mapping currently uses the same top-level alias set for `replyC
 ## Semantics
 
 - `0` means no replies.
+- `unreadCount > 0` on a joined thread summary means the parent-message footer should render `x replies, x unread`.
 - `null` / missing currently collapse to `0` in the app mapping.
 - Display affordance should be hidden when the mapped count is `0`.
 - The contract is display-safe but not source-of-truth safe: if the backend introduces a new alias that is not in the accepted set, the app will treat it as `0` until the mapper is updated.

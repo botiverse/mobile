@@ -51,15 +51,15 @@ fun InboxContent.toInboxUiState(selectedFilter: InboxFilter = InboxFilter.All): 
 fun InboxUiState.clearAllUnread(): InboxUiState {
     fun InboxContent.clearUnreadContent(): InboxContent {
         val updatedItems =
-                if (selectedFilter == InboxFilter.Unread) {
+                if (selectedFilter == InboxFilter.Unread || selectedFilter == InboxFilter.Mentions) {
                     emptyList()
                 } else {
                     items.map { item -> item.copy(unreadCount = 0, firstUnreadMessageId = null) }
                 }
         return copy(
-                items = updatedItems,
-                totalCount = if (selectedFilter == InboxFilter.Unread) 0 else totalCount,
-                totalUnreadCount = 0
+            items = updatedItems,
+            totalCount = if (selectedFilter == InboxFilter.Unread || selectedFilter == InboxFilter.Mentions) 0 else totalCount,
+            totalUnreadCount = 0
         )
     }
     return copy(
@@ -349,4 +349,5 @@ fun InboxFilter.toRepositoryFilter(): RepositoryInboxFilter =
         when (this) {
             InboxFilter.All -> RepositoryInboxFilter.All
             InboxFilter.Unread -> RepositoryInboxFilter.Unread
+            InboxFilter.Mentions -> RepositoryInboxFilter.Mentions
         }

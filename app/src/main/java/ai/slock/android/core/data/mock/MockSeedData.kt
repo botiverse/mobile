@@ -291,7 +291,7 @@ object MockSeedData {
         agents = agentProfiles
     )
 
-    val inboxItems = listOf(
+    val inboxItems: List<InboxItem> = listOf(
         InboxItem(
             key = "channel:channel-onboarding-artin",
             kind = InboxItemKind.Channel,

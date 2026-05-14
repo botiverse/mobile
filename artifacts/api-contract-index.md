@@ -25,6 +25,7 @@ Each contract entry should record:
 - [Reply count and thread-summary join contract](./messages/replycount-thread-summary-contract.md) - task #386
 - [Followed threads API contract](./messages/followed-threads-api-contract.md) - `GET /api/channels/threads/followed` (2026-05-09)
 - [Inbox API contract](./messages/inbox-api-contract.md) - `GET /api/channels/inbox` (2026-05-10)
+- [Channel files API contract](./messages/channel-files-api-contract.md) - `GET /channels/{channelId}/files` (2026-05-14)
 - [Auth API contract](./auth/auth-api-contract.md) - login, register, forgot password, refresh (2026-05-13)
 - [Message context and reply thread creation contract](./messages/message-context-thread-creation-contract.md) - task #71
 - [Settings Billing and Server sections contract](./settings/android-settings-billing-server-contract.md) - task #388
@@ -38,6 +39,7 @@ Current canonical doc slices for the analyzed API / mapper surface:
 - task #386: [message replyCount and channel thread-summary join contract](./messages/replycount-thread-summary-contract.md)
 - task #386b: [followed threads API contract](./messages/followed-threads-api-contract.md) — `GET /channels/threads/followed`, dual-source join
 - task #45 follow-up: [inbox API contract](./messages/inbox-api-contract.md) — `GET /channels/inbox`, thread/channel row fields
+- task #142: [channel files API contract](./messages/channel-files-api-contract.md) — `GET /channels/{channelId}/files`, conversation attachment index
 - task #68: [auth API contract](./auth/auth-api-contract.md) — login/register/forgot-password/refresh
 - task #71: [message context and reply thread creation contract](./messages/message-context-thread-creation-contract.md) — `GET /messages/context/{messageId}` before `POST /channels/{channelId}/threads`
 - task #387 / #设置项专修 task #2: [members profiles, agents, DM, reminders, and activity contracts](./members/members-agents-dm-reminders-activity-contract.md)

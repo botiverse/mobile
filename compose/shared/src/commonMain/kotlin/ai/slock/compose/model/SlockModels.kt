@@ -316,6 +316,7 @@ data class InboxItem(
     val channelId: ChannelId,
     val channelName: String,
     val unreadCount: Int = 0,
+    val hasMention: Boolean = false,
     val firstUnreadMessageId: MessageId? = null,
     val lastMessageId: MessageId? = null,
     val lastMessagePreview: String? = null,

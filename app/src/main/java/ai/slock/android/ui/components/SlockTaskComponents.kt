@@ -181,13 +181,15 @@ fun SlockTaskCard(
             maxLines = 3,
             overflow = TextOverflow.Ellipsis
         )
-        Text(
-            text = task.source,
-            style = SlockType.Caption,
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        if (task.source.isNotBlank()) {
+            Text(
+                text = task.source,
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
             Text(
                 text = task.owner,

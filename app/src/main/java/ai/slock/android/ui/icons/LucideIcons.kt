@@ -578,6 +578,48 @@ object LucideIcons {
                 }.build()
     }
 
+    val CircleArrowUp: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideCircleArrowUp",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 12.0f)
+                        moveToRelative(dx = -10.0f, dy = 0.0f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 20.0f, dy1 = 0.0f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -20.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 16.0f, y = 12.0f)
+                        lineToRelative(dx = -4.0f, dy = -4.0f)
+                        lineToRelative(dx = -4.0f, dy = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 16.0f)
+                        verticalLineTo(y = 8.0f)
+                    }
+                }.build()
+    }
+
     val CircleCheckBig: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideCircleCheckBig",
@@ -2071,6 +2113,49 @@ object LucideIcons {
                 }.build()
     }
 
+    val TriangleAlert: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideTriangleAlert",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 21.73f, y = 18.0f)
+                        lineToRelative(dx = -8.0f, dy = -14.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -3.48f, dy1 = 0.0f)
+                        lineToRelative(dx = -8.0f, dy = 14.0f)
+                        arcTo(horizontalEllipseRadius = 2.0f, verticalEllipseRadius = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 4.0f, y1 = 21.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.73f, dy1 = -3.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 9.0f)
+                        verticalLineToRelative(dy = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 17.0f)
+                        horizontalLineToRelative(dx = 0.01f)
+                    }
+                }.build()
+    }
+
     val Trash: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideTrash",
@@ -2237,5 +2322,5 @@ object LucideIcons {
                 }.build()
     }
 
-    val All: List<ImageVector> = listOf(Activity, Archive, ArrowLeft, ArrowUpDown, Ban, BellRing, Bookmark, Bot, Bug, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheckBig, Columns3, Copy, ExternalLink, Eye, FileText, FolderOpen, Globe, Hash, House, Image, ImagePlus, Inbox, Key, LayoutList, Link, ListTodo, LogIn, LogOut, Mail, MessageSquare, Monitor, Paperclip, Pencil, Play, Plus, RefreshCw, Search, Send, Settings, Share2, ShieldCheck, Smartphone, Square, SquareCheckBig, Trash, User, Users, X)
+    val All: List<ImageVector> = listOf(Activity, Archive, ArrowLeft, ArrowUpDown, Ban, BellRing, Bookmark, Bot, Bug, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleArrowUp, CircleCheckBig, Columns3, Copy, ExternalLink, Eye, FileText, FolderOpen, Globe, Hash, House, Image, ImagePlus, Inbox, Key, LayoutList, Link, ListTodo, LogIn, LogOut, Mail, MessageSquare, Monitor, Paperclip, Pencil, Play, Plus, RefreshCw, Search, Send, Settings, Share2, ShieldCheck, Smartphone, Square, SquareCheckBig, TriangleAlert, Trash, User, Users, X)
 }

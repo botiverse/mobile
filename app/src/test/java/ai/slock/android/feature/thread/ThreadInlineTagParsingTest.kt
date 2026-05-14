@@ -105,6 +105,39 @@ class ThreadInlineTagParsingTest {
     }
 
     @Test
+    fun `html tags are escaped before markdown rendering`() {
+        assertEquals(
+                "&lt;script&gt;alert(1)&lt;/script&gt; **ok**",
+                "<script>alert(1)</script> **ok**".escapeThreadMarkdownHtmlTagsForThread()
+        )
+    }
+
+    @Test
+    fun `html escaping keeps autolinks and code literal`() {
+        val body =
+                """
+                <https://app.slock.ai>
+                `<div>`
+                ```html
+                <section>code</section>
+                ```
+                <b>text</b>
+                """.trimIndent()
+
+        assertEquals(
+                """
+                <https://app.slock.ai>
+                `<div>`
+                ```html
+                <section>code</section>
+                ```
+                &lt;b&gt;text&lt;/b&gt;
+                """.trimIndent(),
+                body.escapeThreadMarkdownHtmlTagsForThread()
+        )
+    }
+
+    @Test
     fun `inline code match id starts at opening backtick`() {
         val match = "use `String()` here".threadInlineCodeMatches().single()
 

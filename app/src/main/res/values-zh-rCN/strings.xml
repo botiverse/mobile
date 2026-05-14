@@ -357,7 +357,6 @@
     <string name="tasks_error_detail">错误代码：%1$s</string>
     <string name="tasks_retry">重试</string>
     <string name="tasks_unassigned">未分配</string>
-    <string name="tasks_sample_state">示例状态</string>
     <string name="tasks_channel_filter_label">频道</string>
     <string name="tasks_all_channels">全部频道</string>
     <string name="tasks_clear_all_channels">清空</string>

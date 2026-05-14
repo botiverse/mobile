@@ -94,6 +94,22 @@ data class AttachmentOpenTarget(
     val expiresAt: String? = null
 )
 
+data class ChannelFileItem(
+    val attachment: Attachment,
+    val createdAt: String? = null,
+    val messageId: MessageId? = null,
+    val sourceType: String? = null,
+    val sourceParentMessageId: MessageId? = null,
+    val sourceParentMessageShortId: String? = null
+)
+
+data class ChannelFilesSnapshot(
+    val channelId: ChannelId,
+    val items: List<ChannelFileItem>,
+    val hasMore: Boolean = false,
+    val nextCursor: String? = null
+)
+
 data class TaskSnapshot(
     val tasks: List<TaskSummary>,
     val summaryCounts: Map<TaskStatus, Int>
@@ -396,7 +412,8 @@ data class SettingsBillingPlanSnapshot(
 data class SettingsComputersSnapshot(
     val computers: List<SettingsComputerSnapshot>,
     val canAddComputer: Boolean = false,
-    val addComputerUnavailableReason: String? = null
+    val addComputerUnavailableReason: String? = null,
+    val latestDaemonVersion: String? = null
 )
 
 data class SettingsComputerSnapshot(

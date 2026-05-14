@@ -15,11 +15,13 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.res.ResourcesCompat
 import ai.slock.android.BuildConfig
 import ai.slock.android.R
+import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext
 import com.tencent.kuikly.core.render.android.adapter.HRImageLoadOption
@@ -35,6 +37,9 @@ import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegat
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import java.util.concurrent.Executors
+import java.util.concurrent.ConcurrentHashMap
+import java.net.HttpURLConnection
+import java.net.URL
 import org.json.JSONObject
 
 class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDelegate {
@@ -101,6 +106,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         const val PAGE_LOGIN = "compose_login"
         const val PAGE_REGISTER = "compose_register"
         const val PAGE_FORGOT_PASSWORD = "compose_forgot_password"
+        const val PAGE_THREAD_FILES = "compose_thread_files"
         const val PAGE_ROUTER = "router"
 
         private const val KEY_PAGE_NAME = "pageName"
@@ -120,7 +126,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 }
 
-private object SlockKuiklyAdapters {
+internal object SlockKuiklyAdapters {
     private var initialized = false
 
     fun init(context: Context) {
@@ -217,6 +223,8 @@ private class SlockKuiklyImageAdapter(
         when {
             imageLoadOption.isBase64() -> loadFromBase64(imageLoadOption, callback)
             imageLoadOption.isAssets() -> loadFromAssets(imageLoadOption, callback)
+            imageLoadOption.src.startsWith("http://") || imageLoadOption.src.startsWith("https://") ->
+                    loadFromNetwork(imageLoadOption, callback)
             else -> callback(null)
         }
     }
@@ -268,9 +276,32 @@ private class SlockKuiklyImageAdapter(
                     }
         }
     }
+
+    private fun loadFromNetwork(
+            imageLoadOption: HRImageLoadOption,
+            callback: (drawable: Drawable?) -> Unit
+    ) {
+        SlockKuiklyThreadAdapter.executeOnSubThread {
+            runCatching {
+                        val connection = URL(imageLoadOption.src).openConnection() as HttpURLConnection
+                        connection.connectTimeout = 10_000
+                        connection.readTimeout = 15_000
+                        connection.instanceFollowRedirects = true
+                        connection.inputStream.use { input ->
+                            BitmapFactory.decodeStream(input)
+                        }
+                    }
+                    .onSuccess { bitmap ->
+                        callback(bitmap?.let { BitmapDrawable(context.resources, it) })
+                    }
+                    .onFailure {
+                        callback(null)
+                    }
+        }
+    }
 }
 
-private class SlockKuiklyBridgeModule(
+internal class SlockKuiklyBridgeModule(
         private val appContext: Context
 ) : KuiklyRenderBaseModule() {
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
@@ -281,7 +312,18 @@ private class SlockKuiklyBridgeModule(
                 null
             }
             "log" -> {
-                Log.i("SlockKuikly", JSONObject(params ?: "{}").optString("content"))
+                val content = JSONObject(params ?: "{}").optString("content")
+                Log.i("SlockKuikly", content)
+                SlockDiagnosticsLogger.d("SlockKuikly", content)
+                null
+            }
+            "filesEvent" -> {
+                val event = JSONObject(params ?: "{}")
+                SlockDiagnosticsLogger.d(
+                        "SlockKuikly",
+                        "bridge_files_event method=filesEvent instanceId=${event.optString("instanceId")} action=${event.optString("action")} attachmentId=${event.optString("attachmentId")}"
+                )
+                SlockKuiklyEventRegistry.dispatch(event)
                 null
             }
             "currentTimestamp" -> System.currentTimeMillis().toString()
@@ -305,7 +347,88 @@ private class SlockKuiklyBridgeModule(
     }
 }
 
-private fun JSONObject.toMap(): Map<String, Any> {
+internal object SlockKuiklyEventRegistry {
+    private val handlers = ConcurrentHashMap<String, (JSONObject) -> Unit>()
+
+    fun register(instanceId: String, handler: (JSONObject) -> Unit) {
+        SlockDiagnosticsLogger.d("SlockKuikly", "event_registry_register instanceId=$instanceId")
+        handlers[instanceId] = handler
+    }
+
+    fun unregister(instanceId: String) {
+        SlockDiagnosticsLogger.d("SlockKuikly", "event_registry_unregister instanceId=$instanceId")
+        handlers.remove(instanceId)
+    }
+
+    fun dispatch(params: JSONObject) {
+        val instanceId = params.optString("instanceId")
+        val handler = handlers[instanceId]
+        SlockDiagnosticsLogger.d(
+                "SlockKuikly",
+                "event_registry_dispatch instanceId=$instanceId hasHandler=${handler != null} action=${params.optString("action")} attachmentId=${params.optString("attachmentId")}"
+        )
+        handler?.invoke(params)
+    }
+}
+
+internal class SlockKuiklyIslandHost(
+        context: Context,
+        private val pageName: String,
+        private val pageData: JSONObject
+) : FrameLayout(context), KuiklyRenderViewBaseDelegatorDelegate {
+    private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
+    private var disposed = false
+
+    init {
+        SlockKuiklyAdapters.init(context.applicationContext)
+        SlockDiagnosticsLogger.d(
+                "SlockKuikly",
+                "island_attach pageName=$pageName instanceId=${pageData.optString("instanceId")} payloadBytes=${pageData.optString("payload").length}"
+        )
+        setBackgroundColor(Color.TRANSPARENT)
+        layoutParams =
+                LayoutParams(
+                        LayoutParams.MATCH_PARENT,
+                        LayoutParams.MATCH_PARENT
+                )
+        kuiklyRenderViewDelegator.onAttach(
+                this,
+                "",
+                pageName,
+                pageData.toMap().toMutableMap().apply { put("appId", 1) }
+        )
+    }
+
+    override fun registerExternalModule(kuiklyRenderExport: IKuiklyRenderExport) {
+        kuiklyRenderExport.moduleExport(SlockKuiklyBridgeModule.MODULE_NAME) {
+            SlockKuiklyBridgeModule(context.applicationContext)
+        }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        kuiklyRenderViewDelegator.onResume()
+    }
+
+    override fun onDetachedFromWindow() {
+        kuiklyRenderViewDelegator.onPause()
+        super.onDetachedFromWindow()
+    }
+
+    fun dispose() {
+        if (disposed) {
+            return
+        }
+        disposed = true
+        SlockDiagnosticsLogger.d(
+                "SlockKuikly",
+                "island_dispose pageName=$pageName instanceId=${pageData.optString("instanceId")}"
+        )
+        kuiklyRenderViewDelegator.onDetach()
+    }
+}
+
+internal fun JSONObject.toMap(): Map<String, Any> {
     val map = mutableMapOf<String, Any>()
     val keys = keys()
     while (keys.hasNext()) {

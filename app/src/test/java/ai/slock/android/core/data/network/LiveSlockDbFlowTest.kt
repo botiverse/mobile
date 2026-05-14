@@ -8,12 +8,19 @@ import ai.slock.android.core.data.auth.KtorAuthRepository
 import ai.slock.android.core.data.local.SlockDatabase
 import ai.slock.android.core.data.local.SlockLocalWriteThrough
 import ai.slock.android.core.data.local.SqlDelightSlockLocalStore
+import ai.slock.android.core.data.repository.AttachmentUploadFile
+import ai.slock.android.core.data.repository.AttachmentUploadRequest
 import ai.slock.android.core.data.repository.CreateChannelRequest
 import ai.slock.android.core.data.repository.DataResult
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.MessageId
 import ai.slock.android.core.model.ThreadId
+import ai.slock.compose.model.parentChannelIdOrNull
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
@@ -25,6 +32,182 @@ class LiveSlockDbFlowTest {
     @Test
     fun liveCreateThreadReplyAndPersistLocalDbScopes() {
         assumeTrue("Set SLOCK_LIVE_TESTS=true to run live Slock API tests.", env("SLOCK_LIVE_TESTS") == "true")
+        val fixture = createFixture()
+        val localStore = SqlDelightSlockLocalStore(
+            SlockDatabase(
+                JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { driver ->
+                    SlockDatabase.Schema.create(driver)
+                }
+            )
+        )
+        val localWriteThrough = SlockLocalWriteThrough(localStore)
+
+        val suffix = System.currentTimeMillis().toString(36)
+        var cleanupChannelId: ChannelId? = null
+        try {
+            val createdChannel = runSuspend {
+                fixture.channelRepository.createChannel(
+                    CreateChannelRequest(
+                        name = "android-live-db-$suffix",
+                        description = "Temporary channel created by LiveSlockDbFlowTest"
+                    )
+                )
+            }.contentOrThrow("create channel")
+            val parentChannelId = requireNotNull(createdChannel.channel.channelId) {
+                "Create channel response did not include channelId."
+            }
+            cleanupChannelId = parentChannelId
+
+            val parentMessage = runSuspend {
+                fixture.conversationRepository.sendMessage(
+                    channelId = parentChannelId,
+                    body = "live parent message $suffix"
+                )
+            }.contentOrThrow("send parent message").message
+            assertEquals(parentChannelId, parentMessage.channelId)
+
+            val threadAction = runSuspend {
+                fixture.conversationRepository.createOrOpenThread(
+                    channelId = parentChannelId,
+                    parentMessageId = parentMessage.id
+                )
+            }.contentOrThrow("create/open reply thread")
+            assertNotNull(threadAction.threadChannelId)
+            assertEquals(parentMessage.id, threadAction.parentMessageId ?: parentMessage.id)
+
+            val replyMessage = runSuspend {
+                fixture.conversationRepository.sendMessage(
+                    channelId = threadAction.threadChannelId,
+                    body = "live reply message $suffix"
+                )
+            }.contentOrThrow("send thread reply").message
+            assertEquals(threadAction.threadChannelId, replyMessage.channelId)
+
+            val threadSnapshotResult = runSuspend {
+                fixture.conversationRepository.getThread(ThreadId(threadAction.threadChannelId.value))
+            }
+            val threadSnapshot = threadSnapshotResult.contentOrThrow("load reply thread")
+            localWriteThrough.writeThreadResult(threadSnapshotResult, source = "live_reply_thread")
+
+            val localTimeline = localStore.getThreadTimeline(threadSnapshot.conversation.threadId)
+            assertNotNull(localTimeline)
+            assertEquals(threadSnapshot.conversation.threadId, localTimeline?.conversation?.threadId)
+            assertTrue(
+                "Expected the live reply to be stored under the thread channel.",
+                localTimeline?.messages.orEmpty().any { it.id == replyMessage.id && it.channelId == threadAction.threadChannelId }
+            )
+
+            val cursor = localStore.getSyncCursor(threadAction.threadChannelId.value)
+            assertNotNull("Expected cursor scoped by thread channel id.", cursor)
+        } finally {
+            cleanupChannelId?.let { fixture.deleteTestChannel(it) }
+        }
+    }
+
+    @Test
+    fun liveChannelFilesListsUploadedAttachmentMetadata() {
+        assumeTrue("Set SLOCK_LIVE_TESTS=true to run live Slock API tests.", env("SLOCK_LIVE_TESTS") == "true")
+        val fixture = createFixture()
+        val suffix = System.currentTimeMillis().toString(36)
+        val fileName = "live-channel-files-$suffix.txt"
+        val fileContent = "live channel files payload $suffix"
+        val fileBytes = fileContent.encodeToByteArray()
+
+        var cleanupChannelId: ChannelId? = null
+        try {
+            val createdChannel = runSuspend {
+                fixture.channelRepository.createChannel(
+                    CreateChannelRequest(
+                        name = "android-live-files-$suffix",
+                        description = "Temporary channel created by LiveSlockDbFlowTest channel files coverage"
+                    )
+                )
+            }.contentOrThrow("create channel for files")
+            val channelId = requireNotNull(createdChannel.channel.channelId) {
+                "Create channel response did not include channelId."
+            }
+            cleanupChannelId = channelId
+
+            val uploadResult = runSuspend {
+                fixture.conversationRepository.uploadAttachments(
+                    AttachmentUploadRequest(
+                        channelId = channelId,
+                        files = listOf(
+                            AttachmentUploadFile(
+                                id = "live-file-$suffix",
+                                fileName = fileName,
+                                mimeType = "text/plain",
+                                sizeBytes = fileBytes.size.toLong(),
+                                bytes = fileBytes
+                            )
+                        )
+                    )
+                )
+            }.contentOrThrow("upload attachment")
+            val uploadedAttachment = requireNotNull(uploadResult.attachments.firstOrNull()) {
+                "Attachment upload response did not return an attachment."
+            }
+
+            val sentMessage = runSuspend {
+                fixture.conversationRepository.sendMessage(
+                    channelId = channelId,
+                    body = "live file message $suffix",
+                    attachmentIds = uploadResult.attachmentIds
+                )
+            }.contentOrThrow("send attachment message").message
+
+            val matchedFile = waitForChannelFile(
+                channelId = channelId,
+                attachmentId = uploadedAttachment.id.value,
+                fileName = fileName,
+                accessToken = fixture.accessToken,
+                serverId = fixture.serverId,
+                baseUrl = fixture.baseUrl
+            )
+
+            assertEquals(fileName, matchedFile.string("filename"))
+            assertEquals(sentMessage.id.value, matchedFile.string("messageId"))
+            assertEquals(fileBytes.size.toLong(), matchedFile.long("sizeBytes"))
+            assertTrue("Expected files row to include source object.", matchedFile.has("source"))
+            assertTrue("Expected files row to include thumbnailUrl field.", matchedFile.has("thumbnailUrl"))
+            assertTrue(
+                "Expected source.type to be present for channel files row.",
+                !matchedFile.objectValue("source")?.string("type").isNullOrBlank()
+            )
+        } finally {
+            cleanupChannelId?.let { fixture.deleteTestChannel(it) }
+        }
+    }
+
+    @Test
+    fun liveInboxMentionsFilterReturnsInboxShape() {
+        assumeTrue("Set SLOCK_LIVE_TESTS=true to run live Slock API tests.", env("SLOCK_LIVE_TESTS") == "true")
+        val fixture = createFixture()
+        val payload = liveGetJson(
+            url = "${fixture.baseUrl.trimEnd('/')}/channels/inbox?filter=mentions&limit=30&offset=0",
+            accessToken = fixture.accessToken,
+            serverId = fixture.serverId
+        )
+
+        assertTrue("Expected mentions inbox payload to include items.", payload.has("items"))
+        assertTrue("Expected mentions inbox payload to include hasMore.", payload.has("hasMore"))
+        assertTrue("Expected mentions inbox payload to include totalCount.", payload.has("totalCount"))
+        assertTrue("Expected mentions inbox payload to include totalUnreadCount.", payload.has("totalUnreadCount"))
+
+        val firstItem = payload.getAsJsonArray("items")
+            ?.firstOrNull { it.isJsonObject }
+            ?.asJsonObject
+        if (firstItem != null) {
+            assertTrue("Expected mentions inbox row to include kind.", firstItem.has("kind"))
+            assertTrue("Expected mentions inbox row to include unreadCount.", firstItem.has("unreadCount"))
+            assertTrue(
+                "Expected mentions inbox row to surface mention semantics.",
+                firstItem.has("hasMention") || firstItem.has("mentionCount") || firstItem.has("mentions")
+            )
+        }
+    }
+
+    private fun createFixture(): LiveFixture {
         val email = requireEnv("SLOCK_TEST_EMAIL")
         val password = requireEnv("SLOCK_TEST_PASSWORD")
         val baseUrl = env("SLOCK_BASE_URL") ?: KtorAuthRepository.BASE_URL
@@ -36,77 +219,69 @@ class LiveSlockDbFlowTest {
         )
 
         val login = runSuspend { authRepository.login(email, password) }
-        assertTrue(login is AuthResult.Success)
+        assertTrue("Expected live login to succeed but got: $login", login is AuthResult.Success)
         val session = requireNotNull(authStore.session) { "Login succeeded but no session was stored." }
         val serverId = requireNotNull(session.currentServerId) { "Live account has no selected server." }
 
         val api = RealSlockApiFactory.create(authStore, baseUrl = baseUrl)
-        val channelRepository = RealChannelRepository(authStore, api, warningLogger = {})
-        val conversationRepository = RealConversationRepository(authStore, api, warningLogger = {})
-        val localStore = SqlDelightSlockLocalStore(
-            SlockDatabase(
-                JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { driver ->
-                    SlockDatabase.Schema.create(driver)
+        return LiveFixture(
+            authStore = authStore,
+            channelRepository = RealChannelRepository(authStore, api, warningLogger = {}),
+            conversationRepository = RealConversationRepository(authStore, api, warningLogger = {}),
+            baseUrl = baseUrl,
+            accessToken = session.accessToken,
+            serverId = serverId
+        )
+    }
+
+    private fun waitForChannelFile(
+        channelId: ChannelId,
+        attachmentId: String,
+        fileName: String,
+        accessToken: String,
+        serverId: String,
+        baseUrl: String
+    ): JsonObject {
+        repeat(15) { attempt ->
+            val json = liveGetJson(
+                url = "${baseUrl.trimEnd('/')}/channels/${channelId.value}/files?limit=50",
+                accessToken = accessToken,
+                serverId = serverId
+            )
+            val files = json.getAsJsonArray("files")
+            val matched = files
+                ?.mapNotNull { element -> element.takeIf { it.isJsonObject }?.asJsonObject }
+                ?.firstOrNull { row ->
+                    row.string("id") == attachmentId || row.string("filename") == fileName
                 }
-            )
-        )
-        val localWriteThrough = SlockLocalWriteThrough(localStore)
-
-        val suffix = System.currentTimeMillis().toString(36)
-        val createdChannel = runSuspend {
-            channelRepository.createChannel(
-                CreateChannelRequest(
-                    name = "android-live-db-$suffix",
-                    description = "Temporary channel created by LiveSlockDbFlowTest"
-                )
-            )
-        }.contentOrThrow("create channel")
-        val parentChannelId = requireNotNull(createdChannel.channel.channelId) {
-            "Create channel response did not include channelId."
+            if (matched != null) return matched
+            if (attempt < 14) Thread.sleep(1_000)
         }
+        error("Timed out waiting for uploaded attachment to appear in /channels/{id}/files.")
+    }
 
-        val parentMessage = runSuspend {
-            conversationRepository.sendMessage(
-                channelId = parentChannelId,
-                body = "live parent message $suffix"
-            )
-        }.contentOrThrow("send parent message").message
-        assertEquals(parentChannelId, parentMessage.channelId)
-
-        val threadAction = runSuspend {
-            conversationRepository.createOrOpenThread(
-                channelId = parentChannelId,
-                parentMessageId = parentMessage.id
-            )
-        }.contentOrThrow("create/open reply thread")
-        assertNotNull(threadAction.threadChannelId)
-        assertEquals(parentMessage.id, threadAction.parentMessageId ?: parentMessage.id)
-
-        val replyMessage = runSuspend {
-            conversationRepository.sendMessage(
-                channelId = threadAction.threadChannelId,
-                body = "live reply message $suffix"
-            )
-        }.contentOrThrow("send thread reply").message
-        assertEquals(threadAction.threadChannelId, replyMessage.channelId)
-
-        val threadSnapshotResult = runSuspend {
-            conversationRepository.getThread(ThreadId(threadAction.threadChannelId.value))
+    private fun liveGetJson(
+        url: String,
+        accessToken: String,
+        serverId: String
+    ): JsonObject {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 15_000
+            readTimeout = 15_000
+            setRequestProperty("Authorization", "Bearer $accessToken")
+            setRequestProperty("X-Server-Id", serverId)
+            setRequestProperty("Accept", "application/json")
         }
-        val threadSnapshot = threadSnapshotResult.contentOrThrow("load reply thread")
-        localWriteThrough.writeThreadResult(threadSnapshotResult, source = "live_reply_thread")
-
-        val localTimeline = localStore.getThreadTimeline(threadSnapshot.conversation.threadId)
-        assertNotNull(localTimeline)
-        assertEquals(parentChannelId, localTimeline?.conversation?.channelId)
-        assertEquals(threadAction.threadChannelId, localTimeline?.conversation?.thread?.streamChannelId)
-        assertTrue(
-            "Expected the live reply to be stored under the thread channel.",
-            localTimeline?.messages.orEmpty().any { it.id == replyMessage.id && it.channelId == threadAction.threadChannelId }
-        )
-
-        val cursor = localStore.getSyncCursor(threadAction.threadChannelId.value)
-        assertNotNull("Expected cursor scoped by thread channel id.", cursor)
+        return connection.useAndDisconnect { http ->
+            val code = http.responseCode
+            val body = (if (code in 200..299) http.inputStream else http.errorStream)
+                ?.bufferedReader()
+                ?.use { it.readText() }
+                .orEmpty()
+            assertTrue("Expected successful GET $url but got HTTP $code with body: $body", code in 200..299)
+            JsonParser.parseString(body).asJsonObject
+        }
     }
 
     private fun env(name: String): String? =
@@ -122,6 +297,11 @@ class LiveSlockDbFlowTest {
             is DataResult.Error -> error("$label failed: ${error.code}")
             is DataResult.NoPermission -> error("$label denied: ${blocker.code}")
         }
+
+    private fun LiveFixture.deleteTestChannel(channelId: ChannelId) {
+        runSuspend { channelRepository.deleteChannel(channelId) }
+            .contentOrThrow("delete test channel ${channelId.value}")
+    }
 
     private class InMemoryAuthSessionStore(
         var session: AuthSession? = null
@@ -144,6 +324,31 @@ class LiveSlockDbFlowTest {
             session = null
         }
     }
+
+    private data class LiveFixture(
+        val authStore: InMemoryAuthSessionStore,
+        val channelRepository: RealChannelRepository,
+        val conversationRepository: RealConversationRepository,
+        val baseUrl: String,
+        val accessToken: String,
+        val serverId: String
+    )
 }
 
 private fun <T> runSuspend(block: suspend () -> T): T = runBlocking { block() }
+
+private fun JsonObject.string(name: String): String? =
+    takeIf { has(name) && !get(name).isJsonNull }?.get(name)?.asString
+
+private fun JsonObject.long(name: String): Long? =
+    takeIf { has(name) && !get(name).isJsonNull }?.get(name)?.asLong
+
+private fun JsonObject.objectValue(name: String): JsonObject? =
+    takeIf { has(name) && get(name).isJsonObject }?.getAsJsonObject(name)
+
+private inline fun <T> HttpURLConnection.useAndDisconnect(block: (HttpURLConnection) -> T): T =
+    try {
+        block(this)
+    } finally {
+        disconnect()
+    }

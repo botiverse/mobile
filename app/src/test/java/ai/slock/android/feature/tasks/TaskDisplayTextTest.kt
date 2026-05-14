@@ -58,4 +58,20 @@ class TaskDisplayTextTest {
 
         assertNull(task.tasksAssigneeDisplayName())
     }
+
+    @Test
+    fun sourceLabelDoesNotFallbackToSampleState() {
+        val taskWithoutChannel =
+            TaskSummary(
+                id = TaskId("task-23"),
+                title = "Real task with missing source",
+                status = TaskStatus.Todo,
+                updatedAtLabel = ""
+            )
+        val taskWithChannel =
+            taskWithoutChannel.copy(channelName = "product")
+
+        assertNull(taskWithoutChannel.tasksSourceLabel())
+        assertEquals("#product", taskWithChannel.tasksSourceLabel())
+    }
 }

@@ -11,6 +11,7 @@ import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
 import ai.slock.android.core.data.repository.SettingsSectionAvailability
+import ai.slock.compose.network.SlockRequestPriority
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
@@ -250,6 +251,7 @@ class RealSettingsRepositoryTest {
                     {"id":"machine-1","hostname":"Jiachengs-MacBook-Pro","daemonVersion":"1.4.2","status":"online"},
                     {"machineId":"machine-2","displayName":"Build host","version":"1.3.0","online":false}
                   ],
+                  "latestDaemonVersion": "1.5.0",
                   "canAddComputer": true
                 }
             """.trimIndent()
@@ -267,6 +269,7 @@ class RealSettingsRepositoryTest {
         val snapshot = (result as DataResult.Content).data
         assertEquals("server-1", api.machinesServerId)
         assertEquals(true, snapshot.canAddComputer)
+        assertEquals("1.5.0", snapshot.latestDaemonVersion)
         assertEquals(2, snapshot.computers.size)
         assertEquals("Jiachengs-MacBook-Pro", snapshot.computers[0].name)
         assertEquals("1.4.2", snapshot.computers[0].daemonVersion)
@@ -390,20 +393,20 @@ class RealSettingsRepositoryTest {
         var workspacesMachineId: String? = null
             private set
 
-        override suspend fun settingsAccount(): ApiResponse = response(accountJson)
+        override suspend fun settingsAccount(priority: SlockRequestPriority): ApiResponse = response(accountJson)
 
-        override suspend fun updateSettingsAccount(body: RequestBody): ApiResponse = response(accountJson)
+        override suspend fun updateSettingsAccount(priority: SlockRequestPriority, body: RequestBody): ApiResponse = response(accountJson)
 
-        override suspend fun settingsSessions(): ApiResponse = response(sessionsJson)
+        override suspend fun settingsSessions(priority: SlockRequestPriority): ApiResponse = response(sessionsJson)
 
-        override suspend fun revokeSettingsSession(sessionId: String): ApiResponse = response(revokeJson)
+        override suspend fun revokeSettingsSession(priority: SlockRequestPriority, sessionId: String): ApiResponse = response(revokeJson)
 
-        override suspend fun settingsMachines(serverId: String): ApiResponse {
+        override suspend fun settingsMachines(priority: SlockRequestPriority, serverId: String): ApiResponse {
             machinesServerId = serverId
             return response(machinesJson, machinesResponseCode ?: responseCode)
         }
 
-        override suspend fun settingsMachineWorkspaces(
+        override suspend fun settingsMachineWorkspaces(priority: SlockRequestPriority,
             serverId: String,
             machineId: String
         ): ApiResponse {
@@ -411,190 +414,193 @@ class RealSettingsRepositoryTest {
             return response(workspacesJson, workspacesResponseCode ?: responseCode)
         }
 
-        override suspend fun settingsAgents(): ApiResponse =
+        override suspend fun settingsAgents(priority: SlockRequestPriority): ApiResponse =
             response(agentsJson, agentsResponseCode ?: responseCode)
 
-        override suspend fun updateAgent(
+        override suspend fun updateAgent(priority: SlockRequestPriority,
             agentId: String,
             body: RequestBody
         ): ApiResponse = response("""{"ok":true}""")
 
-        override suspend fun channels(archived: String?): ApiResponse = response("""{"channels":[]}""")
+        override suspend fun channels(priority: SlockRequestPriority, archived: String?): ApiResponse = response("""{"channels":[]}""")
 
-        override suspend fun createChannel(body: RequestBody): ApiResponse =
+        override suspend fun createChannel(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
             response("""{"id":"channel-1","name":"android-dev"}""")
 
-        override suspend fun joinChannel(channelId: String): ApiResponse =
+        override suspend fun joinChannel(priority: SlockRequestPriority, channelId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun archiveChannel(channelId: String): ApiResponse =
+        override suspend fun archiveChannel(priority: SlockRequestPriority, channelId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun deleteChannel(channelId: String): ApiResponse =
+        override suspend fun deleteChannel(priority: SlockRequestPriority, channelId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun serverMembers(serverId: String): ApiResponse =
+        override suspend fun serverMembers(priority: SlockRequestPriority, serverId: String): ApiResponse =
             response(membersJson)
 
-        override suspend fun updateSettingsServerProfile(
+        override suspend fun updateSettingsServerProfile(priority: SlockRequestPriority,
             serverId: String,
             body: RequestBody
         ): ApiResponse =
             response("""{"id":"$serverId","name":"Slock Android"}""")
 
-        override suspend fun settingsServerUsage(serverId: String): ApiResponse =
+        override suspend fun settingsServerUsage(priority: SlockRequestPriority, serverId: String): ApiResponse =
             response(usageJson)
 
-        override suspend fun settingsBillingSubscription(): ApiResponse =
+        override suspend fun settingsBillingSubscription(priority: SlockRequestPriority): ApiResponse =
             response(billingSubscriptionJson)
 
-        override suspend fun createSettingsServerInvite(
+        override suspend fun createSettingsServerInvite(priority: SlockRequestPriority,
             serverId: String,
             body: RequestBody
         ): ApiResponse =
             response("""{"invite":{}}""")
 
-        override suspend fun settingsServerOnboardingSettings(
+        override suspend fun settingsServerOnboardingSettings(priority: SlockRequestPriority,
             serverId: String
         ): ApiResponse =
             response(onboardingJson)
 
-        override suspend fun updateSettingsServerOnboardingSettings(
+        override suspend fun updateSettingsServerOnboardingSettings(priority: SlockRequestPriority,
             serverId: String,
             body: RequestBody
         ): ApiResponse =
             response("""{"settings":{}}""")
 
-        override suspend fun deleteSettingsServer(serverId: String): ApiResponse =
+        override suspend fun deleteSettingsServer(priority: SlockRequestPriority, serverId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun memberProfile(memberId: String): ApiResponse =
+        override suspend fun memberProfile(priority: SlockRequestPriority, memberId: String): ApiResponse =
             response("""{"profile":{"id":"$memberId","displayName":"Member","presence":"offline"}}""")
 
-        override suspend fun agentWorkspaceFiles(agentId: String, dirPath: String?): ApiResponse =
+        override suspend fun agentWorkspaceFiles(priority: SlockRequestPriority, agentId: String, dirPath: String?): ApiResponse =
             response("""{"files":[]}""")
 
-        override suspend fun readAgentWorkspaceFile(agentId: String, path: String): ApiResponse =
+        override suspend fun readAgentWorkspaceFile(priority: SlockRequestPriority, agentId: String, path: String): ApiResponse =
             response("""{"file":{"path":"$path","content":""}}""")
 
-        override suspend fun agentDirectMessages(agentId: String): ApiResponse =
+        override suspend fun agentDirectMessages(priority: SlockRequestPriority, agentId: String): ApiResponse =
             response("""{"directMessages":[]}""")
 
-        override suspend fun reminders(ownerAgentId: String, status: String): ApiResponse =
+        override suspend fun reminders(priority: SlockRequestPriority, ownerAgentId: String, status: String): ApiResponse =
             response("""{"reminders":[]}""")
 
-        override suspend fun agentActivityLog(agentId: String, limit: Int): ApiResponse =
+        override suspend fun agentActivityLog(priority: SlockRequestPriority, agentId: String, limit: Int): ApiResponse =
             response("""{"trajectoryLogs":[]}""")
 
-        override suspend fun channelMembers(channelId: String): ApiResponse =
+        override suspend fun channelMembers(priority: SlockRequestPriority, channelId: String): ApiResponse =
             response("""{"members":[]}""")
 
-        override suspend fun addChannelMember(channelId: String, body: RequestBody): ApiResponse =
+        override suspend fun addChannelMember(priority: SlockRequestPriority, channelId: String, body: RequestBody): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun removeChannelMember(
+        override suspend fun removeChannelMember(priority: SlockRequestPriority,
             channelId: String,
             kind: String,
             memberId: String
         ): ApiResponse =
             response("""{"ok":true,"removed":{"id":"$memberId","kind":"$kind"}}""")
 
-        override suspend fun directMessages(): ApiResponse = response("""[]""")
+        override suspend fun directMessages(priority: SlockRequestPriority): ApiResponse = response("""[]""")
 
-        override suspend fun openDirectMessage(body: RequestBody): ApiResponse =
+        override suspend fun openDirectMessage(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
             response("""{"channel":{"id":"dm-1","name":"Direct message","type":"dm"}}""")
 
-        override suspend fun channelUnreadCounts(): ApiResponse = response("""{}""")
+        override suspend fun channelUnreadCounts(priority: SlockRequestPriority): ApiResponse = response("""{}""")
 
-        override suspend fun markChannelReadToSeq(channelId: String, body: RequestBody): ApiResponse =
+        override suspend fun markChannelReadToSeq(priority: SlockRequestPriority, channelId: String, body: RequestBody): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun markChannelReadAll(channelId: String): ApiResponse =
+        override suspend fun markChannelReadAll(priority: SlockRequestPriority, channelId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun markChannelUnread(channelId: String): ApiResponse =
+        override suspend fun markChannelUnread(priority: SlockRequestPriority, channelId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun inbox(filter: String, limit: Int, offset: Int): ApiResponse =
+        override suspend fun inbox(priority: SlockRequestPriority, filter: String, limit: Int, offset: Int): ApiResponse =
             response("""{"items":[]}""")
 
-        override suspend fun markInboxReadAll(): ApiResponse =
+        override suspend fun markInboxReadAll(priority: SlockRequestPriority): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun serverTasks(): ApiResponse =
+        override suspend fun serverTasks(priority: SlockRequestPriority): ApiResponse =
             response("""{"tasks":[]}""")
 
-        override suspend fun channelTasks(channelId: String): ApiResponse =
+        override suspend fun channelTasks(priority: SlockRequestPriority, channelId: String): ApiResponse =
             response("""{"tasks":[]}""")
 
-        override suspend fun claimTask(taskId: String): ApiResponse =
+        override suspend fun claimTask(priority: SlockRequestPriority, taskId: String): ApiResponse =
             response("""{"task":{}}""")
 
-        override suspend fun updateTaskStatus(
+        override suspend fun updateTaskStatus(priority: SlockRequestPriority,
             taskId: String,
             body: RequestBody
         ): ApiResponse =
             response("""{"task":{}}""")
 
-        override suspend fun saved(limit: Int, offset: Int): ApiResponse = response("""{"items":[]}""")
+        override suspend fun saved(priority: SlockRequestPriority, limit: Int, offset: Int): ApiResponse = response("""{"items":[]}""")
 
-        override suspend fun saveMessage(messageId: String): ApiResponse =
+        override suspend fun saveMessage(priority: SlockRequestPriority, messageId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun unsaveMessage(messageId: String): ApiResponse =
+        override suspend fun unsaveMessage(priority: SlockRequestPriority, messageId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun searchMessages(query: String, limit: Int, offset: Int): ApiResponse =
+        override suspend fun searchMessages(priority: SlockRequestPriority, query: String, limit: Int, offset: Int): ApiResponse =
             response("""{"results":[]}""")
 
-        override suspend fun channelMessages(
+        override suspend fun channelMessages(priority: SlockRequestPriority,
             channelId: String,
             limit: Int,
             beforeSeq: Long?
         ): ApiResponse = response("""{"messages":[]}""")
 
-        override suspend fun messageContext(messageId: String): ApiResponse =
+        override suspend fun messageContext(priority: SlockRequestPriority, messageId: String): ApiResponse =
             response("""{"messages":[]}""")
 
-        override suspend fun messageSync(
+        override suspend fun messageSync(priority: SlockRequestPriority,
             sinceSeq: Long,
             limit: Int,
             channelId: String?
         ): ApiResponse = response("""{"messages":[]}""")
 
-        override suspend fun sendMessage(body: RequestBody): ApiResponse =
+        override suspend fun sendMessage(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
             response("""{"message":{}}""")
 
-        override suspend fun uploadAttachments(
+        override suspend fun uploadAttachments(priority: SlockRequestPriority,
             channelId: RequestBody,
             files: List<okhttp3.MultipartBody.Part>
         ): ApiResponse = response("""{"attachments":[]}""")
 
-        override suspend fun attachmentUrl(attachmentId: String): ApiResponse =
+        override suspend fun attachmentUrl(priority: SlockRequestPriority, attachmentId: String): ApiResponse =
             response("""{"url":"https://example.invalid/attachments/$attachmentId"}""")
 
-        override suspend fun channelThreads(channelId: String, limit: Int): ApiResponse =
+        override suspend fun channelFiles(priority: SlockRequestPriority, channelId: String, limit: Int, cursor: String?): ApiResponse =
+            response("""{"files":[]}""")
+
+        override suspend fun channelThreads(priority: SlockRequestPriority, channelId: String, limit: Int): ApiResponse =
             response("""{"threads":[]}""")
 
-        override suspend fun createOrOpenThread(channelId: String, body: RequestBody): ApiResponse =
+        override suspend fun createOrOpenThread(priority: SlockRequestPriority, channelId: String, body: RequestBody): ApiResponse =
             response("""{"threadChannelId":"thread-1","replyCount":1}""")
 
-        override suspend fun followedThreads(limit: Int): ApiResponse =
+        override suspend fun followedThreads(priority: SlockRequestPriority, limit: Int): ApiResponse =
             response("""{"threads":[]}""")
 
-        override suspend fun followThread(body: RequestBody): ApiResponse =
+        override suspend fun followThread(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun unfollowThread(body: RequestBody): ApiResponse =
+        override suspend fun unfollowThread(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun markThreadDone(body: RequestBody): ApiResponse =
+        override suspend fun markThreadDone(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun markThreadUndone(body: RequestBody): ApiResponse =
+        override suspend fun markThreadUndone(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun serverUnreadSummary(): ApiResponse = response("""{"unreadCount":0}""")
+        override suspend fun serverUnreadSummary(priority: SlockRequestPriority): ApiResponse = response("""{"unreadCount":0}""")
 
         private fun response(json: String, code: Int = responseCode): ApiResponse =
             if (code in 200..299) {

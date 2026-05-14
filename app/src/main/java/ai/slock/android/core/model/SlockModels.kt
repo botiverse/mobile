@@ -29,7 +29,6 @@ typealias MessageDeliveryState = ai.slock.compose.model.MessageDeliveryState
 typealias Attachment = ai.slock.compose.model.Attachment
 typealias TaskSummary = ai.slock.compose.model.TaskSummary
 typealias InboxItemKind = ai.slock.compose.model.InboxItemKind
-typealias InboxItem = ai.slock.compose.model.InboxItem
 typealias RealtimeEvent = ai.slock.compose.model.RealtimeEvent
 typealias MessageNew = ai.slock.compose.model.MessageNew
 typealias MessageUpdated = ai.slock.compose.model.MessageUpdated
@@ -45,5 +44,49 @@ typealias SettingsSummary = ai.slock.compose.model.SettingsSummary
 
 // Android-specific ConversationSummary (extends shared with Android-specific avatar handling)
 typealias ConversationSummary = ai.slock.compose.model.ConversationSummary
+
+data class InboxItem(
+    val key: String,
+    val kind: InboxItemKind,
+    val channelId: ChannelId,
+    val channelName: String,
+    val unreadCount: Int = 0,
+    val hasMention: Boolean = false,
+    val firstUnreadMessageId: MessageId? = null,
+    val lastMessageId: MessageId? = null,
+    val lastMessagePreview: String? = null,
+    val lastMessageAt: String? = null,
+    val lastMessageSenderName: String? = null,
+    val threadChannelId: ChannelId? = null,
+    val parentChannelId: ChannelId? = null,
+    val parentChannelName: String? = null,
+    val parentChannelKind: ConversationKind? = null,
+    val parentMessageId: MessageId? = null,
+    val parentMessagePreview: String? = null,
+    val latestActivityMessageId: MessageId? = null,
+    val latestActivityPreview: String? = null,
+    val latestActivityAt: String? = null,
+    val latestActivitySenderName: String? = null,
+    val replyCount: Int = 0,
+    val participantIds: List<MemberId> = emptyList(),
+    val taskNumber: Int? = null,
+    val taskStatus: TaskStatus? = null,
+    val taskClaimedByName: String? = null
+)
+
+private const val THREAD_UNREAD_REPLY_COUNT_METADATA_KEY = "threadUnreadReplyCount"
+
+fun Message.unreadReplyCount(): Int =
+    metadata[THREAD_UNREAD_REPLY_COUNT_METADATA_KEY]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+
+fun Message.withUnreadReplyCount(count: Int): Message =
+    copy(
+        metadata =
+            metadata +
+                (
+                    THREAD_UNREAD_REPLY_COUNT_METADATA_KEY to
+                        count.coerceAtLeast(0).toString()
+                    )
+    )
 
 // Extension functions are now in shared - just import them from ai.slock.compose.model.*

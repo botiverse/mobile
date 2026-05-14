@@ -11,9 +11,10 @@ import ai.slock.compose.network.HttpClientConfig
 import ai.slock.compose.network.KmpHttpResponse
 import ai.slock.compose.network.MultipartFile
 import ai.slock.compose.network.SlockApiClient
+import ai.slock.compose.network.SlockRequestPriority
 import ai.slock.compose.network.SlockRequestScheduler
 import ai.slock.compose.network.TimeoutConfig
-import ai.slock.compose.network.createHttpClient
+import ai.slock.compose.network.createPriorityHttpClient
 import io.ktor.client.HttpClient
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -23,17 +24,35 @@ import okio.Buffer
 
 class ComposeSlockApiAdapter(
         store: AuthSessionStore,
-        baseUrl: String = KtorAuthRepository.BASE_URL,
+        private val baseUrl: String = KtorAuthRepository.BASE_URL,
         tokenRefresher: AuthTokenRefresher =
                 AuthTokenRefresher(
                         store = store,
                         api = KtorAuthRepository.createAuthApi(baseUrl)
                 ),
         httpClient: HttpClient =
-                createHttpClient(
-                        HttpClientConfig(
-                                timeout = TimeoutConfig()
-                        )
+                createPriorityHttpClient(
+                        config = HttpClientConfig(timeout = TimeoutConfig()),
+                        maxRequests = 6,
+                        maxRequestsPerHost = 6
+                ),
+        foregroundHttpClient: HttpClient =
+                createPriorityHttpClient(
+                        config = HttpClientConfig(timeout = TimeoutConfig()),
+                        maxRequests = 12,
+                        maxRequestsPerHost = 12
+                ),
+        private val visibleHttpClient: HttpClient =
+                createPriorityHttpClient(
+                        config = HttpClientConfig(timeout = TimeoutConfig()),
+                        maxRequests = 8,
+                        maxRequestsPerHost = 8
+                ),
+        backgroundHttpClient: HttpClient =
+                createPriorityHttpClient(
+                        config = HttpClientConfig(timeout = TimeoutConfig()),
+                        maxRequests = 4,
+                        maxRequestsPerHost = 4
                 ),
         private val logger: (String) -> Unit = { message ->
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(TAG, message)
@@ -41,129 +60,138 @@ class ComposeSlockApiAdapter(
         private val warningLogger: (String) -> Unit = { message ->
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(TAG, message)
         },
+        private val authTransport: AuthenticatedKtorTransport =
+                AuthenticatedKtorTransport(
+                        tokenProvider =
+                                AndroidAuthTokenProvider(
+                                        store = store,
+                                        tokenRefresher = tokenRefresher,
+                                        warningLogger = warningLogger
+                                ),
+                        logger = { message -> logger("compose_$message") }
+                ),
         private val client: SlockApiClient =
                 SlockApiClient(
                         baseUrl = baseUrl,
                         httpClient = httpClient,
-                        authTransport =
-                                AuthenticatedKtorTransport(
-                                        tokenProvider =
-                                                AndroidAuthTokenProvider(
-                                                        store = store,
-                                                        tokenRefresher = tokenRefresher,
-                                                        warningLogger = warningLogger
-                                                ),
-                                        logger = { message -> logger("compose_$message") }
-                                ),
+                        foregroundHttpClient = foregroundHttpClient,
+                        visibleHttpClient = visibleHttpClient,
+                        backgroundHttpClient = backgroundHttpClient,
+                        authTransport = authTransport,
                         requestScheduler =
                                 SlockRequestScheduler(
+                                        maxForegroundRequests = 12,
+                                        maxVisibleRequests = 8,
+                                        maxBackgroundRequests = 4,
                                         logger = { message -> logger("request_pool_$message") }
                                 ),
                         warningLogger = warningLogger
                 )
 ) : SlockApi {
-    override suspend fun settingsAccount(): ApiResponse = request { client.settingsAccount() }
-    override suspend fun updateSettingsAccount(body: RequestBody): ApiResponse =
-            request { client.updateSettingsAccount(body.bodyAsString()) }
-    override suspend fun settingsSessions(): ApiResponse = request { client.settingsSessions() }
-    override suspend fun revokeSettingsSession(sessionId: String): ApiResponse =
-            request { client.revokeSettingsSession(sessionId) }
-    override suspend fun settingsMachines(serverId: String): ApiResponse =
-            request { client.settingsMachines(serverId) }
-    override suspend fun settingsMachineWorkspaces(serverId: String, machineId: String): ApiResponse =
-            request { client.settingsMachineWorkspaces(serverId, machineId) }
-    override suspend fun settingsAgents(): ApiResponse = request { client.settingsAgents() }
-    override suspend fun updateAgent(agentId: String, body: RequestBody): ApiResponse =
-            request { client.updateAgent(agentId, body.bodyAsString()) }
-    override suspend fun channels(archived: String?): ApiResponse = request { client.channels(archived) }
-    override suspend fun serverMembers(serverId: String): ApiResponse = request { client.serverMembers(serverId) }
-    override suspend fun updateSettingsServerProfile(serverId: String, body: RequestBody): ApiResponse =
-            request { client.updateSettingsServerProfile(serverId, body.bodyAsString()) }
-    override suspend fun settingsServerUsage(serverId: String): ApiResponse =
-            request { client.settingsServerUsage(serverId) }
-    override suspend fun settingsBillingSubscription(): ApiResponse =
-            request { client.settingsBillingSubscription() }
-    override suspend fun createSettingsServerInvite(serverId: String, body: RequestBody): ApiResponse =
-            request { client.createSettingsServerInvite(serverId, body.bodyAsString()) }
-    override suspend fun settingsServerOnboardingSettings(serverId: String): ApiResponse =
-            request { client.settingsServerOnboardingSettings(serverId) }
-    override suspend fun updateSettingsServerOnboardingSettings(serverId: String, body: RequestBody): ApiResponse =
-            request { client.updateSettingsServerOnboardingSettings(serverId, body.bodyAsString()) }
-    override suspend fun deleteSettingsServer(serverId: String): ApiResponse =
-            request { client.deleteSettingsServer(serverId) }
-    override suspend fun memberProfile(memberId: String): ApiResponse = request { client.memberProfile(memberId) }
-    override suspend fun agentWorkspaceFiles(agentId: String, dirPath: String?): ApiResponse =
-            request { client.agentWorkspaceFiles(agentId, dirPath) }
-    override suspend fun readAgentWorkspaceFile(agentId: String, path: String): ApiResponse =
-            request { client.readAgentWorkspaceFile(agentId, path) }
-    override suspend fun agentDirectMessages(agentId: String): ApiResponse =
-            request { client.agentDirectMessages(agentId) }
-    override suspend fun reminders(ownerAgentId: String, status: String): ApiResponse =
-            request { client.reminders(ownerAgentId, status) }
-    override suspend fun agentActivityLog(agentId: String, limit: Int): ApiResponse =
-            request { client.agentActivityLog(agentId, limit) }
-    override suspend fun channelMembers(channelId: String): ApiResponse =
-            request { client.channelMembers(channelId) }
-    override suspend fun createChannel(body: RequestBody): ApiResponse =
-            request { client.createChannel(body.bodyAsString()) }
-    override suspend fun joinChannel(channelId: String): ApiResponse = request { client.joinChannel(channelId) }
-    override suspend fun archiveChannel(channelId: String): ApiResponse =
-            request { client.archiveChannel(channelId) }
-    override suspend fun deleteChannel(channelId: String): ApiResponse = request { client.deleteChannel(channelId) }
-    override suspend fun addChannelMember(channelId: String, body: RequestBody): ApiResponse =
-            request { client.addChannelMember(channelId, body.bodyAsString()) }
-    override suspend fun removeChannelMember(channelId: String, kind: String, memberId: String): ApiResponse =
-            request { client.removeChannelMember(channelId, kind, memberId) }
-    override suspend fun directMessages(): ApiResponse = request { client.directMessages() }
-    override suspend fun openDirectMessage(body: RequestBody): ApiResponse =
-            request { client.openDirectMessage(body.bodyAsString()) }
-    override suspend fun channelUnreadCounts(): ApiResponse = request { client.channelUnreadCounts() }
-    override suspend fun markChannelReadToSeq(channelId: String, body: RequestBody): ApiResponse =
-            request { client.markChannelReadToSeq(channelId, body.bodyAsString()) }
-    override suspend fun markChannelReadAll(channelId: String): ApiResponse =
-            request { client.markChannelReadAll(channelId) }
-    override suspend fun markChannelUnread(channelId: String): ApiResponse =
-            request { client.markChannelUnread(channelId) }
-    override suspend fun inbox(filter: String, limit: Int, offset: Int): ApiResponse =
-            request { client.inbox(filter, limit, offset) }
-    override suspend fun markInboxReadAll(): ApiResponse = request { client.markInboxReadAll() }
-    override suspend fun serverTasks(): ApiResponse = request { client.serverTasks() }
-    override suspend fun channelTasks(channelId: String): ApiResponse = request { client.channelTasks(channelId) }
-    override suspend fun claimTask(taskId: String): ApiResponse = request { client.claimTask(taskId) }
-    override suspend fun updateTaskStatus(taskId: String, body: RequestBody): ApiResponse =
-            request { client.updateTaskStatus(taskId, body.bodyAsString()) }
-    override suspend fun saved(limit: Int, offset: Int): ApiResponse = request { client.saved(limit, offset) }
-    override suspend fun saveMessage(messageId: String): ApiResponse = request { client.saveMessage(messageId) }
-    override suspend fun unsaveMessage(messageId: String): ApiResponse = request { client.unsaveMessage(messageId) }
-    override suspend fun searchMessages(query: String, limit: Int, offset: Int): ApiResponse =
-            request { client.searchMessages(query, limit, offset) }
-    override suspend fun channelMessages(channelId: String, limit: Int, beforeSeq: Long?): ApiResponse =
-            request { client.channelMessages(channelId, limit, beforeSeq) }
-    override suspend fun messageContext(messageId: String): ApiResponse = request { client.messageContext(messageId) }
-    override suspend fun messageSync(sinceSeq: Long, limit: Int, channelId: String?): ApiResponse =
-            request { client.messageSync(sinceSeq, limit, channelId) }
-    override suspend fun sendMessage(body: RequestBody): ApiResponse =
-            request { client.sendMessage(body.bodyAsString()) }
-    override suspend fun uploadAttachments(channelId: RequestBody, files: List<MultipartBody.Part>): ApiResponse =
-            request { client.uploadAttachments(channelId.bodyAsString(), files.map { it.toKmpMultipartFile() }) }
-    override suspend fun attachmentUrl(attachmentId: String): ApiResponse =
-            request { client.attachmentUrl(attachmentId) }
-    override suspend fun channelThreads(channelId: String, limit: Int): ApiResponse =
-            request { client.channelThreads(channelId, limit) }
-    override suspend fun createOrOpenThread(channelId: String, body: RequestBody): ApiResponse =
-            request { client.createOrOpenThread(channelId, body.bodyAsString()) }
-    override suspend fun followedThreads(limit: Int): ApiResponse = request { client.followedThreads(limit) }
-    override suspend fun followThread(body: RequestBody): ApiResponse =
-            request { client.followThread(body.bodyAsString()) }
-    override suspend fun unfollowThread(body: RequestBody): ApiResponse =
-            request { client.unfollowThread(body.bodyAsString()) }
-    override suspend fun markThreadDone(body: RequestBody): ApiResponse =
-            request { client.markThreadDone(body.bodyAsString()) }
-    override suspend fun markThreadUndone(body: RequestBody): ApiResponse =
-            request { client.markThreadUndone(body.bodyAsString()) }
-    override suspend fun serverUnreadSummary(): ApiResponse = request { client.serverUnreadSummary() }
+    override suspend fun settingsAccount(priority: SlockRequestPriority): ApiResponse = request(priority) { client.settingsAccount(priority) }
+    override suspend fun updateSettingsAccount(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
+            request(priority) { client.updateSettingsAccount(priority, body.bodyAsString()) }
+    override suspend fun settingsSessions(priority: SlockRequestPriority): ApiResponse = request(priority) { client.settingsSessions(priority) }
+    override suspend fun revokeSettingsSession(priority: SlockRequestPriority, sessionId: String): ApiResponse =
+            request(priority) { client.revokeSettingsSession(priority, sessionId) }
+    override suspend fun settingsMachines(priority: SlockRequestPriority, serverId: String): ApiResponse =
+            request(priority) { client.settingsMachines(priority, serverId) }
+    override suspend fun settingsMachineWorkspaces(priority: SlockRequestPriority, serverId: String, machineId: String): ApiResponse =
+            request(priority) { client.settingsMachineWorkspaces(priority, serverId, machineId) }
+    override suspend fun settingsAgents(priority: SlockRequestPriority): ApiResponse = request(priority) { client.settingsAgents(priority) }
+    override suspend fun updateAgent(priority: SlockRequestPriority, agentId: String, body: RequestBody): ApiResponse =
+            request(priority) { client.updateAgent(priority, agentId, body.bodyAsString()) }
+    override suspend fun channels(priority: SlockRequestPriority, archived: String?): ApiResponse = request(priority) { client.channels(priority, archived) }
+    override suspend fun serverMembers(priority: SlockRequestPriority, serverId: String): ApiResponse = request(priority) { client.serverMembers(priority, serverId) }
+    override suspend fun updateSettingsServerProfile(priority: SlockRequestPriority, serverId: String, body: RequestBody): ApiResponse =
+            request(priority) { client.updateSettingsServerProfile(priority, serverId, body.bodyAsString()) }
+    override suspend fun settingsServerUsage(priority: SlockRequestPriority, serverId: String): ApiResponse =
+            request(priority) { client.settingsServerUsage(priority, serverId) }
+    override suspend fun settingsBillingSubscription(priority: SlockRequestPriority): ApiResponse =
+            request(priority) { client.settingsBillingSubscription(priority) }
+    override suspend fun createSettingsServerInvite(priority: SlockRequestPriority, serverId: String, body: RequestBody): ApiResponse =
+            request(priority) { client.createSettingsServerInvite(priority, serverId, body.bodyAsString()) }
+    override suspend fun settingsServerOnboardingSettings(priority: SlockRequestPriority, serverId: String): ApiResponse =
+            request(priority) { client.settingsServerOnboardingSettings(priority, serverId) }
+    override suspend fun updateSettingsServerOnboardingSettings(priority: SlockRequestPriority, serverId: String, body: RequestBody): ApiResponse =
+            request(priority) { client.updateSettingsServerOnboardingSettings(priority, serverId, body.bodyAsString()) }
+    override suspend fun deleteSettingsServer(priority: SlockRequestPriority, serverId: String): ApiResponse =
+            request(priority) { client.deleteSettingsServer(priority, serverId) }
+    override suspend fun memberProfile(priority: SlockRequestPriority, memberId: String): ApiResponse = request(priority) { client.memberProfile(priority, memberId) }
+    override suspend fun agentWorkspaceFiles(priority: SlockRequestPriority, agentId: String, dirPath: String?): ApiResponse =
+            request(priority) { client.agentWorkspaceFiles(priority, agentId, dirPath) }
+    override suspend fun readAgentWorkspaceFile(priority: SlockRequestPriority, agentId: String, path: String): ApiResponse =
+            request(priority) { client.readAgentWorkspaceFile(priority, agentId, path) }
+    override suspend fun agentDirectMessages(priority: SlockRequestPriority, agentId: String): ApiResponse =
+            request(priority) { client.agentDirectMessages(priority, agentId) }
+    override suspend fun reminders(priority: SlockRequestPriority, ownerAgentId: String, status: String): ApiResponse =
+            request(priority) { client.reminders(priority, ownerAgentId, status) }
+    override suspend fun agentActivityLog(priority: SlockRequestPriority, agentId: String, limit: Int): ApiResponse =
+            request(priority) { client.agentActivityLog(priority, agentId, limit) }
+    override suspend fun channelMembers(priority: SlockRequestPriority, channelId: String): ApiResponse =
+            request(priority) { client.channelMembers(priority, channelId) }
+    override suspend fun createChannel(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
+            request(priority) { client.createChannel(priority, body.bodyAsString()) }
+    override suspend fun joinChannel(priority: SlockRequestPriority, channelId: String): ApiResponse = request(priority) { client.joinChannel(priority, channelId) }
+    override suspend fun archiveChannel(priority: SlockRequestPriority, channelId: String): ApiResponse =
+            request(priority) { client.archiveChannel(priority, channelId) }
+    override suspend fun deleteChannel(priority: SlockRequestPriority, channelId: String): ApiResponse = request(priority) { client.deleteChannel(priority, channelId) }
+    override suspend fun addChannelMember(priority: SlockRequestPriority, channelId: String, body: RequestBody): ApiResponse =
+            request(priority) { client.addChannelMember(priority, channelId, body.bodyAsString()) }
+    override suspend fun removeChannelMember(priority: SlockRequestPriority, channelId: String, kind: String, memberId: String): ApiResponse =
+            request(priority) { client.removeChannelMember(priority, channelId, kind, memberId) }
+    override suspend fun directMessages(priority: SlockRequestPriority): ApiResponse = request(priority) { client.directMessages(priority) }
+    override suspend fun openDirectMessage(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
+            request(priority) { client.openDirectMessage(priority, body.bodyAsString()) }
+    override suspend fun channelUnreadCounts(priority: SlockRequestPriority): ApiResponse = request(priority) { client.channelUnreadCounts(priority) }
+    override suspend fun markChannelReadToSeq(priority: SlockRequestPriority, channelId: String, body: RequestBody): ApiResponse =
+            request(priority) { client.markChannelReadToSeq(priority, channelId, body.bodyAsString()) }
+    override suspend fun markChannelReadAll(priority: SlockRequestPriority, channelId: String): ApiResponse =
+            request(priority) { client.markChannelReadAll(priority, channelId) }
+    override suspend fun markChannelUnread(priority: SlockRequestPriority, channelId: String): ApiResponse =
+            request(priority) { client.markChannelUnread(priority, channelId) }
+    override suspend fun inbox(priority: SlockRequestPriority, filter: String, limit: Int, offset: Int): ApiResponse =
+            request(priority) { client.inbox(priority, filter, limit, offset) }
+    override suspend fun markInboxReadAll(priority: SlockRequestPriority): ApiResponse = request(priority) { client.markInboxReadAll(priority) }
+    override suspend fun serverTasks(priority: SlockRequestPriority): ApiResponse = request(priority) { client.serverTasks(priority) }
+    override suspend fun channelTasks(priority: SlockRequestPriority, channelId: String): ApiResponse = request(priority) { client.channelTasks(priority, channelId) }
+    override suspend fun claimTask(priority: SlockRequestPriority, taskId: String): ApiResponse = request(priority) { client.claimTask(priority, taskId) }
+    override suspend fun updateTaskStatus(priority: SlockRequestPriority, taskId: String, body: RequestBody): ApiResponse =
+            request(priority) { client.updateTaskStatus(priority, taskId, body.bodyAsString()) }
+    override suspend fun saved(priority: SlockRequestPriority, limit: Int, offset: Int): ApiResponse = request(priority) { client.saved(priority, limit, offset) }
+    override suspend fun saveMessage(priority: SlockRequestPriority, messageId: String): ApiResponse = request(priority) { client.saveMessage(priority, messageId) }
+    override suspend fun unsaveMessage(priority: SlockRequestPriority, messageId: String): ApiResponse = request(priority) { client.unsaveMessage(priority, messageId) }
+    override suspend fun searchMessages(priority: SlockRequestPriority, query: String, limit: Int, offset: Int): ApiResponse =
+            request(priority) { client.searchMessages(priority, query, limit, offset) }
+    override suspend fun channelMessages(priority: SlockRequestPriority, channelId: String, limit: Int, beforeSeq: Long?): ApiResponse =
+            request(priority) { client.channelMessages(priority, channelId, limit, beforeSeq) }
+    override suspend fun messageContext(priority: SlockRequestPriority, messageId: String): ApiResponse = request(priority) { client.messageContext(priority, messageId) }
+    override suspend fun messageSync(priority: SlockRequestPriority, sinceSeq: Long, limit: Int, channelId: String?): ApiResponse =
+            request(priority) { client.messageSync(priority, sinceSeq, limit, channelId) }
+    override suspend fun sendMessage(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
+            request(priority) { client.sendMessage(priority, body.bodyAsString()) }
+    override suspend fun uploadAttachments(priority: SlockRequestPriority, channelId: RequestBody, files: List<MultipartBody.Part>): ApiResponse =
+            request(priority) { client.uploadAttachments(priority, channelId.bodyAsString(), files.map { it.toKmpMultipartFile() }) }
+    override suspend fun attachmentUrl(priority: SlockRequestPriority, attachmentId: String): ApiResponse =
+            request(priority) { client.attachmentUrl(priority, attachmentId) }
+    override suspend fun channelFiles(priority: SlockRequestPriority, channelId: String, limit: Int, cursor: String?): ApiResponse =
+            request(priority) { client.channelFiles(priority, channelId, limit, cursor) }
+    override suspend fun channelThreads(priority: SlockRequestPriority, channelId: String, limit: Int): ApiResponse =
+            request(priority) { client.channelThreads(priority, channelId, limit) }
+    override suspend fun createOrOpenThread(priority: SlockRequestPriority, channelId: String, body: RequestBody): ApiResponse =
+            request(priority) { client.createOrOpenThread(priority, channelId, body.bodyAsString()) }
+    override suspend fun followedThreads(priority: SlockRequestPriority, limit: Int): ApiResponse = request(priority) { client.followedThreads(priority, limit) }
+    override suspend fun followThread(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
+            request(priority) { client.followThread(priority, body.bodyAsString()) }
+    override suspend fun unfollowThread(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
+            request(priority) { client.unfollowThread(priority, body.bodyAsString()) }
+    override suspend fun markThreadDone(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
+            request(priority) { client.markThreadDone(priority, body.bodyAsString()) }
+    override suspend fun markThreadUndone(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
+            request(priority) { client.markThreadUndone(priority, body.bodyAsString()) }
+    override suspend fun serverUnreadSummary(priority: SlockRequestPriority): ApiResponse = request(priority) { client.serverUnreadSummary(priority) }
 
-    private suspend fun request(block: suspend () -> KmpHttpResponse): ApiResponse =
+    private suspend fun request(priority: SlockRequestPriority, block: suspend () -> KmpHttpResponse): ApiResponse =
             try {
                 ApiResponse.from(block())
             } catch (cancellation: CancellationException) {

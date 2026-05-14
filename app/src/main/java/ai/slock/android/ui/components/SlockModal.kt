@@ -1,5 +1,6 @@
 package ai.slock.android.ui.components
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -62,6 +63,8 @@ fun SlockModal(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     dismissOnScrimClick: Boolean = true,
+    dismissOnBackPress: Boolean = dismissOnScrimClick,
+    onBack: (() -> Unit)? = null,
     errorText: String? = null,
     primaryAction: SlockModalAction? = null,
     secondaryAction: SlockModalAction? = null,
@@ -69,6 +72,13 @@ fun SlockModal(
     content: @Composable () -> Unit
 ) {
     val panelInteractionSource = remember { MutableInteractionSource() }
+    BackHandler(enabled = true) {
+        when {
+            !enabled -> Unit
+            onBack != null -> onBack()
+            dismissOnBackPress -> onDismiss()
+        }
+    }
     Box(
         modifier = modifier
             .fillMaxSize()

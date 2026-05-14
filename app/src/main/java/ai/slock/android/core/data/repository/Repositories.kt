@@ -8,6 +8,7 @@ import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.RealtimeEvent
+import ai.slock.compose.network.SlockRequestPriority
 
 interface AuthSessionRepository {
     suspend fun currentSession(): DataResult<ai.slock.android.core.model.SessionSnapshot>
@@ -55,6 +56,11 @@ interface ConversationRepository {
     suspend fun getAttachmentOpenTarget(
         attachmentId: ai.slock.android.core.model.AttachmentId
     ): DataResult<AttachmentOpenTarget>
+    suspend fun getChannelFiles(
+        channelId: ChannelId,
+        limit: Int = 50,
+        cursor: String? = null
+    ): DataResult<ChannelFilesSnapshot>
     suspend fun sendMessage(
         channelId: ChannelId,
         body: String,
@@ -78,27 +84,68 @@ interface TaskRepository {
 }
 
 interface MemberRepository {
-    suspend fun getMembers(serverId: ServerId): DataResult<MemberSnapshot>
-    suspend fun getMemberProfile(memberId: MemberId): DataResult<MemberProfile>
-    suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile>
-    suspend fun getAgentDetail(agentId: MemberId): DataResult<AgentDetailSnapshot>
-    suspend fun getAgentDirectMessages(agentId: MemberId): DataResult<AgentDmSnapshot>
-    suspend fun getAgentReminders(agentId: MemberId): DataResult<AgentReminderSnapshot>
-    suspend fun getAgentActivity(agentId: MemberId): DataResult<AgentActivitySnapshot>
-    suspend fun getAgentWorkspaces(agentId: MemberId): DataResult<AgentWorkspaceSnapshot>
-    suspend fun getAgentWorkspaceTree(agentId: MemberId): DataResult<AgentWorkspaceTreeSnapshot>
+    suspend fun getMembers(
+        priority: SlockRequestPriority,
+        serverId: ServerId
+    ): DataResult<MemberSnapshot>
+    suspend fun getMemberProfile(
+        priority: SlockRequestPriority,
+        memberId: MemberId
+    ): DataResult<MemberProfile>
+    suspend fun updateAgentProfile(
+        priority: SlockRequestPriority,
+        request: AgentProfileUpdateRequest
+    ): DataResult<MemberProfile>
+    suspend fun getAgentDetail(
+        priority: SlockRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentDetailSnapshot>
+    suspend fun getAgentDirectMessages(
+        priority: SlockRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentDmSnapshot>
+    suspend fun getAgentReminders(
+        priority: SlockRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentReminderSnapshot>
+    suspend fun getAgentActivity(
+        priority: SlockRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentActivitySnapshot>
+    suspend fun getAgentWorkspaces(
+        priority: SlockRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentWorkspaceSnapshot>
+    suspend fun getAgentWorkspaceTree(
+        priority: SlockRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentWorkspaceTreeSnapshot>
     suspend fun getAgentWorkspaceChildren(
+        priority: SlockRequestPriority,
         agentId: MemberId,
         dirPath: String
     ): DataResult<AgentWorkspaceChildrenSnapshot>
     suspend fun readAgentWorkspaceFile(
+        priority: SlockRequestPriority,
         agentId: MemberId,
         path: String
     ): DataResult<AgentWorkspaceFilePreviewSnapshot>
-    suspend fun getAgentSkills(agentId: MemberId): DataResult<AgentSkillsSnapshot>
-    suspend fun getChannelMembers(channelId: ChannelId): DataResult<ChannelMemberSnapshot>
-    suspend fun addChannelMember(request: AddChannelMemberRequest): DataResult<ChannelMemberActionResult>
-    suspend fun removeChannelMember(request: RemoveChannelMemberRequest): DataResult<ChannelMemberActionResult>
+    suspend fun getAgentSkills(
+        priority: SlockRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentSkillsSnapshot>
+    suspend fun getChannelMembers(
+        priority: SlockRequestPriority,
+        channelId: ChannelId
+    ): DataResult<ChannelMemberSnapshot>
+    suspend fun addChannelMember(
+        priority: SlockRequestPriority,
+        request: AddChannelMemberRequest
+    ): DataResult<ChannelMemberActionResult>
+    suspend fun removeChannelMember(
+        priority: SlockRequestPriority,
+        request: RemoveChannelMemberRequest
+    ): DataResult<ChannelMemberActionResult>
 }
 
 interface AgentRepository {
@@ -200,7 +247,8 @@ data class TaskFilter(
 
 enum class InboxFilter(val wireValue: String) {
     All("all"),
-    Unread("unread")
+    Unread("unread"),
+    Mentions("mentions")
 }
 
 const val DEFAULT_PAGE_LIMIT = 30

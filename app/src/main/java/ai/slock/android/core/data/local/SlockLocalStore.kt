@@ -49,36 +49,43 @@ interface SlockLocalStore {
     fun getConversation(id: ThreadId): ConversationSummary?
     fun getHomeConversations(serverId: ServerId): LocalHomeConversations
     fun observeHomeConversations(serverId: ServerId): Flow<LocalHomeConversations>
-    fun clearConversationUnread(channelId: ChannelId, syncedAtMs: Long)
-    fun getThreadTimeline(threadId: ThreadId): LocalThreadTimeline?
-    fun observeThreadTimeline(threadId: ThreadId): Flow<LocalThreadTimeline?>
-    fun upsertMessage(message: Message, syncedAtMs: Long, streamChannelId: ChannelId? = null)
-    fun getMessagesForThread(threadId: ThreadId): List<Message>
-    fun upsertTaskReference(task: TaskSummary, syncedAtMs: Long)
-    fun deleteTaskReference(taskId: TaskId)
-    fun getTaskReferences(): List<TaskSummary>
-    fun observeTaskReferences(): Flow<List<TaskSummary>>
-    fun getTaskContext(task: TaskSummary): LocalTaskContext
-    fun getTaskReferencesForMessage(messageId: MessageId): List<TaskSummary>
-    fun upsertMemberSnapshot(member: MemberProfile, syncedAtMs: Long)
-    fun getMemberSnapshot(memberId: MemberId): MemberProfile?
+    fun clearConversationUnread(channelId: ChannelId, syncedAtMs: Long, serverId: ServerId? = null)
+    fun getThreadTimeline(threadId: ThreadId, serverId: ServerId? = null): LocalThreadTimeline?
+    fun observeThreadTimeline(threadId: ThreadId, serverId: ServerId? = null): Flow<LocalThreadTimeline?>
+    fun upsertMessage(
+        message: Message,
+        syncedAtMs: Long,
+        streamChannelId: ChannelId? = null,
+        serverId: ServerId? = null
+    )
+    fun getMessagesForThread(threadId: ThreadId, serverId: ServerId? = null): List<Message>
+    fun upsertTaskReference(task: TaskSummary, syncedAtMs: Long, serverId: ServerId? = null)
+    fun deleteTaskReference(taskId: TaskId, serverId: ServerId? = null)
+    fun getTaskReferences(serverId: ServerId? = null): List<TaskSummary>
+    fun observeTaskReferences(serverId: ServerId? = null): Flow<List<TaskSummary>>
+    fun getTaskContext(task: TaskSummary, serverId: ServerId? = null): LocalTaskContext
+    fun getTaskReferencesForMessage(messageId: MessageId, serverId: ServerId? = null): List<TaskSummary>
+    fun upsertMemberSnapshot(member: MemberProfile, syncedAtMs: Long, serverId: ServerId? = null)
+    fun getMemberSnapshot(memberId: MemberId, serverId: ServerId? = null): MemberProfile?
     fun updateMemberPresence(
         memberId: MemberId,
         presence: Presence,
         kind: MemberKind?,
-        syncedAtMs: Long
+        syncedAtMs: Long,
+        serverId: ServerId? = null
     )
     fun updateMessageThreadMetadata(
         parentMessageId: MessageId,
         threadChannelId: ChannelId,
         replyCount: Int,
         lastReplyAt: String?,
-        syncedAtMs: Long
+        syncedAtMs: Long,
+        serverId: ServerId? = null
     )
     fun upsertSyncCursor(cursor: LocalSyncCursor)
-    fun getSyncCursor(scopeId: String): LocalSyncCursor?
+    fun getSyncCursor(scopeId: String, serverId: ServerId? = null): LocalSyncCursor?
     fun enqueueOutboxMessage(message: LocalOutboxMessage)
-    fun getPendingOutboxMessages(): List<LocalOutboxMessage>
+    fun getPendingOutboxMessages(serverId: ServerId? = null): List<LocalOutboxMessage>
     fun updateOutboxStatus(localId: String, status: LocalOutboxStatus, errorCode: String?)
 }
 
@@ -106,6 +113,7 @@ data class LocalTaskContext(
 )
 
 data class LocalSyncCursor(
+    val serverId: ServerId? = null,
     val scopeId: String,
     val scopeKind: LocalSyncScopeKind,
     val latestSeq: Long? = null,
@@ -123,6 +131,7 @@ enum class LocalSyncScopeKind {
 
 data class LocalOutboxMessage(
     val localId: String,
+    val serverId: ServerId? = null,
     val channelId: ChannelId,
     val threadId: ThreadId,
     val body: String,
@@ -144,6 +153,7 @@ class SqlDelightSlockLocalStore(
     private val database: SlockDatabase
 ) : SlockLocalStore {
     private val queries = database.slockDatabaseQueries
+    private val fallbackServerId = ServerId("__local__")
 
     override fun upsertConversation(
         conversation: ConversationSummary,
@@ -165,6 +175,7 @@ class SqlDelightSlockLocalStore(
             serverId?.value
                 ?: selectStoredConversationServerId(conversationToStore.threadId).orEmpty()
                     .takeIf(String::isNotBlank)
+                ?: fallbackServerId.value
         requireValidLocalId(conversationToStore.threadId.value, "conversation.threadId")
         requireValidLocalId(storedChannelId?.value, "conversation.channelId")
         requireValidLocalId(streamChannelId?.value, "conversation.streamChannelId")
@@ -244,9 +255,11 @@ class SqlDelightSlockLocalStore(
             .map { getHomeConversations(serverId) }
             .onStart { emit(getHomeConversations(serverId)) }
 
-    override fun clearConversationUnread(channelId: ChannelId, syncedAtMs: Long) {
+    override fun clearConversationUnread(channelId: ChannelId, syncedAtMs: Long, serverId: ServerId?) {
+        val resolvedServerId = serverId ?: fallbackServerId
         queries.clearConversationUnread(
             last_synced_at_ms = syncedAtMs,
+            server_id = resolvedServerId.value,
             channel_id = channelId.value,
             thread_id = channelId.value,
             stream_channel_id = channelId.value,
@@ -254,15 +267,17 @@ class SqlDelightSlockLocalStore(
         )
     }
 
-    override fun getThreadTimeline(threadId: ThreadId): LocalThreadTimeline? {
+    override fun getThreadTimeline(threadId: ThreadId, serverId: ServerId?): LocalThreadTimeline? {
         val conversation = getConversation(threadId) ?: return null
+        val resolvedServerId =
+            serverId ?: selectStoredConversationServerId(conversation.threadId)?.let(::ServerId) ?: fallbackServerId
         val streamChannelId = conversation.explicitMessageStreamChannelId() ?: return null
-        val messages = getMessagesForThread(ThreadId(streamChannelId.value))
+        val messages = getMessagesForThread(ThreadId(streamChannelId.value), resolvedServerId)
         val parentMessage =
-            conversation.thread?.parentMessageId?.let(::getMessage)
-        val tasks = messages.flatMap { message -> getTaskReferencesForMessage(message.id) }
+            conversation.thread?.parentMessageId?.let { getMessage(it, resolvedServerId) }
+        val tasks = messages.flatMap { message -> getTaskReferencesForMessage(message.id, resolvedServerId) }
             .distinctBy { it.id }
-        val cursor = getSyncCursor(streamChannelId.value)
+        val cursor = getSyncCursor(streamChannelId.value, resolvedServerId)
         return LocalThreadTimeline(
             conversation = conversation,
             messages = messages,
@@ -272,50 +287,66 @@ class SqlDelightSlockLocalStore(
         )
     }
 
-    override fun observeThreadTimeline(threadId: ThreadId): Flow<LocalThreadTimeline?> =
-        queries
+    override fun observeThreadTimeline(threadId: ThreadId, serverId: ServerId?): Flow<LocalThreadTimeline?> =
+        flowForThreadTimeline(threadId, serverId)
+
+    private fun flowForThreadTimeline(threadId: ThreadId, serverId: ServerId?): Flow<LocalThreadTimeline?> {
+        val resolvedServerId =
+            serverId ?: selectStoredConversationServerId(threadId)?.let(::ServerId)
+                ?: fallbackServerId
+        val key = threadId.value
+        return queries
             .selectThreadTimelineInvalidation(
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value,
-                threadId.value
+                resolvedServerId.value,
+                key,
+                key,
+                key,
+                key,
+                resolvedServerId.value,
+                key,
+                key,
+                key,
+                key,
+                resolvedServerId.value,
+                key,
+                key,
+                resolvedServerId.value,
+                key,
+                key,
+                key,
+                resolvedServerId.value,
+                key,
+                key,
+                key,
+                resolvedServerId.value
             )
             .asFlow()
             .mapToList(Dispatchers.IO)
-            .map { getThreadTimeline(threadId) }
-            .onStart { emit(getThreadTimeline(threadId)) }
+            .map { getThreadTimeline(threadId, resolvedServerId) }
+            .onStart { emit(getThreadTimeline(threadId, resolvedServerId)) }
+    }
 
     override fun upsertMessage(
         message: Message,
         syncedAtMs: Long,
-        streamChannelId: ChannelId?
+        streamChannelId: ChannelId?,
+        serverId: ServerId?
     ) {
         requireValidLocalId(message.threadId.value, "message.threadId")
         requireValidLocalId(streamChannelId?.value, "message.streamChannelId")
+        val storedServerId =
+            serverId?.value
+                ?: selectStoredConversationServerId(message.threadId)
+                ?: streamChannelId?.let { selectStoredConversationServerId(ThreadId(it.value)) }
+                ?: fallbackServerId.value
         val storedChannelId = requireNotNull(message.channelId ?: streamChannelId) {
             "Missing local message stream channel id for message ${message.id.value}"
         }
         requireValidLocalId(storedChannelId.value, "message.channelId")
         database.transaction {
             val currentMessage = queries.selectMessage(message.id.value).executeAsOneOrNull()
-            val currentAuthorSnapshot = getMemberSnapshot(message.author.id)
-                ?: currentMessage?.author_id?.let { getMemberSnapshot(MemberId(it)) }
+            val currentAuthorSnapshot = getMemberSnapshot(message.author.id, ServerId(storedServerId))
+                ?: currentMessage?.author_id?.let { getMemberSnapshot(MemberId(it), ServerId(storedServerId)) }
             val storedAuthor = message.author
                 .withStoredFallback(currentMessage)
                 .withProfileFallback(currentAuthorSnapshot)
@@ -337,6 +368,7 @@ class SqlDelightSlockLocalStore(
                 }
             queries.upsertMessage(
                 id = message.id.value,
+                server_id = storedServerId,
                 thread_id = message.threadId.value,
                 channel_id = storedChannelId.value,
                 thread_channel_id = storedThreadChannelId,
@@ -377,51 +409,61 @@ class SqlDelightSlockLocalStore(
                     sort_order = index.toLong()
                 )
             }
-            message.task?.let { upsertTaskReference(it, syncedAtMs) }
-            upsertMemberSnapshot(storedAuthor, syncedAtMs)
+            message.task?.let { upsertTaskReference(it, syncedAtMs, ServerId(storedServerId)) }
+            upsertMemberSnapshot(storedAuthor, syncedAtMs, ServerId(storedServerId))
         }
     }
 
-    override fun getMessagesForThread(threadId: ThreadId): List<Message> =
-        queries.selectMessagesForThread(threadId.value)
+    override fun getMessagesForThread(threadId: ThreadId, serverId: ServerId?): List<Message> {
+        val resolvedServerId =
+            serverId ?: selectStoredConversationServerId(threadId)?.let(::ServerId) ?: fallbackServerId
+        return queries.selectMessagesForThread(resolvedServerId.value, threadId.value)
             .executeAsList()
             .map { row ->
                 val attachments =
                     queries.selectAttachmentsForMessage(row.id).executeAsList().map { it.toAttachment() }
-                val task = getTaskReferencesForMessage(MessageId(row.id)).firstOrNull()
+                val task = getTaskReferencesForMessage(MessageId(row.id), resolvedServerId).firstOrNull()
                 row.toMessage(attachments = attachments, task = task)
-                    .withLocalAuthorSnapshot()
+                    .withLocalAuthorSnapshot(resolvedServerId)
             }
             .sortedForLocalThreadTimeline()
+    }
 
-    private fun getMessage(messageId: MessageId): Message? =
+    private fun getMessage(messageId: MessageId, serverId: ServerId): Message? =
         queries.selectMessage(messageId.value)
             .executeAsOneOrNull()
+            ?.takeIf { it.server_id == serverId.value }
             ?.let { row ->
                 val attachments =
                     queries.selectAttachmentsForMessage(row.id).executeAsList().map { it.toAttachment() }
-                val task = getTaskReferencesForMessage(MessageId(row.id)).firstOrNull()
+                val task = getTaskReferencesForMessage(MessageId(row.id), serverId).firstOrNull()
                 row.toMessage(attachments = attachments, task = task)
-                    .withLocalAuthorSnapshot()
+                    .withLocalAuthorSnapshot(serverId)
             }
 
-    private fun Message.withLocalAuthorSnapshot(): Message =
-        copy(author = author.withProfileFallback(getMemberSnapshot(author.id)))
+    private fun Message.withLocalAuthorSnapshot(serverId: ServerId): Message =
+        copy(author = author.withProfileFallback(getMemberSnapshot(author.id, serverId)))
 
-    private fun TaskSummary.withLocalAssigneeSnapshot(): TaskSummary =
+    private fun TaskSummary.withLocalAssigneeSnapshot(serverId: ServerId): TaskSummary =
         assignee?.let { assignee ->
-            copy(assignee = assignee.withProfileFallback(getMemberSnapshot(assignee.id)))
+            copy(assignee = assignee.withProfileFallback(getMemberSnapshot(assignee.id, serverId)))
         } ?: this
 
-    override fun upsertTaskReference(task: TaskSummary, syncedAtMs: Long) {
-        val current = queries.selectTaskReference(task.id.value)
+    override fun upsertTaskReference(task: TaskSummary, syncedAtMs: Long, serverId: ServerId?) {
+        val resolvedServerId =
+            serverId
+                ?: task.channelId?.let { selectStoredConversationServerId(ThreadId(it.value))?.let(::ServerId) }
+                ?: task.threadId?.let { selectStoredConversationServerId(it)?.let(::ServerId) }
+                ?: fallbackServerId
+        val current = queries.selectTaskReference(resolvedServerId.value, task.id.value)
             .executeAsOneOrNull()
             ?.toTaskSummary()
-            ?.withLocalAssigneeSnapshot()
-        val incoming = task.withLocalAssigneeSnapshot()
-        val merged = current?.withReferencesFrom(incoming)?.withLocalAssigneeSnapshot() ?: incoming
+            ?.withLocalAssigneeSnapshot(resolvedServerId)
+        val incoming = task.withLocalAssigneeSnapshot(resolvedServerId)
+        val merged = current?.withReferencesFrom(incoming)?.withLocalAssigneeSnapshot(resolvedServerId) ?: incoming
         queries.upsertTaskReference(
             id = merged.id.value,
+            server_id = resolvedServerId.value,
             message_id = merged.messageId?.value,
             parent_message_id = merged.parentMessageId?.value,
             channel_id = merged.channelId?.value,
@@ -439,29 +481,41 @@ class SqlDelightSlockLocalStore(
             can_claim = merged.canClaim.toLongFlag(),
             last_synced_at_ms = syncedAtMs
         )
-        merged.assignee?.let { upsertMemberSnapshot(it, syncedAtMs) }
+        merged.assignee?.let { upsertMemberSnapshot(it, syncedAtMs, resolvedServerId) }
     }
 
-    override fun getTaskReferencesForMessage(messageId: MessageId): List<TaskSummary> =
-        queries.selectTaskReferencesForMessage(messageId.value, messageId.value)
+    override fun getTaskReferencesForMessage(messageId: MessageId, serverId: ServerId?): List<TaskSummary> {
+        val resolvedServerId = serverId ?: fallbackServerId
+        return queries.selectTaskReferencesForMessage(resolvedServerId.value, messageId.value, messageId.value)
             .executeAsList()
-            .map { it.toTaskSummary().withLocalAssigneeSnapshot() }
+            .map { it.toTaskSummary().withLocalAssigneeSnapshot(resolvedServerId) }
+    }
 
-    override fun getTaskReferences(): List<TaskSummary> =
-        queries.selectAllTaskReferences()
+    override fun getTaskReferences(serverId: ServerId?): List<TaskSummary> {
+        val resolvedServerId = serverId ?: fallbackServerId
+        return queries.selectAllTaskReferences(resolvedServerId.value)
             .executeAsList()
-            .map { it.toTaskSummary().withLocalAssigneeSnapshot() }
+            .map { it.toTaskSummary().withLocalAssigneeSnapshot(resolvedServerId) }
+    }
 
-    override fun observeTaskReferences(): Flow<List<TaskSummary>> =
-        queries.selectAllTaskReferences()
+    override fun observeTaskReferences(serverId: ServerId?): Flow<List<TaskSummary>> {
+        val resolvedServerId = serverId ?: fallbackServerId
+        return queries.selectAllTaskReferences(resolvedServerId.value)
             .asFlow()
             .mapToList(Dispatchers.IO)
-            .map { getTaskReferences() }
-            .onStart { emit(getTaskReferences()) }
+            .map { getTaskReferences(resolvedServerId) }
+            .onStart { emit(getTaskReferences(resolvedServerId)) }
+    }
 
-    override fun getTaskContext(task: TaskSummary): LocalTaskContext {
+    override fun getTaskContext(task: TaskSummary, serverId: ServerId?): LocalTaskContext {
+        val resolvedServerId =
+            serverId
+                ?: task.channelId?.let { selectStoredConversationServerId(ThreadId(it.value))?.let(::ServerId) }
+                ?: task.threadId?.let { selectStoredConversationServerId(it)?.let(::ServerId) }
+                ?: fallbackServerId
         val cachedTask =
             queries.selectTaskContext(
+                server_id = resolvedServerId.value,
                 id = task.id.value,
                 message_id = task.messageId?.value ?: task.id.value,
                 parent_message_id = task.parentMessageId?.value ?: task.id.value,
@@ -469,10 +523,11 @@ class SqlDelightSlockLocalStore(
             )
                 .executeAsOneOrNull()
                 ?.toTaskSummary()
-                ?.withLocalAssigneeSnapshot()
-        val mergedTask = cachedTask?.withReferencesFrom(task.withLocalAssigneeSnapshot()) ?: task.withLocalAssigneeSnapshot()
+                ?.withLocalAssigneeSnapshot(resolvedServerId)
+        val incomingTask = task.withLocalAssigneeSnapshot(resolvedServerId)
+        val mergedTask = cachedTask?.withReferencesFrom(incomingTask) ?: incomingTask
         val parentMessageId = mergedTask.parentMessageId ?: mergedTask.messageId
-        val parentMessage = parentMessageId?.let(::getMessage)
+        val parentMessage = parentMessageId?.let { getMessage(it, resolvedServerId) }
         val sourceChannelId =
             mergedTask.channelId
                 ?: parentMessage?.channelId
@@ -501,14 +556,17 @@ class SqlDelightSlockLocalStore(
         )
     }
 
-    override fun deleteTaskReference(taskId: TaskId) {
-        queries.deleteTaskReference(taskId.value)
+    override fun deleteTaskReference(taskId: TaskId, serverId: ServerId?) {
+        val resolvedServerId = serverId ?: fallbackServerId
+        queries.deleteTaskReference(resolvedServerId.value, taskId.value)
     }
 
-    override fun upsertMemberSnapshot(member: MemberProfile, syncedAtMs: Long) {
-        val merged = member.withProfileFallback(getMemberSnapshot(member.id))
+    override fun upsertMemberSnapshot(member: MemberProfile, syncedAtMs: Long, serverId: ServerId?) {
+        val resolvedServerId = serverId ?: fallbackServerId
+        val merged = member.withProfileFallback(getMemberSnapshot(member.id, resolvedServerId))
         queries.upsertMemberSnapshot(
             id = merged.id.value,
+            server_id = resolvedServerId.value,
             display_name = merged.displayName,
             handle = merged.handle,
             kind = merged.kind.wireValue,
@@ -522,16 +580,22 @@ class SqlDelightSlockLocalStore(
         )
     }
 
-    override fun getMemberSnapshot(memberId: MemberId): MemberProfile? =
-        queries.selectMemberSnapshot(memberId.value).executeAsOneOrNull()?.toMemberProfile()
+    override fun getMemberSnapshot(memberId: MemberId, serverId: ServerId?): MemberProfile? {
+        val resolvedServerId = serverId ?: fallbackServerId
+        return queries.selectMemberSnapshot(resolvedServerId.value, memberId.value)
+            .executeAsOneOrNull()
+            ?.toMemberProfile()
+    }
 
     override fun updateMemberPresence(
         memberId: MemberId,
         presence: Presence,
         kind: MemberKind?,
-        syncedAtMs: Long
+        syncedAtMs: Long,
+        serverId: ServerId?
     ) {
-        val current = getMemberSnapshot(memberId)
+        val resolvedServerId = serverId ?: fallbackServerId
+        val current = getMemberSnapshot(memberId, resolvedServerId)
         if (current == null) {
             upsertMemberSnapshot(
                 MemberProfile(
@@ -541,7 +605,8 @@ class SqlDelightSlockLocalStore(
                     kind = kind ?: MemberKind.Human,
                     presence = presence
                 ),
-                syncedAtMs
+                syncedAtMs,
+                resolvedServerId
             )
             return
         }
@@ -549,6 +614,7 @@ class SqlDelightSlockLocalStore(
             presence = presence.wireValue,
             value = kind?.wireValue,
             last_synced_at_ms = syncedAtMs,
+            server_id = resolvedServerId.value,
             id = memberId.value
         )
     }
@@ -558,22 +624,29 @@ class SqlDelightSlockLocalStore(
         threadChannelId: ChannelId,
         replyCount: Int,
         lastReplyAt: String?,
-        syncedAtMs: Long
+        syncedAtMs: Long,
+        serverId: ServerId?
     ) {
+        val resolvedServerId = serverId ?: fallbackServerId
         queries.updateMessageThreadMetadata(
             thread_channel_id = threadChannelId.value,
             reply_count = replyCount.toLong(),
             value = lastReplyAt,
             last_synced_at_ms = syncedAtMs,
+            server_id = resolvedServerId.value,
             id = parentMessageId.value
         )
     }
 
     override fun upsertSyncCursor(cursor: LocalSyncCursor) {
-        val current = queries.selectSyncCursor(cursor.scopeId).executeAsOneOrNull()?.toLocalSyncCursor()
+        val resolvedServerId = cursor.serverId ?: fallbackServerId
+        val current = queries.selectSyncCursor(resolvedServerId.value, cursor.scopeId)
+            .executeAsOneOrNull()
+            ?.toLocalSyncCursor()
         val merged = current?.withUpdate(cursor) ?: cursor
         queries.upsertSyncCursor(
             scope_id = merged.scopeId,
+            server_id = resolvedServerId.value,
             scope_kind = merged.scopeKind.wireValue,
             latest_seq = merged.latestSeq,
             oldest_loaded_seq = merged.oldestLoadedSeq,
@@ -584,12 +657,17 @@ class SqlDelightSlockLocalStore(
         )
     }
 
-    override fun getSyncCursor(scopeId: String): LocalSyncCursor? =
-        queries.selectSyncCursor(scopeId).executeAsOneOrNull()?.toLocalSyncCursor()
+    override fun getSyncCursor(scopeId: String, serverId: ServerId?): LocalSyncCursor? {
+        val resolvedServerId = serverId ?: fallbackServerId
+        return queries.selectSyncCursor(resolvedServerId.value, scopeId)
+            .executeAsOneOrNull()
+            ?.toLocalSyncCursor()
+    }
 
     override fun enqueueOutboxMessage(message: LocalOutboxMessage) {
         queries.insertOutboxMessage(
             local_id = message.localId,
+            server_id = (message.serverId ?: fallbackServerId).value,
             channel_id = message.channelId.value,
             thread_id = message.threadId.value,
             body = message.body,
@@ -603,8 +681,12 @@ class SqlDelightSlockLocalStore(
         )
     }
 
-    override fun getPendingOutboxMessages(): List<LocalOutboxMessage> =
-        queries.selectPendingOutboxMessages().executeAsList().map { it.toLocalOutboxMessage() }
+    override fun getPendingOutboxMessages(serverId: ServerId?): List<LocalOutboxMessage> {
+        val resolvedServerId = serverId ?: fallbackServerId
+        return queries.selectPendingOutboxMessages(resolvedServerId.value)
+            .executeAsList()
+            .map { it.toLocalOutboxMessage() }
+    }
 
     override fun updateOutboxStatus(localId: String, status: LocalOutboxStatus, errorCode: String?) {
         queries.updateOutboxStatus(
@@ -914,6 +996,7 @@ private fun Local_member_snapshot.toMemberProfile(): MemberProfile =
 
 private fun Local_sync_cursor.toLocalSyncCursor(): LocalSyncCursor =
     LocalSyncCursor(
+        serverId = ServerId(server_id),
         scopeId = scope_id,
         scopeKind = scope_kind.toLocalSyncScopeKind(),
         latestSeq = latest_seq,
@@ -927,6 +1010,7 @@ private fun Local_sync_cursor.toLocalSyncCursor(): LocalSyncCursor =
 private fun Local_outbox_message.toLocalOutboxMessage(): LocalOutboxMessage =
     LocalOutboxMessage(
         localId = local_id,
+        serverId = ServerId(server_id),
         channelId = ChannelId(channel_id),
         threadId = ThreadId(thread_id),
         body = body,

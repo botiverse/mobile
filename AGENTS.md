@@ -26,3 +26,33 @@ cd /Users/artin/AndroidStudioProjects/Slock
 - Do not keep shadow copies of shared classes in `app/src/main/java/ai/slock/compose/...`.
   Temporary app-side shims can make one APK build, but they drift from the real shared
   artifact and should be removed before handoff.
+
+## Network Priority Workflow
+
+- Every Android request that reaches `ai.slock.compose.network.SlockApiClient` must be
+  started inside `withSlockRequestPriority(...)`; do not rely on an implicit default.
+- `SlockApi` methods must take an explicit `SlockRequestPriority` parameter. Do not
+  add no-priority overloads or defaults. This is the compile-time tripwire: new API
+  methods and fake implementations should fail to compile until the caller chooses
+  Foreground, Visible, or Background.
+- Use `Foreground` only for user-blocking work: opening the current thread, sending
+  messages, uploading attachments for send, opening/downloading the tapped attachment,
+  task status changes, membership/channel mutations, and settings save/delete actions.
+- Use `Visible` for content the user is currently looking at but that is not an
+  immediate mutation: current thread refresh/pagination, current tab files/tasks,
+  visible inbox/saved/search refresh, and explicit retry actions.
+- Use `Background` for warmup/reconcile/periodic work: Home progressive prefetch,
+  unread summary polling, silent home refreshes with cached content, background
+  saved/followed/search refreshes, diagnostics, and any future cache preloads.
+- If a new repository/API call is added, first decide its priority and put the
+  priority key/reason in the call site. Missing priority is a bug because it hides
+  work in the wrong queue and makes request-pool logs useless.
+- Current OkHttp lane policy is intentionally separate per priority: Foreground
+  scheduler/client `12`, Visible `8`, Background `4`. This keeps foreground work well
+  above OkHttp's single-dispatcher per-host default while still capping background
+  refresh. Do not collapse these lanes back into one client or one dispatcher.
+- Background work has its own low-priority lane. It is allowed to run concurrently,
+  but a background request waits before starting HTTP whenever Foreground/Visible work
+  is waiting or active. Already-started background requests are not preemptively
+  cancelled; page/server cancellation is handled by the caller scope and stale-result
+  guards.

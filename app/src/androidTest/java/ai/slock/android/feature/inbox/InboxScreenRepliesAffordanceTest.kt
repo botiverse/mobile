@@ -105,6 +105,40 @@ class InboxScreenRepliesAffordanceTest {
         assertEquals(1, markReadCount.get())
     }
 
+    @Test
+    fun messageRowShowsYouBadgeOnlyForUnreadMentions() {
+        composeRule.setContent {
+            SlockTheme {
+                InboxScreen(
+                    state = InboxUiState(
+                        loadState = ScreenLoadState.Content(
+                            InboxContent(
+                                server = ServerSummary(ServerId("server-1"), "Slock Android"),
+                                items = listOf(
+                                    inboxItem(replyCount = 0).copy(
+                                        unreadCount = 2,
+                                        hasMention = true
+                                    ),
+                                    inboxItem(replyCount = 0).copy(
+                                        key = "thread:read-mention",
+                                        channelId = ChannelId("channel-read-mention"),
+                                        unreadCount = 0,
+                                        hasMention = true
+                                    )
+                                )
+                            )
+                        )
+                    ),
+                    onBack = {},
+                    onOpenThread = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("YOU").assertIsDisplayed()
+        composeRule.onAllNodesWithText("YOU").assertCountEquals(1)
+    }
+
     private fun inboxItem(replyCount: Int) = InboxItem(
         key = "thread:reply-${replyCount}",
         kind = InboxItemKind.Thread,

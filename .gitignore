@@ -21,3 +21,5 @@ __pycache__
 
 artifacts/*.apk
 artifacts/*.apk.idsig
+artifacts/releases
+diagnostics

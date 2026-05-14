@@ -7,7 +7,7 @@ data class SanitizedDiagnosticLogEntry(
 )
 
 object SanitizedDiagnosticsLogBuffer {
-    private const val MaxEntries = 80
+    private const val MaxEntries = 100_000
     private val entries = ArrayDeque<SanitizedDiagnosticLogEntry>()
 
     @Synchronized

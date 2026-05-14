@@ -9,6 +9,7 @@ import ai.slock.android.core.data.repository.TaskRepository
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ThreadId
+import ai.slock.compose.network.SlockRequestPriority
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
@@ -78,10 +79,10 @@ class MockRepositoryTest {
 
     @Test
     fun memberRepositoryExposesMemberBranches() {
-        assertTrue(runSuspend { memberRepo(MockScenario.Content).getMembers(serverId) } is DataResult.Content)
-        assertTrue(runSuspend { memberRepo(MockScenario.Empty).getMembers(serverId) } is DataResult.Empty)
-        assertTrue(runSuspend { memberRepo(MockScenario.Error).getMembers(serverId) } is DataResult.Error)
-        assertTrue(runSuspend { memberRepo(MockScenario.NoPermission).getMembers(serverId) } is DataResult.NoPermission)
+        assertTrue(runSuspend { memberRepo(MockScenario.Content).getMembers(SlockRequestPriority.Visible, serverId) } is DataResult.Content)
+        assertTrue(runSuspend { memberRepo(MockScenario.Empty).getMembers(SlockRequestPriority.Visible, serverId) } is DataResult.Empty)
+        assertTrue(runSuspend { memberRepo(MockScenario.Error).getMembers(SlockRequestPriority.Visible, serverId) } is DataResult.Error)
+        assertTrue(runSuspend { memberRepo(MockScenario.NoPermission).getMembers(SlockRequestPriority.Visible, serverId) } is DataResult.NoPermission)
     }
 
     private fun serverRepo(scenario: MockScenario): ServerRepository =

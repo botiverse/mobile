@@ -16,6 +16,11 @@ import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
+import ai.slock.android.core.model.ServerId
+import ai.slock.android.core.model.ServerSummary
+import ai.slock.android.core.model.unreadReplyCount
+import ai.slock.android.core.model.withUnreadReplyCount
+import ai.slock.android.core.data.repository.ChannelUnreadSnapshot
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.mergeRealtimeUpdate
 import org.junit.Assert.assertEquals
@@ -326,6 +331,52 @@ class ThreadUiStateTest {
     }
 
     @Test
+    fun applyReplyUnreadCountsUpdatesReplyMessageMetadataByThreadChannelId() {
+        val replyMessage =
+            message("message-reply-parent", seq = 20).copy(
+                threadChannelId = ChannelId("reply-thread-1")
+            )
+        val state =
+            ThreadUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        ThreadContent(header = conversation("thread-1"), messages = listOf(replyMessage))
+                    )
+            )
+
+        val updated =
+            state.applyReplyUnreadCounts(
+                ChannelUnreadSnapshot(
+                    server = server(),
+                    unreadCounts = mapOf(ChannelId("reply-thread-1") to 3)
+                )
+            )
+        val content = (updated.loadState as ScreenLoadState.Content).data
+
+        assertEquals(3, content.messages.single().unreadReplyCount())
+    }
+
+    @Test
+    fun clearReplyUnreadResetsReplyMessageMetadataForMatchingThread() {
+        val replyMessage =
+            message("message-reply-parent", seq = 20)
+                .copy(threadChannelId = ChannelId("reply-thread-1"))
+                .withUnreadReplyCount(3)
+        val state =
+            ThreadUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        ThreadContent(header = conversation("thread-1"), messages = listOf(replyMessage))
+                    )
+            )
+
+        val updated = state.clearReplyUnread(ChannelId("reply-thread-1"))
+        val content = (updated.loadState as ScreenLoadState.Content).data
+
+        assertEquals(0, content.messages.single().unreadReplyCount())
+    }
+
+    @Test
     fun realtimeTaskCreatedMergesIntoVisibleThreadMessage() {
         val message = message("message-task-parent", seq = 20)
         val task =
@@ -524,6 +575,13 @@ class ThreadUiStateTest {
             channelId = ChannelId(id),
             kind = ConversationKind.Channel,
             name = name
+        )
+
+    private fun server(): ServerSummary =
+        ServerSummary(
+            id = ServerId("server-1"),
+            slug = "server-1",
+            name = "Server"
         )
 
     private fun message(

@@ -6,6 +6,8 @@ import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthSessionStore
 import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.auth.AuthUser
+import ai.slock.compose.network.SlockRequestPriority
+import ai.slock.compose.network.withSlockRequestPriority
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -46,12 +48,21 @@ class ComposeSlockApiAdapterTest {
                 ComposeSlockApiAdapter(
                         store = InMemoryAuthSessionStore(sampleSession),
                         baseUrl = "https://api.example.test/api/",
-                        httpClient = client
+                        httpClient = client,
+                        foregroundHttpClient = client,
+                        visibleHttpClient = client,
+                        backgroundHttpClient = client
                 )
 
         val response =
                 runBlocking {
-                    api.channelMessages(channelId = "channel-1", limit = 50, beforeSeq = 42)
+                    withSlockRequestPriority(
+                            priority = SlockRequestPriority.Visible,
+                            key = "thread:channel-1",
+                            reason = "test_channel_messages"
+                    ) {
+                        api.channelMessages(SlockRequestPriority.Visible, channelId = "channel-1", limit = 50, beforeSeq = 42)
+                    }
                 }
 
         assertTrue(response.isSuccessful)
@@ -86,10 +97,22 @@ class ComposeSlockApiAdapterTest {
                 ComposeSlockApiAdapter(
                         store = InMemoryAuthSessionStore(sampleSession),
                         baseUrl = "https://api.example.test/api/",
-                        httpClient = client
+                        httpClient = client,
+                        foregroundHttpClient = client,
+                        visibleHttpClient = client,
+                        backgroundHttpClient = client
                 )
 
-        val response = runBlocking { api.channels() }
+        val response =
+                runBlocking {
+                    withSlockRequestPriority(
+                            priority = SlockRequestPriority.Visible,
+                            key = "channels",
+                            reason = "test_channels"
+                    ) {
+                        api.channels(SlockRequestPriority.Visible)
+                    }
+                }
 
         assertTrue(response.isSuccessful)
         val request = requireNotNull(captured)
@@ -134,11 +157,23 @@ class ComposeSlockApiAdapterTest {
                                         warningLogger = {}
                                 ),
                         httpClient = client,
+                        foregroundHttpClient = client,
+                        visibleHttpClient = client,
+                        backgroundHttpClient = client,
                         logger = {},
                         warningLogger = {}
                 )
 
-        val response = runBlocking { api.channels() }
+        val response =
+                runBlocking {
+                    withSlockRequestPriority(
+                            priority = SlockRequestPriority.Visible,
+                            key = "channels",
+                            reason = "test_retry"
+                    ) {
+                        api.channels(SlockRequestPriority.Visible)
+                    }
+                }
 
         assertTrue(response.isSuccessful)
         assertEquals(listOf("Bearer old-access", "Bearer new-access"), authorizations)
@@ -172,11 +207,23 @@ class ComposeSlockApiAdapterTest {
                                         warningLogger = {}
                                 ),
                         httpClient = client,
+                        foregroundHttpClient = client,
+                        visibleHttpClient = client,
+                        backgroundHttpClient = client,
                         logger = {},
                         warningLogger = {}
                 )
 
-        val response = runBlocking { api.channels() }
+        val response =
+                runBlocking {
+                    withSlockRequestPriority(
+                            priority = SlockRequestPriority.Visible,
+                            key = "channels",
+                            reason = "test_unauthorized"
+                    ) {
+                        api.channels(SlockRequestPriority.Visible)
+                    }
+                }
 
         assertEquals(401, response.code())
         assertEquals(listOf("Bearer old-access", "Bearer new-access"), authorizations)
@@ -202,7 +249,10 @@ class ComposeSlockApiAdapterTest {
                 ComposeSlockApiAdapter(
                         store = InMemoryAuthSessionStore(sampleSession),
                         baseUrl = "https://api.example.test/api/",
-                        httpClient = client
+                        httpClient = client,
+                        foregroundHttpClient = client,
+                        visibleHttpClient = client,
+                        backgroundHttpClient = client
                 )
         val channelId = "channel-1".toRequestBody("text/plain".toMediaType())
         val file =
@@ -212,7 +262,16 @@ class ComposeSlockApiAdapterTest {
                         "hello".toRequestBody("image/png".toMediaType())
                 )
 
-        val response = runBlocking { api.uploadAttachments(channelId, listOf(file)) }
+        val response =
+                runBlocking {
+                    withSlockRequestPriority(
+                            priority = SlockRequestPriority.Foreground,
+                            key = "attachments:channel-1",
+                            reason = "test_upload"
+                    ) {
+                        api.uploadAttachments(SlockRequestPriority.Visible, channelId, listOf(file))
+                    }
+                }
 
         assertTrue(response.isSuccessful)
         val request = requireNotNull(captured)
