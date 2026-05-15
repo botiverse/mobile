@@ -6185,6 +6185,7 @@ private fun SlockAppContent(
                 "SlockHomePrefetch",
                 "start serverId=$serverId count=${targets.size}"
         )
+        delay(HomeProgressivePrefetchInitialDelayMillis)
         targets.forEachIndexed { index, conversation ->
             delay(HomeProgressivePrefetchDelayMillis)
             val targetServerId = ServerId(serverId)
@@ -7095,12 +7096,14 @@ private fun SlockAppContent(
 
     LaunchedEffect(
             authState,
+            destination,
             tasksFilter,
             selectedServerIdValueForEffects,
             homeConversationIdentityKey,
             localWriteThrough
     ) {
         if (authState !is AuthUiState.Authenticated) return@LaunchedEffect
+        if (destination != AppDestination.Tasks) return@LaunchedEffect
         localWriteThrough.observeTaskSnapshot(selectedServerIdForUi()).collectLatest { snapshot ->
             if (snapshot == null) return@collectLatest
             val selectedServerId =
@@ -7117,9 +7120,6 @@ private fun SlockAppContent(
                             .filteredForTasksFilter(tasksFilter)
             if (serverSnapshot.tasks.isEmpty()) return@collectLatest
             rememberTaskReferences(serverSnapshot.tasks)
-            if (destination != AppDestination.Tasks) {
-                return@collectLatest
-            }
             val localState =
                     DataResult.Content(serverSnapshot)
                             .toTasksUiState(tasksFilter)
@@ -11765,7 +11765,9 @@ private fun HomeUiState.applyUnreadCounts(snapshot: ChannelUnreadSnapshot): Home
     )
 }
 
-private const val HomeProgressivePrefetchDelayMillis = 350L
+private const val HomeProgressivePrefetchInitialDelayMillis = 1_500L
+private const val HomeProgressivePrefetchDelayMillis = 750L
+private const val HomeProgressivePrefetchTargetLimit = 0
 
 private fun HomeContent.homeProgressivePrefetchTargets(): List<ConversationSummary> =
         channels
@@ -11775,6 +11777,7 @@ private fun HomeContent.homeProgressivePrefetchTargets(): List<ConversationSumma
                         compareByDescending<ConversationSummary> { it.unreadCount > 0 }
                                 .thenByDescending { it.mentionCount > 0 }
                 )
+                .take(HomeProgressivePrefetchTargetLimit)
                 .toList()
 
 private fun InboxUiState.clearUnread(channelId: ChannelId): InboxUiState {

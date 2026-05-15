@@ -7,11 +7,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.BoxScope
@@ -25,7 +25,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
@@ -258,12 +259,12 @@ fun SlockStructuralHomeShell(
                         .weight(1f)
                         .fillMaxWidth()
                 ) {
-                    Column(
+                    LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
-                            .offset(y = it)
-                            .verticalScroll(rememberScrollState())
-                            .padding(
+                            .offset(y = it),
+                        contentPadding =
+                            PaddingValues(
                                 start = SlockSpacing.Md,
                                 top = SlockSpacing.Md,
                                 end = SlockSpacing.Md,
@@ -271,39 +272,53 @@ fun SlockStructuralHomeShell(
                             ),
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        SidebarActionRow(
-                            icon = LucideIcons.Search,
-                            label = labels.search,
-                            onClick = onSearchClick
-                        )
-                        SidebarActionRow(
-                            icon = LucideIcons.Inbox,
-                            label = labels.inbox,
-                            badge = inboxUnreadCount.takeIf { it > 0 }?.toString(),
-                            onClick = onInboxClick
-                        )
-                        SidebarActionRow(
-                            icon = LucideIcons.Bookmark,
-                            label = labels.saved,
-                            trailingText = savedCount.takeIf { it > 0 }?.toString(),
-                            onClick = onSavedClick
-                        )
-                        Spacer(modifier = Modifier.height(SlockSpacing.Xs))
-                        SectionBlock(
-                            label = labels.channels,
-                            count = channels.size,
-                            expanded = channelsExpanded,
-                            onExpandedChange = { channelsExpanded = it },
-                            onSortClick = { channelsReversed = !channelsReversed },
-                            action = {
-                                HeaderIconAction(
-                                    icon = LucideIcons.Plus,
-                                    contentDescription = labels.addChannel,
-                                    onClick = onCreateChannelClick
-                                )
-                            }
-                        ) {
-                            displayedChannels.forEach { channel ->
+                        item(key = "action-search") {
+                            SidebarActionRow(
+                                icon = LucideIcons.Search,
+                                label = labels.search,
+                                onClick = onSearchClick
+                            )
+                        }
+                        item(key = "action-inbox") {
+                            SidebarActionRow(
+                                icon = LucideIcons.Inbox,
+                                label = labels.inbox,
+                                badge = inboxUnreadCount.takeIf { it > 0 }?.toString(),
+                                onClick = onInboxClick
+                            )
+                        }
+                        item(key = "action-saved") {
+                            SidebarActionRow(
+                                icon = LucideIcons.Bookmark,
+                                label = labels.saved,
+                                trailingText = savedCount.takeIf { it > 0 }?.toString(),
+                                onClick = onSavedClick
+                            )
+                        }
+                        item(key = "action-spacer") {
+                            Spacer(modifier = Modifier.height(SlockSpacing.Xs))
+                        }
+                        item(key = "channels-header") {
+                            SidebarSectionHeader(
+                                label = labels.channels,
+                                count = channels.size,
+                                expanded = channelsExpanded,
+                                onExpandedChange = { channelsExpanded = it },
+                                onSortClick = { channelsReversed = !channelsReversed },
+                                action = {
+                                    HeaderIconAction(
+                                        icon = LucideIcons.Plus,
+                                        contentDescription = labels.addChannel,
+                                        onClick = onCreateChannelClick
+                                    )
+                                }
+                            )
+                        }
+                        if (channelsExpanded) {
+                            items(
+                                items = displayedChannels,
+                                key = { channel -> "channel-${channel.id}" }
+                            ) { channel ->
                                 ChannelRow(
                                     name = channel.name,
                                     joined = channel.joined,
@@ -318,14 +333,21 @@ fun SlockStructuralHomeShell(
                                 )
                             }
                         }
-                        SectionBlock(
-                            label = labels.directMessages,
-                            count = directMessages.size,
-                            expanded = directMessagesExpanded,
-                            onExpandedChange = { directMessagesExpanded = it },
-                            onSortClick = { directMessagesReversed = !directMessagesReversed }
-                        ) {
-                            displayedDirectMessages.forEach { directMessage ->
+                        item(key = "direct-messages-header") {
+                            SidebarSectionHeader(
+                                label = labels.directMessages,
+                                count = directMessages.size,
+                                expanded = directMessagesExpanded,
+                                onExpandedChange = { directMessagesExpanded = it },
+                                onSortClick = { directMessagesReversed = !directMessagesReversed },
+                                action = null
+                            )
+                        }
+                        if (directMessagesExpanded) {
+                            items(
+                                items = displayedDirectMessages,
+                                key = { directMessage -> "direct-message-${directMessage.id}" }
+                            ) { directMessage ->
                                 ChannelRow(
                                     name = directMessage.name,
                                     avatarLabel = directMessage.avatarLabel,
