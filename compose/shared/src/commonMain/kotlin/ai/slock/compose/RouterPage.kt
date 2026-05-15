@@ -168,12 +168,6 @@ internal fun ComposeRouteImpl() {
         }) {
             Text("Bottom TabBar 预览")
         }
-
-        Button({
-            jumpPage(localPager, HOME_COMPONENTS_SMOKE_PAGE)
-        }) {
-            Text("Home 组件预览")
-        }
     }
 }
 

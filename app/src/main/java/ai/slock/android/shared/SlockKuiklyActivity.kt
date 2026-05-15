@@ -127,9 +127,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         const val PAGE_SETTINGS_COMPUTERS = "compose_settings_computers"
         const val PAGE_SETTINGS_COMPUTER_DETAIL = "compose_settings_computer_detail"
         const val PAGE_ICON_GALLERY = "compose_icon_gallery"
-        const val PAGE_HOME_HEADER = "compose_home_header"
-        const val PAGE_HOME_SERVER_SWITCHER = "compose_home_server_switcher"
-        const val PAGE_HOME_SECTION_HEADER = "compose_home_section_header"
         const val PAGE_ROUTER = "router"
 
         private const val KEY_PAGE_NAME = "pageName"
@@ -490,15 +487,6 @@ internal class SlockKuiklyBridgeModule(
                 SlockDiagnosticsLogger.d(
                         "SlockKuikly",
                         "bridge_settings_event method=settingsEvent instanceId=${event.optString("instanceId")} action=${event.optString("action")} itemId=${event.optString("itemId")}"
-                )
-                SlockKuiklyEventRegistry.dispatch(event)
-                null
-            }
-            "homeEvent" -> {
-                val event = JSONObject(params ?: "{}")
-                SlockDiagnosticsLogger.d(
-                        "SlockKuikly",
-                        "bridge_home_event method=homeEvent instanceId=${event.optString("instanceId")} action=${event.optString("action")} itemId=${event.optString("itemId")}"
                 )
                 SlockKuiklyEventRegistry.dispatch(event)
                 null

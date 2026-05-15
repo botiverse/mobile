@@ -11,12 +11,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
-import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
-import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
@@ -152,7 +151,7 @@ class SlockStructuralHomeShellTest {
 
         val lastRowBounds = composeRule.onNodeWithText("Agent 12").getUnclippedBoundsInRoot()
         val tabBounds = composeRule.onNodeWithText("HOME").getUnclippedBoundsInRoot()
-        val rootBounds = composeRule.onAllNodes(isRoot()).onFirst().getUnclippedBoundsInRoot()
+        val rootBounds = composeRule.onRoot().getUnclippedBoundsInRoot()
 
         assertTrue(
             "Expected last DM row above bottom tab bar, rowBottom=${lastRowBounds.bottom}, tabTop=${tabBounds.top}",
@@ -215,7 +214,7 @@ class SlockStructuralHomeShellTest {
 
         val lastRowBounds = composeRule.onNodeWithText("External Agent 12").getUnclippedBoundsInRoot()
         val tabBounds = composeRule.onNodeWithText("HOME").getUnclippedBoundsInRoot()
-        val rootBounds = composeRule.onAllNodes(isRoot()).onFirst().getUnclippedBoundsInRoot()
+        val rootBounds = composeRule.onRoot().getUnclippedBoundsInRoot()
 
         assertTrue(
             "Expected last DM row above external bottom tab bar, rowBottom=${lastRowBounds.bottom}, tabTop=${tabBounds.top}",

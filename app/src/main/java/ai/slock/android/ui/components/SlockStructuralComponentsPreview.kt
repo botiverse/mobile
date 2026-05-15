@@ -305,7 +305,13 @@ fun SlockStructuralHomeShell(
                                 expanded = channelsExpanded,
                                 onExpandedChange = { channelsExpanded = it },
                                 onSortClick = { channelsReversed = !channelsReversed },
-                                onAddClick = onCreateChannelClick
+                                action = {
+                                    HeaderIconAction(
+                                        icon = LucideIcons.Plus,
+                                        contentDescription = labels.addChannel,
+                                        onClick = onCreateChannelClick
+                                    )
+                                }
                             )
                         }
                         if (channelsExpanded) {
@@ -442,12 +448,33 @@ private fun HomeWorkspaceHeader(
     serverUnreadCount: Int,
     onServerBadgeClick: () -> Unit
 ) {
-    SlockHomeHeaderKuikly(
-        serverName = serverName,
-        serverUnreadCount = serverUnreadCount,
-        onServerBadgeClick = onServerBadgeClick,
-        modifier = Modifier.fillMaxWidth().height(64.dp)
-    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SlockColor.BrandYellow)
+            .drawBehind {
+                val stroke = SlockStroke.Default.toPx()
+                drawLine(
+                    color = SlockColor.BorderBlack,
+                    start = androidx.compose.ui.geometry.Offset(0f, size.height - stroke / 2f),
+                    end = androidx.compose.ui.geometry.Offset(size.width, size.height - stroke / 2f),
+                    strokeWidth = stroke
+                )
+            }
+            .padding(horizontal = SlockSpacing.Lg, vertical = SlockSpacing.Md),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier.clickable(onClick = onServerBadgeClick)) {
+            SlockLogoBadge(
+                text = serverName,
+                variant = SlockLogoBadgeVariant.Large,
+                showDropdown = true
+            )
+            if (serverUnreadCount > 0) {
+                ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
+            }
+        }
+    }
 }
 
 @Composable
@@ -690,18 +717,65 @@ private fun ServerSwitcherPanel(
     onCreateServerClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    SlockHomeServerSwitcherKuikly(
-        servers = servers,
-        currentServerId = currentServerId,
-        labels = labels,
-        onServerSelected = onServerSelected,
-        onCreateServerClick = onCreateServerClick,
-        modifier =
-            modifier
-                .widthIn(min = 276.dp, max = 328.dp)
-                .padding(end = SlockShadow.Default.offsetX, bottom = SlockShadow.Default.offsetY)
-                .slockHardShadow(SlockShadow.Default)
-    )
+    Column(
+        modifier = modifier
+            .widthIn(min = 276.dp, max = 328.dp)
+            .padding(end = SlockShadow.Default.offsetX, bottom = SlockShadow.Default.offsetY)
+            .slockHardShadow(SlockShadow.Default)
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {}
+            )
+    ) {
+        if (servers.isEmpty()) {
+            Text(
+                text = labels.noServersAvailable,
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray,
+                modifier = Modifier.padding(SlockSpacing.Md)
+            )
+        } else {
+            servers.forEach { server ->
+                ServerSwitcherRow(
+                    server = server,
+                    selected = server.id == currentServerId,
+                    onClick = { onServerSelected(server.id) }
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(SlockStroke.Default)
+                .background(SlockColor.BorderBlack)
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 44.dp)
+                .background(SlockColor.SurfaceWhite)
+                .clickable(onClick = onCreateServerClick)
+                .padding(horizontal = SlockSpacing.Md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            Text(
+                text = "+",
+                style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                color = SlockColor.TextBlack
+            )
+            Text(
+                text = labels.switchOrCreateServer,
+                style = SlockType.Button,
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
 }
 
 @Composable
@@ -810,7 +884,6 @@ private fun SectionBlock(
     onExpandedChange: (Boolean) -> Unit,
     onSortClick: () -> Unit,
     action: (@Composable BoxScope.() -> Unit)? = null,
-    onAddClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit = {}
 ) {
     Column(
@@ -823,8 +896,7 @@ private fun SectionBlock(
             expanded = expanded,
             onExpandedChange = onExpandedChange,
             onSortClick = onSortClick,
-            action = action,
-            onAddClick = onAddClick
+            action = action
         )
         if (expanded) {
             content()
@@ -839,21 +911,43 @@ private fun SidebarSectionHeader(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     onSortClick: () -> Unit,
-    action: (@Composable BoxScope.() -> Unit)? = null,
-    onAddClick: (() -> Unit)? = null
+    action: (@Composable BoxScope.() -> Unit)?
 ) {
-    val effectiveAddClick = onAddClick ?: action?.let { {} }
-    SlockHomeSectionHeaderKuikly(
-        label = label,
-        count = count,
-        expanded = expanded,
-        showAdd = effectiveAddClick != null,
-        addLabel = "Add $label",
-        onExpandedChange = onExpandedChange,
-        onSortClick = onSortClick,
-        onAddClick = { effectiveAddClick?.invoke() },
-        modifier = Modifier.fillMaxWidth().height(30.dp)
-    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 30.dp)
+            .clickable { onExpandedChange(!expanded) },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = if (expanded) LucideIcons.ChevronDown else LucideIcons.ChevronRight,
+            contentDescription = null,
+            tint = SlockColor.TextBlack,
+            modifier = Modifier.size(SectionChevronSize)
+        )
+        Text(
+            text = label,
+            style = SlockType.SectionLabel,
+            color = SlockColor.TextBlack,
+            modifier = Modifier.padding(start = SlockSpacing.Xs)
+        )
+        Text(
+            text = count.toString(),
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.padding(start = SlockSpacing.Xs)
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        HeaderIconAction(
+            icon = LucideIcons.ArrowUpDown,
+            contentDescription = "Sort $label",
+            onClick = onSortClick
+        )
+        if (action != null) {
+            Box(content = action)
+        }
+    }
 }
 
 @Composable
