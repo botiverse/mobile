@@ -5537,7 +5537,8 @@ private val ThreadFooterMetaTextStyle: TextStyle
         get() =
                 ThreadInlineChipTextStyle.copy(
                         fontSize = 12.sp,
-                        lineHeight = 14.sp
+                        lineHeight = 14.sp,
+                        fontWeight = FontWeight.Bold
                 )
 
 @Composable
