@@ -503,7 +503,7 @@ private fun HomeNotificationCenter(
                 modifier = Modifier.size(18.dp)
             )
         }
-        HomeNotificationUnreadMarker(
+        ServerUnreadMarker(
             modifier =
                 Modifier
                     .align(Alignment.TopEnd)
@@ -523,19 +523,6 @@ private fun HomeNotificationCenter(
                         .offset(y = 44.dp)
             )
         }
-    }
-}
-
-@Composable
-private fun HomeNotificationUnreadMarker(
-    modifier: Modifier = Modifier
-) {
-    Canvas(
-        modifier = modifier
-            .offset(x = 3.dp, y = (-3).dp)
-            .size(9.dp)
-    ) {
-        drawCircle(SlockColor.AccentRed)
     }
 }
 
