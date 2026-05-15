@@ -32,6 +32,7 @@ class ReadReceiptCoordinatorTest {
         assertEquals(listOf(ReadCall.ToSeq(channelId, 10L)), repository.calls)
 
         coordinator.markReadToSeq(channelId, 9L)
+        coordinator.markReadToSeq(channelId, 10L)
         coordinator.markReadToSeq(channelId, 12L)
         assertEquals("only the first request should be in flight", 1, repository.calls.size)
 
@@ -42,13 +43,54 @@ class ReadReceiptCoordinatorTest {
         )
 
         repository.completeNext()
-        assertEquals(listOf(ChannelId("channel-1"), channelId, channelId), optimisticReads)
+        assertEquals(listOf(ChannelId("channel-1"), channelId), optimisticReads)
         assertEquals(
                 listOf(
                         ReadReceiptRequest.ToSeq(channelId, 10L),
                         ReadReceiptRequest.ToSeq(channelId, 12L)
                 ),
                 results
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun duplicateSeqAfterSuccessDoesNotSendAnotherRequest() = runBlocking {
+        val repository = FakeReadReceiptRepository()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val optimisticReads = mutableListOf<ChannelId>()
+        val coordinator =
+                ReadReceiptCoordinator(
+                        scope = scope,
+                        repository = repository,
+                        onOptimisticRead = { optimisticReads += it }
+                )
+        val channelId = ChannelId("channel-dedupe")
+
+        coordinator.markReadToSeq(channelId, 42L)
+        repository.completeNext()
+        coordinator.markReadToSeq(channelId, 42L)
+        coordinator.markReadToSeq(channelId, 41L)
+
+        assertEquals(listOf(ReadCall.ToSeq(channelId, 42L)), repository.calls)
+        assertEquals(listOf(channelId), optimisticReads)
+        scope.cancel()
+    }
+
+    @Test
+    fun duplicateSeqAfterFailureCanRetryLater() = runBlocking {
+        val repository = FakeReadReceiptRepository()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val coordinator = ReadReceiptCoordinator(scope = scope, repository = repository)
+        val channelId = ChannelId("channel-retry")
+
+        coordinator.markReadToSeq(channelId, 42L)
+        repository.completeNext(DataResult.Empty(ai.slock.android.core.state.EmptyReason.NoMessages))
+        coordinator.markReadToSeq(channelId, 42L)
+
+        assertEquals(
+                listOf(ReadCall.ToSeq(channelId, 42L), ReadCall.ToSeq(channelId, 42L)),
+                repository.calls
         )
         scope.cancel()
     }

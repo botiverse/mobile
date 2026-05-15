@@ -20,6 +20,7 @@ class ReadReceiptCoordinator(
         private val onFailure: (ReadReceiptRequest, DataResult<ReadReceiptResult>) -> Unit = { _, _ -> }
 ) {
     private val channels = mutableMapOf<ChannelId, ChannelQueue>()
+    private val acknowledgedSeqs = mutableMapOf<ChannelId, Long>()
 
     fun markReadToSeq(channelId: ChannelId, seq: Long) {
         if (seq <= 0L) {
@@ -27,6 +28,16 @@ class ReadReceiptCoordinator(
             return
         }
         val queue = channels.getOrPut(channelId) { ChannelQueue() }
+        val highestCoveredSeq =
+                listOfNotNull(
+                                acknowledgedSeqs[channelId],
+                                queue.inFlightSeq,
+                                queue.pendingSeq
+                        )
+                        .maxOrNull()
+        if (highestCoveredSeq != null && seq <= highestCoveredSeq) {
+            return
+        }
         queue.pendingSeq = maxOf(queue.pendingSeq ?: seq, seq)
         onOptimisticRead(channelId)
         if (queue.inFlight == null) {
@@ -36,6 +47,9 @@ class ReadReceiptCoordinator(
 
     fun markReadAll(channelId: ChannelId) {
         val queue = channels.getOrPut(channelId) { ChannelQueue() }
+        if (queue.pendingReadAll || queue.inFlightReadAll) {
+            return
+        }
         queue.pendingReadAll = true
         onOptimisticRead(channelId)
         if (queue.inFlight == null) {
@@ -51,10 +65,12 @@ class ReadReceiptCoordinator(
                             queue.pendingSeq != null -> {
                                 val seq = queue.pendingSeq ?: break
                                 queue.pendingSeq = null
+                                queue.inFlightSeq = seq
                                 ReadReceiptRequest.ToSeq(channelId, seq)
                             }
                             queue.pendingReadAll -> {
                                 queue.pendingReadAll = false
+                                queue.inFlightReadAll = true
                                 ReadReceiptRequest.All(channelId)
                             }
                             else -> break
@@ -68,11 +84,21 @@ class ReadReceiptCoordinator(
                             }
                         }
                 onResult(request, result)
+                if (result is DataResult.Content && request is ReadReceiptRequest.ToSeq) {
+                    acknowledgedSeqs[channelId] =
+                            maxOf(acknowledgedSeqs[channelId] ?: request.seq, request.seq)
+                }
                 if (result !is DataResult.Content) {
                     onFailure(request, result)
                 }
+                when (request) {
+                    is ReadReceiptRequest.ToSeq -> queue.inFlightSeq = null
+                    is ReadReceiptRequest.All -> queue.inFlightReadAll = false
+                }
             }
         } finally {
+            queue.inFlightSeq = null
+            queue.inFlightReadAll = false
             queue.inFlight = null
             if (queue.hasPending()) {
                 queue.inFlight = scope.launch { drain(channelId, queue) }
@@ -85,6 +111,8 @@ class ReadReceiptCoordinator(
     private data class ChannelQueue(
             var pendingSeq: Long? = null,
             var pendingReadAll: Boolean = false,
+            var inFlightSeq: Long? = null,
+            var inFlightReadAll: Boolean = false,
             var inFlight: Job? = null
     ) {
         fun hasPending(): Boolean = pendingSeq != null || pendingReadAll
