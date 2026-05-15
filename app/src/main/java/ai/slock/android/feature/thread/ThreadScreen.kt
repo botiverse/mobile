@@ -5456,7 +5456,7 @@ private val ThreadMarkdownHtmlTagRegex =
         )
 
 private fun String.escapeMarkdownHtmlTagText(): String =
-        replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        replace("<", "\\<").replace(">", "\\>")
 
 private fun threadMarkdownTagColor(kind: ThreadMarkdownTagKind): Color =
         when (kind) {

@@ -105,15 +105,15 @@ class ThreadInlineTagParsingTest {
     }
 
     @Test
-    fun `html tags are escaped before markdown rendering`() {
+    fun `html tags are shown as markdown text before rendering`() {
         assertEquals(
-                "&lt;script&gt;alert(1)&lt;/script&gt; **ok**",
+                "\\<script\\>alert(1)\\</script\\> **ok**",
                 "<script>alert(1)</script> **ok**".escapeThreadMarkdownHtmlTagsForThread()
         )
     }
 
     @Test
-    fun `html escaping keeps autolinks and code literal`() {
+    fun `html text escaping keeps autolinks and code literal`() {
         val body =
                 """
                 <https://app.slock.ai>
@@ -131,7 +131,7 @@ class ThreadInlineTagParsingTest {
                 ```html
                 <section>code</section>
                 ```
-                &lt;b&gt;text&lt;/b&gt;
+                \<b\>text\</b\>
                 """.trimIndent(),
                 body.escapeThreadMarkdownHtmlTagsForThread()
         )
