@@ -8577,6 +8577,15 @@ private fun SlockAppContent(
                                                                 messageStreamChannelId,
                                                                 sendDraft
                                                         )
+                                                if (sendDraft.attachments.isNotEmpty()) {
+                                                    attachmentOpenStates =
+                                                            attachmentOpenStates +
+                                                                    sendDraft
+                                                                            .optimisticAttachmentOpenStates(
+                                                                                    AttachmentOpenStatus
+                                                                                            .Loading
+                                                                            )
+                                                }
                                                 optimisticSendMessagesByStream =
                                                         optimisticSendMessagesByStream +
                                                                 (messageStreamChannelId.value to
@@ -8640,6 +8649,16 @@ private fun SlockAppContent(
                                                                                 optimisticSendMessagesByStream +
                                                                                         (messageStreamChannelId.value to
                                                                                                 failedMessage)
+                                                                        attachmentOpenStates =
+                                                                                attachmentOpenStates +
+                                                                                        failedDraft
+                                                                                                .optimisticAttachmentOpenStates(
+                                                                                                        AttachmentOpenStatus
+                                                                                                                .Error,
+                                                                                                        uploadResult
+                                                                                                                .error
+                                                                                                                .code
+                                                                                                )
                                                                         restoreComposerDraft(failedDraft)
                                                                         applyComposerStatusIfCurrent(
                                                                                 status = ComposerStatus.Failed,
@@ -8668,6 +8687,16 @@ private fun SlockAppContent(
                                                                                 optimisticSendMessagesByStream +
                                                                                         (messageStreamChannelId.value to
                                                                                                 failedMessage)
+                                                                        attachmentOpenStates =
+                                                                                attachmentOpenStates +
+                                                                                        failedDraft
+                                                                                                .optimisticAttachmentOpenStates(
+                                                                                                        AttachmentOpenStatus
+                                                                                                                .Error,
+                                                                                                        uploadResult
+                                                                                                                .blocker
+                                                                                                                .code
+                                                                                                )
                                                                         restoreComposerDraft(failedDraft)
                                                                         applyComposerStatusIfCurrent(
                                                                                 status = ComposerStatus.NoPermission,
@@ -8726,6 +8755,10 @@ private fun SlockAppContent(
                                                                     optimisticSendMessagesByStream -
                                                                             messageStreamChannelId
                                                                                     .value
+                                                            attachmentOpenStates =
+                                                                    attachmentOpenStates -
+                                                                            sendDraft
+                                                                                    .optimisticAttachmentIds()
                                                             composerDrafts =
                                                                     composerDrafts - messageStreamChannelId.value
                                                             if (isCurrentComposerTarget()) {
@@ -8744,6 +8777,14 @@ private fun SlockAppContent(
                                                                             (messageStreamChannelId
                                                                                     .value to
                                                                                     failedMessage)
+                                                            attachmentOpenStates =
+                                                                    attachmentOpenStates +
+                                                                            sendDraft
+                                                                                    .optimisticAttachmentOpenStates(
+                                                                                            AttachmentOpenStatus
+                                                                                                    .Error,
+                                                                                            result.reason.name
+                                                                                    )
                                                             restoreComposerDraft(sendDraft)
                                                             applyComposerStatusIfCurrent(
                                                                     status = ComposerStatus.Failed,
@@ -8769,6 +8810,14 @@ private fun SlockAppContent(
                                                                             (messageStreamChannelId
                                                                                     .value to
                                                                                     failedMessage)
+                                                            attachmentOpenStates =
+                                                                    attachmentOpenStates +
+                                                                            sendDraft
+                                                                                    .optimisticAttachmentOpenStates(
+                                                                                            AttachmentOpenStatus
+                                                                                                    .Error,
+                                                                                            result.error.code
+                                                                                    )
                                                             restoreComposerDraft(sendDraft)
                                                             applyComposerStatusIfCurrent(
                                                                     status = ComposerStatus.Failed,
@@ -8794,6 +8843,14 @@ private fun SlockAppContent(
                                                                             (messageStreamChannelId
                                                                                     .value to
                                                                                     failedMessage)
+                                                            attachmentOpenStates =
+                                                                    attachmentOpenStates +
+                                                                            sendDraft
+                                                                                    .optimisticAttachmentOpenStates(
+                                                                                            AttachmentOpenStatus
+                                                                                                    .Error,
+                                                                                            result.blocker.code
+                                                                                    )
                                                             restoreComposerDraft(sendDraft)
                                                             applyComposerStatusIfCurrent(
                                                                     status = ComposerStatus.NoPermission,
@@ -10761,8 +10818,34 @@ private fun optimisticMessage(
                 author = localComposerAuthor,
                 timestampLabel = "Now",
                 body = draft.body,
+                attachments = draft.optimisticAttachments(),
                 deliveryState = deliveryState
         )
+
+private fun ComposerSubmissionDraft.optimisticAttachments(): List<Attachment> =
+        attachments.map { file ->
+            Attachment(
+                    id = file.optimisticAttachmentId(),
+                    name = file.fileName,
+                    mimeType = file.mimeType.orEmpty(),
+                    sizeLabel = file.sizeBytes?.let(::formatFileSize).orEmpty(),
+                    thumbnailUrl = file.previewUri
+            )
+        }
+
+private fun ComposerSubmissionDraft.optimisticAttachmentIds(): Set<AttachmentId> =
+        attachments.map { it.optimisticAttachmentId() }.toSet()
+
+private fun ComposerSubmissionDraft.optimisticAttachmentOpenStates(
+        status: AttachmentOpenStatus,
+        errorCode: String? = null
+): Map<AttachmentId, AttachmentOpenUiState> =
+        optimisticAttachmentIds().associateWith {
+            AttachmentOpenUiState(status = status, errorCode = errorCode)
+        }
+
+private fun AttachmentUploadFile.optimisticAttachmentId(): AttachmentId =
+        AttachmentId("local-upload-$id")
 
 private fun List<String>.toLocalThreadMessages(content: ThreadContent): List<Message> {
     return mapIndexed { index, body ->
