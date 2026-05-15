@@ -39,7 +39,6 @@ const val HOME_SERVER_SWITCHER_PAGE = "compose_home_server_switcher"
 const val HOME_SECTION_HEADER_PAGE = "compose_home_section_header"
 const val HOME_ACTION_ROW_PAGE = "compose_home_action_row"
 const val HOME_CONVERSATION_ROW_PAGE = "compose_home_conversation_row"
-const val HOME_SHELL_PAGE = "compose_home_shell"
 const val HOME_COMPONENTS_SMOKE_PAGE = "compose_home_components_smoke"
 
 @Page(HOME_HEADER_PAGE, supportInLocal = true)
@@ -79,14 +78,6 @@ internal class ComposeHomeConversationRowPage : ai.slock.compose.base.BasePager(
     override fun willInit() {
         super.willInit()
         setContent { HomeConversationRowPageContent() }
-    }
-}
-
-@Page(HOME_SHELL_PAGE, supportInLocal = true)
-internal class ComposeHomeShellPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { HomeShellPageContent() }
     }
 }
 
@@ -153,24 +144,6 @@ internal data class KuiklyHomeConversationRowPayload(
     val hasDraft: Boolean = false,
     val joined: Boolean = true,
     val selected: Boolean = false
-)
-
-@Serializable
-internal data class KuiklyHomeShellPayload(
-    val instanceId: String = "",
-    val serverName: String = "Slock",
-    val unreadCount: Int = 0,
-    val searchLabel: String = "Search",
-    val inboxLabel: String = "Inbox",
-    val inboxUnreadCount: Int = 0,
-    val savedLabel: String = "Saved",
-    val savedCount: Int = 0,
-    val channelsLabel: String = "CHANNELS",
-    val channelsExpanded: Boolean = true,
-    val channels: List<KuiklyHomeConversationRowPayload> = emptyList(),
-    val directMessagesLabel: String = "DIRECT MESSAGES",
-    val directMessagesExpanded: Boolean = true,
-    val directMessages: List<KuiklyHomeConversationRowPayload> = emptyList()
 )
 
 @Composable
@@ -247,119 +220,27 @@ private fun HomeConversationRowPageContent() {
 }
 
 @Composable
-private fun HomeShellPageContent() {
-    val pager = LocalActivity.current.getPager() as Pager
-    val bridge = Utils.bridgeModule(pager.pagerId)
-    val payload = rememberHomePayload(
-        pager.pageData.params.optString("payload"),
-        pager.pageData.params.optString("instanceId"),
-        KuiklyHomeShellPayload.serializer()
-    ) { KuiklyHomeShellPayload(instanceId = it) }
-    SlockHomeShell(payload) { action, itemId ->
-        bridge.homeEvent(payload.instanceId, action, itemId)
-    }
-}
-
-@Composable
 internal fun HomeComponentsSmokeContent() {
-    SlockHomeShell(homeSmokePayload, onAction = { _, _ -> })
-}
-
-private val homeSmokePayload =
-    KuiklyHomeShellPayload(
-        serverName = "markdown专修",
-        unreadCount = 3,
-        inboxUnreadCount = 4,
-        savedCount = 2,
-        channels =
-            listOf(
-                KuiklyHomeConversationRowPayload(id = "channel-1", name = "对话流专修", selected = true, badge = "2"),
-                KuiklyHomeConversationRowPayload(id = "channel-2", name = "首页专修"),
-                KuiklyHomeConversationRowPayload(id = "channel-3", name = "markdown专修", hasDraft = true)
-            ),
-        directMessages =
-            listOf(
-                KuiklyHomeConversationRowPayload(id = "dm-1", name = "Android-App-Integrator", avatarLabel = "AI", presence = "online"),
-                KuiklyHomeConversationRowPayload(id = "dm-2", name = "KMP-专家", avatarLabel = "KM", presence = "offline")
-            )
-    )
-
-@Composable
-internal fun SlockHomeShell(
-    payload: KuiklyHomeShellPayload,
-    onAction: (String, String?) -> Unit
-) {
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        Box(modifier = Modifier.fillMaxWidth().height(64.dp)) {
-            SlockHomeHeader(
-                KuiklyHomeHeaderPayload(
-                    serverName = payload.serverName,
-                    unreadCount = payload.unreadCount
-                ),
-                onClick = { onAction("openServerSwitcher", null) }
-            )
+        SlockHomeHeader(KuiklyHomeHeaderPayload(serverName = "markdown专修", unreadCount = 3), onClick = {})
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            SlockHomeActionRow(KuiklyHomeActionRowPayload(iconName = "search", label = "Search"), onClick = {})
+            SlockHomeActionRow(KuiklyHomeActionRowPayload(iconName = "inbox", label = "Inbox", badge = "4"), onClick = {})
+            SlockHomeSectionHeader(KuiklyHomeSectionHeaderPayload(label = "CHANNELS", count = 12, expanded = true, showAdd = true), onAction = {})
+            SlockHomeConversationRow(KuiklyHomeConversationRowPayload(name = "对话流专修", selected = true, badge = "2"), onClick = {})
+            SlockHomeConversationRow(KuiklyHomeConversationRowPayload(name = "Android-App-Integrator", avatarLabel = "AI", presence = "online", hasDraft = true), onClick = {})
+            SlockHomeSectionHeader(KuiklyHomeSectionHeaderPayload(label = "DIRECT MESSAGES", count = 4, expanded = false), onAction = {})
         }
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            item {
-                Box(modifier = Modifier.fillMaxWidth().height(38.dp)) {
-                    SlockHomeActionRow(KuiklyHomeActionRowPayload(iconName = "search", label = payload.searchLabel), onClick = { onAction("search", null) })
-                }
-            }
-            item {
-                Box(modifier = Modifier.fillMaxWidth().height(38.dp)) {
-                    SlockHomeActionRow(KuiklyHomeActionRowPayload(iconName = "inbox", label = payload.inboxLabel, badge = payload.inboxUnreadCount.takeIf { it > 0 }?.toString()), onClick = { onAction("inbox", null) })
-                }
-            }
-            item {
-                Box(modifier = Modifier.fillMaxWidth().height(38.dp)) {
-                    SlockHomeActionRow(KuiklyHomeActionRowPayload(iconName = "bookmark", label = payload.savedLabel, trailingText = payload.savedCount.takeIf { it > 0 }?.toString()), onClick = { onAction("saved", null) })
-                }
-            }
-            item {
-                Box(modifier = Modifier.fillMaxWidth().height(30.dp)) {
-                    SlockHomeSectionHeader(
-                        KuiklyHomeSectionHeaderPayload(
-                            label = payload.channelsLabel,
-                            count = payload.channels.size,
-                            expanded = payload.channelsExpanded,
-                            showAdd = true
-                        ),
-                        onAction = { onAction("channels.$it", null) }
-                    )
-                }
-            }
-            if (payload.channelsExpanded) {
-                items(payload.channels.size) { index ->
-                    Box(modifier = Modifier.fillMaxWidth().height(32.dp)) {
-                        val item = payload.channels[index]
-                        SlockHomeConversationRow(item) { onAction("openChannel", item.id) }
-                    }
-                }
-            }
-            item {
-                Box(modifier = Modifier.fillMaxWidth().height(30.dp)) {
-                    SlockHomeSectionHeader(
-                        KuiklyHomeSectionHeaderPayload(
-                            label = payload.directMessagesLabel,
-                            count = payload.directMessages.size,
-                            expanded = payload.directMessagesExpanded
-                        ),
-                        onAction = { onAction("directMessages.$it", null) }
-                    )
-                }
-            }
-            if (payload.directMessagesExpanded) {
-                items(payload.directMessages.size) { index ->
-                    Box(modifier = Modifier.fillMaxWidth().height(32.dp)) {
-                        val item = payload.directMessages[index]
-                        SlockHomeConversationRow(item) { onAction("openDirectMessage", item.id) }
-                    }
-                }
-            }
-        }
+        SlockHomeServerSwitcher(
+            payload = KuiklyHomeServerSwitcherPayload(
+                currentServerId = "home",
+                servers = listOf(
+                    KuiklyHomeServerItem("home", "首页专修", "home", 2),
+                    KuiklyHomeServerItem("markdown", "markdown专修", "markdown")
+                )
+            ),
+            onAction = { _, _ -> }
+        )
     }
 }
 
@@ -661,7 +542,6 @@ private fun <T> rememberHomePayload(
                     is KuiklyHomeSectionHeaderPayload -> if (value.instanceId.isBlank()) value.copy(instanceId = instanceId) as T else value
                     is KuiklyHomeActionRowPayload -> if (value.instanceId.isBlank()) value.copy(instanceId = instanceId) as T else value
                     is KuiklyHomeConversationRowPayload -> if (value.instanceId.isBlank()) value.copy(instanceId = instanceId) as T else value
-                    is KuiklyHomeShellPayload -> if (value.instanceId.isBlank()) value.copy(instanceId = instanceId) as T else value
                     else -> value
                 }
             }
