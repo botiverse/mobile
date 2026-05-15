@@ -23,6 +23,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -493,7 +494,7 @@ internal fun SlockHomeHeader(payload: KuiklyHomeHeaderPayload, onClick: () -> Un
     ) {
         Box {
             Row(
-                modifier = Modifier.background(SlockColor.TextBlack).padding(horizontal = 12.dp, vertical = 7.dp),
+                modifier = Modifier.rotate(-1.8f).background(SlockColor.TextBlack).padding(horizontal = 12.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
