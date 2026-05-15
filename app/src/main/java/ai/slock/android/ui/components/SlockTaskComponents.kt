@@ -68,6 +68,7 @@ data class SlockTaskCardData(
 @Composable
 fun SlockTaskBoard(
     columns: Map<SlockTaskStatus, List<SlockTaskCardData>>,
+    totalCounts: Map<SlockTaskStatus, Int> = emptyMap(),
     modifier: Modifier = Modifier,
     scrollState: ScrollState = rememberScrollState(),
     copy: SlockTaskBoardCopy = SlockTaskBoardCopy.defaults(),
@@ -84,6 +85,7 @@ fun SlockTaskBoard(
                 status = status,
                 tasks = columns[status].orEmpty(),
                 copy = copy,
+                totalCount = totalCounts[status] ?: columns[status].orEmpty().size,
                 renderLimit = columnRenderLimit,
                 modifier = Modifier.width(260.dp)
             )

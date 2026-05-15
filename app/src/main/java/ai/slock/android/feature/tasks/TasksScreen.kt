@@ -63,6 +63,7 @@ import ai.slock.android.ui.components.SlockInlineLoading
 import ai.slock.android.ui.components.SlockLoadingState
 import ai.slock.android.ui.components.SlockStatusSelector
 import ai.slock.android.ui.components.SlockTaskBoard
+import ai.slock.android.ui.components.SlockTaskBoardDefaults
 import ai.slock.android.ui.components.SlockTaskCardData
 import ai.slock.android.ui.components.SlockTaskStatus
 import ai.slock.android.ui.components.SlockTitledPageHeader
@@ -832,16 +833,18 @@ private fun TasksBoardSection(
 ) {
     val currentOnTaskClick by rememberUpdatedState(onTaskClick)
     val currentOnTaskStatusChange by rememberUpdatedState(onTaskStatusChange)
-    val columns = remember(content.tasks, copy, updatingTaskId) {
-        content.toTaskColumns(
+    val boardData = remember(content.tasks, copy, updatingTaskId) {
+        content.toTaskBoardData(
             copy = copy,
+            renderLimit = SlockTaskBoardDefaults.ColumnRenderLimit,
             onTaskClick = { task -> currentOnTaskClick(task) },
             onTaskStatusChange = { task, status -> currentOnTaskStatusChange(task, status) },
             updatingTaskId = updatingTaskId
         )
     }
     SlockTaskBoard(
-        columns = columns,
+        columns = boardData.columns,
+        totalCounts = boardData.totalCounts,
         scrollState = boardScrollState
     )
 }
@@ -1042,15 +1045,30 @@ private fun TasksScreenCopy.channelTriggerLabel(selectedChannelNames: Set<String
         else -> selectedChannelsCount(selectedChannelNames.size)
     }
 
-private fun TasksContent.toTaskColumns(
+private data class TasksBoardData(
+    val columns: Map<SlockTaskStatus, List<SlockTaskCardData>>,
+    val totalCounts: Map<SlockTaskStatus, Int>
+)
+
+private fun TasksContent.toTaskBoardData(
     copy: TasksScreenCopy,
+    renderLimit: Int,
     onTaskClick: (TaskSummary) -> Unit,
     onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
     updatingTaskId: String?
-): Map<SlockTaskStatus, List<SlockTaskCardData>> {
-    return tasks
-        .map { it.toTaskCardData(copy, onTaskClick, onTaskStatusChange, updatingTaskId) }
-        .groupBy { it.status }
+): TasksBoardData {
+    val tasksByStatus = tasks.groupBy { it.status.toSlockTaskStatus() }
+    val totalCounts = SlockTaskStatus.entries.associateWith { status ->
+        tasksByStatus[status].orEmpty().size
+    }
+    val columns = SlockTaskStatus.entries.associateWith { status ->
+        val statusTasks = tasksByStatus[status].orEmpty()
+        val visibleTasks = if (renderLimit > 0) statusTasks.take(renderLimit) else statusTasks
+        visibleTasks.map { task ->
+            task.toTaskCardData(copy, onTaskClick, onTaskStatusChange, updatingTaskId)
+        }
+    }
+    return TasksBoardData(columns = columns, totalCounts = totalCounts)
 }
 
 private fun List<TaskSummary>.sortedByRecentTaskTime(): List<TaskSummary> =
