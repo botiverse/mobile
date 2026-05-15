@@ -3359,6 +3359,7 @@ private fun SlockAppContent(
         nextThreadNavigationGeneration()
         replyThreadBackStack = emptyList()
         threadParentJumpTarget = item.parentMessageId?.value
+        threadTab = ThreadTab.Chat
         clearThreadReturnTarget()
         selectedThreadRetryAction = { openThreadItem(item) }
         composerDrafts =
