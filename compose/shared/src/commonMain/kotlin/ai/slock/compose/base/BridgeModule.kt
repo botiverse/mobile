@@ -87,6 +87,14 @@ internal class BridgeModule : Module() {
         callNativeMethod("settingsEvent", methodArgs, null)
     }
 
+    fun homeEvent(instanceId: String, action: String, itemId: String? = null) {
+        val methodArgs = JSONObject()
+        methodArgs.put("instanceId", instanceId)
+        methodArgs.put("action", action)
+        itemId?.let { methodArgs.put("itemId", it) }
+        callNativeMethod("homeEvent", methodArgs, null)
+    }
+
     fun openPage(
         url: String,
         closeCurPage: Boolean = false,
