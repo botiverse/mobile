@@ -25,6 +25,8 @@ import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Presence
 import ai.slock.android.feature.members.MemberFlatRow
+import ai.slock.android.shared.SlockKuiklyActivity
+import ai.slock.android.shared.SlockKuiklyPageIsland
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
@@ -80,6 +82,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
+import org.json.JSONArray
+import org.json.JSONObject
 
 @Composable
 fun SettingsComputersScreen(
@@ -115,6 +119,29 @@ fun SettingsComputersScreen(
             }
         }
     }
+}
+
+@Composable
+fun SettingsComputersKuiklyScreen(
+        snapshot: SettingsComputersSnapshot,
+        modifier: Modifier = Modifier,
+        onAddComputer: () -> Unit = {},
+        onOpenComputer: (String) -> Unit = {}
+) {
+    SlockKuiklyPageIsland(
+            pageName = SlockKuiklyActivity.PAGE_SETTINGS_COMPUTERS,
+            pageData = snapshot.toKuiklyComputersPageData(),
+            modifier = modifier.fillMaxSize(),
+            onEvent = { event ->
+                when (event.optString("action")) {
+                    "addComputer" -> onAddComputer()
+                    "openComputer" ->
+                            event.optString("itemId")
+                                    .takeIf { it.isNotBlank() }
+                                    ?.let(onOpenComputer)
+                }
+            }
+    )
 }
 
 @Composable
@@ -254,6 +281,31 @@ fun SettingsComputerDetailScreen(
             SettingsServerSectionCard(section)
         }
     }
+}
+
+@Composable
+fun SettingsComputerDetailKuiklyScreen(
+        snapshot: SettingsComputerDetailSnapshot,
+        modifier: Modifier = Modifier,
+        onRetryWorkspaces: () -> Unit = {},
+        onRetryAgents: () -> Unit = {},
+        onOpenAgent: (String) -> Unit = {}
+) {
+    SlockKuiklyPageIsland(
+            pageName = SlockKuiklyActivity.PAGE_SETTINGS_COMPUTER_DETAIL,
+            pageData = snapshot.toKuiklyComputerDetailPageData(),
+            modifier = modifier.fillMaxSize(),
+            onEvent = { event ->
+                when (event.optString("action")) {
+                    "retryWorkspaces" -> onRetryWorkspaces()
+                    "retryAgents" -> onRetryAgents()
+                    "openAgent" ->
+                            event.optString("itemId")
+                                    .takeIf { it.isNotBlank() }
+                                    ?.let(onOpenAgent)
+                }
+            }
+    )
 }
 
 @Composable
@@ -416,6 +468,84 @@ private fun String?.toSettingsAgentPresence(): Presence =
             AgentStatus.Offline, AgentStatus.Disconnected -> Presence.Offline
             AgentStatus.Idle -> Presence.Away
             else -> Presence.Active
+        }
+
+private fun SettingsComputersSnapshot.toKuiklyComputersPageData(): JSONObject =
+        JSONObject()
+                .put(
+                        "payload",
+                        JSONObject()
+                                .put("status", "content")
+                                .put("computers", computers.toJsonArray { it.toKuiklyJson() })
+                                .put("canAddComputer", canAddComputer)
+                                .putNullable("addComputerUnavailableReason", addComputerUnavailableReason)
+                                .putNullable("latestDaemonVersion", latestDaemonVersion)
+                                .put("emptyTitle", "No computers yet")
+                                .put(
+                                        "emptyDetail",
+                                        "Connect a desktop daemon to see it here."
+                                )
+                                .toString()
+                )
+
+private fun SettingsComputerDetailSnapshot.toKuiklyComputerDetailPageData(): JSONObject =
+        JSONObject()
+                .put(
+                        "payload",
+                        JSONObject()
+                                .put("computer", computer.toKuiklyJson())
+                                .put("workspaces", workspaces.toJsonArray { it.toKuiklyJson() })
+                                .put("agents", agents.toJsonArray { it.toKuiklyJson() })
+                                .putNullable("workspacesErrorCode", workspacesError?.code)
+                                .put("workspacesRetryable", workspacesError?.retryable ?: false)
+                                .putNullable("agentsErrorCode", agentsError?.code)
+                                .put("agentsRetryable", agentsError?.retryable ?: false)
+                                .toString()
+                )
+
+private fun SettingsComputerSnapshot.toKuiklyJson(): JSONObject =
+        JSONObject()
+                .put("id", id)
+                .put("name", name)
+                .put("daemonVersion", daemonVersion)
+                .put("online", online)
+                .putNullable("hostname", hostname)
+                .putNullable("platform", platform)
+                .putNullable("lastSeenLabel", lastSeenLabel)
+
+private fun SettingsComputerWorkspaceSnapshot.toKuiklyJson(): JSONObject =
+        JSONObject()
+                .put("id", id)
+                .put("name", name)
+                .put("path", path)
+                .putNullable("statusLabel", statusLabel)
+                .putNullable("lastActiveLabel", lastActiveLabel)
+
+private fun SettingsComputerAgentSnapshot.toKuiklyJson(): JSONObject {
+    val profile = memberProfile ?: toMemberProfile()
+    return JSONObject()
+            .put("id", id)
+            .put("name", name)
+            .putNullable("statusLabel", statusLabel?.toSettingsAgentSubtitle())
+            .putNullable("ownerLabel", ownerLabel)
+            .put("displayName", profile.displayName)
+            .put("handle", profile.handle)
+            .putNullable("description", profile.description)
+            .put("presenceLabel", profile.presence.name.lowercase().replaceFirstChar { it.uppercase() })
+            .putNullable("roleLabel", profile.roleDescription)
+}
+
+private inline fun <T> List<T>.toJsonArray(convert: (T) -> JSONObject): JSONArray {
+    val array = JSONArray()
+    forEach { array.put(convert(it)) }
+    return array
+}
+
+private fun JSONObject.putNullable(key: String, value: String?): JSONObject =
+        apply {
+            if (value != null) {
+                put(key, value)
+            }
         }
 
 @Composable

@@ -114,6 +114,8 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         const val PAGE_REGISTER = "compose_register"
         const val PAGE_FORGOT_PASSWORD = "compose_forgot_password"
         const val PAGE_THREAD_FILES = "compose_thread_files"
+        const val PAGE_SETTINGS_COMPUTERS = "compose_settings_computers"
+        const val PAGE_SETTINGS_COMPUTER_DETAIL = "compose_settings_computer_detail"
         const val PAGE_ROUTER = "router"
 
         private const val KEY_PAGE_NAME = "pageName"
@@ -469,6 +471,15 @@ internal class SlockKuiklyBridgeModule(
                 SlockKuiklyEventRegistry.dispatch(event)
                 null
             }
+            "settingsEvent" -> {
+                val event = JSONObject(params ?: "{}")
+                SlockDiagnosticsLogger.d(
+                        "SlockKuikly",
+                        "bridge_settings_event method=settingsEvent instanceId=${event.optString("instanceId")} action=${event.optString("action")} itemId=${event.optString("itemId")}"
+                )
+                SlockKuiklyEventRegistry.dispatch(event)
+                null
+            }
             "currentTimestamp" -> System.currentTimeMillis().toString()
             else -> {
                 callback?.invoke(mapOf("code" to -1, "message" to "Method not implemented"))
@@ -508,7 +519,7 @@ internal object SlockKuiklyEventRegistry {
         val handler = handlers[instanceId]
         SlockDiagnosticsLogger.d(
                 "SlockKuikly",
-                "event_registry_dispatch instanceId=$instanceId hasHandler=${handler != null} action=${params.optString("action")} attachmentId=${params.optString("attachmentId")}"
+                "event_registry_dispatch instanceId=$instanceId hasHandler=${handler != null} action=${params.optString("action")} attachmentId=${params.optString("attachmentId")} itemId=${params.optString("itemId")}"
         )
         handler?.invoke(params)
     }

@@ -195,8 +195,8 @@ import ai.slock.android.feature.settings.SettingsDiagnosticsScreen
 import ai.slock.android.feature.settings.SettingsAccountProfile
 import ai.slock.android.feature.settings.SettingsAccountScreen
 import ai.slock.android.feature.settings.SettingsBillingScreen
-import ai.slock.android.feature.settings.SettingsComputerDetailScreen
-import ai.slock.android.feature.settings.SettingsComputersScreen
+import ai.slock.android.feature.settings.SettingsComputerDetailKuiklyScreen
+import ai.slock.android.feature.settings.SettingsComputersKuiklyScreen
 import ai.slock.android.feature.settings.SettingsConnectedAccount
 import ai.slock.android.feature.settings.SettingsConnectedAccountStatus
 import ai.slock.android.feature.settings.SettingsContent
@@ -14204,7 +14204,7 @@ private fun SettingsDestinationContent(
                             emptyTitle = stringResource(R.string.settings_computers_empty_title),
                             emptyDetail = stringResource(R.string.settings_computers_empty_detail)
                     ) { computers ->
-                        SettingsComputersScreen(
+                        SettingsComputersKuiklyScreen(
                                 snapshot = computers,
                                 onOpenComputer = onOpenComputerDetail
                         )
@@ -14222,7 +14222,7 @@ private fun SettingsDestinationContent(
                             emptyTitle = stringResource(R.string.settings_computer_detail_title),
                             emptyDetail = stringResource(R.string.settings_computer_detail_empty)
                     ) { detail ->
-                        SettingsComputerDetailScreen(
+                        SettingsComputerDetailKuiklyScreen(
                                 snapshot = detail,
                                 onRetryWorkspaces = onRetryComputerDetail,
                                 onRetryAgents = onRetryComputerDetail
