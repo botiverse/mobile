@@ -32,6 +32,24 @@ the local Maven cache on this machine. Replacing them with the official
 `2.1.0` / `1.3.3` artifacts still fails variant matching because those official
 artifacts do not publish an `ohos_arm64` native variant.
 
+The upstream comparison diff at
+`/Users/artin/Downloads/Data/master...blackbbc_sqldelight_2.1.0-ohos.diff.txt`
+does include the expected Tencent repositories in root `build.gradle`,
+`settings.gradle`, `buildLogic/settings.gradle`, and `sample/settings.gradle`:
+
+```groovy
+maven { url "https://mirrors.tencent.com/nexus/repository/maven-tencent" }
+maven { url "https://mirrors.tencent.com/nexus/repository/maven-public" }
+mavenLocal()
+```
+
+The prepare script applies that full diff, so these repositories are present in
+the generated fork. The local verification still returns 404 for the KBA
+Touchlab artifacts from both Tencent repositories. That means blackbbc's branch
+can be prepared from source, but a complete local publish also requires those
+KBA dependency artifacts to exist in a private/local Maven source, or requires
+Slock to fork/publish them as well.
+
 So the full fork is a two-layer fork:
 
 1. SQLDelight `2.1.0` with OHOS target/publication support.

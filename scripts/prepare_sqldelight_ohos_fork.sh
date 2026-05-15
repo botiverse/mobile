@@ -41,6 +41,7 @@ PY
 echo "Prepared SQLDelight OHOS fork at ${WORKDIR}"
 echo "Branch: ${BRANCH_NAME}"
 echo "Version: ${VERSION_NAME}"
+echo "Repositories: Maven Central, Google, JetBrains, Tencent maven-tencent/maven-public, and mavenLocal are included by the patch."
 
 if [[ "${PUBLISH}" != "true" ]]; then
   echo "Dry run complete. Pass --publish to publish required artifacts to mavenLocal."
