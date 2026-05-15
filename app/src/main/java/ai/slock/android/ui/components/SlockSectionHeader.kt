@@ -1,5 +1,7 @@
 package ai.slock.android.ui.components
 
+import ai.slock.android.ui.icons.LucideIcons
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -36,7 +38,7 @@ fun SlockSectionHeader(
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
     ) {
         Icon(
-            imageVector = SlockIcons.ChevronDown,
+            imageVector = LucideIcons.ChevronDown,
             contentDescription = null,
             tint = SlockColor.TextBlack,
             modifier = Modifier

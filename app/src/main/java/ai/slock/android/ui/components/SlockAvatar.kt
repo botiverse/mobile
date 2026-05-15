@@ -1,5 +1,7 @@
 package ai.slock.android.ui.components
 
+import ai.slock.android.ui.icons.LucideIcons
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -87,7 +89,7 @@ private fun UrlAvatar(
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            imageVector = SlockIcons.User,
+            imageVector = LucideIcons.User,
             contentDescription = null,
             tint = SlockColor.TextBlack,
             modifier = Modifier.size(size * 0.56f)
@@ -171,7 +173,7 @@ private fun DefaultUserAvatar(
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            imageVector = SlockIcons.User,
+            imageVector = LucideIcons.User,
             contentDescription = null,
             tint = SlockColor.TextBlack,
             modifier = Modifier.size(size * 0.56f)

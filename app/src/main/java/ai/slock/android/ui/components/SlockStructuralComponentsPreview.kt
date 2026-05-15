@@ -1,5 +1,7 @@
 package ai.slock.android.ui.components
 
+import ai.slock.android.ui.icons.LucideIcons
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
@@ -159,10 +161,10 @@ private fun SlockBottomTabBarFramePreview() {
             SlockBottomTabBar(
                 items =
                     listOf(
-                        SlockBottomTabItem("home", "HOME", SlockIcons.House),
-                        SlockBottomTabItem("tasks", "TASKS", SlockIcons.SquareCheckBig),
-                        SlockBottomTabItem("members", "MEMBERS", SlockIcons.Users),
-                        SlockBottomTabItem("settings", "SETTINGS", SlockIcons.Settings)
+                        SlockBottomTabItem("home", "HOME", LucideIcons.House),
+                        SlockBottomTabItem("tasks", "TASKS", LucideIcons.SquareCheckBig),
+                        SlockBottomTabItem("members", "MEMBERS", LucideIcons.Users),
+                        SlockBottomTabItem("settings", "SETTINGS", LucideIcons.Settings)
                     ),
                 selectedKey = "tasks",
                 onSelected = {},
@@ -270,18 +272,18 @@ fun SlockStructuralHomeShell(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         SidebarActionRow(
-                            icon = SlockIcons.Search,
+                            icon = LucideIcons.Search,
                             label = labels.search,
                             onClick = onSearchClick
                         )
                         SidebarActionRow(
-                            icon = SlockIcons.Inbox,
+                            icon = LucideIcons.Inbox,
                             label = labels.inbox,
                             badge = inboxUnreadCount.takeIf { it > 0 }?.toString(),
                             onClick = onInboxClick
                         )
                         SidebarActionRow(
-                            icon = SlockIcons.Bookmark,
+                            icon = LucideIcons.Bookmark,
                             label = labels.saved,
                             trailingText = savedCount.takeIf { it > 0 }?.toString(),
                             onClick = onSavedClick
@@ -295,7 +297,7 @@ fun SlockStructuralHomeShell(
                             onSortClick = { channelsReversed = !channelsReversed },
                             action = {
                                 HeaderIconAction(
-                                    icon = SlockIcons.Plus,
+                                    icon = LucideIcons.Plus,
                                     contentDescription = labels.addChannel,
                                     onClick = onCreateChannelClick
                                 )
@@ -380,10 +382,10 @@ fun SlockStructuralHomeShell(
             ) {
                 SlockBottomTabBar(
                     items = listOf(
-                        SlockBottomTabItem("home", "HOME", SlockIcons.House),
-                        SlockBottomTabItem("tasks", "TASKS", SlockIcons.SquareCheckBig),
-                        SlockBottomTabItem("members", "MEMBERS", SlockIcons.Users),
-                        SlockBottomTabItem("settings", "SETTINGS", SlockIcons.Settings)
+                        SlockBottomTabItem("home", "HOME", LucideIcons.House),
+                        SlockBottomTabItem("tasks", "TASKS", LucideIcons.SquareCheckBig),
+                        SlockBottomTabItem("members", "MEMBERS", LucideIcons.Users),
+                        SlockBottomTabItem("settings", "SETTINGS", LucideIcons.Settings)
                     ),
                     selectedKey = selectedTabKey,
                     onSelected = onTabSelected,
@@ -497,7 +499,7 @@ private fun HomeNotificationCenter(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = SlockIcons.TriangleAlert,
+                imageVector = LucideIcons.TriangleAlert,
                 contentDescription = "Notification center (${notifications.size} active)",
                 tint = SlockColor.TextBlack,
                 modifier = Modifier.size(18.dp)
@@ -614,9 +616,9 @@ private fun HomeNotificationRow(
             Icon(
                 imageVector =
                     when (notification.kind) {
-                        SlockHomeNotificationKind.Warning -> SlockIcons.CircleArrowUp
-                        SlockHomeNotificationKind.Info -> SlockIcons.BellRing
-                        SlockHomeNotificationKind.Error -> SlockIcons.TriangleAlert
+                        SlockHomeNotificationKind.Warning -> LucideIcons.CircleArrowUp
+                        SlockHomeNotificationKind.Info -> LucideIcons.BellRing
+                        SlockHomeNotificationKind.Error -> LucideIcons.TriangleAlert
                     },
                 contentDescription = null,
                 tint = SlockColor.TextBlack,
@@ -897,7 +899,7 @@ private fun SidebarSectionHeader(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = if (expanded) SlockIcons.ChevronDown else SlockIcons.ChevronRight,
+            imageVector = if (expanded) LucideIcons.ChevronDown else LucideIcons.ChevronRight,
             contentDescription = null,
             tint = SlockColor.TextBlack,
             modifier = Modifier.size(SectionChevronSize)
@@ -916,7 +918,7 @@ private fun SidebarSectionHeader(
         )
         Spacer(modifier = Modifier.weight(1f))
         HeaderIconAction(
-            icon = SlockIcons.ArrowUpDown,
+            icon = LucideIcons.ArrowUpDown,
             contentDescription = "Sort $label",
             onClick = onSortClick
         )
@@ -1025,7 +1027,7 @@ private fun ChannelRow(
             }
             if (hasDraft) {
                 Icon(
-                    imageVector = SlockIcons.Pencil,
+                    imageVector = LucideIcons.Pencil,
                     contentDescription = "Unsent draft",
                     tint = SlockColor.TextMutedGray,
                     modifier = Modifier.size(14.dp)

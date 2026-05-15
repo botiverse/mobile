@@ -87,7 +87,7 @@ import ai.slock.android.ui.components.SlockWorkspaceFileTree
 import ai.slock.android.ui.components.SlockWorkspaceTreeState
 import ai.slock.android.ui.components.SlockAvatar
 import ai.slock.android.ui.components.SlockIconSquareButton
-import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.components.SlockMemberAvatar
 import ai.slock.android.ui.components.SlockPageDivider
@@ -823,7 +823,7 @@ private fun MemberDetailHeader(
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         SlockIconSquareButton(
-            icon = if (closeMode) SlockIcons.X else SlockIcons.ArrowLeft,
+            icon = if (closeMode) LucideIcons.X else LucideIcons.ArrowLeft,
             contentDescription = if (closeMode) "Close member detail" else "Back to members",
             onClick = onBack,
             modifier = Modifier.size(38.dp)
@@ -1005,7 +1005,7 @@ private fun MemberProfileDetail(
                         )
                     }
                     SlockIconSquareButton(
-                        icon = SlockIcons.Pencil,
+                        icon = LucideIcons.Pencil,
                         contentDescription = "Edit agent profile",
                         onClick = {
                             displayName = member.displayName
@@ -1065,17 +1065,17 @@ private fun MemberProfileDetail(
             MemberDetailActionButton(
                 text = "Restart / Reset",
                 color = SlockColor.SurfaceWhite,
-                icon = SlockIcons.Activity
+                icon = LucideIcons.Activity
             )
             MemberDetailActionButton(
                 text = "Report Issue",
                 color = SlockColor.AccentPink,
-                icon = SlockIcons.Bug
+                icon = LucideIcons.Bug
             )
             MemberDetailActionButton(
                 text = "Delete Agent",
                 color = SlockColor.AccentRed,
-                icon = SlockIcons.Trash
+                icon = LucideIcons.Trash
             )
         }
     }
@@ -1282,9 +1282,9 @@ private fun MemberSkillPathGroup(
 private val AgentSkillGroup.skillGroupIcon: ImageVector
     get() =
         if (title.contains("workspace", ignoreCase = true)) {
-            SlockIcons.FolderOpen
+            LucideIcons.FolderOpen
         } else {
-            SlockIcons.Globe
+            LucideIcons.Globe
         }
 
 @Composable
@@ -1348,7 +1348,7 @@ private fun HumanMemberDetailAvatar(member: MemberProfile) {
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = SlockIcons.User,
+                    imageVector = LucideIcons.User,
                     contentDescription = null,
                     tint = SlockColor.TextBlack,
                     modifier = Modifier.size(28.dp)
@@ -1396,7 +1396,7 @@ private fun AgentDirectMessagesPanel(
         MemberDetailActionButton(
             text = "Open direct message",
             color = SlockColor.BrandYellow,
-            icon = SlockIcons.MessageSquare,
+            icon = LucideIcons.MessageSquare,
             onClick = onOpenAgentDirectMessage
         )
         if (snapshot.directMessages.isEmpty()) {
@@ -1555,7 +1555,7 @@ private fun AgentActivityTimelineRow(activity: AgentActivityEntry) {
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = SlockIcons.Activity,
+                    imageVector = LucideIcons.Activity,
                     contentDescription = null,
                     tint = SlockColor.TextBlack,
                     modifier = Modifier.size(14.dp)
@@ -1927,7 +1927,7 @@ private fun MemberDetailChip(
 private fun MemberDetailActionButton(
     text: String,
     color: Color,
-    icon: ImageVector = SlockIcons.Square,
+    icon: ImageVector = LucideIcons.Square,
     onClick: () -> Unit = {}
 ) {
     val shadow = SlockShadow.Default
@@ -2011,11 +2011,11 @@ private fun Modifier.memberDetailTabSwipe(
 
 private val MemberDetailTab.icon: ImageVector
     get() = when (this) {
-        MemberDetailTab.Profile -> SlockIcons.Bot
-        MemberDetailTab.AgentDms -> SlockIcons.MessageSquare
-        MemberDetailTab.Reminders -> SlockIcons.BellRing
-        MemberDetailTab.Workspace -> SlockIcons.FolderOpen
-        MemberDetailTab.Activity -> SlockIcons.Activity
+        MemberDetailTab.Profile -> LucideIcons.Bot
+        MemberDetailTab.AgentDms -> LucideIcons.MessageSquare
+        MemberDetailTab.Reminders -> LucideIcons.BellRing
+        MemberDetailTab.Workspace -> LucideIcons.FolderOpen
+        MemberDetailTab.Activity -> LucideIcons.Activity
     }
 
 private val Presence.color: Color

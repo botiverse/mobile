@@ -30,7 +30,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import ai.slock.android.R
 import ai.slock.android.ui.components.SlockErrorState
-import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
@@ -253,7 +253,7 @@ fun PlanCard(
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
                 Icon(
-                    imageVector = SlockIcons.Check,
+                    imageVector = LucideIcons.Check,
                     contentDescription = null,
                     tint = SlockColor.TextBlack,
                     modifier = Modifier

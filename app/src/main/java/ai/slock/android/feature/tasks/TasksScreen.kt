@@ -58,7 +58,7 @@ import ai.slock.android.feature.thread.toThreadTimestampLabel
 import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.components.SlockCheckbox
-import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.components.SlockInlineLoading
 import ai.slock.android.ui.components.SlockLoadingState
 import ai.slock.android.ui.components.SlockStatusSelector
@@ -497,13 +497,13 @@ private fun TasksFilterBar(
             ) {
                 TasksModeButton(
                     label = copy.board,
-                    icon = SlockIcons.Columns3,
+                    icon = LucideIcons.Columns3,
                     selected = selectedMode == TasksViewMode.Board,
                     onClick = { onModeSelected(TasksViewMode.Board) }
                 )
                 TasksModeButton(
                     label = copy.list,
-                    icon = SlockIcons.LayoutList,
+                    icon = LucideIcons.LayoutList,
                     selected = selectedMode == TasksViewMode.List,
                     onClick = { onModeSelected(TasksViewMode.List) }
                 )
@@ -582,7 +582,7 @@ private fun TasksChannelSelectorButton(
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
     ) {
         Icon(
-            imageVector = SlockIcons.Hash,
+            imageVector = LucideIcons.Hash,
             contentDescription = null,
             tint = SlockColor.TextBlack.copy(alpha = 0.70f),
             modifier = Modifier.size(14.dp)
@@ -596,7 +596,7 @@ private fun TasksChannelSelectorButton(
             modifier = Modifier.weight(1f, fill = false)
         )
         Icon(
-            imageVector = SlockIcons.ChevronDown,
+            imageVector = LucideIcons.ChevronDown,
             contentDescription = if (expanded) copy.collapseChannels else copy.expandChannels,
             tint = SlockColor.TextBlack.copy(alpha = 0.70f),
             modifier = Modifier.size(12.dp)
@@ -977,7 +977,7 @@ private fun TasksListRow(
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             Icon(
-                imageVector = SlockIcons.ChevronRight,
+                imageVector = LucideIcons.ChevronRight,
                 contentDescription = null,
                 tint = SlockColor.TextMutedGray,
                 modifier = Modifier.size(16.dp)
@@ -1028,7 +1028,7 @@ private fun TasksErrorBody(code: String, copy: TasksScreenCopy, onRetry: () -> U
     ) {
         SlockErrorState(title = copy.failedTitle, detail = copy.errorDetail(code))
         Box(modifier = Modifier.clickable(role = Role.Button, onClick = onRetry)) {
-            TasksCompactAction(label = copy.retry, icon = SlockIcons.RefreshCw)
+            TasksCompactAction(label = copy.retry, icon = LucideIcons.RefreshCw)
         }
     }
 }

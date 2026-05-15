@@ -257,7 +257,7 @@ import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
-import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.components.SlockMemberPickerSection
 import ai.slock.android.ui.components.SlockMemberPickerMessage
 import ai.slock.android.ui.components.SlockMemberPickerItem
@@ -10155,22 +10155,22 @@ private fun appBottomTabs(): List<SlockBottomTabItem> =
                 SlockBottomTabItem(
                         AppDestination.Home.key,
                         stringResource(R.string.bottom_tab_home),
-                        SlockIcons.House
+                        LucideIcons.House
                 ),
                 SlockBottomTabItem(
                         AppDestination.Tasks.key,
                         stringResource(R.string.bottom_tab_tasks),
-                        SlockIcons.SquareCheckBig
+                        LucideIcons.SquareCheckBig
                 ),
                 SlockBottomTabItem(
                         AppDestination.Members.key,
                         stringResource(R.string.bottom_tab_members),
-                        SlockIcons.Users
+                        LucideIcons.Users
                 ),
                 SlockBottomTabItem(
                         AppDestination.Settings.key,
                         stringResource(R.string.bottom_tab_settings),
-                        SlockIcons.Settings
+                        LucideIcons.Settings
                 )
         )
 
@@ -11466,11 +11466,11 @@ private val TaskStatus.taskReferenceColor: Color
 private val TaskStatus.taskReferenceIcon: androidx.compose.ui.graphics.vector.ImageVector
     get() =
             when (this) {
-                TaskStatus.Todo -> SlockIcons.Circle
-                TaskStatus.InProgress -> SlockIcons.Play
-                TaskStatus.InReview -> SlockIcons.Eye
-                TaskStatus.Done -> SlockIcons.CircleCheckBig
-                TaskStatus.Closed -> SlockIcons.Ban
+                TaskStatus.Todo -> LucideIcons.Circle
+                TaskStatus.InProgress -> LucideIcons.Play
+                TaskStatus.InReview -> LucideIcons.Eye
+                TaskStatus.Done -> LucideIcons.CircleCheckBig
+                TaskStatus.Closed -> LucideIcons.Ban
             }
 
 private fun List<String>.withSelection(value: String, selected: Boolean): List<String> =
@@ -14575,7 +14575,7 @@ private fun settingsHomeItems(
                     key = SettingsDestination.Account.key,
                     title = stringResource(R.string.settings_account_title),
                     subtitle = stringResource(R.string.settings_account_subtitle),
-                    icon = SlockIcons.User,
+                    icon = LucideIcons.User,
                     selected =
                             selectedDestination == SettingsDestination.Account ||
                                     selectedDestination == SettingsDestination.Home
@@ -14584,7 +14584,7 @@ private fun settingsHomeItems(
                     key = SettingsDestination.Computers.key,
                     title = stringResource(R.string.settings_computers_title),
                     subtitle = stringResource(R.string.settings_computers_subtitle),
-                    icon = SlockIcons.Monitor,
+                    icon = LucideIcons.Monitor,
                     selected =
                             selectedDestination == SettingsDestination.Computers ||
                                     selectedDestination == SettingsDestination.ComputerDetail
@@ -14593,35 +14593,35 @@ private fun settingsHomeItems(
                     key = SettingsDestination.Server.key,
                     title = stringResource(R.string.settings_server_title),
                     subtitle = stringResource(R.string.settings_server_subtitle),
-                    icon = SlockIcons.Users,
+                    icon = LucideIcons.Users,
                     selected = selectedDestination == SettingsDestination.Server
             ),
             SettingsHomeItem(
                     key = SettingsDestination.Billing.key,
                     title = stringResource(R.string.settings_billing_title),
                     subtitle = stringResource(R.string.settings_billing_subtitle),
-                    icon = SlockIcons.ShieldCheck,
+                    icon = LucideIcons.ShieldCheck,
                     selected = selectedDestination == SettingsDestination.Billing
             ),
             SettingsHomeItem(
                     key = SettingsDestination.Mobile.key,
                     title = stringResource(R.string.settings_mobile_title),
                     subtitle = stringResource(R.string.settings_mobile_subtitle),
-                    icon = SlockIcons.Smartphone,
+                    icon = LucideIcons.Smartphone,
                     selected = selectedDestination == SettingsDestination.Mobile
             ),
             SettingsHomeItem(
                     key = SettingsDestination.Storage.key,
                     title = stringResource(R.string.settings_storage_title),
                     subtitle = stringResource(R.string.settings_storage_subtitle),
-                    icon = SlockIcons.Archive,
+                    icon = LucideIcons.Archive,
                     selected = selectedDestination == SettingsDestination.Storage
             ),
             SettingsHomeItem(
                     key = SettingsDestination.About.key,
                     title = stringResource(R.string.settings_about_title),
                     subtitle = stringResource(R.string.settings_about_home_subtitle),
-                    icon = SlockIcons.Bug,
+                    icon = LucideIcons.Bug,
                     selected =
                             selectedDestination == SettingsDestination.About ||
                                     selectedDestination == SettingsDestination.Diagnostics

@@ -1,5 +1,7 @@
 package ai.slock.android.ui.components
 
+import ai.slock.android.ui.icons.LucideIcons
+
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
 import ai.slock.android.ui.theme.SlockShadow
@@ -125,8 +127,8 @@ private fun SlockWorkspacePathBar(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
-        SlockWorkspaceMiniAction(SlockIcons.Copy, "Copy path", onCopyPath)
-        SlockWorkspaceMiniAction(SlockIcons.RefreshCw, "Refresh", onRefresh)
+        SlockWorkspaceMiniAction(LucideIcons.Copy, "Copy path", onCopyPath)
+        SlockWorkspaceMiniAction(LucideIcons.RefreshCw, "Refresh", onRefresh)
     }
 }
 
@@ -220,7 +222,7 @@ private fun SlockWorkspaceNodeRow(
     ) {
         if (node.kind == SlockWorkspaceFileKind.Folder) {
             Icon(
-                imageVector = if (expanded) SlockIcons.ChevronDown else SlockIcons.ChevronRight,
+                imageVector = if (expanded) LucideIcons.ChevronDown else LucideIcons.ChevronRight,
                 contentDescription = null,
                 tint = SlockColor.TextBlack,
                 modifier = Modifier.size(14.dp)
@@ -269,9 +271,9 @@ private fun SlockWorkspacePreview(
             is SlockWorkspaceFilePreview.Text -> SlockWorkspaceTextPreview(preview)
             is SlockWorkspaceFilePreview.Image -> SlockWorkspaceImagePreview(file = file, preview = preview)
             is SlockWorkspaceFilePreview.Loading ->
-                SlockWorkspacePreviewStatus(SlockIcons.RefreshCw, "Loading preview", preview.detail)
+                SlockWorkspacePreviewStatus(LucideIcons.RefreshCw, "Loading preview", preview.detail)
             is SlockWorkspaceFilePreview.Error ->
-                SlockWorkspacePreviewStatus(SlockIcons.X, "Preview failed", preview.reason)
+                SlockWorkspacePreviewStatus(LucideIcons.X, "Preview failed", preview.reason)
             is SlockWorkspaceFilePreview.Unsupported ->
                 SlockWorkspaceUnsupportedPreview(file = file, preview = preview)
             null ->
@@ -293,7 +295,7 @@ private fun SlockWorkspacePreviewHeader(
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        SlockWorkspaceMiniAction(SlockIcons.ArrowLeft, "Back to file tree", onBack)
+        SlockWorkspaceMiniAction(LucideIcons.ArrowLeft, "Back to file tree", onBack)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = file?.name ?: "No file selected",
@@ -466,10 +468,10 @@ private fun SlockWorkspaceNode.countFiles(): Int =
 
 private val SlockWorkspaceFileKind.icon: ImageVector
     get() = when (this) {
-        SlockWorkspaceFileKind.Folder -> SlockIcons.FolderOpen
-        SlockWorkspaceFileKind.Text, SlockWorkspaceFileKind.Markdown -> SlockIcons.FileText
-        SlockWorkspaceFileKind.Image -> SlockIcons.Image
-        SlockWorkspaceFileKind.Unsupported -> SlockIcons.Square
+        SlockWorkspaceFileKind.Folder -> LucideIcons.FolderOpen
+        SlockWorkspaceFileKind.Text, SlockWorkspaceFileKind.Markdown -> LucideIcons.FileText
+        SlockWorkspaceFileKind.Image -> LucideIcons.Image
+        SlockWorkspaceFileKind.Unsupported -> LucideIcons.Square
     }
 
 private val SlockWorkspaceFileKind.typeLabel: String

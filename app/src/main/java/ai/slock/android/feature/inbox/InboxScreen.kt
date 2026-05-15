@@ -52,7 +52,7 @@ import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.components.SlockIconSquareButton
-import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.components.SlockLoadingState
 import ai.slock.android.ui.components.SlockPullRefreshContainer
 import ai.slock.android.ui.theme.SlockColor
@@ -398,7 +398,7 @@ private fun FollowedThreadsHeader(
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
         SlockIconSquareButton(
-            icon = SlockIcons.ArrowLeft,
+            icon = LucideIcons.ArrowLeft,
             contentDescription = stringResource(R.string.inbox_back),
             onClick = onBack,
             modifier = Modifier.size(38.dp)
@@ -565,7 +565,7 @@ private fun InboxHeader(
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
         SlockIconSquareButton(
-            icon = SlockIcons.ArrowLeft,
+            icon = LucideIcons.ArrowLeft,
             contentDescription = stringResource(R.string.inbox_back),
             onClick = onBack,
             modifier = Modifier.size(38.dp)
@@ -799,7 +799,7 @@ private fun InboxReplyActivityLine(activity: InboxActivityPreview.Reply) {
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Icon(
-                imageVector = SlockIcons.MessageSquare,
+                imageVector = LucideIcons.MessageSquare,
                 contentDescription = null,
                 tint = SlockColor.TextMutedGray,
                 modifier = Modifier
@@ -884,7 +884,7 @@ private fun InboxItemCheckButton(
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            imageVector = SlockIcons.Check,
+            imageVector = LucideIcons.Check,
             contentDescription = stringResource(R.string.inbox_mark_item_as_read),
             tint = SlockColor.TextBlack,
             modifier = Modifier.size(16.dp)
@@ -905,8 +905,8 @@ private fun InboxKindIcon(
     ) {
         Icon(
             imageVector =
-                    if (item.kind == InboxItemKind.System) SlockIcons.BellRing
-                    else SlockIcons.MessageSquare,
+                    if (item.kind == InboxItemKind.System) LucideIcons.BellRing
+                    else LucideIcons.MessageSquare,
             contentDescription = null,
             tint = if (unread) SlockColor.AccentPink else SlockColor.TextMutedGray,
             modifier = Modifier.size(18.dp)
@@ -950,7 +950,7 @@ private fun InboxReplyChip(
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Icon(
-            imageVector = SlockIcons.MessageSquare,
+            imageVector = LucideIcons.MessageSquare,
             contentDescription = null,
             tint = SlockColor.TextBlack,
             modifier = Modifier.size(12.dp)

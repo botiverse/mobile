@@ -1,5 +1,7 @@
 package ai.slock.android.ui.components
 
+import ai.slock.android.ui.icons.LucideIcons
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -151,7 +153,7 @@ private fun SlockModalHeader(
             modifier = Modifier.weight(1f)
         )
         SlockIconSquareButton(
-            icon = SlockIcons.X,
+            icon = LucideIcons.X,
             contentDescription = "Close",
             onClick = onDismiss,
             enabled = enabled,
@@ -408,13 +410,13 @@ private fun SlockModalDangerPreview() {
                     text = "Archive channel",
                     onClick = {},
                     style = SlockModalActionStyle.Warning,
-                    icon = SlockIcons.Archive
+                    icon = LucideIcons.Archive
                 ),
                 SlockModalAction(
                     text = "Delete forever",
                     onClick = {},
                     style = SlockModalActionStyle.Danger,
-                    icon = SlockIcons.Trash
+                    icon = LucideIcons.Trash
                 )
             ),
             content = {

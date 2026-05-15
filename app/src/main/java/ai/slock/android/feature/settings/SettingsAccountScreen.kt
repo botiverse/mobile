@@ -3,7 +3,7 @@ package ai.slock.android.feature.settings
 import ai.slock.android.R
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
-import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.components.SlockTextField
 import ai.slock.android.ui.theme.SlockColor
@@ -94,7 +94,7 @@ fun SettingsAccountScreen(
         SettingsProfileFields(profile = profile)
         SettingsConnectedAccounts(accounts = connectedAccounts)
         SettingsDisclosureRow(
-                icon = SlockIcons.Key,
+                icon = LucideIcons.Key,
                 title = stringResource(R.string.settings_account_change_password),
                 subtitle = stringResource(R.string.settings_account_change_password_subtitle)
         )
@@ -172,7 +172,7 @@ fun SettingsAccountHeader(profile: SettingsAccountProfile, modifier: Modifier = 
                     SettingsStatusBadge(
                             text = stringResource(R.string.settings_account_verified),
                             color = SlockColor.AccentLime,
-                            icon = SlockIcons.ShieldCheck
+                            icon = LucideIcons.ShieldCheck
                     )
                 }
             }
@@ -183,7 +183,7 @@ fun SettingsAccountHeader(profile: SettingsAccountProfile, modifier: Modifier = 
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
             )
-            SettingsMetaRow(icon = SlockIcons.Mail, text = profile.email)
+            SettingsMetaRow(icon = LucideIcons.Mail, text = profile.email)
             SettingsStatusBadge(text = profile.roleLabel, color = SlockColor.AppBgLightBlue)
         }
     }
@@ -329,7 +329,7 @@ fun SettingsProfileFields(
                     SettingsStatusBadge(
                             stringResource(R.string.settings_account_verified),
                             SlockColor.AccentLime,
-                            icon = SlockIcons.Check
+                            icon = LucideIcons.Check
                     )
                 }
         )
@@ -438,7 +438,7 @@ private fun SettingsConnectedAccountIcon(provider: String, connected: Boolean) {
                 )
         else ->
                 Icon(
-                        imageVector = SlockIcons.Key,
+                        imageVector = LucideIcons.Key,
                         contentDescription = null,
                         tint = if (connected) SlockColor.SurfaceWhite else SlockColor.TextBlack,
                         modifier = Modifier.size(18.dp)
@@ -454,7 +454,7 @@ private fun SettingsConnectedStatusBadge(status: SettingsConnectedAccountStatus)
                         Triple(
                                 stringResource(R.string.settings_account_connected),
                                 SlockColor.AccentCyan,
-                                SlockIcons.Link
+                                LucideIcons.Link
                         )
                 SettingsConnectedAccountStatus.NotConnected ->
                         Triple(
@@ -466,7 +466,7 @@ private fun SettingsConnectedStatusBadge(status: SettingsConnectedAccountStatus)
                         Triple(
                                 stringResource(R.string.settings_account_connecting),
                                 SlockColor.BrandYellow,
-                                SlockIcons.Link
+                                LucideIcons.Link
                         )
                 SettingsConnectedAccountStatus.Failed ->
                         Triple(
@@ -527,7 +527,7 @@ fun SettingsDisclosureRow(
             )
         }
         Icon(
-                imageVector = SlockIcons.ChevronRight,
+                imageVector = LucideIcons.ChevronRight,
                 contentDescription = null,
                 tint = SlockColor.TextBlack,
                 modifier = Modifier.size(16.dp)
@@ -627,7 +627,7 @@ private fun SettingsAccountStatesPreview() {
                             )
             )
             SettingsDisclosureRow(
-                    icon = SlockIcons.Key,
+                    icon = LucideIcons.Key,
                     title = "Change password",
                     subtitle = "Requires current password before saving a new one"
             )

@@ -1,5 +1,7 @@
 package ai.slock.android.ui.components
 
+import ai.slock.android.ui.icons.LucideIcons
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -85,7 +87,7 @@ fun SlockLogoBadge(
         if (showDropdown) {
             Spacer(modifier = Modifier.width(SlockSpacing.Xs))
             Icon(
-                imageVector = SlockIcons.ChevronDown,
+                imageVector = LucideIcons.ChevronDown,
                 contentDescription = null,
                 tint = SlockColor.BrandYellow,
                 modifier = Modifier.size(if (variant == SlockLogoBadgeVariant.Large) 18.dp else 16.dp)

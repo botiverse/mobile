@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import ai.slock.android.R
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
-import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.components.SlockTextField
 import ai.slock.android.ui.system.DeclareStatusBarColor
@@ -144,7 +144,7 @@ fun SettingsDetailHeader(
                 surfaceModifier = Modifier.size(SettingsDetailHeaderButtonSize)
             ) {
                 Icon(
-                    imageVector = SlockIcons.ArrowLeft,
+                    imageVector = LucideIcons.ArrowLeft,
                     contentDescription = null,
                     tint = SlockColor.TextBlack,
                     modifier = Modifier.size(SettingsDetailHeaderIconSize)
@@ -181,7 +181,7 @@ fun SettingsSectionHeader(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = SlockIcons.Settings,
+                imageVector = LucideIcons.Settings,
                 contentDescription = null,
                 tint = SlockColor.TextMutedGray,
                 modifier = Modifier.size(14.dp)
@@ -335,7 +335,7 @@ private fun ServerAdminSelectRow(candidate: SettingsServerAdminCandidate?) {
             }
         }
         Icon(
-            imageVector = SlockIcons.ChevronDown,
+            imageVector = LucideIcons.ChevronDown,
             contentDescription = null,
             tint = SlockColor.TextBlack,
             modifier = Modifier.size(16.dp)

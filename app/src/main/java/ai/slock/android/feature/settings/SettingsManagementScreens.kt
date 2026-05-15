@@ -30,7 +30,7 @@ import ai.slock.android.shared.SlockKuiklyPageIsland
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
-import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.components.SlockSegmentOption
 import ai.slock.android.ui.components.SlockTextField
@@ -166,7 +166,7 @@ private fun ComputerCard(computer: SettingsComputerSnapshot, onClick: () -> Unit
                     contentAlignment = Alignment.Center
             ) {
                 Icon(
-                        imageVector = SlockIcons.Monitor,
+                        imageVector = LucideIcons.Monitor,
                         contentDescription = null,
                         tint = SlockColor.TextBlack,
                         modifier = Modifier.size(20.dp)
@@ -1112,7 +1112,7 @@ private fun SettingsLanguageDropdownButton(
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             Icon(
-                    imageVector = SlockIcons.Globe,
+                    imageVector = LucideIcons.Globe,
                     contentDescription = null,
                     tint = SlockColor.TextBlack,
                     modifier = Modifier.size(18.dp)
@@ -1134,7 +1134,7 @@ private fun SettingsLanguageDropdownButton(
                 )
             }
             Icon(
-                    imageVector = SlockIcons.ChevronDown,
+                    imageVector = LucideIcons.ChevronDown,
                     contentDescription =
                             if (expanded) {
                                 stringResource(R.string.settings_language_collapse)
@@ -1185,7 +1185,7 @@ private fun SettingsLanguageDropdownRow(
         }
         if (selected) {
             Icon(
-                    imageVector = SlockIcons.Check,
+                    imageVector = LucideIcons.Check,
                     contentDescription = stringResource(R.string.settings_locale_selected),
                     tint = SlockColor.TextBlack,
                     modifier = Modifier.size(16.dp)

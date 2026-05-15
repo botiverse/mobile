@@ -30,7 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.components.SlockTitledPageHeader
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockSpacing
@@ -177,7 +177,7 @@ fun SettingsNavRow(
             Spacer(modifier = Modifier.width(SlockSpacing.Xs))
         }
         Icon(
-            imageVector = SlockIcons.ChevronRight,
+            imageVector = LucideIcons.ChevronRight,
             contentDescription = null,
             tint = if (item.enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
             modifier = Modifier.size(SettingsChevronSize)
@@ -190,7 +190,7 @@ private val settingsHomeSampleItems = listOf(
         key = "account",
         title = "Account",
         subtitle = "Profile, email, password, connected accounts",
-        icon = SlockIcons.User,
+        icon = LucideIcons.User,
         value = "Verified",
         selected = true
     ),
@@ -198,26 +198,26 @@ private val settingsHomeSampleItems = listOf(
         key = "mobile",
         title = "Mobile",
         subtitle = "Push notifications and server mute",
-        icon = SlockIcons.MessageSquare
+        icon = LucideIcons.MessageSquare
     ),
     SettingsHomeItem(
         key = "server",
         title = "Server",
         subtitle = "Workspace name, members, invites, permissions",
-        icon = SlockIcons.Users,
+        icon = LucideIcons.Users,
         value = "Owner"
     ),
     SettingsHomeItem(
         key = "computers",
         title = "Computers",
         subtitle = "Connected machines and active sessions",
-        icon = SlockIcons.Square
+        icon = LucideIcons.Square
     ),
     SettingsHomeItem(
         key = "release-notes",
         title = "Release Notes",
         subtitle = "What changed recently",
-        icon = SlockIcons.ListTodo
+        icon = LucideIcons.ListTodo
     )
 )
 
@@ -252,7 +252,7 @@ private fun SettingsHomeStatesPreview() {
                     key = "long",
                     title = "Server settings with very long mixed 中文 English title",
                     subtitle = "This subtitle is intentionally long with 中文 English mixed text to verify wrapping without covering the right chevron or action.",
-                    icon = SlockIcons.Settings,
+                    icon = LucideIcons.Settings,
                     value = "Current"
                 )
             )

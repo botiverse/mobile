@@ -1,5 +1,7 @@
 package ai.slock.android.ui.components
 
+import ai.slock.android.ui.icons.LucideIcons
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -61,7 +63,7 @@ fun SlockCheckbox(
         )
         if (checked) {
             Icon(
-                imageVector = SlockIcons.Check,
+                imageVector = LucideIcons.Check,
                 contentDescription = null,
                 tint = if (enabled) SlockColor.SurfaceWhite else Color.White.copy(alpha = 0.75f),
                 modifier = Modifier.size(size * 0.68f)

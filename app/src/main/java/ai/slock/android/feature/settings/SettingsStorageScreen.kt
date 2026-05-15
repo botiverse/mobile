@@ -5,7 +5,7 @@ import ai.slock.android.core.data.storage.StorageClearTarget
 import ai.slock.android.core.data.storage.StorageManagementSnapshot
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
-import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockShadow
@@ -57,7 +57,7 @@ fun SettingsStorageScreen(
     ) {
         SettingsStorageSummary(snapshot = snapshot, onRefresh = onRefresh)
         SettingsStorageRow(
-                icon = SlockIcons.Archive,
+                icon = LucideIcons.Archive,
                 title = stringResource(R.string.settings_storage_database_title),
                 detail = stringResource(R.string.settings_storage_database_detail),
                 size = snapshot.localDatabaseBytes.formatStorageSize(),
@@ -66,7 +66,7 @@ fun SettingsStorageScreen(
                 onClear = {}
         )
         SettingsStorageRow(
-                icon = SlockIcons.Image,
+                icon = LucideIcons.Image,
                 title = stringResource(R.string.settings_storage_image_cache_title),
                 detail = stringResource(R.string.settings_storage_image_cache_detail),
                 size = snapshot.imageCacheBytes.formatStorageSize(),
@@ -76,7 +76,7 @@ fun SettingsStorageScreen(
                 onClear = { onClear(StorageClearTarget.ImageCache) }
         )
         SettingsStorageRow(
-                icon = SlockIcons.FileText,
+                icon = LucideIcons.FileText,
                 title = stringResource(R.string.settings_storage_temp_logs_title),
                 detail = stringResource(R.string.settings_storage_temp_logs_detail),
                 size = snapshot.temporaryAndLogBytes.formatStorageSize(),
@@ -121,7 +121,7 @@ private fun SettingsStorageSummary(snapshot: StorageManagementSnapshot, onRefres
                 variant = SlockButtonVariant.Outline,
                 leadingContent = {
                     Icon(
-                            imageVector = SlockIcons.RefreshCw,
+                            imageVector = LucideIcons.RefreshCw,
                             contentDescription = null,
                             tint = SlockColor.TextBlack,
                             modifier = Modifier.size(16.dp)
@@ -198,7 +198,7 @@ private fun SettingsStorageRow(
                         loading = clearInProgress,
                         leadingContent = {
                             Icon(
-                                    imageVector = SlockIcons.Trash,
+                                    imageVector = LucideIcons.Trash,
                                     contentDescription = null,
                                     tint = SlockColor.TextBlack,
                                     modifier = Modifier.size(16.dp)

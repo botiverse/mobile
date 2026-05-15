@@ -39,7 +39,7 @@ import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
-import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.components.SlockLoadingState
 import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.components.SlockLabeledCheckbox
@@ -1034,7 +1034,7 @@ private fun ThreadJoinComposerReplacement(
                 enabled = joinEnabled,
                 leadingContent = {
                     Icon(
-                            imageVector = SlockIcons.LogIn,
+                            imageVector = LucideIcons.LogIn,
                             contentDescription = null,
                             tint = SlockColor.TextBlack,
                             modifier = Modifier.size(14.dp)
@@ -1114,7 +1114,7 @@ fun ThreadTopHeader(
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             if (showNavigationIconAtStart) {
-                HeaderIconButton(SlockIcons.ArrowLeft, "Back", onClick = onBack)
+                HeaderIconButton(LucideIcons.ArrowLeft, "Back", onClick = onBack)
             }
             if (replyHeaderContext == null) {
                 if (isDirectMessage) {
@@ -1179,16 +1179,16 @@ fun ThreadTopHeader(
             }
             if (parentJumpTarget != null) {
                 HeaderIconButton(
-                        SlockIcons.ExternalLink,
+                        LucideIcons.ExternalLink,
                         "Open original message",
                         onClick = { onOpenParentMessage(parentJumpTarget) }
                 )
             }
             if (showCloseActionAtEnd) {
-                HeaderIconButton(SlockIcons.X, "Close", onClick = onBack)
+                HeaderIconButton(LucideIcons.X, "Close", onClick = onBack)
             }
             if (showManagementActions && !isDirectMessage) {
-                HeaderIconButton(SlockIcons.Settings, "Settings", onClick = onSettingsClick)
+                HeaderIconButton(LucideIcons.Settings, "Settings", onClick = onSettingsClick)
                 ThreadMembersButton(count = membersCount, onClick = onMembersClick)
             }
         }
@@ -1445,7 +1445,7 @@ private fun ThreadOriginCompactToggle(
                     overflow = TextOverflow.Ellipsis
             )
             Icon(
-                    imageVector = SlockIcons.ChevronDown,
+                    imageVector = LucideIcons.ChevronDown,
                     contentDescription = null,
                     tint = SlockColor.TextMutedGray,
                     modifier = Modifier.size(14.dp).rotate(if (expanded) 180f else 0f)
@@ -1827,7 +1827,7 @@ private fun ThreadSettingsModal(
                                         style = SlockModalActionStyle.Warning,
                                         enabled = enabled,
                                         loading = deleting,
-                                        icon = SlockIcons.LogOut
+                                        icon = LucideIcons.LogOut
                                 )
                         ThreadDangerAction.Archive ->
                                 SlockModalAction(
@@ -1836,7 +1836,7 @@ private fun ThreadSettingsModal(
                                         style = SlockModalActionStyle.Warning,
                                         enabled = enabled && confirmMatches,
                                         loading = archiving,
-                                        icon = SlockIcons.Archive
+                                        icon = LucideIcons.Archive
                                 )
                         ThreadDangerAction.Delete ->
                                 SlockModalAction(
@@ -1845,7 +1845,7 @@ private fun ThreadSettingsModal(
                                         style = SlockModalActionStyle.Danger,
                                         enabled = enabled && confirmMatches,
                                         loading = deleting,
-                                        icon = SlockIcons.Trash
+                                        icon = LucideIcons.Trash
                                 )
                         null ->
                                 SlockModalAction(
@@ -1866,7 +1866,7 @@ private fun ThreadSettingsModal(
                                         },
                                         style = SlockModalActionStyle.Warning,
                                         enabled = enabled,
-                                        icon = SlockIcons.LogOut
+                                        icon = LucideIcons.LogOut
                                 ),
                                 SlockModalAction(
                                         text = "Archive Channel",
@@ -1876,7 +1876,7 @@ private fun ThreadSettingsModal(
                                         },
                                         style = SlockModalActionStyle.Warning,
                                         enabled = enabled,
-                                        icon = SlockIcons.Archive
+                                        icon = LucideIcons.Archive
                                 ),
                                 SlockModalAction(
                                         text = "Delete Channel",
@@ -1886,7 +1886,7 @@ private fun ThreadSettingsModal(
                                         },
                                         style = SlockModalActionStyle.Danger,
                                         enabled = enabled,
-                                        icon = SlockIcons.Trash
+                                        icon = LucideIcons.Trash
                                 )
                         )
                     } else {
@@ -2166,7 +2166,7 @@ private fun ThreadAttachmentRemoteImagePreview(
                         !hasFallbackImage
         ) {
             Icon(
-                    imageVector = SlockIcons.Image,
+                    imageVector = LucideIcons.Image,
                     contentDescription = null,
                     tint = SlockColor.TextMutedGray,
                     modifier = Modifier.size(40.dp)
@@ -2806,7 +2806,7 @@ private fun ThreadHashTile() {
             contentAlignment = Alignment.Center
     ) {
         Icon(
-                imageVector = SlockIcons.Hash,
+                imageVector = LucideIcons.Hash,
                 contentDescription = null,
                 tint = SlockColor.TextBlack,
                 modifier = Modifier.size(24.dp)
@@ -2880,7 +2880,7 @@ private fun ThreadMembersButton(count: Int?, onClick: () -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             Icon(
-                    SlockIcons.Users,
+                    LucideIcons.Users,
                     contentDescription = "Members",
                     tint = SlockColor.TextBlack,
                     modifier = Modifier.size(18.dp)
@@ -3840,7 +3840,7 @@ private fun ThreadBackToBottomButton(modifier: Modifier = Modifier, onClick: () 
                     color = SlockColor.TextBlack
             )
             Icon(
-                    imageVector = SlockIcons.ChevronDown,
+                    imageVector = LucideIcons.ChevronDown,
                     contentDescription = null,
                     tint = SlockColor.TextBlack,
                     modifier = Modifier.size(14.dp)
@@ -3930,9 +3930,9 @@ private val ThreadTab.labelRes: Int
 private val ThreadTab.tabIcon
     get() =
             when (this) {
-                ThreadTab.Chat -> SlockIcons.MessageSquare
-                ThreadTab.Tasks -> SlockIcons.ListTodo
-                ThreadTab.Files -> SlockIcons.Paperclip
+                ThreadTab.Chat -> LucideIcons.MessageSquare
+                ThreadTab.Tasks -> LucideIcons.ListTodo
+                ThreadTab.Files -> LucideIcons.Paperclip
             }
 
 @Composable
@@ -4203,7 +4203,7 @@ private fun ThreadFileRow(
             }
         }
         Icon(
-                imageVector = SlockIcons.ChevronRight,
+                imageVector = LucideIcons.ChevronRight,
                 contentDescription = null,
                 tint = SlockColor.TextMutedGray,
                 modifier = Modifier.size(18.dp)
@@ -4267,7 +4267,7 @@ private fun ThreadFileThumbnail(item: ChannelFileItem) {
         ) {
             Icon(
                     imageVector =
-                            if (isImage) SlockIcons.Image else SlockIcons.FileText,
+                            if (isImage) LucideIcons.Image else LucideIcons.FileText,
                     contentDescription = null,
                     tint = SlockColor.TextMutedGray,
                     modifier = Modifier.size(18.dp)
@@ -4868,7 +4868,7 @@ private fun Message.threadMessageActions(
             add(
                     SlockMenuOverlayAction(
                             label = "Share messages...",
-                            icon = SlockIcons.Share2,
+                            icon = LucideIcons.Share2,
                             group = "share",
                             onClick = onShare
                     )
@@ -4876,7 +4876,7 @@ private fun Message.threadMessageActions(
             add(
                     SlockMenuOverlayAction(
                             label = "Copy link",
-                            icon = SlockIcons.Link,
+                            icon = LucideIcons.Link,
                             group = "message-copy",
                             onClick = onCopyLink
                     )
@@ -4884,7 +4884,7 @@ private fun Message.threadMessageActions(
             add(
                     SlockMenuOverlayAction(
                             label = "Copy markdown",
-                            icon = SlockIcons.Copy,
+                            icon = LucideIcons.Copy,
                             group = "message-copy",
                             onClick = onCopy
                     )
@@ -4892,7 +4892,7 @@ private fun Message.threadMessageActions(
             add(
                     SlockMenuOverlayAction(
                             label = "Save message",
-                            icon = SlockIcons.Bookmark,
+                            icon = LucideIcons.Bookmark,
                             group = "message",
                             onClick = onSave
                     )
@@ -4901,7 +4901,7 @@ private fun Message.threadMessageActions(
                 add(
                         SlockMenuOverlayAction(
                                 label = "Reply",
-                                icon = SlockIcons.MessageSquare,
+                                icon = LucideIcons.MessageSquare,
                                 group = "message",
                                 onClick = onReply
                         )
@@ -4920,8 +4920,8 @@ private fun Message.threadMessageActions(
                         }
                 val actionIcon =
                         when (task.status) {
-                            TaskStatus.Done, TaskStatus.Closed -> SlockIcons.RefreshCw
-                            else -> SlockIcons.CircleCheckBig
+                            TaskStatus.Done, TaskStatus.Closed -> LucideIcons.RefreshCw
+                            else -> LucideIcons.CircleCheckBig
                         }
                 add(
                         SlockMenuOverlayAction(
@@ -4998,7 +4998,7 @@ private fun ThreadMessageFooterMeta(
                     ThreadChip(
                             label = replyLabel,
                             color = SlockColor.AppBgLightBlue,
-                            icon = SlockIcons.MessageSquare,
+                            icon = LucideIcons.MessageSquare,
                             onClick = onOpenThread,
                             textStyle = ThreadFooterMetaTextStyle,
                             modifier =
@@ -5039,7 +5039,7 @@ private fun ThreadTaskStatusChip(
                                 TaskStatus.entries.map { status ->
                                     SlockMenuOverlayAction(
                                             label = status.threadLabel,
-                                            icon = SlockIcons.Check.takeIf {
+                                            icon = LucideIcons.Check.takeIf {
                                                 status == task.status
                                             },
                                             onClick = {
@@ -5263,7 +5263,7 @@ private fun ThreadAttachmentThumbnail(
             }
             if (loadState != RemoteImageLoadState.Success) {
                 Icon(
-                        imageVector = if (isImage) SlockIcons.Image else SlockIcons.FileText,
+                        imageVector = if (isImage) LucideIcons.Image else LucideIcons.FileText,
                         contentDescription = null,
                         tint = SlockColor.TextBlack,
                         modifier = Modifier.size(24.dp)
@@ -5904,7 +5904,7 @@ private fun ThreadMarkdownCopyButton(onClick: () -> Unit) {
             contentAlignment = Alignment.Center
     ) {
         Icon(
-                imageVector = SlockIcons.Copy,
+                imageVector = LucideIcons.Copy,
                 contentDescription = "Copy code",
                 tint = SlockColor.TextBlack,
                 modifier = Modifier.size(16.dp)
@@ -6787,13 +6787,13 @@ private fun ThreadComposerInlineActions(
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             CompactIconButton(
-                    SlockIcons.ImagePlus,
+                    LucideIcons.ImagePlus,
                     "Attach image",
                     enabled = enabled,
                     onClick = onAttachImage
             )
             CompactIconButton(
-                    SlockIcons.Paperclip,
+                    LucideIcons.Paperclip,
                     "Attach file",
                     enabled = enabled,
                     onClick = onAttachFile
@@ -7229,7 +7229,7 @@ private fun PendingAttachmentChip(
         }
         Column(horizontalAlignment = Alignment.End) {
             CompactIconButton(
-                    icon = SlockIcons.X,
+                    icon = LucideIcons.X,
                     contentDescription = "Remove attachment",
                     enabled = enabled || attachment.status == PendingAttachmentStatus.Failed,
                     onClick = onRemove
@@ -7267,7 +7267,7 @@ private fun PendingAttachmentPreview(attachment: PendingAttachment) {
         )
     } else {
         Icon(
-                imageVector = if (attachment.isImage) SlockIcons.Image else SlockIcons.FileText,
+                imageVector = if (attachment.isImage) LucideIcons.Image else LucideIcons.FileText,
                 contentDescription = null,
                 tint = SlockColor.TextBlack,
                 modifier = Modifier.size(16.dp)
@@ -7333,7 +7333,7 @@ private fun PendingAttachmentLocalImagePreview(previewUri: String?, name: String
             )
         } else {
             Icon(
-                    imageVector = SlockIcons.Image,
+                    imageVector = LucideIcons.Image,
                     contentDescription = null,
                     tint = SlockColor.TextMutedGray,
                     modifier = Modifier.size(40.dp)
@@ -7397,7 +7397,7 @@ private fun ThreadSendButton(
             contentAlignment = Alignment.Center
     ) {
         Icon(
-                imageVector = SlockIcons.Send,
+                imageVector = LucideIcons.Send,
                 contentDescription = state.label,
                 tint = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                 modifier = Modifier.size(16.dp)
@@ -7554,11 +7554,11 @@ private val TaskStatus.threadColor: Color
 private val TaskStatus.threadIcon: androidx.compose.ui.graphics.vector.ImageVector
     get() =
             when (this) {
-                TaskStatus.Todo -> SlockIcons.Circle
-                TaskStatus.InProgress -> SlockIcons.Play
-                TaskStatus.InReview -> SlockIcons.Eye
-                TaskStatus.Done -> SlockIcons.CircleCheckBig
-                TaskStatus.Closed -> SlockIcons.Ban
+                TaskStatus.Todo -> LucideIcons.Circle
+                TaskStatus.InProgress -> LucideIcons.Play
+                TaskStatus.InReview -> LucideIcons.Eye
+                TaskStatus.Done -> LucideIcons.CircleCheckBig
+                TaskStatus.Closed -> LucideIcons.Ban
             }
 
 private val TaskStatus.threadLabel: String

@@ -1,5 +1,7 @@
 package ai.slock.android.ui.components
 
+import ai.slock.android.ui.icons.LucideIcons
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.ScrollState
@@ -122,7 +124,7 @@ fun SlockTaskColumn(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             Icon(
-                imageVector = if (collapsed) SlockIcons.ChevronRight else SlockIcons.ChevronDown,
+                imageVector = if (collapsed) LucideIcons.ChevronRight else LucideIcons.ChevronDown,
                 contentDescription = null,
                 tint = SlockColor.TextBlack,
                 modifier = Modifier.size(14.dp)
@@ -277,7 +279,7 @@ fun SlockStatusSelector(
                         SlockTaskStatus.entries.map { option ->
                             SlockMenuOverlayAction(
                                 label = option.displayLabel,
-                                icon = SlockIcons.Check.takeIf { option == status },
+                                icon = LucideIcons.Check.takeIf { option == status },
                                 onClick = {
                                     onExpandedChange(false)
                                     onStatusSelected(option)
