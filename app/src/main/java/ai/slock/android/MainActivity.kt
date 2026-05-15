@@ -80,8 +80,10 @@ import ai.slock.android.core.data.repository.RealtimeSubscription
 import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
 import ai.slock.android.core.data.repository.SavedRepository
 import ai.slock.android.core.data.repository.SavedSnapshot
+import ai.slock.android.core.data.repository.SearchQueryOptions
 import ai.slock.android.core.data.repository.SearchRepository
 import ai.slock.android.core.data.repository.SearchSnapshot
+import ai.slock.android.core.data.repository.SearchSort
 import ai.slock.android.core.data.repository.SendMessageResult
 import ai.slock.android.core.data.repository.ServerListSnapshot
 import ai.slock.android.core.data.repository.ServerUnreadRepository
@@ -321,6 +323,9 @@ import android.provider.Settings
 import android.widget.Toast
 import java.io.IOException
 import java.net.URL
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.UUID
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -340,6 +345,7 @@ import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellati
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -363,6 +369,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -382,6 +390,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -392,6 +401,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -1127,6 +1137,10 @@ private fun SlockAppContent(
     var taskReferenceChooserLabel by rememberSaveable { mutableStateOf<String?>(null) }
     var taskReferenceChooserIds by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
+    var searchMyMessagesOnly by rememberSaveable { mutableStateOf(false) }
+    var searchChannelIdValue by rememberSaveable { mutableStateOf<String?>(null) }
+    var searchTimeRangeKey by rememberSaveable { mutableStateOf(SearchTimeRange.Any.key) }
+    var searchSortKey by rememberSaveable { mutableStateOf(SearchSort.Relevance.name) }
     var searchState by remember {
         mutableStateOf<InboxUiState>(
                 InboxUiState(ScreenLoadState.Empty(EmptyReason.NoSearchResults))
@@ -1184,12 +1198,39 @@ private fun SlockAppContent(
     fun savedSnapshot(serverId: ServerId? = selectedServerIdForUi()): InboxContent? =
             serverId?.value?.let(savedSnapshotsByServer::get)
 
+    fun currentSearchTimeRange(): SearchTimeRange =
+            SearchTimeRange.fromKey(searchTimeRangeKey)
+
+    fun currentSearchSort(): SearchSort =
+            SearchSort.entries.firstOrNull { it.name == searchSortKey } ?: SearchSort.Relevance
+
+    fun currentSearchOptions(): SearchQueryOptions {
+        val bounds = currentSearchTimeRange().toIsoBounds()
+        return SearchQueryOptions(
+                sort = currentSearchSort(),
+                senderId = currentAuthSession?.user?.id.takeIf { searchMyMessagesOnly },
+                channelId = searchChannelIdValue?.let(::ChannelId),
+                afterIso = bounds.afterIso,
+                beforeIso = bounds.beforeIso
+        )
+    }
+
+    fun currentSearchSnapshotKey(query: String = searchQuery): String =
+            searchSnapshotKey(
+                    query = query,
+                    myMessagesOnly = searchMyMessagesOnly,
+                    channelIdValue = searchChannelIdValue,
+                    timeRangeKey = currentSearchTimeRange().key,
+                    sort = currentSearchSort()
+            )
+
     fun searchSnapshot(
             query: String = searchQuery,
+            cacheKey: String = currentSearchSnapshotKey(query),
             serverId: ServerId? = selectedServerIdForUi()
     ): InboxContent? =
-            query.takeIf(String::isNotBlank)?.let { key ->
-                serverId?.value?.let { serverKey -> searchSnapshotsByServer[serverKey]?.get(key) }
+            query.takeIf(String::isNotBlank)?.let {
+                serverId?.value?.let { serverKey -> searchSnapshotsByServer[serverKey]?.get(cacheKey) }
             }
 
     val selectedServerIdForHomeNotifications = selectedServerIdForUi()
@@ -1282,13 +1323,17 @@ private fun SlockAppContent(
                 )
     }
 
-    fun setSearchState(next: InboxUiState, query: String = searchQuery) {
+    fun setSearchState(
+            next: InboxUiState,
+            query: String = searchQuery,
+            cacheKey: String = currentSearchSnapshotKey(query)
+    ) {
         next.contentOrNull()?.takeIf { query.isNotBlank() }?.let { content ->
             val serverKey = content.server.id.value
             searchSnapshotsByServer =
                     searchSnapshotsByServer + (
                             serverKey to
-                                    (searchSnapshotsByServer[serverKey].orEmpty() + (query to content))
+                                    (searchSnapshotsByServer[serverKey].orEmpty() + (cacheKey to content))
                             )
         }
         val renderServerId = next.contentOrNull()?.server?.id ?: selectedServerIdForUi()
@@ -1296,7 +1341,7 @@ private fun SlockAppContent(
                 next.copy(
                         previousContent =
                                 if (next.loadState is ScreenLoadState.Content || query.isBlank()) null
-                                else searchSnapshot(query, renderServerId)
+                                else searchSnapshot(query, cacheKey, renderServerId)
                 )
     }
 
@@ -1321,11 +1366,14 @@ private fun SlockAppContent(
                         savedSnapshot()?.toInboxUiState() ?: toSavedInboxUiState()
             }
 
-    fun DataResult<SearchSnapshot>.toSearchRouteState(query: String): InboxUiState =
+    fun DataResult<SearchSnapshot>.toSearchRouteState(
+            query: String,
+            cacheKey: String = currentSearchSnapshotKey(query)
+    ): InboxUiState =
             when (this) {
                 is DataResult.Content -> toSearchInboxUiState()
                 is DataResult.Empty, is DataResult.Error, is DataResult.NoPermission ->
-                        searchSnapshot(query)?.toInboxUiState() ?: toSearchInboxUiState()
+                        searchSnapshot(query, cacheKey)?.toInboxUiState() ?: toSearchInboxUiState()
             }
 
     var settingsComputerDetailState by remember {
@@ -6683,6 +6731,10 @@ private fun SlockAppContent(
             memberRepository,
             serverUnreadRepository,
             searchQuery,
+            searchMyMessagesOnly,
+            searchChannelIdValue,
+            searchTimeRangeKey,
+            searchSortKey,
             homeRefreshRetryNonce,
             homeResumeRefreshNonce,
             networkResumeNonce,
@@ -6924,17 +6976,24 @@ private fun SlockAppContent(
                                 serverUnreadRepository.getUnreadSummary(selectedServerId)
                             }
                         }
+                val searchQueryForRefresh = searchQuery
+                val searchOptionsForRefresh = currentSearchOptions()
+                val searchCacheKeyForRefresh = currentSearchSnapshotKey(searchQueryForRefresh)
                 val searchD =
-                        if (searchQuery.isBlank()) {
+                        if (searchQueryForRefresh.isBlank()) {
                             null
                         } else {
                             async {
                                 withSlockRequestPriority(
                                         priority = homeRefreshPriority,
-                                        key = "search:${selectedServerId.value}",
+                                        key = "search:${selectedServerId.value}:$searchCacheKeyForRefresh",
                                         reason = "home_refresh_search_$refreshSource"
                                 ) {
-                                    searchRepository.search(selectedServerId, searchQuery)
+                                    searchRepository.search(
+                                            selectedServerId,
+                                            searchQueryForRefresh,
+                                            options = searchOptionsForRefresh
+                                    )
                                 }
                             }
                         }
@@ -7054,22 +7113,32 @@ private fun SlockAppContent(
                         }
                 )
 
-                setSearchState(
-                        if (searchD == null) {
-                            InboxUiState(ScreenLoadState.Empty(EmptyReason.NoSearchResults))
-                        } else {
-                            when (val searchResult = searchD.await()) {
-                            is DataResult.Content -> searchResult.toSearchInboxUiState()
-                            is DataResult.Empty, is DataResult.Error, is DataResult.NoPermission ->
-                                    if (searchState.loadState is ScreenLoadState.Content) {
-                                        searchState.copy(loadingMore = false)
-                                    } else {
-                                        searchResult.toSearchRouteState(searchQuery)
-                                    }
-                            }
-                        },
-                        query = searchQuery
-                )
+                if (searchQuery == searchQueryForRefresh &&
+                                currentSearchSnapshotKey(searchQueryForRefresh) == searchCacheKeyForRefresh
+                ) {
+                    setSearchState(
+                            if (searchD == null) {
+                                InboxUiState(ScreenLoadState.Empty(EmptyReason.NoSearchResults))
+                            } else {
+                                when (val searchResult = searchD.await()) {
+                                is DataResult.Content -> searchResult.toSearchInboxUiState()
+                                is DataResult.Empty, is DataResult.Error, is DataResult.NoPermission ->
+                                        if (searchState.loadState is ScreenLoadState.Content) {
+                                            searchState.copy(loadingMore = false)
+                                        } else {
+                                            searchResult.toSearchRouteState(
+                                                    searchQueryForRefresh,
+                                                    searchCacheKeyForRefresh
+                                            )
+                                        }
+                                }
+                            },
+                            query = searchQueryForRefresh,
+                            cacheKey = searchCacheKeyForRefresh
+                    )
+                } else {
+                    searchD?.await()
+                }
 
                 when (val unreadResult = unreadD.await()) {
                     is DataResult.Content -> {
@@ -7485,20 +7554,29 @@ private fun SlockAppContent(
     fun refreshSearchRoute() {
         val selectedServerId = selectedServerIdForHome() ?: return
         val query = searchQuery
+        val options = currentSearchOptions()
+        val cacheKey = currentSearchSnapshotKey(query)
         if (query.isBlank() || searchRefreshInProgress) return
         searchRefreshInProgress = true
-        setSearchState(searchState.withSilentRefresh(renderCache = searchSnapshot(query)), query)
+        setSearchState(
+                searchState.withSilentRefresh(renderCache = searchSnapshot(query, cacheKey)),
+                query,
+                cacheKey
+        )
         coroutineScope.launch {
             val result =
                     withSlockRequestPriority(
                             priority = SlockRequestPriority.Visible,
-                            key = "search:${selectedServerId.value}",
+                            key = "search:${selectedServerId.value}:$cacheKey",
                             reason = "refresh_search"
                     ) {
-                        searchRepository.search(selectedServerId, query)
+                        searchRepository.search(selectedServerId, query, options = options)
                     }
-            if (selectedServerIdForHome() == selectedServerId && searchQuery == query) {
-                setSearchState(result.toSearchRouteState(query), query)
+            if (selectedServerIdForHome() == selectedServerId &&
+                            searchQuery == query &&
+                            currentSearchSnapshotKey(query) == cacheKey
+            ) {
+                setSearchState(result.toSearchRouteState(query, cacheKey), query, cacheKey)
             }
             searchRefreshInProgress = false
         }
@@ -8392,6 +8470,15 @@ private fun SlockAppContent(
                                     searchState = searchState,
                                     searchQuery = searchQuery,
                                     onSearchQueryChange = { searchQuery = it },
+                                    searchMyMessagesOnly = searchMyMessagesOnly,
+                                    onSearchMyMessagesOnlyChange = { searchMyMessagesOnly = it },
+                                    searchSelectedChannelId = searchChannelIdValue,
+                                    onSearchSelectedChannelIdChange = { searchChannelIdValue = it },
+                                    searchTimeRange = currentSearchTimeRange(),
+                                    onSearchTimeRangeChange = { searchTimeRangeKey = it.key },
+                                    searchSort = currentSearchSort(),
+                                    onSearchSortChange = { searchSortKey = it.name },
+                                    searchCurrentMemberId = currentAuthSession?.user?.id,
                                     homeRefreshInProgress = homeRefreshInProgress,
                                     homeRefreshError = homeRefreshError,
                                     homeRefreshErrorLabel = homeRefreshErrorLabel,
@@ -9005,26 +9092,34 @@ private fun SlockAppContent(
                                                         searchQuery.isNotBlank()
                                         ) {
                                             val query = searchQuery
+                                            val options = currentSearchOptions()
+                                            val cacheKey = currentSearchSnapshotKey(query)
                                             coroutineScope.launch {
                                                 setSearchState(
                                                         searchState.copy(loadingMore = true),
-                                                        query = query
+                                                        query = query,
+                                                        cacheKey = cacheKey
                                                 )
                                                 val next =
                                                         searchRepository
                                                                 .search(
                                                                         serverId = selectedServerId,
                                                                         query = query,
-                                                                        offset = offset
+                                                                        offset = offset,
+                                                                        options = options
                                                                 )
                                                                 .toSearchInboxUiState()
-                                                if (isCurrentServer(selectedServerId) && searchQuery == query) {
+                                                if (isCurrentServer(selectedServerId) &&
+                                                                searchQuery == query &&
+                                                                currentSearchSnapshotKey(query) == cacheKey
+                                                ) {
                                                     setSearchState(
                                                             mergeInboxPage(
                                                                     current = searchState,
                                                                     next = next
                                                             ),
-                                                            query = query
+                                                            query = query,
+                                                            cacheKey = cacheKey
                                                     )
                                                 } else {
                                                     logStaleServerWrite(
@@ -10299,6 +10394,15 @@ private fun HomeRouteScreen(
         searchState: InboxUiState,
         searchQuery: String,
         onSearchQueryChange: (String) -> Unit,
+        searchMyMessagesOnly: Boolean,
+        onSearchMyMessagesOnlyChange: (Boolean) -> Unit,
+        searchSelectedChannelId: String?,
+        onSearchSelectedChannelIdChange: (String?) -> Unit,
+        searchTimeRange: SearchTimeRange,
+        onSearchTimeRangeChange: (SearchTimeRange) -> Unit,
+        searchSort: SearchSort,
+        onSearchSortChange: (SearchSort) -> Unit,
+        searchCurrentMemberId: String?,
         homeRefreshInProgress: Boolean,
         homeRefreshError: String?,
         homeRefreshErrorLabel: String?,
@@ -10779,6 +10883,16 @@ private fun HomeRouteScreen(
                         state = searchState,
                         query = searchQuery,
                         onQueryChange = onSearchQueryChange,
+                        myMessagesOnly = searchMyMessagesOnly,
+                        onMyMessagesOnlyChange = onSearchMyMessagesOnlyChange,
+                        selectedChannelId = searchSelectedChannelId,
+                        onSelectedChannelIdChange = onSearchSelectedChannelIdChange,
+                        timeRange = searchTimeRange,
+                        onTimeRangeChange = onSearchTimeRangeChange,
+                        sort = searchSort,
+                        onSortChange = onSearchSortChange,
+                        currentMemberId = searchCurrentMemberId,
+                        conversations = searchFilterConversations(homeState),
                         onBack = { onRouteChange(HomeRoute.Shell) },
                         onOpenThread = {
                             onOpenThreadItem(it)
@@ -10796,6 +10910,16 @@ private fun SearchResultsScreen(
         state: InboxUiState,
         query: String,
         onQueryChange: (String) -> Unit,
+        myMessagesOnly: Boolean,
+        onMyMessagesOnlyChange: (Boolean) -> Unit,
+        selectedChannelId: String?,
+        onSelectedChannelIdChange: (String?) -> Unit,
+        timeRange: SearchTimeRange,
+        onTimeRangeChange: (SearchTimeRange) -> Unit,
+        sort: SearchSort,
+        onSortChange: (SearchSort) -> Unit,
+        currentMemberId: String?,
+        conversations: List<SearchChannelFilterItem>,
         onBack: () -> Unit,
         onOpenThread: (InboxItem) -> Unit,
         onLoadMore: () -> Unit,
@@ -10818,6 +10942,22 @@ private fun SearchResultsScreen(
                         Modifier.fillMaxWidth()
                                 .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md)
         )
+        SearchFilterBar(
+                myMessagesOnly = myMessagesOnly,
+                onMyMessagesOnlyChange = onMyMessagesOnlyChange,
+                selectedChannelId = selectedChannelId,
+                onSelectedChannelIdChange = onSelectedChannelIdChange,
+                timeRange = timeRange,
+                onTimeRangeChange = onTimeRangeChange,
+                sort = sort,
+                onSortChange = onSortChange,
+                currentMemberId = currentMemberId,
+                conversations = conversations,
+                modifier =
+                        Modifier.fillMaxWidth()
+                                .padding(horizontal = SlockSpacing.Md)
+                                .padding(bottom = SlockSpacing.Md)
+        )
         SearchResultsListScreen(
                 state = state,
                 onOpenThread = onOpenThread,
@@ -10827,6 +10967,216 @@ private fun SearchResultsScreen(
         )
     }
 }
+
+@Composable
+private fun SearchFilterBar(
+        myMessagesOnly: Boolean,
+        onMyMessagesOnlyChange: (Boolean) -> Unit,
+        selectedChannelId: String?,
+        onSelectedChannelIdChange: (String?) -> Unit,
+        timeRange: SearchTimeRange,
+        onTimeRangeChange: (SearchTimeRange) -> Unit,
+        sort: SearchSort,
+        onSortChange: (SearchSort) -> Unit,
+        currentMemberId: String?,
+        conversations: List<SearchChannelFilterItem>,
+        modifier: Modifier = Modifier
+) {
+    FlowRow(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        SearchFilterButton(
+                label = "MY MESSAGES",
+                icon = LucideIcons.User,
+                selected = myMessagesOnly,
+                enabled = currentMemberId != null,
+                onClick = { onMyMessagesOnlyChange(!myMessagesOnly) }
+        )
+        SearchDropdownFilter(
+                label = conversations.firstOrNull { it.id == selectedChannelId }?.label ?: "CHANNEL",
+                icon = LucideIcons.Hash,
+                actions =
+                        listOf(SearchFilterMenuAction("ALL CHANNELS") {
+                            onSelectedChannelIdChange(null)
+                        }) +
+                                conversations.map { item ->
+                                    SearchFilterMenuAction(item.label) {
+                                        onSelectedChannelIdChange(item.id)
+                                    }
+                                },
+                selected = selectedChannelId != null
+        )
+        SearchDropdownFilter(
+                label = timeRange.label,
+                icon = LucideIcons.Activity,
+                actions =
+                        SearchTimeRange.entries.map { option ->
+                            SearchFilterMenuAction(option.label) { onTimeRangeChange(option) }
+                        },
+                selected = timeRange != SearchTimeRange.Any
+        )
+        SearchSortSegments(sort = sort, onSortChange = onSortChange)
+    }
+}
+
+@Composable
+private fun SearchDropdownFilter(
+        label: String,
+        icon: ImageVector,
+        actions: List<SearchFilterMenuAction>,
+        selected: Boolean
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        SearchFilterButton(
+                label = label,
+                icon = icon,
+                selected = selected,
+                trailingIcon = LucideIcons.ChevronDown,
+                onClick = { expanded = true }
+        )
+        DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier =
+                        Modifier.background(SlockColor.SurfaceWhite)
+                                .border(SlockStroke.Default, SlockColor.BorderBlack)
+        ) {
+            actions.forEach { action ->
+                DropdownMenuItem(
+                        text = {
+                            Text(
+                                    text = action.label,
+                                    style = SlockType.Button,
+                                    color = SlockColor.TextBlack,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        onClick = {
+                            expanded = false
+                            action.onClick()
+                        },
+                        leadingIcon =
+                                if (action.label == label || (label == "CHANNEL" && action.label == "ALL CHANNELS")) {
+                                    {
+                                        Icon(
+                                                imageVector = LucideIcons.Check,
+                                                contentDescription = null,
+                                                tint = SlockColor.TextBlack,
+                                                modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else {
+                                    null
+                                }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchFilterButton(
+        label: String,
+        icon: ImageVector,
+        selected: Boolean,
+        enabled: Boolean = true,
+        trailingIcon: ImageVector? = null,
+        onClick: () -> Unit
+) {
+    val background =
+            when {
+                !enabled -> SlockColor.SurfaceWhite.copy(alpha = 0.54f)
+                selected -> SlockColor.BrandYellow
+                else -> SlockColor.SurfaceWhite
+            }
+    Row(
+            modifier =
+                    Modifier.height(36.dp)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .background(background)
+                            .clickable(enabled = enabled, onClick = onClick)
+                            .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                modifier = Modifier.size(15.dp)
+        )
+        Text(
+                text = label,
+                style = SlockType.Button.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium),
+                color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+        )
+        trailingIcon?.let {
+            Icon(
+                    imageVector = it,
+                    contentDescription = null,
+                    tint = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                    modifier = Modifier.size(14.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchSortSegments(sort: SearchSort, onSortChange: (SearchSort) -> Unit) {
+    Row(
+            modifier =
+                    Modifier.height(36.dp)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .background(SlockColor.SurfaceWhite)
+    ) {
+        SearchSortSegment(
+                label = "Relevant",
+                selected = sort == SearchSort.Relevance,
+                onClick = { onSortChange(SearchSort.Relevance) }
+        )
+        Box(Modifier.fillMaxHeight().width(SlockStroke.Default).background(SlockColor.BorderBlack))
+        SearchSortSegment(
+                label = "Recent",
+                selected = sort == SearchSort.Recent,
+                onClick = { onSortChange(SearchSort.Recent) }
+        )
+    }
+}
+
+@Composable
+private fun SearchSortSegment(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+            modifier =
+                    Modifier.fillMaxHeight()
+                            .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                            .clickable(onClick = onClick)
+                            .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.Center
+    ) {
+        Text(
+                text = label,
+                style = SlockType.Button.copy(fontSize = 12.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1
+        )
+    }
+}
+
+private data class SearchFilterMenuAction(
+        val label: String,
+        val onClick: () -> Unit
+)
+
+private data class SearchChannelFilterItem(
+        val id: String,
+        val label: String
+)
 
 private val localComposerAuthor =
         MemberProfile(
@@ -10911,6 +11261,70 @@ private enum class HomeRoute {
     FollowedThreads,
     Saved,
     Search
+}
+
+private enum class SearchTimeRange(val key: String, val label: String) {
+    Any("any", "ANY TIME"),
+    Today("today", "TODAY"),
+    Last7Days("last_7_days", "LAST 7 DAYS"),
+    Last30Days("last_30_days", "LAST 30 DAYS");
+
+    fun toIsoBounds(nowMillis: Long = System.currentTimeMillis()): SearchIsoBounds {
+        if (this == Any) return SearchIsoBounds()
+        val zone = ZoneId.systemDefault()
+        val now = Instant.ofEpochMilli(nowMillis)
+        val todayStart = LocalDate.now(zone).atStartOfDay(zone).toInstant()
+        val after =
+                when (this) {
+                    Any -> null
+                    Today -> todayStart
+                    Last7Days -> now.minusSeconds(7L * 24L * 60L * 60L)
+                    Last30Days -> now.minusSeconds(30L * 24L * 60L * 60L)
+                }
+        return SearchIsoBounds(afterIso = after?.toString(), beforeIso = now.toString())
+    }
+
+    companion object {
+        fun fromKey(key: String?): SearchTimeRange =
+                entries.firstOrNull { it.key == key } ?: Any
+    }
+}
+
+private data class SearchIsoBounds(
+        val afterIso: String? = null,
+        val beforeIso: String? = null
+)
+
+private fun searchSnapshotKey(
+        query: String,
+        myMessagesOnly: Boolean,
+        channelIdValue: String?,
+        timeRangeKey: String,
+        sort: SearchSort
+): String =
+        listOf(
+                        query,
+                        if (myMessagesOnly) "me" else "all",
+                        channelIdValue.orEmpty(),
+                        timeRangeKey,
+                        sort.name
+                )
+                .joinToString(separator = "\u001F")
+
+private fun searchFilterConversations(homeState: HomeUiState): List<SearchChannelFilterItem> {
+    val content = (homeState.loadState as? ScreenLoadState.Content)?.data ?: return emptyList()
+    return (content.channels + content.directMessages)
+            .mapNotNull { conversation ->
+                val channelId = conversation.channelId?.value ?: return@mapNotNull null
+                val label =
+                        when (conversation.kind) {
+                            ConversationKind.Channel -> "#${conversation.name}"
+                            ConversationKind.DirectMessage -> conversation.name
+                            else -> conversation.name
+                        }
+                SearchChannelFilterItem(channelId, label)
+            }
+            .distinctBy { it.id }
 }
 
 private fun settingsComputersToHomeNotificationItems(
