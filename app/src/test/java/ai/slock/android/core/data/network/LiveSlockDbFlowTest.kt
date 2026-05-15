@@ -14,6 +14,7 @@ import ai.slock.android.core.data.repository.CreateChannelRequest
 import ai.slock.android.core.data.repository.DataResult
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.MessageId
+import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ThreadId
 import ai.slock.compose.model.parentChannelIdOrNull
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
@@ -21,6 +22,8 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
@@ -207,6 +210,37 @@ class LiveSlockDbFlowTest {
         }
     }
 
+    @Test
+    fun liveSearchAcceptsWebFilterParams() {
+        assumeTrue("Set SLOCK_LIVE_TESTS=true to run live Slock API tests.", env("SLOCK_LIVE_TESTS") == "true")
+        val fixture = createFixture()
+        val home = runSuspend {
+            fixture.channelRepository.getHome(ServerId(fixture.serverId))
+        }.contentOrThrow("load home for search filter fixture")
+        val channelId =
+            home.channels.firstOrNull { it.channelId != null }?.channelId?.value
+
+        val params =
+            listOfNotNull(
+                "q" to "1",
+                "limit" to "20",
+                "offset" to "0",
+                "sort" to "recent",
+                "senderId" to fixture.userId,
+                channelId?.let { "channelId" to it },
+                "after" to "2026-05-14T16:00:00.000Z",
+                "before" to "2026-05-15T15:04:43.904Z"
+            ).joinToString("&") { (key, value) -> "${key.urlEncode()}=${value.urlEncode()}" }
+        val payload = liveGetJson(
+            url = "${fixture.baseUrl.trimEnd('/')}/messages/search?$params",
+            accessToken = fixture.accessToken,
+            serverId = fixture.serverId
+        )
+
+        assertTrue("Expected search payload to include results.", payload.has("results"))
+        assertTrue("Expected search payload to include hasMore.", payload.has("hasMore"))
+    }
+
     private fun createFixture(): LiveFixture {
         val email = requireEnv("SLOCK_TEST_EMAIL")
         val password = requireEnv("SLOCK_TEST_PASSWORD")
@@ -230,7 +264,8 @@ class LiveSlockDbFlowTest {
             conversationRepository = RealConversationRepository(authStore, api, warningLogger = {}),
             baseUrl = baseUrl,
             accessToken = session.accessToken,
-            serverId = serverId
+            serverId = serverId,
+            userId = session.user.id
         )
     }
 
@@ -331,9 +366,13 @@ class LiveSlockDbFlowTest {
         val conversationRepository: RealConversationRepository,
         val baseUrl: String,
         val accessToken: String,
-        val serverId: String
+        val serverId: String,
+        val userId: String
     )
 }
+
+private fun String.urlEncode(): String =
+    URLEncoder.encode(this, StandardCharsets.UTF_8.name())
 
 private fun <T> runSuspend(block: suspend () -> T): T = runBlocking { block() }
 

@@ -221,8 +221,29 @@ interface SearchRepository {
         serverId: ServerId,
         query: String,
         offset: Int = 0,
-        limit: Int = DEFAULT_PAGE_LIMIT
+        limit: Int = DEFAULT_PAGE_LIMIT,
+        options: SearchQueryOptions = SearchQueryOptions()
     ): DataResult<SearchSnapshot>
+}
+
+data class SearchQueryOptions(
+    val sort: SearchSort = SearchSort.Relevance,
+    val senderId: String? = null,
+    val channelId: ChannelId? = null,
+    val afterIso: String? = null,
+    val beforeIso: String? = null
+)
+
+enum class SearchSort {
+    Relevance,
+    Recent;
+
+    val wireValue: String?
+        get() =
+            when (this) {
+                Relevance -> null
+                Recent -> "recent"
+            }
 }
 
 interface ServerUnreadRepository {

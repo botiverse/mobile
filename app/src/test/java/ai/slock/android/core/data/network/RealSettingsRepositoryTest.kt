@@ -554,7 +554,17 @@ class RealSettingsRepositoryTest {
         override suspend fun unsaveMessage(priority: SlockRequestPriority, messageId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun searchMessages(priority: SlockRequestPriority, query: String, limit: Int, offset: Int): ApiResponse =
+        override suspend fun searchMessages(
+            priority: SlockRequestPriority,
+            query: String,
+            limit: Int,
+            offset: Int,
+            sort: String?,
+            senderId: String?,
+            channelId: String?,
+            after: String?,
+            before: String?
+        ): ApiResponse =
             response("""{"results":[]}""")
 
         override suspend fun channelMessages(priority: SlockRequestPriority,

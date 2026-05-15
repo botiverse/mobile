@@ -161,8 +161,30 @@ class ComposeSlockApiAdapter(
     override suspend fun saved(priority: SlockRequestPriority, limit: Int, offset: Int): ApiResponse = request(priority) { client.saved(priority, limit, offset) }
     override suspend fun saveMessage(priority: SlockRequestPriority, messageId: String): ApiResponse = request(priority) { client.saveMessage(priority, messageId) }
     override suspend fun unsaveMessage(priority: SlockRequestPriority, messageId: String): ApiResponse = request(priority) { client.unsaveMessage(priority, messageId) }
-    override suspend fun searchMessages(priority: SlockRequestPriority, query: String, limit: Int, offset: Int): ApiResponse =
-            request(priority) { client.searchMessages(priority, query, limit, offset) }
+    override suspend fun searchMessages(
+        priority: SlockRequestPriority,
+        query: String,
+        limit: Int,
+        offset: Int,
+        sort: String?,
+        senderId: String?,
+        channelId: String?,
+        after: String?,
+        before: String?
+    ): ApiResponse =
+            request(priority) {
+                client.searchMessages(
+                    priority = priority,
+                    query = query,
+                    limit = limit,
+                    offset = offset,
+                    sort = sort,
+                    senderId = senderId,
+                    channelId = channelId,
+                    after = after,
+                    before = before
+                )
+            }
     override suspend fun channelMessages(priority: SlockRequestPriority, channelId: String, limit: Int, beforeSeq: Long?): ApiResponse =
             request(priority) { client.channelMessages(priority, channelId, limit, beforeSeq) }
     override suspend fun messageContext(priority: SlockRequestPriority, messageId: String): ApiResponse = request(priority) { client.messageContext(priority, messageId) }

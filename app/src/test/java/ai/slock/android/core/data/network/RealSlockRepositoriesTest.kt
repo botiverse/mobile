@@ -10,6 +10,8 @@ import ai.slock.android.core.data.repository.AgentProfileUpdateRequest
 import ai.slock.android.core.data.repository.CreateChannelRequest
 import ai.slock.android.core.data.repository.InboxFilter
 import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
+import ai.slock.android.core.data.repository.SearchQueryOptions
+import ai.slock.android.core.data.repository.SearchSort
 import ai.slock.android.core.data.repository.TaskFilter
 import ai.slock.android.core.model.AttachmentId
 import ai.slock.android.core.model.AgentStatus
@@ -593,6 +595,45 @@ class RealSlockRepositoriesTest {
         assertTrue(search is DataResult.Content)
         assertEquals("Search hit", (search as DataResult.Content).data.items.single().lastMessagePreview)
         assertTrue(blank is DataResult.Empty)
+    }
+
+    @Test
+    fun searchRepositoryForwardsWebSearchFilterParams() {
+        val api = FakeSlockApi(searchJson = """{"results":[]}""")
+        val repository = RealSearchRepository(InMemoryAuthSessionStore(sampleSession), api)
+
+        runSuspend {
+            repository.search(
+                serverId = ServerId("server-1"),
+                query = " query ",
+                offset = 20,
+                limit = 20,
+                options =
+                    SearchQueryOptions(
+                        sort = SearchSort.Recent,
+                        senderId = "user-1",
+                        channelId = ChannelId("channel-1"),
+                        afterIso = "2026-05-14T16:00:00.000Z",
+                        beforeIso = "2026-05-15T15:04:43.904Z"
+                    )
+            )
+        }
+
+        assertEquals(
+            listOf(
+                SearchMessagesCall(
+                    query = "query",
+                    limit = 20,
+                    offset = 20,
+                    sort = "recent",
+                    senderId = "user-1",
+                    channelId = "channel-1",
+                    after = "2026-05-14T16:00:00.000Z",
+                    before = "2026-05-15T15:04:43.904Z"
+                )
+            ),
+            api.searchMessagesCalls
+        )
     }
 
     @Test
@@ -2469,6 +2510,7 @@ class RealSlockRepositoriesTest {
         val updatedTaskStatusBodies = mutableListOf<String>()
         val channelMessagesBeforeSeqCalls = mutableListOf<Long?>()
         val channelArchivedQueries = mutableListOf<String?>()
+        val searchMessagesCalls = mutableListOf<SearchMessagesCall>()
         val settingsMachineWorkspaceCalls = mutableListOf<String>()
         var inboxReadAllCallCount = 0
             private set
@@ -2664,8 +2706,30 @@ class RealSlockRepositoriesTest {
         override suspend fun unsaveMessage(priority: SlockRequestPriority, messageId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun searchMessages(priority: SlockRequestPriority, query: String, limit: Int, offset: Int): ApiResponse =
-            response(searchJson)
+        override suspend fun searchMessages(
+            priority: SlockRequestPriority,
+            query: String,
+            limit: Int,
+            offset: Int,
+            sort: String?,
+            senderId: String?,
+            channelId: String?,
+            after: String?,
+            before: String?
+        ): ApiResponse {
+            searchMessagesCalls +=
+                SearchMessagesCall(
+                    query = query,
+                    limit = limit,
+                    offset = offset,
+                    sort = sort,
+                    senderId = senderId,
+                    channelId = channelId,
+                    after = after,
+                    before = before
+                )
+            return response(searchJson)
+        }
 
         override suspend fun channelMessages(priority: SlockRequestPriority,
             channelId: String,
@@ -2798,6 +2862,17 @@ class RealSlockRepositoriesTest {
             return buffer.readUtf8()
         }
     }
+
+    private data class SearchMessagesCall(
+        val query: String,
+        val limit: Int,
+        val offset: Int,
+        val sort: String?,
+        val senderId: String?,
+        val channelId: String?,
+        val after: String?,
+        val before: String?
+    )
 }
 
 private fun <T> runSuspend(block: suspend () -> T): T = runBlocking { block() }

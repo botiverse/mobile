@@ -290,7 +290,7 @@ Android restore-session behavior:
 | `GET`  | `/api/messages/channel/{channelId}?limit=50&before={seq}` | Channel messages page. See [channel-messages-api-contract.md](./messages/channel-messages-api-contract.md). |
 | `GET`  | `/api/messages/context/{messageId}` | Message context (surrounding messages for highlight). |
 | `GET`  | `/api/messages/sync?since_seq={seq}&limit=200&channel_id={id}` | Gap sync — returns messages newer than `since_seq`. |
-| `GET`  | `/api/messages/search?q={q}&limit=N&offset=N` | Full-text search. |
+| `GET`  | `/api/messages/search?q={q}&limit=N&offset=N&sort=recent&senderId={userId}&channelId={channelId}&after={iso}&before={iso}` | Full-text search. See [search-api-contract.md](./messages/search-api-contract.md). |
 | `POST` | `/api/messages` | Send a message. |
 
 ### Tasks

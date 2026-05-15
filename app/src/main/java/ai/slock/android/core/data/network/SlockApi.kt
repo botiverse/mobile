@@ -174,7 +174,12 @@ interface SlockApi {
         priority: SlockRequestPriority,
         query: String,
         limit: Int,
-        offset: Int
+        offset: Int,
+        sort: String? = null,
+        senderId: String? = null,
+        channelId: String? = null,
+        after: String? = null,
+        before: String? = null
     ): ApiResponse
     suspend fun channelMessages(
         priority: SlockRequestPriority,

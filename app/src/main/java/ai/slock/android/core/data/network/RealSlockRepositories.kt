@@ -54,6 +54,7 @@ import ai.slock.android.core.data.repository.SavedRepository
 import ai.slock.android.core.data.repository.SavedMessageMutationResult
 import ai.slock.android.core.data.repository.SavedSnapshot
 import ai.slock.android.core.data.repository.SearchRepository
+import ai.slock.android.core.data.repository.SearchQueryOptions
 import ai.slock.android.core.data.repository.SearchSnapshot
 import ai.slock.android.core.data.repository.SendMessageResult
 import ai.slock.android.core.data.repository.ServerUnreadRepository
@@ -1530,13 +1531,26 @@ class RealSearchRepository(private val store: AuthSessionStore, private val api:
             serverId: ServerId,
             query: String,
             offset: Int,
-            limit: Int
+            limit: Int,
+            options: SearchQueryOptions
     ): DataResult<SearchSnapshot> {
         if (query.isBlank()) return DataResult.Empty(EmptyReason.NoSearchResults)
         val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
         return execute(
                 emptyReason = EmptyReason.NoSearchResults,
-                block = { api.searchMessages(currentSlockApiPriority(), query.trim(), limit, offset) },
+                block = {
+                    api.searchMessages(
+                            priority = currentSlockApiPriority(),
+                            query = query.trim(),
+                            limit = limit,
+                            offset = offset,
+                            sort = options.sort.wireValue,
+                            senderId = options.senderId?.takeIf { it.isNotBlank() },
+                            channelId = options.channelId?.value,
+                            after = options.afterIso?.takeIf { it.isNotBlank() },
+                            before = options.beforeIso?.takeIf { it.isNotBlank() }
+                    )
+                },
                 emptyWhen = { it.items.isEmpty() },
                 mapper = { json ->
                     val items =

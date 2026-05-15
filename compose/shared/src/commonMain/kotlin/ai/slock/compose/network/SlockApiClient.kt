@@ -86,8 +86,31 @@ class SlockApiClient(
         get(priority, "channels/saved", listOf("limit" to limit.toString(), "offset" to offset.toString()))
     suspend fun saveMessage(priority: SlockRequestPriority, messageId: String): KmpHttpResponse = post(priority, "messages/$messageId/save")
     suspend fun unsaveMessage(priority: SlockRequestPriority, messageId: String): KmpHttpResponse = delete(priority, "messages/$messageId/save")
-    suspend fun searchMessages(priority: SlockRequestPriority, query: String, limit: Int, offset: Int): KmpHttpResponse =
-        get(priority, "messages/search", listOf("q" to query, "limit" to limit.toString(), "offset" to offset.toString()))
+    suspend fun searchMessages(
+        priority: SlockRequestPriority,
+        query: String,
+        limit: Int,
+        offset: Int,
+        sort: String? = null,
+        senderId: String? = null,
+        channelId: String? = null,
+        after: String? = null,
+        before: String? = null
+    ): KmpHttpResponse =
+        get(
+            priority,
+            "messages/search",
+            listOfNotNull(
+                "q" to query,
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                sort?.let { "sort" to it },
+                senderId?.let { "senderId" to it },
+                channelId?.let { "channelId" to it },
+                after?.let { "after" to it },
+                before?.let { "before" to it }
+            )
+        )
     suspend fun channelMessages(priority: SlockRequestPriority, channelId: String, limit: Int, beforeSeq: Long? = null): KmpHttpResponse =
         get(
             priority,
