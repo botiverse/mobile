@@ -82,6 +82,13 @@ internal fun SlockBottomTabBar(
                 .background(SlockColor.BorderBlack)
                 .align(Alignment.TopCenter)
         )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(SlockStroke.Default)
+                .background(SlockColor.BorderBlack)
+                .align(Alignment.BottomCenter)
+        )
         Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
             items.forEachIndexed { index, item ->
                 val selected = item.selected
