@@ -405,6 +405,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -742,6 +744,18 @@ private fun SlockAppContent(
                     )
                 }
         )
+    }
+    val localTaskWriteMutex = remember { Mutex() }
+    suspend fun writeTaskResultQueued(
+            result: DataResult<TaskSnapshot>,
+            source: String,
+            serverId: ServerId?
+    ) {
+        withContext(Dispatchers.IO) {
+            localTaskWriteMutex.withLock {
+                localWriteThrough.writeTaskResult(result, source = source, serverId = serverId)
+            }
+        }
     }
     fun localReadServerId(): ServerId? = currentAuthSession?.currentServerId?.let(::ServerId)
 
@@ -5124,7 +5138,7 @@ private fun SlockAppContent(
                     }) {
                 is DataResult.Content -> {
                     val updatedTask = task.mergeTaskStatusAction(result.data.task)
-                    localWriteThrough.writeTaskResult(
+                    writeTaskResultQueued(
                             DataResult.Content(
                                     TaskSnapshot(
                                             tasks = listOf(updatedTask),
@@ -7187,9 +7201,7 @@ private fun SlockAppContent(
                                     )
                     )
                 }
-        withContext(Dispatchers.IO) {
-            localWriteThrough.writeTaskResult(result, source = "tasks_route_refresh", serverId = selectedServerId)
-        }
+        writeTaskResultQueued(result, source = "tasks_route_refresh", serverId = selectedServerId)
         result.rememberTaskReferences()
         tasksState =
                 tasksState.mergeTasksRefreshResult(result, tasksFilter)
@@ -7665,13 +7677,11 @@ private fun SlockAppContent(
                                 }
                 ) {
                     is DataResult.Content -> {
-                        withContext(Dispatchers.IO) {
-                            localWriteThrough.writeTaskResult(
-                                    result,
-                                    source = "task_reference_refresh",
-                                    serverId = selectedServerId
-                            )
-                        }
+                        writeTaskResultQueued(
+                                result,
+                                source = "task_reference_refresh",
+                                serverId = selectedServerId
+                        )
                         tasksState = result.toTasksUiState(tasksFilter).copy(refreshing = false)
                         val refreshedMatches = result.data.tasks.matchingTaskReference(label)
                         if (!openTaskReferenceMatches(refreshedMatches, label, "refresh")) {
