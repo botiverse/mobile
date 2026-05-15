@@ -22,12 +22,26 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
+const val SETTINGS_TAB_BAR_SMOKE_PAGE = "compose_settings_tabbar_smoke"
 
 @Page(SETTINGS_HOME_PAGE, supportInLocal = true)
 internal class ComposeSettingsHomePage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { SettingsHomeScreen() }
+    }
+}
+
+@Page(SETTINGS_TAB_BAR_SMOKE_PAGE, supportInLocal = true)
+internal class ComposeSettingsTabBarSmokePage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent {
+            SettingsHomeContent(
+                payload = settingsTabBarSmokePayload,
+                onSelect = {}
+            )
+        }
     }
 }
 
@@ -38,6 +52,59 @@ internal data class KuiklySettingsHomePayload(
     val subtitle: String = "",
     val showSelection: Boolean = true,
     val items: List<SlockTabItemPayload> = emptyList()
+)
+
+private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
+    title = "Settings",
+    subtitle = "Harmony smoke",
+    showSelection = true,
+    items = listOf(
+        SlockTabItemPayload(
+            key = "account",
+            title = "Account",
+            subtitle = "Profile, email, password, connected accounts",
+            iconName = "user",
+            value = "Verified",
+            selected = true
+        ),
+        SlockTabItemPayload(
+            key = "computers",
+            title = "Computers",
+            subtitle = "Connected machines and active sessions",
+            iconName = "monitor"
+        ),
+        SlockTabItemPayload(
+            key = "server",
+            title = "Server",
+            subtitle = "Workspace name, members, invites, permissions",
+            iconName = "users",
+            value = "Owner"
+        ),
+        SlockTabItemPayload(
+            key = "billing",
+            title = "Billing",
+            subtitle = "Plan, usage, invoices",
+            iconName = "shield-check"
+        ),
+        SlockTabItemPayload(
+            key = "mobile",
+            title = "Mobile",
+            subtitle = "Push notifications, language, layout",
+            iconName = "smartphone"
+        ),
+        SlockTabItemPayload(
+            key = "storage",
+            title = "Storage",
+            subtitle = "Local cache and diagnostics",
+            iconName = "archive"
+        ),
+        SlockTabItemPayload(
+            key = "about",
+            title = "About",
+            subtitle = "Version, diagnostics, feedback",
+            iconName = "bug"
+        )
+    )
 )
 
 @Composable
