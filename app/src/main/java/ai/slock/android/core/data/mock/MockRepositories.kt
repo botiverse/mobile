@@ -236,7 +236,10 @@ class MockSettingsRepository(
 class MockConversationRepository(
     private val scenario: MockScenario = MockScenario.Content
 ) : ConversationRepository {
-    override suspend fun getThread(threadId: ThreadId): DataResult<ThreadSnapshot> =
+    override suspend fun getThread(
+        threadId: ThreadId,
+        includeFollowedSummaries: Boolean
+    ): DataResult<ThreadSnapshot> =
         resultFor(scenario, EmptyReason.NoMessages) { MockSeedData.threadSnapshot }
 
     override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> =

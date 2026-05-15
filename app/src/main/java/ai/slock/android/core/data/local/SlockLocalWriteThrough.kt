@@ -395,6 +395,17 @@ class SlockLocalWriteThrough(
                 ?: storedConversation?.thread?.parentChannelId
                 ?: fallbackHeader?.thread?.parentChannelId
         if (parentMessage != null && resolvedParentChannelId != null) {
+            val fallbackName =
+                fallbackHeader?.name?.takeIf {
+                    it.isNotBlank() &&
+                        it != fallbackHeader.threadId.value &&
+                        it != fallbackHeader.channelId?.value
+                }
+            val nameLooksLikeIdentity =
+                name.isBlank() ||
+                    name == threadId.value ||
+                    name == channelId?.value ||
+                    name == streamChannelId?.value
             return copy(
                 threadId = threadIdentity(resolvedParentChannelId, parentMessage.id),
                 channelId = resolvedParentChannelId,
@@ -404,7 +415,8 @@ class SlockLocalWriteThrough(
                         parentMessageId = parentMessage.id,
                         streamChannelId = parentMessage.threadChannelId ?: streamChannelId
                     ),
-                kind = ConversationKind.Thread
+                kind = ConversationKind.Thread,
+                name = if (nameLooksLikeIdentity && fallbackName != null) fallbackName else name
             )
         }
         val currentThread = thread
@@ -679,7 +691,16 @@ fun LocalThreadTimeline.toThreadUiState(
 ): ThreadUiState {
     val header =
         conversation.copy(
-            name = conversation.name.takeIf { it.isNotBlank() } ?: fallbackHeader?.name.orEmpty(),
+            name =
+                fallbackHeader
+                    ?.name
+                    ?.takeIf {
+                        conversation.name.isBlank() ||
+                            conversation.name == conversation.threadId.value ||
+                            conversation.name == conversation.channelId?.value
+                    }
+                    ?: conversation.name.takeIf { it.isNotBlank() }
+                    ?: fallbackHeader?.name.orEmpty(),
             channelId = conversation.channelId ?: fallbackHeader?.channelId,
             avatarUrl = conversation.avatarUrl ?: fallbackHeader?.avatarUrl
         )

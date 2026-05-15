@@ -40,7 +40,10 @@ interface SettingsRepository {
 }
 
 interface ConversationRepository {
-    suspend fun getThread(threadId: ThreadId): DataResult<ThreadSnapshot>
+    suspend fun getThread(
+        threadId: ThreadId,
+        includeFollowedSummaries: Boolean = true
+    ): DataResult<ThreadSnapshot>
     suspend fun getMessageContext(messageId: ai.slock.android.core.model.MessageId): DataResult<ThreadSnapshot>
     suspend fun loadOlderMessages(threadId: ThreadId, beforeSeq: Long): DataResult<ThreadSnapshot>
     suspend fun loadNewerMessages(threadId: ThreadId, afterSeq: Long): DataResult<ThreadSnapshot>

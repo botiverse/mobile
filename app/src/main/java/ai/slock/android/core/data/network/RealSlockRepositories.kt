@@ -1583,13 +1583,17 @@ class RealConversationRepository(
             )
         }
 ) : ConversationRepository {
-    override suspend fun getThread(threadId: ThreadId): DataResult<ThreadSnapshot> {
+    override suspend fun getThread(
+            threadId: ThreadId,
+            includeFollowedSummaries: Boolean
+    ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
         return loadChannelMessages(
                 context = context,
                 threadId = threadId,
                 block = { api.channelMessages(currentSlockApiPriority(), threadId.value, MESSAGE_PAGE_LIMIT) },
-                source = "messages_channel"
+                source = "messages_channel",
+                includeFollowedSummaries = includeFollowedSummaries
         )
     }
 
@@ -1857,7 +1861,8 @@ class RealConversationRepository(
             context: NetworkServerContext,
             threadId: ThreadId,
             block: suspend () -> ApiResponse,
-            source: String
+            source: String,
+            includeFollowedSummaries: Boolean = true
     ): DataResult<ThreadSnapshot> = coroutineScope {
         val messagesDeferred =
                 async {
@@ -1889,19 +1894,23 @@ class RealConversationRepository(
                     )
                 }
         val followedSummariesDeferred =
-                async {
-                    execute(
-                            emptyReason = EmptyReason.NoInboxItems,
-                            block = { api.followedThreads(currentSlockApiPriority(), MESSAGE_PAGE_LIMIT) },
-                            emptyWhen = { false },
-                            source = "${source}_followed_summaries",
-                            warningLogger = warningLogger,
-                            mapper = { json -> json.toThreadListSnapshot(context) }
-                    )
+                if (includeFollowedSummaries) {
+                    async {
+                        execute(
+                                emptyReason = EmptyReason.NoInboxItems,
+                                block = { api.followedThreads(currentSlockApiPriority(), MESSAGE_PAGE_LIMIT) },
+                                emptyWhen = { false },
+                                source = "${source}_followed_summaries",
+                                warningLogger = warningLogger,
+                                mapper = { json -> json.toThreadListSnapshot(context) }
+                        )
+                    }
+                } else {
+                    null
                 }
         val messagesResult = messagesDeferred.await()
         val threadSummaries = threadSummariesDeferred.await()
-        val followedSummaries = followedSummariesDeferred.await()
+        val followedSummaries = followedSummariesDeferred?.await()
         if (messagesResult !is DataResult.Content) {
             messagesResult
         } else {
@@ -2890,9 +2899,21 @@ private fun JsonObject.toThreadSnapshot(
                             name = fallbackConversationName
                                             ?: messages.firstOrNull()?.threadId?.value ?: fallbackThreadId.value
                     )
+    val parentMessageChannelId = parentMessage?.channelId
+    val parentChannelName =
+            mappedConversation.name
+                    .takeIf {
+                        parentMessageChannelId != null &&
+                                it.isNotBlank() &&
+                                it != parentMessageChannelId.value
+                    }
+                    ?: parentMessageChannelId
+                            ?.takeIf { it.value == context.server.id.value }
+                            ?.let { context.server.name.takeIf { name -> name.isNotBlank() && name != it.value } }
     val conversation = mappedConversation.withThreadAnchor(
             parentMessage = parentMessage,
-            streamChannelId = ChannelId(fallbackThreadId.value)
+            streamChannelId = ChannelId(fallbackThreadId.value),
+            parentChannelName = parentChannelName
     )
     return ThreadSnapshot(
             conversation = conversation,
@@ -4882,14 +4903,21 @@ private fun JsonObject.toConversationOrDefault(
 
 private fun ConversationSummary.withThreadAnchor(
         parentMessage: Message?,
-        streamChannelId: ChannelId
+        streamChannelId: ChannelId,
+        parentChannelName: String? = null
 ): ConversationSummary {
+    fun ConversationSummary.withParentNameFallback(): ConversationSummary {
+        val fallbackName =
+                parentChannelName?.takeIf { name.isBlank() || name == threadId.value || name == channelId?.value }
+                        ?: return this
+        return copy(name = fallbackName)
+    }
     if (kind == ConversationKind.Thread && thread?.streamChannelId == null) {
         return copy(
                 thread = thread?.copy(streamChannelId = streamChannelId)
-        )
+        ).withParentNameFallback()
     }
-    val parentChannelId = parentMessage?.channelId ?: return this
+    val parentChannelId = parentMessage?.channelId ?: return withParentNameFallback()
     return copy(
             threadId = threadIdentity(parentChannelId, parentMessage.id),
             channelId = parentChannelId,
@@ -4900,7 +4928,7 @@ private fun ConversationSummary.withThreadAnchor(
                             streamChannelId = parentMessage.threadChannelId ?: streamChannelId
                     ),
             kind = ConversationKind.Thread
-    )
+    ).withParentNameFallback()
 }
 
 private fun JsonObject.hasChannelTimelineIdentity(): Boolean =

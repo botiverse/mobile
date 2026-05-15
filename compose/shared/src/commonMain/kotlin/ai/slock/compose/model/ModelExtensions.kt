@@ -6,7 +6,14 @@ fun ConversationSummary.withTitleFallback(fallback: ConversationSummary?): Conve
     val nameLooksLikeIdentity =
         name.isBlank() || name == threadId.value || name == channelId?.value
     val sameConversation = isSameConversationAs(fallback)
-    val shouldUseFallbackName = sameConversation && nameLooksLikeIdentity && fallback.hasDisplayName()
+    val sameParentChannel =
+        kind == ConversationKind.Thread &&
+            fallback.kind != ConversationKind.Thread &&
+            channelId != null &&
+            channelId == fallback.channelId &&
+            fallback.hasDisplayName()
+    val shouldUseFallbackName =
+        nameLooksLikeIdentity && fallback.hasDisplayName() && (sameConversation || sameParentChannel)
     return copy(
         name = if (shouldUseFallbackName) fallback.name else name,
         subtitle = subtitle ?: fallback.subtitle,
