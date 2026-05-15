@@ -240,7 +240,7 @@ private fun SettingsComputerCard(item: KuiklySettingsComputerItem, onClick: (() 
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        LabelBox("PC", SlockColor.BrandYellow)
+        IconBox("monitor", SlockColor.BrandYellow)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(item.name, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -281,7 +281,7 @@ private fun SettingsAgentCard(item: KuiklySettingsAgentItem, onClick: () -> Unit
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        LabelBox(item.initials(), SlockColor.AccentCyan)
+        IconBox("bot", SlockColor.AccentCyan)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(item.displayName?.takeIf { it.isNotBlank() } ?: item.name, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -362,12 +362,12 @@ private fun SettingsPrimaryButton(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun LabelBox(text: String, color: Color) {
+private fun IconBox(iconName: String, color: Color) {
     Box(
         modifier = Modifier.size(42.dp).background(color).border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
-        Text(text, style = SlockType.Button.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1)
+        SlockLucideIcon(name = iconName, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -384,9 +384,4 @@ private fun SmallPill(text: String) {
     ) {
         Text(text, style = SlockType.Input.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1)
     }
-}
-
-private fun KuiklySettingsAgentItem.initials(): String {
-    val source = displayName?.takeIf { it.isNotBlank() } ?: name
-    return source.trim().take(2).uppercase()
 }
