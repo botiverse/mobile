@@ -23,7 +23,6 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -37,8 +36,6 @@ import kotlinx.serialization.json.Json
 const val HOME_HEADER_PAGE = "compose_home_header"
 const val HOME_SERVER_SWITCHER_PAGE = "compose_home_server_switcher"
 const val HOME_SECTION_HEADER_PAGE = "compose_home_section_header"
-const val HOME_ACTION_ROW_PAGE = "compose_home_action_row"
-const val HOME_CONVERSATION_ROW_PAGE = "compose_home_conversation_row"
 const val HOME_COMPONENTS_SMOKE_PAGE = "compose_home_components_smoke"
 
 @Page(HOME_HEADER_PAGE, supportInLocal = true)
@@ -62,22 +59,6 @@ internal class ComposeHomeSectionHeaderPage : ai.slock.compose.base.BasePager() 
     override fun willInit() {
         super.willInit()
         setContent { HomeSectionHeaderPageContent() }
-    }
-}
-
-@Page(HOME_ACTION_ROW_PAGE, supportInLocal = true)
-internal class ComposeHomeActionRowPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { HomeActionRowPageContent() }
-    }
-}
-
-@Page(HOME_CONVERSATION_ROW_PAGE, supportInLocal = true)
-internal class ComposeHomeConversationRowPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { HomeConversationRowPageContent() }
     }
 }
 
@@ -121,29 +102,6 @@ internal data class KuiklyHomeSectionHeaderPayload(
     val expanded: Boolean = true,
     val showAdd: Boolean = false,
     val addLabel: String = "Add"
-)
-
-@Serializable
-internal data class KuiklyHomeActionRowPayload(
-    val instanceId: String = "",
-    val iconName: String = "search",
-    val label: String = "",
-    val badge: String? = null,
-    val trailingText: String? = null
-)
-
-@Serializable
-internal data class KuiklyHomeConversationRowPayload(
-    val instanceId: String = "",
-    val id: String = "",
-    val name: String = "",
-    val symbol: String = "#",
-    val avatarLabel: String? = null,
-    val presence: String? = null,
-    val badge: String? = null,
-    val hasDraft: Boolean = false,
-    val joined: Boolean = true,
-    val selected: Boolean = false
 )
 
 @Composable
@@ -192,43 +150,11 @@ private fun HomeSectionHeaderPageContent() {
 }
 
 @Composable
-private fun HomeActionRowPageContent() {
-    val pager = LocalActivity.current.getPager() as Pager
-    val bridge = Utils.bridgeModule(pager.pagerId)
-    val payload = rememberHomePayload(
-        pager.pageData.params.optString("payload"),
-        pager.pageData.params.optString("instanceId"),
-        KuiklyHomeActionRowPayload.serializer()
-    ) { KuiklyHomeActionRowPayload(instanceId = it) }
-    SlockHomeActionRow(payload) {
-        bridge.homeEvent(payload.instanceId, "click")
-    }
-}
-
-@Composable
-private fun HomeConversationRowPageContent() {
-    val pager = LocalActivity.current.getPager() as Pager
-    val bridge = Utils.bridgeModule(pager.pagerId)
-    val payload = rememberHomePayload(
-        pager.pageData.params.optString("payload"),
-        pager.pageData.params.optString("instanceId"),
-        KuiklyHomeConversationRowPayload.serializer()
-    ) { KuiklyHomeConversationRowPayload(instanceId = it) }
-    SlockHomeConversationRow(payload) {
-        bridge.homeEvent(payload.instanceId, "click", payload.id)
-    }
-}
-
-@Composable
-internal fun HomeComponentsSmokeContent() {
+private fun HomeComponentsSmokeContent() {
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockHomeHeader(KuiklyHomeHeaderPayload(serverName = "markdown专修", unreadCount = 3), onClick = {})
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            SlockHomeActionRow(KuiklyHomeActionRowPayload(iconName = "search", label = "Search"), onClick = {})
-            SlockHomeActionRow(KuiklyHomeActionRowPayload(iconName = "inbox", label = "Inbox", badge = "4"), onClick = {})
             SlockHomeSectionHeader(KuiklyHomeSectionHeaderPayload(label = "CHANNELS", count = 12, expanded = true, showAdd = true), onAction = {})
-            SlockHomeConversationRow(KuiklyHomeConversationRowPayload(name = "对话流专修", selected = true, badge = "2"), onClick = {})
-            SlockHomeConversationRow(KuiklyHomeConversationRowPayload(name = "Android-App-Integrator", avatarLabel = "AI", presence = "online", hasDraft = true), onClick = {})
             SlockHomeSectionHeader(KuiklyHomeSectionHeaderPayload(label = "DIRECT MESSAGES", count = 4, expanded = false), onAction = {})
         }
         SlockHomeServerSwitcher(
@@ -243,124 +169,6 @@ internal fun HomeComponentsSmokeContent() {
         )
     }
 }
-
-@Composable
-internal fun SlockHomeActionRow(payload: KuiklyHomeActionRowPayload, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxSize().clickable { onClick() }.padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(modifier = Modifier.size(22.dp), contentAlignment = Alignment.Center) {
-            SlockLucideIcon(name = payload.iconName, color = "#FF000000", modifier = Modifier.size(14.dp))
-        }
-        Text(
-            text = payload.label,
-            style = SlockType.Button.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
-            modifier = Modifier.padding(start = 10.dp).weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        if (!payload.badge.isNullOrBlank()) {
-            CountBadge(payload.badge)
-        } else if (!payload.trailingText.isNullOrBlank()) {
-            Text(
-                text = payload.trailingText,
-                style = SlockType.Caption.copy(color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
-internal fun SlockHomeConversationRow(payload: KuiklyHomeConversationRowPayload, onClick: () -> Unit) {
-    val background = when {
-        payload.selected -> SlockColor.BrandYellow
-        !payload.joined -> SlockColor.EmptyStateGray
-        else -> Color.Transparent
-    }
-    val border = if (payload.selected) SlockColor.BorderBlack else Color.Transparent
-    Row(
-        modifier = Modifier.fillMaxSize().clickable { onClick() },
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .height(32.dp)
-                .background(background)
-                .border(SlockStroke.Default, border)
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(modifier = Modifier.width(22.dp), contentAlignment = Alignment.Center) {
-                if (!payload.avatarLabel.isNullOrBlank()) {
-                    HomeAvatar(payload.avatarLabel, payload.presence)
-                } else {
-                    Text(
-                        text = payload.symbol,
-                        style = SlockType.Body.copy(color = SlockColor.TextBlack, fontSize = 16.sp),
-                        color = SlockColor.TextBlack,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1
-                    )
-                }
-            }
-            Text(
-                text = payload.name,
-                style = SlockType.Button.copy(color = if (payload.joined) SlockColor.TextBlack else SlockColor.TextMutedGray),
-                color = if (payload.joined) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                modifier = Modifier.padding(start = 10.dp).weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (payload.hasDraft) {
-                SlockLucideIcon(name = "pencil", color = "#FF737373", modifier = Modifier.size(14.dp))
-            }
-            if (!payload.badge.isNullOrBlank()) {
-                Spacer(modifier = Modifier.width(6.dp))
-                CountBadge(payload.badge)
-            }
-        }
-    }
-}
-
-@Composable
-private fun HomeAvatar(label: String, presence: String?) {
-    Box(modifier = Modifier.size(20.dp)) {
-        Box(
-            modifier = Modifier.fillMaxSize()
-                .background(SlockColor.BrandYellow)
-                .border(1.dp, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = label.take(2).uppercase(),
-                style = SlockType.Caption.copy(color = SlockColor.TextBlack, fontSize = 11.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                textAlign = TextAlign.Center
-            )
-        }
-        if (!presence.isNullOrBlank()) {
-            Box(
-                modifier = Modifier.size(8.dp)
-                    .background(homePresenceColor(presence))
-                    .border(1.dp, SlockColor.BorderBlack)
-                    .align(Alignment.BottomEnd)
-            )
-        }
-    }
-}
-
-private fun homePresenceColor(presence: String): Color =
-    when (presence.lowercase()) {
-        "online" -> Color(0xFFB9F27D)
-        "offline" -> SlockColor.EmptyStateGray
-        else -> SlockColor.BrandYellow
-    }
 
 @Composable
 internal fun SlockHomeHeader(payload: KuiklyHomeHeaderPayload, onClick: () -> Unit) {
@@ -540,8 +348,6 @@ private fun <T> rememberHomePayload(
                     is KuiklyHomeHeaderPayload -> if (value.instanceId.isBlank()) value.copy(instanceId = instanceId) as T else value
                     is KuiklyHomeServerSwitcherPayload -> if (value.instanceId.isBlank()) value.copy(instanceId = instanceId) as T else value
                     is KuiklyHomeSectionHeaderPayload -> if (value.instanceId.isBlank()) value.copy(instanceId = instanceId) as T else value
-                    is KuiklyHomeActionRowPayload -> if (value.instanceId.isBlank()) value.copy(instanceId = instanceId) as T else value
-                    is KuiklyHomeConversationRowPayload -> if (value.instanceId.isBlank()) value.copy(instanceId = instanceId) as T else value
                     else -> value
                 }
             }

@@ -130,8 +130,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         const val PAGE_HOME_HEADER = "compose_home_header"
         const val PAGE_HOME_SERVER_SWITCHER = "compose_home_server_switcher"
         const val PAGE_HOME_SECTION_HEADER = "compose_home_section_header"
-        const val PAGE_HOME_ACTION_ROW = "compose_home_action_row"
-        const val PAGE_HOME_CONVERSATION_ROW = "compose_home_conversation_row"
         const val PAGE_ROUTER = "router"
 
         private const val KEY_PAGE_NAME = "pageName"
