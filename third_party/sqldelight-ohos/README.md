@@ -37,6 +37,33 @@ the native SQLDelight dependency chain. A full SQLDelight native-driver fork can
 remain available as a later persistence upgrade if we decide we need identical
 SQLite-backed storage on OHOS.
 
+After follow-up discussion, Slock still wants to keep the native SQLite path
+moving in parallel because having a real SQLite-backed OHOS driver is useful.
+The fork scripts therefore cover all three required layers:
+
+1. `scripts/prepare_stately_ohos_fork.sh`
+2. `scripts/prepare_sqliter_ohos_fork.sh`
+3. `scripts/prepare_sqldelight_ohos_fork.sh`
+
+Run them in that order when publishing the native-driver stack to `mavenLocal`.
+
+Verified locally:
+
+```bash
+scripts/prepare_stately_ohos_fork.sh --publish
+scripts/prepare_sqliter_ohos_fork.sh --publish
+SLOCK_SQLDELIGHT_WORKDIR=/tmp/sqldelight-ohos-native-verify \
+  scripts/prepare_sqldelight_ohos_fork.sh
+cd /tmp/sqldelight-ohos-native-verify
+./gradlew :drivers:native-driver:compileKotlinOhosArm64
+```
+
+The native-driver compile resolves the local OHOS artifacts:
+
+- `co.touchlab:stately-concurrency-ohosarm64:2.1.0-KBA-001`
+- `co.touchlab:stately-strict-ohosarm64:2.1.0-KBA-001`
+- `co.touchlab:sqliter-driver-ohosarm64:1.3.3-KBA-001`
+
 ## Native-Driver Fork Status
 
 `scripts/prepare_sqldelight_ohos_fork.sh` has been verified to apply this patch
@@ -77,6 +104,11 @@ So the full fork is a two-layer fork:
 1. SQLDelight `2.1.0` with OHOS target/publication support.
 2. Touchlab SQLiter/Stately OHOS variants published to the same internal Maven
    source before SQLDelight native-driver is compiled or published.
+
+This repository includes Slock fork scaffolding for both dependencies:
+
+- `third_party/stately-ohos`
+- `third_party/sqliter-ohos`
 
 ## Build Locally
 

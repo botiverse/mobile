@@ -1,0 +1,118 @@
+diff --git a/convention-plugins/settings.gradle.kts b/convention-plugins/settings.gradle.kts
+index ac9c362..770a5ea 100644
+--- a/convention-plugins/settings.gradle.kts
++++ b/convention-plugins/settings.gradle.kts
+@@ -1,10 +1,15 @@
+ dependencyResolutionManagement {
+     repositories {
+         gradlePluginPortal()
++        mavenCentral()
++        google()
++        maven("https://mirrors.tencent.com/nexus/repository/maven-tencent")
++        maven("https://mirrors.tencent.com/nexus/repository/maven-public")
++        mavenLocal()
+     }
+     versionCatalogs {
+         create("libs") {
+             from(files("../gradle/libs.versions.toml"))
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/convention-plugins/src/main/kotlin/kmp-setup.gradle.kts b/convention-plugins/src/main/kotlin/kmp-setup.gradle.kts
+index bc463e3..d6cf59d 100644
+--- a/convention-plugins/src/main/kotlin/kmp-setup.gradle.kts
++++ b/convention-plugins/src/main/kotlin/kmp-setup.gradle.kts
+@@ -45,12 +45,20 @@ kotlin {
+     mingwX64()
+     linuxX64()
+     linuxArm64()
++    ohosArm64()
+ 
+     androidNativeArm32()
+     androidNativeArm64()
+     androidNativeX86()
+     androidNativeX64()
+ 
++    @Suppress("OPT_IN_USAGE")
++    sourceSets {
++        val linuxMain = maybeCreate("linuxMain")
++        val ohosArm64Main = maybeCreate("ohosArm64Main")
++        ohosArm64Main.dependsOn(linuxMain)
++    }
++
+     @Suppress("OPT_IN_USAGE")
+     applyDefaultHierarchyTemplate {
+         common {
+@@ -69,4 +77,4 @@ rootProject.the<NodeJsRootExtension>().apply {
+ 
+ tasks.withType<KotlinCompile>().all {
+     kotlinOptions.jvmTarget = "1.8"
+-}
+\ No newline at end of file
++}
+diff --git a/gradle/libs.versions.toml b/gradle/libs.versions.toml
+index c796195..7de3ec1 100644
+--- a/gradle/libs.versions.toml
++++ b/gradle/libs.versions.toml
+@@ -8,7 +8,7 @@ touchlab-docusaurusosstemplate = "0.1.10"
+ mavenPublish = "0.27.0"
+ testHelp = "0.6.12"
+ coroutines-test = "1.8.0"
+-kotlin = "1.9.23"
++kotlin = "2.0.21-KBA-010"
+ 
+ [libraries]
+ 
+@@ -27,4 +27,3 @@ touchlab-docusaurusosstemplate = { id = "co.touchlab.touchlabtools.docusaurusoss
+ mavenPublish = { id = "com.vanniktech.maven.publish", version.ref = "mavenPublish" }
+ 
+ [bundles]
+-
+diff --git a/settings.gradle.kts b/settings.gradle.kts
+index 6aafaef..c206c2a 100644
+--- a/settings.gradle.kts
++++ b/settings.gradle.kts
+@@ -20,6 +20,9 @@ pluginManagement {
+         google()
+         gradlePluginPortal()
+         mavenCentral()
++        maven("https://mirrors.tencent.com/nexus/repository/maven-tencent")
++        maven("https://mirrors.tencent.com/nexus/repository/maven-public")
++        mavenLocal()
+     }
+ }
+ 
+@@ -28,5 +31,8 @@ dependencyResolutionManagement {
+     repositories {
+         mavenCentral()
+         google()
++        maven("https://mirrors.tencent.com/nexus/repository/maven-tencent")
++        maven("https://mirrors.tencent.com/nexus/repository/maven-public")
++        mavenLocal()
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/stately-concurrency/src/linuxMain/kotlin/co/touchlab/stately/concurrency/Lock.kt b/stately-concurrency/src/linuxMain/kotlin/co/touchlab/stately/concurrency/Lock.kt
+index 928655a..208757a 100644
+--- a/stately-concurrency/src/linuxMain/kotlin/co/touchlab/stately/concurrency/Lock.kt
++++ b/stately-concurrency/src/linuxMain/kotlin/co/touchlab/stately/concurrency/Lock.kt
+@@ -4,7 +4,6 @@ import co.touchlab.stately.strict.maybeFreeze
+ import kotlinx.cinterop.Arena
+ import kotlinx.cinterop.alloc
+ import kotlinx.cinterop.ptr
+-import platform.posix.PTHREAD_MUTEX_RECURSIVE
+ import platform.posix.pthread_mutex_destroy
+ import platform.posix.pthread_mutex_init
+ import platform.posix.pthread_mutex_lock
+@@ -28,7 +27,7 @@ actual class Lock actual constructor() {
+ 
+     init {
+         pthread_mutexattr_init(attr.ptr)
+-        pthread_mutexattr_settype(attr.ptr, PTHREAD_MUTEX_RECURSIVE.toInt())
++        pthread_mutexattr_settype(attr.ptr, 1)
+         pthread_mutex_init(mutex.ptr, attr.ptr)
+         maybeFreeze()
+     }
