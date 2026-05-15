@@ -502,8 +502,13 @@ private fun HomeNotificationCenter(
                 tint = SlockColor.TextBlack,
                 modifier = Modifier.size(18.dp)
             )
-            ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
         }
+        HomeNotificationUnreadMarker(
+            modifier =
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .zIndex(1f)
+        )
         if (expanded) {
             HomeNotificationPopover(
                 notifications = notifications,
@@ -518,6 +523,19 @@ private fun HomeNotificationCenter(
                         .offset(y = 44.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun HomeNotificationUnreadMarker(
+    modifier: Modifier = Modifier
+) {
+    Canvas(
+        modifier = modifier
+            .offset(x = 3.dp, y = (-3).dp)
+            .size(9.dp)
+    ) {
+        drawCircle(SlockColor.AccentRed)
     }
 }
 
