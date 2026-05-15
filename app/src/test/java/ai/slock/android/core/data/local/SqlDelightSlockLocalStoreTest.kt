@@ -19,11 +19,15 @@ import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadConversation
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -480,13 +484,12 @@ class SqlDelightSlockLocalStoreTest {
             streamChannelId = channelId
         )
 
-        // Start observing the timeline
+        // Start observing the timeline.
         val flow = store.observeThreadTimeline(threadId)
-
-        // Verify initial emission
-        val initial = withTimeout(1000) { flow.first() }
-        assertEquals(1, initial?.messages?.size)
-        assertEquals("message-1", initial?.messages?.first()?.id?.value)
+        val emissionsDeferred = async {
+            withTimeout(2000) { flow.take(2).toList() }
+        }
+        delay(50)
 
         // Insert a new message while observing
         store.upsertMessage(
@@ -495,8 +498,8 @@ class SqlDelightSlockLocalStoreTest {
             streamChannelId = channelId
         )
 
-        // Collect next 2 emissions (initial + after insert)
-        val emissions = withTimeout(2000) { flow.take(2).toList() }
+        // Collect initial + after insert
+        val emissions = emissionsDeferred.await()
 
         // Verify we got 2 emissions
         assertEquals(2, emissions.size)
@@ -531,6 +534,48 @@ class SqlDelightSlockLocalStoreTest {
 
         // Should emit a timeline with 0 messages, not null
         assertEquals(0, initial?.messages?.size ?: -1)
+    }
+
+    @Test
+    fun observeThreadTimelineSuppressesUnchangedInvalidations() = runBlocking {
+        val store = createInMemoryStore()
+        val serverId = ServerId("server-1")
+        val threadId = ThreadId("thread-1")
+        val channelId = ChannelId("channel-1")
+
+        store.upsertConversation(
+            ConversationSummary(
+                threadId = threadId,
+                channelId = channelId,
+                kind = ConversationKind.Channel,
+                name = "general"
+            ),
+            syncedAtMs = 10L,
+            serverId = serverId
+        )
+        store.upsertMessage(
+            message("message-1", seq = 1),
+            syncedAtMs = 11L,
+            streamChannelId = channelId,
+            serverId = serverId
+        )
+
+        val flow = store.observeThreadTimeline(threadId, serverId)
+        assertEquals("message-1", flow.first()?.messages?.single()?.id?.value)
+
+        val nextEmission = async {
+            withTimeoutOrNull(300) {
+                flow.drop(1).first()
+            }
+        }
+        delay(50)
+        store.upsertMemberSnapshot(
+            member("unrelated-user", MemberKind.Human),
+            syncedAtMs = 12L,
+            serverId = serverId
+        )
+
+        assertNull(nextEmission.await())
     }
 
     private fun createInMemoryStore(): SlockLocalStore {

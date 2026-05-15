@@ -36,6 +36,7 @@ import com.google.gson.JsonSyntaxException
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import ai.slock.compose.model.explicitMessageStreamChannelId
@@ -325,6 +326,7 @@ class SqlDelightSlockLocalStore(
             .mapToList(Dispatchers.IO)
             .map { getThreadTimeline(threadId, resolvedServerId) }
             .onStart { emit(getThreadTimeline(threadId, resolvedServerId)) }
+            .distinctUntilChanged()
     }
 
     override fun upsertMessage(
