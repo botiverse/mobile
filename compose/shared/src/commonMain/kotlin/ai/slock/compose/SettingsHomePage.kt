@@ -3,6 +3,10 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -12,6 +16,7 @@ import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
@@ -27,6 +32,7 @@ import kotlinx.serialization.json.Json
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
 const val SETTINGS_TAB_BAR_SMOKE_PAGE = "compose_settings_tabbar_smoke"
 const val BOTTOM_TAB_BAR_SMOKE_PAGE = "compose_bottom_tabbar_smoke"
+const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 
 @Page(SETTINGS_HOME_PAGE, supportInLocal = true)
 internal class ComposeSettingsHomePage : ai.slock.compose.base.BasePager() {
@@ -54,6 +60,14 @@ internal class ComposeBottomTabBarSmokePage : ai.slock.compose.base.BasePager() 
     override fun willInit() {
         super.willInit()
         setContent { BottomTabBarSmokeContent() }
+    }
+}
+
+@Page(SLOCK_APP_SHELL_PAGE, supportInLocal = true)
+internal class ComposeSlockAppShellPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { SlockAppShellContent() }
     }
 }
 
@@ -125,6 +139,75 @@ private val bottomTabBarSmokeItems = listOf(
     SlockBottomTabItemPayload("members", "MEMBERS", "users"),
     SlockBottomTabItemPayload("settings", "SETTINGS", "settings")
 )
+
+private fun appShellBottomTabs(selectedKey: String): List<SlockBottomTabItemPayload> =
+    listOf(
+        SlockBottomTabItemPayload("home", "HOME", "house", selected = selectedKey == "home"),
+        SlockBottomTabItemPayload("tasks", "TASKS", "square-check-big", selected = selectedKey == "tasks"),
+        SlockBottomTabItemPayload("members", "MEMBERS", "users", selected = selectedKey == "members"),
+        SlockBottomTabItemPayload("settings", "SETTINGS", "settings", selected = selectedKey == "settings")
+    )
+
+@Composable
+private fun SlockAppShellContent() {
+    var selectedTab by remember { mutableStateOf("home") }
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            when (selectedTab) {
+                "settings" -> SettingsHomeContent(settingsTabBarSmokePayload.copy(subtitle = "Shared settings"), onSelect = {})
+                "tasks" -> AppShellPlaceholderContent(
+                    title = "Tasks",
+                    subtitle = "Shared task surface will mount here",
+                    iconName = "square-check-big"
+                )
+                "members" -> AppShellPlaceholderContent(
+                    title = "Members",
+                    subtitle = "Shared members surface will mount here",
+                    iconName = "users"
+                )
+                else -> AppShellPlaceholderContent(
+                    title = "Home",
+                    subtitle = "Harmony app shell using shared bottom TabBar",
+                    iconName = "house"
+                )
+            }
+        }
+        SlockBottomTabBar(
+            items = appShellBottomTabs(selectedTab),
+            onSelect = { selectedTab = it },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+    }
+}
+
+@Composable
+private fun AppShellPlaceholderContent(
+    title: String,
+    subtitle: String,
+    iconName: String
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        SlockLucideIcon(name = iconName, color = "#FF000000", modifier = Modifier.size(36.dp))
+        Text(
+            title,
+            style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            subtitle,
+            style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
 
 @Composable
 private fun BottomTabBarSmokeContent() {

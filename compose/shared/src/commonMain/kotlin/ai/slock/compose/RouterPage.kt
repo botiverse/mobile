@@ -146,6 +146,12 @@ internal fun ComposeRouteImpl() {
         }
 
         Button({
+            jumpPage(localPager, SLOCK_APP_SHELL_PAGE)
+        }) {
+            Text("Slock鸿蒙壳子")
+        }
+
+        Button({
             jumpPage(localPager, SETTINGS_TAB_BAR_SMOKE_PAGE)
         }) {
             Text("Settings TabBar 预览")
