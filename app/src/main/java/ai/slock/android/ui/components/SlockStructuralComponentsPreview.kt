@@ -275,6 +275,7 @@ fun SlockStructuralHomeShell(
                         item(key = "action-search") {
                             SidebarActionRow(
                                 icon = LucideIcons.Search,
+                                iconName = "search",
                                 label = labels.search,
                                 onClick = onSearchClick
                             )
@@ -282,6 +283,7 @@ fun SlockStructuralHomeShell(
                         item(key = "action-inbox") {
                             SidebarActionRow(
                                 icon = LucideIcons.Inbox,
+                                iconName = "inbox",
                                 label = labels.inbox,
                                 badge = inboxUnreadCount.takeIf { it > 0 }?.toString(),
                                 onClick = onInboxClick
@@ -290,6 +292,7 @@ fun SlockStructuralHomeShell(
                         item(key = "action-saved") {
                             SidebarActionRow(
                                 icon = LucideIcons.Bookmark,
+                                iconName = "bookmark",
                                 label = labels.saved,
                                 trailingText = savedCount.takeIf { it > 0 }?.toString(),
                                 onClick = onSavedClick
@@ -752,53 +755,21 @@ private fun ServerSwitcherRow(
 @Composable
 private fun SidebarActionRow(
     icon: ImageVector,
+    iconName: String = "circle",
     label: String,
     modifier: Modifier = Modifier,
     badge: String? = null,
     trailingText: String? = null,
     onClick: (() -> Unit)? = null
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = SidebarActionRowHeight)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = SidebarRowHorizontalPadding),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.size(SidebarActionIconBoxSize),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = SlockColor.TextBlack,
-                modifier = Modifier.size(SidebarActionIconSize)
-            )
-        }
-        Text(
-            text = label,
-            style = SlockType.Button,
-            color = SlockColor.TextBlack,
-            modifier = Modifier
-                .padding(start = SidebarActionLabelGap)
-                .weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        if (badge != null) {
-            CountPill(text = badge, color = SlockColor.AccentPink)
-        } else if (trailingText != null) {
-            Text(
-                text = trailingText,
-                style = SlockType.Caption,
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
+    SlockHomeActionRowKuikly(
+        iconName = iconName,
+        label = label,
+        badge = badge,
+        trailingText = trailingText,
+        onClick = { onClick?.invoke() },
+        modifier = modifier.fillMaxWidth().height(SidebarActionRowHeight)
+    )
 }
 
 @Composable
@@ -892,83 +863,19 @@ private fun ChannelRow(
     interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default,
     onClick: (() -> Unit)? = null
 ) {
-    val rowBackground = when (interactionState) {
-        ChannelRowInteractionState.Default -> if (joined) Color.Transparent else SlockColor.EmptyStateGray.copy(alpha = 0.36f)
-        ChannelRowInteractionState.Selected -> SlockColor.BrandYellow
-        ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
-        ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
-    }
-    val borderColor = when (interactionState) {
-        ChannelRowInteractionState.Default,
-        ChannelRowInteractionState.Hovered -> Color.Transparent
-        ChannelRowInteractionState.Selected,
-        ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
-    }
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = ChannelRowHeight)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = ChannelRowHeight)
-                .background(rowBackground)
-                .border(SlockStroke.Default, borderColor)
-                .padding(
-                    start = ChannelRowHorizontalPadding,
-                    end = SlockSpacing.Sm
-                ),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier.width(ChannelSymbolWidth),
-                contentAlignment = Alignment.Center
-            ) {
-                if (avatarLabel != null) {
-                    ChannelAvatar(avatarUrl = avatarUrl, avatar = avatar, label = avatarLabel, presence = presence)
-                } else {
-                    Text(
-                        text = symbol,
-                        style = SlockType.Body.copy(fontWeight = FontWeight.Normal, fontSize = ChannelSymbolFontSize),
-                        color = SlockColor.TextBlack.copy(alpha = if (joined) 0.62f else 0.32f),
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-            Text(
-                text = name,
-                style = SlockType.Button,
-                color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f),
-                modifier = Modifier
-                    .padding(start = SidebarActionLabelGap)
-                    .weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (badge != null) {
-                Spacer(modifier = Modifier.width(SlockSpacing.Sm))
-            } else if (hasDraft) {
-                Spacer(modifier = Modifier.width(SlockSpacing.Xs))
-            }
-            if (hasDraft) {
-                Icon(
-                    imageVector = LucideIcons.Pencil,
-                    contentDescription = "Unsent draft",
-                    tint = SlockColor.TextMutedGray,
-                    modifier = Modifier.size(14.dp)
-                )
-            }
-            if (badge != null) {
-                if (hasDraft) {
-                    Spacer(modifier = Modifier.width(SlockSpacing.Xs))
-                }
-                CountPill(text = badge, color = SlockColor.AccentPink)
-            }
-        }
-    }
+    SlockHomeConversationRowKuikly(
+        id = name,
+        name = name,
+        avatarLabel = avatarLabel,
+        presence = presence,
+        unreadCount = badge?.toIntOrNull() ?: 0,
+        hasDraft = hasDraft,
+        joined = joined,
+        selected = interactionState == ChannelRowInteractionState.Selected,
+        symbol = symbol,
+        onClick = { onClick?.invoke() },
+        modifier = modifier.fillMaxWidth().height(ChannelRowHeight)
+    )
 }
 
 @Composable

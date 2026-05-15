@@ -174,11 +174,7 @@ private fun SlockAppShellContent() {
                     subtitle = "Shared members surface will mount here",
                     iconName = "users"
                 )
-                else -> AppShellPlaceholderContent(
-                    title = "Home",
-                    subtitle = "Harmony app shell using shared bottom TabBar",
-                    iconName = "house"
-                )
+                else -> HomeComponentsSmokeContent()
             }
         }
         SlockBottomTabBar(

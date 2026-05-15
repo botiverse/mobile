@@ -24,6 +24,107 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 @Composable
+internal fun SlockHomeActionRowKuikly(
+        iconName: String,
+        label: String,
+        modifier: Modifier = Modifier,
+        badge: String? = null,
+        trailingText: String? = null,
+        onClick: () -> Unit
+) {
+    Box(modifier = modifier) {
+        SlockKuiklyPageIsland(
+                pageName = SlockKuiklyActivity.PAGE_HOME_ACTION_ROW,
+                pageData =
+                        JSONObject()
+                                .put(
+                                        "payload",
+                                        JSONObject()
+                                                .put("iconName", iconName)
+                                                .put("label", label)
+                                                .put("badge", badge)
+                                                .put("trailingText", trailingText)
+                                                .toString()
+                                ),
+                modifier = Modifier.fillMaxSize(),
+                onEvent = { event ->
+                    if (event.optString("action") == "click") {
+                        onClick()
+                    }
+                }
+        )
+        TransparentHomeAction(
+                modifier =
+                        Modifier.fillMaxSize()
+                                .semantics {
+                                    text = AnnotatedString(label)
+                                    contentDescription = label
+                                    role = Role.Button
+                },
+                onClick = onClick
+        )
+        badge?.takeIf { it.isNotBlank() }?.let { TransparentHomeText(it) }
+        trailingText?.takeIf { it.isNotBlank() }?.let { TransparentHomeText(it) }
+    }
+}
+
+@Composable
+internal fun SlockHomeConversationRowKuikly(
+        id: String,
+        name: String,
+        avatarLabel: String?,
+        presence: SlockPresence?,
+        unreadCount: Int,
+        hasDraft: Boolean,
+        joined: Boolean,
+        selected: Boolean,
+        modifier: Modifier = Modifier,
+        symbol: String = "#",
+        onClick: (String) -> Unit
+) {
+    Box(modifier = modifier) {
+        SlockKuiklyPageIsland(
+                pageName = SlockKuiklyActivity.PAGE_HOME_CONVERSATION_ROW,
+                pageData =
+                        JSONObject()
+                                .put(
+                                        "payload",
+                                        JSONObject()
+                                                .put("id", id)
+                                                .put("name", name)
+                                                .put("symbol", symbol)
+                                                .put("avatarLabel", avatarLabel)
+                                                .put("presence", presence?.name?.lowercase())
+                                                .put("badge", unreadCount.takeIf { it > 0 }?.toString())
+                                                .put("hasDraft", hasDraft)
+                                                .put("joined", joined)
+                                                .put("selected", selected)
+                                                .toString()
+                                ),
+                modifier = Modifier.fillMaxSize(),
+                onEvent = { event ->
+                    if (event.optString("action") == "click") {
+                        event.optString("itemId").takeIf { it.isNotBlank() }?.let(onClick)
+                    }
+                }
+        )
+        TransparentHomeAction(
+                modifier =
+                        Modifier.fillMaxSize()
+                                .semantics {
+                                    text = AnnotatedString(name)
+                                    role = Role.Button
+                                    if (hasDraft) {
+                                        contentDescription = "Unsent draft"
+                                    }
+                                },
+                onClick = { onClick(id) }
+        )
+        unreadCount.takeIf { it > 0 }?.let { TransparentHomeText(it.toString()) }
+    }
+}
+
+@Composable
 internal fun SlockHomeHeaderKuikly(
         serverName: String,
         serverUnreadCount: Int,
@@ -192,4 +293,9 @@ private fun TransparentHomeAction(
                             onClick = onClick
                     )
     )
+}
+
+@Composable
+private fun TransparentHomeText(textValue: String) {
+    Box(modifier = Modifier.size(1.dp).semantics { text = AnnotatedString(textValue) })
 }
