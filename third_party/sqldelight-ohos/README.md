@@ -15,7 +15,29 @@ The patch in `patches/0001-ohos-arm64-support.patch` is derived from
 official SQLDelight `2.1.0` tag so Slock can keep the same SQLDelight API
 baseline while adding OHOS artifacts.
 
-## Current Status
+## Current Direction
+
+Slock should not make the SQLDelight native-driver fork the critical path for
+HarmonyOS data work.
+
+The practical migration path is to keep SQLDelight as the Android
+implementation detail and move shared callers behind a small local-store
+contract first:
+
+- Android actual: continue using the current SQLDelight schema and
+  `AndroidSqliteDriver`.
+- OHOS actual: start with the simplest implementation that unblocks the shared
+  UI/data flow, such as an in-memory store or a thin wrapper around Harmony
+  local KV/RDB storage.
+- Shared repositories: depend on the local-store contract, not on SQLDelight
+  drivers directly.
+
+This lets HarmonyOS validate login/settings/Home data flow without waiting on
+the native SQLDelight dependency chain. A full SQLDelight native-driver fork can
+remain available as a later persistence upgrade if we decide we need identical
+SQLite-backed storage on OHOS.
+
+## Native-Driver Fork Status
 
 `scripts/prepare_sqldelight_ohos_fork.sh` has been verified to apply this patch
 cleanly to upstream `2.1.0`.
