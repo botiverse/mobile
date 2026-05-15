@@ -600,7 +600,7 @@ private fun LocalHomeConversations.toHomeSnapshot(
     if (!isNotEmpty) return null
     val unreadTotal = channels.sumOf { it.unreadCount } + directMessages.sumOf { it.unreadCount }
     return HomeSnapshot(
-        server = serverFallback.copy(unreadCount = maxOf(serverFallback.unreadCount, unreadTotal)),
+        server = serverFallback,
         currentMember = currentMemberFallback,
         channels = channels,
         directMessages = directMessages,

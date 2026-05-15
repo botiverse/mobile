@@ -73,7 +73,7 @@ class SlockLocalWriteThroughTest {
         val store = createInMemoryStore()
         val logs = mutableListOf<String>()
         val writer = SlockLocalWriteThrough(store, clock = { 42L }, logger = logs::add)
-        val server = ServerSummary(id = ServerId("server-1"), name = "Slock")
+        val server = ServerSummary(id = ServerId("server-1"), name = "Slock", unreadCount = 7)
         val currentMember = memberProfile("user-1", MemberKind.Human)
         val channel =
             conversation("channel-1").copy(
@@ -117,7 +117,7 @@ class SlockLocalWriteThroughTest {
         assertEquals(false, cached?.channels?.single()?.permissions?.canRead)
         assertEquals(false, cached?.channels?.single()?.permissions?.canSend)
         assertEquals(5, cached?.unreadTotal)
-        assertEquals(5, cached?.server?.unreadCount)
+        assertEquals(7, cached?.server?.unreadCount)
         assertTrue(logs.any { it.contains("write_home source=test_home") })
         assertTrue(logs.any { it.contains("read_home serverId=server-1 hit=true") })
     }
@@ -309,7 +309,7 @@ class SlockLocalWriteThroughTest {
     fun writeUnreadCountsUpdatesHomeProjectionAndClearsMissingRows() {
         val store = createInMemoryStore()
         val writer = SlockLocalWriteThrough(store, clock = { 42L })
-        val server = ServerSummary(id = ServerId("server-1"), name = "Slock")
+        val server = ServerSummary(id = ServerId("server-1"), name = "Slock", unreadCount = 24)
         val currentMember = memberProfile("user-1", MemberKind.Human)
         val channel =
             conversation("channel-1").copy(
@@ -362,6 +362,41 @@ class SlockLocalWriteThroughTest {
         assertEquals(0, cached?.directMessages?.single()?.unreadCount)
         assertEquals(null, cached?.directMessages?.single()?.firstUnreadMessageId)
         assertEquals(0, cached?.unreadTotal)
+        assertEquals(24, cached?.server?.unreadCount)
+    }
+
+    @Test
+    fun readHomeSnapshotDoesNotPromoteChannelUnreadTotalToServerUnread() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 42L })
+        val server = ServerSummary(id = ServerId("server-1"), name = "Slock", unreadCount = 24)
+        val currentMember = memberProfile("user-1", MemberKind.Human)
+        writer.writeHomeResult(
+            DataResult.Content(
+                HomeSnapshot(
+                    server = server,
+                    currentMember = currentMember,
+                    channels =
+                        listOf(
+                            conversation("channel-1").copy(unreadCount = 60),
+                            conversation("channel-2").copy(unreadCount = 1)
+                        ),
+                    directMessages = emptyList(),
+                    unreadTotal = 61
+                )
+            ),
+            source = "seed_home"
+        )
+
+        val cached =
+            writer.readHomeSnapshot(
+                serverId = ServerId("server-1"),
+                serverFallback = server,
+                currentMemberFallback = currentMember
+            )
+
+        assertEquals(61, cached?.unreadTotal)
+        assertEquals(24, cached?.server?.unreadCount)
     }
 
     @Test

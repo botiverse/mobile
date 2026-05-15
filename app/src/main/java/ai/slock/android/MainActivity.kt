@@ -11518,26 +11518,7 @@ private fun ScreenLoadState<ServerListSnapshot>.applyUnreadSummary(
 private fun ScreenLoadState<ServerListSnapshot>.applyUnreadCounts(
         snapshot: ChannelUnreadSnapshot
 ): ScreenLoadState<ServerListSnapshot> =
-        when (this) {
-            is ScreenLoadState.Content -> {
-                fun ServerSummary.applyUnread(): ServerSummary =
-                        if (id == snapshot.server.id) {
-                            copy(unreadCount = snapshot.totalUnreadCount)
-                        } else {
-                            this
-                        }
-                ScreenLoadState.Content(
-                        data.copy(
-                                servers = data.servers.map { it.applyUnread() },
-                                selectedServer = data.selectedServer?.applyUnread()
-                        )
-                )
-            }
-            ScreenLoadState.Loading,
-            is ScreenLoadState.Empty,
-            is ScreenLoadState.Error,
-            is ScreenLoadState.NoPermission -> this
-        }
+        this
 
 private fun HomeUiState.applyUnreadSummary(snapshot: ServerUnreadSummarySnapshot): HomeUiState {
     val contentState = loadState as? ScreenLoadState.Content ?: return this
@@ -12354,11 +12335,8 @@ private fun DataResult<HomeSnapshot>.toHomeUiState(
                                     ScreenLoadState.Content(
                                             run {
                                                 val effectiveServerUnreadCount =
-                                                        maxOf(
-                                                                preservedServerUnreadCount
-                                                                        ?: data.server.unreadCount,
-                                                                data.unreadTotal
-                                                        )
+                                                        preservedServerUnreadCount
+                                                                ?: data.server.unreadCount
                                                 val server =
                                                         data.server.copy(
                                                                 unreadCount =
