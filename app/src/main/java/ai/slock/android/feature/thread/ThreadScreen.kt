@@ -2042,7 +2042,11 @@ private fun ThreadAttachmentPreviewModal(
             if (isTextPreview) {
                 ThreadAttachmentTextPreview(text = state.textContent.orEmpty())
             } else {
-                ThreadAttachmentRemoteImagePreview(url = state.url, name = title)
+                ThreadAttachmentRemoteImagePreview(
+                        url = state.url,
+                        thumbnailUrl = state.thumbnailUrl,
+                        name = title
+                )
             }
             Text(
                     text =
@@ -2093,8 +2097,14 @@ private fun ThreadAttachmentTextPreview(text: String) {
 }
 
 @Composable
-private fun ThreadAttachmentRemoteImagePreview(url: String?, name: String) {
+private fun ThreadAttachmentRemoteImagePreview(
+        url: String?,
+        thumbnailUrl: String?,
+        name: String
+) {
     val imageUrl = url?.takeIf { it.isNotBlank() }
+    val fallbackUrl =
+            thumbnailUrl?.takeIf { it.isNotBlank() && it != imageUrl }
     val context = LocalPlatformContext.current
     val cacheKey = remember(imageUrl) { imageUrl?.let { "attachment-preview:$it" } }
     val request =
@@ -2110,6 +2120,22 @@ private fun ThreadAttachmentRemoteImagePreview(url: String?, name: String) {
                             .build()
                 }
             }
+    val fallbackCacheKey =
+            remember(fallbackUrl) { fallbackUrl?.let { "attachment-preview:$it" } }
+    val fallbackRequest =
+            remember(context, fallbackUrl, fallbackCacheKey) {
+                fallbackUrl?.let {
+                    ImageRequest.Builder(context)
+                            .data(it)
+                            .memoryCacheKey(fallbackCacheKey)
+                            .diskCacheKey(fallbackCacheKey)
+                            .memoryCachePolicy(CachePolicy.ENABLED)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .networkCachePolicy(CachePolicy.ENABLED)
+                            .build()
+                }
+            }
+    var hasFallbackImage by remember(fallbackUrl) { mutableStateOf(fallbackUrl != null) }
     var loadState by remember(imageUrl) {
         mutableStateOf(
                 if (imageUrl == null) RemoteImageLoadState.Missing
@@ -2132,19 +2158,31 @@ private fun ThreadAttachmentRemoteImagePreview(url: String?, name: String) {
                             .clip(RoundedCornerShape(SlockRadius.Xs)),
             contentAlignment = Alignment.Center
     ) {
-        if (loadState == RemoteImageLoadState.Missing || loadState == RemoteImageLoadState.Error) {
+        if ((loadState == RemoteImageLoadState.Missing || loadState == RemoteImageLoadState.Error) &&
+                        !hasFallbackImage
+        ) {
             Icon(
                     imageVector = SlockIcons.Image,
                     contentDescription = null,
                     tint = SlockColor.TextMutedGray,
                     modifier = Modifier.size(40.dp)
             )
-        } else if (loadState == RemoteImageLoadState.Loading) {
+        } else if (loadState == RemoteImageLoadState.Loading && !hasFallbackImage) {
             CircularProgressIndicator(
                     modifier = Modifier.size(28.dp),
                     strokeWidth = 2.dp,
                     color = SlockColor.TextBlack,
                     trackColor = SlockColor.SurfaceWhite
+            )
+        }
+        if (fallbackRequest != null) {
+            AsyncImage(
+                    model = fallbackRequest,
+                    contentDescription = name,
+                    contentScale = ContentScale.Fit,
+                    onSuccess = { hasFallbackImage = true },
+                    modifier =
+                            Modifier.fillMaxWidth().heightIn(min = 220.dp).padding(SlockSpacing.Sm)
             )
         }
         if (request != null) {
@@ -4945,6 +4983,7 @@ private fun ThreadMessageFooterMeta(
                     task = task,
                     label = taskMetaLabel,
                     onTaskStatusChange = onTaskStatusChange,
+                    textStyle = ThreadFooterMetaTextStyle,
                     modifier =
                             Modifier.weight(1f, fill = false)
                                     .widthIn(max = 260.dp)
@@ -4957,6 +4996,7 @@ private fun ThreadMessageFooterMeta(
                             color = SlockColor.AppBgLightBlue,
                             icon = SlockIcons.MessageSquare,
                             onClick = onOpenThread,
+                            textStyle = ThreadFooterMetaTextStyle,
                             modifier =
                                     Modifier.widthIn(max = 220.dp)
                                             .testTag(THREAD_MESSAGE_FOOTER_REPLIES_TAG)
@@ -4970,6 +5010,7 @@ private fun ThreadTaskStatusChip(
         task: TaskSummary,
         label: String,
         onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
+        textStyle: TextStyle,
         modifier: Modifier = Modifier
 ) {
     var expanded by rememberSaveable(task.id.value, task.status) { mutableStateOf(false) }
@@ -4980,7 +5021,8 @@ private fun ThreadTaskStatusChip(
                 icon = task.status.threadIcon,
                 onClick = { expanded = true },
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                textStyle = textStyle
         )
         if (expanded) {
             Popup(
@@ -5461,6 +5503,13 @@ private val ThreadInlineChipTextStyle: TextStyle
                                         platformStyle =
                                                 PlatformTextStyle(includeFontPadding = false)
                         )
+
+private val ThreadFooterMetaTextStyle: TextStyle
+        get() =
+                ThreadInlineChipTextStyle.copy(
+                        fontSize = 12.sp,
+                        lineHeight = 14.sp
+                )
 
 @Composable
 private fun ThreadMarkdownBody(
@@ -6053,7 +6102,8 @@ private fun ThreadChip(
         verticalPaddingTop: Dp = ThreadFooterChipVerticalPadding,
         verticalPaddingBottom: Dp = ThreadFooterChipVerticalPadding,
         maxLines: Int = 2,
-        overflow: TextOverflow = TextOverflow.Clip
+        overflow: TextOverflow = TextOverflow.Clip,
+        textStyle: TextStyle = ThreadInlineChipTextStyle
 ) {
     val chipModifier =
             modifier
@@ -6085,7 +6135,7 @@ private fun ThreadChip(
         }
         Text(
                 label,
-                style = ThreadInlineChipTextStyle,
+                style = textStyle,
                 color = SlockColor.TextBlack,
                 maxLines = maxLines,
                 overflow = overflow
@@ -6127,7 +6177,7 @@ fun ThreadComposerBar(
                 )
     }
     LaunchedEffect(focusRequestNonce) {
-        if (focusRequestNonce <= 0 || composerState.value.isBlank() || !composerState.enabled) {
+        if (focusRequestNonce <= 0 || !composerState.enabled) {
             return@LaunchedEffect
         }
         withFrameNanos { }
@@ -6527,7 +6577,7 @@ private fun detectComposerSuggestionTrigger(fieldValue: TextFieldValue): Compose
         val c = textBeforeCursor[i]
         if (c.isWhitespace()) break
         if (c == '@' || c == '#') {
-            if (i == 0 || textBeforeCursor[i - 1].isWhitespace()) {
+            if (i == 0 || textBeforeCursor[i - 1].isComposerSuggestionBoundary()) {
                 triggerIndex = i
                 triggerChar = c
             }
@@ -6542,6 +6592,8 @@ private fun detectComposerSuggestionTrigger(fieldValue: TextFieldValue): Compose
         else -> ComposerSuggestionTrigger.None
     }
 }
+
+private fun Char.isComposerSuggestionBoundary(): Boolean = !isLetterOrDigit()
 
 private fun TextFieldValue.replaceTriggerWith(triggerStart: Int, replacement: String): TextFieldValue {
     val end = selection.min.coerceIn(0, text.length)

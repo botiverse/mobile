@@ -1757,6 +1757,45 @@ class ThreadScreenReplyAffordanceTest {
     }
 
     @Test
+    fun composerMemberSuggestionsAppearAfterPunctuation() {
+        val composerValue = mutableStateOf("")
+        val memberSuggestions =
+            listOf(
+                MemberProfile(
+                    id = MemberId("member-artin"),
+                    displayName = "artin",
+                    handle = "artin",
+                    kind = MemberKind.Human,
+                    roleDescription = "Member"
+                )
+            )
+
+        composeRule.setContent {
+            SlockTheme {
+                ThreadComposerBar(
+                    composerState = ComposerState(
+                        value = composerValue.value,
+                        status = ComposerStatus.Ready
+                    ),
+                    placeholder = "Message",
+                    onComposerChange = { composerValue.value = it },
+                    onAsTaskChange = {},
+                    onSend = {},
+                    memberSuggestions = memberSuggestions
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(THREAD_COMPOSER_FIELD_TAG, useUnmergedTree = true)
+            .performTextReplacement("。。。@")
+
+        composeRule.onNodeWithTag(THREAD_COMPOSER_SUGGESTIONS_TAG)
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("artin")
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun composerMemberSuggestionsKeepFocusWhenPressingArrowUp() {
         val composerValue = mutableStateOf("")
         val otherFieldValue = mutableStateOf("")
@@ -1955,6 +1994,54 @@ class ThreadScreenReplyAffordanceTest {
         }
 
         composeRule.onNodeWithText("1 attachment ready").assertIsDisplayed()
+    }
+
+    @Test
+    fun composerFocusRequestNonceRefocusesBlankComposerWhenAttachmentExists() {
+        val focusRequestNonce = mutableStateOf(0)
+        val otherFieldValue = mutableStateOf("")
+        composeRule.setContent {
+            SlockTheme {
+                Column {
+                    SlockTextField(
+                        value = otherFieldValue.value,
+                        onValueChange = { otherFieldValue.value = it },
+                        placeholder = "Other field",
+                        inputModifier = Modifier.testTag("other-field-input")
+                    )
+                    ThreadComposerBar(
+                        composerState = ComposerState(
+                            value = "",
+                            status = ComposerStatus.Ready,
+                            pendingAttachments = listOf(
+                                PendingAttachment(
+                                    id = "pending-image",
+                                    fileName = "preview.png",
+                                    mimeType = "image/png",
+                                    previewUri = "content://pending-image-preview"
+                                )
+                            )
+                        ),
+                        placeholder = "Message",
+                        onComposerChange = {},
+                        onAsTaskChange = {},
+                        onSend = {},
+                        focusRequestNonce = focusRequestNonce.value
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("other-field-input", useUnmergedTree = true)
+            .performClick()
+            .assertIsFocused()
+
+        composeRule.runOnIdle {
+            focusRequestNonce.value = 1
+        }
+
+        composeRule.onNodeWithTag(THREAD_COMPOSER_FIELD_TAG, useUnmergedTree = true)
+            .assertIsFocused()
     }
 
     @Test

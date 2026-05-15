@@ -74,6 +74,7 @@ import ai.slock.android.core.data.repository.OpenDirectMessageResult
 import ai.slock.android.core.data.repository.ReadReceiptCoordinator
 import ai.slock.android.core.data.repository.ReadReceiptRepository
 import ai.slock.android.core.data.repository.ReadReceiptRequest
+import ai.slock.android.core.data.repository.ReadReceiptVisibilityGate
 import ai.slock.android.core.data.repository.RealtimeRepository
 import ai.slock.android.core.data.repository.RealtimeSubscription
 import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
@@ -320,6 +321,7 @@ import android.provider.Settings
 import android.widget.Toast
 import java.io.IOException
 import java.net.URL
+import java.util.UUID
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -1088,6 +1090,9 @@ private fun SlockAppContent(
     var threadReturnFailedAttachmentIds by remember { mutableStateOf<Set<String>?>(null) }
     var threadReturnSelectedThreadNearBottom by remember { mutableStateOf<Boolean?>(null) }
     var threadParentJumpTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    var optimisticSendMessagesByStream by remember {
+        mutableStateOf<Map<String, Message>>(emptyMap())
+    }
     var refreshingOriginParentIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var originParentRefreshErrors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var savedState by remember {
@@ -1747,8 +1752,9 @@ private fun SlockAppContent(
             }
         }
     }
+    val readReceiptVisibilityGate = remember { ReadReceiptVisibilityGate() }
     val readReceiptCoordinator =
-            remember(readReceiptRepository, coroutineScope) {
+            remember(readReceiptRepository, coroutineScope, readReceiptVisibilityGate) {
                 ReadReceiptCoordinator(
                         scope = coroutineScope,
                         repository = readReceiptRepository,
@@ -1771,6 +1777,7 @@ private fun SlockAppContent(
                             )
                         },
                         onFailure = { request, _ ->
+                            readReceiptVisibilityGate.clear(request.channelId)
                             reconcileUnreadCountsFromServer(
                                     reason = "mark_read_failed",
                                     channelId = request.channelId
@@ -1864,9 +1871,13 @@ private fun SlockAppContent(
         val channelId = content.header.messageStreamChannelId()
         val maxSeq = content.messages.mapNotNull { it.seq }.maxOrNull()
         if (maxSeq != null && maxSeq > 0L) {
-            readReceiptCoordinator.markReadToSeq(channelId, maxSeq)
+            if (readReceiptVisibilityGate.shouldMarkReadToSeq(channelId, maxSeq)) {
+                readReceiptCoordinator.markReadToSeq(channelId, maxSeq)
+            }
         } else {
-            readReceiptCoordinator.markReadAll(channelId)
+            if (readReceiptVisibilityGate.shouldMarkReadAll(channelId)) {
+                readReceiptCoordinator.markReadAll(channelId)
+            }
         }
     }
 
@@ -1878,7 +1889,9 @@ private fun SlockAppContent(
                         ?: selectedThreadId?.let(::ChannelId)
                         ?: return
         if (seq != null && seq > 0L) {
-            readReceiptCoordinator.markReadToSeq(channelId, seq)
+            if (readReceiptVisibilityGate.shouldMarkReadToSeq(channelId, seq)) {
+                readReceiptCoordinator.markReadToSeq(channelId, seq)
+            }
         } else {
             currentContent?.let(::markThreadReadIfLoaded)
         }
@@ -1886,7 +1899,9 @@ private fun SlockAppContent(
 
     fun markInboxItemRead(item: InboxItem) {
         val channelId = item.threadChannelId ?: item.channelId
-        readReceiptCoordinator.markReadAll(channelId)
+        if (readReceiptVisibilityGate.shouldMarkReadAll(channelId)) {
+            readReceiptCoordinator.markReadAll(channelId)
+        }
     }
 
     fun rememberTaskReferences(tasks: List<TaskSummary>) {
@@ -7924,6 +7939,7 @@ private fun SlockAppContent(
                                                 failedAttachmentIds =
                                                         failedAttachmentIds -
                                                                 newFiles.map { it.id }.toSet()
+                                                composerFocusRequestNonce += 1
                                             }
                                         }
                                     },
@@ -7937,6 +7953,7 @@ private fun SlockAppContent(
                                                 failedAttachmentIds =
                                                         failedAttachmentIds -
                                                                 newFiles.map { it.id }.toSet()
+                                                composerFocusRequestNonce += 1
                                             }
                                         }
                                     },
@@ -7979,6 +7996,7 @@ private fun SlockAppContent(
                                     },
                                     localComposerMessages = localComposerMessages,
                                     realtimeThreadMessages = realtimeThreadMessages,
+                                    optimisticSendMessagesByStream = optimisticSendMessagesByStream,
                                     serverListState = serverListState,
                                     homeState = homeState,
                                     draftThreadIds = composerDrafts.keys,
@@ -8172,6 +8190,7 @@ private fun SlockAppContent(
                                                                                     .toSet()
                                                     )
                                                 }
+                                                composerFocusRequestNonce += 1
                                             }
                                         }
                                     },
@@ -8192,6 +8211,7 @@ private fun SlockAppContent(
                                                                                     .toSet()
                                                     )
                                                 }
+                                                composerFocusRequestNonce += 1
                                             }
                                         }
                                     },
@@ -8468,12 +8488,36 @@ private fun SlockAppContent(
                                                             selectedThreadContent(),
                                                             selectedThreadId
                                                     )
+                                            val sendServerId = selectedServerIdForUi()
+                                            fun isCurrentComposerTarget(): Boolean =
+                                                    messageStreamChannelId != null &&
+                                                            selectedServerIdForUi() == sendServerId &&
+                                                            composerSendChannelId(
+                                                                    selectedThreadContent(),
+                                                                    selectedThreadId
+                                                            ) == messageStreamChannelId
+
+                                            fun applyComposerStatusIfCurrent(
+                                                    status: ComposerStatus,
+                                                    errorCode: String? = null,
+                                                    noPermissionCode: String? = null
+                                            ) {
+                                                if (!isCurrentComposerTarget()) return
+                                                selectedThreadState =
+                                                        selectedThreadState.withComposerStatus(
+                                                                status = status,
+                                                                errorCode = errorCode,
+                                                                noPermissionCode = noPermissionCode
+                                                        )
+                                            }
+
                                             fun restoreComposerDraft(restoredDraft: ComposerSubmissionDraft) {
                                                 composerDrafts =
                                                         composerDrafts.saveComposerDraft(
                                                                 messageStreamChannelId?.value,
                                                                 restoredDraft
                                                         )
+                                                if (!isCurrentComposerTarget()) return
                                                 composerValue = restoredDraft.value
                                                 composerAsTask = restoredDraft.asTask
                                                 pendingAttachmentFiles = restoredDraft.attachments
@@ -8483,24 +8527,37 @@ private fun SlockAppContent(
                                                             (!selectedHeader.joined ||
                                                                     !selectedHeader.permissions.canSend)
                                             ) {
-                                                selectedThreadState =
-                                                        selectedThreadState.withComposerStatus(
-                                                                status = ComposerStatus.NoPermission,
-                                                                noPermissionCode =
-                                                                        if (!selectedHeader.joined)
-                                                                                "join_required"
-                                                                        else "read_only"
-                                                        )
+                                                applyComposerStatusIfCurrent(
+                                                        status = ComposerStatus.NoPermission,
+                                                        noPermissionCode =
+                                                                if (!selectedHeader.joined) "join_required"
+                                                                else "read_only"
+                                                )
                                             } else if (messageStreamChannelId != null &&
                                                             sendDraft.hasContent
                                             ) {
+                                                val optimisticMessage =
+                                                        optimisticMessage(
+                                                                messageStreamChannelId,
+                                                                sendDraft
+                                                        )
+                                                optimisticSendMessagesByStream =
+                                                        optimisticSendMessagesByStream +
+                                                                (messageStreamChannelId.value to
+                                                                        optimisticMessage)
                                                 failedAttachmentIds = emptySet()
                                                 selectedThreadState =
-                                                        selectedThreadState.withComposerStatus(
-                                                                if (sendDraft.attachments.isNotEmpty())
-                                                                        ComposerStatus.Uploading
-                                                                else ComposerStatus.Sending
-                                                        )
+                                                        selectedThreadState
+                                                                .upsertOptimisticMessage(
+                                                                        optimisticMessage
+                                                                )
+                                                                .withComposerStatus(
+                                                                        if (sendDraft.attachments
+                                                                                        .isNotEmpty())
+                                                                                ComposerStatus
+                                                                                        .Uploading
+                                                                        else ComposerStatus.Sending
+                                                                )
                                                 composerValue = ""
                                                 composerAsTask = false
                                                 pendingAttachmentFiles = emptyList()
@@ -8536,45 +8593,65 @@ private fun SlockAppContent(
                                                                     is DataResult.Error -> {
                                                                         val failedDraft =
                                                                                 sendDraft.withAllAttachmentsFailed()
-                                                                        restoreComposerDraft(failedDraft)
-                                                                        selectedThreadState =
-                                                                                selectedThreadState
-                                                                                        .withComposerStatus(
-                                                                                                status =
-                                                                                                        ComposerStatus
-                                                                                                                .Failed,
-                                                                                                errorCode =
-                                                                                                        uploadResult
-                                                                                                                .error
-                                                                                                                .code
+                                                                        val failedMessage =
+                                                                                optimisticMessage
+                                                                                        .copy(
+                                                                                                deliveryState =
+                                                                                                        MessageDeliveryState
+                                                                                                                .Failed
                                                                                         )
+                                                                        optimisticSendMessagesByStream =
+                                                                                optimisticSendMessagesByStream +
+                                                                                        (messageStreamChannelId.value to
+                                                                                                failedMessage)
+                                                                        restoreComposerDraft(failedDraft)
+                                                                        applyComposerStatusIfCurrent(
+                                                                                status = ComposerStatus.Failed,
+                                                                                errorCode = uploadResult.error.code
+                                                                        )
+                                                                        if (isCurrentComposerTarget()) {
+                                                                            selectedThreadState =
+                                                                                    selectedThreadState
+                                                                                            .upsertOptimisticMessage(
+                                                                                                    failedMessage
+                                                                                            )
+                                                                        }
                                                                         return@launch
                                                                     }
                                                                     is DataResult.NoPermission -> {
                                                                         val failedDraft =
                                                                                 sendDraft.withAllAttachmentsFailed()
-                                                                        restoreComposerDraft(failedDraft)
-                                                                        selectedThreadState =
-                                                                                selectedThreadState
-                                                                                        .withComposerStatus(
-                                                                                                status =
-                                                                                                        ComposerStatus
-                                                                                                                .NoPermission,
-                                                                                                noPermissionCode =
-                                                                                                        uploadResult
-                                                                                                                .blocker
-                                                                                                                .code
+                                                                        val failedMessage =
+                                                                                optimisticMessage
+                                                                                        .copy(
+                                                                                                deliveryState =
+                                                                                                        MessageDeliveryState
+                                                                                                                .Failed
                                                                                         )
+                                                                        optimisticSendMessagesByStream =
+                                                                                optimisticSendMessagesByStream +
+                                                                                        (messageStreamChannelId.value to
+                                                                                                failedMessage)
+                                                                        restoreComposerDraft(failedDraft)
+                                                                        applyComposerStatusIfCurrent(
+                                                                                status = ComposerStatus.NoPermission,
+                                                                                noPermissionCode =
+                                                                                        uploadResult.blocker.code
+                                                                        )
+                                                                        if (isCurrentComposerTarget()) {
+                                                                            selectedThreadState =
+                                                                                    selectedThreadState
+                                                                                            .upsertOptimisticMessage(
+                                                                                                    failedMessage
+                                                                                            )
+                                                                        }
                                                                         return@launch
                                                                     }
                                                                 }
                                                             } else {
                                                                 emptyList()
                                                             }
-                                                    selectedThreadState =
-                                                            selectedThreadState.withComposerStatus(
-                                                                    ComposerStatus.Sending
-                                                            )
+                                                    applyComposerStatusIfCurrent(ComposerStatus.Sending)
                                                     val result =
                                                             withSlockRequestPriority(
                                                                     priority =
@@ -8598,53 +8675,101 @@ private fun SlockAppContent(
                                                                     source = "send_message",
                                                                     serverId = selectedServerIdForUi()
                                                             )
+                                                            if (isCurrentComposerTarget()) {
                                                             selectedThreadState =
                                                                     selectedThreadState
+                                                                            .removeMessage(
+                                                                                    optimisticMessage
+                                                                                            .id
+                                                                            )
                                                                             .appendSentMessage(
                                                                                     result.data
                                                                             )
+                                                            }
+                                                            optimisticSendMessagesByStream =
+                                                                    optimisticSendMessagesByStream -
+                                                                            messageStreamChannelId
+                                                                                    .value
                                                             composerDrafts =
                                                                     composerDrafts - messageStreamChannelId.value
-                                                            failedAttachmentIds = emptySet()
+                                                            if (isCurrentComposerTarget()) {
+                                                                failedAttachmentIds = emptySet()
+                                                            }
                                                         }
                                                         is DataResult.Empty -> {
+                                                            val failedMessage =
+                                                                    optimisticMessage.copy(
+                                                                            deliveryState =
+                                                                                    MessageDeliveryState
+                                                                                            .Failed
+                                                                    )
+                                                            optimisticSendMessagesByStream =
+                                                                    optimisticSendMessagesByStream +
+                                                                            (messageStreamChannelId
+                                                                                    .value to
+                                                                                    failedMessage)
                                                             restoreComposerDraft(sendDraft)
-                                                            selectedThreadState =
-                                                                    selectedThreadState
-                                                                            .withComposerStatus(
-                                                                                    status =
-                                                                                            ComposerStatus
-                                                                                                    .Failed,
-                                                                                    errorCode =
-                                                                                            result.reason
-                                                                                                    .name
-                                                                            )
+                                                            applyComposerStatusIfCurrent(
+                                                                    status = ComposerStatus.Failed,
+                                                                    errorCode = result.reason.name
+                                                            )
+                                                            if (isCurrentComposerTarget()) {
+                                                                selectedThreadState =
+                                                                        selectedThreadState
+                                                                                .upsertOptimisticMessage(
+                                                                                        failedMessage
+                                                                                )
+                                                            }
                                                         }
                                                         is DataResult.Error -> {
+                                                            val failedMessage =
+                                                                    optimisticMessage.copy(
+                                                                            deliveryState =
+                                                                                    MessageDeliveryState
+                                                                                            .Failed
+                                                                    )
+                                                            optimisticSendMessagesByStream =
+                                                                    optimisticSendMessagesByStream +
+                                                                            (messageStreamChannelId
+                                                                                    .value to
+                                                                                    failedMessage)
                                                             restoreComposerDraft(sendDraft)
-                                                            selectedThreadState =
-                                                                    selectedThreadState
-                                                                            .withComposerStatus(
-                                                                                    status =
-                                                                                            ComposerStatus
-                                                                                                    .Failed,
-                                                                                    errorCode =
-                                                                                            result.error
-                                                                                                    .code
-                                                                            )
+                                                            applyComposerStatusIfCurrent(
+                                                                    status = ComposerStatus.Failed,
+                                                                    errorCode = result.error.code
+                                                            )
+                                                            if (isCurrentComposerTarget()) {
+                                                                selectedThreadState =
+                                                                        selectedThreadState
+                                                                                .upsertOptimisticMessage(
+                                                                                        failedMessage
+                                                                                )
+                                                            }
                                                         }
                                                         is DataResult.NoPermission -> {
+                                                            val failedMessage =
+                                                                    optimisticMessage.copy(
+                                                                            deliveryState =
+                                                                                    MessageDeliveryState
+                                                                                            .Failed
+                                                                    )
+                                                            optimisticSendMessagesByStream =
+                                                                    optimisticSendMessagesByStream +
+                                                                            (messageStreamChannelId
+                                                                                    .value to
+                                                                                    failedMessage)
                                                             restoreComposerDraft(sendDraft)
-                                                            selectedThreadState =
-                                                                    selectedThreadState
-                                                                            .withComposerStatus(
-                                                                                    status =
-                                                                                            ComposerStatus
-                                                                                                    .NoPermission,
-                                                                                    noPermissionCode =
-                                                                                            result.blocker
-                                                                                                    .code
-                                                                            )
+                                                            applyComposerStatusIfCurrent(
+                                                                    status = ComposerStatus.NoPermission,
+                                                                    noPermissionCode = result.blocker.code
+                                                            )
+                                                            if (isCurrentComposerTarget()) {
+                                                                selectedThreadState =
+                                                                        selectedThreadState
+                                                                                .upsertOptimisticMessage(
+                                                                                        failedMessage
+                                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -9994,6 +10119,7 @@ private fun HomeRouteScreen(
         onRetryAttachments: () -> Unit,
         localComposerMessages: List<String>,
         realtimeThreadMessages: List<Message>,
+        optimisticSendMessagesByStream: Map<String, Message>,
         serverListState: ScreenLoadState<ServerListSnapshot>,
         homeState: HomeUiState,
         draftThreadIds: Set<String>,
@@ -10145,6 +10271,15 @@ private fun HomeRouteScreen(
                                                 messages =
                                                         (loadState.data.messages +
                                                                         realtimeThreadMessages +
+                                                                        listOfNotNull(
+                                                                                optimisticSendMessagesByStream[
+                                                                                        loadState
+                                                                                                .data
+                                                                                                .header
+                                                                                                .messageStreamChannelId()
+                                                                                                .value
+                                                                                ]
+                                                                        ) +
                                                                         localComposerMessages
                                                                                 .toLocalThreadMessages(
                                                                                         loadState
@@ -10576,6 +10711,21 @@ private val localComposerAuthor =
                 roleDescription = "Current user",
                 avatarLabel = "A",
                 presence = Presence.Active
+        )
+
+private fun optimisticMessage(
+        streamChannelId: ChannelId,
+        draft: ComposerSubmissionDraft,
+        deliveryState: MessageDeliveryState = MessageDeliveryState.Sending
+): Message =
+        Message(
+                id = MessageId("local-send-${UUID.randomUUID()}"),
+                threadId = ThreadId(streamChannelId.value),
+                channelId = streamChannelId,
+                author = localComposerAuthor,
+                timestampLabel = "Now",
+                body = draft.body,
+                deliveryState = deliveryState
         )
 
 private fun List<String>.toLocalThreadMessages(content: ThreadContent): List<Message> {
@@ -12896,6 +13046,36 @@ private fun ThreadUiState.appendSentMessage(result: SendMessageResult): ThreadUi
                             )
                     ),
             composerState = ComposerState(status = ComposerStatus.IdleEmpty)
+    )
+}
+
+private fun ThreadUiState.upsertOptimisticMessage(message: Message): ThreadUiState {
+    val current = loadState as? ScreenLoadState.Content ?: return this
+    return copy(
+            loadState =
+                    ScreenLoadState.Content(
+                            current.data.copy(
+                                    messages =
+                                            (current.data.messages.filterNot { it.id == message.id } +
+                                                            message)
+                                                    .sortedForThreadTimeline()
+                            )
+                    )
+    )
+}
+
+private fun ThreadUiState.removeMessage(messageId: MessageId): ThreadUiState {
+    val current = loadState as? ScreenLoadState.Content ?: return this
+    return copy(
+            loadState =
+                    ScreenLoadState.Content(
+                            current.data.copy(
+                                    messages =
+                                            current.data.messages.filterNot {
+                                                it.id == messageId
+                                            }
+                            )
+                    )
     )
 }
 
