@@ -54,6 +54,7 @@ internal object SlockLucideIcons {
         "download",
         "external-link",
         "eye",
+        "file",
         "file-text",
         "folder-open",
         "globe",

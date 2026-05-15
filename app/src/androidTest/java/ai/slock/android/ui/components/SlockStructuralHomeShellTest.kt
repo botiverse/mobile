@@ -20,6 +20,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
+import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.theme.SlockSize
 import ai.slock.android.ui.theme.SlockSpacing
 import ai.slock.android.ui.theme.SlockTheme
@@ -191,11 +192,11 @@ class SlockStructuralHomeShellTest {
                     )
                     SlockAppBottomBarHost(
                         items = listOf(
-                            SlockBottomTabItem("home", "HOME", SlockIcons.House),
+                            SlockBottomTabItem("home", "HOME", LucideIcons.House),
                             SlockBottomTabItem(
                                 "tasks",
                                 "TASKS",
-                                SlockIcons.SquareCheckBig
+                                LucideIcons.SquareCheckBig
                             )
                         ),
                         selectedKey = "home",

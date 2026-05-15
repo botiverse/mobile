@@ -859,6 +859,46 @@ object LucideIcons {
                 }.build()
     }
 
+    val File: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideFile",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 6.0f, y = 22.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = -2.0f)
+                        verticalLineTo(y = 4.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = 8.0f)
+                        arcToRelative(a = 2.4f, b = 2.4f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.704f, dy1 = 0.706f)
+                        lineToRelative(dx = 3.588f, dy = 3.588f)
+                        arcTo(horizontalEllipseRadius = 2.4f, verticalEllipseRadius = 2.4f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 20.0f, y1 = 8.0f)
+                        verticalLineToRelative(dy = 12.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 14.0f, y = 2.0f)
+                        verticalLineToRelative(dy = 5.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.0f, dy1 = 1.0f)
+                        horizontalLineToRelative(dx = 5.0f)
+                    }
+                }.build()
+    }
+
     val FileText: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideFileText",
@@ -2366,7 +2406,7 @@ object LucideIcons {
                 }.build()
     }
 
-    val Names: List<String> = listOf("activity", "archive", "arrow-left", "arrow-up-down", "ban", "bell-ring", "bookmark", "bot", "bug", "check", "chevron-down", "chevron-left", "chevron-right", "circle", "circle-arrow-up", "circle-check-big", "columns-3", "copy", "download", "external-link", "eye", "file-text", "folder-open", "globe", "hash", "house", "image", "image-plus", "inbox", "key", "layout-list", "link", "list-todo", "log-in", "log-out", "mail", "message-square", "monitor", "paperclip", "pencil", "play", "plus", "refresh-cw", "search", "send", "settings", "share-2", "shield-check", "smartphone", "square", "square-check-big", "triangle-alert", "trash", "user", "users", "x")
+    val Names: List<String> = listOf("activity", "archive", "arrow-left", "arrow-up-down", "ban", "bell-ring", "bookmark", "bot", "bug", "check", "chevron-down", "chevron-left", "chevron-right", "circle", "circle-arrow-up", "circle-check-big", "columns-3", "copy", "download", "external-link", "eye", "file", "file-text", "folder-open", "globe", "hash", "house", "image", "image-plus", "inbox", "key", "layout-list", "link", "list-todo", "log-in", "log-out", "mail", "message-square", "monitor", "paperclip", "pencil", "play", "plus", "refresh-cw", "search", "send", "settings", "share-2", "shield-check", "smartphone", "square", "square-check-big", "triangle-alert", "trash", "user", "users", "x")
 
     fun byName(name: String): ImageVector? {
         return when (name.toIconKey()) {
@@ -2391,6 +2431,7 @@ object LucideIcons {
             "download" -> Download
             "external-link" -> ExternalLink
             "eye" -> Eye
+            "file" -> File
             "file-text" -> FileText
             "folder-open" -> FolderOpen
             "globe" -> Globe
@@ -2441,5 +2482,5 @@ object LucideIcons {
             .lowercase(Locale.US)
     }
 
-    val All: List<ImageVector> = listOf(Activity, Archive, ArrowLeft, ArrowUpDown, Ban, BellRing, Bookmark, Bot, Bug, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleArrowUp, CircleCheckBig, Columns3, Copy, Download, ExternalLink, Eye, FileText, FolderOpen, Globe, Hash, House, Image, ImagePlus, Inbox, Key, LayoutList, Link, ListTodo, LogIn, LogOut, Mail, MessageSquare, Monitor, Paperclip, Pencil, Play, Plus, RefreshCw, Search, Send, Settings, Share2, ShieldCheck, Smartphone, Square, SquareCheckBig, TriangleAlert, Trash, User, Users, X)
+    val All: List<ImageVector> = listOf(Activity, Archive, ArrowLeft, ArrowUpDown, Ban, BellRing, Bookmark, Bot, Bug, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleArrowUp, CircleCheckBig, Columns3, Copy, Download, ExternalLink, Eye, File, FileText, FolderOpen, Globe, Hash, House, Image, ImagePlus, Inbox, Key, LayoutList, Link, ListTodo, LogIn, LogOut, Mail, MessageSquare, Monitor, Paperclip, Pencil, Play, Plus, RefreshCw, Search, Send, Settings, Share2, ShieldCheck, Smartphone, Square, SquareCheckBig, TriangleAlert, Trash, User, Users, X)
 }

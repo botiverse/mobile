@@ -11,7 +11,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import ai.slock.android.ui.components.SlockAppBottomBarHost
 import ai.slock.android.ui.components.SlockBottomTabItem
-import ai.slock.android.ui.components.SlockIcons
+import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.theme.SlockTheme
 import org.junit.Rule
 import org.junit.Test
@@ -27,11 +27,11 @@ class AppBottomBarHostTest {
                     SlockAppBottomBarHost(
                         items =
                             listOf(
-                                SlockBottomTabItem("home", "HOME", SlockIcons.House),
+                                SlockBottomTabItem("home", "HOME", LucideIcons.House),
                                 SlockBottomTabItem(
                                     "tasks",
                                     "TASKS",
-                                    SlockIcons.SquareCheckBig
+                                    LucideIcons.SquareCheckBig
                                 )
                         ),
                         selectedKey = "home",

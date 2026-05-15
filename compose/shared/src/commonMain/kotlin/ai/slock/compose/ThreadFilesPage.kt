@@ -241,16 +241,12 @@ private fun ThreadFileThumbnail(item: KuiklyThreadFileItem) {
                 modifier = Modifier.fillMaxSize()
             )
         }
-        Text(
-            text = if (isImage && thumbnailUrl != null) "" else if (isImage) "IMG" else "DOC",
-            style = SlockType.Input.copy(
-                fontSize = 10.sp,
-                lineHeight = 12.sp,
-                color = SlockColor.TextBlack
-            ),
-            color = SlockColor.TextBlack,
-            maxLines = 1
-        )
+        if (!(isImage && thumbnailUrl != null)) {
+            SlockLucideIcon(
+                name = if (isImage) "image" else "file",
+                modifier = Modifier.size(22.dp)
+            )
+        }
     }
 }
 
