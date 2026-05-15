@@ -30,6 +30,7 @@ import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -150,11 +151,17 @@ private fun SlockSharedHomeWorkspaceHeader(
     serverUnreadCount: Int,
     onServerBadgeClick: () -> Unit
 ) {
+    val statusBarHeight = LocalActivity.current.pageData.statusBarHeight.coerceAtLeast(0f)
     Column(modifier = Modifier.fillMaxWidth().background(SlockColor.BrandYellow)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = SlockSpacing.Lg, vertical = SlockSpacing.Md),
+                .padding(
+                    start = SlockSpacing.Lg,
+                    top = (statusBarHeight + 16f).dp,
+                    end = SlockSpacing.Lg,
+                    bottom = SlockSpacing.Md
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.clickable(onClick = onServerBadgeClick)) {
@@ -188,7 +195,7 @@ private fun SlockSharedLogoBadge(
         Text(
             text = text,
             color = SlockColor.BrandYellow,
-            style = SlockType.Button.copy(fontWeight = FontWeight.Bold, fontSize = 16.sp, lineHeight = 20.sp),
+            style = SlockType.Button.copy(fontWeight = FontWeight.Medium, fontSize = 16.sp, lineHeight = 20.sp),
             modifier = Modifier.widthIn(max = 260.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
