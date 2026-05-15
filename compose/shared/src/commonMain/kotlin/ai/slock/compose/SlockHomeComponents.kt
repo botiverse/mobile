@@ -290,16 +290,7 @@ internal fun SlockHomeShell(
     payload: KuiklyHomeShellPayload,
     onAction: (String, String?) -> Unit
 ) {
-    val topSafeArea = homeTopSafeAreaPadding()
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        if (topSafeArea > 0f) {
-            Spacer(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(topSafeArea.dp)
-                    .background(SlockColor.BrandYellow)
-            )
-        }
         Box(modifier = Modifier.fillMaxWidth().height(64.dp)) {
             SlockHomeHeader(
                 KuiklyHomeHeaderPayload(
@@ -371,14 +362,6 @@ internal fun SlockHomeShell(
             }
         }
     }
-}
-
-@Composable
-private fun homeTopSafeAreaPadding(): Float {
-    val pageData = (LocalActivity.current.getPager() as Pager).pageData
-    return pageData.safeAreaInsets.top
-        .coerceAtLeast(pageData.statusBarHeight)
-        .coerceAtLeast(0f)
 }
 
 @Composable
