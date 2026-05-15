@@ -1,0 +1,394 @@
+diff --git a/adapters/primitive-adapters/build.gradle b/adapters/primitive-adapters/build.gradle
+index 320273b33d..61c88fcea6 100644
+--- a/adapters/primitive-adapters/build.gradle
++++ b/adapters/primitive-adapters/build.gradle
+@@ -3,7 +3,7 @@ plugins {
+   alias(libs.plugins.dokka)
+   id("app.cash.sqldelight.multiplatform")
+   id("app.cash.sqldelight.toolchain.runtime")
+-  alias(libs.plugins.binaryCompatibilityValidator)
++//  alias(libs.plugins.binaryCompatibilityValidator)
+ }
+ 
+ archivesBaseName = 'sqldelight-primitive-adapters'
+diff --git a/build.gradle b/build.gradle
+index bfba12f63e..6862a6d3c5 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -5,7 +5,7 @@ buildscript {
+         strictly '4.4.1'
+       }
+     }
+-    classpath("org.jetbrains.kotlinx:atomicfu-gradle-plugin:0.24.0")
++    classpath("org.jetbrains.kotlinx:atomicfu-gradle-plugin:0.23.2-KBA-001")
+   }
+ }
+ 
+@@ -43,6 +43,9 @@ allprojects {
+     maven { url "https://cache-redirector.jetbrains.com/intellij-dependencies" }
+     // Repo for the backported Android IntelliJ Plugin by Jetbrains used in Ultimate
+     maven { url "https://maven.pkg.jetbrains.space/kotlin/p/kotlin/kotlin-ide-plugin-dependencies/" }
++    maven { url "https://mirrors.tencent.com/nexus/repository/maven-tencent" }
++    maven { url "https://mirrors.tencent.com/nexus/repository/maven-public" }
++    mavenLocal()
+   }
+ 
+   tasks.withType(Test).configureEach {
+diff --git a/buildLogic/multiplatform-convention/src/main/kotlin/app/cash/sqldelight/multiplatform/MultiplatformConventions.kt b/buildLogic/multiplatform-convention/src/main/kotlin/app/cash/sqldelight/multiplatform/MultiplatformConventions.kt
+index c868ae7431..c079ece915 100644
+--- a/buildLogic/multiplatform-convention/src/main/kotlin/app/cash/sqldelight/multiplatform/MultiplatformConventions.kt
++++ b/buildLogic/multiplatform-convention/src/main/kotlin/app/cash/sqldelight/multiplatform/MultiplatformConventions.kt
+@@ -67,6 +67,7 @@ class MultiplatformConventions : Plugin<Project> {
+       androidNativeX64()
+       mingwX64()
+       watchosDeviceArm64()
++      ohosArm64()
+ 
+       // linking fails for the linux test build if not built on a linux host
+       // ensure the tests and linking for them is only done on linux hosts
+diff --git a/buildLogic/settings.gradle b/buildLogic/settings.gradle
+index fedfa9177d..7a05907a00 100644
+--- a/buildLogic/settings.gradle
++++ b/buildLogic/settings.gradle
+@@ -2,6 +2,9 @@ pluginManagement {
+   repositories {
+     mavenCentral()
+     gradlePluginPortal()
++    maven { url "https://mirrors.tencent.com/nexus/repository/maven-tencent" }
++    maven { url "https://mirrors.tencent.com/nexus/repository/maven-public" }
++    mavenLocal()
+   }
+ }
+ 
+@@ -9,6 +12,9 @@ dependencyResolutionManagement {
+   repositories {
+     mavenCentral()
+     google()
++    maven { url "https://mirrors.tencent.com/nexus/repository/maven-tencent" }
++    maven { url "https://mirrors.tencent.com/nexus/repository/maven-public" }
++    mavenLocal()
+   }
+ 
+   versionCatalogs {
+diff --git a/drivers/android-driver/build.gradle b/drivers/android-driver/build.gradle
+index 2c1396f927..1d2f30927b 100644
+--- a/drivers/android-driver/build.gradle
++++ b/drivers/android-driver/build.gradle
+@@ -4,7 +4,7 @@ plugins {
+   alias(libs.plugins.publish)
+   alias(libs.plugins.dokka)
+   id("app.cash.sqldelight.toolchain.runtime")
+-  alias(libs.plugins.binaryCompatibilityValidator)
++//  alias(libs.plugins.binaryCompatibilityValidator)
+ }
+ 
+ archivesBaseName = 'sqldelight-android-driver'
+diff --git a/drivers/jdbc-driver/build.gradle b/drivers/jdbc-driver/build.gradle
+index 9766bff7c6..2cabd598f8 100644
+--- a/drivers/jdbc-driver/build.gradle
++++ b/drivers/jdbc-driver/build.gradle
+@@ -3,7 +3,7 @@ plugins {
+   alias(libs.plugins.publish)
+   alias(libs.plugins.dokka)
+   id("app.cash.sqldelight.toolchain.runtime")
+-  alias(libs.plugins.binaryCompatibilityValidator)
++//  alias(libs.plugins.binaryCompatibilityValidator)
+ }
+ 
+ archivesBaseName = 'sqldelight-jdbc-driver'
+diff --git a/drivers/native-driver/build.gradle b/drivers/native-driver/build.gradle
+index 1581b69872..2e848f5e66 100644
+--- a/drivers/native-driver/build.gradle
++++ b/drivers/native-driver/build.gradle
+@@ -26,6 +26,8 @@ kotlin {
+   tvosArm64()
+   iosArm64()
+ 
++  ohosArm64()
++
+   // tier 3
+   // https://github.com/touchlab/SQLiter/issues/117
+   // androidNativeArm32()
+@@ -43,6 +45,7 @@ kotlin {
+           it.group("apple") { }
+           // https://github.com/touchlab/SQLiter/issues/117
+           // it.group("androidNative")
++          it.withOhosArm64()
+         }
+       }
+     }
+diff --git a/drivers/native-driver/src/ohosArm64Main/kotlin/app/cash/sqldelight/driver/native/util/PthreadMutexRecursive.kt b/drivers/native-driver/src/ohosArm64Main/kotlin/app/cash/sqldelight/driver/native/util/PthreadMutexRecursive.kt
+new file mode 100644
+index 0000000000..2677899f82
+--- /dev/null
++++ b/drivers/native-driver/src/ohosArm64Main/kotlin/app/cash/sqldelight/driver/native/util/PthreadMutexRecursive.kt
+@@ -0,0 +1,3 @@
++package app.cash.sqldelight.driver.native.util
++
++actual val pthread_mutex_recursive = platform.posix.PTHREAD_MUTEX_RECURSIVE.toInt()
+diff --git a/drivers/sqlite-driver/build.gradle b/drivers/sqlite-driver/build.gradle
+index ff71827201..e79885cab6 100644
+--- a/drivers/sqlite-driver/build.gradle
++++ b/drivers/sqlite-driver/build.gradle
+@@ -3,7 +3,7 @@ plugins {
+   alias(libs.plugins.publish)
+   alias(libs.plugins.dokka)
+   id("app.cash.sqldelight.toolchain.runtime")
+-  alias(libs.plugins.binaryCompatibilityValidator)
++//  alias(libs.plugins.binaryCompatibilityValidator)
+ }
+ 
+ archivesBaseName = 'sqldelight-sqlite-driver'
+diff --git a/drivers/web-worker-driver/build.gradle b/drivers/web-worker-driver/build.gradle
+index 7ac8bf9ea8..ebb264f877 100644
+--- a/drivers/web-worker-driver/build.gradle
++++ b/drivers/web-worker-driver/build.gradle
+@@ -31,6 +31,7 @@ kotlin {
+     commonMain.dependencies {
+       api projects.runtime
+       implementation libs.kotlin.coroutines.core
++      implementation libs.atomicFu
+     }
+ 
+     commonTest.dependencies {
+diff --git a/extensions/androidx-paging3/build.gradle b/extensions/androidx-paging3/build.gradle
+index 239a690acf..e4231a9773 100755
+--- a/extensions/androidx-paging3/build.gradle
++++ b/extensions/androidx-paging3/build.gradle
+@@ -29,6 +29,7 @@ kotlin {
+         api projects.runtime
+         api libs.app.cash.paging.common
+         implementation libs.kotlin.coroutines.core
++        implementation libs.atomicFu
+       }
+     }
+     commonTest {
+diff --git a/extensions/async-extensions/build.gradle b/extensions/async-extensions/build.gradle
+index 1b0b0e8bf0..75b84238c9 100644
+--- a/extensions/async-extensions/build.gradle
++++ b/extensions/async-extensions/build.gradle
+@@ -3,7 +3,7 @@ plugins {
+   alias(libs.plugins.dokka)
+   id("app.cash.sqldelight.multiplatform")
+   id("app.cash.sqldelight.toolchain.runtime")
+-  alias(libs.plugins.binaryCompatibilityValidator)
++//  alias(libs.plugins.binaryCompatibilityValidator)
+ }
+ 
+ archivesBaseName = 'sqldelight-async-extensions'
+@@ -22,6 +22,7 @@ kotlin {
+     commonMain {
+       dependencies {
+         implementation projects.runtime
++        implementation libs.atomicFu
+         api libs.kotlin.coroutines.core
+       }
+     }
+diff --git a/extensions/coroutines-extensions/build.gradle b/extensions/coroutines-extensions/build.gradle
+index bfb773b8f9..2d3c271c39 100644
+--- a/extensions/coroutines-extensions/build.gradle
++++ b/extensions/coroutines-extensions/build.gradle
+@@ -5,7 +5,7 @@ plugins {
+   alias(libs.plugins.dokka)
+   id("app.cash.sqldelight.multiplatform")
+   id("app.cash.sqldelight.toolchain.runtime")
+-  alias(libs.plugins.binaryCompatibilityValidator)
++//  alias(libs.plugins.binaryCompatibilityValidator)
+   id("kotlinx-atomicfu")
+ }
+ 
+@@ -35,6 +35,7 @@ kotlin {
+     commonMain.dependencies {
+       api projects.runtime
+       api libs.kotlin.coroutines.core
++      implementation libs.atomicFu
+       implementation project(":extensions:async-extensions")
+     }
+ 
+diff --git a/extensions/rxjava2-extensions/build.gradle b/extensions/rxjava2-extensions/build.gradle
+index 885d2e268a..4c61b88d67 100644
+--- a/extensions/rxjava2-extensions/build.gradle
++++ b/extensions/rxjava2-extensions/build.gradle
+@@ -3,7 +3,7 @@ plugins {
+   alias(libs.plugins.publish)
+   alias(libs.plugins.dokka)
+   id("app.cash.sqldelight.toolchain.runtime")
+-  alias(libs.plugins.binaryCompatibilityValidator)
++//  alias(libs.plugins.binaryCompatibilityValidator)
+ }
+ 
+ archivesBaseName = 'sqldelight-rxjava2-extensions'
+diff --git a/extensions/rxjava3-extensions/build.gradle b/extensions/rxjava3-extensions/build.gradle
+index 514630d1c0..d3c0d98584 100644
+--- a/extensions/rxjava3-extensions/build.gradle
++++ b/extensions/rxjava3-extensions/build.gradle
+@@ -3,7 +3,7 @@ plugins {
+   alias(libs.plugins.publish)
+   alias(libs.plugins.dokka)
+   id("app.cash.sqldelight.toolchain.runtime")
+-  alias(libs.plugins.binaryCompatibilityValidator)
++//  alias(libs.plugins.binaryCompatibilityValidator)
+ }
+ 
+ archivesBaseName = 'sqldelight-rxjava3-extensions'
+diff --git a/gradle.properties b/gradle.properties
+index 4d29d95f43..5948b6b064 100644
+--- a/gradle.properties
++++ b/gradle.properties
+@@ -1,6 +1,6 @@
+ org.gradle.jvmargs=-Xmx16g -XX:MaxMetaspaceSize=4g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8
+ GROUP=app.cash.sqldelight
+-VERSION_NAME=2.1.0
++VERSION_NAME=2.1.0-KBA-001
+ 
+ POM_URL=https://github.com/sqldelight/sqldelight/
+ POM_SCM_URL=https://github.com/sqldelight/sqldelight/
+@@ -15,7 +15,7 @@ POM_DEVELOPER_ID=square
+ POM_DEVELOPER_NAME=Square, Inc.
+ 
+ SONATYPE_HOST=DEFAULT
+-RELEASE_SIGNING_ENABLED=true
++RELEASE_SIGNING_ENABLED=false
+ SONATYPE_AUTOMATIC_RELEASE=true
+ 
+ android.useAndroidX=true
+diff --git a/gradle/libs.versions.toml b/gradle/libs.versions.toml
+index ec564beba6..0cd2baad9b 100644
+--- a/gradle/libs.versions.toml
++++ b/gradle/libs.versions.toml
+@@ -1,11 +1,12 @@
+ [versions]
+-kotlin = "2.0.20"
++kotlin = "2.0.21-KBA-005"
+ dokka = "2.0.0"
+-kotlinCoroutines = "1.9.0"
++kotlinCoroutines = "1.8.0-KBA-001"
++atomicFu = "0.23.2-KBA-001"
+ idea = "231.9392.1" # Hedgehog | 2023.1.1 Patch 2 (see https://plugins.jetbrains.com/docs/intellij/android-studio-releases-list.html)
+ androidxSqlite = "2.5.1"
+ schemaCrawler = "16.19.2"
+-sqliter = "1.3.3"
++sqliter = "1.3.3-KBA-001"
+ sqljs = "1.8.0"
+ paging-mpp = "3.1.1-0.3.1"
+ paging3 = "3.1.1"
+@@ -25,6 +26,7 @@ kotlin-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-co
+ kotlin-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinCoroutines" }
+ kotlin-coroutines-reactive = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactive", version.ref = "kotlinCoroutines" }
+ kotlin-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
++atomicFu = { module = "org.jetbrains.kotlinx:atomicfu", version.ref = "atomicFu" }
+ 
+ androidx-test-core = "androidx.test:core:1.6.1"
+ androidx-test-runner = "androidx.test:runner:1.6.1"
+@@ -40,7 +42,7 @@ kotlinPoet = { module = "com.squareup:kotlinpoet", version = "1.18.1" }
+ junit = { module = "junit:junit", version = "4.13.2" }
+ jgrapht = { module = "org.jgrapht:jgrapht-core", version = "1.5.2" }
+ truth = { module = "com.google.truth:truth", version = "1.4.4" }
+-turbine = { module = "app.cash.turbine:turbine", version = "1.2.0" }
++turbine = { module = "app.cash.turbine:turbine", version = "1.2.0-KBA-001" }
+ bugsnag = { module = "com.bugsnag:bugsnag", version = "3.7.2" }
+ picnic = { module = "com.jakewharton.picnic:picnic", version = "0.7.0" }
+ 
+@@ -79,9 +81,9 @@ schemaCrawler-sqlite = { module = "us.fatehi:schemacrawler-sqlite", version.ref
+ 
+ objectDiff = { module = "de.danielbechler:java-object-diff", version = "0.95" }
+ sqliter = { module = "co.touchlab:sqliter-driver", version.ref = "sqliter" }
+-stately-concurrency = { module = "co.touchlab:stately-concurrency", version = "2.1.0" }
++stately-concurrency = { module = "co.touchlab:stately-concurrency", version = "2.1.0-KBA-001" }
+ 
+-testhelp = { module = "co.touchlab:testhelp", version = "0.6.12" }
++testhelp = { module = "co.touchlab:testhelp", version = "0.6.12-KBA-001" }
+ burst = { module = "com.squareup.burst:burst-junit4", version = "1.2.0" }
+ testParameterInjector = { module = "com.google.testparameterinjector:test-parameter-injector", version = "1.18" }
+ 
+@@ -110,5 +112,5 @@ publish = { id = "com.vanniktech.maven.publish", version = "0.20.0" }
+ spotless = { id = "com.diffplug.spotless", version = "6.25.0" }
+ changelog = { id = "org.jetbrains.changelog", version = "2.0.0" }
+ shadow = "com.gradleup.shadow:8.3.6"
+-ksp = { id = "com.google.devtools.ksp", version = "2.0.20-1.0.25" }
++ksp = { id = "com.google.devtools.ksp", version = "2.0.21-1.0.28" }
+ binaryCompatibilityValidator = { id = "org.jetbrains.kotlinx.binary-compatibility-validator", version = "0.17.0" }
+diff --git a/runtime/build.gradle b/runtime/build.gradle
+index 29499e5987..3ef0753e00 100644
+--- a/runtime/build.gradle
++++ b/runtime/build.gradle
+@@ -1,7 +1,7 @@
+ plugins {
+   alias(libs.plugins.publish)
+   alias(libs.plugins.dokka)
+-  alias(libs.plugins.binaryCompatibilityValidator)
++//  alias(libs.plugins.binaryCompatibilityValidator)
+   id("app.cash.sqldelight.multiplatform")
+   id("app.cash.sqldelight.toolchain.runtime")
+ }
+@@ -11,9 +11,9 @@ sourceSets {
+   main
+ }
+ 
+-apiValidation {
+-  ignoredPackages += ["app.cash.sqldelight.internal"]
+-}
++//apiValidation {
++//  ignoredPackages += ["app.cash.sqldelight.internal"]
++//}
+ 
+ kotlin {
+   applyDefaultHierarchyTemplate {
+@@ -33,6 +33,7 @@ kotlin {
+       dependencies {
+         implementation libs.kotlin.test
+         implementation libs.kotlin.coroutines.test
++        implementation libs.atomicFu
+       }
+     }
+     jvmTest {
+diff --git a/sample/common/build.gradle b/sample/common/build.gradle
+index 153b5b7432..5f793c3c45 100644
+--- a/sample/common/build.gradle
++++ b/sample/common/build.gradle
+@@ -24,6 +24,7 @@ kotlin {
+   // Configure common.
+   sourceSets.commonMain.dependencies {
+     implementation 'app.cash.sqldelight:primitive-adapters'
++    implementation libs.atomicFu
+   }
+   sourceSets.commonTest.dependencies {
+     implementation 'org.jetbrains.kotlin:kotlin-test'
+diff --git a/sample/settings.gradle b/sample/settings.gradle
+index ee3e769ae9..4b078fd3db 100644
+--- a/sample/settings.gradle
++++ b/sample/settings.gradle
+@@ -13,6 +13,9 @@ pluginManagement {
+     maven { url 'https://www.jetbrains.com/intellij-repository/releases' }
+     maven { url "https://cache-redirector.jetbrains.com/intellij-dependencies" }
+     maven { url "../build/localMaven" }
++    maven { url "https://mirrors.tencent.com/nexus/repository/maven-tencent" }
++    maven { url "https://mirrors.tencent.com/nexus/repository/maven-public" }
++    mavenLocal()
+   }
+ }
+ 
+@@ -42,6 +45,9 @@ dependencyResolutionManagement {
+     mavenCentral()
+     google()
+     maven { url "../build/localMaven" }
++    maven { url "https://mirrors.tencent.com/nexus/repository/maven-tencent" }
++    maven { url "https://mirrors.tencent.com/nexus/repository/maven-public" }
++    mavenLocal()
+   }
+ }
+ 
+diff --git a/settings.gradle b/settings.gradle
+index 79e3ce180f..a2b01fab83 100644
+--- a/settings.gradle
++++ b/settings.gradle
+@@ -3,6 +3,9 @@ pluginManagement {
+         mavenCentral()
+         google()
+         gradlePluginPortal()
++        maven { url "https://mirrors.tencent.com/nexus/repository/maven-tencent" }
++        maven { url "https://mirrors.tencent.com/nexus/repository/maven-public" }
++        mavenLocal()
+     }
+ 
+     includeBuild("buildLogic")
