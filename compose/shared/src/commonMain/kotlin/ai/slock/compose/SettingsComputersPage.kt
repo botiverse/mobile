@@ -178,7 +178,7 @@ internal fun SettingsComputersContent(
         if (payload.computers.isEmpty()) {
             item { SettingsEmptyMessage(payload.emptyTitle, payload.emptyDetail) }
         } else {
-            items(payload.computers.size, key = { payload.computers[it].id }) { index ->
+            items(payload.computers.size, key = { index -> "computer-$index-${payload.computers[index].id}" }) { index ->
                 SettingsComputerCard(payload.computers[index]) {
                     onEvent("openComputer", payload.computers[index].id)
                 }
@@ -210,7 +210,7 @@ internal fun SettingsComputerDetailContent(
         } ?: if (payload.workspaces.isEmpty()) {
             item { SettingsEmptyMessage("No workspaces", "Workspaces opened by this computer will show up here.") }
         } else {
-            items(payload.workspaces.size, key = { payload.workspaces[it].id }) { index ->
+            items(payload.workspaces.size, key = { index -> "workspace-$index-${payload.workspaces[index].id}" }) { index ->
                 SettingsWorkspaceCard(payload.workspaces[index])
             }
         }
@@ -220,7 +220,7 @@ internal fun SettingsComputerDetailContent(
         } ?: if (payload.agents.isEmpty()) {
             item { SettingsEmptyMessage("No agents", "Agents running on this computer will show up here.") }
         } else {
-            items(payload.agents.size, key = { payload.agents[it].id }) { index ->
+            items(payload.agents.size, key = { index -> "agent-$index-${payload.agents[index].id}" }) { index ->
                 SettingsAgentCard(payload.agents[index]) {
                     onEvent("openAgent", payload.agents[index].id)
                 }
