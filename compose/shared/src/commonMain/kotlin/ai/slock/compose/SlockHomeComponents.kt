@@ -501,43 +501,38 @@ private fun homePresenceColor(presence: String): Color =
 
 @Composable
 internal fun SlockHomeHeader(payload: KuiklyHomeHeaderPayload, onClick: () -> Unit) {
-    Column(
+    Row(
         modifier = Modifier.fillMaxSize()
             .background(SlockColor.BrandYellow)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth()
-            .weight(1f)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
             .clickable { onClick() }
             .padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box {
-                Row(
-                    modifier = Modifier.rotate(-1.8f).background(SlockColor.TextBlack).padding(horizontal = 12.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = payload.serverName.uppercase(),
-                        style = SlockType.Button.copy(color = SlockColor.BrandYellow, fontSize = 15.sp),
-                        color = SlockColor.BrandYellow,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    SlockLucideIcon(name = "chevron-down", color = "#FFFFD440", modifier = Modifier.size(14.dp))
-                }
-                if (payload.unreadCount > 0) {
-                    Box(
-                        modifier = Modifier.size(9.dp)
-                            .background(SlockColor.AccentRed)
-                            .border(1.dp, SlockColor.BorderBlack)
-                            .align(Alignment.TopEnd)
-                    )
-                }
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box {
+            Row(
+                modifier = Modifier.rotate(-1.8f).background(SlockColor.TextBlack).padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = payload.serverName.uppercase(),
+                    style = SlockType.Button.copy(color = SlockColor.BrandYellow, fontSize = 15.sp),
+                    color = SlockColor.BrandYellow,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                SlockLucideIcon(name = "chevron-down", color = "#FFFFD440", modifier = Modifier.size(14.dp))
+            }
+            if (payload.unreadCount > 0) {
+                Box(
+                    modifier = Modifier.size(9.dp)
+                        .background(SlockColor.AccentRed)
+                        .border(1.dp, SlockColor.BorderBlack)
+                        .align(Alignment.TopEnd)
+                )
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
     }
 }
 
