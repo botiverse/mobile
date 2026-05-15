@@ -3035,28 +3035,39 @@ private fun ThreadSnapshot.withReplySummaries(
         logger: (String) -> Unit
 ): ThreadSnapshot {
     if (threads.isEmpty()) return this
+    val summariesByParentMessageId =
+            threads
+                    .asSequence()
+                    .mapNotNull { thread -> thread.parentMessageId?.let { it.value to thread } }
+                    .toMap()
+    val summariesByThreadChannelId =
+            threads
+                    .asSequence()
+                    .flatMap { thread ->
+                        sequenceOf(
+                                thread.threadChannelId?.value?.let { it to thread },
+                                thread.channelId.value to thread
+                        ).filterNotNull()
+                    }
+                    .toMap()
+    var joinMissCount = 0
+    var firstJoinMissMessageId: MessageId? = null
+    var firstJoinMissThreadChannelId: ChannelId? = null
     val updatedMessages =
             messages.map { message ->
                 val summary =
-                        threads.firstOrNull { thread ->
-                            thread.matchesParentMessage(message.id) ||
-                                    (message.threadChannelId != null &&
-                                            (thread.channelId == message.threadChannelId ||
-                                                    thread.threadChannelId ==
-                                                            message.threadChannelId))
-                        }
+                        summariesByParentMessageId[message.id.value]
+                                ?: message.threadChannelId?.value?.let(summariesByThreadChannelId::get)
+                                ?: threads.firstOrNull { thread ->
+                                    thread.matchesParentMessage(message.id)
+                                }
                 if (summary == null) {
                     if (message.replyCount == 0) {
-                        val candidates =
-                                threads.take(2).joinToString { t ->
-                                    "ch=${t.channelId.value.take(8)} " +
-                                            "pMsgId=${t.parentMessageId?.value?.take(8) ?: "null"}"
-                                }
-                        logger(
-                                "summary_join_miss msgId=${message.id.value.take(8)} " +
-                                        "threadCh=${message.threadChannelId?.value?.take(8) ?: "null"} " +
-                                        "threadCandidates=[$candidates] source=channel_threads"
-                        )
+                        joinMissCount += 1
+                        if (firstJoinMissMessageId == null) {
+                            firstJoinMissMessageId = message.id
+                            firstJoinMissThreadChannelId = message.threadChannelId
+                        }
                     }
                     return@map message
                 }
@@ -3074,6 +3085,19 @@ private fun ThreadSnapshot.withReplySummaries(
                         replyCount = maxOf(message.replyCount, summary.replyCount)
                 ).withUnreadReplyCount(summary.unreadCount)
             }
+    if (joinMissCount > 0) {
+        val candidates =
+                threads.take(2).joinToString { thread ->
+                    "ch=${thread.channelId.value.take(8)} " +
+                            "pMsgId=${thread.parentMessageId?.value?.take(8) ?: "null"}"
+                }
+        logger(
+                "summary_join_miss_count count=$joinMissCount " +
+                        "firstMsgId=${firstJoinMissMessageId?.value?.take(8).orEmpty()} " +
+                        "firstThreadCh=${firstJoinMissThreadChannelId?.value?.take(8) ?: "null"} " +
+                        "threadCandidates=[$candidates] source=channel_threads"
+        )
+    }
     return copy(messages = updatedMessages)
 }
 

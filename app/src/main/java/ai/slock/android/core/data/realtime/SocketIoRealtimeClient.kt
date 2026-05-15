@@ -92,7 +92,6 @@ class SocketIoRealtimeClient(
             state = RealtimeConnectionState.RoomsJoined
             diagnostics?.onConnected(connectedServerId?.let(::ServerId), lastSeq.takeIf { it > 0L })
             logger("rooms_joined serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size} lastSeq=$lastSeq")
-            rejoinChannels(reason = "rooms_joined")
             emitSyncResume(reason = "rooms_joined")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.ConnectError) { payload ->

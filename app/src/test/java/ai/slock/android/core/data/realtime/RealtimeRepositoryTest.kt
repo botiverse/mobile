@@ -176,7 +176,7 @@ class RealtimeRepositoryTest {
     }
 
     @Test
-    fun clientReplaysJoinedChannelsAfterConnectAndRoomsJoined() {
+    fun clientReplaysJoinedChannelsAfterConnectButNotRoomsJoinedAck() {
         val transport = FakeRealtimeSocketTransport()
         val client = SocketIoRealtimeClient(transport)
 
@@ -199,10 +199,7 @@ class RealtimeRepositoryTest {
 
         transport.receive(RealtimeSocketEvents.RoomsJoined)
 
-        assertEquals(
-            listOf("channel-1", "channel-2"),
-            transport.emitted.map { it.second["channelId"] }
-        )
+        assertTrue(transport.emitted.isEmpty())
     }
 
     @Test
