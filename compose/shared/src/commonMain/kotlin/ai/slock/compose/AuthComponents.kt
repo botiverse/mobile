@@ -70,44 +70,42 @@ private val SpaceGroteskRegular =
     FontFamily(KuiklyFont("space_grotesk_regular", FontWeight.Normal, FontStyle.Normal))
 private val SpaceGroteskMedium =
     FontFamily(KuiklyFont("space_grotesk_medium", FontWeight.Medium, FontStyle.Normal))
-private val SpaceGroteskSemiBold =
-    FontFamily(KuiklyFont("space_grotesk_semibold", FontWeight.SemiBold, FontStyle.Normal))
 private val SpaceGroteskBold =
     FontFamily(KuiklyFont("space_grotesk_bold", FontWeight.Bold, FontStyle.Normal))
 
 internal object SlockType {
     val PageTitle = TextStyle(
-        fontFamily = SpaceGroteskSemiBold,
-        fontWeight = FontWeight.SemiBold,
+        fontFamily = SpaceGroteskBold,
+        fontWeight = FontWeight.Bold,
         fontSize = 20.sp,
         lineHeight = 24.sp
     )
 
     val SectionLabel = TextStyle(
-        fontFamily = SpaceGroteskSemiBold,
-        fontWeight = FontWeight.SemiBold,
+        fontFamily = SpaceGroteskBold,
+        fontWeight = FontWeight.Bold,
         fontSize = 12.sp,
         lineHeight = 16.sp,
         letterSpacing = 1.2.sp
     )
 
     val Body = TextStyle(
-        fontFamily = SpaceGroteskRegular,
-        fontWeight = FontWeight.Normal,
+        fontFamily = SpaceGroteskMedium,
+        fontWeight = FontWeight.Medium,
         fontSize = 16.sp,
         lineHeight = 22.sp
     )
 
     val Caption = TextStyle(
-        fontFamily = SpaceGroteskRegular,
-        fontWeight = FontWeight.Normal,
+        fontFamily = SpaceGroteskBold,
+        fontWeight = FontWeight.Bold,
         fontSize = 12.sp,
         lineHeight = 16.sp
     )
 
     val Button = TextStyle(
-        fontFamily = SpaceGroteskMedium,
-        fontWeight = FontWeight.Medium,
+        fontFamily = SpaceGroteskBold,
+        fontWeight = FontWeight.Bold,
         fontSize = 14.sp,
         lineHeight = 18.sp
     )

@@ -212,7 +212,6 @@ private object SlockKuiklyFontAdapter : IKRFontAdapter {
         val fontName = fontFamily.substringBefore(",").trim()
         val fontRes = when (fontName) {
             "space_grotesk_bold" -> R.font.space_grotesk_bold
-            "space_grotesk_semibold" -> R.font.space_grotesk_semibold
             "space_grotesk_medium" -> R.font.space_grotesk_medium
             "space_grotesk_regular" -> R.font.space_grotesk_regular
             "space_grotesk_light" -> R.font.space_grotesk_light
