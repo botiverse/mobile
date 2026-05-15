@@ -158,12 +158,6 @@ internal fun ComposeRouteImpl() {
         }
 
         Button({
-            jumpPage(localPager, SLOCK_MARKDOWN_SMOKE_PAGE)
-        }) {
-            Text("Markdown 预览")
-        }
-
-        Button({
             jumpPage(localPager, SETTINGS_TAB_BAR_SMOKE_PAGE)
         }) {
             Text("Settings TabBar 预览")
