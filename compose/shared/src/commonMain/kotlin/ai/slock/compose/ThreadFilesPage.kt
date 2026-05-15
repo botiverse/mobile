@@ -27,7 +27,6 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -38,7 +37,7 @@ import kotlinx.serialization.json.Json
 
 private const val THREAD_FILES_PAGE = "compose_thread_files"
 private const val LUCIDE_DOWNLOAD_SVG =
-    "data:image/svg+xml;utf8;color=%230F172A,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v12'/%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/%3E%3C/svg%3E"
+    "data:image/svg+xml;utf8;color=%230F172A,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v12'/%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/%3E%3C/svg%3E"
 
 @Page(THREAD_FILES_PAGE, supportInLocal = true)
 internal class ComposeThreadFilesPage : ai.slock.compose.base.BasePager() {
@@ -198,14 +197,22 @@ private fun ThreadFileRow(
         ) {
             Text(
                 text = item.name,
-                style = SlockType.Button.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                style = SlockType.Input.copy(
+                    fontSize = 14.sp,
+                    lineHeight = 18.sp,
+                    color = SlockColor.TextBlack
+                ),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = listOf(item.sizeLabel, item.createdAtLabel).filter { it.isNotBlank() }.joinToString("  "),
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray),
+                style = SlockType.Input.copy(
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    color = SlockColor.TextMutedGray
+                ),
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -239,7 +246,11 @@ private fun ThreadFileThumbnail(item: KuiklyThreadFileItem) {
         }
         Text(
             text = if (isImage && thumbnailUrl != null) "" else if (isImage) "IMG" else "DOC",
-            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextBlack),
+            style = SlockType.Input.copy(
+                fontSize = 10.sp,
+                lineHeight = 12.sp,
+                color = SlockColor.TextBlack
+            ),
             color = SlockColor.TextBlack,
             maxLines = 1
         )
@@ -255,7 +266,11 @@ private fun ThreadFileSourcePill(text: String) {
     ) {
         Text(
             text = text,
-            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextBlack),
+            style = SlockType.Input.copy(
+                fontSize = 10.sp,
+                lineHeight = 12.sp,
+                color = SlockColor.TextBlack
+            ),
             color = SlockColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -283,7 +298,7 @@ private fun ThreadFileDownloadButton(onClick: () -> Unit) {
             Image(
                 painter = rememberAsyncImagePainter(LUCIDE_DOWNLOAD_SVG),
                 contentDescription = null,
-                modifier = Modifier.size(26.dp)
+                modifier = Modifier.size(34.dp)
             )
         }
     }
