@@ -203,7 +203,7 @@ import ai.slock.android.feature.settings.SettingsContent
 import ai.slock.android.feature.settings.SettingsCurrentPlanState
 import ai.slock.android.feature.settings.SettingsDetailHeader
 import ai.slock.android.feature.settings.SettingsHomeItem
-import ai.slock.android.feature.settings.SettingsHomeScreen
+import ai.slock.android.feature.settings.SettingsHomeKuiklyScreen
 import ai.slock.android.feature.settings.SettingsMobileScreen
 import ai.slock.android.feature.settings.SettingsPlanCardState
 import ai.slock.android.feature.settings.SettingsPlanUsageRow
@@ -14071,7 +14071,7 @@ private fun SettingsAdaptiveScaffold(
                                         )
                                     }
             ) {
-                SettingsHomeScreen(
+                SettingsHomeKuiklyScreen(
                         title = stringResource(R.string.settings_home_title),
                         subtitle = content.settings.server.name,
                         items =
@@ -14108,7 +14108,7 @@ private fun SettingsHomeContent(
         onDestinationChange: (SettingsDestination) -> Unit
 ) {
     SettingsPageSurface {
-        SettingsHomeScreen(
+        SettingsHomeKuiklyScreen(
                 title = stringResource(R.string.settings_home_title),
                 subtitle = content.settings.server.name,
                 items =

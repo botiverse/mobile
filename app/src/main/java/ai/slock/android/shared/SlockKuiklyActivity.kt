@@ -122,6 +122,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         const val PAGE_REGISTER = "compose_register"
         const val PAGE_FORGOT_PASSWORD = "compose_forgot_password"
         const val PAGE_THREAD_FILES = "compose_thread_files"
+        const val PAGE_SETTINGS_HOME = "compose_settings_home"
         const val PAGE_SETTINGS_COMPUTERS = "compose_settings_computers"
         const val PAGE_SETTINGS_COMPUTER_DETAIL = "compose_settings_computer_detail"
         const val PAGE_ICON_GALLERY = "compose_icon_gallery"

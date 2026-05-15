@@ -77,6 +77,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
@@ -139,6 +140,40 @@ fun SettingsComputersKuiklyScreen(
                             event.optString("itemId")
                                     .takeIf { it.isNotBlank() }
                                     ?.let(onOpenComputer)
+                }
+            }
+    )
+}
+
+@Composable
+fun SettingsHomeKuiklyScreen(
+        title: String,
+        subtitle: String,
+        items: List<SettingsHomeItem>,
+        modifier: Modifier = Modifier,
+        showSelection: Boolean = true,
+        bottomContentPadding: Dp = 0.dp,
+        onItemClick: (String) -> Unit = {}
+) {
+    SlockKuiklyPageIsland(
+            pageName = SlockKuiklyActivity.PAGE_SETTINGS_HOME,
+            pageData =
+                    JSONObject()
+                            .put(
+                                    "payload",
+                                    JSONObject()
+                                            .put("title", title)
+                                            .put("subtitle", subtitle)
+                                            .put("showSelection", showSelection)
+                                            .put("items", items.toJsonArray { it.toKuiklyJson() })
+                                            .toString()
+                            ),
+            modifier = modifier.fillMaxSize().padding(bottom = bottomContentPadding),
+            onEvent = { event ->
+                if (event.optString("action") == "openSettingsDestination") {
+                    event.optString("itemId")
+                            .takeIf { it.isNotBlank() }
+                            ?.let(onItemClick)
                 }
             }
     )
@@ -534,6 +569,28 @@ private fun SettingsComputerAgentSnapshot.toKuiklyJson(): JSONObject {
             .put("presenceLabel", profile.presence.name.lowercase().replaceFirstChar { it.uppercase() })
             .putNullable("roleLabel", profile.roleDescription)
 }
+
+private fun SettingsHomeItem.toKuiklyJson(): JSONObject =
+        JSONObject()
+                .put("key", key)
+                .put("title", title)
+                .put("subtitle", subtitle)
+                .put("iconName", key.toSettingsIconName())
+                .putNullable("value", value)
+                .put("selected", selected)
+                .put("enabled", enabled)
+
+private fun String.toSettingsIconName(): String =
+        when (this) {
+            "account" -> "user"
+            "computers" -> "monitor"
+            "server" -> "users"
+            "billing" -> "shield-check"
+            "mobile" -> "smartphone"
+            "storage" -> "archive"
+            "about" -> "bug"
+            else -> "settings"
+        }
 
 private inline fun <T> List<T>.toJsonArray(convert: (T) -> JSONObject): JSONArray {
     val array = JSONArray()
