@@ -354,7 +354,7 @@ private fun WorkspaceCard(workspace: SettingsComputerWorkspaceSnapshot) {
 @Composable
 private fun AgentCard(agent: SettingsComputerAgentSnapshot) {
     MemberFlatRow(
-            member = agent.toMemberProfile(),
+            member = agent.memberProfile ?: agent.toMemberProfile(),
             modifier =
                     Modifier.fillMaxWidth()
                             .background(SlockColor.SurfaceWhite)

@@ -436,7 +436,19 @@ object MockSeedData {
                 id = "agent-settings",
                 name = "Android-Settings-Integrator",
                 statusLabel = "active",
-                ownerLabel = "Settings"
+                ownerLabel = "Settings",
+                memberProfile = ai.slock.android.core.model.MemberProfile(
+                    id = ai.slock.android.core.model.MemberId("agent-settings"),
+                    displayName = "Android-Settings-Integrator",
+                    handle = "@Android-Settings-Integrator",
+                    kind = ai.slock.android.core.model.MemberKind.Agent,
+                    description = "Settings real-data wiring and acceptance",
+                    roleDescription = "agent",
+                    avatarUrl = "random:android-settings-integrator",
+                    avatarLabel = "A",
+                    presence = ai.slock.android.core.model.Presence.Active,
+                    agentStatus = ai.slock.android.core.model.AgentStatus.Online
+                )
             )
         ),
         sections = listOf(

@@ -452,7 +452,8 @@ data class SettingsComputerAgentSnapshot(
     val id: String,
     val name: String,
     val statusLabel: String? = null,
-    val ownerLabel: String? = null
+    val ownerLabel: String? = null,
+    val memberProfile: MemberProfile? = null
 )
 
 data class SettingsServerSnapshot(

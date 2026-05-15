@@ -10,7 +10,8 @@ import ai.slock.android.R
 
 private val SlockDisplayFontFamily = FontFamily(
     Font(R.font.space_grotesk_regular, FontWeight.Normal),
-    Font(R.font.space_grotesk_bold, FontWeight.Medium),
+    Font(R.font.space_grotesk_medium, FontWeight.Medium),
+    Font(R.font.space_grotesk_semibold, FontWeight.SemiBold),
     Font(R.font.space_grotesk_bold, FontWeight.Bold)
 )
 
@@ -25,7 +26,7 @@ val SlockNormalFontFamily = FontFamily(
 object SlockType {
     val PageTitle = TextStyle(
         fontFamily = SlockDisplayFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 20.sp,
         lineHeight = 24.sp,
         letterSpacing = 0.sp
@@ -33,7 +34,7 @@ object SlockType {
 
     val SectionLabel = TextStyle(
         fontFamily = SlockDisplayFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 12.sp,
         lineHeight = 16.sp,
         letterSpacing = 1.2.sp
@@ -41,7 +42,7 @@ object SlockType {
 
     val Body = TextStyle(
         fontFamily = SlockDisplayFontFamily,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 22.sp,
         letterSpacing = 0.sp
@@ -49,7 +50,7 @@ object SlockType {
 
     val Caption = TextStyle(
         fontFamily = SlockDisplayFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.Normal,
         fontSize = 12.sp,
         lineHeight = 16.sp,
         letterSpacing = 0.sp
@@ -57,7 +58,7 @@ object SlockType {
 
     val Button = TextStyle(
         fontFamily = SlockDisplayFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.Medium,
         fontSize = 14.sp,
         lineHeight = 18.sp,
         letterSpacing = 0.sp

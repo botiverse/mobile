@@ -624,7 +624,7 @@ private fun HomeNotificationRow(
         ) {
             Text(
                 text = notification.title,
-                style = SlockType.Button.copy(fontWeight = FontWeight.Bold),
+                style = SlockType.Button,
                 color = SlockColor.TextBlack,
                 overflow = TextOverflow.Ellipsis,
                 maxLines = 3
@@ -660,7 +660,7 @@ private fun HomeNotificationActionButton(
 ) {
     Text(
         text = text,
-        style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+        style = SlockType.Caption.copy(fontWeight = FontWeight.Medium),
         color = SlockColor.TextBlack,
         modifier =
             Modifier
@@ -824,7 +824,7 @@ private fun SidebarActionRow(
         }
         Text(
             text = label,
-            style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+            style = SlockType.Button,
             color = SlockColor.TextBlack,
             modifier = Modifier
                 .padding(start = SidebarActionLabelGap)
@@ -837,7 +837,7 @@ private fun SidebarActionRow(
         } else if (trailingText != null) {
             Text(
                 text = trailingText,
-                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                style = SlockType.Caption,
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -1005,7 +1005,7 @@ private fun ChannelRow(
             }
             Text(
                 text = name,
-                style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                style = SlockType.Button,
                 color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f),
                 modifier = Modifier
                     .padding(start = SidebarActionLabelGap)
@@ -1115,7 +1115,7 @@ private fun InitialsAvatar(label: String) {
     ) {
         Text(
             text = label.take(2).uppercase(),
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = ChannelAvatarFontSize),
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Medium, fontSize = ChannelAvatarFontSize),
             color = SlockColor.TextBlack,
             maxLines = 1
         )

@@ -36,6 +36,11 @@ import ai.slock.android.core.data.repository.SettingsServerProfileUpdateRequest
 import ai.slock.android.core.data.repository.SettingsServerSectionSnapshot
 import ai.slock.android.core.data.repository.SettingsServerSnapshot
 import ai.slock.android.core.data.repository.SettingsSessionSnapshot
+import ai.slock.android.core.model.AgentStatus
+import ai.slock.android.core.model.MemberId
+import ai.slock.android.core.model.MemberKind
+import ai.slock.android.core.model.MemberProfile
+import ai.slock.android.core.model.Presence
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenError
@@ -180,7 +185,10 @@ class RealSettingsRepository(
             warningLogger = warningLogger
         )
         val workspaceRows = (workspaces as? DataResult.Content)?.data.orEmpty()
-        val agentRows = (agents as? DataResult.Content)?.data.orEmpty()
+        val agentRows = enrichComputerAgents(
+            serverId = serverId,
+            agents = (agents as? DataResult.Content)?.data.orEmpty()
+        )
         val workspacesError = workspaces.toSettingsSectionErrorSnapshot()
         val agentsError = agents.toSettingsSectionErrorSnapshot()
         logger(
@@ -207,6 +215,36 @@ class RealSettingsRepository(
                 agentsError = agentsError
             )
         )
+    }
+
+    private suspend fun enrichComputerAgents(
+        serverId: String,
+        agents: List<SettingsComputerAgentSnapshot>
+    ): List<SettingsComputerAgentSnapshot> {
+        if (agents.isEmpty()) return agents
+        val members = execute(
+            emptyReason = EmptyReason.NoMembers,
+            block = { api.serverMembers(currentSlockApiPriority(), serverId) },
+            source = "settings_machine_agent_members",
+            warningLogger = warningLogger,
+            mapper = { json -> json.toSettingsMemberProfiles() }
+        )
+        return when (members) {
+            is DataResult.Content -> agents.enrichWithMembers(members.data)
+            is DataResult.Empty -> agents
+            is DataResult.Error -> {
+                warningLogger(
+                    "machine_detail_agent_member_enrich_failed serverId=$serverId code=${members.error.code} retryable=${members.error.retryable}"
+                )
+                agents
+            }
+            is DataResult.NoPermission -> {
+                warningLogger(
+                    "machine_detail_agent_member_enrich_failed serverId=$serverId code=${members.blocker.code}"
+                )
+                agents
+            }
+        }
     }
 
     override suspend fun getBilling(): DataResult<SettingsBillingSnapshot> {
@@ -780,6 +818,50 @@ private fun JsonObject.toSettingsComputerAgentSnapshot(): SettingsComputerAgentS
         statusLabel = string("status", "activity", "state"),
         ownerLabel = string("ownerName", "assigneeName", "userName", "createdByName")
     )
+}
+
+private fun JsonObject.toSettingsMemberProfiles(): List<MemberProfile> =
+    items("members", "users", "items", "nodes", "records", "rows", "list", "results", "data")
+        .mapNotNull { it.asObjectOrNull()?.toSettingsMemberProfile() }
+
+private fun JsonObject.toSettingsMemberProfile(): MemberProfile? {
+    val id = string("id", "userId", "memberId", "agentId") ?: return null
+    val displayName = string("displayName", "name", "username", "email") ?: id
+    val agentStatus = AgentStatus.fromWireValue(string("status", "activity", "state", "presence"))
+    return MemberProfile(
+        id = MemberId(id),
+        displayName = displayName,
+        handle = string("handle", "username", "email")?.takeIf { it.isNotBlank() } ?: displayName,
+        kind = when (string("kind", "type", "memberType")?.lowercase()) {
+            "human", "user" -> MemberKind.Human
+            "system" -> MemberKind.System
+            else -> MemberKind.Agent
+        },
+        description = string("description", "bio", "summary", "detail"),
+        roleDescription = string("roleDescription", "role", "title"),
+        avatarUrl = avatarWireValue("avatarUrl", "avatar", "profileAvatar", "imageUrl"),
+        gravatarHash = string("gravatarHash", "gravatar_hash", "gravatar", "gravatarMd5", "gravatar_md5"),
+        avatarLabel = displayName.take(1).uppercase(),
+        presence = when (agentStatus) {
+            AgentStatus.Online, AgentStatus.Working, AgentStatus.Thinking -> Presence.Active
+            AgentStatus.Idle -> Presence.Away
+            AgentStatus.Disconnected, AgentStatus.Offline, AgentStatus.Error, null -> Presence.Offline
+        },
+        agentStatus = agentStatus
+    )
+}
+
+private fun List<SettingsComputerAgentSnapshot>.enrichWithMembers(
+    members: List<MemberProfile>
+): List<SettingsComputerAgentSnapshot> {
+    if (members.isEmpty()) return this
+    val membersById = members.associateBy { it.id.value }
+    val membersByName = members.associateBy { it.displayName.lowercase() }
+    return map { agent ->
+        agent.copy(
+            memberProfile = membersById[agent.id] ?: membersByName[agent.name.lowercase()]
+        )
+    }
 }
 
 private fun JsonObject.toSettingsServerAdmins(): List<SettingsServerAdminSnapshot> =

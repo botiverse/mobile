@@ -10,6 +10,7 @@ import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
 import ai.slock.android.core.data.auth.KtorAuthRepository
 import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
 import ai.slock.android.core.data.diagnostics.NetworkDiagnosticsBridge
+import ai.slock.android.core.data.diagnostics.SlockPerformanceDiagnostics
 import ai.slock.android.core.data.locale.AppLocale
 import ai.slock.android.core.data.locale.LocaleSnapshot
 import ai.slock.android.core.data.local.LocalTaskContext
@@ -366,6 +367,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -405,12 +407,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 class MainActivity : ComponentActivity() {
-    private var notificationPermissionResultHandler: ((Boolean) -> Unit)? = null
     private var attachmentPickerResultHandler: ((List<Uri>) -> Unit)? = null
-    private val notificationPermissionLauncher =
-            registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-                notificationPermissionResultHandler?.invoke(granted)
-            }
     private val attachmentImagePickerLauncher =
             registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
                 attachmentPickerResultHandler?.invoke(uris)
@@ -475,21 +472,12 @@ class MainActivity : ComponentActivity() {
                             activityActions =
                                     AppActivityActions(
                                             requestNotificationPermission = { onResult ->
-                                                if (Build.VERSION.SDK_INT >=
-                                                                Build.VERSION_CODES.TIRAMISU
-                                                ) {
-                                                    ai.slock.android.core.data.diagnostics
-                                                            .SlockDiagnosticsLogger.d(
-                                                            "SlockSettingsNotification",
-                                                            "request_permission_start source=user_enable_notifications"
-                                                    )
-                                                    notificationPermissionResultHandler = onResult
-                                                    notificationPermissionLauncher.launch(
-                                                            Manifest.permission.POST_NOTIFICATIONS
-                                                    )
-                                                } else {
-                                                    onResult(true)
-                                                }
+                                                ai.slock.android.core.data.diagnostics
+                                                        .SlockDiagnosticsLogger.d(
+                                                        "SlockSettingsNotification",
+                                                        "request_permission_skipped reason=in_app_permission_request_disabled"
+                                                )
+                                                onResult(hasNotificationPermission())
                                             },
                                             pickAttachmentImage = { onResult ->
                                                 attachmentPickerResultHandler = onResult
@@ -513,6 +501,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        SlockPerformanceDiagnostics.install(window)
     }
 
     private fun setupCrashDumpHandler() {
@@ -1400,6 +1389,44 @@ private fun SlockAppContent(
     var appInForeground by remember { mutableStateOf(true) }
     var networkAvailable by remember { mutableStateOf(context.hasUsableNetwork()) }
     var networkResumeNonce by remember { mutableStateOf(0) }
+    val performanceRoute =
+            when (destination) {
+                AppDestination.Home ->
+                        when (homeRoute) {
+                            HomeRoute.Shell -> "home"
+                            HomeRoute.Thread -> "thread:${selectedThreadId.orEmpty()}"
+                            HomeRoute.Inbox -> "inbox:${inboxFilter.name.lowercase()}"
+                            HomeRoute.FollowedThreads -> "followed_threads"
+                            HomeRoute.Saved -> "saved"
+                            HomeRoute.Search -> "search:${searchQuery.isNotBlank()}"
+                        }
+                AppDestination.Tasks -> "tasks:${tasksFilter?.name?.lowercase() ?: "all"}"
+                AppDestination.Members ->
+                        if (membersDetailVisible || membersDetailSelectedMemberId != null) {
+                            "members:detail"
+                        } else {
+                            "members"
+                        }
+                AppDestination.Settings -> "settings:${settingsDestination.name.lowercase()}"
+            }
+    val performanceOperation =
+            when {
+                selectedThreadState.refreshStatus() == ThreadRefreshStatus.Loading ->
+                        "thread_refresh"
+                selectedThreadState.composerState.status == ComposerStatus.Uploading -> "send_upload"
+                selectedThreadState.composerState.status == ComposerStatus.Sending -> "send_message"
+                homeRefreshInProgress -> "home_refresh"
+                inboxRefreshInProgress -> "inbox_refresh"
+                followedThreadsRefreshInProgress -> "followed_refresh"
+                savedRefreshInProgress -> "saved_refresh"
+                destination == AppDestination.Tasks && tasksState.loadState is ScreenLoadState.Loading ->
+                        "tasks_refresh"
+                else -> "idle"
+            }
+    SideEffect {
+        SlockPerformanceDiagnostics.updateRoute(view, performanceRoute)
+        SlockPerformanceDiagnostics.updateOperation(view, performanceOperation)
+    }
     val pageStatusBarColor =
             when {
                 authState is AuthUiState.Restoring || authState !is AuthUiState.Authenticated ->
@@ -2181,6 +2208,8 @@ private fun SlockAppContent(
         pendingAttachmentFiles = draft?.attachments.orEmpty()
         failedAttachmentIds = draft?.failedAttachmentIds.orEmpty()
         coroutineScope.launch {
+            val performanceTrace = SlockPerformanceDiagnostics.beginTrace("open_thread")
+            try {
             val result =
                     withSlockRequestPriority(
                             priority = SlockRequestPriority.Foreground,
@@ -2279,6 +2308,9 @@ private fun SlockAppContent(
                                 messages = snapshot.messages
                         )
                 )
+            }
+            } finally {
+                performanceTrace.close()
             }
         }
     }
@@ -8843,9 +8875,9 @@ private fun SlockAppContent(
                                                     notificationPermissionGranted =
                                                             notificationPermissionGranted,
                                                     diagnosticsVersion = settingsDiagnosticsVersion
-                                            ),
+                                    ),
                                     notificationPermissionGranted = notificationPermissionGranted,
-                                    notificationPermissionLauncherAvailable = true,
+                                    notificationPermissionLauncherAvailable = false,
                                     localeSnapshot = localeSnapshot,
                                     onLocaleSelected = onLocaleSelected,
                                     chatLayoutPreferenceSnapshot = chatLayoutPreferenceSnapshot,
@@ -12188,6 +12220,9 @@ private fun ThreadUiState.threadChannelId(): ChannelId? {
 private fun ThreadUiState.withBackgroundThreadRefreshIndicator(): ThreadUiState =
         withThreadRefreshStatus(ThreadRefreshStatus.Loading)
 
+private fun ThreadUiState.refreshStatus(): ThreadRefreshStatus =
+        (loadState as? ScreenLoadState.Content)?.data?.refreshStatus ?: ThreadRefreshStatus.Idle
+
 private fun ThreadUiState.withThreadRefreshResult(result: DataResult<*>): ThreadUiState =
         when (result) {
             is DataResult.Content -> withThreadRefreshStatus(ThreadRefreshStatus.Idle)
@@ -14413,7 +14448,7 @@ private fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPlans(): List<Sett
             else -> emptyList()
         }
 
-private const val SettingsNotificationVisibleTestChannelId = "settings-test-visible-v2"
+private const val SettingsNotificationVisibleTestChannelId = "settings-test-visible-v3"
 private const val InboxNotificationChannelId = SettingsNotificationVisibleTestChannelId
 
 private enum class SettingsNotificationPostResult {
@@ -14515,9 +14550,9 @@ private fun Context.showSettingsTestNotification(): SettingsNotificationPostOutc
                                                         )
                                                 )
                                 )
-                                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                                 .setCategory(NotificationCompat.CATEGORY_STATUS)
-                                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                                .setDefaults(0)
                                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                                 .setWhen(System.currentTimeMillis())
                                 .setShowWhen(true)
@@ -14609,9 +14644,9 @@ private fun Context.showInboxNotification(
                                 .setContentTitle(title)
                                 .setContentText(text)
                                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-                                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-                                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                                .setDefaults(0)
                                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                                 .setWhen(System.currentTimeMillis())
                                 .setShowWhen(true)
@@ -14795,11 +14830,11 @@ private fun Context.ensureSettingsNotificationChannelApi26() {
             NotificationChannel(
                             SettingsNotificationVisibleTestChannelId,
                             getString(R.string.settings_notification_channel_name),
-                            NotificationManager.IMPORTANCE_HIGH
+                            NotificationManager.IMPORTANCE_DEFAULT
                     )
                     .apply {
                         description = getString(R.string.settings_notification_channel_description)
-                        enableVibration(true)
+                        enableVibration(false)
                     }
     manager.createNotificationChannel(channel)
     val created = manager.getNotificationChannel(SettingsNotificationVisibleTestChannelId)

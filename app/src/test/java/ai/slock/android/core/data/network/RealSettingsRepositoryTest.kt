@@ -313,6 +313,11 @@ class RealSettingsRepositoryTest {
             machinesJson = """
                 {"machines":[{"id":"machine-1","name":"MacBook","hostname":"mac.local","os":"macOS","daemonVersion":"1.4.2","status":"online","lastSeenAt":"2026-05-07T01:00:00Z"}]}
             """.trimIndent(),
+            membersJson = """
+                {"members":[
+                  {"id":"agent-1","displayName":"Settings Integrator","handle":"@settings-integrator","description":"Settings real-data wiring","avatar":"pixel:diamond","status":"online"}
+                ]}
+            """.trimIndent(),
             workspacesJson = """
                 {"workspaces":[{"directoryName":"Slock","path":"~/AndroidStudioProjects/Slock","status":"active","lastActivityAt":"2026-05-07T01:01:00Z"}]}
             """.trimIndent(),
@@ -339,6 +344,8 @@ class RealSettingsRepositoryTest {
         assertEquals("Slock", detail.workspaces.first().name)
         assertEquals(1, detail.agents.size)
         assertEquals("Settings Integrator", detail.agents.first().name)
+        assertEquals("Settings real-data wiring", detail.agents.first().memberProfile?.description)
+        assertEquals("@settings-integrator", detail.agents.first().memberProfile?.handle)
         assertTrue(detail.sections.any { it.key == "machine_status_events" })
     }
 
