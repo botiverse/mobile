@@ -194,8 +194,8 @@ import ai.slock.android.feature.sample.SlockStateSamples
 import ai.slock.android.feature.settings.SettingsAboutScreen
 import ai.slock.android.feature.settings.SettingsAboutSnapshot
 import ai.slock.android.feature.settings.SettingsDiagnosticsScreen
+import ai.slock.android.feature.settings.SettingsAccountKuiklyScreen
 import ai.slock.android.feature.settings.SettingsAccountProfile
-import ai.slock.android.feature.settings.SettingsAccountScreen
 import ai.slock.android.feature.settings.SettingsBillingScreen
 import ai.slock.android.feature.settings.SettingsComputerDetailKuiklyScreen
 import ai.slock.android.feature.settings.SettingsComputersKuiklyScreen
@@ -14623,13 +14623,12 @@ private fun SettingsDestinationContent(
                             emptyTitle = stringResource(R.string.settings_account_title),
                             emptyDetail = stringResource(R.string.common_preparing_local_state)
                     ) { account ->
-                        SettingsAccountScreen(
+                        SettingsAccountKuiklyScreen(
                                 profile = account.profile.toSettingsAccountProfile(),
                                 connectedAccounts =
                                         account.connectedAccounts.map {
                                             it.toSettingsConnectedAccount()
                                         },
-                                showOuterBorder = false,
                                 onLogout = onLogout
                         )
                     }

@@ -158,6 +158,12 @@ internal fun ComposeRouteImpl() {
         }
 
         Button({
+            jumpPage(localPager, SETTINGS_ACCOUNT_PAGE)
+        }) {
+            Text("Settings Account 预览")
+        }
+
+        Button({
             jumpPage(localPager, BOTTOM_TAB_BAR_SMOKE_PAGE)
         }) {
             Text("Bottom TabBar 预览")

@@ -159,11 +159,23 @@ private fun bottomSafeAreaPadding(): Float {
 @Composable
 private fun SlockAppShellContent() {
     var selectedTab by remember { mutableStateOf("home") }
+    var selectedSettingsDestination by remember { mutableStateOf("home") }
     val bottomSafeArea = bottomSafeAreaPadding()
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when (selectedTab) {
-                "settings" -> SettingsHomeContent(settingsTabBarSmokePayload.copy(subtitle = "Shared settings"), onSelect = {})
+                "settings" -> {
+                    if (selectedSettingsDestination == "account") {
+                        SettingsAccountContent(settingsAccountSmokePayload) {
+                            selectedSettingsDestination = "home"
+                        }
+                    } else {
+                        SettingsHomeContent(
+                            settingsTabBarSmokePayload.copy(subtitle = "Shared settings"),
+                            onSelect = { selectedSettingsDestination = it }
+                        )
+                    }
+                }
                 "tasks" -> AppShellPlaceholderContent(
                     title = "Tasks",
                     subtitle = "Shared task surface will mount here",

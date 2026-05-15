@@ -180,6 +180,105 @@ fun SettingsHomeKuiklyScreen(
 }
 
 @Composable
+fun SettingsAccountKuiklyScreen(
+        profile: SettingsAccountProfile,
+        connectedAccounts: List<SettingsConnectedAccount>,
+        modifier: Modifier = Modifier,
+        onLogout: () -> Unit = {}
+) {
+    SlockKuiklyPageIsland(
+            pageName = SlockKuiklyActivity.PAGE_SETTINGS_ACCOUNT,
+            pageData =
+                    profile.toKuiklyAccountPageData(
+                            connectedAccounts = connectedAccounts,
+                            labels =
+                                    SettingsAccountKuiklyLabels(
+                                            profileSectionTitle =
+                                                    stringResource(
+                                                            R.string
+                                                                    .settings_account_profile_section
+                                                    ),
+                                            displayNameLabel =
+                                                    stringResource(
+                                                            R.string
+                                                                    .settings_account_display_name_label
+                                                    ),
+                                            displayNamePlaceholder =
+                                                    stringResource(
+                                                            R.string
+                                                                    .settings_account_display_name_placeholder
+                                                    ),
+                                            handleLabel =
+                                                    stringResource(
+                                                            R.string.settings_account_handle_label
+                                                    ),
+                                            emailLabel =
+                                                    stringResource(
+                                                            R.string.settings_account_email_label
+                                                    ),
+                                            verifiedLabel =
+                                                    stringResource(
+                                                            R.string.settings_account_verified
+                                                    ),
+                                            saveChangesLabel =
+                                                    stringResource(
+                                                            R.string.settings_account_save_changes
+                                                    ),
+                                            cancelLabel =
+                                                    stringResource(
+                                                            R.string.settings_account_cancel
+                                                    ),
+                                            connectedAccountsTitle =
+                                                    stringResource(
+                                                            R.string
+                                                                    .settings_account_connected_accounts
+                                                    ),
+                                            connectedLabel =
+                                                    stringResource(
+                                                            R.string.settings_account_connected
+                                                    ),
+                                            connectLabel =
+                                                    stringResource(
+                                                            R.string.settings_account_connect
+                                                    ),
+                                            connectingLabel =
+                                                    stringResource(
+                                                            R.string.settings_account_connecting
+                                                    ),
+                                            failedLabel =
+                                                    stringResource(
+                                                            R.string.settings_account_failed
+                                                    ),
+                                            logoutDetail =
+                                                    stringResource(
+                                                            R.string.settings_account_logout_detail
+                                                    ),
+                                            logoutLabel =
+                                                    stringResource(
+                                                            R.string.settings_account_logout
+                                                    ),
+                                            changePasswordTitle =
+                                                    stringResource(
+                                                            R.string
+                                                                    .settings_account_change_password
+                                                    ),
+                                            changePasswordSubtitle =
+                                                    stringResource(
+                                                            R.string
+                                                                    .settings_account_change_password_subtitle
+                                                    )
+                                    )
+                    ),
+            modifier = modifier.fillMaxSize(),
+            onEvent = { event ->
+                if (event.optString("action") == "logout") {
+                    onLogout()
+                }
+            }
+    )
+}
+
+@Composable
 private fun ComputerCard(computer: SettingsComputerSnapshot, onClick: () -> Unit) {
     SlockKeySurface(
             onClick = onClick,
@@ -536,6 +635,86 @@ private fun SettingsComputerDetailSnapshot.toKuiklyComputerDetailPageData(): JSO
                                 .putNullable("agentsErrorCode", agentsError?.code)
                                 .put("agentsRetryable", agentsError?.retryable ?: false)
                                 .toString()
+                )
+
+private fun SettingsAccountProfile.toKuiklyAccountPageData(
+        connectedAccounts: List<SettingsConnectedAccount>,
+        labels: SettingsAccountKuiklyLabels
+): JSONObject =
+        JSONObject()
+                .put(
+                        "payload",
+                        JSONObject()
+                                .put("profile", toKuiklyJson())
+                                .put(
+                                        "connectedAccounts",
+                                        connectedAccounts.toJsonArray { it.toKuiklyJson() }
+                                )
+                                .put("profileSectionTitle", labels.profileSectionTitle)
+                                .put("displayNameLabel", labels.displayNameLabel)
+                                .put("displayNamePlaceholder", labels.displayNamePlaceholder)
+                                .put("handleLabel", labels.handleLabel)
+                                .put("handlePlaceholder", labels.handlePlaceholder)
+                                .put("emailLabel", labels.emailLabel)
+                                .put("emailPlaceholder", labels.emailPlaceholder)
+                                .put("verifiedLabel", labels.verifiedLabel)
+                                .put("saveChangesLabel", labels.saveChangesLabel)
+                                .put("cancelLabel", labels.cancelLabel)
+                                .put("connectedAccountsTitle", labels.connectedAccountsTitle)
+                                .put("connectedLabel", labels.connectedLabel)
+                                .put("connectLabel", labels.connectLabel)
+                                .put("connectingLabel", labels.connectingLabel)
+                                .put("failedLabel", labels.failedLabel)
+                                .put("logoutDetail", labels.logoutDetail)
+                                .put("logoutLabel", labels.logoutLabel)
+                                .put("changePasswordTitle", labels.changePasswordTitle)
+                                .put("changePasswordSubtitle", labels.changePasswordSubtitle)
+                                .toString()
+                )
+
+private data class SettingsAccountKuiklyLabels(
+        val profileSectionTitle: String,
+        val displayNameLabel: String,
+        val displayNamePlaceholder: String,
+        val handleLabel: String,
+        val handlePlaceholder: String = "@handle",
+        val emailLabel: String,
+        val emailPlaceholder: String = "you@example.com",
+        val verifiedLabel: String,
+        val saveChangesLabel: String,
+        val cancelLabel: String,
+        val connectedAccountsTitle: String,
+        val connectedLabel: String,
+        val connectLabel: String,
+        val connectingLabel: String,
+        val failedLabel: String,
+        val logoutDetail: String,
+        val logoutLabel: String,
+        val changePasswordTitle: String,
+        val changePasswordSubtitle: String
+)
+
+private fun SettingsAccountProfile.toKuiklyJson(): JSONObject =
+        JSONObject()
+                .put("displayName", displayName)
+                .put("handle", handle)
+                .put("email", email)
+                .put("avatarLabel", avatarLabel)
+                .put("verified", verified)
+                .put("roleLabel", roleLabel)
+
+private fun SettingsConnectedAccount.toKuiklyJson(): JSONObject =
+        JSONObject()
+                .put("provider", provider)
+                .put("identifier", identifier)
+                .put(
+                        "status",
+                        when (status) {
+                            SettingsConnectedAccountStatus.Connected -> "connected"
+                            SettingsConnectedAccountStatus.NotConnected -> "notConnected"
+                            SettingsConnectedAccountStatus.Loading -> "loading"
+                            SettingsConnectedAccountStatus.Failed -> "failed"
+                        }
                 )
 
 private fun SettingsComputerSnapshot.toKuiklyJson(): JSONObject =
