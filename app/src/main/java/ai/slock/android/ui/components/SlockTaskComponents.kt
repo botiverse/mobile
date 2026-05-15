@@ -70,7 +70,8 @@ fun SlockTaskBoard(
     columns: Map<SlockTaskStatus, List<SlockTaskCardData>>,
     modifier: Modifier = Modifier,
     scrollState: ScrollState = rememberScrollState(),
-    copy: SlockTaskBoardCopy = SlockTaskBoardCopy.defaults()
+    copy: SlockTaskBoardCopy = SlockTaskBoardCopy.defaults(),
+    columnRenderLimit: Int = SlockTaskBoardDefaults.ColumnRenderLimit
 ) {
     Row(
         modifier = modifier
@@ -83,6 +84,7 @@ fun SlockTaskBoard(
                 status = status,
                 tasks = columns[status].orEmpty(),
                 copy = copy,
+                renderLimit = columnRenderLimit,
                 modifier = Modifier.width(260.dp)
             )
         }
@@ -94,11 +96,15 @@ fun SlockTaskColumn(
     status: SlockTaskStatus,
     tasks: List<SlockTaskCardData>,
     copy: SlockTaskBoardCopy = SlockTaskBoardCopy.defaults(),
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    totalCount: Int = tasks.size,
+    renderLimit: Int = SlockTaskBoardDefaults.ColumnRenderLimit
 ) {
     var collapsed by rememberSaveable(status) {
         mutableStateOf(status == SlockTaskStatus.Done || status == SlockTaskStatus.Closed)
     }
+    val visibleTasks = if (renderLimit > 0) tasks.take(renderLimit) else tasks
+    val hiddenCount = (totalCount - visibleTasks.size).coerceAtLeast(0)
     Column(
         modifier = modifier
             .background(SlockColor.SurfaceWhite)
@@ -125,14 +131,14 @@ fun SlockTaskColumn(
                 modifier = Modifier.weight(1f, fill = false)
             )
             Text(
-                text = tasks.size.toString(),
+                text = totalCount.toString(),
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray
             )
         }
         if (collapsed) {
             Text(
-                text = if (tasks.size == 1) "1 task hidden" else "${tasks.size} tasks hidden",
+                text = if (totalCount == 1) "1 task hidden" else "$totalCount tasks hidden",
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
@@ -148,12 +154,25 @@ fun SlockTaskColumn(
                 modifier = Modifier.heightIn(max = 640.dp),
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
             ) {
-                items(tasks) { task ->
+                items(visibleTasks) { task ->
                     SlockTaskCard(task = task, statusLabel = copy.statusLabel(task.status))
+                }
+                if (hiddenCount > 0) {
+                    item(key = "task-column-truncated-$status") {
+                        Text(
+                            text = "$hiddenCount more tasks hidden. Use List view or filters to narrow results.",
+                            style = SlockType.Caption,
+                            color = SlockColor.TextMutedGray
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+object SlockTaskBoardDefaults {
+    const val ColumnRenderLimit: Int = 80
 }
 
 @Composable

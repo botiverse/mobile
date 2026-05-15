@@ -7103,7 +7103,7 @@ private fun SlockAppContent(
                             .filteredForTasksFilter(tasksFilter)
             if (serverSnapshot.tasks.isEmpty()) return@collectLatest
             rememberTaskReferences(serverSnapshot.tasks)
-            if (destination != AppDestination.Tasks && tasksState.loadState is ScreenLoadState.Content) {
+            if (destination != AppDestination.Tasks) {
                 return@collectLatest
             }
             val localState =
@@ -7187,7 +7187,9 @@ private fun SlockAppContent(
                                     )
                     )
                 }
-        localWriteThrough.writeTaskResult(result, source = "tasks_route_refresh", serverId = selectedServerId)
+        withContext(Dispatchers.IO) {
+            localWriteThrough.writeTaskResult(result, source = "tasks_route_refresh", serverId = selectedServerId)
+        }
         result.rememberTaskReferences()
         tasksState =
                 tasksState.mergeTasksRefreshResult(result, tasksFilter)
@@ -7663,11 +7665,13 @@ private fun SlockAppContent(
                                 }
                 ) {
                     is DataResult.Content -> {
-                        localWriteThrough.writeTaskResult(
-                                result,
-                                source = "task_reference_refresh",
-                                serverId = selectedServerId
-                        )
+                        withContext(Dispatchers.IO) {
+                            localWriteThrough.writeTaskResult(
+                                    result,
+                                    source = "task_reference_refresh",
+                                    serverId = selectedServerId
+                            )
+                        }
                         tasksState = result.toTasksUiState(tasksFilter).copy(refreshing = false)
                         val refreshedMatches = result.data.tasks.matchingTaskReference(label)
                         if (!openTaskReferenceMatches(refreshedMatches, label, "refresh")) {

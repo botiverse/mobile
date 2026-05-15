@@ -32,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -213,10 +214,12 @@ private fun TasksLoadedBody(
     showChannelFilter: Boolean,
     refreshing: Boolean
 ) {
-    val channelOptions = content.tasks
-        .mapNotNull { it.channelName }
-        .distinct()
-        .sorted()
+    val channelOptions = remember(content.tasks) {
+        content.tasks
+            .mapNotNull { it.channelName }
+            .distinct()
+            .sorted()
+    }
     var selectedChannelNames by rememberSaveable { mutableStateOf(emptySet<String>()) }
     var channelSelectorExpanded by rememberSaveable { mutableStateOf(false) }
     val selectedChannels =
@@ -225,20 +228,27 @@ private fun TasksLoadedBody(
         } else {
             emptySet()
         }
-    val channelScopedTasks =
+    val channelScopedTasks = remember(content.tasks, selectedChannels) {
         content.tasks
             .filter { task -> selectedChannels.isEmpty() || task.channelName in selectedChannels }
             .sortedByRecentTaskTime()
-    val channelScopedContent = content.copy(
-        summaryCounts = TaskStatus.entries.associateWith { status ->
-            channelScopedTasks.count { it.status == status }
-        },
-        tasks = channelScopedTasks
-    )
-    val filteredTasks = channelScopedTasks.filter { task ->
-        state.selectedFilter == null || task.status == state.selectedFilter
     }
-    val filteredContent = channelScopedContent.copy(tasks = filteredTasks)
+    val channelScopedContent = remember(channelScopedTasks, content) {
+        content.copy(
+            summaryCounts = TaskStatus.entries.associateWith { status ->
+                channelScopedTasks.count { it.status == status }
+            },
+            tasks = channelScopedTasks
+        )
+    }
+    val filteredTasks = remember(channelScopedTasks, state.selectedFilter) {
+        channelScopedTasks.filter { task ->
+            state.selectedFilter == null || task.status == state.selectedFilter
+        }
+    }
+    val filteredContent = remember(channelScopedContent, filteredTasks) {
+        channelScopedContent.copy(tasks = filteredTasks)
+    }
     var selectedMode by rememberSaveable { mutableStateOf(TasksViewMode.Board) }
     var renderedMode by rememberSaveable { mutableStateOf(selectedMode) }
     LaunchedEffect(selectedMode) {
@@ -820,14 +830,18 @@ private fun TasksBoardSection(
     onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
     updatingTaskId: String?
 ) {
+    val currentOnTaskClick by rememberUpdatedState(onTaskClick)
+    val currentOnTaskStatusChange by rememberUpdatedState(onTaskStatusChange)
+    val columns = remember(content.tasks, copy, updatingTaskId) {
+        content.toTaskColumns(
+            copy = copy,
+            onTaskClick = { task -> currentOnTaskClick(task) },
+            onTaskStatusChange = { task, status -> currentOnTaskStatusChange(task, status) },
+            updatingTaskId = updatingTaskId
+        )
+    }
     SlockTaskBoard(
-        columns =
-            content.toTaskColumns(
-                copy = copy,
-                onTaskClick = onTaskClick,
-                onTaskStatusChange = onTaskStatusChange,
-                updatingTaskId = updatingTaskId
-            ),
+        columns = columns,
         scrollState = boardScrollState
     )
 }

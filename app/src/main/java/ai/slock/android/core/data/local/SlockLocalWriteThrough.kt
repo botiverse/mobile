@@ -469,7 +469,7 @@ class SlockLocalWriteThrough(
     private fun writeTasks(tasks: List<TaskSummary>, source: String, serverId: ServerId? = null) {
         if (tasks.isEmpty()) return
         val syncedAtMs = clock()
-        tasks.forEach { task -> store.upsertTaskReference(task, syncedAtMs, serverId) }
+        store.upsertTaskReferences(tasks, syncedAtMs, serverId)
         logger("write_tasks source=$source serverId=${serverId?.value.orEmpty()} count=${tasks.size}")
     }
 

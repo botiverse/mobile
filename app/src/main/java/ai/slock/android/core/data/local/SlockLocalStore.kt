@@ -60,6 +60,7 @@ interface SlockLocalStore {
     )
     fun getMessagesForThread(threadId: ThreadId, serverId: ServerId? = null): List<Message>
     fun upsertTaskReference(task: TaskSummary, syncedAtMs: Long, serverId: ServerId? = null)
+    fun upsertTaskReferences(tasks: List<TaskSummary>, syncedAtMs: Long, serverId: ServerId? = null)
     fun deleteTaskReference(taskId: TaskId, serverId: ServerId? = null)
     fun getTaskReferences(serverId: ServerId? = null): List<TaskSummary>
     fun observeTaskReferences(serverId: ServerId? = null): Flow<List<TaskSummary>>
@@ -450,6 +451,17 @@ class SqlDelightSlockLocalStore(
         } ?: this
 
     override fun upsertTaskReference(task: TaskSummary, syncedAtMs: Long, serverId: ServerId?) {
+        upsertTaskReferenceInternal(task, syncedAtMs, serverId)
+    }
+
+    override fun upsertTaskReferences(tasks: List<TaskSummary>, syncedAtMs: Long, serverId: ServerId?) {
+        if (tasks.isEmpty()) return
+        database.transaction {
+            tasks.forEach { task -> upsertTaskReferenceInternal(task, syncedAtMs, serverId) }
+        }
+    }
+
+    private fun upsertTaskReferenceInternal(task: TaskSummary, syncedAtMs: Long, serverId: ServerId?) {
         val resolvedServerId =
             serverId
                 ?: task.channelId?.let { selectStoredConversationServerId(ThreadId(it.value))?.let(::ServerId) }
