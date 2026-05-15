@@ -122,6 +122,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         const val PAGE_REGISTER = "compose_register"
         const val PAGE_FORGOT_PASSWORD = "compose_forgot_password"
         const val PAGE_THREAD_FILES = "compose_thread_files"
+        const val PAGE_HOME = "compose_home"
         const val PAGE_SETTINGS_HOME = "compose_settings_home"
         const val PAGE_SETTINGS_ACCOUNT = "compose_settings_account"
         const val PAGE_SETTINGS_COMPUTERS = "compose_settings_computers"
@@ -212,6 +213,7 @@ private object SlockKuiklyFontAdapter : IKRFontAdapter {
         val fontName = fontFamily.substringBefore(",").trim()
         val fontRes = when (fontName) {
             "space_grotesk_bold" -> R.font.space_grotesk_bold
+            "space_grotesk_semibold" -> R.font.space_grotesk_semibold
             "space_grotesk_medium" -> R.font.space_grotesk_medium
             "space_grotesk_regular" -> R.font.space_grotesk_regular
             "space_grotesk_light" -> R.font.space_grotesk_light
