@@ -5816,6 +5816,12 @@ private fun SlockAppContent(
             } else {
                 null
             }
+    val realtimeAuthTokenVersion =
+            if (authState is AuthUiState.Authenticated) {
+                currentAuthSession?.accessToken?.hashCode()
+            } else {
+                null
+            }
 
     fun scheduleRealtimeRetry(serverId: ServerId, delayMillis: Long) {
         if (delayMillis <= 0L) return
@@ -6228,7 +6234,14 @@ private fun SlockAppContent(
         }
     }
 
-    LaunchedEffect(realtimeServerId, appInForeground, networkAvailable, networkResumeNonce, realtimeRepository) {
+    LaunchedEffect(
+            realtimeServerId,
+            realtimeAuthTokenVersion,
+            appInForeground,
+            networkAvailable,
+            networkResumeNonce,
+            realtimeRepository
+    ) {
         val serverId = realtimeServerId
         if (serverId == null || !appInForeground || !networkAvailable) {
             realtimeSubscription?.close()
@@ -6520,6 +6533,15 @@ private fun SlockAppContent(
                             "SlockRealtime",
                             "connect_no_permission serverId=${serverId.value}"
                     )
+        }
+    }
+
+    LaunchedEffect(realtimeServerId, appInForeground, networkAvailable) {
+        val serverId = realtimeServerId ?: return@LaunchedEffect
+        if (!appInForeground || !networkAvailable) return@LaunchedEffect
+        while (true) {
+            drainRealtimeRetryIntents(serverId)
+            delay(1_000)
         }
     }
 

@@ -252,6 +252,37 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun clientUsesMessageSequenceWhenResumingAfterReconnect() {
+        val transport = FakeRealtimeSocketTransport()
+        val client = SocketIoRealtimeClient(transport)
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1"))
+            )
+        )
+        client.joinChannel(ChannelId("channel-1"))
+        transport.receive(
+            RealtimeSocketEvents.MessageNew,
+            mapOf(
+                "message" to mapOf(
+                    "id" to "message-1",
+                    "threadId" to "channel-1",
+                    "channelId" to "channel-1",
+                    "seq" to 89,
+                    "content" to "Realtime body"
+                )
+            )
+        )
+        transport.emitted.clear()
+
+        transport.receive(RealtimeSocketEvents.Reconnect)
+
+        val resume = transport.emitted.single { it.first == RealtimeSocketEvents.SyncResume }
+        assertEquals(89L, resume.second["lastSeq"])
+    }
+
+    @Test
     fun clientClearsJoinedChannelsWhenServerChanges() {
         val transport = FakeRealtimeSocketTransport()
         val client = SocketIoRealtimeClient(transport)

@@ -172,6 +172,8 @@ class SocketIoRealtimeClient(
 
     private fun dispatch(event: RealtimeEvent) {
         if (event is Heartbeat) lastSeq = maxOf(lastSeq, event.seq)
+        if (event is MessageNew) event.message.seq?.let { lastSeq = maxOf(lastSeq, it) }
+        if (event is MessageUpdated) event.message.seq?.let { lastSeq = maxOf(lastSeq, it) }
         if (event is SyncResumeResponse) lastSeq = maxOf(lastSeq, event.currentSeq)
         if (event is MemberPresenceUpdated) {
             val key = event.memberId.value
