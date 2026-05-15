@@ -37,6 +37,7 @@ DEFAULT_ICONS = [
     "circle-check-big",
     "columns-3",
     "copy",
+    "download",
     "external-link",
     "eye",
     "file-text",
@@ -95,6 +96,10 @@ def download_svg(name, version):
             time.sleep(1 + attempt)
 
 
+def normalize_ohos_svg(svg):
+    return svg.replace('stroke="currentColor"', 'stroke="#000000"')
+
+
 def run_s2c(svg_path, out_path, package):
     result = subprocess.run(
         [
@@ -140,15 +145,23 @@ def collect_imports(kt_content):
     return [line for line in kt_content.splitlines() if line.startswith("import ")]
 
 
-def generate(icons, version, output):
+def generate(icons, version, output, ohos_resfile_output=None):
     package = "ai.slock.android.ui.icons"
     entries = []
     all_imports = set()
+
+    if ohos_resfile_output:
+        os.makedirs(ohos_resfile_output, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         for name in icons:
             prop = pascal_name(name)
             svg = download_svg(name, version)
+
+            if ohos_resfile_output:
+                raw_svg_path = os.path.join(ohos_resfile_output, f"{name}.svg")
+                with open(raw_svg_path, "w", encoding="utf-8") as f:
+                    f.write(normalize_ohos_svg(svg))
 
             svg_path = os.path.join(tmpdir, f"{name}.svg")
             with open(svg_path, "w", encoding="utf-8") as f:
@@ -165,6 +178,7 @@ def generate(icons, version, output):
             entries.append((prop, builder_block))
 
     sorted_imports = sorted(all_imports)
+    sorted_imports.append("import java.util.Locale")
 
     lines = [
         f"package {package}",
@@ -189,6 +203,35 @@ def generate(icons, version, output):
             "    }",
             "",
         ]
+
+    name_entries = ", ".join(f'"{name}"' for name in icons)
+    lines += [
+        f"    val Names: List<String> = listOf({name_entries})",
+        "",
+        "    fun byName(name: String): ImageVector? {",
+        "        return when (name.toIconKey()) {",
+    ]
+
+    for name, (prop, _) in zip(icons, entries):
+        lines.append(f'            "{name}" -> {prop}')
+
+    lines += [
+        "            else -> null",
+        "        }",
+        "    }",
+        "",
+        "    private fun String.toIconKey(): String {",
+        "        val normalized = trim()",
+        "        if (normalized.isEmpty()) {",
+        "            return normalized",
+        "        }",
+        "        return normalized",
+        "            .replace(Regex(\"([a-z0-9])([A-Z])\"), \"$1-$2\")",
+        "            .replace('_', '-')",
+        "            .lowercase(Locale.US)",
+        "    }",
+        "",
+    ]
 
     all_props = ", ".join(prop for prop, _ in entries)
     lines += [
@@ -224,8 +267,29 @@ def main():
             "LucideIcons.kt",
         ),
     )
+    parser.add_argument(
+        "--ohos-resfile-output",
+        default=os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..",
+            "compose",
+            "ohosApp",
+            "entry",
+            "src",
+            "main",
+            "resources",
+            "resfile",
+            "lucide",
+        ),
+        help="Directory for raw Lucide SVG files consumed by the OHOS Kuikly render view.",
+    )
     args = parser.parse_args()
-    generate(args.icons or DEFAULT_ICONS, args.version, os.path.abspath(args.output))
+    generate(
+        args.icons or DEFAULT_ICONS,
+        args.version,
+        os.path.abspath(args.output),
+        os.path.abspath(args.ohos_resfile_output) if args.ohos_resfile_output else None,
+    )
 
 
 if __name__ == "__main__":

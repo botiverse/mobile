@@ -23,3 +23,5 @@ artifacts/*.apk
 artifacts/*.apk.idsig
 artifacts/releases
 diagnostics
+
+temp_compose/

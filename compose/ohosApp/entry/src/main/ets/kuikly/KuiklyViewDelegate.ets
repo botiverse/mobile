@@ -4,6 +4,7 @@ import {
   KRRenderViewExportCreator
 } from '@kuikly-open/render';
 import { KRMyView } from './components/KRMyView';
+import { SlockLucideIconView } from './components/SlockLucideIconView';
 import { KRBridgeModule } from './modules/KRBridgeModule';
 import { KRMyModule } from './modules/KRMyModule';
 
@@ -11,6 +12,7 @@ export class KuiklyViewDelegate extends IKuiklyViewDelegate {
   getCustomRenderViewCreatorRegisterMap(): Map<string, KRRenderViewExportCreator> {
     const map: Map<string, KRRenderViewExportCreator> = new Map();
     map.set(KRMyView.VIEW_NAME, () => new KRMyView());
+    map.set(SlockLucideIconView.VIEW_NAME, () => new SlockLucideIconView());
     return map;
   }
 

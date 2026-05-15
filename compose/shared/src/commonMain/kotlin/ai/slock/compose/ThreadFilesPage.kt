@@ -24,7 +24,6 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -36,8 +35,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 private const val THREAD_FILES_PAGE = "compose_thread_files"
-private const val LUCIDE_DOWNLOAD_SVG =
-    "data:image/svg+xml;utf8;color=%230F172A,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v12'/%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/%3E%3C/svg%3E"
 
 @Page(THREAD_FILES_PAGE, supportInLocal = true)
 internal class ComposeThreadFilesPage : ai.slock.compose.base.BasePager() {
@@ -295,11 +292,7 @@ private fun ThreadFileDownloadButton(onClick: () -> Unit) {
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            Image(
-                painter = rememberAsyncImagePainter(LUCIDE_DOWNLOAD_SVG),
-                contentDescription = null,
-                modifier = Modifier.size(34.dp)
-            )
+            SlockLucideIcon(name = "download", modifier = Modifier.size(24.dp))
         }
     }
 }
@@ -335,7 +328,7 @@ private fun ThreadFilesError(errorCode: String, onRetry: () -> Unit) {
     ) {
         Text(
             text = "Files failed to load",
-            style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
+            style = SlockType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
         Text(
@@ -356,7 +349,7 @@ private fun ThreadFilesStateMessage(title: String, detail: String?) {
     ) {
         Text(
             text = title,
-            style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
+            style = SlockType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
         detail?.takeIf { it.isNotBlank() }?.let {

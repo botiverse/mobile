@@ -25,6 +25,7 @@ object SlockIcons {
     val CircleCheckBig get() = LucideIcons.CircleCheckBig
     val Columns3 get() = LucideIcons.Columns3
     val Copy get() = LucideIcons.Copy
+    val Download get() = LucideIcons.Download
     val ExternalLink get() = LucideIcons.ExternalLink
     val Eye get() = LucideIcons.Eye
     val FileText get() = LucideIcons.FileText

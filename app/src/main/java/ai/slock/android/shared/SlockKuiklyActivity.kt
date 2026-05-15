@@ -87,6 +87,14 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         }
     }
 
+    override fun registerExternalRenderView(kuiklyRenderExport: IKuiklyRenderExport) {
+        super.registerExternalRenderView(kuiklyRenderExport)
+        kuiklyRenderExport.renderViewExport(
+            SlockLucideIconRenderView.VIEW_NAME,
+            renderViewExportCreator = { context -> SlockLucideIconRenderView(context) }
+        )
+    }
+
     private fun createPageData(): Map<String, Any> {
         return argsToMap().apply {
             put("appId", 1)
@@ -116,6 +124,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         const val PAGE_THREAD_FILES = "compose_thread_files"
         const val PAGE_SETTINGS_COMPUTERS = "compose_settings_computers"
         const val PAGE_SETTINGS_COMPUTER_DETAIL = "compose_settings_computer_detail"
+        const val PAGE_ICON_GALLERY = "compose_icon_gallery"
         const val PAGE_ROUTER = "router"
 
         private const val KEY_PAGE_NAME = "pageName"
@@ -557,6 +566,13 @@ internal class SlockKuiklyIslandHost(
         kuiklyRenderExport.moduleExport(SlockKuiklyBridgeModule.MODULE_NAME) {
             SlockKuiklyBridgeModule(context.applicationContext)
         }
+    }
+
+    override fun registerExternalRenderView(kuiklyRenderExport: IKuiklyRenderExport) {
+        kuiklyRenderExport.renderViewExport(
+                SlockLucideIconRenderView.VIEW_NAME,
+                renderViewExportCreator = { context -> SlockLucideIconRenderView(context) }
+        )
     }
 
     override fun onAttachedToWindow() {
