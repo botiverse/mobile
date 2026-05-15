@@ -168,6 +168,12 @@ internal fun ComposeRouteImpl() {
         }) {
             Text("Home 组件预览")
         }
+
+        Button({
+            jumpPage(localPager, HOME_SHELL_PAGE)
+        }) {
+            Text("Home Shell 预览")
+        }
     }
 }
 
