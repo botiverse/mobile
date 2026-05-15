@@ -120,6 +120,82 @@ class MembersScreenAgentActivityTest {
     }
 
     @Test
+    fun humanDetailShowsDirectMessageActionInHeader() {
+        val human = MemberProfile(
+            id = MemberId("human-dm"),
+            displayName = "Human DM",
+            handle = "@human-dm",
+            kind = MemberKind.Human,
+            description = "Human profile",
+            presence = Presence.Active
+        )
+        val openedDms = mutableListOf<String>()
+
+        composeRule.setContent {
+            SlockTheme {
+                MembersRouteScreen(
+                    state = MembersUiState(
+                        loadState = ScreenLoadState.Content(
+                            MembersContent(
+                                server = ServerSummary(ServerId("server-1"), "Slock"),
+                                members = listOf(human)
+                            )
+                        )
+                    ),
+                    initialSelectedMemberId = human.id.value,
+                    onOpenDirectMessage = { openedDms += it.id.value }
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Open direct message").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Open direct message").performClick()
+
+        assert(openedDms == listOf("human-dm")) {
+            "Expected direct message action for human detail, got $openedDms"
+        }
+    }
+
+    @Test
+    fun agentDetailShowsDirectMessageActionInHeader() {
+        val agent = MemberProfile(
+            id = MemberId("agent-dm"),
+            displayName = "Agent DM",
+            handle = "@agent-dm",
+            kind = MemberKind.Agent,
+            description = "Agent profile",
+            roleDescription = "agent",
+            presence = Presence.Active,
+            agentStatus = AgentStatus.Online
+        )
+        val openedDms = mutableListOf<String>()
+
+        composeRule.setContent {
+            SlockTheme {
+                MembersRouteScreen(
+                    state = MembersUiState(
+                        loadState = ScreenLoadState.Content(
+                            MembersContent(
+                                server = ServerSummary(ServerId("server-1"), "Slock"),
+                                members = listOf(agent)
+                            )
+                        )
+                    ),
+                    initialSelectedMemberId = agent.id.value,
+                    onOpenDirectMessage = { openedDms += it.id.value }
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Open direct message").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Open direct message").performClick()
+
+        assert(openedDms == listOf("agent-dm")) {
+            "Expected direct message action for agent detail, got $openedDms"
+        }
+    }
+
+    @Test
     fun membersPageGroupsAgentsByComputerName() {
         val macAgent = MemberProfile(
             id = MemberId("agent-mac"),

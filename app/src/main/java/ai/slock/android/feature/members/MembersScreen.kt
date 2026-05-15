@@ -187,7 +187,7 @@ fun MembersRouteScreen(
     onDetailBack: () -> Unit = {},
     onDetailVisibleChange: (Boolean) -> Unit = {},
     onOpenMemberProfile: (MemberProfile) -> Unit = {},
-    onOpenAgentDirectMessage: (MemberProfile) -> Unit = {},
+    onOpenDirectMessage: (MemberProfile) -> Unit = {},
     onToggleAgentWorkspaceFolder: (SlockWorkspaceNode) -> Unit = {},
     onSelectAgentWorkspaceFile: (SlockWorkspaceNode) -> Unit = {},
     onBackToAgentWorkspaceTree: () -> Unit = {},
@@ -238,8 +238,8 @@ fun MembersRouteScreen(
                 onDetailVisibleChange(false)
             },
             onMemberClick = openDetail,
-            onOpenAgentDirectMessage = {
-                selectedMember?.let(onOpenAgentDirectMessage)
+            onOpenDirectMessage = {
+                selectedMember?.let(onOpenDirectMessage)
             },
             onToggleAgentWorkspaceFolder = onToggleAgentWorkspaceFolder,
             onSelectAgentWorkspaceFile = onSelectAgentWorkspaceFile,
@@ -269,6 +269,7 @@ fun MembersRouteScreen(
             HumanMemberDetailScreen(
                 member = selectedMember,
                 onBack = closeDetail,
+                onOpenDirectMessage = { onOpenDirectMessage(selectedMember) },
                 modifier = modifier
             )
         } else {
@@ -284,7 +285,7 @@ fun MembersRouteScreen(
                 agentSkillsState = state.selectedAgentSkillsState,
                 agentProfileSaveState = state.agentProfileSaveState,
                 onBack = closeDetail,
-                onOpenAgentDirectMessage = { onOpenAgentDirectMessage(selectedMember) },
+                onOpenDirectMessage = { onOpenDirectMessage(selectedMember) },
                 onToggleAgentWorkspaceFolder = onToggleAgentWorkspaceFolder,
                 onSelectAgentWorkspaceFile = onSelectAgentWorkspaceFile,
                 onBackToAgentWorkspaceTree = onBackToAgentWorkspaceTree,
@@ -318,7 +319,7 @@ private fun MembersWideRouteScreen(
     onTabSelected: (MemberDetailTab) -> Unit,
     onCloseDetail: () -> Unit,
     onMemberClick: (MemberProfile) -> Unit,
-    onOpenAgentDirectMessage: () -> Unit,
+    onOpenDirectMessage: () -> Unit,
     onToggleAgentWorkspaceFolder: (SlockWorkspaceNode) -> Unit,
     onSelectAgentWorkspaceFile: (SlockWorkspaceNode) -> Unit,
     onBackToAgentWorkspaceTree: () -> Unit,
@@ -372,6 +373,7 @@ private fun MembersWideRouteScreen(
                 member = selectedMember,
                 onBack = onCloseDetail,
                 closeMode = true,
+                onOpenDirectMessage = onOpenDirectMessage,
                 modifier = Modifier
                     .weight(0.58f)
                     .fillMaxHeight()
@@ -391,7 +393,7 @@ private fun MembersWideRouteScreen(
                 agentProfileSaveState = state.agentProfileSaveState,
                 onBack = onCloseDetail,
                 closeMode = true,
-                onOpenAgentDirectMessage = onOpenAgentDirectMessage,
+                onOpenDirectMessage = onOpenDirectMessage,
                 onToggleAgentWorkspaceFolder = onToggleAgentWorkspaceFolder,
                 onSelectAgentWorkspaceFile = onSelectAgentWorkspaceFile,
                 onBackToAgentWorkspaceTree = onBackToAgentWorkspaceTree,
@@ -707,6 +709,7 @@ private fun HumanMemberDetailScreen(
     member: MemberProfile,
     onBack: () -> Unit,
     closeMode: Boolean = false,
+    onOpenDirectMessage: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -714,7 +717,12 @@ private fun HumanMemberDetailScreen(
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        MemberDetailHeader(member = member, onBack = onBack, closeMode = closeMode)
+        MemberDetailHeader(
+            member = member,
+            onBack = onBack,
+            closeMode = closeMode,
+            onOpenDirectMessage = onOpenDirectMessage
+        )
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -741,7 +749,7 @@ private fun MemberDetailScreen(
     agentProfileSaveState: AgentProfileSaveState,
     onBack: () -> Unit,
     closeMode: Boolean = false,
-    onOpenAgentDirectMessage: () -> Unit,
+    onOpenDirectMessage: () -> Unit,
     onToggleAgentWorkspaceFolder: (SlockWorkspaceNode) -> Unit,
     onSelectAgentWorkspaceFile: (SlockWorkspaceNode) -> Unit,
     onBackToAgentWorkspaceTree: () -> Unit,
@@ -757,7 +765,12 @@ private fun MemberDetailScreen(
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        MemberDetailHeader(member = member, onBack = onBack, closeMode = closeMode)
+        MemberDetailHeader(
+            member = member,
+            onBack = onBack,
+            closeMode = closeMode,
+            onOpenDirectMessage = onOpenDirectMessage
+        )
         Column(modifier = tabSwipeModifier.fillMaxSize()) {
             MemberDetailTabs(selectedTab = selectedTab, onTabSelected = onTabSelected)
             if (selectedTab == MemberDetailTab.Activity) {
@@ -779,7 +792,7 @@ private fun MemberDetailScreen(
                             )
                         MemberDetailTab.AgentDms -> AgentDirectMessagesPanel(
                             state = agentDmsState,
-                            onOpenAgentDirectMessage = onOpenAgentDirectMessage
+                            onOpenAgentDirectMessage = onOpenDirectMessage
                         )
                         MemberDetailTab.Reminders -> AgentRemindersPanel(state = agentRemindersState)
                         MemberDetailTab.Workspace ->
@@ -805,7 +818,8 @@ private fun MemberDetailScreen(
 private fun MemberDetailHeader(
     member: MemberProfile,
     onBack: () -> Unit,
-    closeMode: Boolean = false
+    closeMode: Boolean = false,
+    onOpenDirectMessage: (() -> Unit)? = null
 ) {
     DeclareStatusBarColor(SlockColor.SurfaceWhite)
     Row(
@@ -855,6 +869,14 @@ private fun MemberDetailHeader(
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (member.kind != MemberKind.System && onOpenDirectMessage != null) {
+            SlockIconSquareButton(
+                icon = LucideIcons.MessageSquare,
+                contentDescription = "Open direct message",
+                onClick = onOpenDirectMessage,
+                modifier = Modifier.size(38.dp)
             )
         }
     }
