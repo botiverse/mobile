@@ -6,8 +6,11 @@ import androidx.compose.runtime.LaunchedEffect
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
@@ -23,6 +26,7 @@ import kotlinx.serialization.json.Json
 
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
 const val SETTINGS_TAB_BAR_SMOKE_PAGE = "compose_settings_tabbar_smoke"
+const val BOTTOM_TAB_BAR_SMOKE_PAGE = "compose_bottom_tabbar_smoke"
 
 @Page(SETTINGS_HOME_PAGE, supportInLocal = true)
 internal class ComposeSettingsHomePage : ai.slock.compose.base.BasePager() {
@@ -42,6 +46,14 @@ internal class ComposeSettingsTabBarSmokePage : ai.slock.compose.base.BasePager(
                 onSelect = {}
             )
         }
+    }
+}
+
+@Page(BOTTOM_TAB_BAR_SMOKE_PAGE, supportInLocal = true)
+internal class ComposeBottomTabBarSmokePage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { BottomTabBarSmokeContent() }
     }
 }
 
@@ -106,6 +118,58 @@ private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
         )
     )
 )
+
+private val bottomTabBarSmokeItems = listOf(
+    SlockBottomTabItemPayload("home", "HOME", "house"),
+    SlockBottomTabItemPayload("tasks", "TASKS", "square-check-big", selected = true),
+    SlockBottomTabItemPayload("members", "MEMBERS", "users"),
+    SlockBottomTabItemPayload("settings", "SETTINGS", "settings")
+)
+
+@Composable
+private fun BottomTabBarSmokeContent() {
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                "Bottom TabBar",
+                style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                "Harmony smoke preview",
+                style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                bottomTabBarSmokeItems.forEach { item ->
+                    Text(
+                        text = item.label,
+                        style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
+                        color = SlockColor.TextMutedGray,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.weight(1f))
+        SlockBottomTabBar(
+            items = bottomTabBarSmokeItems,
+            onSelect = {},
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+    }
+}
 
 @Composable
 private fun SettingsHomeScreen() {

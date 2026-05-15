@@ -7,9 +7,11 @@ import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
@@ -33,6 +35,15 @@ internal data class SlockTabItemPayload(
     val enabled: Boolean = true
 )
 
+@Serializable
+internal data class SlockBottomTabItemPayload(
+    val key: String = "",
+    val label: String = "",
+    val iconName: String = "",
+    val selected: Boolean = false,
+    val enabled: Boolean = true
+)
+
 @Composable
 internal fun SlockVerticalTabBar(
     items: List<SlockTabItemPayload>,
@@ -48,6 +59,58 @@ internal fun SlockVerticalTabBar(
                 drawTopBorder = index == 0,
                 onSelect = onSelect
             )
+        }
+    }
+}
+
+@Composable
+internal fun SlockBottomTabBar(
+    items: List<SlockBottomTabItemPayload>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(53.dp)
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+            items.forEachIndexed { index, item ->
+                val selected = item.selected
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                        .clickable(enabled = item.enabled) { onSelect(item.key) }
+                        .padding(horizontal = 4.dp, vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
+                ) {
+                    SlockLucideIcon(
+                        name = item.iconName.takeIf { it.isNotBlank() } ?: "circle",
+                        color = if (item.enabled) "#FF000000" else "#FF737373",
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = item.label.uppercase(),
+                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextBlack),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (index < items.lastIndex) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(SlockStroke.Default)
+                            .background(SlockColor.BorderBlack)
+                    )
+                }
+            }
         }
     }
 }
