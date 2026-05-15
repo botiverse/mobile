@@ -40,6 +40,20 @@ class TaskDisplayTextTest {
     }
 
     @Test
+    fun displayTitleRemovesDuplicateNumberPrefixFromMeaningfulTitle() {
+        val task =
+            TaskSummary(
+                id = TaskId("task-21"),
+                title = "#21 Fix Tasks list display",
+                status = TaskStatus.InReview,
+                taskNumber = 21,
+                updatedAtLabel = ""
+            )
+
+        assertEquals("#21 Fix Tasks list display", task.tasksDisplayTitle())
+    }
+
+    @Test
     fun assigneeDisplayHidesRawUuidFallbacks() {
         val task =
             TaskSummary(

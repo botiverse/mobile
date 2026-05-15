@@ -4583,13 +4583,25 @@ private fun JsonObject.toTaskSummary(): TaskSummary? {
 private fun JsonObject.taskDisplayTitle(taskNumber: Int?): String? {
     val candidates =
             listOfNotNull(
+                    string("taskTitle", "task_title", "displayTitle", "display_title"),
                     string("title"),
                     string("content"),
                     string("description"),
                     string("body"),
                     string("text"),
-                    firstObject("message", "parentMessage", "sourceMessage")
-                            ?.string("body", "content", "text", "title")
+                    string(
+                            "messageBody",
+                            "messageContent",
+                            "messageText",
+                            "parentMessageBody",
+                            "parentMessageContent",
+                            "parentMessagePreview",
+                            "sourceMessageBody",
+                            "sourceMessageContent",
+                            "preview"
+                    ),
+                    firstObject("message", "parentMessage", "sourceMessage", "originMessage")
+                            ?.string("body", "content", "text", "title", "preview")
             )
     return candidates.firstNotNullOfOrNull { candidate ->
         candidate.takeMeaningfulTaskTitle(taskNumber)
@@ -4600,6 +4612,10 @@ private fun String.takeMeaningfulTaskTitle(taskNumber: Int?): String? {
     val trimmed = trim()
     if (trimmed.isBlank()) return null
     val number = taskNumber ?: return trimmed
+    val withoutNumberPrefix =
+            trimmed.replaceFirst(Regex("""^\s*(?:task\s*)?#$number(?:\s*[-:：,，]\s*|\s+)""", RegexOption.IGNORE_CASE), "")
+                    .trim()
+    if (withoutNumberPrefix.isNotBlank() && withoutNumberPrefix != trimmed) return withoutNumberPrefix
     val placeholders =
             setOf(
                     "#$number",

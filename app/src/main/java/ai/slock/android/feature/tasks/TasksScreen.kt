@@ -1125,6 +1125,12 @@ private fun String.tasksMeaningfulTitle(taskNumber: Int?): String? {
     val trimmed = trim()
     if (trimmed.isBlank()) return null
     val number = taskNumber ?: return trimmed
+    val withoutNumberPrefix =
+        trimmed.replaceFirst(
+            Regex("""^\s*(?:task\s*)?#$number(?:\s*[-:：,，]\s*|\s+)""", RegexOption.IGNORE_CASE),
+            ""
+        ).trim()
+    if (withoutNumberPrefix.isNotBlank() && withoutNumberPrefix != trimmed) return withoutNumberPrefix
     val placeholders =
         setOf(
             "#$number",

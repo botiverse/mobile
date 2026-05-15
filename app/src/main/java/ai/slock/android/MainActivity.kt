@@ -9597,7 +9597,7 @@ private fun AuthRestoreScreen(modifier: Modifier = Modifier) {
             AuthLogoBadge(text = stringResource(R.string.auth_logo))
             Text(
                     text = stringResource(R.string.auth_tagline),
-                    style = SlockType.Body,
+                    style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
                     color = SlockColor.TextMutedGray
             )
         }

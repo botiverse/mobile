@@ -1452,6 +1452,20 @@ class RealSlockRepositoriesTest {
                       "content": "Fix the Tasks list display",
                       "status": "in_review",
                       "taskNumber": 20
+                    },
+                    {
+                      "id": "task-parent-preview",
+                      "title": "#21",
+                      "parentMessagePreview": "Fix task details rendering",
+                      "status": "todo",
+                      "taskNumber": 21
+                    },
+                    {
+                      "id": "task-prefixed-content",
+                      "title": "#22",
+                      "content": "#22 Keep only one task number",
+                      "status": "todo",
+                      "taskNumber": 22
                     }
                   ]
                 }
@@ -1467,7 +1481,9 @@ class RealSlockRepositoriesTest {
 
         assertTrue(tasks is DataResult.Content)
         val snapshot = (tasks as DataResult.Content).data
-        assertEquals("Fix the Tasks list display", snapshot.tasks.single().title)
+        assertEquals("Fix the Tasks list display", snapshot.tasks[0].title)
+        assertEquals("Fix task details rendering", snapshot.tasks[1].title)
+        assertEquals("Keep only one task number", snapshot.tasks[2].title)
     }
 
     @Test
