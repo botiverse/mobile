@@ -14075,7 +14075,7 @@ private fun SettingsDestinationContent(
         SettingsDestination.Account ->
                 SettingsSecondaryScreen(
                         title = stringResource(R.string.settings_account_title),
-                        showBack = compact,
+                        showBack = destination.showSettingsBackButton(compact),
                         bottomContentPadding = bottomContentPadding,
                         onBack = { onDestinationChange(SettingsDestination.Home) }
                 ) {
@@ -14098,7 +14098,7 @@ private fun SettingsDestinationContent(
         SettingsDestination.Computers ->
                 SettingsSecondaryScreen(
                         title = stringResource(R.string.settings_computers_title),
-                        showBack = compact,
+                        showBack = destination.showSettingsBackButton(compact),
                         bottomContentPadding = bottomContentPadding,
                         onBack = { onDestinationChange(SettingsDestination.Home) }
                 ) {
@@ -14116,7 +14116,7 @@ private fun SettingsDestinationContent(
         SettingsDestination.ComputerDetail ->
                 SettingsSecondaryScreen(
                         title = stringResource(R.string.settings_computer_detail_title),
-                        showBack = compact,
+                        showBack = destination.showSettingsBackButton(compact),
                         bottomContentPadding = bottomContentPadding,
                         onBack = { onDestinationChange(SettingsDestination.Computers) }
                 ) {
@@ -14135,7 +14135,7 @@ private fun SettingsDestinationContent(
         SettingsDestination.Server ->
                 SettingsSecondaryScreen(
                         title = stringResource(R.string.settings_server_title),
-                        showBack = compact,
+                        showBack = destination.showSettingsBackButton(compact),
                         bottomContentPadding = bottomContentPadding,
                         onBack = { onDestinationChange(SettingsDestination.Home) }
                 ) {
@@ -14157,7 +14157,7 @@ private fun SettingsDestinationContent(
         SettingsDestination.Billing ->
                 SettingsSecondaryScreen(
                         title = stringResource(R.string.settings_billing_title),
-                        showBack = compact,
+                        showBack = destination.showSettingsBackButton(compact),
                         bottomContentPadding = bottomContentPadding,
                         onBack = { onDestinationChange(SettingsDestination.Home) }
                 ) {
@@ -14169,7 +14169,7 @@ private fun SettingsDestinationContent(
         SettingsDestination.Mobile ->
                 SettingsSecondaryScreen(
                         title = stringResource(R.string.settings_mobile_title),
-                        showBack = compact,
+                        showBack = destination.showSettingsBackButton(compact),
                         bottomContentPadding = bottomContentPadding,
                         onBack = { onDestinationChange(SettingsDestination.Home) }
                 ) {
@@ -14204,7 +14204,7 @@ private fun SettingsDestinationContent(
         SettingsDestination.Storage ->
                 SettingsSecondaryScreen(
                         title = stringResource(R.string.settings_storage_title),
-                        showBack = compact,
+                        showBack = destination.showSettingsBackButton(compact),
                         bottomContentPadding = bottomContentPadding,
                         onBack = { onDestinationChange(SettingsDestination.Home) }
                 ) {
@@ -14219,7 +14219,7 @@ private fun SettingsDestinationContent(
         SettingsDestination.About ->
                 SettingsSecondaryScreen(
                         title = stringResource(R.string.settings_about_title),
-                        showBack = compact,
+                        showBack = destination.showSettingsBackButton(compact),
                         bottomContentPadding = bottomContentPadding,
                         onBack = { onDestinationChange(SettingsDestination.Home) }
                 ) {
@@ -14233,7 +14233,7 @@ private fun SettingsDestinationContent(
         SettingsDestination.Diagnostics ->
                 SettingsSecondaryScreen(
                         title = stringResource(R.string.settings_about_diagnostics_title),
-                        showBack = compact,
+                        showBack = destination.showSettingsBackButton(compact),
                         bottomContentPadding = bottomContentPadding,
                         onBack = { onDestinationChange(SettingsDestination.About) }
                 ) {
@@ -14259,6 +14259,11 @@ private fun String.toSettingsDestination(): SettingsDestination =
             SettingsDestination.About.key -> SettingsDestination.About
             else -> SettingsDestination.Home
         }
+
+private fun SettingsDestination.showSettingsBackButton(compact: Boolean): Boolean =
+        compact ||
+                this == SettingsDestination.ComputerDetail ||
+                this == SettingsDestination.Diagnostics
 
 private fun LargeScreenNavigationPreference.toSlockLargeScreenNavigationStyle():
         SlockLargeScreenNavigationStyle =
