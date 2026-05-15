@@ -69,55 +69,6 @@ internal fun SlockHomeActionRowKuikly(
 }
 
 @Composable
-internal fun SlockHomeShellKuikly(
-        currentServerName: String,
-        currentServerId: String,
-        servers: List<SlockServerSwitcherItem>,
-        channels: List<SlockHomeConversationItem>,
-        directMessages: List<SlockHomeConversationItem>,
-        selectedChannelId: String?,
-        serverUnreadCount: Int,
-        inboxUnreadCount: Int,
-        savedCount: Int,
-        serverSwitcherExpanded: Boolean,
-        labels: SlockHomeShellLabels,
-        modifier: Modifier = Modifier,
-        onAction: (String, String?) -> Unit
-) {
-    SlockKuiklyPageIsland(
-            pageName = SlockKuiklyActivity.PAGE_HOME_SHELL,
-            pageData =
-                    JSONObject()
-                            .put(
-                                    "payload",
-                                    JSONObject()
-                                            .put("serverName", currentServerName)
-                                            .put("currentServerId", currentServerId)
-                                            .put("servers", servers.toJsonArray())
-                                            .put("serverSwitcherExpanded", serverSwitcherExpanded)
-                                            .put("unreadCount", serverUnreadCount)
-                                            .put("searchLabel", labels.search)
-                                            .put("inboxLabel", labels.inbox)
-                                            .put("inboxUnreadCount", inboxUnreadCount)
-                                            .put("savedLabel", labels.saved)
-                                            .put("savedCount", savedCount)
-                                            .put("channelsLabel", labels.channels)
-                                            .put("channels", channels.toHomeJsonArray(selectedChannelId, showAvatar = false))
-                                            .put("directMessagesLabel", labels.directMessages)
-                                            .put("directMessages", directMessages.toHomeJsonArray(selectedChannelId, showAvatar = true))
-                                            .toString()
-                            ),
-            modifier = modifier,
-            onEvent = { event ->
-                onAction(
-                        event.optString("action").takeIf { it.isNotBlank() }.orEmpty(),
-                        event.optString("itemId").takeIf { it.isNotBlank() }
-                )
-            }
-    )
-}
-
-@Composable
 internal fun SlockHomeConversationRowKuikly(
         id: String,
         name: String,
@@ -324,28 +275,6 @@ private fun List<SlockServerSwitcherItem>.toJsonArray(): JSONArray {
                         .put("name", server.name)
                         .put("slug", server.slug)
                         .put("unreadCount", server.unreadCount)
-        )
-    }
-    return array
-}
-
-private fun List<SlockHomeConversationItem>.toHomeJsonArray(
-        selectedChannelId: String?,
-        showAvatar: Boolean
-): JSONArray {
-    val array = JSONArray()
-    forEach { item ->
-        array.put(
-                JSONObject()
-                        .put("id", item.id)
-                        .put("name", item.name)
-                        .put("symbol", if (showAvatar) "" else "#")
-                        .put("avatarLabel", item.avatarLabel.takeIf { showAvatar })
-                        .put("presence", item.presence?.name?.lowercase())
-                        .put("badge", item.unreadCount.takeIf { it > 0 }?.toString())
-                        .put("hasDraft", item.hasDraft)
-                        .put("joined", item.joined)
-                        .put("selected", item.id == selectedChannelId)
         )
     }
     return array

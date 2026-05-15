@@ -3,10 +3,7 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -163,9 +160,6 @@ internal data class KuiklyHomeConversationRowPayload(
 internal data class KuiklyHomeShellPayload(
     val instanceId: String = "",
     val serverName: String = "Slock",
-    val currentServerId: String = "",
-    val servers: List<KuiklyHomeServerItem> = emptyList(),
-    val serverSwitcherExpanded: Boolean = false,
     val unreadCount: Int = 0,
     val searchLabel: String = "Search",
     val inboxLabel: String = "Inbox",
@@ -297,23 +291,6 @@ internal fun SlockHomeShell(
     onAction: (String, String?) -> Unit
 ) {
     val topSafeArea = homeTopSafeAreaPadding()
-    var serverSwitcherExpanded by remember(payload.instanceId, payload.serverSwitcherExpanded) {
-        mutableStateOf(payload.serverSwitcherExpanded)
-    }
-    var channelsExpanded by remember(payload.instanceId, payload.channelsExpanded) {
-        mutableStateOf(payload.channelsExpanded)
-    }
-    var directMessagesExpanded by remember(payload.instanceId, payload.directMessagesExpanded) {
-        mutableStateOf(payload.directMessagesExpanded)
-    }
-    var channelsReversed by remember(payload.instanceId) { mutableStateOf(false) }
-    var directMessagesReversed by remember(payload.instanceId) { mutableStateOf(false) }
-    val displayedChannels = remember(payload.channels, channelsReversed) {
-        if (channelsReversed) payload.channels.asReversed() else payload.channels
-    }
-    val displayedDirectMessages = remember(payload.directMessages, directMessagesReversed) {
-        if (directMessagesReversed) payload.directMessages.asReversed() else payload.directMessages
-    }
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         if (topSafeArea > 0f) {
             Spacer(
@@ -329,33 +306,12 @@ internal fun SlockHomeShell(
                     serverName = payload.serverName,
                     unreadCount = payload.unreadCount
                 ),
-                onClick = {
-                    serverSwitcherExpanded = !serverSwitcherExpanded
-                    onAction("openServerSwitcher", null)
-                }
+                onClick = { onAction("openServerSwitcher", null) }
             )
-        }
-        if (serverSwitcherExpanded) {
-            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                SlockHomeServerSwitcher(
-                    payload =
-                        KuiklyHomeServerSwitcherPayload(
-                            currentServerId = payload.currentServerId,
-                            servers = payload.servers,
-                            noServersLabel = "No servers available",
-                            createServerLabel = "Switch or create server"
-                        ),
-                    onAction = { action, itemId ->
-                        if (action == "selectServer") serverSwitcherExpanded = false
-                        onAction(action, itemId)
-                    }
-                )
-            }
-            Box(modifier = Modifier.fillMaxWidth().height(4.dp).background(SlockColor.SurfaceWhite))
         }
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             item {
                 Box(modifier = Modifier.fillMaxWidth().height(38.dp)) {
@@ -378,23 +334,17 @@ internal fun SlockHomeShell(
                         KuiklyHomeSectionHeaderPayload(
                             label = payload.channelsLabel,
                             count = payload.channels.size,
-                            expanded = channelsExpanded,
+                            expanded = payload.channelsExpanded,
                             showAdd = true
                         ),
-                        onAction = { action ->
-                            when (action) {
-                                "toggle" -> channelsExpanded = !channelsExpanded
-                                "sort" -> channelsReversed = !channelsReversed
-                            }
-                            onAction("channels.$action", null)
-                        }
+                        onAction = { onAction("channels.$it", null) }
                     )
                 }
             }
-            if (channelsExpanded) {
-                items(displayedChannels.size) { index ->
+            if (payload.channelsExpanded) {
+                items(payload.channels.size) { index ->
                     Box(modifier = Modifier.fillMaxWidth().height(32.dp)) {
-                        val item = displayedChannels[index]
+                        val item = payload.channels[index]
                         SlockHomeConversationRow(item) { onAction("openChannel", item.id) }
                     }
                 }
@@ -405,22 +355,16 @@ internal fun SlockHomeShell(
                         KuiklyHomeSectionHeaderPayload(
                             label = payload.directMessagesLabel,
                             count = payload.directMessages.size,
-                            expanded = directMessagesExpanded
+                            expanded = payload.directMessagesExpanded
                         ),
-                        onAction = { action ->
-                            when (action) {
-                                "toggle" -> directMessagesExpanded = !directMessagesExpanded
-                                "sort" -> directMessagesReversed = !directMessagesReversed
-                            }
-                            onAction("directMessages.$action", null)
-                        }
+                        onAction = { onAction("directMessages.$it", null) }
                     )
                 }
             }
-            if (directMessagesExpanded) {
-                items(displayedDirectMessages.size) { index ->
+            if (payload.directMessagesExpanded) {
+                items(payload.directMessages.size) { index ->
                     Box(modifier = Modifier.fillMaxWidth().height(32.dp)) {
-                        val item = displayedDirectMessages[index]
+                        val item = payload.directMessages[index]
                         SlockHomeConversationRow(item) { onAction("openDirectMessage", item.id) }
                     }
                 }

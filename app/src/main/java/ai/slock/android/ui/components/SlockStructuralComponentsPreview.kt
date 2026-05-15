@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
@@ -44,13 +46,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.text
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -229,6 +225,13 @@ fun SlockStructuralHomeShell(
     onChannelClick: (String) -> Unit = {}
 ) {
     val labels = SlockHomeShellLabels.defaults()
+    var channelsExpanded by rememberSaveable { mutableStateOf(true) }
+    var directMessagesExpanded by rememberSaveable { mutableStateOf(true) }
+    var channelsReversed by rememberSaveable { mutableStateOf(false) }
+    var directMessagesReversed by rememberSaveable { mutableStateOf(false) }
+    val displayedChannels = if (channelsReversed) channels.asReversed() else channels
+    val displayedDirectMessages =
+        if (directMessagesReversed) directMessages.asReversed() else directMessages
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -242,57 +245,120 @@ fun SlockStructuralHomeShell(
                     .fillMaxWidth()
                     .background(SlockColor.SurfaceWhite)
         ) {
-            HomeRefreshableContent(
-                refreshing = contentRefreshing,
-                refreshEnabled = contentRefreshEnabled,
-                onRefresh = onContentRefresh,
-                modifier = Modifier.fillMaxSize()
-            ) { offset ->
-                SlockHomeShellKuikly(
-                    currentServerName = currentServerName,
-                    currentServerId = currentServerId,
-                    servers = servers,
-                    channels = channels,
-                    directMessages = directMessages,
-                    selectedChannelId = selectedChannelId,
+            Column(modifier = Modifier.fillMaxSize()) {
+                HomeWorkspaceHeader(
+                    serverName = currentServerName,
                     serverUnreadCount = serverUnreadCount,
-                    inboxUnreadCount = inboxUnreadCount,
-                    savedCount = savedCount,
-                    serverSwitcherExpanded = serverSwitcherExpanded,
-                    labels = labels,
+                    onServerBadgeClick = onServerBadgeClick
+                )
+                HomeRefreshableContent(
+                    refreshing = contentRefreshing,
+                    refreshEnabled = contentRefreshEnabled,
+                    onRefresh = onContentRefresh,
                     modifier = Modifier
-                        .fillMaxSize()
-                        .offset(y = offset)
-                        .padding(bottom = bottomContentPadding),
-                    onAction = { action, itemId ->
-                        when (action) {
-                            "openServerSwitcher" -> onServerBadgeClick()
-                            "selectServer" -> itemId?.let(onServerSelected)
-                            "createServer" -> onCreateServerClick()
-                            "search" -> onSearchClick()
-                            "inbox" -> onInboxClick()
-                            "saved" -> onSavedClick()
-                            "channels.add" -> onCreateChannelClick()
-                            "openChannel", "openDirectMessage" -> itemId?.let(onChannelClick)
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .offset(y = it),
+                        contentPadding =
+                            PaddingValues(
+                                start = SlockSpacing.Md,
+                                top = SlockSpacing.Md,
+                                end = SlockSpacing.Md,
+                                bottom = bottomContentPadding
+                            ),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        item(key = "action-search") {
+                            SidebarActionRow(
+                                icon = LucideIcons.Search,
+                                iconName = "search",
+                                label = labels.search,
+                                onClick = onSearchClick
+                            )
+                        }
+                        item(key = "action-inbox") {
+                            SidebarActionRow(
+                                icon = LucideIcons.Inbox,
+                                iconName = "inbox",
+                                label = labels.inbox,
+                                badge = inboxUnreadCount.takeIf { it > 0 }?.toString(),
+                                onClick = onInboxClick
+                            )
+                        }
+                        item(key = "action-saved") {
+                            SidebarActionRow(
+                                icon = LucideIcons.Bookmark,
+                                iconName = "bookmark",
+                                label = labels.saved,
+                                trailingText = savedCount.takeIf { it > 0 }?.toString(),
+                                onClick = onSavedClick
+                            )
+                        }
+                        item(key = "action-spacer") {
+                            Spacer(modifier = Modifier.height(SlockSpacing.Xs))
+                        }
+                        item(key = "channels-header") {
+                            SidebarSectionHeader(
+                                label = labels.channels,
+                                count = channels.size,
+                                expanded = channelsExpanded,
+                                onExpandedChange = { channelsExpanded = it },
+                                onSortClick = { channelsReversed = !channelsReversed },
+                                onAddClick = onCreateChannelClick
+                            )
+                        }
+                        if (channelsExpanded) {
+                            items(
+                                items = displayedChannels,
+                                key = { channel -> "channel-${channel.id}" }
+                            ) { channel ->
+                                ChannelRow(
+                                    name = channel.name,
+                                    joined = channel.joined,
+                                    hasDraft = channel.hasDraft,
+                                    badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
+                                    interactionState = if (channel.id == selectedChannelId) {
+                                        ChannelRowInteractionState.Selected
+                                    } else {
+                                        ChannelRowInteractionState.Default
+                                    },
+                                    onClick = { onChannelClick(channel.id) }
+                                )
+                            }
+                        }
+                        item(key = "direct-messages-header") {
+                            SidebarSectionHeader(
+                                label = labels.directMessages,
+                                count = directMessages.size,
+                                expanded = directMessagesExpanded,
+                                onExpandedChange = { directMessagesExpanded = it },
+                                onSortClick = { directMessagesReversed = !directMessagesReversed },
+                                action = null
+                            )
+                        }
+                        if (directMessagesExpanded) {
+                            items(
+                                items = displayedDirectMessages,
+                                key = { directMessage -> "direct-message-${directMessage.id}" }
+                            ) { directMessage ->
+                                ChannelRow(
+                                    name = directMessage.name,
+                                    avatarLabel = directMessage.avatarLabel,
+                                    avatarUrl = directMessage.avatarUrl,
+                                    avatar = directMessage.avatar,
+                                    presence = directMessage.presence,
+                                    hasDraft = directMessage.hasDraft,
+                                    badge = directMessage.unreadCount.takeIf { it > 0 }?.toString(),
+                                    onClick = { onChannelClick(directMessage.id) }
+                                )
+                            }
                         }
                     }
-                )
-                HomeShellSemanticsOverlay(
-                    labels = labels,
-                    channels = channels,
-                    directMessages = directMessages,
-                    inboxUnreadCount = inboxUnreadCount,
-                    savedCount = savedCount,
-                    onAction = { action, itemId ->
-                        when (action) {
-                            "channels.toggle" -> Unit
-                            "directMessages.toggle" -> Unit
-                            "channels.sort" -> Unit
-                            "directMessages.sort" -> Unit
-                            "openChannel", "openDirectMessage" -> itemId?.let(onChannelClick)
-                        }
-                    }
-                )
+                }
             }
             HomeNotificationCenter(
                 notifications = notifications,
@@ -304,6 +370,27 @@ fun SlockStructuralHomeShell(
                         .padding(top = SlockSpacing.Lg, end = SlockSpacing.Lg)
                         .zIndex(3f)
             )
+            if (serverSwitcherExpanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onServerBadgeClick
+                        )
+                )
+                ServerSwitcherPanel(
+                    servers = servers,
+                    currentServerId = currentServerId,
+                    labels = labels,
+                    onServerSelected = onServerSelected,
+                    onCreateServerClick = onCreateServerClick,
+                    modifier = Modifier
+                        .padding(start = SlockSpacing.Lg, top = SlockSpacing.Xs)
+                        .zIndex(1f)
+                )
+            }
         }
         if (showBottomBar) {
             Box(
@@ -834,120 +921,6 @@ private val SlockPresence.homeRowColor: Color
         SlockPresence.Offline -> SlockColor.EmptyStateGray
         SlockPresence.Unknown -> SlockColor.BrandYellow
     }
-
-@Composable
-private fun HomeShellSemanticsOverlay(
-    labels: SlockHomeShellLabels,
-    channels: List<SlockHomeConversationItem>,
-    directMessages: List<SlockHomeConversationItem>,
-    inboxUnreadCount: Int,
-    savedCount: Int,
-    onAction: (String, String?) -> Unit
-) {
-    var channelsExpanded by rememberSaveable { mutableStateOf(true) }
-    var directMessagesExpanded by rememberSaveable { mutableStateOf(true) }
-    var channelsReversed by rememberSaveable { mutableStateOf(false) }
-    var directMessagesReversed by rememberSaveable { mutableStateOf(false) }
-    val displayedChannels = if (channelsReversed) channels.asReversed() else channels
-    val displayedDirectMessages =
-        if (directMessagesReversed) directMessages.asReversed() else directMessages
-    Column(
-        modifier = Modifier.fillMaxSize().padding(start = SlockSpacing.Md, top = 64.dp, end = SlockSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        HomeTransparentSemanticsText(labels.search)
-        HomeTransparentSemanticsText(labels.inbox)
-        if (inboxUnreadCount > 0) HomeTransparentSemanticsText(inboxUnreadCount.toString())
-        HomeTransparentSemanticsText(labels.saved)
-        if (savedCount > 0) HomeTransparentSemanticsText(savedCount.toString())
-        HomeTransparentSemanticsText(
-            textValue = labels.channels,
-            contentDescriptionValue = labels.channels,
-            onClick = {
-                channelsExpanded = !channelsExpanded
-                onAction("channels.toggle", null)
-            }
-        )
-        HomeTransparentSemanticsText(
-            textValue = "Sort ${labels.channels}",
-            contentDescriptionValue = "Sort ${labels.channels}",
-            onClick = {
-                channelsReversed = !channelsReversed
-                onAction("channels.sort", null)
-            }
-        )
-        if (channelsExpanded) {
-            displayedChannels.forEach { channel ->
-                HomeTransparentSemanticsText(
-                    textValue = channel.name,
-                    contentDescriptionValue = if (channel.hasDraft) "Unsent draft" else null,
-                    onClick = { onAction("openChannel", channel.id) }
-                )
-                if (channel.unreadCount > 0) {
-                    HomeTransparentSemanticsText(channel.unreadCount.toString())
-                }
-            }
-        }
-        HomeTransparentSemanticsText(
-            textValue = labels.directMessages,
-            contentDescriptionValue = labels.directMessages,
-            onClick = {
-                directMessagesExpanded = !directMessagesExpanded
-                onAction("directMessages.toggle", null)
-            }
-        )
-        HomeTransparentSemanticsText(
-            textValue = "Sort ${labels.directMessages}",
-            contentDescriptionValue = "Sort ${labels.directMessages}",
-            onClick = {
-                directMessagesReversed = !directMessagesReversed
-                onAction("directMessages.sort", null)
-            }
-        )
-        if (directMessagesExpanded) {
-            displayedDirectMessages.forEach { directMessage ->
-                HomeTransparentSemanticsText(
-                    textValue = directMessage.name,
-                    contentDescriptionValue = if (directMessage.hasDraft) "Unsent draft" else null,
-                    onClick = { onAction("openDirectMessage", directMessage.id) }
-                )
-                if (directMessage.unreadCount > 0) {
-                    HomeTransparentSemanticsText(directMessage.unreadCount.toString())
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HomeTransparentSemanticsText(
-    textValue: String,
-    contentDescriptionValue: String? = null,
-    onClick: (() -> Unit)? = null
-) {
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .then(
-                    if (onClick != null) {
-                        Modifier.clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onClick
-                        )
-                    } else {
-                        Modifier
-                    }
-                )
-                .semantics {
-                    text = AnnotatedString(textValue)
-                    contentDescriptionValue?.let { contentDescription = it }
-                    if (onClick != null) role = Role.Button
-                }
-    )
-}
 
 @Composable
 private fun PixelAvatar(spec: PixelAvatarSpec) {
