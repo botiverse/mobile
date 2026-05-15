@@ -1466,6 +1466,31 @@ class RealSlockRepositoriesTest {
                       "content": "#22 Keep only one task number",
                       "status": "todo",
                       "taskNumber": 22
+                    },
+                    {
+                      "id": "task-nested-rich-message",
+                      "title": "#23",
+                      "sourceMessage": {
+                        "content": [
+                          {
+                            "type": "paragraph",
+                            "children": [
+                              {
+                                "text": "Restore rich source message details"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "status": "todo",
+                      "taskNumber": 23
+                    },
+                    {
+                      "id": "task-message-preview",
+                      "title": "#24",
+                      "messagePreview": "Use message preview when content is absent",
+                      "status": "todo",
+                      "taskNumber": 24
                     }
                   ]
                 }
@@ -1484,6 +1509,8 @@ class RealSlockRepositoriesTest {
         assertEquals("Fix the Tasks list display", snapshot.tasks[0].title)
         assertEquals("Fix task details rendering", snapshot.tasks[1].title)
         assertEquals("Keep only one task number", snapshot.tasks[2].title)
+        assertEquals("Restore rich source message details", snapshot.tasks[3].title)
+        assertEquals("Use message preview when content is absent", snapshot.tasks[4].title)
     }
 
     @Test

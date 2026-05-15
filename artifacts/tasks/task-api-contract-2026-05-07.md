@@ -65,6 +65,7 @@ Implemented the minimum real data boundary required for the Android Tasks tab:
 - Observed status values: `todo`, `in_progress`, `in_review`, `done`, `closed`.
 - Observed `channelType`: `channel`.
 - Observed navigation-critical pair: `messageId` points to the task/source message, and `threadId` points to that task message's thread. `parentMessageId` was not present in the sampled items.
+- Android title/detail mapping treats `title` values like `#24` / `task #24` as number placeholders. In that case it falls back to known body/preview aliases (`content`, `description`, `messageBody`, `messagePreview`, `parentMessagePreview`, `sourceMessagePreview`, etc.) and nested source-message objects (`message`, `parentMessage`, `sourceMessage`, `originMessage`, `rootMessage`, `latestActivity`, `lastMessage`). Nested rich text arrays are read for their first textual child so converted-message tasks still show the original message text instead of only `#N`.
 
 ## Android Boundaries
 

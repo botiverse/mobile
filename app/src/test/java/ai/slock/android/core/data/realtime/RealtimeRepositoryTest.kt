@@ -393,6 +393,36 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun mapperUsesNestedRichTaskMessageTextWhenTitleIsOnlyNumber() {
+        val mapper = RealtimeEventMapper()
+
+        val task = mapper.map(
+            RealtimeSocketEvents.TaskUpdated,
+            mapOf(
+                "task" to mapOf(
+                    "id" to "message-task-2",
+                    "title" to "#24",
+                    "taskNumber" to 24,
+                    "status" to "todo",
+                    "sourceMessage" to mapOf(
+                        "content" to listOf(
+                            mapOf(
+                                "type" to "paragraph",
+                                "children" to listOf(
+                                    mapOf("text" to "Restore realtime task message details")
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+        assertTrue(task is TaskUpdated)
+        assertEquals("Restore realtime task message details", (task as TaskUpdated).task.title)
+    }
+
+    @Test
     fun mapperHandlesMemberPresenceEvents() {
         val mapper = RealtimeEventMapper()
 

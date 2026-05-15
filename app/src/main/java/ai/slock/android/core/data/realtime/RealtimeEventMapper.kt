@@ -435,17 +435,78 @@ private fun JsonObject.taskDisplayTitle(taskNumber: Int?): String? {
                 "parentMessageBody",
                 "parentMessageContent",
                 "parentMessagePreview",
+                "rootMessagePreview",
+                "originalMessagePreview",
                 "sourceMessageBody",
                 "sourceMessageContent",
+                "sourceMessagePreview",
+                "messagePreview",
+                "lastMessagePreview",
+                "latestActivityPreview",
                 "preview"
             ),
-            firstObject("message", "parentMessage", "sourceMessage", "originMessage")
-                ?.string("body", "content", "text", "title", "preview")
+            firstObject(
+                "message",
+                "parentMessage",
+                "sourceMessage",
+                "originMessage",
+                "rootMessage",
+                "latestActivity",
+                "lastMessage"
+            )?.taskTextValue()
         )
     return candidates.firstNotNullOfOrNull { candidate ->
         candidate.takeMeaningfulTaskTitle(taskNumber)
     }
 }
+
+private fun JsonElement.taskTextValue(): String? =
+    when {
+        isJsonPrimitive && asJsonPrimitive.isString -> asString.takeIf { it.isNotBlank() }
+        isJsonArray -> asJsonArray.firstNotNullOfOrNull { element -> element.taskTextValue() }
+        isJsonObject -> {
+            val obj = asJsonObject
+            obj.string(
+                "body",
+                "content",
+                "text",
+                "plainText",
+                "plain_text",
+                "markdown",
+                "messageBody",
+                "messageContent",
+                "messageText",
+                "preview",
+                "messagePreview",
+                "parentMessagePreview",
+                "rootMessagePreview",
+                "originalMessagePreview",
+                "sourceMessagePreview",
+                "lastMessagePreview",
+                "latestActivityPreview",
+                "summary",
+                "description",
+                "detail",
+                "details",
+                "title"
+            )
+                ?: listOf(
+                    "content",
+                    "body",
+                    "message",
+                    "parentMessage",
+                    "sourceMessage",
+                    "originMessage",
+                    "rootMessage",
+                    "latestActivity",
+                    "lastMessage",
+                    "children",
+                    "data",
+                    "payload"
+                ).firstNotNullOfOrNull { key -> obj.get(key)?.taskTextValue() }
+        }
+        else -> null
+    }
 
 private fun String.takeMeaningfulTaskTitle(taskNumber: Int?): String? {
     val trimmed = trim()
