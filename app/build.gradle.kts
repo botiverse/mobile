@@ -99,6 +99,7 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
+    implementation(libs.androidsvg)
     testImplementation(libs.ktor.client.mock)
     testImplementation(libs.junit)
     testImplementation(libs.sqldelight.sqlite.driver)

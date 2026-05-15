@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
@@ -36,10 +37,16 @@ import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegat
 import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegatorDelegate
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
-import java.util.concurrent.Executors
-import java.util.concurrent.ConcurrentHashMap
+import com.caverock.androidsvg.SVG
+import java.io.ByteArrayInputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import kotlin.math.roundToInt
 import org.json.JSONObject
 
 class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDelegate {
@@ -221,10 +228,10 @@ private class SlockKuiklyImageAdapter(
             callback: (drawable: Drawable?) -> Unit
     ) {
         when {
+            imageLoadOption.isSvgSource() -> loadSvg(imageLoadOption, callback)
             imageLoadOption.isBase64() -> loadFromBase64(imageLoadOption, callback)
             imageLoadOption.isAssets() -> loadFromAssets(imageLoadOption, callback)
-            imageLoadOption.src.startsWith("http://") || imageLoadOption.src.startsWith("https://") ->
-                    loadFromNetwork(imageLoadOption, callback)
+            imageLoadOption.isWebUrl() -> loadFromNetwork(imageLoadOption, callback)
             else -> callback(null)
         }
     }
@@ -245,11 +252,11 @@ private class SlockKuiklyImageAdapter(
     ) {
         SlockKuiklyThreadAdapter.executeOnSubThread {
             runCatching {
-                        val bytes = Base64.decode(imageLoadOption.src.substringAfter(","), Base64.DEFAULT)
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        val bytes = imageLoadOption.decodeBase64Payload()
+                        bitmapDrawableFromBytes(bytes)
                     }
-                    .onSuccess { bitmap ->
-                        callback(BitmapDrawable(context.resources, bitmap))
+                    .onSuccess { drawable ->
+                        callback(drawable)
                     }
                     .onFailure {
                         callback(null)
@@ -264,12 +271,11 @@ private class SlockKuiklyImageAdapter(
         SlockKuiklyThreadAdapter.executeOnSubThread {
             runCatching {
                         val assetPath = imageLoadOption.src.substring(HRImageLoadOption.SCHEME_ASSETS.length)
-                        context.assets.open(assetPath).use { input ->
-                            BitmapFactory.decodeStream(input)
-                        }
+                        val bytes = context.assets.open(assetPath).use { input -> input.readBytes() }
+                        drawableFromBytes(bytes, imageLoadOption, contentType = null)
                     }
-                    .onSuccess { bitmap ->
-                        callback(BitmapDrawable(context.resources, bitmap))
+                    .onSuccess { drawable ->
+                        callback(drawable)
                     }
                     .onFailure {
                         callback(null)
@@ -287,17 +293,154 @@ private class SlockKuiklyImageAdapter(
                         connection.connectTimeout = 10_000
                         connection.readTimeout = 15_000
                         connection.instanceFollowRedirects = true
-                        connection.inputStream.use { input ->
-                            BitmapFactory.decodeStream(input)
-                        }
+                        val contentType = connection.contentType
+                        val bytes = connection.inputStream.use { input -> input.readBytes() }
+                        drawableFromBytes(bytes, imageLoadOption, contentType)
                     }
-                    .onSuccess { bitmap ->
-                        callback(bitmap?.let { BitmapDrawable(context.resources, it) })
+                    .onSuccess { drawable ->
+                        callback(drawable)
                     }
                     .onFailure {
                         callback(null)
                     }
         }
+    }
+
+    private fun loadSvg(
+            imageLoadOption: HRImageLoadOption,
+            callback: (drawable: Drawable?) -> Unit
+    ) {
+        SlockKuiklyThreadAdapter.executeOnSubThread {
+            runCatching {
+                        val svgText = imageLoadOption.readSvgText()
+                        svgBitmapDrawable(svgText, imageLoadOption)
+                    }
+                    .onSuccess { drawable ->
+                        callback(drawable)
+                    }
+                    .onFailure {
+                        callback(null)
+                    }
+        }
+    }
+
+    private fun drawableFromBytes(
+            bytes: ByteArray,
+            imageLoadOption: HRImageLoadOption,
+            contentType: String?
+    ): Drawable? {
+        return if (bytes.looksLikeSvg(contentType)) {
+            svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption)
+        } else {
+            bitmapDrawableFromBytes(bytes)
+        }
+    }
+
+    private fun bitmapDrawableFromBytes(bytes: ByteArray): Drawable? {
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+        return BitmapDrawable(context.resources, bitmap)
+    }
+
+    private fun svgBitmapDrawable(svgText: String, imageLoadOption: HRImageLoadOption): Drawable {
+        val preparedSvg = imageLoadOption.svgColorOverride()
+                ?.let { color -> svgText.applySvgColor(color) }
+                ?: svgText
+        val svg = SVG.getFromInputStream(ByteArrayInputStream(preparedSvg.toByteArray(StandardCharsets.UTF_8)))
+        val width = imageLoadOption.requestWidth.takeIf { it > 0 }?.toSvgPixels()
+                ?: svg.documentWidth.takeIf { it > 0f }?.toInt()
+                ?: defaultSvgSizePx()
+        val height = imageLoadOption.requestHeight.takeIf { it > 0 }?.toSvgPixels()
+                ?: svg.documentHeight.takeIf { it > 0f }?.toInt()
+                ?: width
+        val picture = svg.renderToPicture(width, height)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        picture.draw(Canvas(bitmap))
+        return BitmapDrawable(context.resources, bitmap)
+    }
+
+    private fun defaultSvgSizePx(): Int = (24f * context.resources.displayMetrics.density).toInt().coerceAtLeast(24)
+
+    private fun Int.toSvgPixels(): Int {
+        return (this * context.resources.displayMetrics.density).roundToInt().coerceAtLeast(defaultSvgSizePx())
+    }
+
+    private fun HRImageLoadOption.readSvgText(): String {
+        val raw = src.trim()
+        if (raw.startsWith("<svg", ignoreCase = true)) {
+            return raw
+        }
+        if (raw.lowercase(Locale.US).startsWith("data:image/svg+xml")) {
+            return decodeSvgDataUri(raw)
+        }
+        if (isBase64()) {
+            return decodeBase64Payload().toString(StandardCharsets.UTF_8)
+        }
+        if (isAssets()) {
+            val assetPath = src.substring(HRImageLoadOption.SCHEME_ASSETS.length).substringBefore("?")
+            return context.assets.open(assetPath).use { input -> input.readBytes().toString(StandardCharsets.UTF_8) }
+        }
+        if (isWebUrl()) {
+            val connection = URL(src).openConnection() as HttpURLConnection
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 15_000
+            connection.instanceFollowRedirects = true
+            return connection.inputStream.use { input -> input.readBytes().toString(StandardCharsets.UTF_8) }
+        }
+        return raw
+    }
+
+    private fun HRImageLoadOption.decodeBase64Payload(): ByteArray {
+        return Base64.decode(src.substringAfter(","), Base64.DEFAULT)
+    }
+
+    private fun HRImageLoadOption.isSvgSource(): Boolean {
+        val raw = src.trimStart()
+        val normalized = raw.lowercase(Locale.US)
+        val path = normalized.substringBefore("?").substringBefore("#")
+        return raw.startsWith("<svg", ignoreCase = true) ||
+                normalized.startsWith("data:image/svg+xml") ||
+                path.endsWith(".svg")
+    }
+
+    private fun ByteArray.looksLikeSvg(contentType: String?): Boolean {
+        if (contentType?.contains("svg", ignoreCase = true) == true) {
+            return true
+        }
+        return toString(StandardCharsets.UTF_8).trimStart().startsWith("<svg", ignoreCase = true)
+    }
+
+    private fun decodeSvgDataUri(src: String): String {
+        val payload = src.substringAfter(",", missingDelimiterValue = "")
+        return if (src.substringBefore(",").contains(";base64", ignoreCase = true)) {
+            Base64.decode(payload, Base64.DEFAULT).toString(StandardCharsets.UTF_8)
+        } else {
+            URLDecoder.decode(payload, StandardCharsets.UTF_8.name())
+        }
+    }
+
+    private fun HRImageLoadOption.svgColorOverride(): String? {
+        val metadata = src.substringBefore(",", missingDelimiterValue = "")
+        val query = src.substringAfter("?", missingDelimiterValue = "")
+        return listOf(metadata, query)
+                .asSequence()
+                .flatMap { it.split("&", ";").asSequence() }
+                .mapNotNull { part ->
+                    val key = part.substringBefore("=", missingDelimiterValue = "")
+                    if (key in setOf("color", "tint", "stroke", "fill")) {
+                        part.substringAfter("=", missingDelimiterValue = "").takeIf { it.isNotBlank() }
+                    } else {
+                        null
+                    }
+                }
+                .firstOrNull()
+                ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8.name()) }
+    }
+
+    private fun String.applySvgColor(color: String): String {
+        return replace("stroke=\"currentColor\"", "stroke=\"$color\"")
+                .replace("stroke='currentColor'", "stroke='$color'")
+                .replace("fill=\"currentColor\"", "fill=\"$color\"")
+                .replace("fill='currentColor'", "fill='$color'")
     }
 }
 
