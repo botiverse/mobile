@@ -149,8 +149,17 @@ private fun appShellBottomTabs(selectedKey: String): List<SlockBottomTabItemPayl
     )
 
 @Composable
+private fun bottomSafeAreaPadding(): Float {
+    val pageData = (LocalActivity.current.getPager() as Pager).pageData
+    val safeBottom = pageData.safeAreaInsets.bottom
+    val androidBottom = pageData.androidBottomBavBarHeight
+    return safeBottom.coerceAtLeast(androidBottom).coerceAtLeast(0f)
+}
+
+@Composable
 private fun SlockAppShellContent() {
     var selectedTab by remember { mutableStateOf("home") }
+    val bottomSafeArea = bottomSafeAreaPadding()
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when (selectedTab) {
@@ -177,7 +186,7 @@ private fun SlockAppShellContent() {
             onSelect = { selectedTab = it },
             modifier = Modifier.fillMaxWidth()
         )
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height((bottomSafeArea + 4f).dp))
     }
 }
 
@@ -211,6 +220,7 @@ private fun AppShellPlaceholderContent(
 
 @Composable
 private fun BottomTabBarSmokeContent() {
+    val bottomSafeArea = bottomSafeAreaPadding()
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -250,7 +260,7 @@ private fun BottomTabBarSmokeContent() {
             onSelect = {},
             modifier = Modifier.fillMaxWidth()
         )
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height((bottomSafeArea + 4f).dp))
     }
 }
 
