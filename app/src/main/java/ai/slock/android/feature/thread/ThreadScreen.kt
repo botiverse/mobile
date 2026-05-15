@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package ai.slock.android.feature.thread
 
 import ai.slock.android.R
@@ -106,10 +108,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -5080,6 +5084,9 @@ private fun Modifier.messageContentWidth(
     }
 }
 
+private val ThreadAttachmentCardSize = 92.dp
+private val ThreadAttachmentHorizontalLayoutMinWidth = 320.dp
+
 @Composable
 private fun ThreadMessageAttachments(
         attachments: List<Attachment>,
@@ -5093,12 +5100,10 @@ private fun ThreadMessageAttachments(
     var attachmentCardBounds by remember(attachmentIds) {
         mutableStateOf<Map<AttachmentId, Rect>>(emptyMap())
     }
-    Column(
-            modifier = modifier,
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-            horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start
-    ) {
-        attachments.forEach { attachment ->
+    BoxWithConstraints(modifier = modifier) {
+        val useHorizontalLayout = maxWidth >= ThreadAttachmentHorizontalLayoutMinWidth
+        @Composable
+        fun AttachmentItem(attachment: Attachment) {
             ThreadAttachmentCard(
                     attachment = attachment,
                     state = states[attachment.id] ?: AttachmentOpenUiState(),
@@ -5114,6 +5119,30 @@ private fun ThreadMessageAttachments(
                                 onInteractiveBoundsChanged(nextBounds.values.toList())
                             }
             )
+        }
+        if (useHorizontalLayout) {
+            FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement =
+                            Arrangement.spacedBy(
+                                    SlockSpacing.Sm,
+                                    if (alignEnd) Alignment.End else Alignment.Start
+                            ),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                attachments.forEach { attachment ->
+                    AttachmentItem(attachment)
+                }
+            }
+        } else {
+            Column(
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                    horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start
+            ) {
+                attachments.forEach { attachment ->
+                    AttachmentItem(attachment)
+                }
+            }
         }
     }
 }
@@ -5136,7 +5165,7 @@ private fun ThreadAttachmentCard(
             }
     Box(
             modifier =
-                    modifier.size(92.dp)
+                    modifier.size(ThreadAttachmentCardSize)
                             .background(
                                     SlockColor.EmptyStateGray.copy(alpha = 0.22f),
                                     RoundedCornerShape(SlockRadius.Xs)
@@ -7691,6 +7720,12 @@ private fun ThreadMessageRightAlignedPreview() {
                                                                     "very-long-file-name-for-right-layout.pdf",
                                                             mimeType = "application/pdf",
                                                             sizeLabel = "248 KB"
+                                                    ),
+                                                    Attachment(
+                                                            id = AttachmentId("right-attachment-2"),
+                                                            name = "screenshot.png",
+                                                            mimeType = "image/png",
+                                                            sizeLabel = "1.2 MB"
                                                     )
                                             ),
                                     replyCount = 3
