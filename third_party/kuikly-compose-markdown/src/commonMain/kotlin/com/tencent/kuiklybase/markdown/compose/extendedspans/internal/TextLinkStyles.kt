@@ -1,0 +1,16 @@
+package com.tencent.kuiklybase.markdown.compose.extendedspans.internal
+
+import com.tencent.kuikly.compose.ui.text.SpanStyle
+import com.tencent.kuikly.compose.ui.text.TextLinkStyles
+
+/**
+ * Updates the [TextLinkStyles] with the provided [block].
+ */
+fun TextLinkStyles.update(block: SpanStyle.() -> SpanStyle): TextLinkStyles {
+    return TextLinkStyles(
+        style = style?.run(block),
+        focusedStyle = focusedStyle?.run(block),
+        hoveredStyle = focusedStyle?.run(block),
+        pressedStyle = focusedStyle?.run(block),
+    )
+}

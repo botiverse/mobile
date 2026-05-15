@@ -1,0 +1,146 @@
+// Copyright 2023, Saket Narayan
+// SPDX-License-Identifier: Apache-2.0
+// https://github.com/saket/extended-spans
+package com.tencent.kuiklybase.markdown.compose.extendedspans
+
+import com.tencent.kuikly.compose.ui.geometry.CornerRadius
+import com.tencent.kuikly.compose.ui.geometry.RoundRect
+import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.Path
+import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
+import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
+import com.tencent.kuikly.compose.ui.graphics.isUnspecified
+import com.tencent.kuikly.compose.ui.text.AnnotatedString
+import com.tencent.kuikly.compose.ui.text.LinkAnnotation
+import com.tencent.kuikly.compose.ui.text.SpanStyle
+import com.tencent.kuikly.compose.ui.text.TextLayoutResult
+import com.tencent.kuikly.compose.ui.unit.TextUnit
+import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.compose.ui.util.fastForEach
+import com.tencent.kuikly.compose.ui.util.fastForEachIndexed
+import com.tencent.kuiklybase.markdown.compose.extendedspans.internal.deserializeToColor
+import com.tencent.kuiklybase.markdown.compose.extendedspans.internal.serialize
+import com.tencent.kuiklybase.markdown.compose.extendedspans.internal.update
+
+/**
+ * Draws round rectangles behind text annotated using `SpanStyle(background = …)`.
+ *
+ * [topMargin] and [bottomMargin] are placeholder values that will be automatically calculated from font metrics
+ * in the future once Compose UI starts exposing them ([Issue tracker](https://issuetracker.google.com/u/1/issues/237428541)).
+ * In the meantime, you can calculate these depending upon your text's font size and line height.
+ */
+class RoundedCornerSpanPainter(
+    private val cornerRadius: TextUnit = 8.sp,
+    private val stroke: Stroke? = null,
+    private val padding: TextPaddingValues = TextPaddingValues(horizontal = 2.sp, vertical = 2.sp),
+    private val topMargin: TextUnit = 1.sp,
+    private val bottomMargin: TextUnit = 1.sp,
+) : ExtendedSpanPainter() {
+    private val path = Path()
+
+    override fun decorate(
+        span: SpanStyle,
+        start: Int,
+        end: Int,
+        text: AnnotatedString,
+        builder: AnnotatedString.Builder,
+    ): SpanStyle {
+        return if (span.background.isUnspecified) {
+            span
+        } else {
+            builder.addStringAnnotation(TAG, annotation = span.background.serialize(), start = start, end = end)
+            span.copy(background = Color.Unspecified)
+        }
+    }
+
+    override fun decorate(
+        linkAnnotation: LinkAnnotation,
+        start: Int,
+        end: Int,
+        text: AnnotatedString,
+        builder: AnnotatedString.Builder,
+    ): LinkAnnotation {
+        val defaultStyle = linkAnnotation.styles?.style
+        // return fast if background is not set
+        if (defaultStyle == null || defaultStyle.background.isUnspecified) return linkAnnotation
+        builder.addStringAnnotation(TAG, annotation = defaultStyle.background.serialize(), start = start, end = end)
+        val updatedTextLinkStyles = linkAnnotation.styles?.update { copy(background = Color.Unspecified) }
+        return when (linkAnnotation) {
+            is LinkAnnotation.Url -> {
+                LinkAnnotation.Url(linkAnnotation.url, updatedTextLinkStyles, linkAnnotation.linkInteractionListener)
+            }
+            is LinkAnnotation.Clickable -> {
+                LinkAnnotation.Clickable(linkAnnotation.tag, updatedTextLinkStyles, linkAnnotation.linkInteractionListener)
+            }
+            else -> throw IllegalStateException("Unsupported LinkAnnotation type: $linkAnnotation")
+        }
+    }
+
+    override fun drawInstructionsFor(layoutResult: TextLayoutResult, color: Color?): SpanDrawInstructions {
+        val text = layoutResult.layoutInput.text
+        val annotations = text.getStringAnnotations(TAG, start = 0, end = text.length)
+
+        return SpanDrawInstructions {
+            val cornerRadius = CornerRadius(cornerRadius.toPx())
+
+            annotations.fastForEach { annotation ->
+                val backgroundColor = annotation.item.deserializeToColor()!!
+                val boxes = layoutResult.getBoundingBoxes(
+                    startOffset = annotation.start,
+                    endOffset = annotation.end,
+                    flattenForFullParagraphs = true
+                )
+                boxes.fastForEachIndexed { index, box ->
+                    path.rewind()
+                    path.addRoundRect(
+                        RoundRect(
+                            rect = box.copy(
+                                left = box.left - padding.horizontal.toPx(),
+                                right = box.right + padding.horizontal.toPx(),
+                                top = box.top - padding.vertical.toPx() + topMargin.toPx(),
+                                bottom = box.bottom + padding.vertical.toPx() - bottomMargin.toPx(),
+                            ),
+                            topLeft = if (index == 0) cornerRadius else CornerRadius.Zero,
+                            bottomLeft = if (index == 0) cornerRadius else CornerRadius.Zero,
+                            topRight = if (index == boxes.lastIndex) cornerRadius else CornerRadius.Zero,
+                            bottomRight = if (index == boxes.lastIndex) cornerRadius else CornerRadius.Zero
+                        )
+                    )
+                    drawPath(
+                        path = path,
+                        color = backgroundColor,
+                        style = Fill
+                    )
+                    if (stroke != null) {
+                        drawPath(
+                            path = path,
+                            color = stroke.color(backgroundColor),
+                            style = Stroke(
+                                width = stroke.width.toPx(),
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    data class Stroke(
+        val color: (background: Color) -> Color,
+        val width: TextUnit = 1.sp,
+    ) {
+        constructor(color: Color, width: TextUnit = 1.sp) : this(
+            color = { color },
+            width = width
+        )
+    }
+
+    data class TextPaddingValues(
+        val horizontal: TextUnit = 0.sp,
+        val vertical: TextUnit = 0.sp,
+    )
+
+    companion object {
+        private const val TAG = "rounded_corner_span"
+    }
+}
