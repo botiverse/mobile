@@ -125,12 +125,6 @@ private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
             iconName = "archive"
         ),
         SlockTabItemPayload(
-            key = "router",
-            title = "Router",
-            subtitle = "Open Kuikly page router for smoke testing",
-            iconName = "play"
-        ),
-        SlockTabItemPayload(
             key = "about",
             title = "About",
             subtitle = "Version, diagnostics, feedback",
@@ -166,7 +160,6 @@ private fun bottomSafeAreaPadding(): Float {
 private fun SlockAppShellContent() {
     var selectedTab by remember { mutableStateOf("home") }
     var selectedSettingsDestination by remember { mutableStateOf("home") }
-    val pager = LocalActivity.current.getPager() as Pager
     val bottomSafeArea = bottomSafeAreaPadding()
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -179,13 +172,7 @@ private fun SlockAppShellContent() {
                     } else {
                         SettingsHomeContent(
                             settingsTabBarSmokePayload.copy(subtitle = "Shared settings"),
-                            onSelect = {
-                                if (it == "router") {
-                                    jumpPage(pager, "router")
-                                } else {
-                                    selectedSettingsDestination = it
-                                }
-                            }
+                            onSelect = { selectedSettingsDestination = it }
                         )
                     }
                 }
@@ -199,7 +186,11 @@ private fun SlockAppShellContent() {
                     subtitle = "Shared members surface will mount here",
                     iconName = "users"
                 )
-                else -> SlockHomeSmokeContent()
+                else -> AppShellPlaceholderContent(
+                    title = "Home",
+                    subtitle = "Harmony app shell using shared bottom TabBar",
+                    iconName = "house"
+                )
             }
         }
         SlockBottomTabBar(

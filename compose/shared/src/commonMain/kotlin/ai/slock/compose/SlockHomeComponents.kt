@@ -447,7 +447,7 @@ private fun String.homePresenceColor(): Color =
     }
 
 @Composable
-internal fun SlockHomeSmokeContent() {
+private fun SlockHomeSmokeContent() {
     var channelsExpanded by remember { mutableStateOf(true) }
     var directMessagesExpanded by remember { mutableStateOf(true) }
     val sections = listOf(
