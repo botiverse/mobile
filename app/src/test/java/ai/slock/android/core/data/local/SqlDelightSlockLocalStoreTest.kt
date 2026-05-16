@@ -339,6 +339,35 @@ class SqlDelightSlockLocalStoreTest {
     }
 
     @Test
+    fun homeConversationReadDropsRawThreadStreamRows() {
+        val store = createInMemoryStore()
+        store.upsertConversation(
+            ConversationSummary(
+                threadId = ThreadId("channel-all"),
+                channelId = ChannelId("channel-all"),
+                kind = ConversationKind.Channel,
+                name = "all"
+            ),
+            syncedAtMs = 10L,
+            serverId = ServerId("server-1")
+        )
+        store.upsertConversation(
+            ConversationSummary(
+                threadId = ThreadId("9b4930e4-4988-4284-a691-449965df7c82"),
+                channelId = ChannelId("9b4930e4-4988-4284-a691-449965df7c82"),
+                kind = ConversationKind.Channel,
+                name = "9b4930e4-4988-4284-a691-449965df7c82"
+            ),
+            syncedAtMs = 11L,
+            serverId = ServerId("server-1")
+        )
+
+        val home = store.getHomeConversations(ServerId("server-1"))
+
+        assertEquals(listOf("all"), home.channels.map { it.name })
+    }
+
+    @Test
     fun sparseTaskReferenceUpdatePreservesReferenceFields() {
         val store = createInMemoryStore()
         store.upsertTaskReference(

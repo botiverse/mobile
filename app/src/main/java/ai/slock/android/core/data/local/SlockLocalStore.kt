@@ -244,7 +244,7 @@ class SqlDelightSlockLocalStore(
                 .map { it.toConversationSummary() }
                 .dedupeHomeConversations()
         return LocalHomeConversations(
-            channels = conversations.filter { it.kind == ConversationKind.Channel },
+            channels = conversations.filter { it.isVisibleHomeChannel() },
             directMessages = conversations.filter { it.kind == ConversationKind.DirectMessage }
         )
     }
@@ -776,6 +776,20 @@ private fun ConversationSummary.homeConversationKey(): String =
         ConversationKind.Thread -> threadId.value
         else -> channelId?.value ?: threadId.value
     }
+
+private fun ConversationSummary.isVisibleHomeChannel(): Boolean =
+    kind == ConversationKind.Channel &&
+        thread == null &&
+        name.isNotBlank() &&
+        name != threadId.value &&
+        name != channelId?.value &&
+        !name.isUuidLike()
+
+private fun String.isUuidLike(): Boolean =
+    matches(uuidLikeRegex)
+
+private val uuidLikeRegex =
+    Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 private fun ConversationSummary.withUnreadFallback(
     storedConversation: ConversationSummary?

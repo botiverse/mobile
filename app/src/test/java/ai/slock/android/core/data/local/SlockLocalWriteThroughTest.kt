@@ -991,6 +991,70 @@ class SlockLocalWriteThroughTest {
     }
 
     @Test
+    fun createdReplyThreadWriteBackStoresParentMetadataWithoutHomeChannelRow() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 44L })
+        val server = ServerSummary(id = ServerId("server-1"), name = "Slock")
+        val currentMember = memberProfile("user-1", MemberKind.Human)
+        val parentChannel =
+            conversation("channel-1").copy(
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
+                name = "markdown"
+            )
+        val parentMessage =
+            message("parent-1", seq = 1).copy(
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
+                threadChannelId = ChannelId("9b4930e4-4988-4284-a691-449965df7c82"),
+                replyCount = 32
+            )
+        val replyMessage =
+            message("reply-1", seq = 2).copy(
+                threadId = ThreadId("9b4930e4-4988-4284-a691-449965df7c82"),
+                channelId = ChannelId("9b4930e4-4988-4284-a691-449965df7c82")
+            )
+
+        writer.writeHomeResult(
+            DataResult.Content(
+                HomeSnapshot(
+                    server = server,
+                    currentMember = currentMember,
+                    channels = listOf(parentChannel),
+                    directMessages = emptyList(),
+                    unreadTotal = 0
+                )
+            ),
+            source = "seed_home"
+        )
+        writer.writeThreadResult(
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation =
+                        conversation("9b4930e4-4988-4284-a691-449965df7c82").copy(
+                            name = "9b4930e4-4988-4284-a691-449965df7c82"
+                        ),
+                    messages = listOf(replyMessage)
+                )
+            ),
+            source = "open_created_reply_thread",
+            fallbackThreadId = ThreadId("9b4930e4-4988-4284-a691-449965df7c82"),
+            fallbackHeader = parentChannel,
+            fallbackParentMessage = parentMessage,
+            serverId = ServerId("server-1")
+        )
+
+        val home = writer.readHomeSnapshot(ServerId("server-1"), server, currentMember)
+        val cachedParent =
+            store.getMessagesForThread(ThreadId("channel-1"), ServerId("server-1"))
+                .single { it.id == parentMessage.id }
+
+        assertEquals(listOf("markdown"), home?.channels?.map { it.name })
+        assertEquals("9b4930e4-4988-4284-a691-449965df7c82", cachedParent.threadChannelId?.value)
+        assertEquals(32, cachedParent.replyCount)
+    }
+
+    @Test
     fun emptyResultsAreLoggedAndSkipped() {
         val store = createInMemoryStore()
         val logs = mutableListOf<String>()

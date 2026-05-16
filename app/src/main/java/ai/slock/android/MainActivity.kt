@@ -4740,6 +4740,8 @@ private fun SlockAppContent(
                     result,
                     source = "open_created_reply_thread",
                     fallbackThreadId = ThreadId(action.threadChannelId.value),
+                    fallbackHeader = resolvedFallbackHeader,
+                    fallbackParentMessage = resolvedMessage,
                     serverId = selectedServerIdForUi()
             )
             result.rememberTaskReferences()
