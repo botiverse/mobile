@@ -6380,8 +6380,10 @@ private fun SlockAppContent(
                             return@launch
                         }
                         event.rememberTaskReferences()
-                        if (!publishHomeFromLocal(serverId)) {
-                            homeState = homeState.applyRealtimeEvent(event)
+                        if (event.updatesHomeUiState()) {
+                            if (!publishHomeFromLocal(serverId)) {
+                                homeState = homeState.applyRealtimeEvent(event)
+                            }
                         }
                         setInboxState(inboxState.applyRealtimeEvent(event))
                         setSavedState(savedState.applySavedRealtimeEvent(event))
@@ -6390,70 +6392,24 @@ private fun SlockAppContent(
                                 query = searchQuery
                         )
                         tasksState = tasksState.applyRealtimeEvent(event)
-                        replyThreadBackStack =
-                                replyThreadBackStack.map { entry ->
-                                    val fallbackHeader =
-                                            (entry.selectedThreadState.loadState as?
-                                                    ScreenLoadState.Content)?.data?.header
-                                    val parentMessage =
-                                            (entry.selectedThreadState.loadState as?
-                                                    ScreenLoadState.Content)?.data?.parentMessage
-                                    val rehydrated =
-                                            entry.selectedThreadId
-                                                    ?.let(::ThreadId)
-                                                    ?.let { threadId ->
-                                                        observedLocalThreadUiState(
-                                                                threadId = threadId,
-                                                                current = entry.selectedThreadState,
-                                                                fallbackHeader = fallbackHeader,
-                                                                parentMessage = parentMessage
-                                                        )
-                                                    }
-                                    entry.copy(
-                                            selectedThreadState =
-                                                    (rehydrated
-                                                            ?: entry.selectedThreadState
-                                                                    .applyRealtimeEvent(
-                                                                            event = event,
-                                                                            selectedThreadId =
-                                                                                    entry.selectedThreadId
-                                                                    )).withCachedTaskReferences()
-                                    )
-                                }
-                        val selectedThreadFallbackHeader =
-                                (selectedThreadState.loadState as? ScreenLoadState.Content)
-                                        ?.data?.header
-                        val selectedThreadParentMessage =
-                                (selectedThreadState.loadState as? ScreenLoadState.Content)
-                                        ?.data?.parentMessage
-                        val rehydratedSelectedThreadState =
-                                selectedThreadId
-                                        ?.let(::ThreadId)
-                                        ?.let { threadId ->
-                                            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
-                                                    "SlockRealtime",
-                                                    "rehydrate_start threadId=${threadId.value}"
-                                            )
-                                            val result = observedLocalThreadUiState(
-                                                    threadId = threadId,
-                                                    current = selectedThreadState,
-                                                    fallbackHeader = selectedThreadFallbackHeader,
-                                                    parentMessage = selectedThreadParentMessage
-                                            )
-                                            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
-                                                    "SlockRealtime",
-                                                    "rehydrate_done threadId=${threadId.value} messages=${(result?.loadState as? ScreenLoadState.Content)?.data?.messages?.size ?: -1}"
-                                            )
-                                            result
-                                        }
-                        selectedThreadState =
-                                (rehydratedSelectedThreadState
-                                        ?: selectedThreadState.applyRealtimeEvent(
-                                                event = event,
-                                                selectedThreadId = selectedThreadId,
-                                                activeReplyParentMessageId =
-                                                        activeReplyParentMessageId
-                                        )).withCachedTaskReferences()
+                        if (event.updatesThreadUiState()) {
+                            replyThreadBackStack =
+                                    replyThreadBackStack.applyRealtimeToReplyBackStack(event)
+                                            .map { entry ->
+                                                entry.copy(
+                                                        selectedThreadState =
+                                                                entry.selectedThreadState
+                                                                        .withCachedTaskReferences()
+                                                )
+                                            }
+                            selectedThreadState =
+                                    selectedThreadState.applyRealtimeEvent(
+                                            event = event,
+                                            selectedThreadId = selectedThreadId,
+                                            activeReplyParentMessageId =
+                                                    activeReplyParentMessageId
+                                    ).withCachedTaskReferences()
+                        }
                         membersState = membersState.applyRealtimeEvent(event)
                         threadMembersPanelState = threadMembersPanelState.applyRealtimeEvent(event)
                         if (event is MessageNew &&
@@ -12554,6 +12510,20 @@ private fun List<Message>.applyRealtimeEvent(event: RealtimeEvent): List<Message
                     }
             is SyncResumeResponse -> (this + event.messages).distinctBy { it.id }
             else -> this
+        }
+
+private fun RealtimeEvent.updatesHomeUiState(): Boolean =
+        this !is Heartbeat
+
+private fun RealtimeEvent.updatesThreadUiState(): Boolean =
+        when (this) {
+            is MessageNew,
+            is MessageUpdated,
+            is SyncResumeResponse,
+            is ThreadUpdated,
+            is TaskCreated,
+            is TaskUpdated -> true
+            else -> false
         }
 
 private fun ThreadUiState.applyRealtimeEvent(
