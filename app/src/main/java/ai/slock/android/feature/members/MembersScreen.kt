@@ -118,13 +118,13 @@ private val MemberDetailHeaderContentHeight = SlockSize.PageHeaderHeight - Slock
 private const val AGENT_ACTIVITY_TIMELINE_TAG = "agent_activity_timeline"
 internal const val MEMBERS_WIDE_DIVIDER_TAG = "members_wide_divider"
 internal const val MEMBERS_WIDE_DETAIL_PANE_TAG = "members_wide_detail_pane"
-private val MembersPageTitleType = SlockType.PageTitle.copy(fontSize = 19.sp, lineHeight = 23.sp)
-private val MembersBodyType = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp)
+private val MembersPageTitleType = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp)
+private val MembersBodyType = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 19.sp)
 private val MembersBodyStrongType = MembersBodyType.copy(fontWeight = FontWeight.Bold)
 private val MembersDescriptionType = MembersBodyType.copy(fontWeight = FontWeight.Normal)
 private val MembersCaptionType = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp)
 private val MembersCaptionStrongType = MembersCaptionType.copy(fontWeight = FontWeight.Bold)
-private val MembersButtonType = SlockType.Button.copy(fontSize = 13.sp, lineHeight = 17.sp)
+private val MembersButtonType = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 16.sp)
 
 @Composable
 fun MembersPageShell(
