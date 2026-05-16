@@ -117,6 +117,8 @@ fun SlockStructuralHomeShell(
                 .put("savedCount", savedCount)
                 .put("notifications", notifications.toJsonArray { it.toJson() })
                 .put("serverSwitcherExpanded", serverSwitcherExpanded)
+                .put("contentRefreshing", contentRefreshing)
+                .put("contentRefreshEnabled", contentRefreshEnabled)
                 .put("bottomContentPaddingDp", bottomContentPadding.value)
                 .put("labels", labels)
                 .toString()

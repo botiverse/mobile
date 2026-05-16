@@ -29,7 +29,10 @@ import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.material3.pullToRefreshItem
+import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -69,6 +72,7 @@ private val MiniActionIconSize = 16.dp
 private val CountPillMinWidth = 20.dp
 private val CountPillHeight = 18.dp
 private val HomeListHorizontalPadding = SlockSpacing.Md
+private val HomePanelShadowOffset = 4.dp
 
 @Page(SLOCK_HOME_PAGE, supportInLocal = true)
 internal class ComposeSlockHomePage : ai.slock.compose.base.BasePager() {
@@ -147,6 +151,8 @@ internal data class SlockHomePayload(
     val savedCount: Int = 0,
     val notifications: List<SlockHomeNotificationItem> = emptyList(),
     val serverSwitcherExpanded: Boolean = false,
+    val contentRefreshing: Boolean = false,
+    val contentRefreshEnabled: Boolean = true,
     val bottomContentPaddingDp: Float = 24f,
     val labels: SlockHomeShellLabels = SlockHomeShellLabels()
 )
@@ -176,6 +182,8 @@ private fun SlockHomePageContent() {
         savedCount = payload.savedCount,
         notifications = payload.notifications,
         serverSwitcherExpanded = payload.serverSwitcherExpanded,
+        contentRefreshing = payload.contentRefreshing,
+        contentRefreshEnabled = payload.contentRefreshEnabled,
         showBottomBar = false,
         bottomContentPadding = payload.bottomContentPaddingDp.dp,
         outerPadding = 0.dp,
@@ -245,6 +253,8 @@ fun SlockStructuralHomeShell(
     var directMessagesReversed by remember { mutableStateOf(false) }
     val displayedChannels = if (channelsReversed) channels.asReversed() else channels
     val displayedDirectMessages = if (directMessagesReversed) directMessages.asReversed() else directMessages
+    val listState = rememberLazyListState()
+    val pullToRefreshState = rememberPullToRefreshState(contentRefreshing)
     Column(
         modifier = modifier.fillMaxSize().background(SlockColor.AppBgLightBlue).padding(outerPadding)
     ) {
@@ -252,9 +262,20 @@ fun SlockStructuralHomeShell(
             Column(modifier = Modifier.fillMaxSize()) {
                 HomeWorkspaceHeader(currentServerName, serverUnreadCount, onServerBadgeClick)
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
+                    if (contentRefreshEnabled) {
+                        pullToRefreshItem(
+                            state = pullToRefreshState,
+                            onRefresh = onContentRefresh,
+                            scrollState = listState,
+                            refreshThreshold = 80.dp
+                        ) { _, _, _ ->
+                            HomePullRefreshIndicator()
+                        }
+                    }
                     item { Spacer(Modifier.height(SlockSpacing.Md)) }
                     item { SidebarActionRow("search", labels.search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = onSearchClick) }
                     item { SidebarActionRow("inbox", labels.inbox, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), badge = inboxUnreadCount.takeIf { it > 0 }?.toString(), onClick = onInboxClick) }
@@ -322,6 +343,13 @@ fun SlockStructuralHomeShell(
 }
 
 @Composable
+private fun HomePullRefreshIndicator() {
+    Box(modifier = Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
+        SlockLogoBadge(text = "SLOCK")
+    }
+}
+
+@Composable
 private fun HomeWorkspaceHeader(serverName: String, serverUnreadCount: Int, onServerBadgeClick: () -> Unit) {
     Box(modifier = Modifier.fillMaxWidth().background(SlockColor.BrandYellow)) {
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack).align(Alignment.BottomCenter))
@@ -370,7 +398,7 @@ private fun HomeNotificationCenter(notifications: List<SlockHomeNotificationItem
 
 @Composable
 private fun HomeNotificationPopover(notifications: List<SlockHomeNotificationItem>, onView: (SlockHomeNotificationItem) -> Unit, onDismiss: (SlockHomeNotificationItem) -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.widthIn(min = 280.dp, max = 340.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack)) {
+    HardShadowPanel(modifier = modifier, minWidth = 280.dp, maxWidth = 340.dp) {
         com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("NOTIFICATIONS", style = SlockType.SectionLabel, color = SlockColor.TextMutedGray, maxLines = 1)
             Text("${notifications.size} ${if (notifications.size == 1) "item" else "items"}", style = SlockType.Button, color = SlockColor.TextMutedGray, maxLines = 1)
@@ -410,7 +438,7 @@ private fun SlockHomeNotificationKind.notificationColor(): Color = when (this) {
 
 @Composable
 private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentServerId: String, labels: SlockHomeShellLabels, onServerSelected: (String) -> Unit, onCreateServerClick: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.widthIn(min = 276.dp, max = 328.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack)) {
+    HardShadowPanel(modifier = modifier, minWidth = 276.dp, maxWidth = 328.dp) {
         if (servers.isEmpty()) {
             Text(labels.noServersAvailable, style = SlockType.Caption, color = SlockColor.TextMutedGray, modifier = Modifier.padding(SlockSpacing.Md))
         } else {
@@ -421,6 +449,34 @@ private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentS
             Text("+", style = SlockType.Body.copy(fontWeight = FontWeight.Bold), color = SlockColor.TextBlack)
             Text(labels.switchOrCreateServer, style = SlockType.Button, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+    }
+}
+
+@Composable
+private fun HardShadowPanel(
+    modifier: Modifier = Modifier,
+    minWidth: Dp,
+    maxWidth: Dp,
+    content: @Composable com.tencent.kuikly.compose.foundation.layout.ColumnScope.() -> Unit
+) {
+    Box(
+        modifier = modifier
+            .padding(end = HomePanelShadowOffset, bottom = HomePanelShadowOffset)
+            .widthIn(min = minWidth, max = maxWidth)
+    ) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .offset(x = HomePanelShadowOffset, y = HomePanelShadowOffset)
+                .background(SlockColor.ShadowBlack)
+        )
+        Column(
+            modifier = Modifier
+                .widthIn(min = minWidth, max = maxWidth)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack),
+            content = content
+        )
     }
 }
 
@@ -591,6 +647,6 @@ private class PixelAvatarRandom(seed: Int) { private var value = seed; fun next(
 @Composable
 private fun CountPill(text: String, color: Color) {
     Box(modifier = Modifier.background(color).border(SlockStroke.Thin, SlockColor.BorderBlack).height(CountPillHeight).widthIn(min = CountPillMinWidth).padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
-        Text(text, style = SlockType.Caption.copy(lineHeight = 14.sp), color = SlockColor.SurfaceWhite, maxLines = 1, textAlign = TextAlign.Center)
+        Text(text, style = SlockType.Caption.copy(lineHeight = CountPillHeight.value.sp), color = SlockColor.SurfaceWhite, maxLines = 1, textAlign = TextAlign.Center)
     }
 }
