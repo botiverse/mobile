@@ -101,6 +101,23 @@ but Slock still needs either:
   similar to the SQLiter/Stately layer needed by the SQLDelight native-driver
   path.
 
+`Tencent-TDS/KuiklyBase-platform` is the right upstream dependency catalog for
+this stack, but it does not close every Ktor gap by itself:
+
+- it provides `kotlinx.serialization` `1.7.1-KBA-003`, which our compose OHOS
+  build already resolves from Tencent Maven;
+- it provides `kotlinx.coroutines` `1.8.0-KBA-001` and `atomicfu`
+  `0.23.2-KBA-001`, matching Ktor fork expectations;
+- it does not include a `kotlinx-io` patch;
+- it does not include the exact `kotlinx.serialization` `1.7.3-KBA-001`
+  version requested by `blackbbc/ktor 3.0.3-ohos`.
+
+See `third_party/kuiklybase-platform/README.md` and
+`scripts/prepare_kuiklybase_dependency.sh` for the reproducible patch workflow.
+The remaining Ktor decision is whether to port KuiklyBase serialization forward
+to `1.7.3-KBA-001` or adjust the Ktor fork to the available
+`1.7.1-KBA-003`, plus how to provide `kotlinx-io:0.5.4-KBA-001`.
+
 ## Slock Integration Plan
 
 Current state:
