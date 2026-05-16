@@ -9509,7 +9509,7 @@ private fun SlockAppContent(
                                                 appendLine()
                                                 appendLine("## 问题描述")
                                                 appendLine()
-                                                appendLine("请在此描述您遇到的问题...")
+                                                appendLine("<!-- 请输入你的反馈 -->")
                                             }
 
                                             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
