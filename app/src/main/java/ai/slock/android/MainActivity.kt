@@ -4736,7 +4736,7 @@ private fun SlockAppContent(
                     ) {
                         conversationRepository.getThread(ThreadId(action.threadChannelId.value))
                     }
-            localWriteThrough.writeThreadResult(
+            localWriteThrough.writeReplyThreadResult(
                     result,
                     source = "open_created_reply_thread",
                     fallbackThreadId = ThreadId(action.threadChannelId.value),

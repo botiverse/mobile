@@ -235,6 +235,24 @@ class SlockLocalWriteThrough(
         )
     }
 
+    fun writeReplyThreadResult(
+        result: DataResult<ThreadSnapshot>,
+        source: String,
+        fallbackThreadId: ThreadId,
+        fallbackHeader: ConversationSummary,
+        fallbackParentMessage: Message,
+        serverId: ServerId? = null
+    ) {
+        writeThreadResult(
+            result = result,
+            source = source,
+            fallbackThreadId = fallbackThreadId,
+            fallbackHeader = fallbackHeader,
+            fallbackParentMessage = fallbackParentMessage,
+            serverId = serverId
+        )
+    }
+
     fun writeHomeResult(result: DataResult<HomeSnapshot>, source: String) {
         val snapshot = (result as? DataResult.Content)?.data
         if (snapshot == null) {

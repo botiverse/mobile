@@ -1,0 +1,7 @@
+DELETE FROM local_attachment;
+DELETE FROM local_message;
+DELETE FROM local_task_reference;
+DELETE FROM local_member_snapshot;
+DELETE FROM local_sync_cursor;
+DELETE FROM local_outbox_message;
+DELETE FROM local_conversation;

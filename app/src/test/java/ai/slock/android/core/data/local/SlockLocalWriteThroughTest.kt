@@ -1027,7 +1027,7 @@ class SlockLocalWriteThroughTest {
             ),
             source = "seed_home"
         )
-        writer.writeThreadResult(
+        writer.writeReplyThreadResult(
             DataResult.Content(
                 ThreadSnapshot(
                     conversation =
@@ -1052,6 +1052,26 @@ class SlockLocalWriteThroughTest {
         assertEquals(listOf("markdown"), home?.channels?.map { it.name })
         assertEquals("9b4930e4-4988-4284-a691-449965df7c82", cachedParent.threadChannelId?.value)
         assertEquals(32, cachedParent.replyCount)
+    }
+
+    @Test
+    fun writeReplyThreadResultRequiresParentContext() {
+        val method =
+            SlockLocalWriteThrough::class.java.methods.single { method ->
+                method.name == "writeReplyThreadResult"
+            }
+
+        assertEquals(
+            listOf(
+                "DataResult",
+                "String",
+                "ThreadId",
+                "ConversationSummary",
+                "Message",
+                "ServerId"
+            ),
+            method.parameterTypes.map { it.simpleName }
+        )
     }
 
     @Test

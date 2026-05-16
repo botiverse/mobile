@@ -90,6 +90,30 @@ class SqlDelightSlockLocalStoreTest {
     }
 
     @Test
+    fun migrationSixClearsLocalCacheRows() {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        SlockDatabase.Schema.create(driver)
+        val database = SlockDatabase(driver)
+        val store = SqlDelightSlockLocalStore(database)
+        store.upsertConversation(
+            ConversationSummary(
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
+                kind = ConversationKind.Channel,
+                name = "all"
+            ),
+            syncedAtMs = 10L,
+            serverId = ServerId("server-1")
+        )
+        store.upsertMessage(message("message-1", seq = 1), syncedAtMs = 11L, streamChannelId = ChannelId("channel-1"))
+
+        SlockDatabase.Schema.migrate(driver, 5, 6)
+
+        assertEquals(emptyList<ConversationSummary>(), store.getHomeConversations(ServerId("server-1")).channels)
+        assertEquals(emptyList<Message>(), store.getMessagesForThread(ThreadId("channel-1"), ServerId("server-1")))
+    }
+
+    @Test
     fun upsertsAndQueriesThreadTimelineRows() {
         val store = createInMemoryStore()
         val task = task("task-1").copy(
@@ -336,35 +360,6 @@ class SqlDelightSlockLocalStoreTest {
         assertEquals("all latest", home.channels.single().name)
         assertEquals(false, home.channels.single().joined)
         assertEquals(false, home.channels.single().permissions.canRead)
-    }
-
-    @Test
-    fun homeConversationReadDropsRawThreadStreamRows() {
-        val store = createInMemoryStore()
-        store.upsertConversation(
-            ConversationSummary(
-                threadId = ThreadId("channel-all"),
-                channelId = ChannelId("channel-all"),
-                kind = ConversationKind.Channel,
-                name = "all"
-            ),
-            syncedAtMs = 10L,
-            serverId = ServerId("server-1")
-        )
-        store.upsertConversation(
-            ConversationSummary(
-                threadId = ThreadId("9b4930e4-4988-4284-a691-449965df7c82"),
-                channelId = ChannelId("9b4930e4-4988-4284-a691-449965df7c82"),
-                kind = ConversationKind.Channel,
-                name = "9b4930e4-4988-4284-a691-449965df7c82"
-            ),
-            syncedAtMs = 11L,
-            serverId = ServerId("server-1")
-        )
-
-        val home = store.getHomeConversations(ServerId("server-1"))
-
-        assertEquals(listOf("all"), home.channels.map { it.name })
     }
 
     @Test
