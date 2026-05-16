@@ -8,23 +8,6 @@ sealed interface ScreenLoadState<out T> {
     data class NoPermission(val blocker: PermissionBlocker) : ScreenLoadState<Nothing>
 }
 
-enum class EmptyReason {
-    NoChannels,
-    NoMessages,
-    NoTasks,
-    NoMembers,
-    NoInboxItems,
-    NoSettingsAvailable,
-    NoSearchResults
-}
-
-data class ScreenError(
-    val code: String,
-    val retryable: Boolean = true
-)
-
-data class PermissionBlocker(
-    val code: String,
-    val requiredCapability: String? = null
-)
-
+typealias EmptyReason = ai.slock.compose.data.EmptyReason
+typealias ScreenError = ai.slock.compose.data.ScreenError
+typealias PermissionBlocker = ai.slock.compose.data.PermissionBlocker

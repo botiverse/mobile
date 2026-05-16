@@ -10,4 +10,3 @@ sealed interface DataResult<out T> {
     data class Error(val error: ScreenError) : DataResult<Nothing>
     data class NoPermission(val blocker: PermissionBlocker) : DataResult<Nothing>
 }
-
