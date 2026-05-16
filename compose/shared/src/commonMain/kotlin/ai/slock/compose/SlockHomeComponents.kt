@@ -68,6 +68,7 @@ private val MiniActionSize = 30.dp
 private val MiniActionIconSize = 16.dp
 private val CountPillMinWidth = 20.dp
 private val CountPillHeight = 18.dp
+private val HomeListHorizontalPadding = SlockSpacing.Md
 
 @Page(SLOCK_HOME_PAGE, supportInLocal = true)
 internal class ComposeSlockHomePage : ai.slock.compose.base.BasePager() {
@@ -255,12 +256,12 @@ fun SlockStructuralHomeShell(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     item { Spacer(Modifier.height(SlockSpacing.Md)) }
-                    item { SidebarActionRow("search", labels.search, onClick = onSearchClick) }
-                    item { SidebarActionRow("inbox", labels.inbox, badge = inboxUnreadCount.takeIf { it > 0 }?.toString(), onClick = onInboxClick) }
-                    item { SidebarActionRow("bookmark", labels.saved, trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = onSavedClick) }
+                    item { SidebarActionRow("search", labels.search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = onSearchClick) }
+                    item { SidebarActionRow("inbox", labels.inbox, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), badge = inboxUnreadCount.takeIf { it > 0 }?.toString(), onClick = onInboxClick) }
+                    item { SidebarActionRow("bookmark", labels.saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = onSavedClick) }
                     item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                     item {
-                        SidebarSectionHeader(labels.channels, channels.size, channelsExpanded, { channelsExpanded = it }, { channelsReversed = !channelsReversed }) {
+                        SidebarSectionHeader(labels.channels, channels.size, channelsExpanded, { channelsExpanded = it }, { channelsReversed = !channelsReversed }, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)) {
                             HeaderIconAction("plus", labels.addChannel, onCreateChannelClick)
                         }
                     }
@@ -272,13 +273,14 @@ fun SlockStructuralHomeShell(
                                 joined = channel.joined,
                                 hasDraft = channel.hasDraft,
                                 badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
+                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                 interactionState = if (channel.id == selectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
                                 onClick = { onChannelClick(channel.id) }
                             )
                         }
                     }
                     item {
-                        SidebarSectionHeader(labels.directMessages, directMessages.size, directMessagesExpanded, { directMessagesExpanded = it }, { directMessagesReversed = !directMessagesReversed }, null)
+                        SidebarSectionHeader(labels.directMessages, directMessages.size, directMessagesExpanded, { directMessagesExpanded = it }, { directMessagesReversed = !directMessagesReversed }, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), action = null)
                     }
                     if (directMessagesExpanded) {
                         items(displayedDirectMessages.size, key = { index -> "dm-${displayedDirectMessages[index].id}" }) { index ->
@@ -289,6 +291,7 @@ fun SlockStructuralHomeShell(
                                 avatarUrl = dm.avatarUrl,
                                 avatarWireValue = dm.avatarWireValue,
                                 presence = dm.presence,
+                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                 hasDraft = dm.hasDraft,
                                 badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
                                 onClick = { onChannelClick(dm.id) }
@@ -337,7 +340,7 @@ private fun SlockLogoBadge(text: String, modifier: Modifier = Modifier, showDrop
             modifier = Modifier.background(SlockColor.TextBlack).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 16.dp, vertical = SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text, color = SlockColor.BrandYellow, style = SlockType.Button.copy(fontWeight = FontWeight.Bold, fontSize = 16.sp, lineHeight = 20.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
+            Text(text, color = SlockColor.BrandYellow, style = SlockType.Button.copy(fontWeight = FontWeight.Medium, fontSize = 16.sp, lineHeight = 20.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
             if (showDropdown) {
                 Spacer(Modifier.width(SlockSpacing.Xs))
                 SlockLucideIcon("chevron-down", Modifier.size(18.dp), color = "#FFFFD440")
@@ -443,8 +446,8 @@ private fun SidebarActionRow(icon: String, label: String, modifier: Modifier = M
 }
 
 @Composable
-private fun SidebarSectionHeader(label: String, count: Int, expanded: Boolean, onExpandedChange: (Boolean) -> Unit, onSortClick: () -> Unit, action: (@Composable BoxScope.() -> Unit)?) {
-    com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().heightIn(min = 30.dp).clickable { onExpandedChange(!expanded) }, verticalAlignment = Alignment.CenterVertically) {
+private fun SidebarSectionHeader(label: String, count: Int, expanded: Boolean, onExpandedChange: (Boolean) -> Unit, onSortClick: () -> Unit, modifier: Modifier = Modifier, action: (@Composable BoxScope.() -> Unit)?) {
+    com.tencent.kuikly.compose.foundation.layout.Row(modifier = modifier.fillMaxWidth().heightIn(min = 30.dp).clickable { onExpandedChange(!expanded) }, verticalAlignment = Alignment.CenterVertically) {
         SlockLucideIcon(if (expanded) "chevron-down" else "chevron-right", Modifier.size(SectionChevronSize))
         Text(label, style = SlockType.SectionLabel, color = SlockColor.TextBlack, modifier = Modifier.padding(start = SlockSpacing.Xs))
         Text(count.toString(), style = SlockType.Caption, color = SlockColor.TextMutedGray, modifier = Modifier.padding(start = SlockSpacing.Xs))
@@ -503,9 +506,14 @@ private fun SlockAvatar(avatarWireValue: String?, label: String, modifier: Modif
         avatarWireValue?.startsWith("http://") == true || avatarWireValue?.startsWith("https://") == true -> Box(modifier = modifier.size(ChannelAvatarSize).background(SlockColor.AccentLavender).border(SlockStroke.Thin, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
             Image(painter = rememberAsyncImagePainter(avatarWireValue), contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
         }
-        else -> Box(modifier = modifier.size(ChannelAvatarSize).background(SlockColor.AccentLavender).border(SlockStroke.Thin, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
-            SlockLucideIcon("user", Modifier.size(12.dp))
-        }
+        else -> InitialsAvatar(label, modifier)
+    }
+}
+
+@Composable
+private fun InitialsAvatar(label: String, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.size(ChannelAvatarSize).background(SlockColor.AccentLavender).border(SlockStroke.Thin, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
+        Text(label.take(2).uppercase(), style = SlockType.Caption.copy(fontWeight = FontWeight.Medium, fontSize = ChannelAvatarFontSize), color = SlockColor.TextBlack, maxLines = 1)
     }
 }
 
@@ -539,9 +547,36 @@ private const val PixelAvatarDefaultKey = "robot"
 private val PixelAvatarPalette = mapOf('_' to Color.Transparent, 'K' to Color(0xFF141111), 'W' to Color(0xFFFFFFFF), 'P' to Color(0xFFFE7DA8), 'O' to Color(0xFFF8A16F), 'Y' to Color(0xFFFFD440), 'L' to Color(0xFFA9D877), 'C' to Color(0xFF27CCF3), 'V' to Color(0xFFBBAFE6), 'B' to Color(0xFF576574), 'R' to Color(0xFFF97264), 'G' to Color(0xFF9DCAAA))
 private val PixelAvatarFixedSpecs = mapOf(
     "robot" to PixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("_KKKKKK_", "KCKWWKCK", "KWKWWKWK", "KKKKKKKK", "_KWKKWK_", "_KKKKKK_", "_KK__KK_", "_KK__KK_")),
-    "diamond" to PixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("___KK___", "__KCCK__", "_KCWCCK_", "KCWCCCCK", "KCCCCCCK", "_KCCCCK_", "__KCCK__", "___KK___"))
+    "cat" to PixelAvatarSpec(PixelAvatarPalette.getValue('Y'), listOf("K______K", "KK____KK", "KYKYYKYK", "KYYYYYYK", "KYKYYKYK", "_KYYYYK_", "__KYYK__", "___KK___")),
+    "ghost" to PixelAvatarSpec(PixelAvatarPalette.getValue('V'), listOf("__KKKK__", "_KWWWWK_", "KWKWWKWK", "KWWWWWWK", "KWWWWWWK", "KWWKKWWK", "KWKWWKWK", "K_K__K_K")),
+    "skull" to PixelAvatarSpec(PixelAvatarPalette.getValue('O'), listOf("_KKKKKK_", "KWWWWWWK", "KWKWWKWK", "KWWWWWWK", "_KWWWWK_", "_KWKWKK_", "__KKKK__", "___KK___")),
+    "alien" to PixelAvatarSpec(PixelAvatarPalette.getValue('L'), listOf("_KKKKKK_", "KGGGGGGK", "KGKKKKGK", "KGGGGGGK", "_KGGGGK_", "__KGGK__", "__KGGK__", "_KK__KK_")),
+    "heart" to PixelAvatarSpec(PixelAvatarPalette.getValue('P'), listOf("________", "_KK__KK_", "KRRKKRRK", "KRRRRRRK", "KRRRRRRK", "_KRRRRK_", "__KRRK__", "___KK___")),
+    "star" to PixelAvatarSpec(PixelAvatarPalette.getValue('Y'), listOf("___KK___", "___KK___", "KKKKKKKK", "_KYYYYK_", "__KYYK__", "_KYKKYK_", "KYK__KYK", "KK____KK")),
+    "flame" to PixelAvatarSpec(PixelAvatarPalette.getValue('O'), listOf("___K____", "__KRK___", "__KRKK__", "_KORRRK_", "_KOORRK_", "KYOOORK_", "KYYOOK__", "_KKKK___")),
+    "diamond" to PixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("___KK___", "__KCCK__", "_KCWCCK_", "KCWCCCCK", "KCCCCCCK", "_KCCCCK_", "__KCCK__", "___KK___")),
+    "mushroom" to PixelAvatarSpec(PixelAvatarPalette.getValue('P'), listOf("__KKKK__", "_KRWWRK_", "KRRWWRRK", "KRRRRRRK", "_KKKKKK_", "__KWWK__", "__KWWK__", "_KKKKKK_")),
+    "eye" to PixelAvatarSpec(PixelAvatarPalette.getValue('V'), listOf("________", "__KKKK__", "_KWWWWK_", "KWWKKWWK", "KWWKKWWK", "_KWWWWK_", "__KKKK__", "________")),
+    "crown" to PixelAvatarSpec(PixelAvatarPalette.getValue('Y'), listOf("________", "_K_KK_K_", "_KKKKKK_", "_KYYYYK_", "_KYYYYK_", "KKKKKKKK", "KYYYYYYK", "KKKKKKKK")),
+    "cloud" to PixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("________", "__KK____", "_KWWKK__", "KWWWWWK_", "KWWWWWWK", "KWWWWWWK", "_KKKKKK_", "________")),
+    "sun" to PixelAvatarSpec(PixelAvatarPalette.getValue('R'), listOf("_K_KK_K_", "K_KYYK_K", "_KYYYYK_", "KYYYYYYK", "KYYYYYYK", "_KYYYYK_", "K_KYYK_K", "_K_KK_K_")),
+    "bell" to PixelAvatarSpec(PixelAvatarPalette.getValue('B'), listOf("___KK___", "__KYYK__", "_KYYYYK_", "_KYYYYK_", "_KYYYYK_", "KYYYYYYK", "KKKKKKKK", "___KK___")),
+    "tree" to PixelAvatarSpec(PixelAvatarPalette.getValue('L'), listOf("___KK___", "__KGGK__", "_KGGGGK_", "KGGGGGGK", "KGGGGGGK", "_KKGGKK_", "__KOOK__", "___KK___"))
 )
-private val PixelAvatarRandomOptions = listOf(PixelAvatarPalette.getValue('C') to 'K', PixelAvatarPalette.getValue('Y') to 'K', PixelAvatarPalette.getValue('L') to 'K', PixelAvatarPalette.getValue('P') to 'W', PixelAvatarPalette.getValue('V') to 'K', Color(0xFF1E1E1C) to 'C')
+private val PixelAvatarRandomOptions = listOf(
+    PixelAvatarPalette.getValue('C') to 'K',
+    PixelAvatarPalette.getValue('Y') to 'K',
+    PixelAvatarPalette.getValue('L') to 'K',
+    PixelAvatarPalette.getValue('P') to 'W',
+    PixelAvatarPalette.getValue('V') to 'K',
+    Color(0xFF1E1E1C) to 'C',
+    Color(0xFF1E1E1C) to 'G',
+    Color(0xFF1E1E1C) to 'P',
+    Color(0xFF1E1E1C) to 'Y',
+    Color(0xFF1E1E1C) to 'V',
+    PixelAvatarPalette.getValue('O') to 'K',
+    PixelAvatarPalette.getValue('C') to 'W'
+)
 private fun String.toPixelAvatarSpec(): PixelAvatarSpec? = removePrefixOrNull(PixelAvatarProtocolPrefix)?.let { PixelAvatarFixedSpecs[it] ?: PixelAvatarFixedSpecs.getValue(PixelAvatarDefaultKey) } ?: removePrefixOrNull(PixelAvatarRandomPrefix)?.let(::randomPixelAvatar)
 private fun String.removePrefixOrNull(prefix: String): String? = takeIf { it.startsWith(prefix) }?.substring(prefix.length)
 private fun randomPixelAvatar(seed: String): PixelAvatarSpec {
