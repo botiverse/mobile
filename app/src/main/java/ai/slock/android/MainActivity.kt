@@ -13103,26 +13103,27 @@ private suspend fun ConversationRepository.resolveThreadOpenTarget(
             messageId?.let { getMessageContext(it) }
                     ?: getThread(ThreadId(requestedChannelId.value))
     val contextSnapshot = (contextResult as? DataResult.Content)?.data
+    val contextParentMessage = contextSnapshot?.parentMessage
     val targetMessage =
             messageId?.let { targetMessageId ->
-                contextSnapshot?.parentMessage?.takeIf { it.id == targetMessageId }
+                contextParentMessage?.takeIf { it.id == targetMessageId }
                         ?: contextSnapshot?.messages?.firstOrNull { it.id == targetMessageId }
             }
     val parentMessageId =
             targetMessage?.parentMessageId
                     ?: contextSnapshot?.conversation?.thread?.parentMessageId
-                    ?: contextSnapshot?.parentMessage?.id?.takeIf {
+                    ?: contextParentMessage?.id?.takeIf {
                         contextSnapshot.conversation.kind == ConversationKind.Thread ||
-                                contextSnapshot.parentMessage.threadChannelId != null
+                                contextParentMessage.threadChannelId != null
                     }
                     ?: targetMessage?.id?.takeIf { targetMessage.threadChannelId != null }
     val parentChannelId =
             contextSnapshot?.conversation?.thread?.parentChannelId
-                    ?: contextSnapshot?.parentMessage?.channelId
+                    ?: contextParentMessage?.channelId
                     ?: targetMessage?.threadId?.parentChannelIdOrNull()
     val parentMessage =
             (
-                    contextSnapshot?.parentMessage?.takeIf {
+                    contextParentMessage?.takeIf {
                         parentMessageId == null || it.id == parentMessageId
                     }
                             ?: contextSnapshot?.messages?.firstOrNull {

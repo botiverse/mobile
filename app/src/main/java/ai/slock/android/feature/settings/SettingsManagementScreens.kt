@@ -376,13 +376,14 @@ fun SettingsComputerDetailScreen(
                 iconBackground = SlockColor.AccentLime,
                 label = stringResource(R.string.settings_computer_detail_workspaces_section)
         )
-        if (snapshot.workspacesError != null) {
+        val workspacesError = snapshot.workspacesError
+        if (workspacesError != null) {
             SettingsSectionInlineError(
                     title =
                             stringResource(
                                     R.string.settings_computer_detail_workspaces_error_title
                             ),
-                    error = snapshot.workspacesError,
+                    error = workspacesError,
                     onRetry = onRetryWorkspaces
             )
         } else if (snapshot.workspaces.isEmpty()) {
@@ -397,10 +398,11 @@ fun SettingsComputerDetailScreen(
                 iconBackground = SlockColor.AccentOrange,
                 label = stringResource(R.string.settings_computer_detail_agents_section)
         )
-        if (snapshot.agentsError != null) {
+        val agentsError = snapshot.agentsError
+        if (agentsError != null) {
             SettingsSectionInlineError(
                     title = stringResource(R.string.settings_computer_detail_agents_error_title),
-                    error = snapshot.agentsError,
+                    error = agentsError,
                     onRetry = onRetryAgents
             )
         } else if (snapshot.agents.isEmpty()) {

@@ -41,38 +41,10 @@ typealias MemberPresenceUpdated = ai.slock.compose.model.MemberPresenceUpdated
 typealias SyncResumeResponse = ai.slock.compose.model.SyncResumeResponse
 typealias Heartbeat = ai.slock.compose.model.Heartbeat
 typealias SettingsSummary = ai.slock.compose.model.SettingsSummary
+typealias InboxItem = ai.slock.compose.data.InboxItem
 
 // Android-specific ConversationSummary (extends shared with Android-specific avatar handling)
 typealias ConversationSummary = ai.slock.compose.model.ConversationSummary
-
-data class InboxItem(
-    val key: String,
-    val kind: InboxItemKind,
-    val channelId: ChannelId,
-    val channelName: String,
-    val unreadCount: Int = 0,
-    val hasMention: Boolean = false,
-    val firstUnreadMessageId: MessageId? = null,
-    val lastMessageId: MessageId? = null,
-    val lastMessagePreview: String? = null,
-    val lastMessageAt: String? = null,
-    val lastMessageSenderName: String? = null,
-    val threadChannelId: ChannelId? = null,
-    val parentChannelId: ChannelId? = null,
-    val parentChannelName: String? = null,
-    val parentChannelKind: ConversationKind? = null,
-    val parentMessageId: MessageId? = null,
-    val parentMessagePreview: String? = null,
-    val latestActivityMessageId: MessageId? = null,
-    val latestActivityPreview: String? = null,
-    val latestActivityAt: String? = null,
-    val latestActivitySenderName: String? = null,
-    val replyCount: Int = 0,
-    val participantIds: List<MemberId> = emptyList(),
-    val taskNumber: Int? = null,
-    val taskStatus: TaskStatus? = null,
-    val taskClaimedByName: String? = null
-)
 
 private const val THREAD_UNREAD_REPLY_COUNT_METADATA_KEY = "threadUnreadReplyCount"
 
