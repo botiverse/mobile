@@ -144,18 +144,3 @@ The first smoke should consume only the minimal artifacts from Maven local:
 Keep the Android app on official `2.1.0` until a `compose/shared` smoke DB
 compiles for both Android and OHOS. After that, migrate the real schema in a
 separate task.
-
-## First Shared Consumer
-
-The first Slock-side consumer is intentionally below SQLDelight:
-
-- `compose/shared/build.ohos.gradle.kts` adds
-  `co.touchlab:sqliter-driver:1.3.3-KBA-001` only to `ohosArm64Main`.
-- `compose/shared/src/ohosArm64Main/kotlin/ai/slock/compose/data/OhosSqliteSmoke.kt`
-  performs an in-memory create / insert / select round trip through SQLiter.
-
-This keeps Android on the official SQLDelight `2.1.0` app schema while proving
-the OHOS shared source set can compile against the native sqlite fork. The next
-step is to move the shared local-store schema/API onto this dependency, then
-decide whether to consume SQLDelight native-driver or keep a small direct
-SQLiter-backed store for OHOS.
