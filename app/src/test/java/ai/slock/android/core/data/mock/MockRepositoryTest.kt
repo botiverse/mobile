@@ -1,7 +1,7 @@
 package ai.slock.android.core.data.mock
 
 import ai.slock.android.core.data.repository.ConversationRepository
-import ai.slock.android.core.data.repository.DataResult
+import ai.slock.compose.data.DataResult
 import ai.slock.android.core.data.repository.MemberRepository
 import ai.slock.android.core.data.repository.ServerRepository
 import ai.slock.android.core.data.repository.TaskFilter

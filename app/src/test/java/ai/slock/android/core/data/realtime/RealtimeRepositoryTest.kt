@@ -10,7 +10,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
-import ai.slock.android.core.data.repository.DataResult
+import ai.slock.compose.data.DataResult
 import ai.slock.android.core.data.repository.RealtimeSubscription
 import ai.slock.android.core.model.AgentStatus
 import ai.slock.android.core.model.ChannelId

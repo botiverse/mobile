@@ -4,7 +4,7 @@ import ai.slock.android.core.data.auth.AuthServer
 import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthSessionStore
 import ai.slock.android.core.data.auth.AuthUser
-import ai.slock.android.core.data.repository.DataResult
+import ai.slock.compose.data.DataResult
 import ai.slock.android.core.data.repository.AddChannelMemberRequest
 import ai.slock.android.core.data.repository.AgentProfileUpdateRequest
 import ai.slock.android.core.data.repository.CreateChannelRequest

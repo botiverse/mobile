@@ -3,7 +3,7 @@ package ai.slock.android.core.data.auth
 import ai.slock.android.core.data.network.ApiResponse
 import ai.slock.android.core.data.repository.ChannelSnapshot
 import ai.slock.android.core.data.repository.CreateServerRequest
-import ai.slock.android.core.data.repository.DataResult
+import ai.slock.compose.data.DataResult
 import ai.slock.android.core.data.repository.HomeSnapshot
 import ai.slock.android.core.data.repository.InboxSnapshot
 import ai.slock.android.core.data.repository.ServerListSnapshot

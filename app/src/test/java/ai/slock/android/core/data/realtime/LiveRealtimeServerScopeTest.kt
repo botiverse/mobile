@@ -9,7 +9,7 @@ import ai.slock.android.core.data.network.RealChannelRepository
 import ai.slock.android.core.data.network.RealConversationRepository
 import ai.slock.android.core.data.network.RealSlockApiFactory
 import ai.slock.android.core.data.repository.CreateChannelRequest
-import ai.slock.android.core.data.repository.DataResult
+import ai.slock.compose.data.DataResult
 import ai.slock.android.core.model.MessageNew
 import ai.slock.android.core.model.ServerId
 import ai.slock.compose.network.SlockRequestPriority

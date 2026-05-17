@@ -2,7 +2,7 @@ package ai.slock.android.core.data.realtime
 
 import ai.slock.android.core.data.auth.AuthSessionStore
 import ai.slock.android.core.data.auth.AuthTokenRefresher
-import ai.slock.android.core.data.repository.DataResult
+import ai.slock.compose.data.DataResult
 import ai.slock.android.core.data.repository.RealtimeRepository
 import ai.slock.android.core.data.repository.RealtimeSubscription
 import ai.slock.android.core.model.ChannelId

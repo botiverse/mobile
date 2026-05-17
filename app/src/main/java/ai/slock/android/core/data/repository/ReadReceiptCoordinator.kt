@@ -1,6 +1,7 @@
 package ai.slock.android.core.data.repository
 
 import ai.slock.android.core.model.ChannelId
+import ai.slock.compose.data.DataResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch

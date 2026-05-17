@@ -11,7 +11,7 @@ import ai.slock.android.core.data.repository.SettingsBillingSnapshot
 import ai.slock.android.core.data.repository.SettingsPlanUsageSnapshot
 import ai.slock.android.core.data.repository.ConnectedAccountSnapshot
 import ai.slock.android.core.data.repository.ConnectedAccountStatus
-import ai.slock.android.core.data.repository.DataResult
+import ai.slock.compose.data.DataResult
 import ai.slock.android.core.data.repository.SessionActionResult
 import ai.slock.android.core.data.repository.SettingsComputerAgentSnapshot
 import ai.slock.android.core.data.repository.SettingsComputerDetailSnapshot

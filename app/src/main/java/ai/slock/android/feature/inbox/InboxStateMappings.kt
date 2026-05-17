@@ -1,6 +1,6 @@
 package ai.slock.android.feature.inbox
 
-import ai.slock.android.core.data.repository.DataResult
+import ai.slock.compose.data.DataResult
 import ai.slock.android.core.data.repository.InboxFilter as RepositoryInboxFilter
 import ai.slock.android.core.data.repository.InboxSnapshot
 import ai.slock.android.core.data.repository.SavedSnapshot

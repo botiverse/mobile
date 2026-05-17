@@ -37,7 +37,7 @@ import ai.slock.android.core.data.repository.ConversationRepository
 import ai.slock.android.core.data.repository.CreateChannelRequest
 import ai.slock.android.core.data.repository.CreateChannelResult
 import ai.slock.android.core.data.repository.CreateServerRequest
-import ai.slock.android.core.data.repository.DataResult
+import ai.slock.compose.data.DataResult
 import ai.slock.android.core.data.repository.DirectMessageSnapshot
 import ai.slock.android.core.data.repository.HomeSnapshot
 import ai.slock.android.core.data.repository.InboxSnapshot

@@ -6,7 +6,7 @@ import ai.slock.android.core.data.auth.AuthSessionStore
 import ai.slock.android.core.data.auth.AuthUser
 import ai.slock.android.core.data.repository.AccountProfileUpdateRequest
 import ai.slock.android.core.data.repository.ConnectedAccountStatus
-import ai.slock.android.core.data.repository.DataResult
+import ai.slock.compose.data.DataResult
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine

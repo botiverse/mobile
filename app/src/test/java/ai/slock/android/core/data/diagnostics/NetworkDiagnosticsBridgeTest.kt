@@ -1,6 +1,6 @@
 package ai.slock.android.core.data.diagnostics
 
-import ai.slock.android.core.data.repository.DataResult
+import ai.slock.compose.data.DataResult
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.Heartbeat
 import ai.slock.android.core.model.MemberId

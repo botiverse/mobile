@@ -8,6 +8,7 @@ import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.RealtimeEvent
+import ai.slock.compose.data.DataResult
 import ai.slock.compose.network.SlockRequestPriority
 
 interface AuthSessionRepository {

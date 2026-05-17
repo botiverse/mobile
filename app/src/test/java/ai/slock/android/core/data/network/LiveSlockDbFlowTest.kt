@@ -11,7 +11,7 @@ import ai.slock.android.core.data.local.SqlDelightSlockLocalStore
 import ai.slock.android.core.data.repository.AttachmentUploadFile
 import ai.slock.android.core.data.repository.AttachmentUploadRequest
 import ai.slock.android.core.data.repository.CreateChannelRequest
-import ai.slock.android.core.data.repository.DataResult
+import ai.slock.compose.data.DataResult
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.MessageId
 import ai.slock.android.core.model.ServerId
