@@ -360,6 +360,7 @@ private fun MembersPageHeader(title: String, onBack: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
+            .padding(top = slockTopSafeAreaPadding())
             .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)

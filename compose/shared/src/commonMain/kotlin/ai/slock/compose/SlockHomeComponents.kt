@@ -278,6 +278,7 @@ fun SlockStructuralHomeShell(
     val displayedDirectMessages = if (directMessagesReversed) directMessages.asReversed() else directMessages
     val listState = rememberLazyListState()
     val pullToRefreshState = rememberPullToRefreshState(contentRefreshing)
+    val topSafeArea = slockTopSafeAreaPadding()
     Column(
         modifier = modifier.fillMaxSize().background(SlockColor.AppBgLightBlue).padding(outerPadding)
     ) {
@@ -345,9 +346,9 @@ fun SlockStructuralHomeShell(
                     item { Spacer(Modifier.height(bottomContentPadding)) }
                 }
             }
-            HomeNotificationCenter(notifications, onNotificationView, onNotificationDismiss, Modifier.align(Alignment.TopEnd).padding(top = SlockSpacing.Lg, end = SlockSpacing.Lg))
+            HomeNotificationCenter(notifications, onNotificationView, onNotificationDismiss, Modifier.align(Alignment.TopEnd).padding(top = topSafeArea).padding(top = SlockSpacing.Lg, end = SlockSpacing.Lg))
             if (serverSwitcherExpanded) {
-                ServerSwitcherPanel(servers, currentServerId, labels, onServerSelected, onCreateServerClick, Modifier.padding(start = SlockSpacing.Lg, top = 50.dp))
+                ServerSwitcherPanel(servers, currentServerId, labels, onServerSelected, onCreateServerClick, Modifier.padding(top = topSafeArea).padding(start = SlockSpacing.Lg, top = 50.dp))
             }
         }
         if (showBottomBar) {
@@ -393,7 +394,7 @@ private fun HomePullRefreshIndicator(refreshing: Boolean) {
 private fun HomeWorkspaceHeader(serverName: String, serverUnreadCount: Int, onServerBadgeClick: () -> Unit) {
     Box(modifier = Modifier.fillMaxWidth().background(SlockColor.BrandYellow)) {
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack).align(Alignment.BottomCenter))
-        Box(modifier = Modifier.padding(horizontal = SlockSpacing.Lg, vertical = SlockSpacing.Md).clickable(onClick = onServerBadgeClick)) {
+        Box(modifier = Modifier.padding(top = slockTopSafeAreaPadding()).padding(horizontal = SlockSpacing.Lg, vertical = SlockSpacing.Md).clickable(onClick = onServerBadgeClick)) {
             SlockLogoBadge(text = serverName, showDropdown = true)
             if (serverUnreadCount > 0) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
         }

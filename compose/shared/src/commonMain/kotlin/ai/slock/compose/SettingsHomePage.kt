@@ -155,19 +155,11 @@ private fun appShellBottomTabs(selectedKey: String): List<SlockBottomTabItemPayl
     )
 
 @Composable
-private fun bottomSafeAreaPadding(): Float {
-    val pageData = (LocalActivity.current.getPager() as Pager).pageData
-    val safeBottom = pageData.safeAreaInsets.bottom
-    val androidBottom = pageData.androidBottomBavBarHeight
-    return safeBottom.coerceAtLeast(androidBottom).coerceAtLeast(0f)
-}
-
-@Composable
 private fun SlockAppShellContent() {
     var selectedTab by remember { mutableStateOf("home") }
     var selectedSettingsDestination by remember { mutableStateOf("home") }
     val pager = LocalActivity.current.getPager() as Pager
-    val bottomSafeArea = bottomSafeAreaPadding()
+    val bottomSafeArea = slockBottomSafeAreaPadding()
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when (selectedTab) {
@@ -210,7 +202,7 @@ private fun SlockAppShellContent() {
             items = appShellBottomTabs(selectedTab),
             onSelect = { selectedTab = it },
             modifier = Modifier.fillMaxWidth(),
-            bottomSafeArea = bottomSafeArea.dp
+            bottomSafeArea = bottomSafeArea
         )
     }
 }
@@ -245,7 +237,7 @@ private fun AppShellPlaceholderContent(
 
 @Composable
 private fun BottomTabBarSmokeContent() {
-    val bottomSafeArea = bottomSafeAreaPadding()
+    val bottomSafeArea = slockBottomSafeAreaPadding()
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -332,7 +324,7 @@ private fun BottomTabBarSmokeContent() {
             items = bottomTabBarSmokeItems,
             onSelect = {},
             modifier = Modifier.fillMaxWidth(),
-            bottomSafeArea = bottomSafeArea.dp
+            bottomSafeArea = bottomSafeArea
         )
     }
 }
@@ -374,7 +366,7 @@ internal fun SettingsHomeContent(
     ) {
         item {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = slockTopSafeAreaPadding()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(

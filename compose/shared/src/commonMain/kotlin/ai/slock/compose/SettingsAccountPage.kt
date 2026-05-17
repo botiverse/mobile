@@ -134,7 +134,7 @@ internal fun SettingsAccountContent(
     onEvent: (String) -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(top = slockTopSafeAreaPadding()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item { SettingsAccountHeader(payload.profile, payload.verifiedLabel) }
