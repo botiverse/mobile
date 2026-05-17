@@ -156,8 +156,30 @@ fun MembersPageShell(
             )
             is ScreenLoadState.Content -> {
                 if (useSharedList) {
+                    var displayMembers by remember(loadState.data.server.id.value, loadState.data.members) {
+                        mutableStateOf(loadState.data.members)
+                    }
+                    LaunchedEffect(loadState.data.server.id.value, loadState.data.members, loadHumanProfile) {
+                        if (loadHumanProfile == null) {
+                            displayMembers = loadState.data.members
+                            return@LaunchedEffect
+                        }
+                        displayMembers =
+                            loadState.data.members.map { member ->
+                                if (
+                                    member.kind == MemberKind.Human &&
+                                        member.avatar == null &&
+                                        member.avatarUrl == null &&
+                                        member.gravatarHash == null
+                                ) {
+                                    loadHumanProfile(member.id) ?: member
+                                } else {
+                                    member
+                                }
+                            }
+                    }
                     MembersKuiklyScreen(
-                        content = loadState.data,
+                        content = loadState.data.copy(members = displayMembers),
                         onBack = onBack,
                         onAddHuman = onAddHuman,
                         onMemberClick = onMemberClick

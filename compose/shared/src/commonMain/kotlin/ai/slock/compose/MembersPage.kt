@@ -60,6 +60,7 @@ private val MembersPageInset = SlockSpacing.Md
 private val MemberAvatarSize = 34.dp
 private val MemberAvatarFontSize = 12.sp
 private val MemberRowMinHeight = 48.dp
+private val MemberStatusDotSize = 10.dp
 
 @Page(MEMBERS_SMOKE_PAGE, supportInLocal = true)
 internal class ComposeMembersSmokePage : ai.slock.compose.base.BasePager() {
@@ -436,12 +437,12 @@ private fun MembersAvatar(member: MemberProfile) {
     val pixelSpec = remember(avatarWireValue) { avatarWireValue?.toMembersPixelAvatarSpec() }
     Box(modifier = Modifier.size(MemberAvatarSize)) {
         when {
-            pixelSpec != null -> MembersPixelAvatar(pixelSpec)
+            pixelSpec != null -> MembersPixelAvatar(pixelSpec, member.kind)
             avatarWireValue?.startsWith("http://") == true || avatarWireValue?.startsWith("https://") == true ->
                 Box(
                     modifier = Modifier
                         .size(MemberAvatarSize)
-                        .background(SlockColor.AccentLavender)
+                        .background(member.kind.membersAvatarColor)
                         .border(SlockStroke.Thin, SlockColor.BorderBlack),
                     contentAlignment = Alignment.Center
                 ) {
@@ -456,29 +457,46 @@ private fun MembersAvatar(member: MemberProfile) {
                 Box(
                     modifier = Modifier
                         .size(MemberAvatarSize)
-                        .background(SlockColor.AccentLavender)
+                        .background(member.kind.membersAvatarColor)
                         .border(SlockStroke.Thin, SlockColor.BorderBlack),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = member.avatarLabel,
+                        text = member.avatarLabel.take(2).uppercase(),
                         style = SlockType.Button.copy(fontSize = MemberAvatarFontSize),
                         color = SlockColor.TextBlack,
                         maxLines = 1
                     )
                 }
         }
+        if (member.kind == MemberKind.Agent) {
+            MembersStatusDot(
+                member = member,
+                modifier = Modifier.align(Alignment.BottomEnd)
+            )
+        }
     }
 }
 
 @Composable
-private fun MembersPixelAvatar(spec: MembersPixelAvatarSpec) {
+private fun MembersStatusDot(member: MemberProfile, modifier: Modifier = Modifier) {
+    Canvas(
+        modifier = modifier
+            .size(MemberStatusDotSize)
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+    ) {
+        drawCircle(color = member.agentStatus.membersStatusColor(member.presence))
+    }
+}
+
+@Composable
+private fun MembersPixelAvatar(spec: MembersPixelAvatarSpec, kind: MemberKind) {
     Canvas(
         modifier = Modifier
             .size(MemberAvatarSize)
             .border(SlockStroke.Thin, SlockColor.BorderBlack)
     ) {
-        drawRect(spec.background)
+        drawRect(spec.background.takeIf { kind == MemberKind.Human } ?: kind.membersAvatarColor)
         val cellSize = size.width / PixelAvatarGridSize
         spec.grid.forEachIndexed { rowIndex, row ->
             row.forEachIndexed { columnIndex, key ->
@@ -494,6 +512,32 @@ private fun MembersPixelAvatar(spec: MembersPixelAvatarSpec) {
         }
     }
 }
+
+private val MemberKind.membersAvatarColor: Color
+    get() = when (this) {
+        MemberKind.Human -> SlockColor.AccentLavender
+        MemberKind.Agent -> SlockColor.AccentPink
+        MemberKind.System -> SlockColor.AccentCyan
+    }
+
+private fun AgentStatus?.membersStatusColor(presence: Presence): Color =
+    when (this) {
+        AgentStatus.Online -> SlockColor.AccentLime
+        AgentStatus.Working -> SlockColor.AccentCyan
+        AgentStatus.Thinking -> SlockColor.BrandYellow
+        AgentStatus.Idle -> SlockColor.AccentLavender
+        AgentStatus.Disconnected,
+        AgentStatus.Offline -> SlockColor.EmptyStateGray
+        AgentStatus.Error -> SlockColor.AccentRed
+        null -> presence.membersPresenceColor
+    }
+
+private val Presence.membersPresenceColor: Color
+    get() = when (this) {
+        Presence.Active -> SlockColor.AccentLime
+        Presence.Away -> SlockColor.BrandYellow
+        Presence.Offline -> SlockColor.EmptyStateGray
+    }
 
 private data class MembersAgentGroup(
     val label: String,
