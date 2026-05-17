@@ -1,6 +1,9 @@
 package ai.slock.android.core.data.auth
 
 import ai.slock.android.core.data.network.ApiResponse
+import ai.slock.compose.data.SharedAuthDataSource
+import ai.slock.compose.data.SharedAuthErrorCode
+import ai.slock.compose.data.SharedAuthResult
 import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
@@ -16,16 +19,23 @@ class KtorAuthRepository(
     private val warningLogger: (String) -> Unit = { message -> ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(TAG, message) }
 ) : AuthRepository {
     private val gson = Gson()
+    private val sharedAuthDataSource =
+        SharedAuthDataSource(
+            api = AndroidSlockAuthApi(api),
+            sessionStore = ComposeAuthSessionStoreAdapter(store)
+        )
 
     override suspend fun login(email: String, password: String): AuthResult<AuthSessionSummary> {
-        if (email.isBlank() || password.isBlank()) {
-            return AuthResult.Failure(AuthErrorCode.Validation, "Email and password are required.")
-        }
-
-        return executeAuthCall {
-            val response = api.login(jsonBody(LoginRequest(email.trim(), password)))
-            val login = response.parseBody<LoginResponse>()
-            saveLoginSession(login)
+        return try {
+            when (val result = sharedAuthDataSource.login(email, password)) {
+                is SharedAuthResult.Success -> AuthResult.Success(result.data.toAndroidSummary())
+                SharedAuthResult.Unauthenticated -> AuthResult.Unauthenticated
+                is SharedAuthResult.Failure -> result.toAndroidAuthFailure()
+            }
+        } catch (_: IOException) {
+            AuthResult.Failure(AuthErrorCode.Network, "Network unavailable. Check your connection.")
+        } catch (_: Exception) {
+            AuthResult.Failure(AuthErrorCode.Unknown, "Sign in failed. Try again.")
         }
     }
 
@@ -311,6 +321,22 @@ class KtorAuthRepository(
             selectedServerId = selectedServerId,
             selectedServerSlug = selectedServerSlug,
             servers = servers
+        )
+
+    private fun ai.slock.compose.data.StoredAuthSession.toAndroidSummary(): AuthSessionSummary =
+        toAndroidAuthSession().summary()
+
+    private fun SharedAuthResult.Failure.toAndroidAuthFailure(): AuthResult.Failure =
+        AuthResult.Failure(
+            code =
+                when (code) {
+                    SharedAuthErrorCode.Validation -> AuthErrorCode.Validation
+                    SharedAuthErrorCode.InvalidCredentials -> AuthErrorCode.InvalidCredentials
+                    SharedAuthErrorCode.Network -> AuthErrorCode.Network
+                    SharedAuthErrorCode.Server -> AuthErrorCode.Server
+                    SharedAuthErrorCode.Unknown -> AuthErrorCode.Unknown
+                },
+            message = message
         )
 
     private class AuthHttpException(
