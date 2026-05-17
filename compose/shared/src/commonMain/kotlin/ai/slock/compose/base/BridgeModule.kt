@@ -103,6 +103,13 @@ internal class BridgeModule : Module() {
         callNativeMethod("composerEvent", methodArgs, null)
     }
 
+    suspend fun relationalStore(command: JSONObject): JSONObject? =
+        suspendCoroutine { continuation ->
+            callNativeMethod(RELATIONAL_STORE, command) {
+                continuation.resume(it)
+            }
+        }
+
     fun openPage(
         url: String,
         closeCurPage: Boolean = false,
@@ -374,6 +381,7 @@ internal class BridgeModule : Module() {
         const val CURRENT_TIMESTAMP = "currentTimestamp"
         const val DATE_FORMATTER = "dateFormatter"
         const val REPORT_REALTIME = "reportRealTime"
+        const val RELATIONAL_STORE = "relationalStore"
         const val REPORT_PAGE_COST_TIME_FOR_CACHE = "reportPageCostTimeForCache"
         const val REPORT_PAGE_COST_TIME_FOR_SUCCESS = "reportPageCostTimeForSuccess"
         const val REPORT_PAGE_COST_TIME_FOR_ERROR = "reportPageCostTimeForError"
