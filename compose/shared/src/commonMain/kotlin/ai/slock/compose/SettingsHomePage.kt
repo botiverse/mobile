@@ -129,6 +129,12 @@ private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
             title = "About",
             subtitle = "Version, diagnostics, feedback",
             iconName = "bug"
+        ),
+        SlockTabItemPayload(
+            key = "router",
+            title = "Smoke previews",
+            subtitle = "Open Kuikly router and shared test pages",
+            iconName = "route"
         )
     )
 )
@@ -160,6 +166,7 @@ private fun bottomSafeAreaPadding(): Float {
 private fun SlockAppShellContent() {
     var selectedTab by remember { mutableStateOf("home") }
     var selectedSettingsDestination by remember { mutableStateOf("home") }
+    val pager = LocalActivity.current.getPager() as Pager
     val bottomSafeArea = bottomSafeAreaPadding()
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -172,7 +179,13 @@ private fun SlockAppShellContent() {
                     } else {
                         SettingsHomeContent(
                             settingsTabBarSmokePayload.copy(subtitle = "Shared settings"),
-                            onSelect = { selectedSettingsDestination = it }
+                            onSelect = {
+                                if (it == "router") {
+                                    jumpPage(pager, "router")
+                                } else {
+                                    selectedSettingsDestination = it
+                                }
+                            }
                         )
                     }
                 }

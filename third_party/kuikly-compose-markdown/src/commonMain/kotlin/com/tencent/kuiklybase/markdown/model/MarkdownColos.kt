@@ -51,7 +51,7 @@ class DefaultMarkdownColors(
     override val text: Color,
     @Deprecated("Set color via `codeText` textStyle via `MarkdownTypography` instead")
     override val codeText: Color,
-    @Deprecated("Set color via `inlineCode` textStyle via `Ma    val tableHeaderBackground = LocalMarkdownColors.current.tableHeaderBackground\nrkdownTypography` instead")
+    @Deprecated("Set color via `inlineCode` textStyle via `MarkdownTypography` instead")
     override val inlineCodeText: Color,
     @Deprecated("Set color via `linkText` textStyle via `MarkdownTypography` instead")
     override val linkText: Color,

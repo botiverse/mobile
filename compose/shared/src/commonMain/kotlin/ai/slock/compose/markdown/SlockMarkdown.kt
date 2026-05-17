@@ -73,19 +73,19 @@ object SlockMarkdownPreviewSamples {
     val all = listOf(inlineTags, markdownBlocks, codeFence, image)
 }
 
-private val ThreadEscapedMarkdownLineBreakRegex =
-    Regex("""\\r?\\n(?:\\r?\\n|[-*+] |\d+\. |> |#|```|~~~)""")
-
 fun String.normalizeThreadMarkdownBody(): String {
     if (!contains("\\n") && !contains("\\r")) return this
 
     val shouldDecodeEscapedLineBreaks =
-        ThreadEscapedMarkdownLineBreakRegex.containsMatchIn(this) ||
+        threadEscapedMarkdownLineBreakRegex().containsMatchIn(this) ||
             (!contains('\n') && !contains('\r') && contains("\\n"))
     if (!shouldDecodeEscapedLineBreaks) return this
 
     return replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\r")
 }
+
+private fun threadEscapedMarkdownLineBreakRegex(): Regex =
+    Regex("""\\r?\\n(?:\\r?\\n|[-*+] |\d+\. |> |#|```|~~~)""")
 
 fun threadMarkdownTaskReferenceKey(label: String): String =
     label.removePrefix("#").trim().lowercase()
@@ -98,7 +98,7 @@ fun threadMarkdownTagDisplayLabel(label: String): String {
     return prefix + trimmed.dropWhile { it == prefix.first() }
 }
 
-private val ThreadInlineTagRegex =
+private fun threadInlineTagRegex(): Regex =
     Regex(
         """(?<![\p{L}\p{N}_])@[\p{L}\p{N}][\p{L}\p{N}_.\-]{0,63}|(?<![\p{L}\p{N}_])#\d+|(?<![\p{L}\p{N}_])#[\p{L}][\p{L}\p{N}_-]{0,63}"""
     )
@@ -112,7 +112,7 @@ private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
     }
 
 fun String.threadInlineTagMatches(baseOffset: Int = 0): List<ThreadInlineTagMatch> =
-    ThreadInlineTagRegex.findAll(this).mapNotNull { match ->
+    threadInlineTagRegex().findAll(this).mapNotNull { match ->
         match.value.toThreadMarkdownTagOrNull()?.let { tag ->
             ThreadInlineTagMatch(
                 id = "slock:${baseOffset + match.range.first}",
