@@ -3,6 +3,7 @@ package ai.slock.android.core.data.network
 import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthSessionStore
 import ai.slock.android.core.data.auth.AuthTokenRefresher
+import ai.slock.android.core.data.auth.ComposeAuthSessionStoreAdapter
 import ai.slock.android.core.data.auth.KtorAuthRepository
 import ai.slock.android.core.data.repository.AddChannelMemberRequest
 import ai.slock.android.core.data.repository.AgentActivityEntry
@@ -39,6 +40,9 @@ import ai.slock.android.core.data.repository.ConversationRepository
 import ai.slock.android.core.data.repository.CreateChannelRequest
 import ai.slock.android.core.data.repository.CreateChannelResult
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.DataRequestPriority
+import ai.slock.compose.data.SharedHomeDataSource
+import ai.slock.compose.data.parseSlockHome
 import ai.slock.android.core.data.repository.DirectMessageSnapshot
 import ai.slock.android.core.data.repository.HomeSnapshot
 import ai.slock.android.core.data.repository.InboxFilter
@@ -132,33 +136,38 @@ class RealChannelRepository(
     private var directMessageCache: CachedDirectMessages? = null
     private val conversationSummaryCacheLock = Any()
     private var conversationSummaryCache: CachedConversationSummaries? = null
+    private val sharedHomeDataSource =
+            SharedHomeDataSource(
+                    sessionStore = ComposeAuthSessionStoreAdapter(store),
+                    api = AndroidSlockHomeApi(api),
+                    localWriteThrough = null,
+                    parseHome = { payload, session ->
+                        parseSlockHome(payload, session, warningLogger)
+                    }
+            )
 
     override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> {
-        val context = serverContext(serverId) ?: return authRequired()
-        val channels = fetchChannels(context)
-        val directMessages = fetchDirectMessages(context)
-
-        if (channels is DataResult.Error || channels is DataResult.NoPermission)
-                return channels.mapError()
-        if (directMessages is DataResult.Error || directMessages is DataResult.NoPermission)
-                return directMessages.mapError()
-        val channelItems = (channels as? DataResult.Content)?.data?.channels.orEmpty()
-        val directMessageItems =
-                (directMessages as? DataResult.Content)?.data?.directMessages.orEmpty()
-        if (channelItems.isEmpty() && directMessageItems.isEmpty())
-                return DataResult.Empty(EmptyReason.NoChannels)
-
-        val allUnread =
-                channelItems.sumOf { it.unreadCount } + directMessageItems.sumOf { it.unreadCount }
-        return DataResult.Content(
-                HomeSnapshot(
-                        server = context.server,
-                        currentMember = context.session.user.toMemberProfile(),
-                        channels = channelItems,
-                        directMessages = directMessageItems,
-                        unreadTotal = allUnread
+        return when (val result = sharedHomeDataSource.loadHome(serverId, DataRequestPriority.Visible)) {
+            is DataResult.Content -> {
+                val snapshot = result.data
+                rememberConversationSummaries(serverId, snapshot.channels)
+                rememberConversationSummaries(serverId, snapshot.directMessages)
+                val channels = snapshot.channels.withCachedConversationSummaries(serverId)
+                val directMessages =
+                        mergeDirectMessageCache(serverId, snapshot.directMessages)
+                                .withCachedConversationSummaries(serverId)
+                DataResult.Content(
+                        snapshot.copy(
+                                channels = channels,
+                                directMessages = directMessages,
+                                unreadTotal =
+                                        channels.sumOf { it.unreadCount } +
+                                                directMessages.sumOf { it.unreadCount }
+                        )
                 )
-        )
+            }
+            else -> result
+        }
     }
 
     override suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot> {
