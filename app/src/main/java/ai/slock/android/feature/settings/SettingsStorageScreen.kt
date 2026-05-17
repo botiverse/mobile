@@ -3,6 +3,8 @@ package ai.slock.android.feature.settings
 import ai.slock.android.R
 import ai.slock.android.core.data.storage.StorageClearTarget
 import ai.slock.android.core.data.storage.StorageManagementSnapshot
+import ai.slock.android.shared.SlockKuiklyActivity
+import ai.slock.android.shared.SlockKuiklyPageIsland
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.icons.LucideIcons
@@ -37,9 +39,96 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import java.util.Locale
+import org.json.JSONArray
+import org.json.JSONObject
 
 @Composable
 fun SettingsStorageScreen(
+        snapshot: StorageManagementSnapshot,
+        actionInProgress: StorageClearTarget? = null,
+        feedback: String? = null,
+        modifier: Modifier = Modifier,
+        onRefresh: () -> Unit = {},
+        onClear: (StorageClearTarget) -> Unit = {}
+) {
+    SlockKuiklyPageIsland(
+            pageName = SlockKuiklyActivity.PAGE_SETTINGS_STORAGE,
+            pageData =
+                    snapshot.toKuiklyStoragePageData(
+                            labels =
+                                    SettingsStorageKuiklyLabels(
+                                            totalTitle =
+                                                    stringResource(
+                                                            R.string.settings_storage_total_title
+                                                    ),
+                                            refreshLabel =
+                                                    stringResource(
+                                                            R.string.settings_storage_refresh
+                                                    ),
+                                            databaseTitle =
+                                                    stringResource(
+                                                            R.string
+                                                                    .settings_storage_database_title
+                                                    ),
+                                            databaseDetail =
+                                                    stringResource(
+                                                            R.string
+                                                                    .settings_storage_database_detail
+                                                    ),
+                                            imageCacheTitle =
+                                                    stringResource(
+                                                            R.string
+                                                                    .settings_storage_image_cache_title
+                                                    ),
+                                            imageCacheDetail =
+                                                    stringResource(
+                                                            R.string
+                                                                    .settings_storage_image_cache_detail
+                                                    ),
+                                            clearImageCache =
+                                                    stringResource(
+                                                            R.string
+                                                                    .settings_storage_clear_image_cache
+                                                    ),
+                                            tempLogsTitle =
+                                                    stringResource(
+                                                            R.string
+                                                                    .settings_storage_temp_logs_title
+                                                    ),
+                                            tempLogsDetail =
+                                                    stringResource(
+                                                            R.string
+                                                                    .settings_storage_temp_logs_detail
+                                                    ),
+                                            clearTempLogs =
+                                                    stringResource(
+                                                            R.string
+                                                                    .settings_storage_clear_temp_logs
+                                                    ),
+                                            safeClearNote =
+                                                    stringResource(
+                                                            R.string
+                                                                    .settings_storage_safe_clear_note
+                                                    )
+                                    ),
+                            actionInProgress = actionInProgress,
+                            feedback = feedback
+                    ),
+            modifier = modifier.fillMaxSize(),
+            onEvent = { event ->
+                when (event.optString("action")) {
+                    "refreshStorage" -> onRefresh()
+                    "clearStorage" ->
+                            event.optString("itemId")
+                                    .toStorageClearTargetOrNull()
+                                    ?.let(onClear)
+                }
+            }
+    )
+}
+
+@Composable
+private fun SettingsStorageNativeContent(
         snapshot: StorageManagementSnapshot,
         actionInProgress: StorageClearTarget? = null,
         feedback: String? = null,
@@ -224,6 +313,111 @@ private fun SettingsStorageFeedback(text: String) {
     )
 }
 
+private data class SettingsStorageKuiklyLabels(
+        val totalTitle: String,
+        val refreshLabel: String,
+        val databaseTitle: String,
+        val databaseDetail: String,
+        val imageCacheTitle: String,
+        val imageCacheDetail: String,
+        val clearImageCache: String,
+        val tempLogsTitle: String,
+        val tempLogsDetail: String,
+        val clearTempLogs: String,
+        val safeClearNote: String
+)
+
+private fun StorageManagementSnapshot.toKuiklyStoragePageData(
+        labels: SettingsStorageKuiklyLabels,
+        actionInProgress: StorageClearTarget?,
+        feedback: String?
+): JSONObject =
+        JSONObject()
+                .put(
+                        "payload",
+                        JSONObject()
+                                .put("totalTitle", labels.totalTitle)
+                                .put("totalSize", totalBytes.formatStorageSize())
+                                .put("refreshLabel", labels.refreshLabel)
+                                .put("safeClearNote", labels.safeClearNote)
+                                .put("feedback", feedback.orEmpty())
+                                .put(
+                                        "rows",
+                                        JSONArray()
+                                                .put(
+                                                        storageRowJson(
+                                                                target = "database",
+                                                                iconName = "archive",
+                                                                title = labels.databaseTitle,
+                                                                detail = labels.databaseDetail,
+                                                                size = localDatabaseBytes,
+                                                                clearLabel = "",
+                                                                clearEnabled = false,
+                                                                clearInProgress = false
+                                                        )
+                                                )
+                                                .put(
+                                                        storageRowJson(
+                                                                target = "imageCache",
+                                                                iconName = "image",
+                                                                title = labels.imageCacheTitle,
+                                                                detail = labels.imageCacheDetail,
+                                                                size = imageCacheBytes,
+                                                                clearLabel = labels.clearImageCache,
+                                                                clearEnabled = imageCacheBytes > 0L,
+                                                                clearInProgress =
+                                                                        actionInProgress ==
+                                                                                StorageClearTarget
+                                                                                        .ImageCache
+                                                        )
+                                                )
+                                                .put(
+                                                        storageRowJson(
+                                                                target = "temporaryAndLogs",
+                                                                iconName = "file-text",
+                                                                title = labels.tempLogsTitle,
+                                                                detail = labels.tempLogsDetail,
+                                                                size = temporaryAndLogBytes,
+                                                                clearLabel = labels.clearTempLogs,
+                                                                clearEnabled =
+                                                                        temporaryAndLogBytes > 0L,
+                                                                clearInProgress =
+                                                                        actionInProgress ==
+                                                                                StorageClearTarget
+                                                                                        .TemporaryAndLogs
+                                                        )
+                                                )
+                                )
+                                .toString()
+                )
+
+private fun storageRowJson(
+        target: String,
+        iconName: String,
+        title: String,
+        detail: String,
+        size: Long,
+        clearLabel: String,
+        clearEnabled: Boolean,
+        clearInProgress: Boolean
+): JSONObject =
+        JSONObject()
+                .put("target", target)
+                .put("iconName", iconName)
+                .put("title", title)
+                .put("detail", detail)
+                .put("size", size.formatStorageSize())
+                .put("clearLabel", clearLabel)
+                .put("clearEnabled", clearEnabled)
+                .put("clearInProgress", clearInProgress)
+
+private fun String.toStorageClearTargetOrNull(): StorageClearTarget? =
+        when (this) {
+            "imageCache" -> StorageClearTarget.ImageCache
+            "temporaryAndLogs" -> StorageClearTarget.TemporaryAndLogs
+            else -> null
+        }
+
 private fun Long.formatStorageSize(): String {
     if (this <= 0L) return "0 B"
     val units = listOf("B", "KB", "MB", "GB")
@@ -244,7 +438,7 @@ private fun Long.formatStorageSize(): String {
 @Composable
 private fun SettingsStorageScreenPreview() {
     SlockTheme {
-        SettingsStorageScreen(
+        SettingsStorageNativeContent(
                 snapshot =
                         StorageManagementSnapshot(
                                 localDatabaseBytes = 4_812_032,
