@@ -13,13 +13,16 @@ import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
+import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import kotlinx.serialization.Serializable
@@ -43,6 +46,13 @@ internal data class SlockBottomTabItemPayload(
     val selected: Boolean = false,
     val enabled: Boolean = true
 )
+
+internal enum class SlockTabBarPresentation {
+    Edge,
+    SafeAreaHost,
+    FloatingDock,
+    NavigationRail
+}
 
 @Composable
 internal fun SlockVerticalTabBar(
@@ -95,7 +105,7 @@ internal fun SlockBottomTabBar(
                     )
                     Text(
                         text = item.label.uppercase(),
-                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextBlack),
+                        style = SlockType.TabLabel.copy(color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -125,6 +135,96 @@ internal fun SlockBottomTabBar(
                 .background(SlockColor.BorderBlack)
                 .align(Alignment.BottomCenter)
         )
+    }
+}
+
+@Composable
+internal fun SlockAppBottomTabBarHost(
+    items: List<SlockBottomTabItemPayload>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    bottomSafeArea: Dp = 0.dp
+) {
+    Column(modifier = modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
+        SlockBottomTabBar(
+            items = items,
+            onSelect = onSelect,
+            modifier = Modifier.fillMaxWidth().offset(y = -SlockStroke.Default)
+        )
+        Spacer(modifier = Modifier.fillMaxWidth().height(SlockSpacing.Xs))
+        Spacer(modifier = Modifier.fillMaxWidth().height(bottomSafeArea))
+    }
+}
+
+@Composable
+internal fun SlockFloatingDockTabBar(
+    items: List<SlockBottomTabItemPayload>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    bottomSafeArea: Dp = 0.dp
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = SlockSpacing.Lg)
+            .padding(bottom = SlockSpacing.Md),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .widthIn(max = 420.dp)
+                .fillMaxWidth()
+                .padding(end = SlockStroke.Default, bottom = SlockStroke.Default)
+        ) {
+            Box(Modifier.matchParentSize().offset(x = SlockStroke.Default, y = SlockStroke.Default).background(SlockColor.BorderBlack))
+            SlockBottomTabBar(
+                items = items,
+                onSelect = onSelect,
+                modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
+            )
+        }
+        Spacer(modifier = Modifier.fillMaxWidth().height(bottomSafeArea))
+    }
+}
+
+@Composable
+internal fun SlockNavigationRailTabBar(
+    items: List<SlockBottomTabItemPayload>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .width(72.dp)
+            .fillMaxHeight()
+            .background(SlockColor.SurfaceWhite)
+    ) {
+        items.forEach { item ->
+            val selected = item.selected
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(58.dp)
+                    .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                    .clickable(enabled = item.enabled) { onSelect(item.key) }
+                    .padding(horizontal = SlockSpacing.Xs),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
+            ) {
+                SlockLucideIcon(
+                    name = item.iconName.takeIf { it.isNotBlank() } ?: "circle",
+                    color = if (item.enabled) "#FF000000" else "#FF737373",
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = item.label.uppercase(),
+                    style = SlockType.TabLabel.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
     }
 }
 

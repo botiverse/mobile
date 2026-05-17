@@ -67,5 +67,7 @@ internal object SlockType {
     val Body = TextStyle(fontFamily = SpaceGroteskRegular, fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 22.sp, letterSpacing = 0.sp)
     val Caption = TextStyle(fontFamily = SpaceGroteskRegular, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.sp)
     val Button = TextStyle(fontFamily = SpaceGroteskMedium, fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 18.sp, letterSpacing = 0.sp)
+    val ButtonBold = TextStyle(fontFamily = SpaceGroteskBold, fontWeight = FontWeight.Bold, fontSize = 14.sp, lineHeight = 18.sp, letterSpacing = 0.sp)
+    val TabLabel = TextStyle(fontFamily = SpaceGroteskBold, fontWeight = FontWeight.Bold, fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp)
     val Input = TextStyle(fontFamily = SpaceGroteskRegular, fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 20.sp, letterSpacing = 0.sp)
 }

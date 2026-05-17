@@ -193,12 +193,12 @@ private fun SlockAppShellContent() {
                 )
             }
         }
-        SlockBottomTabBar(
+        SlockAppBottomTabBarHost(
             items = appShellBottomTabs(selectedTab),
             onSelect = { selectedTab = it },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            bottomSafeArea = bottomSafeArea.dp
         )
-        Spacer(modifier = Modifier.height((bottomSafeArea + 4f).dp))
     }
 }
 
@@ -266,13 +266,61 @@ private fun BottomTabBarSmokeContent() {
                 }
             }
         }
+        Spacer(modifier = Modifier.height(14.dp))
+        Text(
+            "Edge",
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        SlockBottomTabBar(items = bottomTabBarSmokeItems, onSelect = {}, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            "Floating Dock",
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        SlockFloatingDockTabBar(items = bottomTabBarSmokeItems, onSelect = {}, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            "Navigation Rail",
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Row(modifier = Modifier.fillMaxWidth().height(140.dp)) {
+            SlockNavigationRailTabBar(items = bottomTabBarSmokeItems, onSelect = {})
+            Column(
+                modifier = Modifier.weight(1f).fillMaxSize().background(SlockColor.AppBgLightBlue).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    "Rail layout",
+                    style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    "Shared TabBar variant parity with Android",
+                    style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
         Spacer(modifier = Modifier.weight(1f))
-        SlockBottomTabBar(
+        SlockAppBottomTabBarHost(
             items = bottomTabBarSmokeItems,
             onSelect = {},
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            bottomSafeArea = bottomSafeArea.dp
         )
-        Spacer(modifier = Modifier.height((bottomSafeArea + 4f).dp))
     }
 }
 

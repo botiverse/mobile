@@ -368,7 +368,7 @@ private fun SlockLogoBadge(text: String, modifier: Modifier = Modifier, showDrop
             modifier = Modifier.background(SlockColor.TextBlack).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 16.dp, vertical = SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text, color = SlockColor.BrandYellow, style = SlockType.Button.copy(fontWeight = FontWeight.Medium, fontSize = 16.sp, lineHeight = 20.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
+            Text(text, color = SlockColor.BrandYellow, style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
             if (showDropdown) {
                 Spacer(Modifier.width(SlockSpacing.Xs))
                 SlockLucideIcon("chevron-down", Modifier.size(18.dp), color = "#FFFFD440")
