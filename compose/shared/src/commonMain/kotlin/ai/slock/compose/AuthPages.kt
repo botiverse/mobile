@@ -24,9 +24,9 @@ import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 
-private const val LOGIN_PAGE = "compose_login"
-private const val REGISTER_PAGE = "compose_register"
-private const val FORGOT_PASSWORD_PAGE = "compose_forgot_password"
+const val LOGIN_PAGE = "compose_login"
+const val REGISTER_PAGE = "compose_register"
+const val FORGOT_PASSWORD_PAGE = "compose_forgot_password"
 
 @Page(LOGIN_PAGE, supportInLocal = true)
 internal class ComposeLoginPage : ai.slock.compose.base.BasePager() {

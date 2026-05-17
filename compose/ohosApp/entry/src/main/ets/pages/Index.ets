@@ -22,7 +22,7 @@ struct Index {
   build() {
     Stack() {
       Kuikly({
-        pagerName: this.pageName ?? 'compose_slock_app_shell',
+        pagerName: this.pageName ?? 'compose_login',
         pagerData: this.pageData ?? {},
         delegate: this.kuiklyViewDelegate,
         nativeManager: globalNativeManager,
