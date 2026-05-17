@@ -1,0 +1,76 @@
+package ai.slock.compose.data
+
+import ai.slock.compose.model.ServerId
+
+class SharedHomeDataSource(
+    private val sessionStore: SlockAuthSessionStore,
+    private val api: SlockHomeApi,
+    private val localWriteThrough: ComposeLocalWriteThrough? = null,
+    private val parseHome: (HomeNetworkPayload, StoredAuthSession) -> DataResult<HomeSnapshot>
+) {
+    suspend fun currentSessionSnapshot(): DataResult<ai.slock.compose.model.SessionSnapshot> {
+        val session = sessionStore.readSession()
+            ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
+        return session.toSessionSnapshot()?.let { DataResult.Content(it) }
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    }
+
+    suspend fun loadHome(
+        serverId: ServerId? = null,
+        priority: DataRequestPriority = DataRequestPriority.Visible
+    ): DataResult<HomeSnapshot> {
+        val session = sessionStore.readSession()
+            ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
+        val resolvedServerId = serverId ?: session.currentServerId?.let(::ServerId)
+            ?: return DataResult.Empty(EmptyReason.NoChannels)
+
+        localWriteThrough?.readHomeSnapshot(resolvedServerId)?.let { cached ->
+            if (priority == DataRequestPriority.Background) {
+                return DataResult.Content(cached)
+            }
+        }
+
+        val payload =
+            HomeNetworkPayload(
+                serverId = resolvedServerId,
+                channels = api.channels(priority),
+                directMessages = api.directMessages(priority),
+                unreadCounts = api.channelUnreadCounts(priority),
+                serverUnreadSummary = api.serverUnreadSummary(priority)
+            )
+        val result = parseHome(payload, session)
+        localWriteThrough?.writeHomeResult(result, source = "shared_home_data_source")
+        return result
+    }
+}
+
+interface SlockHomeApi {
+    suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse
+    suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse
+    suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse
+    suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse
+}
+
+data class HomeNetworkPayload(
+    val serverId: ServerId,
+    val channels: HomeNetworkResponse,
+    val directMessages: HomeNetworkResponse,
+    val unreadCounts: HomeNetworkResponse,
+    val serverUnreadSummary: HomeNetworkResponse
+) {
+    val isSuccessful: Boolean
+        get() =
+            channels.isSuccessful &&
+                directMessages.isSuccessful &&
+                unreadCounts.isSuccessful &&
+                serverUnreadSummary.isSuccessful
+}
+
+data class HomeNetworkResponse(
+    val code: Int,
+    val bodyText: String?,
+    val errorBodyText: String? = null
+) {
+    val isSuccessful: Boolean
+        get() = code in 200..299
+}
