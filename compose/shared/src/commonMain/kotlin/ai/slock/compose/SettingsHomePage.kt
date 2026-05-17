@@ -1,6 +1,17 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.data.BridgeHomeApi
+import ai.slock.compose.data.DataRequestPriority
+import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.HomeSnapshot
+import ai.slock.compose.data.KuiklyAuthSessionStore
+import ai.slock.compose.data.KuiklyRelationalStore
+import ai.slock.compose.data.SharedHomeDataSource
+import ai.slock.compose.data.parseSlockHome
+import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.Presence
+import ai.slock.compose.model.ServerSummary
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -159,6 +170,7 @@ private fun SlockAppShellContent() {
     var selectedTab by remember { mutableStateOf("home") }
     var selectedSettingsDestination by remember { mutableStateOf("home") }
     val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val bottomSafeArea = slockBottomSafeAreaPadding()
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -191,11 +203,7 @@ private fun SlockAppShellContent() {
                     subtitle = "Shared members surface will mount here",
                     iconName = "users"
                 )
-                else -> AppShellPlaceholderContent(
-                    title = "Home",
-                    subtitle = "Harmony app shell using shared bottom TabBar",
-                    iconName = "house"
-                )
+                else -> SharedHomeScreen(bridge)
             }
         }
         SlockAppBottomTabBarHost(
@@ -206,6 +214,108 @@ private fun SlockAppShellContent() {
         )
     }
 }
+
+@Composable
+private fun SharedHomeScreen(bridge: ai.slock.compose.base.BridgeModule) {
+    val authStore = remember { KuiklyAuthSessionStore(KuiklyRelationalStore(bridge)) }
+    val dataSource =
+        remember {
+            SharedHomeDataSource(
+                sessionStore = authStore,
+                api = BridgeHomeApi(bridge, authStore),
+                parseHome = { payload, session ->
+                    parseSlockHome(payload, session) { message -> bridge.log(message) }
+                }
+            )
+        }
+    var refreshNonce by remember { mutableStateOf(0) }
+    var state by remember { mutableStateOf<SharedHomeUiState>(SharedHomeUiState.Loading) }
+
+    LaunchedEffect(refreshNonce) {
+        state = SharedHomeUiState.Loading
+        state =
+            when (val result = dataSource.loadHome(priority = DataRequestPriority.Visible)) {
+                is DataResult.Content -> SharedHomeUiState.Content(result.data)
+                is DataResult.Empty -> SharedHomeUiState.Empty
+                is DataResult.Error -> SharedHomeUiState.Error(result.error.code)
+                is DataResult.NoPermission -> SharedHomeUiState.Error(result.blocker.code)
+            }
+    }
+
+    when (val current = state) {
+        SharedHomeUiState.Loading ->
+            AppShellPlaceholderContent(
+                title = "Home",
+                subtitle = "Loading workspace...",
+                iconName = "house"
+            )
+        SharedHomeUiState.Empty ->
+            AppShellPlaceholderContent(
+                title = "Home",
+                subtitle = "No channels available.",
+                iconName = "house"
+            )
+        is SharedHomeUiState.Error ->
+            AppShellPlaceholderContent(
+                title = "Home",
+                subtitle = "Could not load home: ${current.code}",
+                iconName = "house"
+            )
+        is SharedHomeUiState.Content -> {
+            val snapshot = current.snapshot
+            SlockStructuralHomeShell(
+                currentServerName = snapshot.server.name,
+                currentServerId = snapshot.server.id.value,
+                servers = listOf(snapshot.server.toSharedSwitcherItem()),
+                channels = snapshot.channels.map { it.toSharedHomeConversationItem() },
+                directMessages = snapshot.directMessages.map { it.toSharedHomeConversationItem() },
+                selectedChannelId = snapshot.channels.firstOrNull()?.threadId?.value
+                    ?: snapshot.directMessages.firstOrNull()?.threadId?.value,
+                serverUnreadCount = snapshot.server.unreadCount,
+                inboxUnreadCount = snapshot.unreadTotal,
+                showBottomBar = false,
+                outerPadding = 0.dp,
+                contentRefreshing = false,
+                onContentRefresh = { refreshNonce += 1 }
+            )
+        }
+    }
+}
+
+private sealed interface SharedHomeUiState {
+    data object Loading : SharedHomeUiState
+    data object Empty : SharedHomeUiState
+    data class Error(val code: String) : SharedHomeUiState
+    data class Content(val snapshot: HomeSnapshot) : SharedHomeUiState
+}
+
+private fun ServerSummary.toSharedSwitcherItem(): SlockServerSwitcherItem =
+    SlockServerSwitcherItem(
+        id = id.value,
+        name = name,
+        slug = slug ?: description?.removePrefix("/") ?: id.value,
+        unreadCount = unreadCount
+    )
+
+private fun ConversationSummary.toSharedHomeConversationItem(): SlockHomeConversationItem =
+    SlockHomeConversationItem(
+        id = threadId.value,
+        name = name,
+        unreadCount = unreadCount,
+        avatarUrl = avatarUrl,
+        avatarWireValue = avatar?.wireValue ?: avatarUrl,
+        presence = presence.toSharedPresence(),
+        hasDraft = hasDraft,
+        joined = joined && permissions.canRead
+    )
+
+private fun Presence?.toSharedPresence(): SlockPresence? =
+    when (this) {
+        Presence.Active -> SlockPresence.Online
+        Presence.Away -> SlockPresence.Unknown
+        Presence.Offline -> SlockPresence.Offline
+        null -> null
+    }
 
 @Composable
 private fun AppShellPlaceholderContent(

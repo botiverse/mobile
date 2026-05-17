@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { relationalStore } from '@kit.ArkData';
+import { http } from '@kit.NetworkKit';
 import { KRAny } from '@kuikly-open/render';
 import { KuiklyRenderBaseModule } from '@kuikly-open/render';
 import { KuiklyRenderCallback } from '@kuikly-open/render';
@@ -22,6 +23,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly CURRENT_TIME_STAMP = "currentTimestamp";
   static readonly DATE_FORMATTER = "dateFormatter";
   static readonly READ_ASSET_FILE = "readAssetFile";
+  static readonly AUTH_REQUEST = "authRequest";
   static readonly RELATIONAL_STORE = "relationalStore";
 
   private rdbStores: Map<string, relationalStore.RdbStore> = new Map();
@@ -76,6 +78,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.READ_ASSET_FILE: {
         this.readAssetFile(params, callback);
+        break;
+      }
+      case KRBridgeModule.AUTH_REQUEST: {
+        this.authRequest(params, callback);
         break;
       }
       case KRBridgeModule.RELATIONAL_STORE: {
@@ -167,6 +173,53 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
   }
 
+  private async authRequest(params: KRAny, callback: KuiklyRenderCallback) {
+    const request = http.createHttp();
+    try {
+      const records = this.parseRecord(params);
+      const url = records["url"] as string;
+      const methodName = ((records["method"] as string) ?? "GET").toUpperCase();
+      const bodyText = records["bodyText"] as string | undefined;
+      const authorization = records["authorization"] as string | undefined;
+      const serverId = records["serverId"] as string | undefined;
+      const header: Record<string, string> = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+      };
+      if (authorization !== undefined && authorization.length > 0) {
+        header["Authorization"] = authorization;
+      }
+      if (serverId !== undefined && serverId.length > 0) {
+        header["X-Server-Id"] = serverId;
+      }
+
+      const response = await request.request(url, {
+        method: methodName === "POST" ? http.RequestMethod.POST : http.RequestMethod.GET,
+        header: header,
+        extraData: bodyText,
+        connectTimeout: 30000,
+        readTimeout: 30000
+      });
+      const responseCode = Number(response.responseCode ?? 0);
+      const body = this.httpResultToString(response.result);
+      callback({
+        "code": responseCode,
+        "bodyText": responseCode >= 200 && responseCode < 300 ? body : "",
+        "errorBodyText": responseCode >= 200 && responseCode < 300 ? "" : body
+      });
+    } catch (error) {
+      const businessError = error as BusinessError;
+      callback({
+        "code": 0,
+        "bodyText": "",
+        "errorBodyText": businessError.message ?? `${error}`,
+        "message": businessError.message ?? `${error}`
+      });
+    } finally {
+      request.destroy();
+    }
+  }
+
   private async rdbStore(databaseName: string, version: number): Promise<relationalStore.RdbStore> {
     const cached = this.rdbStores.get(databaseName);
     if (cached !== undefined) {
@@ -207,6 +260,17 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       return null;
     }
     return resultSet.getString(index);
+  }
+
+  private httpResultToString(result: string | ArrayBuffer | Object): string {
+    if (typeof result === 'string') {
+      return result;
+    }
+    if (result instanceof ArrayBuffer) {
+      const textDecoder = new util.TextDecoder('utf-8');
+      return textDecoder.decodeWithStream(new Uint8Array(result));
+    }
+    return JSON.stringify(result);
   }
 
   private parseRecord(params: KRAny): Record<string, Object> {

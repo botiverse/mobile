@@ -505,6 +505,10 @@ internal class SlockKuiklyBridgeModule(
                 SlockKuiklyEventRegistry.dispatch(event)
                 null
             }
+            "authRequest" -> {
+                authRequest(params, callback)
+                null
+            }
             "currentTimestamp" -> System.currentTimeMillis().toString()
             else -> {
                 callback?.invoke(mapOf("code" to -1, "message" to "Method not implemented"))
@@ -519,6 +523,52 @@ internal class SlockKuiklyBridgeModule(
             Toast.makeText(appContext, content, Toast.LENGTH_SHORT).show()
         }
         return null
+    }
+
+    private fun authRequest(params: String?, callback: KuiklyRenderCallback?) {
+        Thread {
+            val result =
+                    runCatching {
+                        val request = JSONObject(params ?: "{}")
+                        val url = URL(request.optString("url"))
+                        val connection = (url.openConnection() as HttpURLConnection).apply {
+                            requestMethod = request.optString("method").ifBlank { "GET" }
+                            connectTimeout = 30_000
+                            readTimeout = 30_000
+                            setRequestProperty("Accept", "application/json")
+                            setRequestProperty("Content-Type", "application/json")
+                            request.optString("authorization").takeIf { it.isNotBlank() }?.let {
+                                setRequestProperty("Authorization", it)
+                            }
+                            request.optString("serverId").takeIf { it.isNotBlank() }?.let {
+                                setRequestProperty("X-Server-Id", it)
+                            }
+                        }
+                        val bodyText = request.optString("bodyText")
+                        if (bodyText.isNotBlank()) {
+                            connection.doOutput = true
+                            connection.outputStream.use { output ->
+                                output.write(bodyText.toByteArray(StandardCharsets.UTF_8))
+                            }
+                        }
+                        val code = connection.responseCode
+                        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                        val body = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
+                        mapOf(
+                                "code" to code,
+                                "bodyText" to if (code in 200..299) body else "",
+                                "errorBodyText" to if (code in 200..299) "" else body
+                        )
+                    }.getOrElse { throwable ->
+                        mapOf(
+                                "code" to 0,
+                                "bodyText" to "",
+                                "errorBodyText" to (throwable.message ?: "Network unavailable"),
+                                "message" to (throwable.message ?: "Network unavailable")
+                        )
+                    }
+            callback?.invoke(result)
+        }.start()
     }
 
     companion object {

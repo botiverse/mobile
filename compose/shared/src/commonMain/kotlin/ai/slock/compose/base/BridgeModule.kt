@@ -87,6 +87,13 @@ internal class BridgeModule : Module() {
         callNativeMethod("settingsEvent", methodArgs, null)
     }
 
+    suspend fun authRequest(command: JSONObject): JSONObject? =
+        suspendCoroutine { continuation ->
+            callNativeMethod(AUTH_REQUEST, command) {
+                continuation.resume(it)
+            }
+        }
+
     fun composerEvent(
         instanceId: String,
         action: String,
@@ -381,6 +388,7 @@ internal class BridgeModule : Module() {
         const val CURRENT_TIMESTAMP = "currentTimestamp"
         const val DATE_FORMATTER = "dateFormatter"
         const val REPORT_REALTIME = "reportRealTime"
+        const val AUTH_REQUEST = "authRequest"
         const val RELATIONAL_STORE = "relationalStore"
         const val REPORT_PAGE_COST_TIME_FOR_CACHE = "reportPageCostTimeForCache"
         const val REPORT_PAGE_COST_TIME_FOR_SUCCESS = "reportPageCostTimeForSuccess"

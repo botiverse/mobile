@@ -1,11 +1,17 @@
 package ai.slock.compose
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import ai.slock.compose.base.Utils
+import ai.slock.compose.data.BridgeAuthApi
+import ai.slock.compose.data.KuiklyAuthSessionStore
+import ai.slock.compose.data.KuiklyRelationalStore
+import ai.slock.compose.data.SharedAuthDataSource
+import ai.slock.compose.data.SharedAuthResult
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
@@ -55,8 +61,35 @@ internal class ComposeForgotPasswordPage : ai.slock.compose.base.BasePager() {
 @Composable
 private fun LoginScreen() {
     val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val authDataSource =
+        remember {
+            SharedAuthDataSource(
+                api = BridgeAuthApi(bridge),
+                sessionStore = KuiklyAuthSessionStore(KuiklyRelationalStore(bridge))
+            )
+        }
     val reducer = remember { LoginFormReducer() }
     var state by remember { mutableStateOf(LoginFormState()) }
+    var pendingLogin by remember { mutableStateOf<PendingLogin?>(null) }
+
+    LaunchedEffect(pendingLogin) {
+        val effect = pendingLogin ?: return@LaunchedEffect
+        val result =
+            runCatching { authDataSource.login(effect.email, effect.password) }
+                .getOrElse { SharedAuthResult.Failure(ai.slock.compose.data.SharedAuthErrorCode.Network, "Network unavailable. Check your connection.") }
+        pendingLogin = null
+        when (result) {
+            is SharedAuthResult.Success -> {
+                state = state.copy(submitting = false, errorMessage = null)
+                pager.openAuthPage(SLOCK_APP_SHELL_PAGE)
+            }
+            is SharedAuthResult.Failure ->
+                state = state.copy(submitting = false, errorMessage = result.message)
+            SharedAuthResult.Unauthenticated ->
+                state = state.copy(submitting = false, errorMessage = "Sign in failed. Try again.")
+        }
+    }
 
     LoginContent(
         email = state.email,
@@ -70,8 +103,11 @@ private fun LoginScreen() {
             state = update.state
             when (val effect = update.effect) {
                 is LoginFormEffect.SubmitLogin -> {
-                    Utils.bridgeModule(pager.pagerId).toast("Login submit: ${effect.email}")
-                    state = state.copy(submitting = false)
+                    pendingLogin = PendingLogin(
+                        nonce = (pendingLogin?.nonce ?: 0) + 1,
+                        email = effect.email,
+                        password = effect.password
+                    )
                 }
                 LoginFormEffect.FocusEmail -> Unit
                 null -> Unit
@@ -81,6 +117,12 @@ private fun LoginScreen() {
         onCreateAccount = { pager.openAuthPage(REGISTER_PAGE) }
     )
 }
+
+private data class PendingLogin(
+    val nonce: Int,
+    val email: String,
+    val password: String
+)
 
 @Composable
 private fun RegisterScreen() {
