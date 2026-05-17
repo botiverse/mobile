@@ -26,6 +26,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import ai.slock.compose.markdown.ThreadMarkdownTagKind
+import ai.slock.compose.markdown.slockMarkdownAnnotator
 import ai.slock.compose.markdown.threadMarkdownTagDisplayLabel
 import com.tencent.kuiklybase.markdown.compose.Markdown
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownColors
@@ -97,6 +98,7 @@ private fun SlockMarkdownSmokeContent() {
                 content = markdownSmokeBody,
                 colors = slockMarkdownSmokeColors(),
                 typography = slockMarkdownSmokeTypography(),
+                annotator = slockMarkdownAnnotator(markdownSmokeBody),
                 padding = markdownPadding(
                     block = SlockSpacing.Xs,
                     paragraphVerPadding = com.tencent.kuikly.compose.foundation.layout.PaddingValues(vertical = SlockSpacing.Xs),
