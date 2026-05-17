@@ -61,6 +61,11 @@ kotlin {
                 implementation(kotlin("test"))
             }
         }
+        val ohosArm64Main by getting {
+            dependencies {
+                implementation("co.touchlab:sqliter-driver:1.3.3-KBA-001")
+            }
+        }
         val androidMain by getting {
             dependencies {
                 api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyOhosVersion()}")
