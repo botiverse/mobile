@@ -8,9 +8,11 @@ import ai.slock.compose.data.HomeSnapshot
 import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklyRelationalStore
 import ai.slock.compose.data.SharedHomeDataSource
+import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.parseSlockHome
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.Presence
+import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -229,14 +231,27 @@ private fun SharedHomeScreen(bridge: ai.slock.compose.base.BridgeModule) {
             )
         }
     var refreshNonce by remember { mutableStateOf(0) }
+    var selectedServerId by remember { mutableStateOf<String?>(null) }
+    var serverSwitcherExpanded by remember { mutableStateOf(false) }
     var state by remember { mutableStateOf<SharedHomeUiState>(SharedHomeUiState.Loading) }
 
-    LaunchedEffect(refreshNonce) {
+    LaunchedEffect(refreshNonce, selectedServerId) {
         state = SharedHomeUiState.Loading
+        val session = authStore.readSession()
+        if (session == null) {
+            state = SharedHomeUiState.Error("unauthenticated")
+            return@LaunchedEffect
+        }
+        selectedServerId?.let { serverId ->
+            val server = session.servers.firstOrNull { it.id == serverId }
+            authStore.updateSelectedServer(serverId = serverId, serverSlug = server?.slug)
+        }
+        val activeSession = authStore.readSession() ?: session
+        val activeServerId = selectedServerId ?: activeSession.currentServerId
         state =
-            when (val result = dataSource.loadHome(priority = DataRequestPriority.Visible)) {
-                is DataResult.Content -> SharedHomeUiState.Content(result.data)
-                is DataResult.Empty -> SharedHomeUiState.Empty
+            when (val result = dataSource.loadHome(serverId = activeServerId?.let(::ServerId), priority = DataRequestPriority.Visible)) {
+                is DataResult.Content -> SharedHomeUiState.Content(result.data, activeSession)
+                is DataResult.Empty -> SharedHomeUiState.Empty(activeSession)
                 is DataResult.Error -> SharedHomeUiState.Error(result.error.code)
                 is DataResult.NoPermission -> SharedHomeUiState.Error(result.blocker.code)
             }
@@ -249,11 +264,27 @@ private fun SharedHomeScreen(bridge: ai.slock.compose.base.BridgeModule) {
                 subtitle = "Loading workspace...",
                 iconName = "house"
             )
-        SharedHomeUiState.Empty ->
-            AppShellPlaceholderContent(
-                title = "Home",
-                subtitle = "No channels available.",
-                iconName = "house"
+        is SharedHomeUiState.Empty ->
+            SlockStructuralHomeShell(
+                currentServerName = current.session.servers.firstOrNull { it.id == current.session.currentServerId }?.name
+                    ?: "No server",
+                currentServerId = current.session.currentServerId.orEmpty(),
+                servers = current.session.servers.map { it.toServerSummary().toSharedSwitcherItem() },
+                channels = emptyList(),
+                directMessages = emptyList(),
+                serverSwitcherExpanded = serverSwitcherExpanded,
+                showBottomBar = false,
+                outerPadding = 0.dp,
+                contentRefreshing = false,
+                onContentRefresh = { refreshNonce += 1 },
+                onServerBadgeClick = { serverSwitcherExpanded = !serverSwitcherExpanded },
+                onServerSelected = { serverId ->
+                    serverSwitcherExpanded = false
+                    selectedServerId = serverId
+                },
+                onCreateServerClick = {
+                    bridge.toast("Create server is not available yet")
+                }
             )
         is SharedHomeUiState.Error ->
             AppShellPlaceholderContent(
@@ -263,20 +294,42 @@ private fun SharedHomeScreen(bridge: ai.slock.compose.base.BridgeModule) {
             )
         is SharedHomeUiState.Content -> {
             val snapshot = current.snapshot
+            val servers = current.session.servers.map { server ->
+                server.toServerSummary().let { summary ->
+                    if (summary.id == snapshot.server.id) {
+                        snapshot.server
+                    } else {
+                        summary
+                    }
+                }.toSharedSwitcherItem()
+            }.ifEmpty { listOf(snapshot.server.toSharedSwitcherItem()) }
             SlockStructuralHomeShell(
                 currentServerName = snapshot.server.name,
                 currentServerId = snapshot.server.id.value,
-                servers = listOf(snapshot.server.toSharedSwitcherItem()),
+                servers = servers,
                 channels = snapshot.channels.map { it.toSharedHomeConversationItem() },
                 directMessages = snapshot.directMessages.map { it.toSharedHomeConversationItem() },
                 selectedChannelId = snapshot.channels.firstOrNull()?.threadId?.value
                     ?: snapshot.directMessages.firstOrNull()?.threadId?.value,
                 serverUnreadCount = snapshot.server.unreadCount,
                 inboxUnreadCount = snapshot.unreadTotal,
+                serverSwitcherExpanded = serverSwitcherExpanded,
                 showBottomBar = false,
                 outerPadding = 0.dp,
                 contentRefreshing = false,
-                onContentRefresh = { refreshNonce += 1 }
+                onContentRefresh = { refreshNonce += 1 },
+                onServerBadgeClick = { serverSwitcherExpanded = !serverSwitcherExpanded },
+                onServerSelected = { serverId ->
+                    serverSwitcherExpanded = false
+                    if (serverId == snapshot.server.id.value) {
+                        refreshNonce += 1
+                    } else {
+                        selectedServerId = serverId
+                    }
+                },
+                onCreateServerClick = {
+                    bridge.toast("Create server is not available yet")
+                }
             )
         }
     }
@@ -284,9 +337,9 @@ private fun SharedHomeScreen(bridge: ai.slock.compose.base.BridgeModule) {
 
 private sealed interface SharedHomeUiState {
     data object Loading : SharedHomeUiState
-    data object Empty : SharedHomeUiState
+    data class Empty(val session: StoredAuthSession) : SharedHomeUiState
     data class Error(val code: String) : SharedHomeUiState
-    data class Content(val snapshot: HomeSnapshot) : SharedHomeUiState
+    data class Content(val snapshot: HomeSnapshot, val session: StoredAuthSession) : SharedHomeUiState
 }
 
 private fun ServerSummary.toSharedSwitcherItem(): SlockServerSwitcherItem =
