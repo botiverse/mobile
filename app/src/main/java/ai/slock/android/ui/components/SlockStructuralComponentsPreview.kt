@@ -124,6 +124,7 @@ fun SlockStructuralHomeShell(
                 .toString()
         ),
         modifier = modifier,
+        supportsPageDataUpdates = true,
         onEvent = { event ->
             when (event.optString("action")) {
                 "toggleServerSwitcher" -> onServerBadgeClick()

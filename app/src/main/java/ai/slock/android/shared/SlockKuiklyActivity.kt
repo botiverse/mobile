@@ -555,6 +555,7 @@ internal class SlockKuiklyIslandHost(
 ) : FrameLayout(context), KuiklyRenderViewBaseDelegatorDelegate {
     private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
     private var disposed = false
+    private var lastPageDataText = pageData.toString()
 
     init {
         SlockKuiklyAdapters.init(context.applicationContext)
@@ -573,6 +574,22 @@ internal class SlockKuiklyIslandHost(
                 "",
                 pageName,
                 pageData.toMap().toMutableMap().apply { put("appId", 1) }
+        )
+    }
+
+    fun updatePageData(pageDataText: String) {
+        if (disposed || pageDataText == lastPageDataText) {
+            return
+        }
+        lastPageDataText = pageDataText
+        val nextPageData = JSONObject(pageDataText)
+        SlockDiagnosticsLogger.d(
+                "SlockKuikly",
+                "island_update pageName=$pageName instanceId=${nextPageData.optString("instanceId")} payloadBytes=${nextPageData.optString("payload").length}"
+        )
+        kuiklyRenderViewDelegator.sendEvent(
+                "slockPageData",
+                nextPageData.toMap().toMutableMap().apply { put("appId", 1) }
         )
     }
 

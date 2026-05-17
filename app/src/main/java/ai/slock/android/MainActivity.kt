@@ -318,6 +318,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.LocaleList
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.provider.Settings
 import android.widget.Toast
@@ -6761,6 +6762,7 @@ private fun SlockAppContent(
                         homeRefreshAutoRetryAttempted -> "auto_retry"
                         else -> "background"
                     }
+            val refreshStartMs = SystemClock.elapsedRealtime()
             if (initialHomeContent != null) {
                 homeState =
                         HomeUiState(
@@ -6949,10 +6951,11 @@ private fun SlockAppContent(
                         }
 
                 val homeResult = homeD.await()
+                val homeDurationMs = SystemClock.elapsedRealtime() - refreshStartMs
                 localWriteThrough.writeHomeResult(homeResult, source = "home_refresh_$refreshSource")
                 ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                         "SlockHomeRefresh",
-                        "fetch_result source=$refreshSource serverId=${selectedServerId.value} result=${homeResult.logName()} code=${homeResult.diagnosticCode()} retryAttempted=$homeRefreshAutoRetryAttempted"
+                        "fetch_result source=$refreshSource serverId=${selectedServerId.value} result=${homeResult.logName()} code=${homeResult.diagnosticCode()} retryAttempted=$homeRefreshAutoRetryAttempted homeDurationMs=$homeDurationMs"
                 )
                 if (homeResult is DataResult.Content || !shouldKeepHomeShell) {
                     val preservedUnread =
@@ -7140,6 +7143,10 @@ private fun SlockAppContent(
                 ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                         "SlockPresence",
                         "members_load_result source=members_page serverId=${selectedServerId.value} result=${membersResult.realtimeResultName()} code=${membersResult.readDiagnosticCode()}"
+                )
+                ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                        "SlockHomeRefresh",
+                        "fetch_complete source=$refreshSource serverId=${selectedServerId.value} totalDurationMs=${SystemClock.elapsedRealtime() - refreshStartMs}"
                 )
 
             }

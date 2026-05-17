@@ -3,6 +3,7 @@ package ai.slock.android.shared
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -18,6 +19,7 @@ fun SlockKuiklyPageIsland(
         pageName: String,
         pageData: JSONObject,
         modifier: Modifier = Modifier,
+        supportsPageDataUpdates: Boolean = false,
         onEvent: (JSONObject) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -44,6 +46,28 @@ fun SlockKuiklyPageIsland(
         onDispose {
             SlockKuiklyEventRegistry.unregister(instanceId)
         }
+    }
+
+    if (supportsPageDataUpdates) {
+        val host =
+                remember(context, pageName, instanceId) {
+                    SlockKuiklyIslandHost(
+                            context = context,
+                            pageName = pageName,
+                            pageData = JSONObject(pageDataText)
+                    )
+                }
+        LaunchedEffect(pageDataText) {
+            host.updatePageData(pageDataText)
+        }
+        DisposableEffect(host) {
+            onDispose { host.dispose() }
+        }
+        AndroidView(
+                modifier = modifier,
+                factory = { host }
+        )
+        return
     }
 
     key(pageName, pageDataText) {

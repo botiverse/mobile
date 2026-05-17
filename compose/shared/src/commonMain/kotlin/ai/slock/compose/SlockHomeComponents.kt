@@ -3,6 +3,7 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import ai.slock.compose.model.AvatarReference
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,11 +50,15 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 const val SLOCK_HOME_PAGE = "compose_home"
+private const val HOME_PAGE_DATA_EVENT = "slockPageData"
 
 private val SidebarActionIconSize = 14.dp
 private val SidebarActionIconBoxSize = 22.dp
@@ -163,9 +168,27 @@ private enum class ChannelRowInteractionState { Default, Selected, Hovered, Focu
 private fun SlockHomePageContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
+    var payloadText by remember { mutableStateOf(pager.pageData.params.optString("payload")) }
+    var instanceId by remember { mutableStateOf(pager.pageData.params.optString("instanceId")) }
+    DisposableEffect(pager) {
+        val observer =
+            object : IPagerEventObserver {
+                override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
+                    if (pagerEvent != HOME_PAGE_DATA_EVENT) return
+                    eventData.optString("payload").takeIf { it.isNotBlank() }?.let {
+                        payloadText = it
+                    }
+                    eventData.optString("instanceId").takeIf { it.isNotBlank() }?.let {
+                        instanceId = it
+                    }
+                }
+            }
+        pager.addPagerEventObserver(observer)
+        onDispose { pager.removePagerEventObserver(observer) }
+    }
     val payload = rememberHomePayload(
-        pager.pageData.params.optString("payload"),
-        pager.pageData.params.optString("instanceId")
+        payloadText,
+        instanceId
     )
     LaunchedEffect(payload) {
         bridge.log("home_render instanceId=${payload.instanceId} channels=${payload.channels.size} dms=${payload.directMessages.size}")
@@ -273,7 +296,7 @@ fun SlockStructuralHomeShell(
                             scrollState = listState,
                             refreshThreshold = 80.dp
                         ) { _, _, _ ->
-                            HomePullRefreshIndicator()
+                            HomePullRefreshIndicator(refreshing = contentRefreshing)
                         }
                     }
                     item { Spacer(Modifier.height(SlockSpacing.Md)) }
@@ -343,9 +366,26 @@ fun SlockStructuralHomeShell(
 }
 
 @Composable
-private fun HomePullRefreshIndicator() {
+private fun HomePullRefreshIndicator(refreshing: Boolean) {
+    var bounceStep by remember { mutableStateOf(0) }
+    LaunchedEffect(refreshing) {
+        if (!refreshing) {
+            bounceStep = 0
+            return@LaunchedEffect
+        }
+        while (true) {
+            bounceStep = (bounceStep + 1) % 4
+            delay(140)
+        }
+    }
+    val bounceOffset =
+        when (bounceStep) {
+            1 -> (-6).dp
+            3 -> 4.dp
+            else -> 0.dp
+        }
     Box(modifier = Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
-        SlockLogoBadge(text = "SLOCK")
+        SlockLogoBadge(text = "SLOCK", modifier = Modifier.offset(y = bounceOffset))
     }
 }
 
