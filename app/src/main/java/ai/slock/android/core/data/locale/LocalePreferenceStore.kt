@@ -1,6 +1,8 @@
 package ai.slock.android.core.data.locale
 
 import android.content.Context
+import ai.slock.android.core.data.preferences.AndroidSharedPreferencesKeyValueStore
+import ai.slock.compose.data.SlockKeyValueStore
 
 interface LocalePreferenceStore {
     fun readLocaleSync(): AppLocale
@@ -11,20 +13,16 @@ interface LocalePreferenceStore {
 class SharedPreferencesLocalePreferenceStore(
     context: Context
 ) : LocalePreferenceStore {
-    private val preferences = context.applicationContext.getSharedPreferences(
-        PREFERENCES_NAME,
-        Context.MODE_PRIVATE
-    )
+    private val store: SlockKeyValueStore =
+        AndroidSharedPreferencesKeyValueStore(context, PREFERENCES_NAME)
 
     override fun readLocaleSync(): AppLocale =
-        AppLocale.fromStorageKey(preferences.getString(KEY_LOCALE, null))
+        AppLocale.fromStorageKey(store.getString(KEY_LOCALE))
 
     override suspend fun readLocale(): AppLocale = readLocaleSync()
 
     override suspend fun saveLocale(locale: AppLocale) {
-        preferences.edit()
-            .putString(KEY_LOCALE, locale.storageKey)
-            .apply()
+        store.putString(KEY_LOCALE, locale.storageKey)
     }
 
     companion object {

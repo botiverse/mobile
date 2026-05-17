@@ -1,6 +1,7 @@
 package ai.slock.android.core.data.preferences
 
 import android.content.Context
+import ai.slock.compose.data.SlockKeyValueStore
 
 enum class MyMessageAlignmentPreference(val storageKey: String) {
     Left("left"),
@@ -47,35 +48,29 @@ interface ChatLayoutPreferenceStore {
 class SharedPreferencesChatLayoutPreferenceStore(
     context: Context
 ) : ChatLayoutPreferenceStore {
-    private val preferences = context.applicationContext.getSharedPreferences(
-        PREFERENCES_NAME,
-        Context.MODE_PRIVATE
-    )
+    private val store: SlockKeyValueStore =
+        AndroidSharedPreferencesKeyValueStore(context, PREFERENCES_NAME)
 
     override fun readMyMessageAlignmentSync(): MyMessageAlignmentPreference =
-        MyMessageAlignmentPreference.fromStorageKey(preferences.getString(KEY_MY_MESSAGE_ALIGNMENT, null))
+        MyMessageAlignmentPreference.fromStorageKey(store.getString(KEY_MY_MESSAGE_ALIGNMENT))
 
     override suspend fun readMyMessageAlignment(): MyMessageAlignmentPreference =
         readMyMessageAlignmentSync()
 
     override suspend fun saveMyMessageAlignment(alignment: MyMessageAlignmentPreference) {
-        preferences.edit()
-            .putString(KEY_MY_MESSAGE_ALIGNMENT, alignment.storageKey)
-            .apply()
+        store.putString(KEY_MY_MESSAGE_ALIGNMENT, alignment.storageKey)
     }
 
     override fun readLargeScreenNavigationSync(): LargeScreenNavigationPreference =
         LargeScreenNavigationPreference.fromStorageKey(
-            preferences.getString(KEY_LARGE_SCREEN_NAVIGATION, null)
+            store.getString(KEY_LARGE_SCREEN_NAVIGATION)
         )
 
     override suspend fun readLargeScreenNavigation(): LargeScreenNavigationPreference =
         readLargeScreenNavigationSync()
 
     override suspend fun saveLargeScreenNavigation(navigation: LargeScreenNavigationPreference) {
-        preferences.edit()
-            .putString(KEY_LARGE_SCREEN_NAVIGATION, navigation.storageKey)
-            .apply()
+        store.putString(KEY_LARGE_SCREEN_NAVIGATION, navigation.storageKey)
     }
 
     companion object {

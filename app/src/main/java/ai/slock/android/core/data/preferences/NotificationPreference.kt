@@ -1,6 +1,9 @@
 package ai.slock.android.core.data.preferences
 
 import android.content.Context
+import ai.slock.compose.data.SlockKeyValueStore
+import ai.slock.compose.data.getBoolean
+import ai.slock.compose.data.putBoolean
 
 data class NotificationPreferenceSnapshot(
     val enabled: Boolean
@@ -15,21 +18,17 @@ interface NotificationPreferenceStore {
 class SharedPreferencesNotificationPreferenceStore(
     context: Context
 ) : NotificationPreferenceStore {
-    private val preferences = context.applicationContext.getSharedPreferences(
-        PREFERENCES_NAME,
-        Context.MODE_PRIVATE
-    )
+    private val store: SlockKeyValueStore =
+        AndroidSharedPreferencesKeyValueStore(context, PREFERENCES_NAME)
 
     override fun readNotificationEnabledSync(): Boolean =
-        preferences.getBoolean(KEY_NOTIFICATION_ENABLED, false)
+        store.getBoolean(KEY_NOTIFICATION_ENABLED, false)
 
     override suspend fun readNotificationEnabled(): Boolean =
         readNotificationEnabledSync()
 
     override suspend fun saveNotificationEnabled(enabled: Boolean) {
-        preferences.edit()
-            .putBoolean(KEY_NOTIFICATION_ENABLED, enabled)
-            .apply()
+        store.putBoolean(KEY_NOTIFICATION_ENABLED, enabled)
     }
 
     companion object {

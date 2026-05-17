@@ -30,13 +30,13 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.module.SharedPreferencesModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.core.utils.urlParams
 import ai.slock.compose.base.BasePager
 import ai.slock.compose.base.bridgeModule
 import ai.slock.compose.base.Utils
+import ai.slock.compose.data.KuiklySharedPreferencesKeyValueStore
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 
 @Page("router", supportInLocal = true)
@@ -64,6 +64,9 @@ internal class ComposeRoutePager : BasePager() {
 internal fun ComposeRouteImpl() {
     var textFieldValue by remember { mutableStateOf("") }
     val localPager = LocalActivity.current.getPager() as Pager
+    val routeStore = remember(localPager) {
+        KuiklySharedPreferencesKeyValueStore(localPager, "router")
+    }
     val statusBarHeight = LocalActivity.current.pageData.statusBarHeight
     Column(
         modifier = Modifier.padding(top = (statusBarHeight + 15).dp).fillMaxSize()
@@ -116,11 +119,7 @@ internal fun ComposeRouteImpl() {
                     if (textFieldValue.isEmpty()) {
                         Utils.bridgeModule(localPager.pagerId).toast("请输入PageName")
                     } else {
-                        localPager.acquireModule<SharedPreferencesModule>(
-                            SharedPreferencesModule.MODULE_NAME
-                        ).setItem(
-                            ComposeRoutePager.CACHE_KEY, textFieldValue
-                        )
+                        routeStore.putString(ComposeRoutePager.CACHE_KEY, textFieldValue)
                         jumpPage(localPager, textFieldValue)
                     }
                 },
