@@ -107,8 +107,13 @@ import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
 import ai.slock.android.ui.theme.SlockType
 import ai.slock.android.ui.theme.slockHardShadow
+import ai.slock.android.shared.SlockKuiklyActivity
+import ai.slock.android.shared.SlockKuiklyPageIsland
+import ai.slock.compose.KuiklyMembersLabels
 import ai.slock.compose.model.SlockWorkspaceNode
 import ai.slock.compose.model.toGravatarAvatarUrl
+import org.json.JSONArray
+import org.json.JSONObject
 
 private val MemberAvatarSize = 34.dp
 private val MemberPresenceSize = 12.dp
@@ -134,7 +139,8 @@ fun MembersPageShell(
     onMemberClick: (MemberProfile) -> Unit = {},
     onAddHuman: () -> Unit = {},
     onRetry: () -> Unit = {},
-    loadHumanProfile: (suspend (MemberId) -> MemberProfile?)? = null
+    loadHumanProfile: (suspend (MemberId) -> MemberProfile?)? = null,
+    useSharedList: Boolean = false
 ) {
     Column(
         modifier = modifier
@@ -149,13 +155,22 @@ fun MembersPageShell(
                 loading = true
             )
             is ScreenLoadState.Content -> {
-                MembersContentView(
-                    content = loadState.data,
-                    onBack = onBack,
-                    onAddHuman = onAddHuman,
-                    onMemberClick = onMemberClick,
-                    loadHumanProfile = loadHumanProfile
-                )
+                if (useSharedList) {
+                    MembersKuiklyScreen(
+                        content = loadState.data,
+                        onBack = onBack,
+                        onAddHuman = onAddHuman,
+                        onMemberClick = onMemberClick
+                    )
+                } else {
+                    MembersContentView(
+                        content = loadState.data,
+                        onBack = onBack,
+                        onAddHuman = onAddHuman,
+                        onMemberClick = onMemberClick,
+                        loadHumanProfile = loadHumanProfile
+                    )
+                }
             }
             is ScreenLoadState.Empty -> MembersFeedback(
                 title = "No members",
@@ -196,7 +211,8 @@ fun MembersRouteScreen(
     onSaveAgentProfile: (MemberProfile, String, String) -> Unit = { _, _, _ -> },
     onAddHuman: () -> Unit = {},
     onRetry: () -> Unit = {},
-    loadHumanProfile: (suspend (MemberId) -> MemberProfile?)? = null
+    loadHumanProfile: (suspend (MemberId) -> MemberProfile?)? = null,
+    useSharedList: Boolean = false
 ) {
     var selectedMemberId by rememberSaveable { mutableStateOf(initialSelectedMemberId) }
     var selectedDetailTab by rememberSaveable {
@@ -253,6 +269,7 @@ fun MembersRouteScreen(
             onAddHuman = onAddHuman,
             onRetry = onRetry,
             loadHumanProfile = loadHumanProfile,
+            useSharedList = useSharedList,
             modifier = modifier
         )
         return
@@ -306,7 +323,8 @@ fun MembersRouteScreen(
             onMemberClick = openDetail,
             onAddHuman = onAddHuman,
             onRetry = onRetry,
-            loadHumanProfile = loadHumanProfile
+            loadHumanProfile = loadHumanProfile,
+            useSharedList = useSharedList
         )
     }
 }
@@ -330,6 +348,7 @@ private fun MembersWideRouteScreen(
     onAddHuman: () -> Unit,
     onRetry: () -> Unit,
     loadHumanProfile: (suspend (MemberId) -> MemberProfile?)? = null,
+    useSharedList: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     if (selectedMember == null) {
@@ -340,7 +359,8 @@ private fun MembersWideRouteScreen(
             onMemberClick = onMemberClick,
             onAddHuman = onAddHuman,
             onRetry = onRetry,
-            loadHumanProfile = loadHumanProfile
+            loadHumanProfile = loadHumanProfile,
+            useSharedList = useSharedList
         )
         return
     }
@@ -359,7 +379,8 @@ private fun MembersWideRouteScreen(
             onMemberClick = onMemberClick,
             onAddHuman = onAddHuman,
             onRetry = onRetry,
-            loadHumanProfile = loadHumanProfile
+            loadHumanProfile = loadHumanProfile,
+            useSharedList = useSharedList
         )
         Box(
             modifier = Modifier
@@ -410,6 +431,84 @@ private fun MembersWideRouteScreen(
         }
     }
 }
+
+@Composable
+private fun MembersKuiklyScreen(
+    content: MembersContent,
+    modifier: Modifier = Modifier,
+    onBack: () -> Unit = {},
+    onAddHuman: () -> Unit = {},
+    onMemberClick: (MemberProfile) -> Unit = {}
+) {
+    SlockKuiklyPageIsland(
+        pageName = SlockKuiklyActivity.PAGE_MEMBERS,
+        pageData = content.toKuiklyMembersPageData(),
+        modifier = modifier.fillMaxSize(),
+        supportsPageDataUpdates = true,
+        onEvent = { event ->
+            when (event.optString("action")) {
+                "back" -> onBack()
+                "addHuman" -> onAddHuman()
+                "openMember" ->
+                    event.optString("itemId")
+                        .takeIf { it.isNotBlank() }
+                        ?.let { memberId ->
+                            content.members.firstOrNull { it.id.value == memberId }?.let(onMemberClick)
+                        }
+            }
+        }
+    )
+}
+
+private fun MembersContent.toKuiklyMembersPageData(): JSONObject =
+    JSONObject().put(
+        "payload",
+        JSONObject().let { payload ->
+            val labels = KuiklyMembersLabels()
+            payload
+                .put("title", "Members")
+                .put(
+                    "labels",
+                    JSONObject()
+                        .put("agents", labels.agents)
+                        .put("humans", labels.humans)
+                        .put("addHuman", labels.addHuman)
+                )
+                .put("members", members.toJsonArray { it.toKuiklyJson() })
+                .toString()
+        }
+    )
+
+private inline fun <T> List<T>.toJsonArray(mapper: (T) -> JSONObject): JSONArray =
+    JSONArray().also { array -> forEach { array.put(mapper(it)) } }
+
+private fun MemberProfile.toKuiklyJson(): JSONObject =
+    JSONObject()
+        .put("id", id.value)
+        .put("displayName", displayName)
+        .put("handle", handle)
+        .put("kind", kind.name)
+        .putNullable("description", description)
+        .putNullable("roleDescription", roleDescription)
+        .putNullable("avatarUrl", avatarUrl)
+        .putNullable("gravatarHash", gravatarHash)
+        .putNullable("avatar", avatar?.toKuiklyJson())
+        .put("avatarLabel", avatarLabel)
+        .put("presence", presence.name)
+        .putNullable("agentStatus", agentStatus?.name)
+        .put("permissionBadges", JSONArray().also { array -> permissionBadges.forEach(array::put) })
+
+private fun ai.slock.android.core.model.AvatarReference.toKuiklyJson(): JSONObject =
+    JSONObject().put("wireValue", wireValue)
+
+private fun JSONObject.putNullable(key: String, value: Any?): JSONObject =
+    apply {
+        if (value == null) {
+            put(key, JSONObject.NULL)
+        } else {
+            put(key, value)
+        }
+    }
 
 @Composable
 private fun MembersHeader(

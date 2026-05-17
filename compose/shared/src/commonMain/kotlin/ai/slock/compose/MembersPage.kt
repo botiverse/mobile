@@ -1,10 +1,15 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.model.AgentStatus
+import ai.slock.compose.model.AvatarReference
+import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.Presence
 import ai.slock.compose.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,11 +47,14 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 
+const val MEMBERS_PAGE = "compose_members"
 const val MEMBERS_SMOKE_PAGE = "compose_members_smoke"
+private const val MEMBERS_PAGE_DATA_EVENT = "slockPageData"
 
 private val MembersPageInset = SlockSpacing.Md
 private val MemberAvatarSize = 34.dp
@@ -65,6 +73,14 @@ internal class ComposeMembersSmokePage : ai.slock.compose.base.BasePager() {
                 onOpenMember = {}
             )
         }
+    }
+}
+
+@Page(MEMBERS_PAGE, supportInLocal = true)
+internal class ComposeMembersPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { MembersPageContent() }
     }
 }
 
@@ -135,13 +151,33 @@ private val membersSmokePayload = KuiklyMembersPayload(
 @Composable
 internal fun MembersPageContent() {
     val pager = LocalActivity.current.getPager() as Pager
-    val payloadJson = pager.pageData.params.optString("payload")
-    val payload = remember(payloadJson) {
-        payloadJson.takeIf { it.isNotBlank() }?.let {
-            Json.decodeFromString<KuiklyMembersPayload>(it)
-        } ?: KuiklyMembersPayload()
-    }
     val bridge = Utils.bridgeModule(pager.pagerId)
+    var payloadText by remember { mutableStateOf(pager.pageData.params.optString("payload")) }
+    var instanceId by remember { mutableStateOf(pager.pageData.params.optString("instanceId")) }
+    DisposableEffect(pager) {
+        val observer =
+            object : IPagerEventObserver {
+                override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
+                    if (pagerEvent != MEMBERS_PAGE_DATA_EVENT) return
+                    eventData.optString("payload").takeIf { it.isNotBlank() }?.let {
+                        payloadText = it
+                    }
+                    eventData.optString("instanceId").takeIf { it.isNotBlank() }?.let {
+                        instanceId = it
+                    }
+                }
+            }
+        pager.addPagerEventObserver(observer)
+        onDispose { pager.removePagerEventObserver(observer) }
+    }
+    val payload = remember(payloadText, instanceId) {
+        val decodedPayload = payloadText.toKuiklyMembersPayload()
+        if (instanceId.isBlank() || decodedPayload.instanceId == instanceId) {
+            decodedPayload
+        } else {
+            decodedPayload.copy(instanceId = instanceId)
+        }
+    }
 
     MembersListContent(
         payload = payload,
@@ -150,6 +186,73 @@ internal fun MembersPageContent() {
         onOpenMember = { bridge.settingsEvent(payload.instanceId, "openMember", it.id.value) }
     )
 }
+
+private fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
+    if (isBlank()) return KuiklyMembersPayload()
+    val payload = JSONObject(this)
+    val labelsJson = payload.optJSONObject("labels")
+    val membersJson = payload.optJSONArray("members")
+    return KuiklyMembersPayload(
+        instanceId = payload.optString("instanceId"),
+        title = payload.optString("title").ifBlank { "Members" },
+        labels = KuiklyMembersLabels(
+            agents = labelsJson?.optString("agents").orEmpty().ifBlank { "AGENTS" },
+            humans = labelsJson?.optString("humans").orEmpty().ifBlank { "HUMANS" },
+            addHuman = labelsJson?.optString("addHuman").orEmpty().ifBlank { "Add human" }
+        ),
+        members =
+            buildList {
+                if (membersJson == null) return@buildList
+                for (index in 0 until membersJson.length()) {
+                    add(membersJson.optJSONObject(index).toMemberProfile())
+                }
+            }
+    )
+}
+
+private fun JSONObject?.toMemberProfile(): MemberProfile {
+    if (this == null) return KuiklyMembersPayload().members.firstOrNull() ?: MemberProfile(
+        id = MemberId("unknown"),
+        displayName = "Unknown",
+        handle = "@unknown",
+        kind = MemberKind.Human
+    )
+    val avatarJson = optJSONObject("avatar")
+    val avatarWireValue =
+        avatarJson?.optString("wireValue")
+            ?: optString("avatarWireValue").takeIf { it.isNotBlank() }
+            ?: optString("avatarUrl").takeIf { it.isNotBlank() }
+    return MemberProfile(
+        id = MemberId(optString("id").ifBlank { "unknown" }),
+        displayName = optString("displayName").ifBlank { "Unknown" },
+        handle = optString("handle").ifBlank { "@unknown" },
+        kind = optString("kind").toMemberKind(),
+        description = optNullableString("description"),
+        roleDescription = optNullableString("roleDescription"),
+        avatarUrl = optNullableString("avatarUrl"),
+        gravatarHash = optNullableString("gravatarHash"),
+        avatar = AvatarReference.fromWireValue(avatarWireValue),
+        avatarLabel = optString("avatarLabel").ifBlank { optString("displayName").take(1).uppercase() },
+        presence = optString("presence").toPresence(),
+        agentStatus = AgentStatus.fromWireValue(optNullableString("agentStatus")),
+        permissionBadges =
+            buildList {
+                val badges = this@toMemberProfile.optJSONArray("permissionBadges") ?: return@buildList
+                for (index in 0 until badges.length()) {
+                    badges.optString(index)?.takeIf { it.isNotBlank() }?.let(::add)
+                }
+            }
+    )
+}
+
+private fun String.toMemberKind(): MemberKind =
+    MemberKind.entries.firstOrNull { it.name.equals(this, ignoreCase = true) } ?: MemberKind.Human
+
+private fun String.toPresence(): Presence =
+    Presence.entries.firstOrNull { it.name.equals(this, ignoreCase = true) } ?: Presence.Offline
+
+private fun JSONObject.optNullableString(key: String): String? =
+    optString(key).takeIf { it.isNotBlank() && it != "null" }
 
 @Composable
 internal fun MembersListContent(

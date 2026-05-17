@@ -9119,6 +9119,7 @@ private fun SlockAppContent(
                                     state = membersState,
                                     adaptiveLayoutInfo = adaptiveLayoutInfo,
                                     initialSelectedMemberId = membersDetailSelectedMemberId,
+                                    useSharedList = true,
                                     onBack = { destination = AppDestination.Home },
                                     onDetailVisibleChange = {
                                         membersDetailVisible = it
