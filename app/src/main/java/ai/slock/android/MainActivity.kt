@@ -11328,6 +11328,7 @@ private fun String.semanticVersionParts(): List<Int>? =
                 ?.takeIf { it.isNotEmpty() }
 
 private val DaemonVersionRegex = Regex("""\d+(?:\.\d+){0,2}""")
+private const val SettingsRouterItemKey = "router"
 
 private fun Modifier.widePaneSwipe(
         enabled: Boolean,
@@ -14461,6 +14462,7 @@ private fun SettingsAdaptiveScaffold(
         onDestinationChange: (SettingsDestination) -> Unit,
         detail: @Composable () -> Unit
 ) {
+    val context = LocalContext.current
     SettingsPageSurface {
         Row(modifier = Modifier.fillMaxSize()) {
             Box(
@@ -14495,7 +14497,11 @@ private fun SettingsAdaptiveScaffold(
                         showSelection = true,
                         bottomContentPadding = bottomContentPadding,
                         onItemClick = { key ->
-                            onDestinationChange(key.toSettingsDestination())
+                            openSettingsHomeItem(
+                                    context = context,
+                                    key = key,
+                                    onDestinationChange = onDestinationChange
+                            )
                         }
                 )
             }
@@ -14519,6 +14525,7 @@ private fun SettingsHomeContent(
         bottomContentPadding: androidx.compose.ui.unit.Dp = 0.dp,
         onDestinationChange: (SettingsDestination) -> Unit
 ) {
+    val context = LocalContext.current
     SettingsPageSurface {
         SettingsHomeScreen(
                 title = stringResource(R.string.settings_home_title),
@@ -14532,10 +14539,26 @@ private fun SettingsHomeContent(
                 showSelection = false,
                 bottomContentPadding = bottomContentPadding,
                 onItemClick = { key ->
-                    onDestinationChange(key.toSettingsDestination())
+                    openSettingsHomeItem(
+                            context = context,
+                            key = key,
+                            onDestinationChange = onDestinationChange
+                    )
                 }
         )
     }
+}
+
+private fun openSettingsHomeItem(
+        context: Context,
+        key: String,
+        onDestinationChange: (SettingsDestination) -> Unit
+) {
+    if (key == SettingsRouterItemKey) {
+        SlockKuiklyActivity.start(context, SlockKuiklyActivity.PAGE_ROUTER)
+        return
+    }
+    onDestinationChange(key.toSettingsDestination())
 }
 
 @Composable
@@ -15039,6 +15062,12 @@ private fun settingsHomeItems(
                     selected =
                             selectedDestination == SettingsDestination.About ||
                                     selectedDestination == SettingsDestination.Diagnostics
+            ),
+            SettingsHomeItem(
+                    key = SettingsRouterItemKey,
+                    title = stringResource(R.string.settings_router_title),
+                    subtitle = stringResource(R.string.settings_router_subtitle),
+                    icon = LucideIcons.Activity
             )
     )
 }
