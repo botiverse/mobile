@@ -6192,404 +6192,186 @@ fun ThreadComposerBar(
         onComposerTextToolbarHidden: () -> Unit = {},
         focusRequestNonce: Int = 0
 ) {
-    var composerFieldValue by remember { mutableStateOf(TextFieldValue(composerState.value)) }
-    var pendingPreviewAttachmentId by rememberSaveable { mutableStateOf<String?>(null) }
-    var restoreComposerToolbarAfterSelectAll by rememberSaveable { mutableStateOf(false) }
-    var composerFieldFocused by rememberSaveable { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val focusManager = LocalFocusManager.current
-    if (composerFieldValue.text != composerState.value) {
-        composerFieldValue =
-                TextFieldValue(
-                        text = composerState.value,
-                        selection = TextRange(composerState.value.length)
-                )
-    }
-    LaunchedEffect(focusRequestNonce) {
-        if (focusRequestNonce <= 0 || !composerState.enabled) {
-            return@LaunchedEffect
-        }
-        withFrameNanos { }
-        composerFieldValue =
-                TextFieldValue(
-                        text = composerState.value,
-                        selection = TextRange(composerState.value.length)
-                )
-        focusRequester.requestFocus()
-        keyboardController?.show()
-    }
-    val horizontalPadding = threadHorizontalPadding()
-    val bottomPadding = threadComposerBottomPadding()
-    val context = LocalContext.current
-    val density = LocalDensity.current
-    val keyboardBottomPx = WindowInsets.ime.getBottom(density)
-    val keyboardVisible = keyboardBottomPx > 0
-    val composerTopPadding = SlockSpacing.Md
-    val composerSectionSpacing = SlockSpacing.Sm
-    val composerTextFieldMinHeight = 48.dp
-    val composerTextFieldVerticalPadding = 12.dp
-    val enabled =
-            composerState.enabled &&
-                    composerState.status != ComposerStatus.NoPermission &&
-                    composerState.noPermissionCode == null
-    val composerValueProvider = { composerFieldValue }
-    val handleComposerFieldValueChange = { nextValue: TextFieldValue ->
-        composerFieldValue = nextValue
-        onComposerChange(nextValue.text)
-    }
-    var composerFieldBounds by remember { mutableStateOf<Rect?>(null) }
-    var composerTextAreaBounds by remember { mutableStateOf<Rect?>(null) }
-    val suggestionTrigger = remember(composerFieldValue) {
-        detectComposerSuggestionTrigger(composerFieldValue)
-    }
-    val filteredMemberSuggestions = remember(suggestionTrigger, memberSuggestions) {
-        when (val trigger = suggestionTrigger) {
-            is ComposerSuggestionTrigger.MemberTrigger ->
-                memberSuggestions.filter { member ->
-                    val q = trigger.query.lowercase()
-                    member.displayName.lowercase().contains(q) ||
-                            member.handle.lowercase().contains(q)
-                }
-            else -> emptyList()
+    var liveDraftText by rememberSaveable { mutableStateOf(composerState.value) }
+    var payloadTextSeed by rememberSaveable { mutableStateOf(composerState.value) }
+    var liveDraftAsTask by rememberSaveable { mutableStateOf(composerState.asTask) }
+    var payloadAsTaskSeed by rememberSaveable { mutableStateOf(composerState.asTask) }
+    var syncNonce by rememberSaveable { mutableStateOf(0) }
+
+    LaunchedEffect(composerState.value, composerState.asTask) {
+        if (composerState.value != liveDraftText || composerState.asTask != liveDraftAsTask) {
+            liveDraftText = composerState.value
+            payloadTextSeed = composerState.value
+            liveDraftAsTask = composerState.asTask
+            payloadAsTaskSeed = composerState.asTask
+            syncNonce += 1
         }
     }
-    val filteredChannelSuggestions = remember(suggestionTrigger, channelSuggestions) {
-        when (val trigger = suggestionTrigger) {
-            is ComposerSuggestionTrigger.ChannelTrigger ->
-                channelSuggestions.filter { channel ->
-                    val q = trigger.query.lowercase()
-                    channel.name.lowercase().contains(q)
-                }
-            else -> emptyList()
-        }
+
+    DisposableEffect(Unit) {
+        onDispose { onComposerTextToolbarHidden() }
     }
-    val pendingPreviewAttachment =
-            composerState.pendingAttachments.firstOrNull { attachment ->
-                attachment.id == pendingPreviewAttachmentId && attachment.hasLocalImagePreview
-            }
-    val insertComposerNewline = {
-        handleComposerFieldValueChange(composerFieldValue.insertTextAtSelection("\n"))
-    }
-    val textToolbar =
-            rememberComposerTextToolbar(
-                    onInsertNewline = insertComposerNewline,
-                    onToolbarHidden = onComposerTextToolbarHidden
-            )
-    DisposableEffect(textToolbar) {
-        onDispose {
-            textToolbar.hide()
-        }
-    }
-    LaunchedEffect(pendingPreviewAttachmentId, composerState.pendingAttachments) {
-        if (pendingPreviewAttachmentId != null && pendingPreviewAttachment == null) {
-            pendingPreviewAttachmentId = null
-        }
-    }
-    var suggestionSelectionIndex by rememberSaveable { mutableStateOf(0) }
-    val showMemberSuggestions = composerFieldFocused && filteredMemberSuggestions.isNotEmpty()
-    val showChannelSuggestions = composerFieldFocused && filteredChannelSuggestions.isNotEmpty()
-    val visibleSuggestionCount =
-            when {
-                showMemberSuggestions -> filteredMemberSuggestions.size
-                showChannelSuggestions -> filteredChannelSuggestions.size
-                else -> 0
-            }
-    LaunchedEffect(
-            suggestionTrigger,
-            showMemberSuggestions,
-            showChannelSuggestions,
-            filteredMemberSuggestions.size,
-            filteredChannelSuggestions.size
-    ) {
-        suggestionSelectionIndex =
-                when {
-                    visibleSuggestionCount <= 0 -> 0
-                    suggestionSelectionIndex >= visibleSuggestionCount -> visibleSuggestionCount - 1
-                    else -> suggestionSelectionIndex
-                }
-    }
-    fun applySelectedSuggestion(): Boolean {
-        return when {
-            showMemberSuggestions -> {
-                val member = filteredMemberSuggestions.getOrNull(suggestionSelectionIndex) ?: return false
-                val trigger = suggestionTrigger as? ComposerSuggestionTrigger.MemberTrigger ?: return false
-                handleComposerFieldValueChange(
-                        composerFieldValue.replaceTriggerWith(
-                                trigger.triggerStart,
-                                "@${member.handle} "
-                        )
-                )
-                true
-            }
-            showChannelSuggestions -> {
-                val channel = filteredChannelSuggestions.getOrNull(suggestionSelectionIndex) ?: return false
-                val trigger = suggestionTrigger as? ComposerSuggestionTrigger.ChannelTrigger ?: return false
-                handleComposerFieldValueChange(
-                        composerFieldValue.replaceTriggerWith(
-                                trigger.triggerStart,
-                                "#${channel.name} "
-                        )
-                )
-                true
-            }
-            else -> false
-        }
-    }
-    BackHandler(enabled = showMemberSuggestions || showChannelSuggestions) {
-        focusManager.clearFocus()
-        keyboardController?.hide()
-    }
-    Column(modifier = modifier.fillMaxWidth().navigationBarsPadding()) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val suggestionDropdownWidth = maxWidth - horizontalPadding * 2
-            val suggestionPopupPositionProvider =
-                    remember(composerFieldBounds, density, horizontalPadding) {
-                        object : PopupPositionProvider {
-                            override fun calculatePosition(
-                                    anchorBounds: IntRect,
-                                    windowSize: IntSize,
-                                    layoutDirection: LayoutDirection,
-                                    popupContentSize: IntSize
-                            ): IntOffset {
-                                val horizontalPaddingPx =
-                                        with(density) { horizontalPadding.roundToPx() }
-                                val fieldTopPx =
-                                        composerFieldBounds?.top?.roundToInt()
-                                                ?: popupContentSize.height
-                                return IntOffset(
-                                        x =
-                                                horizontalPaddingPx.coerceIn(
-                                                        0,
-                                                        (windowSize.width - popupContentSize.width)
-                                                                .coerceAtLeast(0)
-                                                ),
-                                        y = (fieldTopPx - popupContentSize.height).coerceAtLeast(0)
-                                )
-                            }
-                        }
-                    }
-            if (showMemberSuggestions || showChannelSuggestions) {
-                Popup(
-                        popupPositionProvider = suggestionPopupPositionProvider,
-                        properties =
-                                PopupProperties(
-                                        focusable = false,
-                                        dismissOnBackPress = false,
-                                        dismissOnClickOutside = false
-                                )
-                ) {
-                    Box(
-                            modifier =
-                                    Modifier.width(suggestionDropdownWidth)
-                                            .heightIn(max = 244.dp)
-                                            .zIndex(1f)
-                    ) {
-                        if (showMemberSuggestions) {
-                            ComposerMemberSuggestionDropdown(
-                                    members = filteredMemberSuggestions,
-                                    selectedIndex = suggestionSelectionIndex,
-                                    onSelect = { member ->
-                                        suggestionSelectionIndex =
-                                                filteredMemberSuggestions.indexOf(member).coerceAtLeast(0)
-                                        applySelectedSuggestion()
-                                    }
-                            )
-                        } else {
-                            ComposerChannelSuggestionDropdown(
-                                    channels = filteredChannelSuggestions,
-                                    selectedIndex = suggestionSelectionIndex,
-                                    onSelect = { channel ->
-                                        suggestionSelectionIndex =
-                                                filteredChannelSuggestions.indexOf(channel).coerceAtLeast(0)
-                                        applySelectedSuggestion()
-                                    }
-                            )
-                        }
-                    }
-                }
-            }
-            Column(
-                modifier =
-                        Modifier.fillMaxWidth()
-                                .background(SlockColor.SurfaceWhite)
-                                .drawBehind {
-                                    val stroke = SlockStroke.Default.toPx()
-                                    drawLine(
-                                            color = SlockColor.BorderBlack,
-                                            start = Offset(0f, stroke / 2f),
-                                            end = Offset(size.width, stroke / 2f),
-                                            strokeWidth = stroke
-                                    )
-                                }
-                                .padding(
-                                        start = horizontalPadding,
-                                        top = composerTopPadding,
-                                        end = horizontalPadding,
-                                        bottom = bottomPadding
-                                ),
-                verticalArrangement = Arrangement.spacedBy(composerSectionSpacing)
-        ) {
-            val statusLabel = composerState.activityLabel
-            if (statusLabel != null) {
-                Text(
-                        text = statusLabel,
-                        style = SlockType.Caption,
-                        color =
-                                if (composerState.status == ComposerStatus.Failed) {
-                                    SlockColor.AccentRed
-                                } else {
-                                    SlockColor.TextMutedGray
-                                }
-                )
-            }
-            if (composerState.pendingAttachments.isNotEmpty()) {
-                PendingAttachmentTray(
-                        attachments = composerState.pendingAttachments,
-                        enabled = enabled,
-                        onRemoveAttachment = onRemoveAttachment,
-                        onRetryAttachment = onRetryAttachment,
-                        onPreviewAttachment = { pendingPreviewAttachmentId = it }
-                )
-            }
-            val showComposerToolbar = {
-                onComposerTextToolbarShown()
-                textToolbar.showComposerMenu(
-                        rect =
-                                composerTextAreaBounds
-                                        ?: Rect(
-                                                left = 0f,
-                                                top = 0f,
-                                                right = 1f,
-                                                bottom = 1f
-                        ),
-                        fieldValueProvider = composerValueProvider,
-                        onValueChange = handleComposerFieldValueChange,
-                        context = context,
-                        onSelectAllApplied = { restoreComposerToolbarAfterSelectAll = true }
-                )
-            }
-            LaunchedEffect(
-                    restoreComposerToolbarAfterSelectAll,
-                    composerFieldValue.text,
-                    composerFieldValue.selection,
-                    composerTextAreaBounds
+
+    val payload =
+            remember(
+                    payloadTextSeed,
+                    payloadAsTaskSeed,
+                    syncNonce,
+                    focusRequestNonce,
+                    placeholder,
+                    composerState.enabled,
+                    composerState.status,
+                    composerState.errorCode,
+                    composerState.noPermissionCode,
+                    composerState.pendingAttachments,
+                    memberSuggestions,
+                    channelSuggestions,
+                    showAsTaskToggle
             ) {
-                if (!restoreComposerToolbarAfterSelectAll) return@LaunchedEffect
-                val fullSelection = TextRange(0, composerFieldValue.text.length)
-                if (composerFieldValue.text.isEmpty() || composerFieldValue.selection != fullSelection) {
-                    return@LaunchedEffect
-                }
-                withFrameNanos { }
-                showComposerToolbar()
-                restoreComposerToolbarAfterSelectAll = false
-            }
-            CompositionLocalProvider(LocalTextToolbar provides textToolbar) {
-                SlockTextField(
-                    value = composerState.value,
-                    onValueChange = onComposerChange,
-                    fieldValue = composerFieldValue,
-                    onFieldValueChange = handleComposerFieldValueChange,
-                    placeholder = placeholder,
-                    enabled = enabled,
-                    singleLine = false,
-                    minLines = 1,
-                    maxLines = 4,
-                    reserveErrorSpace = false,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions =
-                            KeyboardActions(
-                                    onSend = {
-                                        if (composerState.canSend) {
-                                            onSend()
-                                        }
-                                    }
-                            ),
-                    inputModifier =
-                            Modifier.focusRequester(focusRequester)
-                                    .testTag(THREAD_COMPOSER_FIELD_TAG)
-                                    .threadComposerNewlineInput(
-                                            composerValueProvider,
-                                            handleComposerFieldValueChange,
-                                            canSend = composerState.canSend,
-                                            onSend = onSend,
-                                            onSelectSuggestion = ::applySelectedSuggestion,
-                                            onMoveSuggestionSelection = { direction ->
-                                                if (visibleSuggestionCount > 0) {
-                                                    suggestionSelectionIndex =
-                                                            (suggestionSelectionIndex + direction)
-                                                                    .coerceIn(
-                                                                            0,
-                                                                            visibleSuggestionCount - 1
-                                                                    )
-                                                }
-                                            },
-                                            consumeDirectionalKeys =
-                                                    showMemberSuggestions || showChannelSuggestions
-                                    )
-                                    .onFocusChanged { focusState ->
-                                        composerFieldFocused = focusState.isFocused
-                                        if (!focusState.isFocused) {
-                                            textToolbar.hide()
-                                        }
-                                    }
-                                    .onGloballyPositioned { coordinates ->
-                                        val position = coordinates.positionInWindow()
-                                        composerFieldBounds =
-                                                Rect(
-                                                        left = position.x,
-                                                        top = position.y,
-                                                        right = position.x + coordinates.size.width,
-                                                        bottom =
-                                                                position.y +
-                                                                        coordinates.size.height
-                                                )
-                                    },
-                    textAreaModifier =
-                            Modifier.testTag(THREAD_COMPOSER_TEXT_AREA_TAG)
-                                    .threadComposerDoubleTapToolbar(showComposerToolbar)
-                                    .onGloballyPositioned { coordinates ->
-                                        val position = coordinates.positionInWindow()
-                                        composerTextAreaBounds =
-                                                Rect(
-                                                        left = position.x,
-                                                        top = position.y,
-                                                        right = position.x + coordinates.size.width,
-                                                        bottom =
-                                                                position.y +
-                                                                        coordinates.size.height
-                                                )
-                                    },
-                    bottomContent = {
-                        ThreadComposerInlineActions(
-                                composerState = composerState,
-                                enabled = enabled,
-                                onAttachImage = onAttachImage,
-                                onAttachFile = onAttachFile,
-                                showAsTaskToggle = showAsTaskToggle,
-                                onAsTaskChange = onAsTaskChange,
-                                onSend = onSend
-                        )
-                    },
-                    minContentHeight = composerTextFieldMinHeight,
-                    contentPaddingVertical = composerTextFieldVerticalPadding,
-                    inputFontWeight = FontWeight.Normal,
-                    inputFontFamily = SlockNormalFontFamily
+                buildSharedThreadComposerPayload(
+                        seedText = payloadTextSeed,
+                        seedAsTask = payloadAsTaskSeed,
+                        syncNonce = syncNonce,
+                        focusRequestNonce = focusRequestNonce,
+                        placeholder = placeholder,
+                        composerState = composerState,
+                        memberSuggestions = memberSuggestions,
+                        channelSuggestions = channelSuggestions,
+                        showAsTaskToggle = showAsTaskToggle
                 )
             }
+
+    SlockKuiklyPageIsland(
+            pageName = SlockKuiklyActivity.PAGE_THREAD_COMPOSER,
+            pageData = payload,
+            modifier = modifier.fillMaxWidth()
+    ) { event ->
+        when (event.optString("action")) {
+            "change" -> {
+                val nextValue = event.optString("value")
+                val nextAsTask = event.optBoolean("asTask", liveDraftAsTask)
+                if (nextValue != liveDraftText) {
+                    liveDraftText = nextValue
+                    onComposerChange(nextValue)
+                }
+                if (nextAsTask != liveDraftAsTask) {
+                    liveDraftAsTask = nextAsTask
+                    onAsTaskChange(nextAsTask)
+                }
+            }
+            "toggleAsTask" -> {
+                val nextAsTask = event.optBoolean("asTask", !liveDraftAsTask)
+                if (nextAsTask != liveDraftAsTask) {
+                    liveDraftAsTask = nextAsTask
+                    onAsTaskChange(nextAsTask)
+                }
+            }
+            "attachImage" -> onAttachImage()
+            "attachFile" -> onAttachFile()
+            "removeAttachment" -> {
+                event.optString("attachmentId").takeIf { it.isNotBlank() }?.let(onRemoveAttachment)
+            }
+            "retryAttachments" -> onRetryAttachment()
+            "send" -> onSend()
         }
-    }
-    if (pendingPreviewAttachment != null) {
-        PendingAttachmentPreviewModal(
-                attachment = pendingPreviewAttachment,
-                onDismiss = { pendingPreviewAttachmentId = null }
-        )
-    }
     }
 }
 
 @Composable
 private fun threadComposerBottomPadding(): Dp = SlockSpacing.Xs
+
+private fun buildSharedThreadComposerPayload(
+        seedText: String,
+        seedAsTask: Boolean,
+        syncNonce: Int,
+        focusRequestNonce: Int,
+        placeholder: String,
+        composerState: ComposerState,
+        memberSuggestions: List<MemberProfile>,
+        channelSuggestions: List<ConversationSummary>,
+        showAsTaskToggle: Boolean
+): JSONObject =
+        JSONObject().apply {
+            put("seedText", seedText)
+            put("seedAsTask", seedAsTask)
+            put("syncNonce", syncNonce)
+            put("focusRequestNonce", focusRequestNonce)
+            put("placeholder", placeholder)
+            put(
+                    "enabled",
+                    composerState.enabled &&
+                            composerState.status != ComposerStatus.NoPermission &&
+                            composerState.noPermissionCode == null
+            )
+            put("showAsTaskToggle", showAsTaskToggle)
+            put("composerMode", composerState.toSharedComposerMode())
+            composerState.activityLabel?.let { put("statusLabel", it) }
+            put(
+                    "pendingAttachments",
+                    JSONArray().apply {
+                        composerState.pendingAttachments.forEach { attachment ->
+                            put(
+                                    JSONObject().apply {
+                                        put("id", attachment.id)
+                                        put("fileName", attachment.fileName)
+                                        put("sizeLabel", attachment.sizeLabel)
+                                        attachment.mimeType?.let { put("mimeType", it) }
+                                        put("status", attachment.status.toSharedComposerAttachmentStatus())
+                                    }
+                            )
+                        }
+                    }
+            )
+            put(
+                    "memberSuggestions",
+                    JSONArray().apply {
+                        memberSuggestions.forEach { member ->
+                            put(
+                                    JSONObject().apply {
+                                        put("displayName", member.displayName)
+                                        put("handle", member.handle)
+                                    }
+                            )
+                        }
+                    }
+            )
+            put(
+                    "channelSuggestions",
+                    JSONArray().apply {
+                        channelSuggestions.forEach { channel ->
+                            put(
+                                    JSONObject().apply {
+                                        put("name", channel.name)
+                                        channel.subtitle?.let { put("subtitle", it) }
+                                    }
+                            )
+                        }
+                    }
+            )
+            put(
+                    "hookLabels",
+                    JSONArray().apply {
+                        put("Android key hooks pending")
+                        put("Android toolbar pending")
+                    }
+            )
+        }
+
+private fun ComposerState.toSharedComposerMode(): String =
+        when (status) {
+            ComposerStatus.IdleEmpty, ComposerStatus.Ready -> "idle"
+            ComposerStatus.Uploading -> "uploading"
+            ComposerStatus.Sending -> "sending"
+            ComposerStatus.Failed -> "failed"
+            ComposerStatus.NoPermission -> "no_permission"
+        }
+
+private fun PendingAttachmentStatus.toSharedComposerAttachmentStatus(): String =
+        when (this) {
+            PendingAttachmentStatus.Ready -> "ready"
+            PendingAttachmentStatus.Uploading -> "uploading"
+            PendingAttachmentStatus.Failed -> "failed"
+        }
 
 private sealed class ComposerSuggestionTrigger {
     data class MemberTrigger(val query: String, val triggerStart: Int) : ComposerSuggestionTrigger()

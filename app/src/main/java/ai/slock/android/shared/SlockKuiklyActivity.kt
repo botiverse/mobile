@@ -122,6 +122,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         const val PAGE_REGISTER = "compose_register"
         const val PAGE_FORGOT_PASSWORD = "compose_forgot_password"
         const val PAGE_THREAD_FILES = "compose_thread_files"
+        const val PAGE_THREAD_COMPOSER = "compose_thread_composer"
         const val PAGE_HOME = "compose_home"
         const val PAGE_SETTINGS_HOME = "compose_settings_home"
         const val PAGE_SETTINGS_ACCOUNT = "compose_settings_account"
@@ -484,6 +485,15 @@ internal class SlockKuiklyBridgeModule(
                 SlockKuiklyEventRegistry.dispatch(event)
                 null
             }
+            "composerEvent" -> {
+                val event = JSONObject(params ?: "{}")
+                SlockDiagnosticsLogger.d(
+                        "SlockKuikly",
+                        "bridge_composer_event method=composerEvent instanceId=${event.optString("instanceId")} action=${event.optString("action")} valueBytes=${event.optString("value").length} asTask=${event.optString("asTask")} attachmentId=${event.optString("attachmentId")}"
+                )
+                SlockKuiklyEventRegistry.dispatch(event)
+                null
+            }
             "settingsEvent" -> {
                 val event = JSONObject(params ?: "{}")
                 SlockDiagnosticsLogger.d(
@@ -532,7 +542,7 @@ internal object SlockKuiklyEventRegistry {
         val handler = handlers[instanceId]
         SlockDiagnosticsLogger.d(
                 "SlockKuikly",
-                "event_registry_dispatch instanceId=$instanceId hasHandler=${handler != null} action=${params.optString("action")} attachmentId=${params.optString("attachmentId")} itemId=${params.optString("itemId")}"
+                "event_registry_dispatch instanceId=$instanceId hasHandler=${handler != null} action=${params.optString("action")} attachmentId=${params.optString("attachmentId")} itemId=${params.optString("itemId")} valueBytes=${params.optString("value").length}"
         )
         handler?.invoke(params)
     }

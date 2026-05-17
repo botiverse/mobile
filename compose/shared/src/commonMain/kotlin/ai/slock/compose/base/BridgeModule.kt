@@ -87,6 +87,22 @@ internal class BridgeModule : Module() {
         callNativeMethod("settingsEvent", methodArgs, null)
     }
 
+    fun composerEvent(
+        instanceId: String,
+        action: String,
+        value: String? = null,
+        asTask: Boolean? = null,
+        attachmentId: String? = null
+    ) {
+        val methodArgs = JSONObject()
+        methodArgs.put("instanceId", instanceId)
+        methodArgs.put("action", action)
+        value?.let { methodArgs.put("value", it) }
+        asTask?.let { methodArgs.put("asTask", it) }
+        attachmentId?.let { methodArgs.put("attachmentId", it) }
+        callNativeMethod("composerEvent", methodArgs, null)
+    }
+
     fun openPage(
         url: String,
         closeCurPage: Boolean = false,
