@@ -37,6 +37,7 @@ typealias ChannelJoinResult = ai.slock.compose.data.ChannelJoinResult
 typealias ChannelArchiveResult = ai.slock.compose.data.ChannelArchiveResult
 typealias ChannelDeleteResult = ai.slock.compose.data.ChannelDeleteResult
 typealias ChannelUnreadSnapshot = ai.slock.compose.data.ChannelUnreadSnapshot
+typealias ReadReceiptRepository = ai.slock.compose.data.ReadReceiptRepository
 typealias ReadReceiptResult = ai.slock.compose.data.ReadReceiptResult
 typealias DirectMessageSnapshot = ai.slock.compose.data.DirectMessageSnapshot
 typealias OpenDirectMessageResult = ai.slock.compose.data.OpenDirectMessageResult

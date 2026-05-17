@@ -168,14 +168,6 @@ interface ChannelRepository {
     suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult>
 }
 
-interface ReadReceiptRepository {
-    suspend fun getUnreadCounts(serverId: ServerId): DataResult<ChannelUnreadSnapshot>
-    suspend fun markChannelReadToSeq(channelId: ChannelId, seq: Long): DataResult<ReadReceiptResult>
-    suspend fun markChannelReadAll(channelId: ChannelId): DataResult<ReadReceiptResult>
-    suspend fun markChannelUnread(channelId: ChannelId): DataResult<ReadReceiptResult>
-    suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult>
-}
-
 interface InboxRepository {
     suspend fun loadInitial(
         serverId: ServerId,

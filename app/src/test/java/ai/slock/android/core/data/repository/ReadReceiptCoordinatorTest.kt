@@ -2,6 +2,9 @@ package ai.slock.android.core.data.repository
 
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ServerId
+import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.ReadReceiptCoordinator
+import ai.slock.compose.data.ReadReceiptRequest
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +32,7 @@ class ReadReceiptCoordinatorTest {
         val channelId = ChannelId("channel-1")
 
         coordinator.markReadToSeq(channelId, 10L)
-        assertEquals(listOf(ReadCall.ToSeq(channelId, 10L)), repository.calls)
+        assertEquals(listOf<ReadCall>(ReadCall.ToSeq(channelId, 10L)), repository.calls)
 
         coordinator.markReadToSeq(channelId, 9L)
         coordinator.markReadToSeq(channelId, 10L)
@@ -38,14 +41,14 @@ class ReadReceiptCoordinatorTest {
 
         repository.completeNext()
         assertEquals(
-                listOf(ReadCall.ToSeq(channelId, 10L), ReadCall.ToSeq(channelId, 12L)),
+                listOf<ReadCall>(ReadCall.ToSeq(channelId, 10L), ReadCall.ToSeq(channelId, 12L)),
                 repository.calls
         )
 
         repository.completeNext()
         assertEquals(listOf(ChannelId("channel-1"), channelId), optimisticReads)
         assertEquals(
-                listOf(
+                listOf<ReadReceiptRequest>(
                         ReadReceiptRequest.ToSeq(channelId, 10L),
                         ReadReceiptRequest.ToSeq(channelId, 12L)
                 ),
@@ -72,7 +75,7 @@ class ReadReceiptCoordinatorTest {
         coordinator.markReadToSeq(channelId, 42L)
         coordinator.markReadToSeq(channelId, 41L)
 
-        assertEquals(listOf(ReadCall.ToSeq(channelId, 42L)), repository.calls)
+        assertEquals(listOf<ReadCall>(ReadCall.ToSeq(channelId, 42L)), repository.calls)
         assertEquals(listOf(channelId), optimisticReads)
         scope.cancel()
     }
@@ -89,7 +92,7 @@ class ReadReceiptCoordinatorTest {
         coordinator.markReadToSeq(channelId, 42L)
 
         assertEquals(
-                listOf(ReadCall.ToSeq(channelId, 42L), ReadCall.ToSeq(channelId, 42L)),
+                listOf<ReadCall>(ReadCall.ToSeq(channelId, 42L), ReadCall.ToSeq(channelId, 42L)),
                 repository.calls
         )
         scope.cancel()
@@ -111,7 +114,7 @@ class ReadReceiptCoordinatorTest {
         coordinator.markReadToSeq(channelId, 3L)
         repository.completeNext()
 
-        assertEquals(listOf(ReadReceiptRequest.ToSeq(channelId, 3L)), failures)
+        assertEquals(listOf<ReadReceiptRequest>(ReadReceiptRequest.ToSeq(channelId, 3L)), failures)
         scope.cancel()
     }
 
@@ -125,7 +128,7 @@ class ReadReceiptCoordinatorTest {
         coordinator.markReadToSeq(channelId, 0L)
         repository.completeNext()
 
-        assertEquals(listOf(ReadCall.All(channelId)), repository.calls)
+        assertEquals(listOf<ReadCall>(ReadCall.All(channelId)), repository.calls)
         scope.cancel()
     }
 
@@ -148,7 +151,7 @@ class ReadReceiptCoordinatorTest {
         coordinator.markReadToSeq(channelId, 7L)
         repository.completeNext()
 
-        assertEquals(listOf(ReadReceiptRequest.ToSeq(channelId, 7L)), runnerRequests)
+        assertEquals(listOf<ReadReceiptRequest>(ReadReceiptRequest.ToSeq(channelId, 7L)), runnerRequests)
         scope.cancel()
     }
 

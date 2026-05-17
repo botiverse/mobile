@@ -71,10 +71,10 @@ import ai.slock.android.core.data.repository.InboxRepository
 import ai.slock.android.core.data.repository.MemberRepository
 import ai.slock.android.core.data.repository.MemberSnapshot
 import ai.slock.android.core.data.repository.OpenDirectMessageResult
-import ai.slock.android.core.data.repository.ReadReceiptCoordinator
 import ai.slock.android.core.data.repository.ReadReceiptRepository
-import ai.slock.android.core.data.repository.ReadReceiptRequest
-import ai.slock.android.core.data.repository.ReadReceiptVisibilityGate
+import ai.slock.compose.data.ReadReceiptCoordinator
+import ai.slock.compose.data.ReadReceiptRequest
+import ai.slock.compose.data.ReadReceiptVisibilityGate
 import ai.slock.android.core.data.repository.RealtimeRepository
 import ai.slock.android.core.data.repository.RealtimeSubscription
 import ai.slock.android.core.data.repository.RemoveChannelMemberRequest

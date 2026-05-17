@@ -1,6 +1,7 @@
 package ai.slock.android.core.data.repository
 
 import ai.slock.android.core.model.ChannelId
+import ai.slock.compose.data.ReadReceiptVisibilityGate
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
