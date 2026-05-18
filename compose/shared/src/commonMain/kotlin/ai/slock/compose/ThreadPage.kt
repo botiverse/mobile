@@ -10,6 +10,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
 import com.tencent.kuikly.compose.foundation.Canvas
@@ -28,6 +29,8 @@ import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.foundation.lazy.LazyListState
+import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
@@ -45,6 +48,8 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -557,71 +562,150 @@ private fun ThreadMessagesList(
         ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
         return
     }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(vertical = 2.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        if (payload.originStatus != "none") {
-            item {
-                ThreadOriginCard(
-                    payload = payload,
-                    onOpenParentMessage = {
-                        payload.originParentMessageId?.let {
-                            onThreadEvent("openParentMessage", it, null, null)
-                        }
-                    }
-                )
-            }
-        }
-        if (payload.canLoadMoreBefore) {
-            item {
-                ThreadInlineActionRow(
-                    label = when (payload.olderMessagesStatus) {
-                        "loading" -> "Loading older messages…"
-                        "error" -> "Retry older messages"
-                        else -> "Load older messages"
-                    },
-                    onClick = {
-                        onThreadEvent(
-                            if (payload.olderMessagesStatus == "error") "retryLoadOlder" else "loadOlder",
-                            null,
-                            null,
-                            null
-                        )
-                    }
-                )
-            }
-        }
-        items(payload.messages.size, key = { payload.messages[it].id }) { index ->
-            ThreadMessageCard(
-                message = payload.messages[index],
-                showReplyAction = payload.showReplyActions,
-                onOpenMember = { onThreadEvent("openMember", it, null, null) },
-                onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
-                onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) }
-            )
-        }
-        if (payload.canLoadMoreAfter) {
-            item {
-                ThreadInlineActionRow(
-                    label = when (payload.newerMessagesStatus) {
-                        "loading" -> "Loading new messages…"
-                        "error" -> "Retry new messages"
-                        else -> "Load new messages"
-                    },
-                    onClick = {
-                        onThreadEvent(
-                            if (payload.newerMessagesStatus == "error") "retryLoadNewer" else "loadNewer",
-                            null,
-                            null,
-                            null
-                        )
-                    }
-                )
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    val latestItemIndex = payload.latestMessageListItemIndex()
+    LaunchedEffect(payload.instanceId, payload.messages.lastOrNull()?.id, latestItemIndex) {
+        if (latestItemIndex >= 0) {
+            repeat(ThreadInitialBottomAnchorAttempts) {
+                if (listState.layoutInfo.totalItemsCount > latestItemIndex) {
+                    listState.scrollToItem(latestItemIndex, 0)
+                    return@LaunchedEffect
+                }
+                delay(16)
             }
         }
     }
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize().padding(vertical = 2.dp),
+            verticalArrangement = Arrangement.Bottom
+        ) {
+            if (payload.originStatus != "none") {
+                item {
+                    ThreadOriginCard(
+                        payload = payload,
+                        onOpenParentMessage = {
+                            payload.originParentMessageId?.let {
+                                onThreadEvent("openParentMessage", it, null, null)
+                            }
+                        }
+                    )
+                }
+            }
+            if (payload.canLoadMoreBefore) {
+                item {
+                    ThreadInlineActionRow(
+                        label = when (payload.olderMessagesStatus) {
+                            "loading" -> "Loading older messages…"
+                            "error" -> "Retry older messages"
+                            else -> "Load older messages"
+                        },
+                        onClick = {
+                            onThreadEvent(
+                                if (payload.olderMessagesStatus == "error") "retryLoadOlder" else "loadOlder",
+                                null,
+                                null,
+                                null
+                            )
+                        }
+                    )
+                }
+            }
+            items(payload.messages.size, key = { payload.messages[it].id }) { index ->
+                ThreadMessageCard(
+                    message = payload.messages[index],
+                    showReplyAction = payload.showReplyActions,
+                    onOpenMember = { onThreadEvent("openMember", it, null, null) },
+                    onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
+                    onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) }
+                )
+            }
+            if (payload.canLoadMoreAfter) {
+                item {
+                    ThreadInlineActionRow(
+                        label = when (payload.newerMessagesStatus) {
+                            "loading" -> "Loading new messages…"
+                            "error" -> "Retry new messages"
+                            else -> "Load new messages"
+                        },
+                        onClick = {
+                            onThreadEvent(
+                                if (payload.newerMessagesStatus == "error") "retryLoadNewer" else "loadNewer",
+                                null,
+                                null,
+                                null
+                            )
+                        }
+                    )
+                }
+            }
+        }
+        if (listState.shouldShowThreadBackToBottom(latestItemIndex)) {
+            ThreadBackToBottomButton(
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = SlockSpacing.Md, bottom = SlockSpacing.Md),
+                onClick = {
+                    coroutineScope.launch {
+                        listState.scrollToItem(latestItemIndex, 0)
+                    }
+                }
+            )
+        }
+    }
 }
+
+private fun KuiklyThreadScreenPayload.latestMessageListItemIndex(): Int {
+    if (messages.isEmpty()) return -1
+    var index = 0
+    if (originStatus != "none") index += 1
+    if (canLoadMoreBefore) index += 1
+    return index + messages.lastIndex
+}
+
+private fun LazyListState.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
+    if (latestItemIndex <= 0) return false
+    val layoutInfo = layoutInfo
+    if (layoutInfo.totalItemsCount <= latestItemIndex) return false
+    val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == latestItemIndex }
+    val latestBottom = latestItem?.let { it.offset + it.size } ?: return true
+    return latestBottom < layoutInfo.viewportEndOffset - ThreadBackToBottomTolerancePx
+}
+
+@Composable
+private fun ThreadBackToBottomButton(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Box(modifier = modifier.padding(end = 4.dp, bottom = 4.dp)) {
+        Box(
+            modifier = Modifier.matchParentSize().offset(x = 4f, y = 4f).background(SlockColor.ShadowBlack)
+        )
+        Row(
+            modifier = Modifier
+                .background(SlockColor.AccentCyan)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .clickable(onClick = onClick)
+                .padding(horizontal = SlockSpacing.Sm, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            Text(
+                text = "Back to bottom",
+                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack
+            )
+            SlockLucideIcon(
+                "chevron-down",
+                modifier = Modifier.size(14.dp),
+                color = "#FF000000"
+            )
+        }
+    }
+}
+
+private const val ThreadBackToBottomTolerancePx = 24
+private const val ThreadInitialBottomAnchorAttempts = 10
 
 @Composable
 private fun ThreadInlineActionRow(label: String, onClick: () -> Unit) {
