@@ -325,9 +325,9 @@ private fun ThreadPageContent(
                 )
             } else if (payload.showComposer) {
                 Box(
-                    modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
+                    modifier = Modifier.fillMaxWidth()
                         .background(SlockColor.SurfaceWhite)
-                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm)
                 ) {
                     ThreadComposerContent(
                         payload = composerPayload,
@@ -383,38 +383,94 @@ private fun ThreadPageHeader(
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(SlockColor.SurfaceWhite)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        ThreadHeaderAction(label = payload.navigationLabel, onClick = onBack)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = payload.title,
-                style = SlockType.Body.copy(fontWeight = FontWeight.W600, color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+    Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            ThreadHeaderIconButton(
+                icon = if (payload.navigationLabel.equals("Close", ignoreCase = true)) "x" else "arrow-left",
+                onClick = onBack
             )
-            payload.subtitle?.takeIf { it.isNotBlank() }?.let {
+            ThreadHashTile()
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = it,
-                    style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    text = payload.title,
+                    style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                payload.subtitle?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        text = it,
+                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            if (payload.showSettingsAction) {
+                ThreadHeaderIconButton(icon = "settings", onClick = onShowSettings)
+            }
+            if (payload.showMembersAction) {
+                ThreadMembersHeaderButton(count = payload.membersCount, onClick = onShowMembers)
             }
         }
-        if (payload.showMembersAction) {
-            ThreadHeaderAction(label = "Members ${payload.membersCount}", onClick = onShowMembers)
-        }
-        if (payload.showSettingsAction) {
-            ThreadHeaderAction(label = "Settings", onClick = onShowSettings)
-        }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+    }
+}
+
+@Composable
+private fun ThreadHashTile() {
+    Box(
+        modifier = Modifier.size(40.dp)
+            .background(SlockColor.BrandYellow)
+            .border(SlockStroke.Default, SlockColor.BorderBlack),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "#",
+            style = SlockType.PageTitle.copy(fontWeight = FontWeight.W700, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack
+        )
+    }
+}
+
+@Composable
+private fun ThreadHeaderIconButton(icon: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier.size(SlockSize.IconButton)
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockLucideIcon(icon, modifier = Modifier.size(20.dp), color = "#FF000000")
+    }
+}
+
+@Composable
+private fun ThreadMembersHeaderButton(count: Int, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.height(SlockSize.IconButton)
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        SlockLucideIcon("users", modifier = Modifier.size(18.dp), color = "#FF000000")
+        Text(
+            text = count.toString(),
+            style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1
+        )
     }
 }
 
@@ -442,20 +498,20 @@ private fun ThreadPageTabs(
     onSelect: (KuiklyThreadTab) -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         KuiklyThreadTab.entries.forEach { tab ->
             Box(
-                modifier = Modifier.border(SlockStroke.Default, SlockColor.BorderBlack)
+                modifier = Modifier.height(40.dp).border(SlockStroke.Default, SlockColor.BorderBlack)
                     .background(if (selectedTab == tab) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
                     .clickable { onSelect(tab) }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 18.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = tab.label,
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack
                 )
             }
@@ -497,8 +553,8 @@ private fun ThreadMessagesList(
         return
     }
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        modifier = Modifier.fillMaxSize().padding(vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         if (payload.originStatus != "none") {
             item {
@@ -565,10 +621,10 @@ private fun ThreadMessagesList(
 @Composable
 private fun ThreadInlineActionRow(label: String, onClick: () -> Unit) {
     Box(
-        modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
+        modifier = Modifier.fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -588,63 +644,74 @@ private fun ThreadMessageCard(
     onOpenAttachment: (String) -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(SlockColor.SurfaceWhite)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ThreadMessageAvatar(
-                avatarLabel = message.avatarLabel,
-                avatarWireValue = message.avatarWireValue,
-                gravatarHash = message.gravatarHash,
-                onClick = { onOpenMember(message.authorId) }
-            )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = message.authorName,
-                    style = SlockType.Body.copy(fontWeight = FontWeight.W600, color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.clickable { onOpenMember(message.authorId) }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                ThreadMessageAvatar(
+                    avatarLabel = message.avatarLabel,
+                    avatarWireValue = message.avatarWireValue,
+                    gravatarHash = message.gravatarHash,
+                    onClick = { onOpenMember(message.authorId) }
                 )
-                Text(
-                    text = message.timestampLabel,
-                    style = SlockType.Input.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (showReplyAction && message.replyCount > 0) {
-                ThreadHeaderAction(
-                    label = "${message.replyCount} replies",
-                    onClick = { onOpenThread(message.id) }
-                )
-            }
-        }
-        if (message.body.isNotBlank()) {
-            Text(
-                text = message.body,
-                style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack
-            )
-        }
-        if (message.attachments.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                message.attachments.forEach { attachment ->
-                    ThreadAttachmentChip(
-                        attachment = attachment,
-                        onOpen = { onOpenAttachment(attachment.id) }
-                    )
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                    ) {
+                        Text(
+                            text = message.authorName,
+                            style = SlockType.ButtonBold.copy(fontSize = 15.sp, lineHeight = 19.sp, color = SlockColor.TextBlack),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).clickable { onOpenMember(message.authorId) }
+                        )
+                        Text(
+                            text = message.timestampLabel,
+                            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                            color = SlockColor.TextMutedGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (message.body.isNotBlank()) {
+                        Text(
+                            text = message.body,
+                            style = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp, color = SlockColor.TextBlack),
+                            color = SlockColor.TextBlack
+                        )
+                    }
+                    if (message.attachments.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+                            message.attachments.forEach { attachment ->
+                                ThreadAttachmentChip(
+                                    attachment = attachment,
+                                    onOpen = { onOpenAttachment(attachment.id) }
+                                )
+                            }
+                        }
+                    }
+                    if (showReplyAction && message.replyCount > 0) {
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            ThreadHeaderAction(
+                                label = "${message.replyCount} replies",
+                                onClick = { onOpenThread(message.id) }
+                            )
+                        }
+                    }
                 }
             }
         }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack))
     }
 }
 
@@ -654,20 +721,20 @@ private fun ThreadOriginCard(
     onOpenParentMessage: () -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
+        modifier = Modifier.fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             Text(
                 text = "Origin",
-                style = SlockType.Body.copy(fontWeight = FontWeight.W600, color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
+                style = SlockType.Caption.copy(fontWeight = FontWeight.W700, color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
                 modifier = Modifier.weight(1f)
             )
             if (!payload.originParentMessageId.isNullOrBlank()) {
@@ -680,8 +747,8 @@ private fun ThreadOriginCard(
         when (payload.originStatus) {
             "loading" -> {
                 Text(
-                    text = "Refreshing original message…",
-                    style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+                    text = "Refreshing original message...",
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray
                 )
             }
@@ -689,13 +756,13 @@ private fun ThreadOriginCard(
                 Text(
                     text = payload.originPreview?.ifBlank { "Original message is unavailable." }
                         ?: "Original message is unavailable.",
-                    style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack
                 )
                 payload.originErrorCode?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = "Refresh failed: $it",
-                        style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                         color = SlockColor.TextMutedGray
                     )
                 }
@@ -712,12 +779,13 @@ private fun ThreadOriginCard(
                 } ?: payload.originPreview?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
-                        style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                        style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack
                     )
                 }
             }
         }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack))
     }
 }
 
@@ -734,7 +802,7 @@ private fun ThreadMessageAvatar(
                 ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
         }
     Box(
-        modifier = Modifier.size(34.dp).border(SlockStroke.Default, SlockColor.BorderBlack)
+        modifier = Modifier.size(40.dp).border(SlockStroke.Default, SlockColor.BorderBlack)
             .background(SlockColor.BrandYellow)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -749,7 +817,7 @@ private fun ThreadMessageAvatar(
         } else {
             Text(
                 text = avatarLabel.ifBlank { "?" }.take(2).uppercase(),
-                style = SlockType.Body.copy(fontWeight = FontWeight.W700, color = SlockColor.TextBlack),
+                style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
                 color = SlockColor.TextBlack
             )
         }
@@ -762,16 +830,16 @@ private fun ThreadAttachmentChip(
     onOpen: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(SlockColor.SurfaceCream)
+        modifier = Modifier.fillMaxWidth().border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .background(SlockColor.SurfaceWhite)
             .clickable(onClick = onOpen)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         Box(
-            modifier = Modifier.size(30.dp).border(SlockStroke.Default, SlockColor.BorderBlack)
-                .background(SlockColor.SurfaceWhite),
+            modifier = Modifier.size(42.dp).border(SlockStroke.Default, SlockColor.BorderBlack)
+                .background(SlockColor.SurfaceCream),
             contentAlignment = Alignment.Center
         ) {
             if (attachment.mimeType.startsWith("image/") && attachment.thumbnailUrl != null) {
@@ -792,7 +860,7 @@ private fun ThreadAttachmentChip(
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = attachment.name,
-                style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
+                style = SlockType.Button.copy(color = SlockColor.TextBlack),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -801,7 +869,7 @@ private fun ThreadAttachmentChip(
             if (meta.isNotBlank()) {
                 Text(
                     text = meta,
-                    style = SlockType.Input.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray),
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
