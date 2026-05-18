@@ -119,6 +119,7 @@ fun SlockStructuralHomeShell(
                 .put("serverSwitcherExpanded", serverSwitcherExpanded)
                 .put("contentRefreshing", contentRefreshing)
                 .put("contentRefreshEnabled", contentRefreshEnabled)
+                .put("applyTopSafeArea", false)
                 .put("bottomContentPaddingDp", bottomContentPadding.value)
                 .put("labels", labels)
                 .toString()

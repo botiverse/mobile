@@ -159,6 +159,7 @@ internal data class SlockHomePayload(
     val serverSwitcherExpanded: Boolean = false,
     val contentRefreshing: Boolean = false,
     val contentRefreshEnabled: Boolean = true,
+    val applyTopSafeArea: Boolean = true,
     val bottomContentPaddingDp: Float = 24f,
     val labels: SlockHomeShellLabels = SlockHomeShellLabels()
 )
@@ -208,6 +209,7 @@ private fun SlockHomePageContent() {
         serverSwitcherExpanded = payload.serverSwitcherExpanded,
         contentRefreshing = payload.contentRefreshing,
         contentRefreshEnabled = payload.contentRefreshEnabled,
+        applyTopSafeArea = payload.applyTopSafeArea,
         showBottomBar = false,
         bottomContentPadding = payload.bottomContentPaddingDp.dp,
         outerPadding = 0.dp,
@@ -252,6 +254,7 @@ fun SlockStructuralHomeShell(
     serverSwitcherExpanded: Boolean = false,
     contentRefreshing: Boolean = false,
     contentRefreshEnabled: Boolean = true,
+    applyTopSafeArea: Boolean = true,
     selectedTabKey: String = "home",
     showBottomBar: Boolean = true,
     bottomContentPadding: Dp = if (showBottomBar) SlockSize.BottomBarHeight + SlockSpacing.Md else SlockSpacing.Lg,
@@ -279,13 +282,13 @@ fun SlockStructuralHomeShell(
     val displayedDirectMessages = if (directMessagesReversed) directMessages.asReversed() else directMessages
     val listState = rememberLazyListState()
     val pullToRefreshState = rememberPullToRefreshState(contentRefreshing)
-    val topSafeArea = slockTopSafeAreaPadding()
+    val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     Column(
         modifier = modifier.fillMaxSize().background(SlockColor.AppBgLightBlue).padding(outerPadding)
     ) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)) {
             Column(modifier = Modifier.fillMaxSize()) {
-                HomeWorkspaceHeader(currentServerName, serverUnreadCount, onServerBadgeClick)
+                HomeWorkspaceHeader(currentServerName, serverUnreadCount, topSafeArea, onServerBadgeClick)
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -392,10 +395,10 @@ private fun HomePullRefreshIndicator(refreshing: Boolean) {
 }
 
 @Composable
-private fun HomeWorkspaceHeader(serverName: String, serverUnreadCount: Int, onServerBadgeClick: () -> Unit) {
+private fun HomeWorkspaceHeader(serverName: String, serverUnreadCount: Int, topSafeArea: Dp, onServerBadgeClick: () -> Unit) {
     Box(modifier = Modifier.fillMaxWidth().background(SlockColor.BrandYellow)) {
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack).align(Alignment.BottomCenter))
-        Box(modifier = Modifier.padding(top = slockTopSafeAreaPadding()).padding(horizontal = SlockSpacing.Lg, vertical = SlockSpacing.Md).clickable(onClick = onServerBadgeClick)) {
+        Box(modifier = Modifier.padding(top = topSafeArea).padding(horizontal = SlockSpacing.Lg, vertical = SlockSpacing.Md).clickable(onClick = onServerBadgeClick)) {
             SlockLogoBadge(text = serverName, showDropdown = true)
             if (serverUnreadCount > 0) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
         }
