@@ -59,6 +59,41 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun parsesMessageFooterTaskMetadata() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "thread-1",
+                      "messages": [
+                        {
+                          "id": "m1",
+                          "authorId": "u1",
+                          "authorName": "Artin",
+                          "body": "please ship #163",
+                          "replyCount": 2,
+                          "taskId": "task-1",
+                          "taskNumber": 163,
+                          "taskStatus": "InReview",
+                          "taskAssigneeName": "Android-Developer-2"
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                fallbackPageData = "{}",
+                instanceId = "fallback"
+            )
+
+        val message = payload.messages.first()
+        assertEquals("task-1", message.taskId)
+        assertEquals(163, message.taskNumber)
+        assertEquals("InReview", message.taskStatus)
+        assertEquals("Android-Developer-2", message.taskAssigneeName)
+        assertEquals(2, message.replyCount)
+    }
+
+    @Test
     fun parsesReplyContextFields() {
         val payload =
             parseThreadScreenPayload(

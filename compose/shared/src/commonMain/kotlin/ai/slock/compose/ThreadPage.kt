@@ -117,6 +117,10 @@ internal data class KuiklyThreadMessageItem(
     val timestampLabel: String = "",
     val body: String = "",
     val replyCount: Int = 0,
+    val taskId: String? = null,
+    val taskNumber: Int? = null,
+    val taskStatus: String? = null,
+    val taskAssigneeName: String? = null,
     val attachments: List<KuiklyThreadAttachmentItem> = emptyList()
 )
 
@@ -619,6 +623,7 @@ private fun ThreadMessagesList(
                     showReplyAction = payload.showReplyActions,
                     onOpenMember = { onThreadEvent("openMember", it, null, null) },
                     onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
+                    onOpenTask = { onThreadEvent("openTask", it, null, null) },
                     onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) }
                 )
             }
@@ -730,6 +735,7 @@ private fun ThreadMessageCard(
     showReplyAction: Boolean = true,
     onOpenMember: (String) -> Unit,
     onOpenThread: (String) -> Unit,
+    onOpenTask: (String) -> Unit,
     onOpenAttachment: (String) -> Unit
 ) {
     Column(
@@ -788,20 +794,96 @@ private fun ThreadMessageCard(
                             }
                         }
                     }
-                    if (showReplyAction && message.replyCount > 0) {
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            ThreadHeaderAction(
-                                label = "${message.replyCount} replies",
-                                onClick = { onOpenThread(message.id) }
-                            )
-                        }
-                    }
+                    ThreadMessageFooterMeta(
+                        message = message,
+                        showReplyAction = showReplyAction,
+                        onOpenThread = { onOpenThread(message.id) },
+                        onOpenTask = onOpenTask
+                    )
                 }
             }
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack))
     }
 }
+
+@Composable
+private fun ThreadMessageFooterMeta(
+    message: KuiklyThreadMessageItem,
+    showReplyAction: Boolean,
+    onOpenThread: () -> Unit,
+    onOpenTask: (String) -> Unit
+) {
+    val hasTask = !message.taskId.isNullOrBlank()
+    val hasReplies = showReplyAction && message.replyCount > 0
+    if (!hasTask && !hasReplies) return
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        if (hasTask) {
+            val label =
+                buildString {
+                    append(message.taskNumber?.let { "#$it" } ?: "Task")
+                    message.taskAssigneeName?.takeIf { it.isNotBlank() }?.let {
+                        append(" @")
+                        append(it.removePrefix("@"))
+                    }
+                }
+            ThreadMetaChip(
+                label = label,
+                color = message.taskStatus.threadTaskStatusColor(),
+                onClick = { message.taskId?.let(onOpenTask) },
+                modifier = Modifier.weight(1f, fill = false)
+            )
+        }
+        if (hasReplies) {
+            ThreadMetaChip(
+                label = "${message.replyCount} replies",
+                color = SlockColor.AppBgLightBlue,
+                onClick = onOpenThread,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadMetaChip(
+    label: String,
+    color: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .background(color)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, lineHeight = 14.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+private fun String?.threadTaskStatusColor(): Color =
+    when (this?.trim()?.lowercase()) {
+        "todo" -> SlockColor.AccentOrange
+        "inprogress", "in_progress", "in progress" -> SlockColor.AccentCyan
+        "inreview", "in_review", "in review" -> SlockColor.AccentLavender
+        "done" -> SlockColor.AccentLime
+        "closed" -> SlockColor.AccentRed
+        else -> SlockColor.AccentOrange
+    }
 
 @Composable
 private fun ThreadOriginCard(
@@ -862,6 +944,7 @@ private fun ThreadOriginCard(
                         showReplyAction = false,
                         onOpenMember = {},
                         onOpenThread = {},
+                        onOpenTask = {},
                         onOpenAttachment = {}
                     )
                 } ?: payload.originPreview?.takeIf { it.isNotBlank() }?.let {

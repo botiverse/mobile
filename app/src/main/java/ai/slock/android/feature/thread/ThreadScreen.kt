@@ -1399,6 +1399,10 @@ private fun Message.toKuiklyThreadMessageJson(): JSONObject =
                 .put("timestampLabel", timestampLabel)
                 .put("body", body)
                 .put("replyCount", replyCount)
+                .putNullable("taskId", task?.id?.value)
+                .put("taskNumber", task?.taskNumber)
+                .putNullable("taskStatus", task?.status?.name)
+                .putNullable("taskAssigneeName", task?.assignee?.resolvedFooterDisplayName())
                 .put(
                         "attachments",
                         JSONArray().also { array ->
