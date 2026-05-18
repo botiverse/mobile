@@ -12,13 +12,28 @@ import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklyRelationalStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
+import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextAlign
+import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
 import com.tencent.kuikly.compose.ui.text.input.KeyboardType
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -265,35 +280,39 @@ internal fun RegisterContent(
     onBackToSignIn: () -> Unit
 ) {
     val formEnabled = !submitting
+    var termsAccepted by remember { mutableStateOf(false) }
     AuthScaffold {
-        AuthBrandBlock()
+        AuthCenterMark()
         Text(
             text = "Create account",
-            style = SlockType.PageTitle.copy(fontSize = 32.sp, lineHeight = 38.sp, color = SlockColor.TextBlack),
+            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
-        Text(
-            text = "Set up a Slock workspace identity for human and AI collaboration.",
-            style = SlockType.Body.copy(fontSize = 18.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
-        )
-        AuthTextField(name, onNameChange, "Name", placeholder = "Ada Lovelace", required = true, enabled = formEnabled, forceFocused = true)
-        AuthTextField(email, onEmailChange, "Email", placeholder = "you@slock.ai", required = true, enabled = formEnabled)
-        AuthTextField(password, onPasswordChange, "Password", placeholder = "At least 8 characters", required = true, enabled = formEnabled)
-        Text(
-            text = "Use at least 8 characters.",
-            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
-        )
-        AuthError(errorMessage)
-        AuthActionButton(
-            text = if (submitting) "Creating account..." else "Create account",
-            onClick = onSubmit,
-            tone = AuthButtonTone.Pink,
-            enabled = formEnabled && name.isNotBlank() && email.isNotBlank() && password.isNotBlank(),
-            loading = submitting
-        )
-        AuthInlineAction("Already have an account?", "Sign in") { onBackToSignIn() }
+        AuthFormColumn {
+            AuthTextField(name, onNameChange, "Name", placeholder = "Letters, numbers, hyphens, underscores", required = true, enabled = formEnabled, forceFocused = true)
+            AuthTextField(email, onEmailChange, "Email", required = true, enabled = formEnabled, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next))
+            AuthTextField(
+                password,
+                onPasswordChange,
+                "Password",
+                placeholder = "Min 8 characters",
+                required = true,
+                enabled = formEnabled,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onSubmit() })
+            )
+            AuthTermsAgreement(termsAccepted, { termsAccepted = it })
+            AuthError(errorMessage)
+            AuthActionButton(
+                text = if (submitting) "Creating account..." else "Create account",
+                onClick = onSubmit,
+                tone = AuthButtonTone.Pink,
+                enabled = formEnabled && termsAccepted && name.isNotBlank() && email.isNotBlank() && password.isNotBlank(),
+                loading = submitting,
+                preserveDisabledVisual = true
+            )
+            AuthInlineAction("Already have an account?", "Sign in") { onBackToSignIn() }
+        }
     }
 }
 
@@ -308,43 +327,82 @@ internal fun ForgotPasswordContent(
     onBackToSignIn: () -> Unit
 ) {
     AuthScaffold {
-        AuthBrandBlock()
+        AuthCenterMark()
         Text(
             text = "Reset password",
-            style = SlockType.PageTitle.copy(fontSize = 34.sp, lineHeight = 40.sp, color = SlockColor.TextBlack),
+            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
         Text(
-            text = "Enter the email linked to your Slock account. We will send a secure reset link you can open on this device.",
-            style = SlockType.Body.copy(fontSize = 18.sp, lineHeight = 25.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            text = "Enter your email and we’ll send you a link to\nreset your password.",
+            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            textAlign = TextAlign.Center
         )
-        AuthTextField(
-            value = email,
-            onValueChange = onEmailChange,
-            label = "Email",
-            placeholder = "you@slock.ai",
-            enabled = !sending && !sent,
-            isError = !errorMessage.isNullOrBlank(),
-            errorText = errorMessage,
-            forceFocused = !sent
-        )
-        if (sent) {
-            AuthSuccessNotice(
-                title = "Reset link sent",
-                detail = "Check ${email.ifBlank { "your email" }} for your secure reset link."
+        AuthFormColumn {
+            AuthTextField(
+                value = email,
+                onValueChange = onEmailChange,
+                label = "Email",
+                enabled = !sending && !sent,
+                isError = !errorMessage.isNullOrBlank(),
+                errorText = errorMessage,
+                forceFocused = !sent,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onSubmit() })
             )
+            if (sent) {
+                AuthSuccessNotice(
+                    title = "Reset link sent",
+                    detail = "Check ${email.ifBlank { "your email" }} for your secure reset link."
+                )
+            }
+            AuthActionButton(
+                text = if (sending) "Sending link..." else "Send reset link",
+                onClick = onSubmit,
+                tone = AuthButtonTone.Pink,
+                enabled = email.isNotBlank() && !sent,
+                loading = sending,
+                preserveDisabledVisual = true
+            )
+            AuthTextLink("Back to sign in") { onBackToSignIn() }
         }
-        AuthActionButton(
-            text = if (sending) "Sending link..." else "Send reset link",
-            onClick = onSubmit,
-            tone = AuthButtonTone.Pink,
-            enabled = email.isNotBlank() && !sent,
-            loading = sending
-        )
-        AuthTextLink("Back to sign in") { onBackToSignIn() }
     }
 }
+
+@Composable
+private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) },
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(top = 2.dp)
+                .size(18.dp)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            if (checked) SlockLucideIcon("check", Modifier.size(13.dp))
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("I agree to the ", style = AuthTermsTextStyle, color = SlockColor.TextMutedGray)
+                Text("Terms of Service", style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
+                Text(" and", style = AuthTermsTextStyle, color = SlockColor.TextMutedGray)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("acknowledge the ", style = AuthTermsTextStyle, color = SlockColor.TextMutedGray)
+                Text("Privacy Policy.", style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
+            }
+        }
+    }
+}
+
+private val AuthTermsTextStyle = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray)
+private val AuthTermsLinkStyle = SlockType.Body.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack, textDecoration = TextDecoration.Underline)
 
 @Composable
 private fun LoginContentPreview() {
