@@ -64,7 +64,8 @@ private const val HOME_PAGE_DATA_EVENT = "slockPageData"
 private val SidebarActionIconSize = 14.dp
 private val SidebarActionIconBoxSize = 22.dp
 private val SidebarActionRowHeight = 38.dp
-private val SidebarActivityShadowOffset = 2.dp
+private val HomeSmallShadowOffset = 2.dp
+private val SidebarActivityBottomGap = 4.dp
 private val SidebarRowHorizontalPadding = 8.dp
 private val SidebarActionLabelGap = 10.dp
 private val ChannelSymbolWidth = 22.dp
@@ -454,8 +455,23 @@ private fun HomeNotificationCenter(notifications: List<SlockHomeNotificationItem
     var expanded by remember { mutableStateOf(false) }
     val activeKind = notifications.first().kind
     Box(modifier = modifier) {
-        Box(modifier = Modifier.align(Alignment.TopEnd).size(36.dp).background(activeKind.notificationColor()).border(SlockStroke.Default, SlockColor.BorderBlack).clickable { expanded = !expanded }, contentAlignment = Alignment.Center) {
-            SlockLucideIcon("triangle-alert", Modifier.size(18.dp))
+        Box(modifier = Modifier.align(Alignment.TopEnd).padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
+                    .background(SlockColor.ShadowBlack)
+            )
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(activeKind.notificationColor())
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .clickable { expanded = !expanded },
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon("triangle-alert", Modifier.size(18.dp))
+            }
         }
         ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
         if (expanded) HomeNotificationPopover(notifications, onView, onDismiss, Modifier.align(Alignment.TopEnd).offset(y = 44.dp))
@@ -575,41 +591,46 @@ private fun SidebarActivityRow(label: String, count: String?, modifier: Modifier
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(end = SidebarActivityShadowOffset, bottom = SidebarActivityShadowOffset + 4.dp)
+            .padding(bottom = SidebarActivityBottomGap)
     ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .offset(x = SidebarActivityShadowOffset, y = SidebarActivityShadowOffset)
-                .background(SlockColor.ShadowBlack)
-        )
-        com.tencent.kuikly.compose.foundation.layout.Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = SidebarActionRowHeight)
-                .background(SlockColor.AccentPink)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-                .padding(horizontal = SidebarRowHorizontalPadding, vertical = SlockSpacing.Xs),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SlockLucideIcon("activity", Modifier.size(SidebarActionIconSize))
-            Text(
-                label,
-                style = SlockType.ButtonBold,
-                color = SlockColor.TextBlack,
-                modifier = Modifier.padding(start = 6.dp).weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+        Box(modifier = Modifier.fillMaxWidth().padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = SidebarActionRowHeight)
+                    .offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
+                    .background(SlockColor.ShadowBlack)
             )
-            if (count != null) {
+            com.tencent.kuikly.compose.foundation.layout.Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = SidebarActionRowHeight)
+                    .background(SlockColor.AccentPink)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                    .padding(horizontal = SidebarRowHorizontalPadding, vertical = SlockSpacing.Xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) {
+                    SlockLucideIcon("activity", Modifier.size(SidebarActionIconSize))
+                }
                 Text(
-                    count,
-                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 12.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                    label,
+                    style = SlockType.ButtonBold,
+                    color = SlockColor.TextBlack,
+                    modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (count != null) {
+                    Text(
+                        count,
+                        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 12.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
