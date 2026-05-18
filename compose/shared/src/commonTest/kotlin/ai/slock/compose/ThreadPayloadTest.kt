@@ -15,9 +15,15 @@ class ThreadPayloadTest {
                       "title": "对话流专修",
                       "membersCount": 2,
                       "canAddMembers": false,
+                      "addMemberStatus": "failed",
+                      "addMemberErrorCode": "member_exists",
                       "members": [
                         {"id": "u1", "displayName": "Artin", "handle": "artin", "roleLabel": "Owner"},
                         {"id": "a1", "displayName": "Android Bot", "kind": "agent", "avatarLabel": "AB"}
+                      ],
+                      "memberCandidates": [
+                        {"id": "u2", "displayName": "Cindy", "handle": "cindy"},
+                        {"id": "a2", "displayName": "QA Bot", "kind": "agent"}
                       ],
                       "settingsActions": [
                         {"id": "notifications", "title": "Notifications", "subtitle": "Configure alerts", "icon": "bell-ring"},
@@ -33,8 +39,12 @@ class ThreadPayloadTest {
         assertEquals("对话流专修", payload.title)
         assertEquals(2, payload.membersCount)
         assertEquals(false, payload.canAddMembers)
+        assertEquals("failed", payload.addMemberStatus)
+        assertEquals("member_exists", payload.addMemberErrorCode)
         assertEquals("Artin", payload.members.first().displayName)
         assertEquals("agent", payload.members[1].kind)
+        assertEquals("Cindy", payload.memberCandidates.first().displayName)
+        assertEquals("agent", payload.memberCandidates[1].kind)
         assertEquals("notifications", payload.settingsActions.first().id)
         assertEquals(true, payload.settingsActions[1].destructive)
     }

@@ -86,7 +86,10 @@ internal data class KuiklyThreadScreenPayload(
     val canSend: Boolean = true,
     val membersCount: Int = 0,
     val members: List<KuiklyThreadMemberItem> = emptyList(),
+    val memberCandidates: List<KuiklyThreadMemberItem> = emptyList(),
     val canAddMembers: Boolean = true,
+    val addMemberStatus: String = "idle",
+    val addMemberErrorCode: String? = null,
     val settingsActions: List<KuiklyThreadSettingsAction> = emptyList(),
     val showMembersAction: Boolean = true,
     val showSettingsAction: Boolean = true,
@@ -341,12 +344,23 @@ private fun ThreadPageContent(
                     canAddMembers = payload.canAddMembers,
                     onDismiss = { activeModal = null },
                     onAddMember = {
-                        activeModal = null
-                        onThreadEvent("addMember", null, null, null)
+                        activeModal = "addMember"
                     },
                     onManageMember = { memberId ->
                         activeModal = null
                         onThreadEvent("manageMember", memberId, null, null)
+                    }
+                )
+            "addMember" ->
+                ThreadAddMemberModal(
+                    members = payload.members,
+                    candidates = payload.memberCandidates,
+                    canAddMembers = payload.canAddMembers,
+                    addMemberStatus = payload.addMemberStatus,
+                    addMemberErrorCode = payload.addMemberErrorCode,
+                    onDismiss = { activeModal = "members" },
+                    onSubmit = { member ->
+                        onThreadEvent("submitAddMember", member.id, null, member.kind)
                     }
                 )
             "settings" ->
@@ -915,6 +929,115 @@ private fun ThreadMembersModal(
 }
 
 @Composable
+private fun ThreadAddMemberModal(
+    members: List<KuiklyThreadMemberItem>,
+    candidates: List<KuiklyThreadMemberItem>,
+    canAddMembers: Boolean,
+    addMemberStatus: String,
+    addMemberErrorCode: String?,
+    onDismiss: () -> Unit,
+    onSubmit: (KuiklyThreadMemberItem) -> Unit
+) {
+    var query by remember { mutableStateOf("") }
+    var selectedId by remember(candidates) { mutableStateOf<String?>(null) }
+    var localError by remember { mutableStateOf(false) }
+    val currentKeys = remember(members) { members.map { it.memberKey }.toSet() }
+    val selected = candidates.firstOrNull { it.id == selectedId }
+    val normalizedQuery = query.trim()
+    val filteredCandidates =
+        candidates
+            .filter { member ->
+                normalizedQuery.isBlank() ||
+                    member.displayName.contains(normalizedQuery, ignoreCase = true) ||
+                    member.handle.contains(normalizedQuery, ignoreCase = true) ||
+                    member.roleLabel.contains(normalizedQuery, ignoreCase = true) ||
+                    member.id.contains(normalizedQuery, ignoreCase = true)
+            }
+            .distinctBy { it.memberKey }
+    val blocked = !canAddMembers || addMemberStatus == "no_permission"
+    val adding = addMemberStatus == "adding"
+    val errorText =
+        when {
+            blocked -> "You do not have permission to add members."
+            localError -> "Select a member before adding."
+            addMemberStatus == "failed" -> "Unable to add member: ${addMemberErrorCode ?: "member_add_failed"}"
+            else -> null
+        }
+    SlockModalLayer(
+        title = "Add member",
+        subtitle = errorText ?: "Choose a user or agent to add",
+        onDismiss = onDismiss
+    ) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(
+                modifier = Modifier.fillMaxWidth()
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .background(if (blocked) SlockColor.SurfaceCream else SlockColor.SurfaceWhite)
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            ) {
+                TextField(
+                    value = query,
+                    placeholder = "Search users or agents",
+                    autoFocus = false,
+                    onValueChange = {
+                        query = it
+                        selectedId = null
+                        localError = false
+                    },
+                    textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                    placeholderColor = SlockColor.TextMutedGray,
+                    maxLines = 1
+                )
+            }
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().height(260.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (filteredCandidates.isEmpty()) {
+                    item {
+                        ThreadModalEmptyState(
+                            title = if (candidates.isEmpty()) "No people loaded" else "No matching people",
+                            detail = if (candidates.isEmpty()) "Refresh this conversation and try again." else "Try a different search."
+                        )
+                    }
+                } else {
+                    items(filteredCandidates.size, key = { filteredCandidates[it].memberKey }) { index ->
+                        val member = filteredCandidates[index]
+                        val alreadyJoined = member.memberKey in currentKeys
+                        ThreadMemberCandidateRow(
+                            member = member,
+                            selected = member.id == selectedId,
+                            alreadyJoined = alreadyJoined,
+                            enabled = !blocked && !adding && !alreadyJoined,
+                            onClick = {
+                                selectedId = if (selectedId == member.id) null else member.id
+                                localError = false
+                            }
+                        )
+                    }
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ThreadHeaderAction(label = "Back", onClick = onDismiss)
+                Spacer(modifier = Modifier.weight(1f))
+                ThreadHeaderAction(
+                    label = if (adding) "Adding" else "Add selected",
+                    onClick = {
+                        if (adding || blocked) return@ThreadHeaderAction
+                        val member = selected
+                        if (member == null || member.memberKey in currentKeys) {
+                            localError = true
+                        } else {
+                            onSubmit(member)
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun ThreadMemberRow(
     member: KuiklyThreadMemberItem,
     onClick: () -> Unit
@@ -975,6 +1098,75 @@ private fun ThreadMemberRow(
         SlockLucideIcon("chevron-right", modifier = Modifier.size(16.dp))
     }
 }
+
+@Composable
+private fun ThreadMemberCandidateRow(
+    member: KuiklyThreadMemberItem,
+    selected: Boolean,
+    alreadyJoined: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .background(
+                when {
+                    alreadyJoined -> SlockColor.SurfaceCream
+                    selected -> SlockColor.AccentLime
+                    else -> SlockColor.SurfaceWhite
+                }
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Box(
+            modifier = Modifier.size(34.dp)
+                .background(if (member.kind == "agent") SlockColor.AccentLavender else SlockColor.BrandYellow)
+                .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = member.avatarLabel.ifBlank { member.displayName }.take(2).uppercase(),
+                style = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp),
+                color = SlockColor.TextBlack
+            )
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = member.displayName,
+                style = SlockType.ButtonBold,
+                color = if (alreadyJoined) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = listOf(member.handle.takeIf { it.isNotBlank() }?.let { "@$it" }, member.roleLabel)
+                    .filterNotNull()
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · "),
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Text(
+            text = when {
+                alreadyJoined -> "Joined"
+                selected -> "Selected"
+                else -> "Add"
+            },
+            style = SlockType.Caption.copy(fontWeight = FontWeight.W600),
+            color = SlockColor.TextBlack
+        )
+    }
+}
+
+private val KuiklyThreadMemberItem.memberKey: String
+    get() = "${kind.lowercase()}:$id"
 
 @Composable
 private fun ThreadSettingsModal(

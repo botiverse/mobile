@@ -444,14 +444,7 @@ fun ThreadScreen(
                 onRefreshThread = onRefreshThread,
                 onOpenMessageThread = onOpenMessageThread,
                 onOpenMemberProfile = onOpenMemberProfile,
-                onAddThreadMember = {
-                    selectedChannelMemberDetailId = null
-                    showAddMember = true
-                    addMemberQuery = ""
-                    selectedAddMemberId = null
-                    addMemberError = false
-                    showMembersModal = true
-                },
+                onAddThreadMember = { memberId, kind -> onAddChannelMember(memberId, kind) },
                 onManageThreadMember = { memberId ->
                     selectedChannelMemberDetailId = memberId
                     showAddMember = false
@@ -983,7 +976,7 @@ private fun ThreadKuiklyScreen(
         onRefreshThread: () -> Unit,
         onOpenMessageThread: (Message) -> Unit,
         onOpenMemberProfile: (MemberProfile) -> Unit,
-        onAddThreadMember: () -> Unit,
+        onAddThreadMember: (String, MemberKind) -> Unit,
         onManageThreadMember: (String) -> Unit,
         onOpenTask: (TaskSummary) -> Unit,
         onRetryFiles: () -> Unit,
@@ -1124,7 +1117,15 @@ private fun ThreadKuiklyScreen(
                             .takeIf { it.isNotBlank() }
                             ?.let(membersById::get)
                             ?.let(onOpenMemberProfile)
-            "addMember" -> onAddThreadMember()
+            "submitAddMember" ->
+                    event.optString("itemId")
+                            .takeIf { it.isNotBlank() }
+                            ?.let { memberId ->
+                                onAddThreadMember(
+                                        memberId,
+                                        event.optString("tab").toKuiklyMemberKindOrDefault()
+                                )
+                            }
             "manageMember" ->
                     event.optString("itemId")
                             .takeIf { it.isNotBlank() }
@@ -1242,6 +1243,9 @@ private fun ThreadUiState.toKuiklyThreadPagePayload(
                     .put("canSend", header?.permissions?.canSend ?: true)
                     .put("joinLabel", "Join channel")
                     .put("members", membersPanelState.toKuiklyThreadMembersJson())
+                    .put("memberCandidates", membersPanelState.toKuiklyThreadMemberCandidatesJson())
+                    .put("addMemberStatus", membersPanelState.addStatus.toKuiklyWireValue())
+                    .putNullable("addMemberErrorCode", membersPanelState.addErrorCode)
                     .put(
                             "settingsActions",
                             buildKuiklyThreadSettingsActionsJson(
@@ -1291,6 +1295,30 @@ private fun ThreadMembersPanelState.toKuiklyThreadMembersJson(): JSONArray =
                     ?.members
                     .orEmpty()
                     .forEach { member -> array.put(member.toKuiklyThreadMemberJson()) }
+        }
+
+private fun ThreadMembersPanelState.toKuiklyThreadMemberCandidatesJson(): JSONArray =
+        JSONArray().also { array ->
+            (candidatesLoadState as? ScreenLoadState.Content)
+                    ?.data
+                    ?.candidates
+                    .orEmpty()
+                    .forEach { member -> array.put(member.toKuiklyThreadMemberJson()) }
+        }
+
+private fun ThreadMemberAddStatus.toKuiklyWireValue(): String =
+        when (this) {
+            ThreadMemberAddStatus.Idle -> "idle"
+            ThreadMemberAddStatus.Adding -> "adding"
+            ThreadMemberAddStatus.Failed -> "failed"
+            ThreadMemberAddStatus.NoPermission -> "no_permission"
+        }
+
+private fun String.toKuiklyMemberKindOrDefault(): MemberKind =
+        when (trim().lowercase()) {
+            "agent" -> MemberKind.Agent
+            "system" -> MemberKind.System
+            else -> MemberKind.Human
         }
 
 private fun MemberProfile.toKuiklyThreadMemberJson(): JSONObject =
