@@ -12,8 +12,6 @@ import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklyRelationalStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
-import com.tencent.kuikly.compose.foundation.layout.Spacer
-import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
@@ -197,11 +195,10 @@ internal fun LoginContent(
 ) {
     val canSubmit = email.isNotBlank() && password.isNotBlank() && !submitting
     AuthScaffold {
-        AuthBrandBlock()
-        Spacer(Modifier.height(8.dp))
+        AuthCenterMark()
         Text(
             text = "Sign in",
-            style = SlockType.PageTitle.copy(fontSize = 32.sp, lineHeight = 38.sp, color = SlockColor.TextBlack),
+            style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
         AuthFormColumn {
@@ -229,7 +226,7 @@ internal fun LoginContent(
                 tone = if (submitting) AuthButtonTone.Pink else AuthButtonTone.Pink,
                 enabled = canSubmit,
                 loading = submitting,
-                preserveDisabledVisual = submitting
+                preserveDisabledVisual = true
             )
             AuthDivider()
             AuthActionButton(
@@ -238,7 +235,7 @@ internal fun LoginContent(
                 tone = AuthButtonTone.White,
                 enabled = false,
                 preserveDisabledVisual = true,
-                leadingContent = { ProviderGlyph("G", SlockColor.AccentPink) }
+                leadingContent = { AuthProviderIcon(AuthProvider.Google) }
             )
             AuthActionButton(
                 text = "Continue with GitHub",
@@ -246,11 +243,11 @@ internal fun LoginContent(
                 tone = AuthButtonTone.Black,
                 enabled = false,
                 preserveDisabledVisual = true,
-                leadingContent = { ProviderGlyph("GH", SlockColor.SurfaceWhite) }
+                leadingContent = { AuthProviderIcon(AuthProvider.GitHub) }
             )
+            AuthTextLink("Forgot password?") { onForgotPassword() }
+            AuthInlineAction("No account?", "Create one") { onCreateAccount() }
         }
-        AuthTextLink("Forgot password?") { onForgotPassword() }
-        AuthInlineAction("No account?", "Create one") { onCreateAccount() }
     }
 }
 
