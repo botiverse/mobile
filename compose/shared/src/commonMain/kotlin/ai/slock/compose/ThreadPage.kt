@@ -23,16 +23,13 @@ import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -80,6 +77,8 @@ internal data class KuiklyThreadScreenPayload(
     val joined: Boolean = true,
     val canSend: Boolean = true,
     val membersCount: Int = 0,
+    val members: List<KuiklyThreadMemberItem> = emptyList(),
+    val settingsActions: List<KuiklyThreadSettingsAction> = emptyList(),
     val showMembersAction: Boolean = true,
     val showSettingsAction: Boolean = true,
     val joinLabel: String = "Join channel"
@@ -116,6 +115,26 @@ internal data class KuiklyThreadTaskItem(
     val taskNumber: Int? = null,
     val assigneeName: String? = null,
     val updatedAtLabel: String = ""
+)
+
+@Serializable
+internal data class KuiklyThreadMemberItem(
+    val id: String,
+    val displayName: String,
+    val handle: String = "",
+    val roleLabel: String = "",
+    val avatarUrl: String? = null,
+    val avatarLabel: String = displayName.take(1).uppercase(),
+    val kind: String = "human"
+)
+
+@Serializable
+internal data class KuiklyThreadSettingsAction(
+    val id: String,
+    val title: String,
+    val subtitle: String = "",
+    val icon: String = "settings",
+    val destructive: Boolean = false
 )
 
 private enum class KuiklyThreadTab(val wireValue: String, val label: String) {
@@ -236,63 +255,93 @@ private fun ThreadPageContent(
     var selectedTab by remember(payload.selectedTab) {
         mutableStateOf(KuiklyThreadTab.fromWireValue(payload.selectedTab))
     }
-    Column(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
-    ) {
-        ThreadPageHeader(
-            payload = payload,
-            onBack = { onThreadEvent("back", null, null, null) },
-            onShowMembers = { onThreadEvent("showMembers", null, null, null) },
-            onShowSettings = { onThreadEvent("showSettings", null, null, null) }
-        )
-        ThreadPageTabs(
-            selectedTab = selectedTab,
-            onSelect = { tab ->
-                selectedTab = tab
-                onThreadEvent("selectTab", null, null, tab.wireValue)
-            }
-        )
-        Box(
-            modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)
+    var activeModal by remember(payload.instanceId) { mutableStateOf<String?>(null) }
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Column(
+            modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
         ) {
-            when (selectedTab) {
-                KuiklyThreadTab.Chat ->
-                    ThreadChatTab(
-                        payload = payload,
-                        onThreadEvent = onThreadEvent
-                    )
-                KuiklyThreadTab.Tasks ->
-                    ThreadTasksTab(
-                        tasks = payload.tasks,
-                        onOpenTask = { onThreadEvent("openTask", it, null, null) }
-                    )
-                KuiklyThreadTab.Files ->
-                    ThreadFilesContent(payload = filesPayload) { action, attachmentId ->
-                        when (action) {
-                            "open", "download" ->
-                                onThreadEvent("openAttachment", null, attachmentId, null)
-                            "loadMore" -> onThreadEvent("loadMoreFiles", null, null, null)
-                            "retry" -> onThreadEvent("retryFiles", null, null, null)
+            ThreadPageHeader(
+                payload = payload,
+                onBack = { onThreadEvent("back", null, null, null) },
+                onShowMembers = {
+                    activeModal = "members"
+                    onThreadEvent("showMembers", null, null, null)
+                },
+                onShowSettings = {
+                    activeModal = "settings"
+                    onThreadEvent("showSettings", null, null, null)
+                }
+            )
+            ThreadPageTabs(
+                selectedTab = selectedTab,
+                onSelect = { tab ->
+                    selectedTab = tab
+                    onThreadEvent("selectTab", null, null, tab.wireValue)
+                }
+            )
+            Box(
+                modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)
+            ) {
+                when (selectedTab) {
+                    KuiklyThreadTab.Chat ->
+                        ThreadChatTab(
+                            payload = payload,
+                            onThreadEvent = onThreadEvent
+                        )
+                    KuiklyThreadTab.Tasks ->
+                        ThreadTasksTab(
+                            tasks = payload.tasks,
+                            onOpenTask = { onThreadEvent("openTask", it, null, null) }
+                        )
+                    KuiklyThreadTab.Files ->
+                        ThreadFilesContent(payload = filesPayload) { action, attachmentId ->
+                            when (action) {
+                                "open", "download" ->
+                                    onThreadEvent("openAttachment", null, attachmentId, null)
+                                "loadMore" -> onThreadEvent("loadMoreFiles", null, null, null)
+                                "retry" -> onThreadEvent("retryFiles", null, null, null)
+                            }
                         }
-                    }
+                }
+            }
+            if (!payload.joined) {
+                ThreadJoinFooter(
+                    label = payload.joinLabel,
+                    onJoin = { onThreadEvent("joinChannel", null, null, null) }
+                )
+            } else if (payload.showComposer) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .background(SlockColor.SurfaceWhite)
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    ThreadComposerContent(
+                        payload = composerPayload,
+                        onEvent = onComposerEvent
+                    )
+                }
             }
         }
-        if (!payload.joined) {
-            ThreadJoinFooter(
-                label = payload.joinLabel,
-                onJoin = { onThreadEvent("joinChannel", null, null, null) }
-            )
-        } else if (payload.showComposer) {
-            Box(
-                modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .background(SlockColor.SurfaceWhite)
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-            ) {
-                ThreadComposerContent(
-                    payload = composerPayload,
-                    onEvent = onComposerEvent
+        when (activeModal) {
+            "members" ->
+                ThreadMembersModal(
+                    members = payload.members,
+                    membersCount = payload.membersCount,
+                    onDismiss = { activeModal = null },
+                    onOpenMember = { memberId ->
+                        activeModal = null
+                        onThreadEvent("openMember", memberId, null, null)
+                    }
                 )
-            }
+            "settings" ->
+                ThreadSettingsModal(
+                    actions = payload.settingsActions,
+                    onDismiss = { activeModal = null },
+                    onOpenAction = { actionId ->
+                        activeModal = null
+                        onThreadEvent("settingsAction", actionId, null, null)
+                    }
+                )
         }
     }
 }
@@ -724,6 +773,164 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
             )
         }
         ThreadHeaderAction(label = label, onClick = onJoin)
+    }
+}
+
+@Composable
+private fun ThreadMembersModal(
+    members: List<KuiklyThreadMemberItem>,
+    membersCount: Int,
+    onDismiss: () -> Unit,
+    onOpenMember: (String) -> Unit
+) {
+    SlockModalLayer(
+        title = "Thread members",
+        subtitle = "$membersCount people in this conversation",
+        onDismiss = onDismiss
+    ) {
+        if (members.isEmpty()) {
+            ThreadModalEmptyState(
+                title = "No member details loaded",
+                detail = "Android can still open the native members panel while this KMP payload is filled."
+            )
+        } else {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                members.forEach { member ->
+                    ThreadMemberRow(member = member, onClick = { onOpenMember(member.id) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadMemberRow(
+    member: KuiklyThreadMemberItem,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Box(
+            modifier = Modifier.size(36.dp)
+                .background(if (member.kind == "agent") SlockColor.AccentLavender else SlockColor.BrandYellow)
+                .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            val avatarUrl = member.avatarUrl?.takeIf { it.isNotBlank() }
+            if (avatarUrl != null) {
+                Image(
+                    painter = rememberAsyncImagePainter(avatarUrl),
+                    contentDescription = null,
+                    contentScale = ContentScale.FillBounds,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Text(
+                    text = member.avatarLabel.ifBlank { member.displayName }.take(2).uppercase(),
+                    style = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp),
+                    color = SlockColor.TextBlack
+                )
+            }
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = member.displayName,
+                style = SlockType.ButtonBold,
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            val meta =
+                listOf(
+                    member.handle.takeIf { it.isNotBlank() }?.let { "@$it" },
+                    member.roleLabel.takeIf { it.isNotBlank() }
+                ).filterNotNull().joinToString(" · ")
+            if (meta.isNotBlank()) {
+                Text(
+                    text = meta,
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        SlockLucideIcon("chevron-right", modifier = Modifier.size(16.dp))
+    }
+}
+
+@Composable
+private fun ThreadSettingsModal(
+    actions: List<KuiklyThreadSettingsAction>,
+    onDismiss: () -> Unit,
+    onOpenAction: (String) -> Unit
+) {
+    val effectiveActions =
+        actions.ifEmpty {
+            listOf(
+                KuiklyThreadSettingsAction(
+                    id = "files",
+                    title = "Files",
+                    subtitle = "Open files shared in this conversation",
+                    icon = "folder-open"
+                ),
+                KuiklyThreadSettingsAction(
+                    id = "notifications",
+                    title = "Notifications",
+                    subtitle = "Configure thread notification state",
+                    icon = "bell-ring"
+                ),
+                KuiklyThreadSettingsAction(
+                    id = "leave",
+                    title = "Leave thread",
+                    subtitle = "Stop following this conversation",
+                    icon = "log-out",
+                    destructive = true
+                )
+            )
+        }
+    SlockModalLayer(
+        title = "Thread settings",
+        subtitle = "Conversation actions",
+        onDismiss = onDismiss
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            effectiveActions.forEach { action ->
+                SlockActionSheetRow(
+                    title = action.title,
+                    subtitle = action.subtitle,
+                    icon = action.icon,
+                    destructive = action.destructive,
+                    onClick = { onOpenAction(action.id) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadModalEmptyState(title: String, detail: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = title,
+            style = SlockType.Body.copy(fontWeight = FontWeight.W600, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack
+        )
+        Text(
+            text = detail,
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray
+        )
     }
 }
 
