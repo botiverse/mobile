@@ -37,6 +37,7 @@ import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -403,7 +404,7 @@ private fun HomeWorkspaceHeader(serverName: String, serverUnreadCount: Int, onSe
 
 @Composable
 private fun SlockLogoBadge(text: String, modifier: Modifier = Modifier, showDropdown: Boolean = false) {
-    Box(modifier = modifier.padding(end = 2.dp, bottom = 2.dp)) {
+    Box(modifier = modifier.padding(end = 2.dp, bottom = 2.dp).rotate(-2f)) {
         Box(Modifier.matchParentSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier = Modifier.background(SlockColor.TextBlack).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 16.dp, vertical = SlockSpacing.Sm),
