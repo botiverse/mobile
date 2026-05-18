@@ -976,6 +976,7 @@ private fun ThreadAddMemberModal(
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             ) {
                 TextField(
+                    modifier = Modifier.fillMaxWidth().height(32.dp),
                     value = query,
                     placeholder = "Search users or agents",
                     autoFocus = false,
