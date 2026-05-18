@@ -6243,7 +6243,7 @@ fun ThreadComposerBar(
 
     SlockKuiklyPageIsland(
             pageName = SlockKuiklyActivity.PAGE_THREAD_COMPOSER,
-            pageData = payload,
+            pageData = JSONObject().put("payload", payload.toString()),
             modifier = modifier.fillMaxWidth()
     ) { event ->
         when (event.optString("action")) {

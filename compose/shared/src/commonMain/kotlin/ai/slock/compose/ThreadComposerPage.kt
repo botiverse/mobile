@@ -41,6 +41,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 internal const val THREAD_COMPOSER_PAGE = "compose_thread_composer"
+private val threadComposerJson = Json { ignoreUnknownKeys = true }
 
 @Page(THREAD_COMPOSER_PAGE, supportInLocal = true)
 internal class ComposeThreadComposerPage : ai.slock.compose.base.BasePager() {
@@ -99,10 +100,12 @@ private sealed class KuiklyComposerSuggestionTrigger {
 private fun ThreadComposerScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
+    val params = pager.pageData.params
     val payload =
         rememberThreadComposerPayload(
-            payload = pager.pageData.params.optString("payload"),
-            instanceId = pager.pageData.params.optString("instanceId")
+            payload = params.optString("payload"),
+            fallbackPageData = params.toString(),
+            instanceId = params.optString("instanceId")
         )
     LaunchedEffect(payload.instanceId, payload.syncNonce) {
         bridge.log(
@@ -123,26 +126,51 @@ private fun ThreadComposerScreen() {
 @Composable
 private fun rememberThreadComposerPayload(
     payload: String,
+    fallbackPageData: String,
     instanceId: String
 ): KuiklyThreadComposerPayload =
-    remember(payload, instanceId) {
-        runCatching {
-            Json { ignoreUnknownKeys = true }
-                .decodeFromString(KuiklyThreadComposerPayload.serializer(), payload)
-                .let { decoded ->
-                    if (decoded.instanceId.isBlank() && instanceId.isNotBlank()) {
-                        decoded.copy(instanceId = instanceId)
-                    } else {
-                        decoded
-                    }
-                }
-        }.getOrElse {
+    remember(payload, fallbackPageData, instanceId) {
+        parseThreadComposerPayload(
+            payload = payload,
+            fallbackPageData = fallbackPageData,
+            instanceId = instanceId
+        )
+    }
+
+internal fun parseThreadComposerPayload(
+    payload: String,
+    fallbackPageData: String,
+    instanceId: String
+): KuiklyThreadComposerPayload {
+    val primaryPayload = payload.trim()
+    val source =
+        when {
+            primaryPayload.isNotEmpty() -> primaryPayload
+            fallbackPageData.trim().isNotEmpty() -> fallbackPageData.trim()
+            else -> "{}"
+        }
+    return runCatching {
+        threadComposerJson
+            .decodeFromString(KuiklyThreadComposerPayload.serializer(), source)
+            .withInstanceIdFallback(instanceId)
+    }.getOrElse {
+        if (primaryPayload.isEmpty()) {
+            KuiklyThreadComposerPayload(instanceId = instanceId)
+        } else {
             KuiklyThreadComposerPayload(
                 instanceId = instanceId,
                 composerMode = "failed",
                 statusLabel = "Composer payload parse failed"
             )
         }
+    }
+}
+
+private fun KuiklyThreadComposerPayload.withInstanceIdFallback(instanceId: String): KuiklyThreadComposerPayload =
+    if (this.instanceId.isBlank() && instanceId.isNotBlank()) {
+        copy(instanceId = instanceId)
+    } else {
+        this
     }
 
 @Composable
