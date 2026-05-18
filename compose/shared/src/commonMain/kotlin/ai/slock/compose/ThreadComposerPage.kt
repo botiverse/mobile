@@ -16,10 +16,8 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
@@ -325,14 +323,14 @@ internal fun ThreadComposerContent(
                 }
             }
         }
-        Column(
-            modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(end = 4.dp, bottom = 4.dp)
         ) {
-            Spacer(
-                modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack)
+            Box(
+                modifier = Modifier.matchParentSize().offset(x = 4f, y = 4f).background(SlockColor.ShadowBlack)
             )
             Column(
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 6.dp),
+                modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 TextField(
@@ -532,21 +530,28 @@ private fun ComposerIconButton(
     onClick: () -> Unit
 ) {
     Box(
-        modifier = Modifier
-            .size(28.dp)
-            .background(
-                if (enabled) backgroundColor else SlockColor.EmptyStateGray,
-                RoundedCornerShape(SlockRadius.Xs)
-            )
-            .border(
-                SlockStroke.Default,
-                SlockColor.BorderBlack,
-                RoundedCornerShape(SlockRadius.Xs)
-            )
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center
+        modifier = Modifier.size(31.dp)
     ) {
-        SlockLucideIcon(icon, modifier = Modifier.size(16.dp), color = "#FF000000")
+        Box(
+            modifier = Modifier.offset(x = 3f, y = 3f).size(28.dp).background(SlockColor.ShadowBlack, RoundedCornerShape(SlockRadius.Xs))
+        )
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .background(
+                    if (enabled) backgroundColor else SlockColor.EmptyStateGray,
+                    RoundedCornerShape(SlockRadius.Xs)
+                )
+                .border(
+                    SlockStroke.Default,
+                    SlockColor.BorderBlack,
+                    RoundedCornerShape(SlockRadius.Xs)
+                )
+                .clickable(enabled = enabled, onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            SlockLucideIcon(icon, modifier = Modifier.size(16.dp), color = "#FF000000")
+        }
     }
 }
 
