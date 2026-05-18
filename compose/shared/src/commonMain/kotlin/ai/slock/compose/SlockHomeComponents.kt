@@ -492,7 +492,19 @@ private fun HomeNotificationRow(notification: SlockHomeNotificationItem, onView:
 
 @Composable
 private fun HomeNotificationActionButton(text: String, color: Color, onClick: () -> Unit) {
-    Text(text, style = SlockType.Caption.copy(fontWeight = FontWeight.Medium), color = SlockColor.TextBlack, modifier = Modifier.background(color).border(SlockStroke.Default, SlockColor.BorderBlack).clickable(onClick = onClick).padding(horizontal = SlockSpacing.Sm, vertical = 6.dp), maxLines = 1)
+    Box(
+        modifier =
+            Modifier
+                .heightIn(min = 32.dp)
+                .widthIn(min = 72.dp)
+                .background(color)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .clickable(onClick = onClick)
+                .padding(horizontal = SlockSpacing.Sm),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, style = SlockType.Caption.copy(fontWeight = FontWeight.Medium), color = SlockColor.TextBlack, maxLines = 1, textAlign = TextAlign.Center)
+    }
 }
 
 private fun SlockHomeNotificationKind.notificationColor(): Color = when (this) {

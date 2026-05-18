@@ -10,6 +10,7 @@ import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ThreadId
+import ai.slock.compose.model.toGravatarAvatarUrl
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -366,6 +367,22 @@ private fun JsonObject.conversationAvatarWireValue(): String? =
             "image",
             "photo"
         )
+        ?: (string(
+            "gravatarHash",
+            "gravatar_hash",
+            "gravatar",
+            "peerGravatarHash",
+            "peerGravatar",
+            "agentGravatarHash",
+            "agentGravatar",
+            "userGravatarHash",
+            "userGravatar"
+        )
+            ?: firstObject("peer", "agent", "user", "member", "profile")?.string(
+                "gravatarHash",
+                "gravatar_hash",
+                "gravatar"
+            ))?.toGravatarAvatarUrl()
 
 private fun String?.toPresenceOrNull(): Presence? =
     when (this?.lowercase()) {

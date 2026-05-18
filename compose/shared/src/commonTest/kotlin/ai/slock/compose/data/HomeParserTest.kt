@@ -28,7 +28,7 @@ class HomeParserTest {
                                 code = 200,
                                 bodyText =
                                     """
-                                    {"directMessages":[{"channelId":"dm-1","peer":{"id":"agent-1","displayName":"Agent","kind":"agent","presence":"active"}}]}
+                                    {"directMessages":[{"channelId":"dm-1","peer":{"id":"agent-1","displayName":"Agent","kind":"agent","presence":"active","gravatarHash":"abc123"}}]}
                                     """.trimIndent()
                             ),
                         unreadCounts =
@@ -49,6 +49,7 @@ class HomeParserTest {
         assertEquals(7, snapshot.channels.single().memberCount)
         assertEquals(ConversationKind.DirectMessage, snapshot.directMessages.single().kind)
         assertEquals(Presence.Active, snapshot.directMessages.single().presence)
+        assertEquals("https://www.gravatar.com/avatar/abc123?s=52&d=404", snapshot.directMessages.single().avatar?.wireValue)
         assertEquals(6, snapshot.unreadTotal)
     }
 
