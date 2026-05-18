@@ -349,7 +349,7 @@ private fun JsonObject.channelJoined(): Boolean =
     boolean("joined", "isJoined", "member", "isMember", "participating") ?: true
 
 private fun JsonObject.conversationAvatarWireValue(): String? =
-    string(
+    avatarWireValue(
         "avatar",
         "avatarUrl",
         "avatar_url",
@@ -360,7 +360,7 @@ private fun JsonObject.conversationAvatarWireValue(): String? =
         "userAvatar",
         "userAvatarUrl"
     )
-        ?: firstObject("peer", "agent", "user", "member", "profile")?.string(
+        ?: firstObject("peer", "agent", "user", "member", "profile")?.avatarWireValue(
             "avatar",
             "avatarUrl",
             "avatar_url",
@@ -383,6 +383,47 @@ private fun JsonObject.conversationAvatarWireValue(): String? =
                 "gravatar_hash",
                 "gravatar"
             ))?.toGravatarAvatarUrl()
+
+private fun JsonObject.avatarWireValue(vararg names: String): String? {
+    for (name in names) {
+        val value = this[name]?.toAvatarWireValue()
+        if (!value.isNullOrBlank()) return value
+    }
+    return null
+}
+
+private fun JsonElement.toAvatarWireValue(): String? {
+    if (this is JsonPrimitive) {
+        return contentOrNull?.trim()?.takeIf { it.isNotBlank() }
+    }
+    val avatarObject = asObjectOrNull() ?: return null
+    avatarObject.string(
+        "wireValue",
+        "value",
+        "url",
+        "href",
+        "src",
+        "avatarUrl",
+        "avatar_url",
+        "imageUrl",
+        "profileImageUrl"
+    )?.let { return it }
+    avatarObject.avatarWireValue("data", "profile")?.let { return it }
+    avatarObject.string("pixel", "pixelKey", "key", "icon")?.let { key ->
+        return "pixel:${key.removePrefix("pixel:")}"
+    }
+    avatarObject.string("random", "randomSeed", "seed")?.let { seed ->
+        return "random:${seed.removePrefix("random:")}"
+    }
+    val type = avatarObject.string("type", "kind", "mode")?.lowercase()
+    val typedValue = avatarObject.string("id", "name", "slug")
+    return when (type) {
+        "pixel" -> "pixel:${typedValue?.removePrefix("pixel:") ?: "robot"}"
+        "random" -> "random:${typedValue?.removePrefix("random:") ?: "default"}"
+        "url", "image", "photo" -> typedValue
+        else -> null
+    }
+}
 
 private fun String?.toPresenceOrNull(): Presence? =
     when (this?.lowercase()) {
