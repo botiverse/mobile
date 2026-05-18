@@ -9,20 +9,30 @@ import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.text.InlineTextContent
 import com.tencent.kuikly.compose.foundation.text.appendInlineContent
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.Placeholder
+import com.tencent.kuikly.compose.ui.text.TextLinkStyles
+import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuiklybase.markdown.compose.Markdown
+import com.tencent.kuiklybase.markdown.model.DefaultMarkdownColors
+import com.tencent.kuiklybase.markdown.model.DefaultMarkdownTypography
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
+import com.tencent.kuiklybase.markdown.model.markdownPadding
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.getTextInNode
@@ -113,6 +123,75 @@ fun String.normalizeThreadMarkdownBody(): String {
 
 private fun threadEscapedMarkdownLineBreakRegex(): Regex =
     Regex("""\\r?\\n(?:\\r?\\n|[-*+] |\d+\. |> |#|```|~~~)""")
+
+fun String.escapeThreadMarkdownHtmlTagsForThread(): String {
+    val protectedRanges = threadMarkdownCodeProtectionRanges()
+    val builder = StringBuilder(length)
+    var index = 0
+    while (index < length) {
+        val tagMatch = ThreadMarkdownHtmlTagRegex.find(this, index)
+        if (tagMatch == null) {
+            builder.append(substring(index))
+            break
+        }
+        builder.append(substring(index, tagMatch.range.first))
+        if (protectedRanges.any { tagMatch.range.first in it }) {
+            builder.append(tagMatch.value)
+        } else {
+            builder.append(tagMatch.value.escapeMarkdownHtmlTagText())
+        }
+        index = tagMatch.range.last + 1
+    }
+    return builder.toString()
+}
+
+private fun String.threadMarkdownCodeProtectionRanges(): List<IntRange> =
+    buildList {
+        addAll(threadMarkdownFenceRanges())
+        addAll(threadInlineCodeMatches().map { it.range })
+        addAll(threadMarkdownAutolinkRanges())
+    }
+
+private fun String.threadMarkdownFenceRanges(): List<IntRange> {
+    val ranges = mutableListOf<IntRange>()
+    val fenceRegex = Regex("""(?m)^(```|~~~).*$""")
+    var searchIndex = 0
+    while (searchIndex < length) {
+        val start = fenceRegex.find(this, searchIndex) ?: break
+        val marker = start.value.take(3)
+        val end = fenceRegex.find(this, start.range.last + 1) {
+            it.value.startsWith(marker)
+        }
+        if (end == null) {
+            ranges += start.range.first until length
+            break
+        }
+        ranges += start.range.first..end.range.last
+        searchIndex = end.range.last + 1
+    }
+    return ranges
+}
+
+private fun Regex.find(input: CharSequence, startIndex: Int, predicate: (MatchResult) -> Boolean): MatchResult? {
+    var match = find(input, startIndex)
+    while (match != null) {
+        if (predicate(match)) return match
+        match = match.next()
+    }
+    return null
+}
+
+private fun String.threadMarkdownAutolinkRanges(): List<IntRange> =
+    ThreadMarkdownAutolinkRegex.findAll(this).map { it.range }.toList()
+
+private val ThreadMarkdownHtmlTagRegex =
+    Regex("""</?[A-Za-z][A-Za-z0-9:-]*(?:\s+[^<>]*)?>""")
+
+private val ThreadMarkdownAutolinkRegex =
+    Regex("""<https?://[^>\s]+>""")
+
+private fun String.escapeMarkdownHtmlTagText(): String =
+    replace("<", "\\<").replace(">", "\\>")
 
 fun threadMarkdownTaskReferenceKey(label: String): String =
     label.removePrefix("#").trim().lowercase()
@@ -249,6 +328,73 @@ fun slockMarkdownAnnotator(content: String): MarkdownAnnotator {
                 }
             }
         }
+    )
+}
+
+@Composable
+fun SlockMarkdownBody(
+    body: String,
+    modifier: Modifier = Modifier,
+    textStyle: TextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp)
+) {
+    val content = body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
+    Markdown(
+        content = content,
+        colors = slockMarkdownColors(),
+        typography = slockMarkdownTypography(textStyle),
+        annotator = slockMarkdownAnnotator(content),
+        padding = markdownPadding(
+            block = 0.dp,
+            paragraphVerPadding = PaddingValues(vertical = 0.dp),
+            codeBlock = PaddingValues(SlockSpacing.Sm)
+        ),
+        modifier = modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+private fun slockMarkdownColors() =
+    DefaultMarkdownColors(
+        text = SlockColor.TextBlack,
+        codeText = SlockColor.TextBlack,
+        inlineCodeText = SlockColor.TextBlack,
+        linkText = SlockColor.AccentCyan,
+        codeBackground = SlockColor.EmptyStateGray,
+        inlineCodeBackground = SlockColor.EmptyStateGray,
+        dividerColor = SlockColor.BorderBlack,
+        tableText = SlockColor.TextBlack,
+        tableBackground = SlockColor.SurfaceWhite,
+        tableHeaderBackground = SlockColor.BrandYellow,
+        tableStroke = SlockColor.BorderBlack
+    )
+
+@Composable
+private fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography {
+    val code =
+        SlockType.Caption.copy(
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Normal,
+            fontSize = 14.sp,
+            lineHeight = 20.sp
+        )
+    return DefaultMarkdownTypography(
+        h1 = SlockType.PageTitle.copy(fontSize = 22.sp, lineHeight = 28.sp),
+        h2 = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 24.sp),
+        h3 = SlockType.Button.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 22.sp),
+        h4 = SlockType.Button,
+        h5 = SlockType.Button,
+        h6 = SlockType.Button,
+        text = base,
+        code = code,
+        inlineCode = code,
+        quote = base.copy(color = SlockColor.TextMutedGray),
+        paragraph = base,
+        ordered = base,
+        bullet = base,
+        list = base,
+        link = base.copy(color = SlockColor.AccentCyan),
+        textLink = TextLinkStyles(style = SpanStyle(color = SlockColor.AccentCyan)),
+        table = base
     )
 }
 

@@ -2,6 +2,7 @@ package ai.slock.compose
 
 import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
+import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -688,10 +689,9 @@ private fun ThreadMessageCard(
                         )
                     }
                     if (message.body.isNotBlank()) {
-                        Text(
-                            text = message.body,
-                            style = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp, color = SlockColor.TextBlack),
-                            color = SlockColor.TextBlack
+                        SlockMarkdownBody(
+                            body = message.body,
+                            textStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp, color = SlockColor.TextBlack)
                         )
                     }
                     if (message.attachments.isNotEmpty()) {
