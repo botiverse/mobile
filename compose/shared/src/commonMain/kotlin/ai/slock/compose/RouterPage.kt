@@ -181,6 +181,12 @@ internal fun ComposeRouteImpl() {
         }
 
         Button({
+            jumpPage(localPager, THREAD_PAGE)
+        }) {
+            Text("Thread 预览")
+        }
+
+        Button({
             jumpPage(localPager, SLOCK_MARKDOWN_SMOKE_PAGE)
         }) {
             Text("Markdown 预览")

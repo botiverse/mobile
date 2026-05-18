@@ -121,6 +121,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         const val PAGE_LOGIN = "compose_login"
         const val PAGE_REGISTER = "compose_register"
         const val PAGE_FORGOT_PASSWORD = "compose_forgot_password"
+        const val PAGE_THREAD = "compose_thread"
         const val PAGE_THREAD_FILES = "compose_thread_files"
         const val PAGE_THREAD_COMPOSER = "compose_thread_composer"
         const val PAGE_HOME = "compose_home"
@@ -501,6 +502,15 @@ internal class SlockKuiklyBridgeModule(
                 SlockDiagnosticsLogger.d(
                         "SlockKuikly",
                         "bridge_settings_event method=settingsEvent instanceId=${event.optString("instanceId")} action=${event.optString("action")} itemId=${event.optString("itemId")}"
+                )
+                SlockKuiklyEventRegistry.dispatch(event)
+                null
+            }
+            "threadEvent" -> {
+                val event = JSONObject(params ?: "{}")
+                SlockDiagnosticsLogger.d(
+                        "SlockKuikly",
+                        "bridge_thread_event method=threadEvent instanceId=${event.optString("instanceId")} action=${event.optString("action")} itemId=${event.optString("itemId")} attachmentId=${event.optString("attachmentId")} tab=${event.optString("tab")}"
                 )
                 SlockKuiklyEventRegistry.dispatch(event)
                 null

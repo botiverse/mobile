@@ -10719,6 +10719,7 @@ private fun HomeRouteScreen(
                                                 ?.header,
                                 selectedThreadId = selectedThreadId?.let(::ThreadId),
                                 composerFocusRequestNonce = composerFocusRequestNonce,
+                                useSharedThreadScreen = true,
                                 channelSuggestions =
                                         (homeState.loadState as? ScreenLoadState.Content)
                                                 ?.data?.channels.orEmpty()
@@ -10788,6 +10789,7 @@ private fun HomeRouteScreen(
                                     ?.header,
                     selectedThreadId = selectedThreadId?.let(::ThreadId),
                     composerFocusRequestNonce = composerFocusRequestNonce,
+                    useSharedThreadScreen = true,
                     channelSuggestions =
                             (homeState.loadState as? ScreenLoadState.Content)
                                     ?.data?.channels.orEmpty()

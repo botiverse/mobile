@@ -34,7 +34,7 @@ import com.tencent.kuikly.core.pager.Pager
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-private const val THREAD_FILES_PAGE = "compose_thread_files"
+internal const val THREAD_FILES_PAGE = "compose_thread_files"
 
 @Page(THREAD_FILES_PAGE, supportInLocal = true)
 internal class ComposeThreadFilesPage : ai.slock.compose.base.BasePager() {
@@ -99,24 +99,30 @@ private fun ThreadFilesScreen() {
 @Composable
 private fun rememberThreadFilesPayload(payload: String, instanceId: String): KuiklyThreadFilesPayload =
     androidx.compose.runtime.remember(payload, instanceId) {
-        runCatching {
-            Json {
-                ignoreUnknownKeys = true
-            }.decodeFromString(KuiklyThreadFilesPayload.serializer(), payload)
-                .let { decoded ->
-                    if (decoded.instanceId.isBlank() && instanceId.isNotBlank()) {
-                        decoded.copy(instanceId = instanceId)
-                    } else {
-                        decoded
-                    }
+        parseThreadFilesPayload(payload, instanceId)
+    }
+
+internal fun parseThreadFilesPayload(
+    payload: String,
+    instanceId: String
+): KuiklyThreadFilesPayload =
+    runCatching {
+        Json {
+            ignoreUnknownKeys = true
+        }.decodeFromString(KuiklyThreadFilesPayload.serializer(), payload)
+            .let { decoded ->
+                if (decoded.instanceId.isBlank() && instanceId.isNotBlank()) {
+                    decoded.copy(instanceId = instanceId)
+                } else {
+                    decoded
                 }
-        }.getOrElse {
-            KuiklyThreadFilesPayload(
-                instanceId = instanceId,
-                status = "error",
-                errorCode = "payload_parse_failed"
-            )
-        }
+            }
+    }.getOrElse {
+        KuiklyThreadFilesPayload(
+            instanceId = instanceId,
+            status = "error",
+            errorCode = "payload_parse_failed"
+        )
     }
 
 @Composable
