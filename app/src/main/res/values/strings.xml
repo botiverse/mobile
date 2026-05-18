@@ -338,7 +338,7 @@
     <string name="search_empty_title">No search results</string>
     <string name="search_empty_detail">Matching messages will appear here.</string>
     <string name="search_error_title">Search failed</string>
-    <string name="home_inbox">Inbox</string>
+    <string name="home_inbox">Activity</string>
     <string name="home_followed_threads">Threads</string>
     <string name="home_saved">Saved</string>
     <string name="home_channels">Channels</string>

@@ -45,7 +45,7 @@ enum class SlockHomeNotificationKind { Warning, Info, Error }
 
 data class SlockHomeShellLabels(
     val search: String = "Search",
-    val inbox: String = "Inbox",
+    val inbox: String = "Activity",
     val followedThreads: String = "Followed threads",
     val saved: String = "Saved",
     val channels: String = "CHANNELS",

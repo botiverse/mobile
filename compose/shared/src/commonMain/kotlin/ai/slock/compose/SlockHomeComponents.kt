@@ -64,6 +64,7 @@ private const val HOME_PAGE_DATA_EVENT = "slockPageData"
 private val SidebarActionIconSize = 14.dp
 private val SidebarActionIconBoxSize = 22.dp
 private val SidebarActionRowHeight = 38.dp
+private val SidebarActivityShadowOffset = 2.dp
 private val SidebarRowHorizontalPadding = 8.dp
 private val SidebarActionLabelGap = 10.dp
 private val ChannelSymbolWidth = 22.dp
@@ -128,7 +129,7 @@ enum class SlockPresence { Online, Offline, Unknown }
 @Serializable
 data class SlockHomeShellLabels(
     val search: String = "Search",
-    val inbox: String = "Inbox",
+    val inbox: String = "Activity",
     val followedThreads: String = "Followed threads",
     val saved: String = "Saved",
     val channels: String = "CHANNELS",
@@ -322,7 +323,7 @@ fun SlockStructuralHomeShell(
                     }
                     item { Spacer(Modifier.height(SlockSpacing.Md)) }
                     item { SidebarActionRow("search", labels.search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = onSearchClick) }
-                    item { SidebarActionRow("inbox", labels.inbox, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), badge = inboxUnreadCount.takeIf { it > 0 }?.toString(), onClick = onInboxClick) }
+                    item { SidebarActivityRow(labels.inbox, inboxUnreadCount.takeIf { it > 0 }?.toString(), modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = onInboxClick) }
                     item { SidebarActionRow("bookmark", labels.saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = onSavedClick) }
                     item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                     item {
@@ -566,6 +567,51 @@ private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean
             Text("/${server.slug}", style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (server.unreadCount > 0) CountPill(server.unreadCount.toString(), SlockColor.AccentPink)
+    }
+}
+
+@Composable
+private fun SidebarActivityRow(label: String, count: String?, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(end = SidebarActivityShadowOffset, bottom = SidebarActivityShadowOffset + 4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .offset(x = SidebarActivityShadowOffset, y = SidebarActivityShadowOffset)
+                .background(SlockColor.ShadowBlack)
+        )
+        com.tencent.kuikly.compose.foundation.layout.Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = SidebarActionRowHeight)
+                .background(SlockColor.AccentPink)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .padding(horizontal = SidebarRowHorizontalPadding, vertical = SlockSpacing.Xs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlockLucideIcon("activity", Modifier.size(SidebarActionIconSize))
+            Text(
+                label,
+                style = SlockType.ButtonBold,
+                color = SlockColor.TextBlack,
+                modifier = Modifier.padding(start = 6.dp).weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (count != null) {
+                Text(
+                    count,
+                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 12.sp),
+                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
     }
 }
 

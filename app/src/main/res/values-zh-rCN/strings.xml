@@ -294,7 +294,7 @@
     <string name="home_create_channel_member_add">添加</string>
     <string name="home_create_channel_error">无法创建频道。错误：%1$s</string>
     <string name="home_search">搜索</string>
-    <string name="home_inbox">收件箱</string>
+    <string name="home_inbox">Activity</string>
     <string name="home_followed_threads">线程</string>
     <string name="home_saved">已保存</string>
     <string name="home_channels">频道</string>
