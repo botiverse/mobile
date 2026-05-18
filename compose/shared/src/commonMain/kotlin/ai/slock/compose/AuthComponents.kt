@@ -30,6 +30,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
+import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -107,6 +108,7 @@ private fun AuthSmallBrand() {
     Image(
         painter = rememberAsyncImagePainter(SlockLockupLightDataUri),
         contentDescription = null,
+        contentScale = ContentScale.FillBounds,
         modifier = Modifier.width(92.dp).height(20.dp)
     )
 }
@@ -138,6 +140,7 @@ internal fun AuthCenterMark(modifier: Modifier = Modifier) {
     Image(
         painter = rememberAsyncImagePainter(SlockIconDataUri),
         contentDescription = null,
+        contentScale = ContentScale.FillBounds,
         modifier = modifier.width(34.dp).height(31.dp)
     )
 }
