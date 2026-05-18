@@ -278,10 +278,19 @@ fun SlockStructuralHomeShell(
     var directMessagesExpanded by remember { mutableStateOf(true) }
     var channelsReversed by remember { mutableStateOf(false) }
     var directMessagesReversed by remember { mutableStateOf(false) }
+    var refreshIndicatorTimedOut by remember { mutableStateOf(false) }
+    LaunchedEffect(contentRefreshing) {
+        refreshIndicatorTimedOut = false
+        if (contentRefreshing) {
+            delay(12_000)
+            refreshIndicatorTimedOut = true
+        }
+    }
+    val indicatorRefreshing = contentRefreshing && !refreshIndicatorTimedOut
     val displayedChannels = if (channelsReversed) channels.asReversed() else channels
     val displayedDirectMessages = if (directMessagesReversed) directMessages.asReversed() else directMessages
     val listState = rememberLazyListState()
-    val pullToRefreshState = rememberPullToRefreshState(contentRefreshing)
+    val pullToRefreshState = rememberPullToRefreshState(indicatorRefreshing)
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     Column(
         modifier = modifier.fillMaxSize().background(SlockColor.AppBgLightBlue).padding(outerPadding)
@@ -297,11 +306,18 @@ fun SlockStructuralHomeShell(
                     if (contentRefreshEnabled) {
                         pullToRefreshItem(
                             state = pullToRefreshState,
-                            onRefresh = onContentRefresh,
+                            onRefresh = {
+                                if (!contentRefreshing) {
+                                    onContentRefresh()
+                                }
+                            },
                             scrollState = listState,
                             refreshThreshold = 80.dp
-                        ) { _, _, _ ->
-                            HomePullRefreshIndicator(refreshing = contentRefreshing)
+                        ) { pullProgress, isRefreshing, _ ->
+                            HomePullRefreshIndicator(
+                                pullProgress = pullProgress,
+                                refreshing = isRefreshing || indicatorRefreshing
+                            )
                         }
                     }
                     item { Spacer(Modifier.height(SlockSpacing.Md)) }
@@ -371,7 +387,7 @@ fun SlockStructuralHomeShell(
 }
 
 @Composable
-private fun HomePullRefreshIndicator(refreshing: Boolean) {
+private fun HomePullRefreshIndicator(pullProgress: Float, refreshing: Boolean) {
     var bounceStep by remember { mutableStateOf(0) }
     LaunchedEffect(refreshing) {
         if (!refreshing) {
@@ -384,10 +400,14 @@ private fun HomePullRefreshIndicator(refreshing: Boolean) {
         }
     }
     val bounceOffset =
-        when (bounceStep) {
-            1 -> (-6).dp
-            3 -> 4.dp
-            else -> 0.dp
+        if (refreshing) {
+            when (bounceStep) {
+                1 -> (-12).dp
+                3 -> 7.dp
+                else -> 0.dp
+            }
+        } else {
+            ((1f - pullProgress.coerceIn(0f, 1f)) * 10f).dp
         }
     Box(modifier = Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
         SlockLogoBadge(text = "SLOCK", modifier = Modifier.offset(y = bounceOffset))
