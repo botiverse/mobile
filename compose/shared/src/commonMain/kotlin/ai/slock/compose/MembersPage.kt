@@ -360,7 +360,8 @@ private fun MembersPageHeader(title: String, onBack: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SlockColor.SurfaceWhite)
+            .heightIn(min = SlockSize.PageHeaderHeight)
+            .background(SlockColor.BrandYellow)
             .padding(top = slockTopSafeAreaPadding())
             .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
@@ -579,7 +580,21 @@ private val PixelAvatarPalette = mapOf(
 
 private val MembersPixelAvatarFixedSpecs = mapOf(
     "robot" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("_KKKKKK_", "KCKWWKCK", "KWKWWKWK", "KKKKKKKK", "_KWKKWK_", "_KKKKKK_", "_KK__KK_", "_KK__KK_")),
-    "heart" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('P'), listOf("________", "_KK__KK_", "KRRKKRRK", "KRRRRRRK", "KRRRRRRK", "_KRRRRK_", "__KRRK__", "___KK___"))
+    "cat" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('Y'), listOf("K______K", "KK____KK", "KYKYYKYK", "KYYYYYYK", "KYKYYKYK", "_KYYYYK_", "__KYYK__", "___KK___")),
+    "ghost" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('V'), listOf("__KKKK__", "_KWWWWK_", "KWKWWKWK", "KWWWWWWK", "KWWWWWWK", "KWWKKWWK", "KWKWWKWK", "K_K__K_K")),
+    "skull" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('O'), listOf("_KKKKKK_", "KWWWWWWK", "KWKWWKWK", "KWWWWWWK", "_KWWWWK_", "_KWKWKK_", "__KKKK__", "___KK___")),
+    "alien" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('L'), listOf("_KKKKKK_", "KGGGGGGK", "KGKKKKGK", "KGGGGGGK", "_KGGGGK_", "__KGGK__", "__KGGK__", "_KK__KK_")),
+    "heart" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('P'), listOf("________", "_KK__KK_", "KRRKKRRK", "KRRRRRRK", "KRRRRRRK", "_KRRRRK_", "__KRRK__", "___KK___")),
+    "star" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('Y'), listOf("___KK___", "___KK___", "KKKKKKKK", "_KYYYYK_", "__KYYK__", "_KYKKYK_", "KYK__KYK", "KK____KK")),
+    "flame" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('O'), listOf("___K____", "__KRK___", "__KRKK__", "_KORRRK_", "_KOORRK_", "KYOOORK_", "KYYOOK__", "_KKKK___")),
+    "diamond" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("___KK___", "__KCCK__", "_KCWCCK_", "KCWCCCCK", "KCCCCCCK", "_KCCCCK_", "__KCCK__", "___KK___")),
+    "mushroom" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('P'), listOf("__KKKK__", "_KRWWRK_", "KRRWWRRK", "KRRRRRRK", "_KKKKKK_", "__KWWK__", "__KWWK__", "_KKKKKK_")),
+    "eye" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('V'), listOf("________", "__KKKK__", "_KWWWWK_", "KWWKKWWK", "KWWKKWWK", "_KWWWWK_", "__KKKK__", "________")),
+    "crown" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('Y'), listOf("________", "_K_KK_K_", "_KKKKKK_", "_KYYYYK_", "_KYYYYK_", "KKKKKKKK", "KYYYYYYK", "KKKKKKKK")),
+    "cloud" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("________", "__KK____", "_KWWKK__", "KWWWWWK_", "KWWWWWWK", "KWWWWWWK", "_KKKKKK_", "________")),
+    "sun" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('R'), listOf("_K_KK_K_", "K_KYYK_K", "_KYYYYK_", "KYYYYYYK", "KYYYYYYK", "_KYYYYK_", "K_KYYK_K", "_K_KK_K_")),
+    "bell" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('B'), listOf("___KK___", "__KYYK__", "_KYYYYK_", "_KYYYYK_", "_KYYYYK_", "KYYYYYYK", "KKKKKKKK", "___KK___")),
+    "tree" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('L'), listOf("___KK___", "__KGGK__", "_KGGGGK_", "KGGGGGGK", "KGGGGGGK", "_KKGGKK_", "__KOOK__", "___KK___"))
 )
 
 private val PixelAvatarRandomOptions = listOf(
@@ -588,6 +603,11 @@ private val PixelAvatarRandomOptions = listOf(
     PixelAvatarPalette.getValue('L') to 'K',
     PixelAvatarPalette.getValue('P') to 'W',
     PixelAvatarPalette.getValue('V') to 'K',
+    Color(0xFF1E1E1C) to 'C',
+    Color(0xFF1E1E1C) to 'G',
+    Color(0xFF1E1E1C) to 'P',
+    Color(0xFF1E1E1C) to 'Y',
+    Color(0xFF1E1E1C) to 'V',
     PixelAvatarPalette.getValue('O') to 'K',
     PixelAvatarPalette.getValue('C') to 'W'
 )
@@ -603,22 +623,22 @@ private fun String.removePrefixOrNull(prefix: String): String? =
 private fun randomMembersPixelAvatar(seed: String): MembersPixelAvatarSpec {
     val random = MembersPixelAvatarRandom(pixelHash(seed))
     val (background, fill) = PixelAvatarRandomOptions[(random.next() * PixelAvatarRandomOptions.size).toInt()]
-    val grid = List(PixelAvatarGridSize.toInt()) { row ->
-        buildString {
-            repeat(PixelAvatarGridSize.toInt()) { column ->
-                val mirroredColumn = if (column < 4) column else 7 - column
-                append(
-                    if (row in 1..6 && mirroredColumn in 1..3 && random.next() > 0.42) fill
-                    else '_'
-                )
-            }
+    val grid = List(PixelAvatarGridSize.toInt()) {
+        val left = List((PixelAvatarGridSize / 2).toInt()) {
+            if (random.next() < 0.45) fill else '_'
         }
+        (left + left.asReversed()).joinToString(separator = "")
     }
     return MembersPixelAvatarSpec(background, grid)
 }
 
-private fun pixelHash(input: String): Int =
-    input.fold(0) { hash, character -> (hash * 31) + character.code }
+private fun pixelHash(input: String): Int {
+    var hash = 0
+    input.forEach { character ->
+        hash = (hash shl 5) - hash + character.code
+    }
+    return hash
+}
 
 private class MembersPixelAvatarRandom(seed: Int) {
     private var value = seed
