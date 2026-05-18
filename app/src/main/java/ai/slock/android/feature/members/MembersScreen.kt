@@ -167,8 +167,7 @@ fun MembersPageShell(
                         displayMembers =
                             loadState.data.members.map { member ->
                                 if (
-                                    member.kind == MemberKind.Human &&
-                                        member.avatar == null &&
+                                    member.avatar == null &&
                                         member.avatarUrl == null &&
                                         member.gravatarHash == null
                                 ) {
