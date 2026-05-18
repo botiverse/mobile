@@ -412,15 +412,20 @@ fun ThreadScreen(
             attachmentPreviewVisible -> onDismissAttachmentPreview()
         }
     }
-    val useSharedThreadHost = useSharedThreadScreen && replyHeaderContext == null && parentJumpTarget == null
+    val useSharedThreadHost = useSharedThreadScreen
     if (useSharedThreadHost) {
         ThreadKuiklyScreen(
                 state = state,
+                membersPanelState = membersPanelState,
                 modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite).imePadding(),
                 membersCount = membersCount ?: 0,
                 showComposer = showComposer,
                 showSettingsAction = showConversationActions,
+                showReplyActions = showReplyActions,
                 fallbackComposerHeader = fallbackComposerHeader,
+                replyHeaderContext = replyHeaderContext,
+                parentJumpTarget = parentJumpTarget,
+                headerNavigationIcon = headerNavigationIcon,
                 channelSuggestions = channelSuggestions,
                 composerFocusRequestNonce = composerFocusRequestNonce,
                 onBack = onBack,
@@ -444,9 +449,11 @@ fun ThreadScreen(
                 onLoadMoreFiles = onLoadMoreFiles,
                 onOpenAttachment = onOpenAttachment,
                 onJoinChannel = onJoinChannel,
+                onArchiveChannel = onArchiveChannel,
+                onDeleteChannel = onDeleteChannel,
+                onLeaveChannel = onLeaveChannel,
                 onRetryThreadLoad = onRetryThreadLoad,
-                onShowMembers = { showMembersModal = true },
-                onShowSettings = { showSettingsModal = true }
+                onOpenParentMessage = onOpenParentMessage
         )
     } else {
         Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite).imePadding()) {
@@ -934,10 +941,15 @@ private const val ThreadKuiklyLoadPageSize = 40
 @Composable
 private fun ThreadKuiklyScreen(
         state: ThreadUiState,
+        membersPanelState: ThreadMembersPanelState,
         membersCount: Int,
         showComposer: Boolean,
         showSettingsAction: Boolean,
+        showReplyActions: Boolean,
         fallbackComposerHeader: ConversationSummary?,
+        replyHeaderContext: ThreadReplyHeaderContext?,
+        parentJumpTarget: ThreadParentJumpTarget?,
+        headerNavigationIcon: ThreadHeaderNavigationIcon,
         channelSuggestions: List<ConversationSummary>,
         composerFocusRequestNonce: Int,
         onBack: () -> Unit,
@@ -961,9 +973,11 @@ private fun ThreadKuiklyScreen(
         onLoadMoreFiles: () -> Unit,
         onOpenAttachment: (Attachment) -> Unit,
         onJoinChannel: (ConversationSummary) -> Unit,
+        onArchiveChannel: () -> Unit,
+        onDeleteChannel: () -> Unit,
+        onLeaveChannel: () -> Unit,
         onRetryThreadLoad: () -> Unit,
-        onShowMembers: () -> Unit,
-        onShowSettings: () -> Unit,
+        onOpenParentMessage: (ThreadParentJumpTarget) -> Unit,
         modifier: Modifier = Modifier
 ) {
     val content = (state.loadState as? ScreenLoadState.Content)?.data
@@ -1040,9 +1054,13 @@ private fun ThreadKuiklyScreen(
                     membersCount,
                     showComposer,
                     showSettingsAction,
+                    showReplyActions,
                     filesPayloadText,
                     composerPayload,
-                    header
+                    header,
+                    replyHeaderContext,
+                    parentJumpTarget,
+                    headerNavigationIcon
             ) {
                 JSONObject().put(
                         "payload",
@@ -1051,8 +1069,13 @@ private fun ThreadKuiklyScreen(
                                         membersCount = membersCount,
                                         showComposer = showComposer,
                                         showSettingsAction = showSettingsAction,
+                                        showReplyActions = showReplyActions,
+                                        membersPanelState = membersPanelState,
                                         filesPayload = filesPayloadText,
-                                        composerPayload = composerPayload
+                                        composerPayload = composerPayload,
+                                        replyHeaderContext = replyHeaderContext,
+                                        parentJumpTarget = parentJumpTarget,
+                                        headerNavigationIcon = headerNavigationIcon
                                 )
                                 .toString()
                 )
@@ -1066,8 +1089,6 @@ private fun ThreadKuiklyScreen(
     ) { event ->
         when (event.optString("action")) {
             "back" -> onBack()
-            "showMembers" -> onShowMembers()
-            "showSettings" -> onShowSettings()
             "selectTab" -> event.optString("tab").toThreadTabOrNull()?.let(onModeSelected)
             "retryThreadLoad" -> onRetryThreadLoad()
             "loadOlder" ->
@@ -1099,6 +1120,15 @@ private fun ThreadKuiklyScreen(
             "retryFiles" -> onRetryFiles()
             "loadMoreFiles" -> onLoadMoreFiles()
             "joinChannel" -> header?.let(onJoinChannel)
+            "settingsAction" ->
+                    when (event.optString("itemId")) {
+                        "files" -> onModeSelected(ThreadTab.Files)
+                        "leave" -> onLeaveChannel()
+                        "archive" -> onArchiveChannel()
+                        "delete" -> onDeleteChannel()
+                    }
+            "openParentMessage" ->
+                    parentJumpTarget?.let(onOpenParentMessage)
             "change" -> {
                 val nextValue = event.optString("value")
                 val nextAsTask = event.optBoolean("asTask", liveDraftAsTask)
@@ -1134,25 +1164,75 @@ private fun ThreadUiState.toKuiklyThreadPagePayload(
         membersCount: Int,
         showComposer: Boolean,
         showSettingsAction: Boolean,
+        showReplyActions: Boolean,
+        membersPanelState: ThreadMembersPanelState,
         filesPayload: String,
-        composerPayload: String
+        composerPayload: String,
+        replyHeaderContext: ThreadReplyHeaderContext?,
+        parentJumpTarget: ThreadParentJumpTarget?,
+        headerNavigationIcon: ThreadHeaderNavigationIcon
 ): JSONObject {
+    val originStatus =
+            when {
+                replyHeaderContext == null -> "none"
+                replyHeaderContext.parentMessageRefreshing -> "loading"
+                replyHeaderContext.parentMessage != null -> "message"
+                parentJumpTarget != null || replyHeaderContext.parentMessageId != null -> "missing"
+                replyHeaderContext.parentMessagePreview?.isNotBlank() == true -> "preview"
+                else -> "none"
+            }
     val payload =
             JSONObject()
-                    .put("title", header?.name ?: "Thread")
-                    .putNullable("subtitle", header?.toKuiklyThreadSubtitle())
+                    .put("title", if (replyHeaderContext != null) "Threads" else header?.name ?: "Thread")
+                    .putNullable(
+                            "subtitle",
+                            if (replyHeaderContext != null) {
+                                replyHeaderContext.replyHeaderSubtitle()
+                            } else {
+                                header?.toKuiklyThreadSubtitle()
+                            }
+                    )
                     .put("selectedTab", selectedTab.toKuiklyWireValue())
+                    .put(
+                            "navigationLabel",
+                            when (headerNavigationIcon) {
+                                ThreadHeaderNavigationIcon.Back -> "Back"
+                                ThreadHeaderNavigationIcon.Close -> "Close"
+                            }
+                    )
+                    .put("showModeTabs", replyHeaderContext == null)
+                    .put("showReplyActions", showReplyActions && replyHeaderContext == null)
                     .put("membersCount", membersCount)
                     .put("showComposer", showComposer)
-                    .put("showSettingsAction", showSettingsAction)
-                    .put("showMembersAction", true)
+                    .put(
+                            "showSettingsAction",
+                            showSettingsAction && replyHeaderContext == null && parentJumpTarget == null
+                    )
+                    .put("showMembersAction", replyHeaderContext == null && parentJumpTarget == null)
                     .put("joined", header?.joined ?: true)
                     .put("canSend", header?.permissions?.canSend ?: true)
                     .put("joinLabel", "Join channel")
+                    .put("members", membersPanelState.toKuiklyThreadMembersJson())
+                    .put(
+                            "settingsActions",
+                            buildKuiklyThreadSettingsActionsJson(
+                                    showSettingsAction =
+                                            showSettingsAction && replyHeaderContext == null &&
+                                                    parentJumpTarget == null
+                            )
+                    )
                     .put("filesPayload", filesPayload)
                     .put("composerPayload", composerPayload)
                     .put("emptyTitle", "No messages yet")
                     .put("emptyDetail", "This conversation has no messages yet.")
+                    .put("originStatus", originStatus)
+                    .putNullable(
+                            "originParentMessageId",
+                            parentJumpTarget?.parentMessageId?.value ?: replyHeaderContext?.parentMessageId?.value
+                    )
+                    .putNullable("originPreview", replyHeaderContext?.parentMessagePreview)
+                    .putNullable("originErrorCode", replyHeaderContext?.parentMessageRefreshErrorCode)
+                    .putNullable("originMessage", replyHeaderContext?.parentMessage?.toKuiklyThreadMessageJson())
     return when (val loadState = loadState) {
         ScreenLoadState.Loading -> payload.put("status", "loading")
         is ScreenLoadState.Content ->
@@ -1174,6 +1254,70 @@ private fun ThreadUiState.toKuiklyThreadPagePayload(
                         .putNullable("errorCode", loadState.blocker.code)
     }
 }
+
+private fun ThreadMembersPanelState.toKuiklyThreadMembersJson(): JSONArray =
+        JSONArray().also { array ->
+            (loadState as? ScreenLoadState.Content)
+                    ?.data
+                    ?.members
+                    .orEmpty()
+                    .forEach { member -> array.put(member.toKuiklyThreadMemberJson()) }
+        }
+
+private fun MemberProfile.toKuiklyThreadMemberJson(): JSONObject =
+        JSONObject()
+                .put("id", id.value)
+                .put("displayName", displayName)
+                .put("handle", handle)
+                .put(
+                        "roleLabel",
+                        roleDescription
+                                ?: when (kind) {
+                                    MemberKind.Agent -> "Agent"
+                                    MemberKind.Human -> "Member"
+                                    MemberKind.System -> "System"
+                                }
+                )
+                .putNullable("avatarUrl", avatarUrl ?: avatar?.wireValue)
+                .put("avatarLabel", avatarLabel)
+                .put("kind", kind.name.lowercase())
+
+private fun buildKuiklyThreadSettingsActionsJson(showSettingsAction: Boolean): JSONArray =
+        JSONArray().also { array ->
+            if (!showSettingsAction) return@also
+            array.put(
+                    JSONObject()
+                            .put("id", "files")
+                            .put("title", "Files")
+                            .put("subtitle", "Open files shared in this conversation")
+                            .put("icon", "folder-open")
+                            .put("destructive", false)
+            )
+            array.put(
+                    JSONObject()
+                            .put("id", "leave")
+                            .put("title", "Leave channel")
+                            .put("subtitle", "Stop following this conversation")
+                            .put("icon", "log-out")
+                            .put("destructive", true)
+            )
+            array.put(
+                    JSONObject()
+                            .put("id", "archive")
+                            .put("title", "Archive channel")
+                            .put("subtitle", "Hide this conversation from active lists")
+                            .put("icon", "archive")
+                            .put("destructive", true)
+            )
+            array.put(
+                    JSONObject()
+                            .put("id", "delete")
+                            .put("title", "Delete channel")
+                            .put("subtitle", "Permanently remove this conversation")
+                            .put("icon", "trash")
+                            .put("destructive", true)
+            )
+        }
 
 private fun ConversationSummary.toKuiklyThreadSubtitle(): String =
         when {

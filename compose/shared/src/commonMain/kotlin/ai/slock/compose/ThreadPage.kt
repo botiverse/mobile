@@ -62,7 +62,15 @@ internal data class KuiklyThreadScreenPayload(
     val subtitle: String? = null,
     val status: String = "loading",
     val selectedTab: String = "chat",
+    val navigationLabel: String = "Back",
+    val showModeTabs: Boolean = true,
+    val showReplyActions: Boolean = true,
     val messages: List<KuiklyThreadMessageItem> = emptyList(),
+    val originMessage: KuiklyThreadMessageItem? = null,
+    val originPreview: String? = null,
+    val originParentMessageId: String? = null,
+    val originStatus: String = "none",
+    val originErrorCode: String? = null,
     val tasks: List<KuiklyThreadTaskItem> = emptyList(),
     val canLoadMoreBefore: Boolean = false,
     val canLoadMoreAfter: Boolean = false,
@@ -272,13 +280,15 @@ private fun ThreadPageContent(
                     onThreadEvent("showSettings", null, null, null)
                 }
             )
-            ThreadPageTabs(
-                selectedTab = selectedTab,
-                onSelect = { tab ->
-                    selectedTab = tab
-                    onThreadEvent("selectTab", null, null, tab.wireValue)
-                }
-            )
+            if (payload.showModeTabs) {
+                ThreadPageTabs(
+                    selectedTab = selectedTab,
+                    onSelect = { tab ->
+                        selectedTab = tab
+                        onThreadEvent("selectTab", null, null, tab.wireValue)
+                    }
+                )
+            }
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)
             ) {
@@ -358,9 +368,9 @@ private fun ThreadPageHeader(
             .background(SlockColor.SurfaceWhite)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        ThreadHeaderAction(label = "Back", onClick = onBack)
+        ThreadHeaderAction(label = payload.navigationLabel, onClick = onBack)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = payload.title,
@@ -470,6 +480,18 @@ private fun ThreadMessagesList(
         modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        if (payload.originStatus != "none") {
+            item {
+                ThreadOriginCard(
+                    payload = payload,
+                    onOpenParentMessage = {
+                        payload.originParentMessageId?.let {
+                            onThreadEvent("openParentMessage", it, null, null)
+                        }
+                    }
+                )
+            }
+        }
         if (payload.canLoadMoreBefore) {
             item {
                 ThreadInlineActionRow(
@@ -492,6 +514,7 @@ private fun ThreadMessagesList(
         items(payload.messages.size, key = { payload.messages[it].id }) { index ->
             ThreadMessageCard(
                 message = payload.messages[index],
+                showReplyAction = payload.showReplyActions,
                 onOpenMember = { onThreadEvent("openMember", it, null, null) },
                 onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
                 onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) }
@@ -539,6 +562,7 @@ private fun ThreadInlineActionRow(label: String, onClick: () -> Unit) {
 @Composable
 private fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
+    showReplyAction: Boolean = true,
     onOpenMember: (String) -> Unit,
     onOpenThread: (String) -> Unit,
     onOpenAttachment: (String) -> Unit
@@ -577,7 +601,7 @@ private fun ThreadMessageCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            if (message.replyCount > 0) {
+            if (showReplyAction && message.replyCount > 0) {
                 ThreadHeaderAction(
                     label = "${message.replyCount} replies",
                     onClick = { onOpenThread(message.id) }
@@ -597,6 +621,79 @@ private fun ThreadMessageCard(
                     ThreadAttachmentChip(
                         attachment = attachment,
                         onOpen = { onOpenAttachment(attachment.id) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadOriginCard(
+    payload: KuiklyThreadScreenPayload,
+    onOpenParentMessage: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
+            .background(SlockColor.SurfaceWhite)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Origin",
+                style = SlockType.Body.copy(fontWeight = FontWeight.W600, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                modifier = Modifier.weight(1f)
+            )
+            if (!payload.originParentMessageId.isNullOrBlank()) {
+                ThreadHeaderAction(
+                    label = "Open",
+                    onClick = onOpenParentMessage
+                )
+            }
+        }
+        when (payload.originStatus) {
+            "loading" -> {
+                Text(
+                    text = "Refreshing original message…",
+                    style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
+                )
+            }
+            "missing" -> {
+                Text(
+                    text = payload.originPreview?.ifBlank { "Original message is unavailable." }
+                        ?: "Original message is unavailable.",
+                    style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack
+                )
+                payload.originErrorCode?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        text = "Refresh failed: $it",
+                        style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
+            }
+            else -> {
+                payload.originMessage?.let { origin ->
+                    ThreadMessageCard(
+                        message = origin,
+                        showReplyAction = false,
+                        onOpenMember = {},
+                        onOpenThread = {},
+                        onOpenAttachment = {}
+                    )
+                } ?: payload.originPreview?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        text = it,
+                        style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                        color = SlockColor.TextBlack
                     )
                 }
             }

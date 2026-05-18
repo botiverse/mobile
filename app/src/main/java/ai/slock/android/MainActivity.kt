@@ -10646,7 +10646,8 @@ private fun HomeRouteScreen(
                             fallbackComposerHeader = parentThreadHeader,
                             selectedThreadId =
                                     parentReplyEntry.selectedThreadId?.let(::ThreadId)
-                                            ?: parentThreadHeader?.threadId
+                                            ?: parentThreadHeader?.threadId,
+                            useSharedThreadScreen = true
                     )
                     Box(
                             modifier =

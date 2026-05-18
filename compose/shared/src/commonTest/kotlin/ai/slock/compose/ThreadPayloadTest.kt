@@ -45,4 +45,40 @@ class ThreadPayloadTest {
         assertEquals("error", payload.status)
         assertEquals("payload_parse_failed", payload.errorCode)
     }
+
+    @Test
+    fun parsesReplyContextFields() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "thread-2",
+                      "title": "Threads",
+                      "subtitle": "Origin: #general · hello",
+                      "navigationLabel": "Close",
+                      "showModeTabs": false,
+                      "showReplyActions": false,
+                      "originStatus": "message",
+                      "originParentMessageId": "m-parent",
+                      "originMessage": {
+                        "id": "m-parent",
+                        "authorId": "u1",
+                        "authorName": "Artin",
+                        "body": "hello from parent"
+                      }
+                    }
+                    """.trimIndent(),
+                fallbackPageData = "{}",
+                instanceId = "fallback"
+            )
+
+        assertEquals("thread-2", payload.instanceId)
+        assertEquals("Close", payload.navigationLabel)
+        assertEquals(false, payload.showModeTabs)
+        assertEquals(false, payload.showReplyActions)
+        assertEquals("message", payload.originStatus)
+        assertEquals("m-parent", payload.originParentMessageId)
+        assertEquals("hello from parent", payload.originMessage?.body)
+    }
 }
