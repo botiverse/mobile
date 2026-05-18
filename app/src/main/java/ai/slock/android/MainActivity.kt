@@ -11541,7 +11541,7 @@ private fun HomeStructuralContent(
                 notifications = notifications,
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 contentRefreshing = homeRefreshInProgress,
-                contentRefreshEnabled = homeRefreshError == null,
+                contentRefreshEnabled = true,
                 showBottomBar = false,
                 bottomContentPadding = appBottomBarContentPadding,
                 outerPadding = 0.dp,

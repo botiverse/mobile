@@ -83,6 +83,42 @@ class HomeParserTest {
         assertEquals(listOf("pixel:heart", "pixel:robot"), avatars)
     }
 
+    @Test
+    fun parsesDirectMessageGravatarAvatarObjectWireValues() {
+        val result =
+            parseSlockHome(
+                payload =
+                    HomeNetworkPayload(
+                        serverId = ServerId("server-1"),
+                        channels = HomeNetworkResponse(code = 200, bodyText = """{"channels":[]}"""),
+                        directMessages =
+                            HomeNetworkResponse(
+                                code = 200,
+                                bodyText =
+                                    """
+                                    {"directMessages":[
+                                      {"channelId":"dm-1","peer":{"id":"agent-1","displayName":"Agent One","kind":"agent","avatar":{"type":"gravatar","hash":"ABC123"}}},
+                                      {"channelId":"dm-2","peer":{"id":"agent-2","displayName":"Agent Two","kind":"agent","avatar":"gravatar:DEF456"}}
+                                    ]}
+                                    """.trimIndent()
+                            ),
+                        unreadCounts = HomeNetworkResponse(code = 200, bodyText = """{"counts":{}}"""),
+                        serverUnreadSummary = HomeNetworkResponse(code = 200, bodyText = """{"unreadCount":0}""")
+                    ),
+                session = sampleSession()
+            )
+
+        assertTrue(result is DataResult.Content)
+        val avatars = result.data.directMessages.map { it.avatar?.wireValue }
+        assertEquals(
+            listOf(
+                "https://www.gravatar.com/avatar/abc123?s=52&d=404",
+                "https://www.gravatar.com/avatar/def456?s=52&d=404"
+            ),
+            avatars
+        )
+    }
+
     private fun sampleSession(): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "artin@slock.ai", displayName = "Artin"),

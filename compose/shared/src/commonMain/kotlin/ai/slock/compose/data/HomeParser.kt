@@ -394,9 +394,31 @@ private fun JsonObject.avatarWireValue(vararg names: String): String? {
 
 private fun JsonElement.toAvatarWireValue(): String? {
     if (this is JsonPrimitive) {
-        return contentOrNull?.trim()?.takeIf { it.isNotBlank() }
+        return contentOrNull?.trim()?.takeIf { it.isNotBlank() }?.toAvatarWireValueString()
     }
     val avatarObject = asObjectOrNull() ?: return null
+    val type = avatarObject.string("type", "kind", "mode")?.lowercase()
+    val typedValue =
+        avatarObject.string(
+            "wireValue",
+            "value",
+            "id",
+            "name",
+            "slug",
+            "key",
+            "hash",
+            "md5",
+            "gravatarHash",
+            "gravatar_hash",
+            "gravatar"
+        )
+    when (type) {
+        "pixel" -> return "pixel:${typedValue?.removePrefix("pixel:") ?: "robot"}"
+        "random" -> return "random:${typedValue?.removePrefix("random:") ?: "default"}"
+        "gravatar", "gravatar_hash", "gravatarhash" ->
+            return typedValue?.toGravatarWireValue()
+        "url", "image", "photo" -> return typedValue
+    }
     avatarObject.string(
         "wireValue",
         "value",
@@ -407,23 +429,37 @@ private fun JsonElement.toAvatarWireValue(): String? {
         "avatar_url",
         "imageUrl",
         "profileImageUrl"
-    )?.let { return it }
+    )?.let { return it.toAvatarWireValueString() }
     avatarObject.avatarWireValue("data", "profile")?.let { return it }
+    avatarObject.string(
+        "gravatarHash",
+        "gravatar_hash",
+        "gravatar",
+        "hash",
+        "md5"
+    )?.let { return it.toGravatarWireValue() }
     avatarObject.string("pixel", "pixelKey", "key", "icon")?.let { key ->
         return "pixel:${key.removePrefix("pixel:")}"
     }
     avatarObject.string("random", "randomSeed", "seed")?.let { seed ->
         return "random:${seed.removePrefix("random:")}"
     }
-    val type = avatarObject.string("type", "kind", "mode")?.lowercase()
-    val typedValue = avatarObject.string("id", "name", "slug")
-    return when (type) {
-        "pixel" -> "pixel:${typedValue?.removePrefix("pixel:") ?: "robot"}"
-        "random" -> "random:${typedValue?.removePrefix("random:") ?: "default"}"
-        "url", "image", "photo" -> typedValue
-        else -> null
-    }
+    return null
 }
+
+private fun String.toAvatarWireValueString(): String =
+    if (startsWith("gravatar:", ignoreCase = true)) {
+        substringAfter(":").toGravatarWireValue()
+    } else {
+        this
+    }
+
+private fun String.toGravatarWireValue(): String =
+    if (startsWith("gravatar:", ignoreCase = true)) substringAfter(":") else this
+        .trim()
+        .takeIf { it.isNotBlank() }
+        ?.toGravatarAvatarUrl()
+        .orEmpty()
 
 private fun String?.toPresenceOrNull(): Presence? =
     when (this?.lowercase()) {
