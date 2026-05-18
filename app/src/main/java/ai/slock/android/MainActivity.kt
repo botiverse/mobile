@@ -107,6 +107,7 @@ import ai.slock.android.core.data.storage.StorageClearTarget
 import ai.slock.android.core.data.storage.StorageManagementRepository
 import ai.slock.android.core.data.storage.StorageManagementSnapshot
 import ai.slock.android.shared.SlockKuiklyActivity
+import ai.slock.android.shared.SlockKuiklyPageIsland
 import ai.slock.android.core.model.Attachment
 import ai.slock.android.core.model.AttachmentId
 import ai.slock.android.core.model.AvatarReference
@@ -152,11 +153,8 @@ import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.ScreenError
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.auth.AuthLogoBadge
-import ai.slock.android.feature.auth.CreateAccountScreen
 import ai.slock.android.feature.auth.CreateAccountStatus
-import ai.slock.android.feature.auth.ForgotPasswordScreen
 import ai.slock.android.feature.auth.ForgotPasswordStatus
-import ai.slock.android.feature.auth.LoginScreen
 import ai.slock.android.feature.home.HomeContent
 import ai.slock.android.feature.home.HomeUiState
 import ai.slock.android.feature.home.withDraftIndicators
@@ -419,6 +417,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import kotlinx.coroutines.withTimeoutOrNull
 
 class MainActivity : ComponentActivity() {
@@ -9915,42 +9914,11 @@ private fun AuthRouteScreen(
     if (route != AuthRoute.Login) {
         BackHandler { onRouteChange(AuthRoute.Login) }
     }
-    val context = LocalContext.current
-    val openSharedAuth = { SlockKuiklyActivity.start(context, route.sharedAuthPageName) }
-
-    when (route) {
-        AuthRoute.Login ->
-                LoginScreen(
-                        onLogin = onLogin,
-                        onForgotPassword = { onRouteChange(AuthRoute.ForgotPassword) },
-                        onCreateAccount = { onRouteChange(AuthRoute.CreateAccount) },
-                        onOpenSharedAuth = openSharedAuth,
-                        onAuthProviderUnavailable = onAuthProviderUnavailable,
-                        isSubmitting =
-                                authState is AuthUiState.Submitting ||
-                                        authState is AuthUiState.Restoring,
-                        errorMessage = (authState as? AuthUiState.SignedOut)?.errorMessage,
-                        modifier = modifier
-                )
-        AuthRoute.ForgotPassword ->
-                ForgotPasswordScreen(
-                        status = forgotPasswordStatus,
-                        errorMessage = (authState as? AuthUiState.SignedOut)?.errorMessage,
-                        onSendResetLink = onSendResetLink,
-                        onBackToSignIn = { onRouteChange(AuthRoute.Login) },
-                        onOpenSharedAuth = openSharedAuth,
-                        modifier = modifier
-                )
-        AuthRoute.CreateAccount ->
-                CreateAccountScreen(
-                        status = createAccountStatus,
-                        errorMessage = (authState as? AuthUiState.SignedOut)?.errorMessage,
-                        onCreateAccount = onCreateAccount,
-                        onBackToSignIn = { onRouteChange(AuthRoute.Login) },
-                        onOpenSharedAuth = openSharedAuth,
-                        modifier = modifier
-                )
-    }
+    SlockKuiklyPageIsland(
+            pageName = route.sharedAuthPageName,
+            pageData = JSONObject(),
+            modifier = modifier.fillMaxSize()
+    )
 }
 
 private val AuthRoute.sharedAuthPageName: String

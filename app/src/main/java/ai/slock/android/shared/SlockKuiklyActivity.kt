@@ -3,6 +3,7 @@ package ai.slock.android.shared
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.database.sqlite.SQLiteDatabase
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -22,6 +23,8 @@ import androidx.activity.ComponentActivity
 import androidx.core.content.res.ResourcesCompat
 import ai.slock.android.BuildConfig
 import ai.slock.android.R
+import ai.slock.android.core.data.auth.AuthSession
+import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext
@@ -38,6 +41,7 @@ import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegat
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import com.caverock.androidsvg.SVG
+import com.google.gson.Gson
 import java.io.ByteArrayInputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -47,6 +51,8 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
+import kotlinx.coroutines.runBlocking
+import org.json.JSONArray
 import org.json.JSONObject
 
 class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDelegate {
@@ -466,6 +472,9 @@ private class SlockKuiklyImageAdapter(
 internal class SlockKuiklyBridgeModule(
         private val appContext: Context
 ) : KuiklyRenderBaseModule() {
+    private val databases = ConcurrentHashMap<String, SQLiteDatabase>()
+    private val gson = Gson()
+
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
         return when (method) {
             "toast" -> toast(params)
@@ -519,6 +528,10 @@ internal class SlockKuiklyBridgeModule(
                 authRequest(params, callback)
                 null
             }
+            "relationalStore" -> {
+                relationalStore(params, callback)
+                null
+            }
             "currentTimestamp" -> System.currentTimeMillis().toString()
             else -> {
                 callback?.invoke(mapOf("code" to -1, "message" to "Method not implemented"))
@@ -526,6 +539,103 @@ internal class SlockKuiklyBridgeModule(
             }
         }
     }
+
+    private fun relationalStore(params: String?, callback: KuiklyRenderCallback?) {
+        Thread {
+            val result =
+                    runCatching {
+                        val request = JSONObject(params ?: "{}")
+                        val action = request.optString("action")
+                        val sql = request.optString("sql")
+                        val bindArgs = request.optJSONArray("bindArgs").toSqlBindArgs()
+                        val databaseName =
+                                request.optString("databaseName")
+                                        .takeIf { it.isNotBlank() }
+                                        ?: "slock_shared.db"
+                        val db = database(databaseName)
+                        when (action) {
+                            "query" -> query(db, sql, bindArgs)
+                            else -> {
+                                db.execSQL(sql, bindArgs.toTypedArray())
+                                mirrorAuthSessionWrite(sql, bindArgs)
+                                mapOf("status" to "ok")
+                            }
+                        }
+                    }.getOrElse { throwable ->
+                        mapOf(
+                                "status" to "error",
+                                "code" to -1,
+                                "message" to (throwable.message ?: "relationalStore failed")
+                        )
+                    }
+            callback?.invoke(result)
+        }.start()
+    }
+
+    private fun database(databaseName: String): SQLiteDatabase =
+            databases.getOrPut(databaseName) {
+                appContext.openOrCreateDatabase(databaseName, Context.MODE_PRIVATE, null)
+            }
+
+    private fun query(
+            db: SQLiteDatabase,
+            sql: String,
+            bindArgs: List<Any?>
+    ): Map<String, Any> {
+        db.rawQuery(sql, bindArgs.map { it?.toString() }.toTypedArray()).use { cursor ->
+            val columns = cursor.columnNames.toList()
+            val rows = mutableListOf<List<Any?>>()
+            while (cursor.moveToNext()) {
+                rows +=
+                        columns.indices.map { index ->
+                            when (cursor.getType(index)) {
+                                android.database.Cursor.FIELD_TYPE_NULL -> null
+                                android.database.Cursor.FIELD_TYPE_INTEGER -> cursor.getLong(index)
+                                android.database.Cursor.FIELD_TYPE_FLOAT -> cursor.getDouble(index)
+                                android.database.Cursor.FIELD_TYPE_BLOB ->
+                                        cursor.getBlob(index)?.toString(StandardCharsets.UTF_8)
+                                else -> cursor.getString(index)
+                            }
+                        }
+            }
+            return mapOf("status" to "ok", "columns" to columns, "rows" to rows)
+        }
+    }
+
+    private fun mirrorAuthSessionWrite(sql: String, bindArgs: List<Any?>) {
+        if (!sql.contains("slock_kv", ignoreCase = true)) return
+        val key = bindArgs.firstOrNull()?.toString() ?: return
+        if (key != AUTH_SESSION_KEY) return
+
+        val store = EncryptedAuthSessionStore(appContext)
+        when {
+            sql.startsWith("DELETE", ignoreCase = true) -> runBlocking { store.clearSession() }
+            sql.contains("INSERT", ignoreCase = true) || sql.contains("REPLACE", ignoreCase = true) -> {
+                val encodedSession = bindArgs.getOrNull(1)?.toString().orEmpty()
+                if (encodedSession.isBlank()) return
+                val session = gson.fromJson(encodedSession, AuthSession::class.java)
+                runBlocking { store.saveSession(session) }
+            }
+        }
+    }
+
+    private fun JSONArray?.toSqlBindArgs(): List<Any?> =
+            buildList {
+                if (this@toSqlBindArgs == null) return@buildList
+                for (index in 0 until length()) {
+                    add(
+                            when (val value = opt(index)) {
+                                JSONObject.NULL -> null
+                                is Boolean -> if (value) 1L else 0L
+                                is Int -> value.toLong()
+                                is Long -> value
+                                is Float -> value.toDouble()
+                                is Double -> value
+                                else -> value?.toString()
+                            }
+                    )
+                }
+            }
 
     private fun toast(params: String?): Any? {
         val content = JSONObject(params ?: "{}").optString("content")
@@ -583,6 +693,7 @@ internal class SlockKuiklyBridgeModule(
 
     companion object {
         const val MODULE_NAME = "HRBridgeModule"
+        private const val AUTH_SESSION_KEY = "auth_session"
     }
 }
 
