@@ -262,8 +262,8 @@ internal fun ThreadComposerContent(
     }
 
     Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         payload.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
             Text(
@@ -332,8 +332,8 @@ internal fun ThreadComposerContent(
                 modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack)
             )
             Column(
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 TextField(
                     value = text,
