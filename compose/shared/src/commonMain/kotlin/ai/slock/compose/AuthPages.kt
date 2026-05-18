@@ -198,7 +198,7 @@ internal fun LoginContent(
         AuthCenterMark()
         Text(
             text = "Sign in",
-            style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
         AuthFormColumn {
