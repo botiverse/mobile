@@ -223,7 +223,8 @@ internal fun LoginContent(
                 label = "Email",
                 required = true,
                 enabled = !submitting,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { onSubmit() })
             )
             AuthTextField(
                 value = password,
