@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
+import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -30,6 +31,9 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.geometry.Size
+import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -801,6 +805,7 @@ private fun ThreadMessageAvatar(
             avatarWireValue?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
                 ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
         }
+    val pixelSpec = remember(avatarWireValue) { avatarWireValue?.toThreadPixelAvatarSpec() }
     Box(
         modifier = Modifier.size(40.dp).border(SlockStroke.Default, SlockColor.BorderBlack)
             .background(SlockColor.BrandYellow)
@@ -814,6 +819,8 @@ private fun ThreadMessageAvatar(
                 contentScale = ContentScale.FillBounds,
                 modifier = Modifier.fillMaxSize()
             )
+        } else if (pixelSpec != null) {
+            ThreadPixelAvatar(spec = pixelSpec)
         } else {
             Text(
                 text = avatarLabel.ifBlank { "?" }.take(2).uppercase(),
@@ -821,6 +828,122 @@ private fun ThreadMessageAvatar(
                 color = SlockColor.TextBlack
             )
         }
+    }
+}
+
+@Composable
+private fun ThreadPixelAvatar(spec: ThreadPixelAvatarSpec) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        drawRect(spec.background)
+        val cellSize = size.width / ThreadPixelAvatarGridSize
+        spec.grid.forEachIndexed { rowIndex, row ->
+            row.forEachIndexed { columnIndex, key ->
+                val color = ThreadPixelAvatarPalette[key] ?: Color.Transparent
+                if (color != Color.Transparent) {
+                    drawRect(
+                        color = color,
+                        topLeft = Offset(columnIndex * cellSize, rowIndex * cellSize),
+                        size = Size(cellSize, cellSize)
+                    )
+                }
+            }
+        }
+    }
+}
+
+private data class ThreadPixelAvatarSpec(val background: Color, val grid: List<String>)
+
+private const val ThreadPixelAvatarGridSize = 8f
+private const val ThreadPixelAvatarProtocolPrefix = "pixel:"
+private const val ThreadPixelAvatarRandomPrefix = "random:"
+private const val ThreadPixelAvatarDefaultKey = "robot"
+
+private val ThreadPixelAvatarPalette = mapOf(
+    '_' to Color.Transparent,
+    'K' to Color(0xFF141111),
+    'W' to Color(0xFFFFFFFF),
+    'P' to Color(0xFFFE7DA8),
+    'O' to Color(0xFFF8A16F),
+    'Y' to Color(0xFFFFD440),
+    'L' to Color(0xFFA9D877),
+    'C' to Color(0xFF27CCF3),
+    'V' to Color(0xFFBBAFE6),
+    'B' to Color(0xFF576574),
+    'R' to Color(0xFFF97264),
+    'G' to Color(0xFF9DCAAA)
+)
+
+private val ThreadPixelAvatarFixedSpecs = mapOf(
+    "robot" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('C'), listOf("_KKKKKK_", "KCKWWKCK", "KWKWWKWK", "KKKKKKKK", "_KWKKWK_", "_KKKKKK_", "_KK__KK_", "_KK__KK_")),
+    "cat" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('Y'), listOf("K______K", "KK____KK", "KYKYYKYK", "KYYYYYYK", "KYKYYKYK", "_KYYYYK_", "__KYYK__", "___KK___")),
+    "ghost" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('V'), listOf("__KKKK__", "_KWWWWK_", "KWKWWKWK", "KWWWWWWK", "KWWWWWWK", "KWWKKWWK", "KWKWWKWK", "K_K__K_K")),
+    "skull" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('O'), listOf("_KKKKKK_", "KWWWWWWK", "KWKWWKWK", "KWWWWWWK", "_KWWWWK_", "_KWKWKK_", "__KKKK__", "___KK___")),
+    "alien" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('L'), listOf("_KKKKKK_", "KGGGGGGK", "KGKKKKGK", "KGGGGGGK", "_KGGGGK_", "__KGGK__", "__KGGK__", "_KK__KK_")),
+    "heart" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('P'), listOf("________", "_KK__KK_", "KRRKKRRK", "KRRRRRRK", "KRRRRRRK", "_KRRRRK_", "__KRRK__", "___KK___")),
+    "star" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('Y'), listOf("___KK___", "___KK___", "KKKKKKKK", "_KYYYYK_", "__KYYK__", "_KYKKYK_", "KYK__KYK", "KK____KK")),
+    "flame" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('O'), listOf("___K____", "__KRK___", "__KRKK__", "_KORRRK_", "_KOORRK_", "KYOOORK_", "KYYOOK__", "_KKKK___")),
+    "diamond" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('C'), listOf("___KK___", "__KCCK__", "_KCWCCK_", "KCWCCCCK", "KCCCCCCK", "_KCCCCK_", "__KCCK__", "___KK___")),
+    "mushroom" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('P'), listOf("__KKKK__", "_KRWWRK_", "KRRWWRRK", "KRRRRRRK", "_KKKKKK_", "__KWWK__", "__KWWK__", "_KKKKKK_")),
+    "eye" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('V'), listOf("________", "__KKKK__", "_KWWWWK_", "KWWKKWWK", "KWWKKWWK", "_KWWWWK_", "__KKKK__", "________")),
+    "crown" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('Y'), listOf("________", "_K_KK_K_", "_KKKKKK_", "_KYYYYK_", "_KYYYYK_", "KKKKKKKK", "KYYYYYYK", "KKKKKKKK")),
+    "cloud" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('C'), listOf("________", "__KK____", "_KWWKK__", "KWWWWWK_", "KWWWWWWK", "KWWWWWWK", "_KKKKKK_", "________")),
+    "sun" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('R'), listOf("_K_KK_K_", "K_KYYK_K", "_KYYYYK_", "KYYYYYYK", "KYYYYYYK", "_KYYYYK_", "K_KYYK_K", "_K_KK_K_")),
+    "bell" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('B'), listOf("___KK___", "__KYYK__", "_KYYYYK_", "_KYYYYK_", "_KYYYYK_", "KYYYYYYK", "KKKKKKKK", "___KK___")),
+    "tree" to ThreadPixelAvatarSpec(ThreadPixelAvatarPalette.getValue('L'), listOf("___KK___", "__KGGK__", "_KGGGGK_", "KGGGGGGK", "KGGGGGGK", "_KKGGKK_", "__KOOK__", "___KK___"))
+)
+
+private val ThreadPixelAvatarRandomOptions = listOf(
+    ThreadPixelAvatarPalette.getValue('C') to 'K',
+    ThreadPixelAvatarPalette.getValue('Y') to 'K',
+    ThreadPixelAvatarPalette.getValue('L') to 'K',
+    ThreadPixelAvatarPalette.getValue('P') to 'W',
+    ThreadPixelAvatarPalette.getValue('V') to 'K',
+    Color(0xFF1E1E1C) to 'C',
+    Color(0xFF1E1E1C) to 'G',
+    Color(0xFF1E1E1C) to 'P',
+    Color(0xFF1E1E1C) to 'Y',
+    Color(0xFF1E1E1C) to 'V',
+    ThreadPixelAvatarPalette.getValue('O') to 'K',
+    ThreadPixelAvatarPalette.getValue('C') to 'W'
+)
+
+private fun String.toThreadPixelAvatarSpec(): ThreadPixelAvatarSpec? =
+    removeThreadPrefixOrNull(ThreadPixelAvatarProtocolPrefix)?.let {
+        ThreadPixelAvatarFixedSpecs[it] ?: ThreadPixelAvatarFixedSpecs.getValue(ThreadPixelAvatarDefaultKey)
+    } ?: removeThreadPrefixOrNull(ThreadPixelAvatarRandomPrefix)?.let(::randomThreadPixelAvatar)
+
+private fun String.removeThreadPrefixOrNull(prefix: String): String? =
+    takeIf { startsWith(prefix) }?.removePrefix(prefix)?.ifBlank { null }
+
+private fun randomThreadPixelAvatar(seed: String): ThreadPixelAvatarSpec {
+    val random = ThreadPixelAvatarRandom(threadPixelHash(seed))
+    val (background, fill) = ThreadPixelAvatarRandomOptions[(random.next() * ThreadPixelAvatarRandomOptions.size).toInt()]
+    val grid = List(ThreadPixelAvatarGridSize.toInt()) {
+        val left = List((ThreadPixelAvatarGridSize / 2).toInt()) {
+            if (random.next() < 0.45) fill else '_'
+        }
+        (left + left.asReversed()).joinToString(separator = "")
+    }
+    return ThreadPixelAvatarSpec(background, grid)
+}
+
+private fun threadPixelHash(input: String): Int {
+    var hash = 0
+    input.forEach { character ->
+        hash = (hash shl 5) - hash + character.code
+    }
+    return hash
+}
+
+private class ThreadPixelAvatarRandom(seed: Int) {
+    private var value = seed
+
+    fun next(): Double {
+        value += 1831565813
+        var mixed = (value xor (value ushr 15)) * (1 or value)
+        mixed = (mixed + ((mixed xor (mixed ushr 7)) * (61 or mixed))) xor mixed
+        val unsigned = (mixed xor (mixed ushr 14)).toLong() and 0xffffffffL
+        return unsigned.toDouble() / 4294967296.0
     }
 }
 
