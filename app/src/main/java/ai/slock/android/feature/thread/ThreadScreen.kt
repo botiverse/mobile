@@ -6244,7 +6244,13 @@ fun ThreadComposerBar(
     SlockKuiklyPageIsland(
             pageName = SlockKuiklyActivity.PAGE_THREAD_COMPOSER,
             pageData = JSONObject().put("payload", payload.toString()),
-            modifier = modifier.fillMaxWidth()
+            modifier =
+                    modifier.fillMaxWidth()
+                            .heightIn(
+                                    min = ThreadComposerIslandMinHeight,
+                                    max = ThreadComposerIslandMaxHeight
+                            ),
+            supportsPageDataUpdates = true
     ) { event ->
         when (event.optString("action")) {
             "change" -> {
@@ -6276,6 +6282,9 @@ fun ThreadComposerBar(
         }
     }
 }
+
+private val ThreadComposerIslandMinHeight = 156.dp
+private val ThreadComposerIslandMaxHeight = 220.dp
 
 @Composable
 private fun threadComposerBottomPadding(): Dp = SlockSpacing.Xs

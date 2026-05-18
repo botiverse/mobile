@@ -16,11 +16,12 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.heightIn
+import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
@@ -36,11 +37,14 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 internal const val THREAD_COMPOSER_PAGE = "compose_thread_composer"
+private const val THREAD_COMPOSER_PAGE_DATA_EVENT = "slockPageData"
 private val threadComposerJson = Json { ignoreUnknownKeys = true }
 
 @Page(THREAD_COMPOSER_PAGE, supportInLocal = true)
@@ -101,11 +105,29 @@ private fun ThreadComposerScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
     val params = pager.pageData.params
+    var payloadText by remember { mutableStateOf(params.optString("payload")) }
+    var instanceId by remember { mutableStateOf(params.optString("instanceId")) }
+    androidx.compose.runtime.DisposableEffect(pager) {
+        val observer =
+            object : IPagerEventObserver {
+                override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
+                    if (pagerEvent != THREAD_COMPOSER_PAGE_DATA_EVENT) return
+                    eventData.optString("payload").takeIf { it.isNotBlank() }?.let {
+                        payloadText = it
+                    }
+                    eventData.optString("instanceId").takeIf { it.isNotBlank() }?.let {
+                        instanceId = it
+                    }
+                }
+            }
+        pager.addPagerEventObserver(observer)
+        onDispose { pager.removePagerEventObserver(observer) }
+    }
     val payload =
         rememberThreadComposerPayload(
-            payload = params.optString("payload"),
+            payload = payloadText,
             fallbackPageData = params.toString(),
-            instanceId = params.optString("instanceId")
+            instanceId = instanceId
         )
     LaunchedEffect(payload.instanceId, payload.syncNonce) {
         bridge.log(
@@ -301,14 +323,9 @@ internal fun ThreadComposerContent(
                 }
             }
         }
-        Box(
-            modifier = Modifier.fillMaxWidth().padding(end = 4.dp, bottom = 4.dp)
-        ) {
-            Box(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 4.dp, top = 4.dp).background(SlockColor.ShadowBlack)
-            )
+        Box(modifier = Modifier.fillMaxWidth().padding(end = 6.dp, bottom = 6.dp).background(SlockColor.ShadowBlack)) {
             Column(
-                modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(end = 6.dp, bottom = 6.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 TextField(
@@ -359,10 +376,10 @@ internal fun ThreadComposerContent(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ComposerMiniButton("image-plus", "Image", payload.enabled) {
+                        ComposerIconButton("image-plus", payload.enabled) {
                             onEvent("attachImage", null, null, null)
                         }
-                        ComposerMiniButton("paperclip", "File", payload.enabled) {
+                        ComposerIconButton("paperclip", payload.enabled) {
                             onEvent("attachFile", null, null, null)
                         }
                     }
@@ -501,22 +518,24 @@ private fun ComposerSuggestionRow(
 }
 
 @Composable
-private fun ComposerMiniButton(icon: String, label: String, enabled: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.EmptyStateGray)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        SlockLucideIcon(icon, modifier = Modifier.size(14.dp), color = "#FF000000")
-        Text(
-            text = label,
-            style = SlockType.Caption.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
-        )
+private fun ComposerIconButton(
+    icon: String,
+    enabled: Boolean,
+    backgroundColor: Color = SlockColor.SurfaceWhite,
+    onClick: () -> Unit
+) {
+    Box(modifier = Modifier.size(44.dp).padding(end = 4.dp, bottom = 4.dp)) {
+        Box(Modifier.fillMaxSize().offset(x = 4.dp, y = 4.dp).background(SlockColor.ShadowBlack))
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(if (enabled) backgroundColor else SlockColor.EmptyStateGray)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .clickable(enabled = enabled, onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            SlockLucideIcon(icon, modifier = Modifier.size(20.dp), color = "#FF000000")
+        }
     }
 }
 
@@ -553,22 +572,12 @@ private fun ComposerSendButton(
     sending: Boolean,
     onClick: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .width(68.dp)
-            .background(if (enabled) SlockColor.AccentPink else SlockColor.EmptyStateGray)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = if (sending) "Sending" else "Send",
-            style = SlockType.Button.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
-            maxLines = 1
-        )
-    }
+    ComposerIconButton(
+        icon = "send",
+        enabled = enabled,
+        backgroundColor = SlockColor.AccentPink,
+        onClick = onClick
+    )
 }
 
 @Composable
