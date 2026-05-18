@@ -6925,13 +6925,6 @@ private fun buildSharedThreadComposerPayload(
                         }
                     }
             )
-            put(
-                    "hookLabels",
-                    JSONArray().apply {
-                        put("Android key hooks pending")
-                        put("Android toolbar pending")
-                    }
-            )
         }
 
 private fun ComposerState.toSharedComposerMode(): String =

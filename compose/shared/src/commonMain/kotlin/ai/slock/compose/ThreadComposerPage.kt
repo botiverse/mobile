@@ -16,14 +16,16 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
-import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
@@ -323,9 +325,14 @@ internal fun ThreadComposerContent(
                 }
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().padding(end = 6.dp, bottom = 6.dp).background(SlockColor.ShadowBlack)) {
+        Column(
+            modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)
+        ) {
+            Spacer(
+                modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack)
+            )
             Column(
-                modifier = Modifier.fillMaxWidth().padding(end = 6.dp, bottom = 6.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 TextField(
@@ -369,12 +376,12 @@ internal fun ThreadComposerContent(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Row(
                         modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         ComposerIconButton("image-plus", payload.enabled) {
                             onEvent("attachImage", null, null, null)
@@ -524,18 +531,22 @@ private fun ComposerIconButton(
     backgroundColor: Color = SlockColor.SurfaceWhite,
     onClick: () -> Unit
 ) {
-    Box(modifier = Modifier.size(44.dp).padding(end = 4.dp, bottom = 4.dp)) {
-        Box(Modifier.fillMaxSize().offset(x = 4.dp, y = 4.dp).background(SlockColor.ShadowBlack))
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(if (enabled) backgroundColor else SlockColor.EmptyStateGray)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .clickable(enabled = enabled, onClick = onClick),
-            contentAlignment = Alignment.Center
-        ) {
-            SlockLucideIcon(icon, modifier = Modifier.size(20.dp), color = "#FF000000")
-        }
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .background(
+                if (enabled) backgroundColor else SlockColor.EmptyStateGray,
+                RoundedCornerShape(SlockRadius.Xs)
+            )
+            .border(
+                SlockStroke.Default,
+                SlockColor.BorderBlack,
+                RoundedCornerShape(SlockRadius.Xs)
+            )
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockLucideIcon(icon, modifier = Modifier.size(16.dp), color = "#FF000000")
     }
 }
 
