@@ -101,6 +101,10 @@ interface SlockApi {
         priority: SlockRequestPriority,
         channelId: String
     ): ApiResponse
+    suspend fun leaveChannel(
+        priority: SlockRequestPriority,
+        channelId: String
+    ): ApiResponse
     suspend fun archiveChannel(
         priority: SlockRequestPriority,
         channelId: String

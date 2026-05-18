@@ -62,6 +62,7 @@ class SlockApiClient(
     suspend fun channelMembers(priority: SlockRequestPriority, channelId: String): KmpHttpResponse = get(priority, "channels/$channelId/members")
     suspend fun createChannel(priority: SlockRequestPriority, body: String): KmpHttpResponse = post(priority, "channels", body)
     suspend fun joinChannel(priority: SlockRequestPriority, channelId: String): KmpHttpResponse = post(priority, "channels/$channelId/join")
+    suspend fun leaveChannel(priority: SlockRequestPriority, channelId: String): KmpHttpResponse = post(priority, "channels/$channelId/leave")
     suspend fun archiveChannel(priority: SlockRequestPriority, channelId: String): KmpHttpResponse = post(priority, "channels/$channelId/archive")
     suspend fun deleteChannel(priority: SlockRequestPriority, channelId: String): KmpHttpResponse = delete(priority, "channels/$channelId")
     suspend fun addChannelMember(priority: SlockRequestPriority, channelId: String, body: String): KmpHttpResponse =

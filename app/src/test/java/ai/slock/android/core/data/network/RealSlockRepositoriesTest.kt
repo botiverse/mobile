@@ -1340,6 +1340,25 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
+    fun channelRepositoryLeavesChannelWithWebEndpoint() {
+        val api = FakeSlockApi(leaveChannelJson = """{"ok":true}""")
+        val repository = RealChannelRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = api,
+            warningLogger = {}
+        )
+
+        val result = runSuspend { repository.leaveChannel(ChannelId("channel-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val data = (result as DataResult.Content).data
+        assertEquals("channel-1", data.channelId.value)
+        assertEquals(true, data.left)
+        assertEquals(listOf("channel-1"), api.leftChannelIds)
+        assertEquals(emptyList<String>(), api.removedMembers)
+    }
+
+    @Test
     fun channelRepositoryArchivesChannelWithWebEndpoint() {
         val api = FakeSlockApi(
             archiveChannelJson = """{"id":"channel-1","name":"android-dev","archived":true}"""
@@ -2457,6 +2476,7 @@ class RealSlockRepositoriesTest {
         var channelsJson: String = """{"channels":[]}""",
         private val createChannelJson: String = """{"id":"channel-1","name":"android-dev"}""",
         private val joinChannelJson: String = """{"ok":true}""",
+        private val leaveChannelJson: String = """{"ok":true}""",
         private val serverMembersJson: String = """{"members":[]}""",
         private val memberProfileJson: String = """{}""",
         private val updateAgentJson: String = """{"agent":{}}""",
@@ -2495,6 +2515,7 @@ class RealSlockRepositoriesTest {
         val addedMembers = mutableListOf<String>()
         val removedMembers = mutableListOf<String>()
         val joinedChannelIds = mutableListOf<String>()
+        val leftChannelIds = mutableListOf<String>()
         val archivedChannelIds = mutableListOf<String>()
         val deletedChannelIds = mutableListOf<String>()
         val seqReadRequests = mutableListOf<String>()
@@ -2560,6 +2581,11 @@ class RealSlockRepositoriesTest {
         override suspend fun joinChannel(priority: SlockRequestPriority, channelId: String): ApiResponse {
             joinedChannelIds += channelId
             return response(joinChannelJson)
+        }
+
+        override suspend fun leaveChannel(priority: SlockRequestPriority, channelId: String): ApiResponse {
+            leftChannelIds += channelId
+            return response(leaveChannelJson)
         }
 
         override suspend fun archiveChannel(priority: SlockRequestPriority, channelId: String): ApiResponse {

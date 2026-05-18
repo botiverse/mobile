@@ -164,6 +164,7 @@ interface ChannelRepository {
     suspend fun openUserDirectMessage(userId: MemberId): DataResult<OpenDirectMessageResult>
     suspend fun createChannel(request: CreateChannelRequest): DataResult<CreateChannelResult>
     suspend fun joinChannel(channelId: ChannelId): DataResult<ChannelJoinResult>
+    suspend fun leaveChannel(channelId: ChannelId): DataResult<ChannelLeaveResult>
     suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult>
     suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult>
 }
@@ -291,6 +292,11 @@ data class SettingsServerDeleteRequest(
 data class SettingsServerActionResult(
     val success: Boolean,
     val message: String? = null
+)
+
+data class ChannelLeaveResult(
+    val channelId: ChannelId,
+    val left: Boolean = true
 )
 
 data class CreateServerRequest(

@@ -86,6 +86,7 @@ internal data class KuiklyThreadScreenPayload(
     val canSend: Boolean = true,
     val membersCount: Int = 0,
     val members: List<KuiklyThreadMemberItem> = emptyList(),
+    val canAddMembers: Boolean = true,
     val settingsActions: List<KuiklyThreadSettingsAction> = emptyList(),
     val showMembersAction: Boolean = true,
     val showSettingsAction: Boolean = true,
@@ -337,10 +338,15 @@ private fun ThreadPageContent(
                 ThreadMembersModal(
                     members = payload.members,
                     membersCount = payload.membersCount,
+                    canAddMembers = payload.canAddMembers,
                     onDismiss = { activeModal = null },
-                    onOpenMember = { memberId ->
+                    onAddMember = {
                         activeModal = null
-                        onThreadEvent("openMember", memberId, null, null)
+                        onThreadEvent("addMember", null, null, null)
+                    },
+                    onManageMember = { memberId ->
+                        activeModal = null
+                        onThreadEvent("manageMember", memberId, null, null)
                     }
                 )
             "settings" ->
@@ -877,14 +883,22 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
 private fun ThreadMembersModal(
     members: List<KuiklyThreadMemberItem>,
     membersCount: Int,
+    canAddMembers: Boolean,
     onDismiss: () -> Unit,
-    onOpenMember: (String) -> Unit
+    onAddMember: () -> Unit,
+    onManageMember: (String) -> Unit
 ) {
     SlockModalLayer(
         title = "Thread members",
         subtitle = "$membersCount people in this conversation",
         onDismiss = onDismiss
     ) {
+        if (canAddMembers) {
+            Row(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
+                Spacer(modifier = Modifier.weight(1f))
+                ThreadHeaderAction(label = "Add member", onClick = onAddMember)
+            }
+        }
         if (members.isEmpty()) {
             ThreadModalEmptyState(
                 title = "No member details loaded",
@@ -893,7 +907,7 @@ private fun ThreadMembersModal(
         } else {
             Column(modifier = Modifier.fillMaxWidth()) {
                 members.forEach { member ->
-                    ThreadMemberRow(member = member, onClick = { onOpenMember(member.id) })
+                    ThreadMemberRow(member = member, onClick = { onManageMember(member.id) })
                 }
             }
         }

@@ -14,6 +14,7 @@ class ThreadPayloadTest {
                       "instanceId": "thread-1",
                       "title": "对话流专修",
                       "membersCount": 2,
+                      "canAddMembers": false,
                       "members": [
                         {"id": "u1", "displayName": "Artin", "handle": "artin", "roleLabel": "Owner"},
                         {"id": "a1", "displayName": "Android Bot", "kind": "agent", "avatarLabel": "AB"}
@@ -31,6 +32,7 @@ class ThreadPayloadTest {
         assertEquals("thread-1", payload.instanceId)
         assertEquals("对话流专修", payload.title)
         assertEquals(2, payload.membersCount)
+        assertEquals(false, payload.canAddMembers)
         assertEquals("Artin", payload.members.first().displayName)
         assertEquals("agent", payload.members[1].kind)
         assertEquals("notifications", payload.settingsActions.first().id)

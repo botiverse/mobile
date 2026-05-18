@@ -14,8 +14,12 @@ import ai.slock.compose.network.SlockApiClient
 import ai.slock.compose.network.SlockRequestPriority
 import ai.slock.compose.network.SlockRequestScheduler
 import ai.slock.compose.network.TimeoutConfig
+import ai.slock.compose.network.applyAuthTokens
 import ai.slock.compose.network.createPriorityHttpClient
+import ai.slock.compose.network.toKmpHttpResponse
 import io.ktor.client.HttpClient
+import io.ktor.client.request.post
+import io.ktor.client.request.url
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import okhttp3.MultipartBody
@@ -36,7 +40,7 @@ class ComposeSlockApiAdapter(
                         maxRequests = 6,
                         maxRequestsPerHost = 6
                 ),
-        foregroundHttpClient: HttpClient =
+        private val foregroundHttpClient: HttpClient =
                 createPriorityHttpClient(
                         config = HttpClientConfig(timeout = TimeoutConfig()),
                         maxRequests = 12,
@@ -48,7 +52,7 @@ class ComposeSlockApiAdapter(
                         maxRequests = 8,
                         maxRequestsPerHost = 8
                 ),
-        backgroundHttpClient: HttpClient =
+        private val backgroundHttpClient: HttpClient =
                 createPriorityHttpClient(
                         config = HttpClientConfig(timeout = TimeoutConfig()),
                         maxRequests = 4,
@@ -133,6 +137,17 @@ class ComposeSlockApiAdapter(
     override suspend fun createChannel(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
             request(priority) { client.createChannel(priority, body.bodyAsString()) }
     override suspend fun joinChannel(priority: SlockRequestPriority, channelId: String): ApiResponse = request(priority) { client.joinChannel(priority, channelId) }
+    override suspend fun leaveChannel(priority: SlockRequestPriority, channelId: String): ApiResponse =
+            request(priority) {
+                authTransport
+                        .executeWithAuthRetry { tokens ->
+                            priority.httpClient().post {
+                                url("${baseUrl.trimEnd('/')}/channels/$channelId/leave")
+                                applyAuthTokens(tokens)
+                            }
+                        }
+                        .toKmpHttpResponse()
+            }
     override suspend fun archiveChannel(priority: SlockRequestPriority, channelId: String): ApiResponse =
             request(priority) { client.archiveChannel(priority, channelId) }
     override suspend fun deleteChannel(priority: SlockRequestPriority, channelId: String): ApiResponse = request(priority) { client.deleteChannel(priority, channelId) }
@@ -230,6 +245,13 @@ class ComposeSlockApiAdapter(
         writeTo(buffer)
         return buffer.readUtf8()
     }
+
+    private fun SlockRequestPriority.httpClient(): HttpClient =
+            when (this) {
+                SlockRequestPriority.Foreground -> foregroundHttpClient
+                SlockRequestPriority.Visible -> visibleHttpClient
+                SlockRequestPriority.Background -> backgroundHttpClient
+            }
 
     private fun MultipartBody.Part.toKmpMultipartFile(): MultipartFile {
         val body = body

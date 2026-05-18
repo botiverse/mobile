@@ -31,6 +31,7 @@ import ai.slock.android.core.data.repository.ChannelDeleteResult
 import ai.slock.android.core.data.repository.ChannelFileItem
 import ai.slock.android.core.data.repository.ChannelFilesSnapshot
 import ai.slock.android.core.data.repository.ChannelJoinResult
+import ai.slock.android.core.data.repository.ChannelLeaveResult
 import ai.slock.android.core.data.repository.ChannelMemberActionResult
 import ai.slock.android.core.data.repository.ChannelMemberSnapshot
 import ai.slock.android.core.data.repository.ChannelRepository
@@ -286,6 +287,27 @@ class RealChannelRepository(
         ).also { result ->
             (result as? DataResult.Content)?.data?.channel?.let { channel ->
                 rememberConversationSummaries(context.server.id, listOf(channel))
+            }
+        }
+    }
+
+    override suspend fun leaveChannel(channelId: ChannelId): DataResult<ChannelLeaveResult> {
+        val context = currentContext() ?: return authRequired()
+        if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
+        return execute(
+                emptyReason = EmptyReason.NoChannels,
+                block = { api.leaveChannel(currentSlockApiPriority(), channelId.value) },
+                source = "channel_leave",
+                warningLogger = warningLogger,
+                mapper = { json ->
+                    ChannelLeaveResult(
+                            channelId = channelId,
+                            left = json.boolean("left", "ok", "success") ?: true
+                    )
+                }
+        ).also { result ->
+            if (result is DataResult.Content) {
+                removeConversationSummary(context.server.id, channelId)
             }
         }
     }

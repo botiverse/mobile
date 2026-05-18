@@ -255,6 +255,11 @@ data class ChannelJoinResult(
     val channel: ConversationSummary? = null
 )
 
+data class ChannelLeaveResult(
+    val channelId: ChannelId,
+    val left: Boolean = true
+)
+
 data class ChannelArchiveResult(
     val channelId: ChannelId,
     val archived: Boolean = true,

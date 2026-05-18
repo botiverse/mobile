@@ -444,6 +444,21 @@ fun ThreadScreen(
                 onRefreshThread = onRefreshThread,
                 onOpenMessageThread = onOpenMessageThread,
                 onOpenMemberProfile = onOpenMemberProfile,
+                onAddThreadMember = {
+                    selectedChannelMemberDetailId = null
+                    showAddMember = true
+                    addMemberQuery = ""
+                    selectedAddMemberId = null
+                    addMemberError = false
+                    showMembersModal = true
+                },
+                onManageThreadMember = { memberId ->
+                    selectedChannelMemberDetailId = memberId
+                    showAddMember = false
+                    selectedAddMemberId = null
+                    addMemberError = false
+                    showMembersModal = true
+                },
                 onOpenTask = onOpenTask,
                 onRetryFiles = onRetryFiles,
                 onLoadMoreFiles = onLoadMoreFiles,
@@ -968,6 +983,8 @@ private fun ThreadKuiklyScreen(
         onRefreshThread: () -> Unit,
         onOpenMessageThread: (Message) -> Unit,
         onOpenMemberProfile: (MemberProfile) -> Unit,
+        onAddThreadMember: () -> Unit,
+        onManageThreadMember: (String) -> Unit,
         onOpenTask: (TaskSummary) -> Unit,
         onRetryFiles: () -> Unit,
         onLoadMoreFiles: () -> Unit,
@@ -1107,6 +1124,11 @@ private fun ThreadKuiklyScreen(
                             .takeIf { it.isNotBlank() }
                             ?.let(membersById::get)
                             ?.let(onOpenMemberProfile)
+            "addMember" -> onAddThreadMember()
+            "manageMember" ->
+                    event.optString("itemId")
+                            .takeIf { it.isNotBlank() }
+                            ?.let(onManageThreadMember)
             "openTask" ->
                     event.optString("itemId")
                             .takeIf { it.isNotBlank() }
@@ -1204,6 +1226,13 @@ private fun ThreadUiState.toKuiklyThreadPagePayload(
                     .put("showReplyActions", showReplyActions && replyHeaderContext == null)
                     .put("membersCount", membersCount)
                     .put("showComposer", showComposer)
+                    .put(
+                            "canAddMembers",
+                            (membersPanelState.loadState as? ScreenLoadState.Content)
+                                    ?.data
+                                    ?.canAddMembers
+                                    ?: true
+                    )
                     .put(
                             "showSettingsAction",
                             showSettingsAction && replyHeaderContext == null && parentJumpTarget == null

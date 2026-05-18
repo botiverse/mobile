@@ -437,6 +437,9 @@ class RealSettingsRepositoryTest {
         override suspend fun joinChannel(priority: SlockRequestPriority, channelId: String): ApiResponse =
             response("""{"ok":true}""")
 
+        override suspend fun leaveChannel(priority: SlockRequestPriority, channelId: String): ApiResponse =
+            response("""{"ok":true}""")
+
         override suspend fun archiveChannel(priority: SlockRequestPriority, channelId: String): ApiResponse =
             response("""{"ok":true}""")
 

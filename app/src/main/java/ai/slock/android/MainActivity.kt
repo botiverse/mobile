@@ -2785,10 +2785,7 @@ private fun SlockAppContent(
 
     fun leaveSelectedThreadChannel(targetChannelId: ChannelId? = null) {
         val channelId = targetChannelId ?: selectedThreadChannelId()
-        val currentMember = currentAuthSession?.user?.toMemberProfile()
-                ?: (homeState.loadState as? ScreenLoadState.Content)?.data?.currentMember
         if (channelId == null ||
-                        currentMember == null ||
                         archiveChannelStatus == ThreadSettingsModalStatus.Deleting
         ) {
             return
@@ -2801,18 +2798,11 @@ private fun SlockAppContent(
                             key = "channel:${channelId.value}:leave",
                             reason = "leave_channel"
                     ) {
-                        memberRepository.removeChannelMember(
-                                priority = SlockRequestPriority.Foreground,
-                                RemoveChannelMemberRequest(
-                                        channelId = channelId,
-                                        memberId = currentMember.id,
-                                        kind = currentMember.kind
-                                )
-                        )
+                        channelRepository.leaveChannel(channelId)
                     }
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                     "SlockChannelLeave",
-                    "leave_result channelId=${channelId.value} memberId=${currentMember.id.value} kind=${currentMember.kind} result=${result.realtimeResultName()} code=${result.readDiagnosticCode()}"
+                    "leave_result channelId=${channelId.value} result=${result.realtimeResultName()} code=${result.readDiagnosticCode()}"
             )
             when (result) {
                 is DataResult.Content -> {

@@ -31,6 +31,7 @@ import ai.slock.android.core.data.repository.ChannelMemberSnapshot
 import ai.slock.android.core.data.repository.ChannelArchiveResult
 import ai.slock.android.core.data.repository.ChannelDeleteResult
 import ai.slock.android.core.data.repository.ChannelJoinResult
+import ai.slock.android.core.data.repository.ChannelLeaveResult
 import ai.slock.android.core.data.repository.ChannelSnapshot
 import ai.slock.android.core.data.repository.ChannelUnreadSnapshot
 import ai.slock.android.core.data.repository.ConversationRepository
@@ -804,6 +805,11 @@ class MockChannelRepository(
                 .firstOrNull { it.channelId == channelId }
                 ?.copy(joined = true)
             ChannelJoinResult(channelId = channelId, joined = true, channel = channel)
+        }
+
+    override suspend fun leaveChannel(channelId: ChannelId): DataResult<ChannelLeaveResult> =
+        resultFor(scenario, EmptyReason.NoChannels) {
+            ChannelLeaveResult(channelId = channelId, left = true)
         }
 
     override suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult> =
