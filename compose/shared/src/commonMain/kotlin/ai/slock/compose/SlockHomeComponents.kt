@@ -162,6 +162,7 @@ internal data class SlockHomePayload(
     val contentRefreshing: Boolean = false,
     val contentRefreshEnabled: Boolean = true,
     val applyTopSafeArea: Boolean = true,
+    val activitySelected: Boolean = false,
     val bottomContentPaddingDp: Float = 24f,
     val labels: SlockHomeShellLabels = SlockHomeShellLabels()
 )
@@ -212,6 +213,7 @@ private fun SlockHomePageContent() {
         contentRefreshing = payload.contentRefreshing,
         contentRefreshEnabled = payload.contentRefreshEnabled,
         applyTopSafeArea = payload.applyTopSafeArea,
+        activitySelected = payload.activitySelected,
         showBottomBar = false,
         bottomContentPadding = payload.bottomContentPaddingDp.dp,
         outerPadding = 0.dp,
@@ -257,6 +259,7 @@ fun SlockStructuralHomeShell(
     contentRefreshing: Boolean = false,
     contentRefreshEnabled: Boolean = true,
     applyTopSafeArea: Boolean = true,
+    activitySelected: Boolean = false,
     selectedTabKey: String = "home",
     showBottomBar: Boolean = true,
     bottomContentPadding: Dp = if (showBottomBar) SlockSize.BottomBarHeight + SlockSpacing.Md else SlockSpacing.Lg,
@@ -324,7 +327,15 @@ fun SlockStructuralHomeShell(
                     }
                     item { Spacer(Modifier.height(SlockSpacing.Md)) }
                     item { SidebarActionRow("search", labels.search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = onSearchClick) }
-                    item { SidebarActivityRow(labels.inbox, inboxUnreadCount.takeIf { it > 0 }?.toString(), modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = onInboxClick) }
+                    item {
+                        SidebarActivityRow(
+                            labels.inbox,
+                            inboxUnreadCount.takeIf { it > 0 }?.toString(),
+                            selected = activitySelected,
+                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                            onClick = onInboxClick
+                        )
+                    }
                     item { SidebarActionRow("bookmark", labels.saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = onSavedClick) }
                     item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                     item {
@@ -587,7 +598,17 @@ private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean
 }
 
 @Composable
-private fun SidebarActivityRow(label: String, count: String?, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+private fun SidebarActivityRow(label: String, count: String?, selected: Boolean = false, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    if (!selected) {
+        SidebarActionRow(
+            icon = "activity",
+            label = label,
+            modifier = modifier.padding(bottom = SidebarActivityBottomGap),
+            trailingText = count,
+            onClick = onClick
+        )
+        return
+    }
     Box(
         modifier = modifier
             .fillMaxWidth()

@@ -71,6 +71,7 @@ fun SlockStructuralHomeShell(
     serverSwitcherExpanded: Boolean = false,
     contentRefreshing: Boolean = false,
     contentRefreshEnabled: Boolean = true,
+    activitySelected: Boolean = false,
     selectedTabKey: String = "home",
     showBottomBar: Boolean = true,
     bottomContentPadding: Dp = 24.dp,
@@ -119,6 +120,7 @@ fun SlockStructuralHomeShell(
                 .put("serverSwitcherExpanded", serverSwitcherExpanded)
                 .put("contentRefreshing", contentRefreshing)
                 .put("contentRefreshEnabled", contentRefreshEnabled)
+                .put("activitySelected", activitySelected)
                 .put("applyTopSafeArea", false)
                 .put("bottomContentPaddingDp", bottomContentPadding.value)
                 .put("labels", labels)
