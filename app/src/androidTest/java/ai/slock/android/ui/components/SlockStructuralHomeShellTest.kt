@@ -27,6 +27,7 @@ import ai.slock.android.ui.theme.SlockTheme
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.util.concurrent.atomic.AtomicInteger
 
 class SlockStructuralHomeShellTest {
     @get:Rule
@@ -79,10 +80,31 @@ class SlockStructuralHomeShellTest {
             }
         }
 
-        composeRule.onNodeWithText("Inbox").assertIsDisplayed()
+        composeRule.onNodeWithText("Activity").assertIsDisplayed()
         composeRule.onNodeWithText("Saved").assertIsDisplayed()
         composeRule.onNodeWithText("4").assertIsDisplayed()
         composeRule.onNodeWithText("12").assertIsDisplayed()
+    }
+
+    @Test
+    fun activityClickDoesNotCollapseChannels() {
+        val activityClicks = AtomicInteger(0)
+        composeRule.setContent {
+            SlockTheme {
+                SlockStructuralHomeShell(
+                    channels = listOf(SlockHomeConversationItem(id = "channel-a", name = "alpha")),
+                    directMessages = emptyList(),
+                    selectedChannelId = null,
+                    showBottomBar = false,
+                    onInboxClick = { activityClicks.incrementAndGet() }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Activity").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 3_000) { activityClicks.get() == 1 }
+        composeRule.onNodeWithText("alpha").assertIsDisplayed()
     }
 
     @Test

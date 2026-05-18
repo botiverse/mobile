@@ -1462,7 +1462,7 @@ private fun SlockAppContent(
                         when (homeRoute) {
                             HomeRoute.Shell -> "home"
                             HomeRoute.Thread -> "thread:${selectedThreadId.orEmpty()}"
-                            HomeRoute.Inbox -> "inbox:${inboxFilter.name.lowercase()}"
+                            HomeRoute.Inbox -> "activity:${inboxFilter.name.lowercase()}"
                             HomeRoute.FollowedThreads -> "followed_threads"
                             HomeRoute.Saved -> "saved"
                             HomeRoute.Search -> "search:${searchQuery.isNotBlank()}"
@@ -11534,8 +11534,7 @@ private fun HomeStructuralContent(
                 servers = servers,
                 channels = content.channels.map { it.toHomeConversationItem() },
                 directMessages = content.directMessages.map { it.toHomeConversationItem() },
-                selectedChannelId = selectedThreadId
-                                ?: content.channels.firstOrNull()?.threadId?.value,
+                selectedChannelId = selectedThreadId,
                 serverUnreadCount = content.serverUnreadCount,
                 inboxUnreadCount = content.serverUnreadCount,
                 savedCount = savedState.visibleTotalCount() ?: 0,

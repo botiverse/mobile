@@ -63,7 +63,7 @@ fun SlockStructuralHomeShell(
     servers: List<SlockServerSwitcherItem> = emptyList(),
     channels: List<SlockHomeConversationItem> = emptyList(),
     directMessages: List<SlockHomeConversationItem> = emptyList(),
-    selectedChannelId: String? = "android-dev",
+    selectedChannelId: String? = null,
     serverUnreadCount: Int = 5,
     inboxUnreadCount: Int = 0,
     savedCount: Int = 0,
