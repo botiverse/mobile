@@ -437,15 +437,20 @@ private fun HomeWorkspaceHeader(serverName: String, serverUnreadCount: Int, topS
     Box(modifier = Modifier.fillMaxWidth().height(topSafeArea + SlockSize.PageHeaderHeight).background(SlockColor.BrandYellow)) {
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack).align(Alignment.BottomCenter))
         Box(modifier = Modifier.padding(top = topSafeArea).height(SlockSize.PageHeaderHeight).padding(horizontal = SlockSpacing.Lg, vertical = SlockSpacing.Md).clickable(onClick = onServerBadgeClick)) {
-            SlockLogoBadge(text = serverName, showDropdown = true)
+            SlockLogoBadge(text = serverName, showDropdown = true, tilted = false)
             if (serverUnreadCount > 0) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
         }
     }
 }
 
 @Composable
-private fun SlockLogoBadge(text: String, modifier: Modifier = Modifier, showDropdown: Boolean = false) {
-    Box(modifier = modifier.padding(end = 2.dp, bottom = 2.dp).rotate(-2f)) {
+private fun SlockLogoBadge(text: String, modifier: Modifier = Modifier, showDropdown: Boolean = false, tilted: Boolean = true) {
+    val badgeModifier = if (tilted) {
+        modifier.padding(end = 2.dp, bottom = 2.dp).rotate(-2f)
+    } else {
+        modifier.padding(end = 2.dp, bottom = 2.dp)
+    }
+    Box(modifier = badgeModifier) {
         Box(Modifier.matchParentSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier = Modifier.background(SlockColor.TextBlack).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 16.dp, vertical = SlockSpacing.Sm),
