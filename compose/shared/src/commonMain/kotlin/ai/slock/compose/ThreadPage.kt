@@ -3,6 +3,7 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
 import ai.slock.compose.markdown.SlockMarkdownBody
+import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -78,6 +79,8 @@ internal data class KuiklyThreadScreenPayload(
     val showModeTabs: Boolean = true,
     val showReplyActions: Boolean = true,
     val alignOwnMessagesRight: Boolean = false,
+    val localOffsetMinutes: Int = 0,
+    val todayEpochDay: Long? = null,
     val messages: List<KuiklyThreadMessageItem> = emptyList(),
     val originMessage: KuiklyThreadMessageItem? = null,
     val originPreview: String? = null,
@@ -632,6 +635,7 @@ private fun ThreadMessagesList(
                     onTaskStatusChange = { taskId, status ->
                         onThreadEvent("setTaskStatus", taskId, null, status.key)
                     },
+                    timestampLabel = payload.formatTimestampLabel(payload.messages[index].timestampLabel),
                     onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) }
                 )
             }
@@ -701,6 +705,11 @@ private fun KuiklyThreadScreenPayload.latestMessageListItemIndex(): Int {
     return index + messages.lastIndex
 }
 
+internal fun KuiklyThreadScreenPayload.formatTimestampLabel(value: String): String =
+    todayEpochDay?.let { today ->
+        formatSlockTimestampLabel(value, localOffsetMinutes, today)
+    } ?: value
+
 private fun LazyListState.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
     if (latestItemIndex <= 0) return false
     val layoutInfo = layoutInfo
@@ -769,6 +778,7 @@ private fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
     alignOwnMessageRight: Boolean = false,
     showReplyAction: Boolean = true,
+    timestampLabel: String = message.timestampLabel,
     onShowActions: () -> Unit,
     onOpenMember: (String) -> Unit,
     onOpenThread: (String) -> Unit,
@@ -823,7 +833,7 @@ private fun ThreadMessageCard(
                             modifier = Modifier.weight(1f).clickable { onOpenMember(message.authorId) }
                         )
                         Text(
-                            text = message.timestampLabel,
+                            text = timestampLabel,
                             style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                             color = SlockColor.TextMutedGray,
                             maxLines = 1,
@@ -1180,6 +1190,7 @@ private fun ThreadOriginCard(
                         onOpenThread = {},
                         onOpenTask = {},
                         onTaskStatusChange = { _, _ -> },
+                        timestampLabel = payload.formatTimestampLabel(origin.timestampLabel),
                         onOpenAttachment = {}
                     )
                 } ?: payload.originPreview?.takeIf { it.isNotBlank() }?.let {

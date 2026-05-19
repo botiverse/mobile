@@ -96,6 +96,35 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun formatsRawTimestampInSharedThreadPayload() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "thread-1",
+                      "localOffsetMinutes": 480,
+                      "todayEpochDay": 20583,
+                      "messages": [
+                        {
+                          "id": "m1",
+                          "authorId": "u1",
+                          "authorName": "Artin",
+                          "timestampLabel": "2026-05-09 21:53:33.024426+00",
+                          "body": "raw utc timestamp"
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                fallbackPageData = "{}",
+                instanceId = "fallback"
+            )
+
+        assertEquals("2026-05-09 21:53:33.024426+00", payload.messages.first().timestampLabel)
+        assertEquals("05:53", payload.formatTimestampLabel(payload.messages.first().timestampLabel))
+    }
+
+    @Test
     fun parsesReplyContextFields() {
         val payload =
             parseThreadScreenPayload(

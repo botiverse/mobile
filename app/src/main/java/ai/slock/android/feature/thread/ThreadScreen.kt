@@ -1236,6 +1236,8 @@ private fun ThreadUiState.toKuiklyThreadPagePayload(
         currentMemberId: MemberId?,
         myMessageAlignment: MyMessageAlignmentPreference
 ): JSONObject {
+    val zoneId = ZoneId.systemDefault()
+    val today = LocalDate.now(zoneId)
     val originStatus =
             when {
                 replyHeaderContext == null -> "none"
@@ -1267,6 +1269,8 @@ private fun ThreadUiState.toKuiklyThreadPagePayload(
                     .put("showModeTabs", replyHeaderContext == null)
                     .put("showReplyActions", showReplyActions && replyHeaderContext == null)
                     .put("alignOwnMessagesRight", myMessageAlignment == MyMessageAlignmentPreference.Right)
+                    .put("localOffsetMinutes", zoneId.currentOffsetMinutes())
+                    .put("todayEpochDay", slockEpochDayForDate(today.year, today.monthValue, today.dayOfMonth))
                     .put("membersCount", membersCount)
                     .put("showComposer", showComposer)
                     .put(
@@ -1442,7 +1446,7 @@ private fun Message.toKuiklyThreadMessageJson(currentMemberId: MemberId?): JSONO
                 .put("avatarLabel", author.avatarLabel)
                 .putNullable("avatarWireValue", author.avatar?.wireValue ?: author.avatarUrl)
                 .putNullable("gravatarHash", author.gravatarHash)
-                .put("timestampLabel", timestampLabel.toThreadTimestampLabel())
+                .put("timestampLabel", timestampLabel)
                 .put("body", body)
                 .put("replyCount", replyCount)
                 .putNullable("taskId", task?.id?.value)
