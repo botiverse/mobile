@@ -406,29 +406,52 @@ fun SlockStructuralHomeShell(
 
 @Composable
 private fun HomePullRefreshIndicator(pullProgress: Float, refreshing: Boolean) {
-    var bounceStep by remember { mutableStateOf(0) }
+    var jumpStep by remember { mutableStateOf(0) }
     LaunchedEffect(refreshing) {
         if (!refreshing) {
-            bounceStep = 0
+            jumpStep = 0
             return@LaunchedEffect
         }
         while (true) {
-            bounceStep = (bounceStep + 1) % 4
-            delay(140)
+            jumpStep = (jumpStep + 1) % SlockRefreshLetters.length
+            delay(120)
         }
     }
-    val bounceOffset =
-        if (refreshing) {
-            when (bounceStep) {
-                1 -> (-12).dp
-                3 -> 7.dp
-                else -> 0.dp
-            }
-        } else {
-            ((1f - pullProgress.coerceIn(0f, 1f)) * 10f).dp
-        }
+    val pullOffset = ((1f - pullProgress.coerceIn(0f, 1f)) * 8f).dp
     Box(modifier = Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
-        SlockLogoBadge(text = "SLOCK", modifier = Modifier.offset(y = bounceOffset))
+        SlockJumpingLogoBadge(
+            activeIndex = if (refreshing) jumpStep else -1,
+            modifier = Modifier.offset(y = if (refreshing) 0.dp else pullOffset)
+        )
+    }
+}
+
+private const val SlockRefreshLetters = "SLOCK"
+
+@Composable
+private fun SlockJumpingLogoBadge(activeIndex: Int, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.padding(end = 2.dp, bottom = 2.dp).rotate(-2f)) {
+        Box(Modifier.matchParentSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
+        com.tencent.kuikly.compose.foundation.layout.Row(
+            modifier = Modifier.background(SlockColor.TextBlack).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 14.dp, vertical = SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            SlockRefreshLetters.forEachIndexed { index, letter ->
+                val letterOffset =
+                    when {
+                        activeIndex == index -> (-9).dp
+                        activeIndex >= 0 && (activeIndex + SlockRefreshLetters.length - 1) % SlockRefreshLetters.length == index -> 4.dp
+                        else -> 0.dp
+                    }
+                Text(
+                    letter.toString(),
+                    color = SlockColor.BrandYellow,
+                    style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp),
+                    modifier = Modifier.offset(y = letterOffset)
+                )
+            }
+        }
     }
 }
 
