@@ -274,8 +274,8 @@
     <string name="settings_notification_test_text">Mobile Settings can show local Android notifications.</string>
     <string name="settings_notification_channel_name">Settings test notifications</string>
     <string name="settings_notification_channel_description">Local test notifications from Mobile Settings.</string>
-    <string name="inbox_notification_channel_name">Inbox notifications</string>
-    <string name="inbox_notification_channel_description">Unread inbox updates from Slock.</string>
+    <string name="inbox_notification_channel_name">Activity notifications</string>
+    <string name="inbox_notification_channel_description">Unread activity updates from Slock.</string>
     <string name="inbox_notification_title">New message in %1$s</string>
     <string name="bottom_tab_home">Home</string>
     <string name="bottom_tab_tasks">Tasks</string>
