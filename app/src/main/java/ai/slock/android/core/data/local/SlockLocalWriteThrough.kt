@@ -286,12 +286,15 @@ class SlockLocalWriteThrough(
                     conversation
                 }
             }
-        (snapshot.channels + mergedDirectMessages).forEach { conversation ->
+        val homeConversations = snapshot.channels + mergedDirectMessages
+        val retainedHomeKeys = homeConversations.mapTo(mutableSetOf()) { it.homeProjectionKey() }
+        homeConversations.forEach { conversation ->
             store.upsertConversation(conversation, syncedAtMs, serverId)
         }
+        val prunedHomeRows = store.pruneHomeConversations(serverId, retainedHomeKeys)
         store.upsertMemberSnapshot(snapshot.currentMember, syncedAtMs, serverId)
         logger(
-            "write_home source=$source serverId=${serverId.value} channels=${snapshot.channels.size} directMessages=${snapshot.directMessages.size}"
+            "write_home source=$source serverId=${serverId.value} channels=${snapshot.channels.size} directMessages=${snapshot.directMessages.size} pruned=$prunedHomeRows"
         )
     }
 
@@ -312,6 +315,9 @@ class SlockLocalWriteThrough(
             agentStatus = agentStatus ?: previous.agentStatus,
             presenceMemberId = presenceMemberId ?: previous.presenceMemberId
         )
+
+    private fun ConversationSummary.homeProjectionKey(): String =
+        channelId?.value ?: threadId.value
 
     private fun List<TaskSummary>.toTaskSnapshot(): TaskSnapshot =
         TaskSnapshot(

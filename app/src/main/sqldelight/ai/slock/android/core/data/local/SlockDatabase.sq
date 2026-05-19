@@ -184,6 +184,12 @@ END,
 name COLLATE NOCASE ASC,
 id ASC;
 
+deleteHomeConversation:
+DELETE FROM local_conversation
+WHERE server_id = ?
+  AND id = ?
+  AND (kind = 'Channel' OR kind = 'DirectMessage');
+
 upsertConversation:
 INSERT OR REPLACE INTO local_conversation(
   id,

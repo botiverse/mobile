@@ -50,6 +50,7 @@ interface SlockLocalStore {
     fun getConversation(id: ThreadId): ConversationSummary?
     fun getHomeConversations(serverId: ServerId): LocalHomeConversations
     fun observeHomeConversations(serverId: ServerId): Flow<LocalHomeConversations>
+    fun pruneHomeConversations(serverId: ServerId, retainedKeys: Set<String>): Int
     fun clearConversationUnread(channelId: ChannelId, syncedAtMs: Long, serverId: ServerId? = null)
     fun getThreadTimeline(threadId: ThreadId, serverId: ServerId? = null): LocalThreadTimeline?
     fun observeThreadTimeline(threadId: ThreadId, serverId: ServerId? = null): Flow<LocalThreadTimeline?>
@@ -256,6 +257,19 @@ class SqlDelightSlockLocalStore(
             .mapToList(Dispatchers.IO)
             .map { getHomeConversations(serverId) }
             .onStart { emit(getHomeConversations(serverId)) }
+
+    override fun pruneHomeConversations(serverId: ServerId, retainedKeys: Set<String>): Int {
+        val home = getHomeConversations(serverId)
+        val stale = (home.channels + home.directMessages)
+            .filter { it.homeConversationKey() !in retainedKeys }
+        stale.forEach { conversation ->
+            queries.deleteHomeConversation(
+                server_id = serverId.value,
+                id = conversation.threadId.value
+            )
+        }
+        return stale.size
+    }
 
     override fun clearConversationUnread(channelId: ChannelId, syncedAtMs: Long, serverId: ServerId?) {
         val resolvedServerId = serverId ?: fallbackServerId

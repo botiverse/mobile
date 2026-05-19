@@ -185,6 +185,72 @@ class SlockLocalWriteThroughTest {
     }
 
     @Test
+    fun writeHomeResultPrunesStaleHomeConversationsMissingFromRefresh() {
+        val store = createInMemoryStore()
+        val logs = mutableListOf<String>()
+        val writer = SlockLocalWriteThrough(store, clock = { 42L }, logger = logs::add)
+        val server = ServerSummary(id = ServerId("server-1"), name = "Slock")
+        val currentMember = memberProfile("user-1", MemberKind.Human)
+        val retainedChannel = conversation("channel-1").copy(name = "general")
+        val staleChannel = conversation("d5865df7-41e5-4a01-9ba7-a96cad736197")
+            .copy(name = "d5865df7-41e5-4a01-9ba7-a96cad736197")
+        val retainedDm =
+            ConversationSummary(
+                threadId = ThreadId("dm-1"),
+                channelId = ChannelId("dm-1"),
+                kind = ConversationKind.DirectMessage,
+                name = "Cindy",
+                presence = ai.slock.android.core.model.Presence.Active,
+                presenceMemberId = MemberId("agent-1")
+            )
+        val staleDm =
+            ConversationSummary(
+                threadId = ThreadId("dm-stale"),
+                channelId = ChannelId("dm-stale"),
+                kind = ConversationKind.DirectMessage,
+                name = "Old DM"
+            )
+
+        writer.writeHomeResult(
+            DataResult.Content(
+                HomeSnapshot(
+                    server = server,
+                    currentMember = currentMember,
+                    channels = listOf(retainedChannel, staleChannel),
+                    directMessages = listOf(retainedDm, staleDm),
+                    unreadTotal = 0
+                )
+            ),
+            source = "seed_home"
+        )
+
+        writer.writeHomeResult(
+            DataResult.Content(
+                HomeSnapshot(
+                    server = server,
+                    currentMember = currentMember,
+                    channels = listOf(retainedChannel),
+                    directMessages = listOf(retainedDm.copy(presence = null, presenceMemberId = null)),
+                    unreadTotal = 0
+                )
+            ),
+            source = "refresh_home"
+        )
+
+        val cached =
+            writer.readHomeSnapshot(
+                serverId = ServerId("server-1"),
+                serverFallback = server,
+                currentMemberFallback = currentMember
+            )
+
+        assertEquals(listOf("general"), cached?.channels?.map { it.name })
+        assertEquals(listOf("Cindy"), cached?.directMessages?.map { it.name })
+        assertEquals(ai.slock.android.core.model.Presence.Active, cached?.directMessages?.single()?.presence)
+        assertTrue(logs.any { it.contains("write_home source=refresh_home") && it.contains("pruned=2") })
+    }
+
+    @Test
     fun writeAgentDirectMessagePresenceUpdatesHomeProjection() {
         val store = createInMemoryStore()
         val writer = SlockLocalWriteThrough(store, clock = { 42L })
