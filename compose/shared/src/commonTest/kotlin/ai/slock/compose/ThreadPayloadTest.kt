@@ -71,6 +71,7 @@ class ThreadPayloadTest {
                           "id": "m1",
                           "authorId": "u1",
                           "authorName": "Artin",
+                          "isOwn": true,
                           "body": "please ship #163",
                           "replyCount": 2,
                           "taskId": "task-1",
@@ -86,6 +87,7 @@ class ThreadPayloadTest {
             )
 
         val message = payload.messages.first()
+        assertEquals(true, message.isOwn)
         assertEquals("task-1", message.taskId)
         assertEquals(163, message.taskNumber)
         assertEquals("InReview", message.taskStatus)

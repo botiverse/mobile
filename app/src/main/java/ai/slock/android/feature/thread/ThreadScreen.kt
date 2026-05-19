@@ -457,7 +457,11 @@ fun ThreadScreen(
                 onDeleteChannel = onDeleteChannel,
                 onLeaveChannel = onLeaveChannel,
                 onRetryThreadLoad = onRetryThreadLoad,
-                onOpenParentMessage = onOpenParentMessage
+                onOpenParentMessage = onOpenParentMessage,
+                onTaskStatusChange = onTaskStatusChange,
+                onSaveMessage = onSaveMessage,
+                currentMemberId = currentMemberId,
+                myMessageAlignment = myMessageAlignment
         )
     } else {
         Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite).imePadding()) {
@@ -987,8 +991,13 @@ private fun ThreadKuiklyScreen(
         onLeaveChannel: () -> Unit,
         onRetryThreadLoad: () -> Unit,
         onOpenParentMessage: (ThreadParentJumpTarget) -> Unit,
+        onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
+        onSaveMessage: (Message) -> Unit,
+        currentMemberId: MemberId?,
+        myMessageAlignment: MyMessageAlignmentPreference,
         modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val content = (state.loadState as? ScreenLoadState.Content)?.data
     val header = content?.header ?: fallbackComposerHeader
     val composerState = header?.let(state.composerState::forHeader) ?: state.composerState
@@ -1084,7 +1093,9 @@ private fun ThreadKuiklyScreen(
                                         composerPayload = composerPayload,
                                         replyHeaderContext = replyHeaderContext,
                                         parentJumpTarget = parentJumpTarget,
-                                        headerNavigationIcon = headerNavigationIcon
+                                        headerNavigationIcon = headerNavigationIcon,
+                                        currentMemberId = currentMemberId,
+                                        myMessageAlignment = myMessageAlignment
                                 )
                                 .toString()
                 )
@@ -1111,6 +1122,16 @@ private fun ThreadKuiklyScreen(
                             .takeIf { it.isNotBlank() }
                             ?.let(messagesById::get)
                             ?.let(onOpenMessageThread)
+            "copyMessage" ->
+                    event.optString("itemId")
+                            .takeIf { it.isNotBlank() }
+                            ?.let(messagesById::get)
+                            ?.let { message -> context.copyThreadMessageBody(message.body) }
+            "saveMessage" ->
+                    event.optString("itemId")
+                            .takeIf { it.isNotBlank() }
+                            ?.let(messagesById::get)
+                            ?.let(onSaveMessage)
             "openMember" ->
                     event.optString("itemId")
                             .takeIf { it.isNotBlank() }
@@ -1134,6 +1155,16 @@ private fun ThreadKuiklyScreen(
                             .takeIf { it.isNotBlank() }
                             ?.let(tasksById::get)
                             ?.let(onOpenTask)
+            "markTaskDone" ->
+                    event.optString("itemId")
+                            .takeIf { it.isNotBlank() }
+                            ?.let(tasksById::get)
+                            ?.let { task -> onTaskStatusChange(task, TaskStatus.Done) }
+            "reopenTask" ->
+                    event.optString("itemId")
+                            .takeIf { it.isNotBlank() }
+                            ?.let(tasksById::get)
+                            ?.let { task -> onTaskStatusChange(task, TaskStatus.InProgress) }
             "openAttachment" ->
                     event.optString("attachmentId")
                             .takeIf { it.isNotBlank() }
@@ -1192,7 +1223,9 @@ private fun ThreadUiState.toKuiklyThreadPagePayload(
         composerPayload: String,
         replyHeaderContext: ThreadReplyHeaderContext?,
         parentJumpTarget: ThreadParentJumpTarget?,
-        headerNavigationIcon: ThreadHeaderNavigationIcon
+        headerNavigationIcon: ThreadHeaderNavigationIcon,
+        currentMemberId: MemberId?,
+        myMessageAlignment: MyMessageAlignmentPreference
 ): JSONObject {
     val originStatus =
             when {
@@ -1224,6 +1257,7 @@ private fun ThreadUiState.toKuiklyThreadPagePayload(
                     )
                     .put("showModeTabs", replyHeaderContext == null)
                     .put("showReplyActions", showReplyActions && replyHeaderContext == null)
+                    .put("alignOwnMessagesRight", myMessageAlignment == MyMessageAlignmentPreference.Right)
                     .put("membersCount", membersCount)
                     .put("showComposer", showComposer)
                     .put(
@@ -1264,12 +1298,15 @@ private fun ThreadUiState.toKuiklyThreadPagePayload(
                     )
                     .putNullable("originPreview", replyHeaderContext?.parentMessagePreview)
                     .putNullable("originErrorCode", replyHeaderContext?.parentMessageRefreshErrorCode)
-                    .putNullable("originMessage", replyHeaderContext?.parentMessage?.toKuiklyThreadMessageJson())
+                    .putNullable(
+                            "originMessage",
+                            replyHeaderContext?.parentMessage?.toKuiklyThreadMessageJson(currentMemberId)
+                    )
     return when (val loadState = loadState) {
         ScreenLoadState.Loading -> payload.put("status", "loading")
         is ScreenLoadState.Content ->
                 payload.put("status", if (loadState.data.messages.isEmpty()) "empty" else "content")
-                        .put("messages", loadState.data.messages.toKuiklyThreadMessagesJson())
+                        .put("messages", loadState.data.messages.toKuiklyThreadMessagesJson(currentMemberId))
                         .put("tasks", loadState.data.tasks.toKuiklyThreadTasksJson())
                         .put("canLoadMoreBefore", loadState.data.canLoadMoreBefore)
                         .put("canLoadMoreAfter", loadState.data.canLoadMoreAfter)
@@ -1384,14 +1421,15 @@ private fun ConversationSummary.toKuiklyThreadSubtitle(): String =
             else -> "Channel conversation"
         }
 
-private fun List<Message>.toKuiklyThreadMessagesJson(): JSONArray =
-        JSONArray().also { array -> forEach { array.put(it.toKuiklyThreadMessageJson()) } }
+private fun List<Message>.toKuiklyThreadMessagesJson(currentMemberId: MemberId?): JSONArray =
+        JSONArray().also { array -> forEach { array.put(it.toKuiklyThreadMessageJson(currentMemberId)) } }
 
-private fun Message.toKuiklyThreadMessageJson(): JSONObject =
+private fun Message.toKuiklyThreadMessageJson(currentMemberId: MemberId?): JSONObject =
         JSONObject()
                 .put("id", id.value)
                 .put("authorId", author.id.value)
                 .put("authorName", author.displayName)
+                .put("isOwn", isCurrentUserMessage(currentMemberId))
                 .put("avatarLabel", author.avatarLabel)
                 .putNullable("avatarWireValue", author.avatar?.wireValue ?: author.avatarUrl)
                 .putNullable("gravatarHash", author.gravatarHash)

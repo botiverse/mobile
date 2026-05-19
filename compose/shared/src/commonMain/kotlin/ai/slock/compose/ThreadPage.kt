@@ -77,6 +77,7 @@ internal data class KuiklyThreadScreenPayload(
     val navigationLabel: String = "Back",
     val showModeTabs: Boolean = true,
     val showReplyActions: Boolean = true,
+    val alignOwnMessagesRight: Boolean = false,
     val messages: List<KuiklyThreadMessageItem> = emptyList(),
     val originMessage: KuiklyThreadMessageItem? = null,
     val originPreview: String? = null,
@@ -113,6 +114,7 @@ internal data class KuiklyThreadMessageItem(
     val id: String,
     val authorId: String,
     val authorName: String,
+    val isOwn: Boolean = false,
     val avatarLabel: String = "",
     val avatarWireValue: String? = null,
     val gravatarHash: String? = null,
@@ -568,6 +570,7 @@ private fun ThreadMessagesList(
     }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    var actionMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     val latestItemIndex = payload.latestMessageListItemIndex()
     LaunchedEffect(payload.instanceId, payload.messages.lastOrNull()?.id, latestItemIndex) {
         if (latestItemIndex >= 0) {
@@ -620,7 +623,9 @@ private fun ThreadMessagesList(
             items(payload.messages.size, key = { payload.messages[it].id }) { index ->
                 ThreadMessageCard(
                     message = payload.messages[index],
+                    alignOwnMessageRight = payload.alignOwnMessagesRight && payload.messages[index].isOwn,
                     showReplyAction = payload.showReplyActions,
+                    onShowActions = { actionMessageId = payload.messages[index].id },
                     onOpenMember = { onThreadEvent("openMember", it, null, null) },
                     onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
                     onOpenTask = { onThreadEvent("openTask", it, null, null) },
@@ -656,6 +661,31 @@ private fun ThreadMessagesList(
                     }
                 }
             )
+        }
+        actionMessageId?.let { messageId ->
+            payload.messages.firstOrNull { it.id == messageId }?.let { message ->
+                ThreadMessageActionSheet(
+                    message = message,
+                    showReplyAction = payload.showReplyActions,
+                    onDismiss = { actionMessageId = null },
+                    onReply = {
+                        actionMessageId = null
+                        onThreadEvent("openMessageThread", message.id, null, null)
+                    },
+                    onCopy = {
+                        actionMessageId = null
+                        onThreadEvent("copyMessage", message.id, null, null)
+                    },
+                    onSave = {
+                        actionMessageId = null
+                        onThreadEvent("saveMessage", message.id, null, null)
+                    },
+                    onTaskStatusChange = { action ->
+                        actionMessageId = null
+                        onThreadEvent(action, message.taskId, null, null)
+                    }
+                )
+            }
         }
     }
 }
@@ -734,14 +764,19 @@ private fun ThreadInlineActionRow(label: String, onClick: () -> Unit) {
 @Composable
 private fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
+    alignOwnMessageRight: Boolean = false,
     showReplyAction: Boolean = true,
+    onShowActions: () -> Unit,
     onOpenMember: (String) -> Unit,
     onOpenThread: (String) -> Unit,
     onOpenTask: (String) -> Unit,
     onOpenAttachment: (String) -> Unit
 ) {
+    val horizontalArrangement =
+        if (alignOwnMessageRight) Arrangement.spacedBy(10.dp, Alignment.End) else Arrangement.spacedBy(10.dp)
+    val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start
     Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).clickable(onClick = onShowActions)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = 10.dp),
@@ -750,19 +785,30 @@ private fun ThreadMessageCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = horizontalArrangement
             ) {
-                ThreadMessageAvatar(
-                    avatarLabel = message.avatarLabel,
-                    avatarWireValue = message.avatarWireValue,
-                    gravatarHash = message.gravatarHash,
-                    onClick = { onOpenMember(message.authorId) }
-                )
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (!alignOwnMessageRight) {
+                    ThreadMessageAvatar(
+                        avatarLabel = message.avatarLabel,
+                        avatarWireValue = message.avatarWireValue,
+                        gravatarHash = message.gravatarHash,
+                        onClick = { onOpenMember(message.authorId) }
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalAlignment = contentAlignment
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                        horizontalArrangement =
+                            if (alignOwnMessageRight) {
+                                Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End)
+                            } else {
+                                Arrangement.spacedBy(SlockSpacing.Sm)
+                            }
                     ) {
                         Text(
                             text = message.authorName,
@@ -799,8 +845,17 @@ private fun ThreadMessageCard(
                     ThreadMessageFooterMeta(
                         message = message,
                         showReplyAction = showReplyAction,
+                        alignEnd = alignOwnMessageRight,
                         onOpenThread = { onOpenThread(message.id) },
                         onOpenTask = onOpenTask
+                    )
+                }
+                if (alignOwnMessageRight) {
+                    ThreadMessageAvatar(
+                        avatarLabel = message.avatarLabel,
+                        avatarWireValue = message.avatarWireValue,
+                        gravatarHash = message.gravatarHash,
+                        onClick = { onOpenMember(message.authorId) }
                     )
                 }
             }
@@ -813,6 +868,7 @@ private fun ThreadMessageCard(
 private fun ThreadMessageFooterMeta(
     message: KuiklyThreadMessageItem,
     showReplyAction: Boolean,
+    alignEnd: Boolean,
     onOpenThread: () -> Unit,
     onOpenTask: (String) -> Unit
 ) {
@@ -823,7 +879,8 @@ private fun ThreadMessageFooterMeta(
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        horizontalArrangement =
+            if (alignEnd) Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End) else Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         if (hasTask) {
             val label =
@@ -836,6 +893,7 @@ private fun ThreadMessageFooterMeta(
                 }
             ThreadMetaChip(
                 label = label,
+                icon = "circle-check-big",
                 color = message.taskStatus.threadTaskStatusColor(),
                 onClick = { message.taskId?.let(onOpenTask) },
                 modifier = Modifier.weight(1f, fill = false)
@@ -844,6 +902,7 @@ private fun ThreadMessageFooterMeta(
         if (hasReplies) {
             ThreadMetaChip(
                 label = "${message.replyCount} replies",
+                icon = "message-square",
                 color = SlockColor.AppBgLightBlue,
                 onClick = onOpenThread,
                 modifier = Modifier.weight(1f, fill = false)
@@ -855,6 +914,7 @@ private fun ThreadMessageFooterMeta(
 @Composable
 private fun ThreadMetaChip(
     label: String,
+    icon: String,
     color: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -867,13 +927,68 @@ private fun ThreadMetaChip(
             .padding(horizontal = 8.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = label,
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, lineHeight = 14.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            SlockLucideIcon(icon, modifier = Modifier.size(12.dp), color = "#FF000000")
+            Text(
+                text = label,
+                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, lineHeight = 14.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadMessageActionSheet(
+    message: KuiklyThreadMessageItem,
+    showReplyAction: Boolean,
+    onDismiss: () -> Unit,
+    onReply: () -> Unit,
+    onCopy: () -> Unit,
+    onSave: () -> Unit,
+    onTaskStatusChange: (String) -> Unit
+) {
+    SlockModalLayer(
+        title = "Message actions",
+        subtitle = message.authorName,
+        onDismiss = onDismiss
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            if (showReplyAction) {
+                SlockActionSheetRow(
+                    title = "Reply",
+                    subtitle = "Open this message thread",
+                    icon = "message-square",
+                    onClick = onReply
+                )
+            }
+            SlockActionSheetRow(
+                title = "Copy markdown",
+                subtitle = "Copy this message body",
+                icon = "copy",
+                onClick = onCopy
+            )
+            SlockActionSheetRow(
+                title = "Save message",
+                subtitle = "Keep this message locally",
+                icon = "bookmark",
+                onClick = onSave
+            )
+            message.taskId?.takeIf { it.isNotBlank() }?.let {
+                val isDone = message.taskStatus?.trim()?.lowercase() in setOf("done", "closed")
+                SlockActionSheetRow(
+                    title = if (isDone) "Reopen task" else "Mark done",
+                    subtitle = message.taskNumber?.let { number -> "#$number" }.orEmpty(),
+                    icon = if (isDone) "refresh-cw" else "circle-check-big",
+                    onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
+                )
+            }
+        }
     }
 }
 
@@ -944,6 +1059,7 @@ private fun ThreadOriginCard(
                     ThreadMessageCard(
                         message = origin,
                         showReplyAction = false,
+                        onShowActions = {},
                         onOpenMember = {},
                         onOpenThread = {},
                         onOpenTask = {},
@@ -991,10 +1107,10 @@ private fun ThreadMessageAvatar(
         } else if (pixelSpec != null) {
             ThreadPixelAvatar(spec = pixelSpec)
         } else {
-            Text(
-                text = avatarLabel.ifBlank { "?" }.take(2).uppercase(),
-                style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack
+            SlockLucideIcon(
+                "user",
+                modifier = Modifier.size(22.dp),
+                color = "#FF000000"
             )
         }
     }
