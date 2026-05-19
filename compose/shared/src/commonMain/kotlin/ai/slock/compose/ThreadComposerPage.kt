@@ -583,7 +583,7 @@ private fun ComposerAsTaskToggle(
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
-        modifier = Modifier.clickable(enabled = enabled) { onCheckedChange(!checked) },
+        modifier = Modifier.clickable(enabled = enabled) { onCheckedChange(!checked) }.heightIn(min = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -597,7 +597,7 @@ private fun ComposerAsTaskToggle(
         }
         Text(
             text = "As Task",
-            style = SlockType.Caption.copy(color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray),
+            style = SlockType.Caption.copy(lineHeight = 18.sp, color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray),
             color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
         )
     }
