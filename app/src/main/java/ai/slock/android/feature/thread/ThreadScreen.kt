@@ -1309,6 +1309,7 @@ private fun ThreadUiState.toKuiklyThreadPagePayload(
                             showSettingsAction && replyHeaderContext == null && parentJumpTarget == null
                     )
                     .put("showMembersAction", replyHeaderContext == null && parentJumpTarget == null)
+                    .put("showOpenInChannelAction", parentJumpTarget != null)
                     .put("joined", header?.joined ?: true)
                     .put("canSend", header?.permissions?.canSend ?: true)
                     .put("joinLabel", "Join channel")

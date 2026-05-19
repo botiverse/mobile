@@ -114,6 +114,7 @@ internal data class KuiklyThreadScreenPayload(
     val settingsActions: List<KuiklyThreadSettingsAction> = emptyList(),
     val showMembersAction: Boolean = true,
     val showSettingsAction: Boolean = true,
+    val showOpenInChannelAction: Boolean = false,
     val joinLabel: String = "Join channel"
 )
 
@@ -314,6 +315,9 @@ private fun ThreadPageContent(
             ThreadPageHeader(
                 payload = payload,
                 onBack = { onThreadEvent("back", null, null, null) },
+                onOpenInChannel = {
+                    onThreadEvent("openParentMessage", payload.originParentMessageId, null, null)
+                },
                 onShowMembers = {
                     activeModal = "members"
                     onThreadEvent("showMembers", null, null, null)
@@ -458,6 +462,7 @@ private fun ThreadPageContent(
 private fun ThreadPageHeader(
     payload: KuiklyThreadScreenPayload,
     onBack: () -> Unit,
+    onOpenInChannel: () -> Unit,
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit
 ) {
@@ -498,6 +503,9 @@ private fun ThreadPageHeader(
             }
             if (payload.showMembersAction) {
                 ThreadMembersHeaderButton(count = payload.membersCount, onClick = onShowMembers)
+            }
+            if (payload.showOpenInChannelAction) {
+                ThreadHeaderIconButton(icon = "external-link", onClick = onOpenInChannel)
             }
             if (showCloseActionAtEnd) {
                 ThreadHeaderIconButton(icon = "x", onClick = onBack)

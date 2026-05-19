@@ -181,6 +181,7 @@ class ThreadPayloadTest {
                       "navigationLabel": "Close",
                       "showModeTabs": false,
                       "showReplyActions": false,
+                      "showOpenInChannelAction": true,
                       "originStatus": "message",
                       "originParentMessageId": "m-parent",
                       "originMessage": {
@@ -199,6 +200,7 @@ class ThreadPayloadTest {
         assertEquals("Close", payload.navigationLabel)
         assertEquals(false, payload.showModeTabs)
         assertEquals(false, payload.showReplyActions)
+        assertEquals(true, payload.showOpenInChannelAction)
         assertEquals("message", payload.originStatus)
         assertEquals("m-parent", payload.originParentMessageId)
         assertEquals("hello from parent", payload.originMessage?.body)
