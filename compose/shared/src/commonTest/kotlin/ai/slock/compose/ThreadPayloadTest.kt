@@ -155,6 +155,53 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun appendsSentMessageFromSendResponseWhenRefreshIsUnavailable() {
+        val base =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "general",
+                sourceThreadId = "channel-1",
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "u2",
+                            authorName = "Cindy",
+                            body = "existing"
+                        )
+                    )
+            )
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "artin@slock.ai"),
+                accessToken = "access",
+                refreshToken = "refresh"
+            )
+
+        val payload =
+            appendSharedThreadSentMessageFromResponse(
+                basePayload = base,
+                session = session,
+                bodyText =
+                    """
+                    {
+                      "data": {
+                        "id": "m2",
+                        "body": "sent from shared composer",
+                        "author": {"id": "u1", "displayName": "Artin"}
+                      }
+                    }
+                    """.trimIndent()
+            )
+
+        assertEquals("content", payload.status)
+        assertEquals(listOf("m1", "m2"), payload.messages.map { it.id })
+        assertEquals(true, payload.messages.last().isOwn)
+        assertEquals("sent from shared composer", payload.messages.last().body)
+    }
+
+    @Test
     fun picksCurrentServerSummaryForSharedHomeShellLoadingState() {
         val session =
             StoredAuthSession(

@@ -7,6 +7,19 @@ import kotlin.test.assertTrue
 
 class AuthDataSourceTest {
     @Test
+    fun buildsSharedThreadSendBodyWithNativeRepositoryShape() {
+        val body =
+            buildSharedThreadSendMessageBody(
+                channelId = "channel-1",
+                body = "hello",
+                attachmentIds = emptyList(),
+                asTask = false
+            )
+
+        assertEquals("""{"channelId":"channel-1","content":"hello","attachmentIds":[],"asTask":false}""", body)
+    }
+
+    @Test
     fun loginWritesStoredSessionAndFetchesServers() = runBlocking {
         val store = InMemorySlockAuthSessionStore()
         val api = FakeAuthApi()

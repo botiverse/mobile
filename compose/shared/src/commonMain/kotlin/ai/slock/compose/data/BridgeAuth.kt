@@ -3,6 +3,7 @@ package ai.slock.compose.data
 import ai.slock.compose.base.BridgeModule
 import ai.slock.compose.model.ServerId
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -149,7 +150,28 @@ internal class BridgeThreadApi(
     suspend fun channelMessages(threadId: String, limit: Int = 50): HomeNetworkResponse =
         request("messages/channel/${threadId.trim()}", "limit=$limit")
 
-    private suspend fun request(path: String, query: String? = null): HomeNetworkResponse {
+    suspend fun sendMessage(
+        channelId: String,
+        body: String,
+        asTask: Boolean = false
+    ): HomeNetworkResponse =
+        request(
+            path = "messages",
+            method = "POST",
+            bodyText = buildSharedThreadSendMessageBody(
+                channelId = channelId,
+                body = body,
+                attachmentIds = emptyList(),
+                asTask = asTask
+            )
+        )
+
+    private suspend fun request(
+        path: String,
+        query: String? = null,
+        method: String = "GET",
+        bodyText: String? = null
+    ): HomeNetworkResponse {
         val session = sessionStore.readSession()
         val token = session?.accessToken.orEmpty()
         val serverId = session?.currentServerId.orEmpty()
@@ -168,9 +190,12 @@ internal class BridgeThreadApi(
             bridge.authRequest(
                 JSONObject()
                     .put("url", url)
-                    .put("method", "GET")
+                    .put("method", method)
                     .put("authorization", "Bearer $token")
                     .put("serverId", serverId)
+                    .also { command ->
+                        bodyText?.let { command.put("bodyText", it) }
+                    }
             )
         return HomeNetworkResponse(
             code = response?.optString("code").orEmpty().toIntOrNull() ?: 0,
@@ -180,6 +205,29 @@ internal class BridgeThreadApi(
         )
     }
 }
+
+@Serializable
+private data class SharedThreadSendMessageBody(
+    val channelId: String,
+    val content: String,
+    val attachmentIds: List<String> = emptyList(),
+    val asTask: Boolean = false
+)
+
+internal fun buildSharedThreadSendMessageBody(
+    channelId: String,
+    body: String,
+    attachmentIds: List<String> = emptyList(),
+    asTask: Boolean = false
+): String =
+    bridgeAuthJson.encodeToString(
+        SharedThreadSendMessageBody(
+            channelId = channelId,
+            content = body,
+            attachmentIds = attachmentIds,
+            asTask = asTask
+        )
+    )
 
 internal class KuiklyAuthSessionStore(
     private val store: SlockRelationalStore

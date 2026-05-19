@@ -253,9 +253,19 @@ internal fun SharedThreadRouteContent(
     val authStore = remember { KuiklyAuthSessionStore(KuiklyRelationalStore(bridge)) }
     val threadApi = remember { BridgeThreadApi(bridge, authStore) }
     var payload by remember(initialPayload.instanceId) { mutableStateOf(initialPayload) }
+    var composerDraftText by remember(initialPayload.instanceId) { mutableStateOf("") }
+    var composerDraftAsTask by remember(initialPayload.instanceId) { mutableStateOf(false) }
+    var composerSyncNonce by remember(initialPayload.instanceId) { mutableStateOf(0) }
+    var composerSending by remember(initialPayload.instanceId) { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(initialPayload) {
         payload = initialPayload
+        val composer = parseThreadComposerPayload(initialPayload.composerPayload, "{}", initialPayload.instanceId)
+        composerDraftText = composer.seedText
+        composerDraftAsTask = composer.seedAsTask
+        composerSyncNonce = composer.syncNonce
+        composerSending = false
     }
 
     LaunchedEffect(initialPayload.instanceId, initialPayload.sourceThreadId) {
@@ -287,9 +297,41 @@ internal fun SharedThreadRouteContent(
     val filesPayload = remember(payload.filesPayload, payload.instanceId) {
         parseThreadFilesPayload(payload.filesPayload, payload.instanceId)
     }
-    val composerPayload = remember(payload.composerPayload, payload.instanceId) {
+    val renderedComposerPayload = remember(payload.composerPayload, payload.instanceId) {
+        parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId)
+    }
+    val composerPayloadText =
+        remember(
+            renderedComposerPayload,
+            composerDraftText,
+            composerDraftAsTask,
+            composerSyncNonce,
+            composerSending,
+            payload.canSend
+        ) {
+            payload.appShellComposerPayload(
+                baseComposer = renderedComposerPayload,
+                seedText = composerDraftText,
+                seedAsTask = composerDraftAsTask,
+                syncNonce = composerSyncNonce,
+                composerMode =
+                    when {
+                        composerSending -> "sending"
+                        renderedComposerPayload.composerMode == "failed" -> "failed"
+                        else -> renderedComposerPayload.composerMode
+                    },
+                statusLabel =
+                    when {
+                        composerSending -> "Sending..."
+                        renderedComposerPayload.composerMode == "failed" -> renderedComposerPayload.statusLabel
+                        else -> renderedComposerPayload.statusLabel
+                    },
+                enabled = payload.canSend && !composerSending
+            )
+        }
+    val composerPayload = remember(composerPayloadText, payload.instanceId) {
         parseThreadComposerPayload(
-            payload = payload.composerPayload,
+            payload = composerPayloadText,
             fallbackPageData = "{}",
             instanceId = payload.instanceId
         )
@@ -314,16 +356,160 @@ internal fun SharedThreadRouteContent(
             )
         },
         onComposerEvent = { action, value, asTask, attachmentId ->
-            bridge.composerEvent(
-                instanceId = composerPayload.instanceId.ifBlank { payload.instanceId },
-                action = action,
-                value = value,
-                asTask = asTask,
-                attachmentId = attachmentId
-            )
+            when (action) {
+                "change" -> {
+                    value?.let { composerDraftText = it }
+                    asTask?.let { composerDraftAsTask = it }
+                }
+                "toggleAsTask" -> {
+                    asTask?.let { composerDraftAsTask = it }
+                }
+                "send" -> {
+                    val threadId = payload.sourceThreadId?.takeIf { it.isNotBlank() }
+                    val draftText = composerDraftText.trim()
+                    if (!payload.canSend || composerSending || threadId == null || draftText.isBlank()) {
+                        return@ThreadPageContent
+                    }
+                    val draftAsTask = composerDraftAsTask
+                    composerSending = true
+                    composerDraftText = ""
+                    composerDraftAsTask = false
+                    composerSyncNonce += 1
+                    coroutineScope.launch {
+                        val sendResponse =
+                            runCatching {
+                                threadApi.sendMessage(
+                                    channelId = threadId,
+                                    body = draftText,
+                                    asTask = draftAsTask
+                                )
+                            }.getOrElse {
+                                composerSending = false
+                                composerDraftText = draftText
+                                composerDraftAsTask = draftAsTask
+                                composerSyncNonce += 1
+                                payload =
+                                    payload.copy(
+                                        composerPayload =
+                                            payload.appShellComposerPayload(
+                                                seedText = draftText,
+                                                seedAsTask = draftAsTask,
+                                                syncNonce = composerSyncNonce,
+                                                composerMode = "failed",
+                                                statusLabel = "Send failed. Try again.",
+                                                enabled = payload.canSend
+                                            )
+                                    )
+                                return@launch
+                            }
+                        if (!sendResponse.isSuccessful) {
+                            composerSending = false
+                            composerDraftText = draftText
+                            composerDraftAsTask = draftAsTask
+                            composerSyncNonce += 1
+                            payload =
+                                payload.copy(
+                                    composerPayload =
+                                        payload.appShellComposerPayload(
+                                            seedText = draftText,
+                                            seedAsTask = draftAsTask,
+                                            syncNonce = composerSyncNonce,
+                                            composerMode = "failed",
+                                            statusLabel =
+                                                sendResponse.errorBodyText?.takeIf { it.isNotBlank() }
+                                                    ?: "Send failed. Try again.",
+                                            enabled = payload.canSend
+                                        )
+                                )
+                            return@launch
+                        }
+                        val session = authStore.readSession()
+                        val refreshResponse =
+                            runCatching { threadApi.channelMessages(threadId) }.getOrNull()
+                        payload =
+                            if (refreshResponse?.isSuccessful == true && !refreshResponse.bodyText.isNullOrBlank()) {
+                                buildSharedThreadPayloadFromMessagesResponse(
+                                    basePayload = payload,
+                                    bodyText = refreshResponse.bodyText,
+                                    session = session
+                                )
+                            } else if (!sendResponse.bodyText.isNullOrBlank()) {
+                                appendSharedThreadSentMessageFromResponse(
+                                    basePayload = payload,
+                                    bodyText = sendResponse.bodyText,
+                                    session = session
+                                )
+                            } else {
+                                payload.copy(
+                                    status = if (payload.messages.isEmpty()) "empty" else payload.status,
+                                    errorCode = null
+                                )
+                            }.copy(
+                                composerPayload =
+                                    payload.appShellComposerPayload(
+                                        seedText = "",
+                                        seedAsTask = false,
+                                        syncNonce = composerSyncNonce,
+                                        composerMode = "channel",
+                                        statusLabel = null,
+                                        enabled = payload.canSend
+                                    )
+                            )
+                        composerSending = false
+                    }
+                }
+                else -> {
+                    bridge.composerEvent(
+                        instanceId = composerPayload.instanceId.ifBlank { payload.instanceId },
+                        action = action,
+                        value = value,
+                        asTask = asTask,
+                        attachmentId = attachmentId
+                    )
+                }
+            }
         }
     )
 }
+
+private fun KuiklyThreadScreenPayload.appShellComposerPayload(
+    seedText: String,
+    seedAsTask: Boolean,
+    syncNonce: Int,
+    composerMode: String,
+    statusLabel: String?,
+    enabled: Boolean,
+    baseComposer: KuiklyThreadComposerPayload =
+        parseThreadComposerPayload(composerPayload, "{}", instanceId)
+): String =
+    buildSharedThreadComposerPayloadJson(
+        SharedThreadComposerPayloadInput(
+            seedText = seedText,
+            seedAsTask = seedAsTask,
+            syncNonce = syncNonce,
+            focusRequestNonce = baseComposer.focusRequestNonce,
+            placeholder = baseComposer.placeholder,
+            enabled = enabled,
+            showAsTaskToggle = baseComposer.showAsTaskToggle,
+            composerMode = composerMode,
+            statusLabel = statusLabel,
+            pendingAttachments = emptyList(),
+            memberSuggestions =
+                baseComposer.memberSuggestions.map { member ->
+                    SharedThreadComposerMemberSuggestion(
+                        displayName = member.displayName,
+                        handle = member.handle
+                    )
+                },
+            channelSuggestions =
+                baseComposer.channelSuggestions.map { channel ->
+                    SharedThreadComposerChannelSuggestion(
+                        name = channel.name,
+                        subtitle = channel.subtitle
+                    )
+                }
+        )
+    )
 
 internal fun parseThreadScreenPayload(
     payload: String,
@@ -375,18 +561,49 @@ internal fun buildSharedThreadPayloadFromMessagesResponse(
         basePayload.copy(status = "error", errorCode = "thread_payload_parse_failed")
     }
 
+internal fun appendSharedThreadSentMessageFromResponse(
+    basePayload: KuiklyThreadScreenPayload,
+    bodyText: String,
+    session: StoredAuthSession?
+): KuiklyThreadScreenPayload {
+    val sentPayload =
+        buildSharedThreadPayloadFromMessagesResponse(
+            basePayload = basePayload.copy(messages = emptyList()),
+            bodyText = bodyText,
+            session = session
+        )
+    val existingIds = basePayload.messages.map { it.id }.toSet()
+    val sentMessages = sentPayload.messages.filterNot { it.id in existingIds }
+    return if (sentMessages.isEmpty()) {
+        basePayload.copy(errorCode = null)
+    } else {
+        basePayload.copy(
+            status = "content",
+            messages = basePayload.messages + sentMessages,
+            errorCode = null
+        )
+    }
+}
+
 private fun JsonElement.collectThreadMessageObjects(): List<JsonObject> =
     when (this) {
         is JsonArray -> mapNotNull { it as? JsonObject }
         is JsonObject -> {
-            val direct =
-                listOf("messages", "items", "results")
-                    .firstNotNullOfOrNull { this[it] as? JsonArray }
-                    ?.collectThreadMessageObjects()
-            direct ?: when (val data = this["data"]) {
-                is JsonArray -> data.collectThreadMessageObjects()
-                is JsonObject -> data.collectThreadMessageObjects()
-                else -> emptyList()
+            val selfIsMessage =
+                threadString("id", "messageId", "message_id", "_id") != null &&
+                    threadString("body", "content", "text", "markdown", "message") != null
+            if (selfIsMessage) {
+                listOf(this)
+            } else {
+                val direct =
+                    listOf("messages", "items", "results")
+                        .firstNotNullOfOrNull { this[it] as? JsonArray }
+                        ?.collectThreadMessageObjects()
+                direct ?: when (val data = this["data"]) {
+                    is JsonArray -> data.collectThreadMessageObjects()
+                    is JsonObject -> data.collectThreadMessageObjects()
+                    else -> emptyList()
+                }
             }
         }
         else -> emptyList()
