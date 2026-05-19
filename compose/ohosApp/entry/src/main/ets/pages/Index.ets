@@ -62,6 +62,7 @@ struct Index {
     pageData['statusBarHeight'] = this.safeAreaTopPx;
     pageData['safeAreaBottom'] = this.safeAreaBottomPx;
     pageData['navigationBarHeight'] = this.safeAreaBottomPx;
+    pageData['slockNativeTabBarRenderer'] = 'ohosHdsImmersive';
     return pageData;
   }
 }

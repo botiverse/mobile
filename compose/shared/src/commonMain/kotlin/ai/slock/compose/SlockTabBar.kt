@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -21,10 +22,15 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.core.base.Attr
+import com.tencent.kuikly.core.base.DeclarativeBaseView
+import com.tencent.kuikly.core.base.event.Event
+import com.tencent.kuikly.core.pager.Pager
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -52,6 +58,11 @@ internal enum class SlockTabBarPresentation {
     SafeAreaHost,
     FloatingDock,
     NavigationRail
+}
+
+private enum class SlockAppTabBarRenderer {
+    SharedCompose,
+    OhosHdsImmersive
 }
 
 @Composable
@@ -145,6 +156,15 @@ internal fun SlockAppBottomTabBarHost(
     modifier: Modifier = Modifier,
     bottomSafeArea: Dp = 0.dp
 ) {
+    if (slockAppTabBarRenderer() == SlockAppTabBarRenderer.OhosHdsImmersive) {
+        SlockOhosHdsBottomTabBarHost(
+            items = items,
+            onSelect = onSelect,
+            modifier = modifier,
+            bottomSafeArea = bottomSafeArea
+        )
+        return
+    }
     Column(modifier = modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
         SlockBottomTabBar(
             items = items,
@@ -153,6 +173,131 @@ internal fun SlockAppBottomTabBarHost(
         )
         Spacer(modifier = Modifier.fillMaxWidth().height(SlockSpacing.Xs))
         Spacer(modifier = Modifier.fillMaxWidth().height(bottomSafeArea))
+    }
+}
+
+@Composable
+private fun SlockOhosHdsBottomTabBarHost(
+    items: List<SlockBottomTabItemPayload>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    bottomSafeArea: Dp = 0.dp
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(92.dp + bottomSafeArea)
+    ) {
+        SlockOhosHdsTabBar(
+            items = items,
+            bottomSafeArea = bottomSafeArea,
+            modifier = Modifier.matchParentSize()
+        )
+        Row(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(horizontal = 18.dp)
+                .padding(bottom = bottomSafeArea + 28.dp)
+                .height(60.dp)
+                .align(Alignment.BottomCenter)
+        ) {
+            items.forEach { item ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable(enabled = item.enabled) { onSelect(item.key) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun slockAppTabBarRenderer(): SlockAppTabBarRenderer {
+    val params = (LocalActivity.current.getPager() as Pager).pageData.params
+    return when (params.optString("slockNativeTabBarRenderer").ifBlank { params.optString("nativeTabBarRenderer") }) {
+        "ohosHdsImmersive", "hdsImmersive" -> SlockAppTabBarRenderer.OhosHdsImmersive
+        else -> SlockAppTabBarRenderer.SharedCompose
+    }
+}
+
+@Composable
+private fun SlockOhosHdsTabBar(
+    items: List<SlockBottomTabItemPayload>,
+    bottomSafeArea: Dp,
+    modifier: Modifier = Modifier
+) {
+    MakeKuiklyComposeNode<SlockOhosHdsTabBarView>(
+        factory = { SlockOhosHdsTabBarView() },
+        modifier = modifier,
+        viewInit = {
+            getViewAttr().run {
+                keys(items.tabJoin { it.key })
+                labels(items.tabJoin { it.label })
+                icons(items.tabJoin { it.iconName })
+                enabled(items.tabJoin { if (it.enabled) "1" else "0" })
+                selectedKey(items.firstOrNull { it.selected }?.key.orEmpty())
+                bottomSafeArea(bottomSafeArea.value)
+            }
+        },
+        viewUpdate = { view ->
+            view.getViewAttr().run {
+                keys(items.tabJoin { it.key })
+                labels(items.tabJoin { it.label })
+                icons(items.tabJoin { it.iconName })
+                enabled(items.tabJoin { if (it.enabled) "1" else "0" })
+                selectedKey(items.firstOrNull { it.selected }?.key.orEmpty())
+                bottomSafeArea(bottomSafeArea.value)
+            }
+        }
+    )
+}
+
+private fun List<SlockBottomTabItemPayload>.tabJoin(value: (SlockBottomTabItemPayload) -> String): String =
+    joinToString("\u001F") { value(it).replace("\u001F", " ") }
+
+private class SlockOhosHdsTabBarView : DeclarativeBaseView<SlockOhosHdsTabBarAttr, Event>() {
+    override fun createAttr(): SlockOhosHdsTabBarAttr = SlockOhosHdsTabBarAttr()
+
+    override fun createEvent(): Event = Event()
+
+    override fun viewName(): String = VIEW_NAME
+
+    companion object {
+        const val VIEW_NAME = "SlockOhosHdsTabBarView"
+    }
+}
+
+private class SlockOhosHdsTabBarAttr : Attr() {
+    fun keys(value: String): SlockOhosHdsTabBarAttr {
+        "keysText" with value
+        return this
+    }
+
+    fun labels(value: String): SlockOhosHdsTabBarAttr {
+        "labelsText" with value
+        return this
+    }
+
+    fun icons(value: String): SlockOhosHdsTabBarAttr {
+        "iconsText" with value
+        return this
+    }
+
+    fun enabled(value: String): SlockOhosHdsTabBarAttr {
+        "enabledText" with value
+        return this
+    }
+
+    fun selectedKey(value: String): SlockOhosHdsTabBarAttr {
+        "selectedKey" with value
+        return this
+    }
+
+    fun bottomSafeArea(value: Float): SlockOhosHdsTabBarAttr {
+        "bottomSafeArea" with value
+        return this
     }
 }
 
