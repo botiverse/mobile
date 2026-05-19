@@ -1064,6 +1064,7 @@ private fun ThreadKuiklyScreen(
                     syncNonce,
                     composerFocusRequestNonce,
                     composerState,
+                    replyHeaderContext,
                     channelSuggestions
             ) {
                 buildSharedThreadComposerPayload(
@@ -1071,7 +1072,12 @@ private fun ThreadKuiklyScreen(
                                 seedAsTask = payloadAsTaskSeed,
                                 syncNonce = syncNonce,
                                 focusRequestNonce = composerFocusRequestNonce,
-                                placeholder = header?.let { "Message #${it.name}" } ?: "Message",
+                                placeholder =
+                                        if (replyHeaderContext != null) {
+                                            "Message Threads"
+                                        } else {
+                                            header?.let { "Message #${it.name}" } ?: "Message"
+                                        },
                                 composerState = composerState,
                                 memberSuggestions = membersById.values.toList(),
                                 channelSuggestions = channelSuggestions,
