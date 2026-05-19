@@ -61,6 +61,8 @@ private val MemberAvatarSize = 34.dp
 private val MemberAvatarFontSize = 12.sp
 private val MemberRowMinHeight = 48.dp
 private val MemberStatusDotSize = 10.dp
+private val MembersActionSize = 30.dp
+private val MembersActionIconSize = 16.dp
 
 @Page(MEMBERS_SMOKE_PAGE, supportInLocal = true)
 internal class ComposeMembersSmokePage : ai.slock.compose.base.BasePager() {
@@ -69,7 +71,6 @@ internal class ComposeMembersSmokePage : ai.slock.compose.base.BasePager() {
         setContent {
             MembersListContent(
                 payload = membersSmokePayload,
-                onBack = {},
                 onAddHuman = {},
                 onOpenMember = {}
             )
@@ -182,7 +183,6 @@ internal fun MembersPageContent() {
 
     MembersListContent(
         payload = payload,
-        onBack = { bridge.settingsEvent(payload.instanceId, "back", null) },
         onAddHuman = { bridge.settingsEvent(payload.instanceId, "addHuman", null) },
         onOpenMember = { bridge.settingsEvent(payload.instanceId, "openMember", it.id.value) }
     )
@@ -258,7 +258,6 @@ private fun JSONObject.optNullableString(key: String): String? =
 @Composable
 internal fun MembersListContent(
     payload: KuiklyMembersPayload,
-    onBack: () -> Unit,
     onAddHuman: () -> Unit,
     onOpenMember: (MemberProfile) -> Unit
 ) {
@@ -280,7 +279,7 @@ internal fun MembersListContent(
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        MembersPageHeader(title = payload.title, onBack = onBack)
+        MembersPageHeader(title = payload.title)
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
@@ -295,7 +294,6 @@ internal fun MembersListContent(
                     modifier = Modifier.padding(horizontal = MembersPageInset),
                     trailingContent = {
                         MembersAddButton(
-                            label = payload.labels.addHuman,
                             onClick = onAddHuman
                         )
                     }
@@ -334,7 +332,6 @@ internal fun MembersListContent(
                     modifier = Modifier.padding(horizontal = MembersPageInset),
                     trailingContent = {
                         MembersAddButton(
-                            label = payload.labels.addHuman,
                             onClick = onAddHuman
                         )
                     }
@@ -356,7 +353,7 @@ internal fun MembersListContent(
 }
 
 @Composable
-private fun MembersPageHeader(title: String, onBack: () -> Unit) {
+private fun MembersPageHeader(title: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -367,7 +364,6 @@ private fun MembersPageHeader(title: String, onBack: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        SlockHeaderIconAction("arrow-left", "Back to members", onBack)
         Text(
             text = title,
             style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
@@ -385,8 +381,10 @@ private fun MembersPageHeader(title: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun MembersAddButton(label: String, onClick: () -> Unit) {
-    SlockHeaderIconAction(icon = "plus", contentDescription = label, onClick = onClick)
+private fun MembersAddButton(onClick: () -> Unit) {
+    Box(modifier = Modifier.size(MembersActionSize).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        SlockLucideIcon("plus", Modifier.size(MembersActionIconSize))
+    }
 }
 
 @Composable
