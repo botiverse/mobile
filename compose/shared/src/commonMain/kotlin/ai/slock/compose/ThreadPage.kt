@@ -127,6 +127,9 @@ internal data class KuiklyThreadMessageItem(
     val avatarWireValue: String? = null,
     val gravatarHash: String? = null,
     val timestampLabel: String = "",
+    val messageType: String = "Chat",
+    val systemEventType: String? = null,
+    val metadata: Map<String, String> = emptyMap(),
     val body: String = "",
     val replyCount: Int = 0,
     val taskId: String? = null,
@@ -673,20 +676,34 @@ private fun ThreadMessagesList(
                 }
             }
             items(payload.messages.size, key = { payload.messages[it].id }) { index ->
-                ThreadMessageCard(
-                    message = payload.messages[index],
-                    alignOwnMessageRight = payload.alignOwnMessagesRight && payload.messages[index].isOwn,
-                    showReplyAction = payload.showReplyActions,
-                    onShowActions = { actionMessageId = payload.messages[index].id },
-                    onOpenMember = { onThreadEvent("openMember", it, null, null) },
-                    onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
-                    onOpenTask = { onThreadEvent("openTask", it, null, null) },
-                    onTaskStatusChange = { taskId, status ->
-                        onThreadEvent("setTaskStatus", taskId, null, status.key)
-                    },
-                    timestampLabel = payload.formatTimestampLabel(payload.messages[index].timestampLabel),
-                    onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) }
-                )
+                val message = payload.messages[index]
+                if (message.isSystemMessage()) {
+                    ThreadSystemMessageRow(
+                        message = message,
+                        showReplyAction = payload.showReplyActions,
+                        timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
+                        onOpenThread = { onThreadEvent("openMessageThread", message.id, null, null) },
+                        onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                        onTaskStatusChange = { taskId, status ->
+                            onThreadEvent("setTaskStatus", taskId, null, status.key)
+                        }
+                    )
+                } else {
+                    ThreadMessageCard(
+                        message = message,
+                        alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
+                        showReplyAction = payload.showReplyActions,
+                        onShowActions = { actionMessageId = message.id },
+                        onOpenMember = { onThreadEvent("openMember", it, null, null) },
+                        onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
+                        onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                        onTaskStatusChange = { taskId, status ->
+                            onThreadEvent("setTaskStatus", taskId, null, status.key)
+                        },
+                        timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
+                        onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) }
+                    )
+                }
             }
             if (payload.canLoadMoreAfter) {
                 item {
@@ -837,6 +854,76 @@ private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 90
 private const val ThreadBackToBottomAnchorAttempts = 12
+
+@Composable
+private fun ThreadSystemMessageRow(
+    message: KuiklyThreadMessageItem,
+    showReplyAction: Boolean,
+    timestampLabel: String,
+    onOpenThread: () -> Unit,
+    onOpenTask: (String) -> Unit,
+    onTaskStatusChange: (String, ThreadTaskStatusOption) -> Unit
+) {
+    var expanded by remember(message.id) { mutableStateOf(false) }
+    Column(
+        modifier =
+            Modifier.fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .clickable { expanded = !expanded }
+                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Text(
+            text = message.collapsedSystemSummary(timestampLabel),
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Medium, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (expanded) {
+            ThreadSystemMessageExpandedContent(message)
+        }
+        ThreadMessageFooterMeta(
+            message = message,
+            showReplyAction = showReplyAction,
+            alignEnd = false,
+            onOpenThread = onOpenThread,
+            onOpenTask = onOpenTask,
+            onTaskStatusChange = onTaskStatusChange
+        )
+    }
+}
+
+@Composable
+private fun ThreadSystemMessageExpandedContent(message: KuiklyThreadMessageItem) {
+    Column(
+        modifier =
+            Modifier.fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .padding(SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        Text(
+            text = "Body",
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        SlockMarkdownBody(
+            body = message.body.sanitizeThreadSystemText(),
+            textStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp, color = SlockColor.TextBlack)
+        )
+        val details = message.expandedSystemDetails()
+        if (details.isNotBlank()) {
+            Text(
+                text = details,
+                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray
+            )
+        }
+    }
+}
 
 @Composable
 private fun ThreadInlineActionRow(label: String, onClick: () -> Unit) {
@@ -1049,6 +1136,41 @@ private fun String?.threadTaskStatusOption(): ThreadTaskStatusOption {
             option.label.lowercase().replace(" ", "") == normalized
     } ?: threadTaskStatusOptions.first()
 }
+
+internal fun KuiklyThreadMessageItem.isSystemMessage(): Boolean =
+    messageType.equals("System", ignoreCase = true) || messageType.equals("system", ignoreCase = true)
+
+internal fun KuiklyThreadMessageItem.collapsedSystemSummary(timestamp: String): String =
+    listOf(timestamp, body.sanitizeThreadSystemText())
+        .filter { it.isNotBlank() }
+        .joinToString(" · ")
+
+internal fun KuiklyThreadMessageItem.expandedSystemDetails(): String =
+    buildList {
+        systemEventType?.takeIf { it.isNotBlank() }?.let { add("Type: ${it.sanitizeThreadSystemText()}") }
+        metadata.entries.sortedBy { it.key }.forEach { (key, value) ->
+            if (key.isNotBlank() && value.isNotBlank()) {
+                add("${key.sanitizeThreadSystemText()}: ${value.sanitizeThreadSystemText()}")
+            }
+        }
+    }.joinToString("\n")
+
+internal fun String.sanitizeThreadSystemText(): String =
+    replace(Regex("""<br\s*/?>""", RegexOption.IGNORE_CASE), "\n")
+        .replace(Regex("""</p\s*>""", RegexOption.IGNORE_CASE), "\n")
+        .replace(Regex("""<[^>]+>"""), "")
+        .decodeBasicHtmlEntities()
+        .replace(Regex("""[ \t\x0B\f\r]+"""), " ")
+        .replace(Regex("""\n{3,}"""), "\n\n")
+        .trim()
+
+private fun String.decodeBasicHtmlEntities(): String =
+    replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
 
 @Composable
 private fun ThreadTaskStatusSheet(

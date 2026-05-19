@@ -1482,6 +1482,16 @@ private fun Message.toKuiklyThreadMessageJson(currentMemberId: MemberId?): JSONO
                 .putNullable("avatarWireValue", author.avatar?.wireValue ?: author.avatarUrl)
                 .putNullable("gravatarHash", author.gravatarHash)
                 .put("timestampLabel", timestampLabel)
+                .put("messageType", messageType.name)
+                .putNullable("systemEventType", systemEventType)
+                .put(
+                        "metadata",
+                        JSONObject().also { json ->
+                            metadata.entries.sortedBy { it.key }.forEach { (key, value) ->
+                                if (key.isNotBlank()) json.put(key, value)
+                            }
+                        }
+                )
                 .put("body", body)
                 .put("replyCount", replyCount)
                 .putNullable("taskId", task?.id?.value)

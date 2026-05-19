@@ -102,6 +102,44 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun parsesSystemMessageMetadataAndBuildsCollapsedSummary() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "thread-1",
+                      "messages": [
+                        {
+                          "id": "m-system",
+                          "authorId": "system",
+                          "authorName": "System",
+                          "messageType": "System",
+                          "systemEventType": "member_joined",
+                          "timestampLabel": "2026-05-09 21:53:33.024426+00",
+                          "body": "<p>Cindy joined<br>the channel</p>",
+                          "metadata": {
+                            "actor": "Cindy",
+                            "source": "<b>invite</b>"
+                          }
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                fallbackPageData = "{}",
+                instanceId = "fallback"
+            )
+
+        val message = payload.messages.first()
+        assertEquals(true, message.isSystemMessage())
+        assertEquals("member_joined", message.systemEventType)
+        assertEquals("Cindy", message.metadata["actor"])
+        assertEquals("invite", message.metadata["source"]?.sanitizeThreadSystemText())
+        assertEquals("10:00 · Cindy joined\nthe channel", message.collapsedSystemSummary("10:00"))
+        assertEquals("Type: member_joined\nactor: Cindy\nsource: invite", message.expandedSystemDetails())
+    }
+
+    @Test
     fun formatsRawTimestampInSharedThreadPayload() {
         val payload =
             parseThreadScreenPayload(
