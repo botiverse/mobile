@@ -29,6 +29,12 @@ fun HomeContent.withDraftIndicators(draftThreadIds: Set<String>): HomeContent {
     )
 }
 
+fun HomeContent.defaultSelectedChannelId(): String? =
+    channels.firstOrNull { it.permissions.canRead }
+        ?.threadId
+        ?.value
+        ?: channels.firstOrNull()?.threadId?.value
+
 private fun HomeContent.clearDraftIndicators(): HomeContent =
     copy(
         channels = channels.map { it.copy(hasDraft = false) },

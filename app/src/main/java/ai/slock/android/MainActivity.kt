@@ -157,6 +157,7 @@ import ai.slock.android.feature.auth.CreateAccountStatus
 import ai.slock.android.feature.auth.ForgotPasswordStatus
 import ai.slock.android.feature.home.HomeContent
 import ai.slock.android.feature.home.HomeUiState
+import ai.slock.android.feature.home.defaultSelectedChannelId
 import ai.slock.android.feature.home.withDraftIndicators
 import ai.slock.android.feature.inbox.FollowedThreadsScreen
 import ai.slock.android.feature.inbox.InboxContent
@@ -6756,7 +6757,8 @@ private fun SlockAppContent(
                 homeState =
                         HomeUiState(
                                 ScreenLoadState.Content(initialHomeContent),
-                                selectedServerId = selectedServerId.value
+                                selectedServerId = selectedServerId.value,
+                                selectedThreadId = initialHomeContent.defaultSelectedChannelId()
                         )
             }
                 val initialHomeHasCachedConversations =
@@ -12807,39 +12809,36 @@ private fun ThreadUiState.logVisibleThreadMerge(
 private fun DataResult<HomeSnapshot>.toHomeUiState(
         selectedServerId: String?,
         preservedServerUnreadCount: Int? = null
-): HomeUiState =
-        HomeUiState(
-                loadState =
-                        when (this) {
-                            is DataResult.Content ->
-                                    ScreenLoadState.Content(
-                                            run {
-                                                val effectiveServerUnreadCount =
-                                                        preservedServerUnreadCount
-                                                                ?: data.server.unreadCount
-                                                val server =
-                                                        data.server.copy(
-                                                                unreadCount =
-                                                                        effectiveServerUnreadCount
-                                                        )
-                                                 HomeContent(
-                                                                 server = server,
-                                                                 currentMember = data.currentMember,
-                                                                 channels = data.channels,
-                                                                 directMessages =
-                                                                         data.directMessages,
-                                                                 unreadTotal = data.unreadTotal,
-                                                                 serverUnreadCount =
-                                                                         effectiveServerUnreadCount
-                                                         )
-                                             }
-                                     )
-                            is DataResult.Empty -> ScreenLoadState.Empty(EmptyReason.NoInboxItems)
-                            is DataResult.Error -> ScreenLoadState.Error(error)
-                            is DataResult.NoPermission -> ScreenLoadState.NoPermission(blocker)
-                        },
-                selectedServerId = selectedServerId
-        )
+): HomeUiState {
+    val content =
+            (this as? DataResult.Content)?.data?.toHomeContent(preservedServerUnreadCount)
+    return HomeUiState(
+            loadState =
+                    when (this) {
+                        is DataResult.Content ->
+                                ScreenLoadState.Content(
+                                        content ?: data.toHomeContent(preservedServerUnreadCount)
+                                )
+                        is DataResult.Empty -> ScreenLoadState.Empty(EmptyReason.NoInboxItems)
+                        is DataResult.Error -> ScreenLoadState.Error(error)
+                        is DataResult.NoPermission -> ScreenLoadState.NoPermission(blocker)
+                    },
+            selectedServerId = selectedServerId,
+            selectedThreadId = content?.defaultSelectedChannelId()
+    )
+}
+
+private fun HomeSnapshot.toHomeContent(preservedServerUnreadCount: Int? = null): HomeContent {
+    val effectiveServerUnreadCount = preservedServerUnreadCount ?: server.unreadCount
+    return HomeContent(
+            server = server.copy(unreadCount = effectiveServerUnreadCount),
+            currentMember = currentMember,
+            channels = channels,
+            directMessages = directMessages,
+            unreadTotal = unreadTotal,
+            serverUnreadCount = effectiveServerUnreadCount
+    )
+}
 
 private fun ThreadUiState.threadChannelId(): ChannelId? {
     val content = (loadState as? ScreenLoadState.Content)?.data ?: return null

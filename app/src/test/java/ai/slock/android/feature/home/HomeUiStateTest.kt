@@ -66,6 +66,46 @@ class HomeUiStateTest {
         assertEquals(false, marked.directMessages.single().hasDraft)
     }
 
+    @Test
+    fun defaultSelectedChannelIdUsesFirstReadableChannelOnly() {
+        val content = homeContent(
+            channels = listOf(
+                unreadChannel(id = "channel-1", threadId = "thread-1", unreadCount = 0)
+                    .copy(permissions = ConversationPermissions(canRead = false)),
+                unreadChannel(id = "channel-2", threadId = "thread-2", unreadCount = 0)
+            ),
+            directMessages = listOf(
+                directMessage(
+                    id = "dm-1",
+                    threadId = "dm-thread-1",
+                    name = "Agent",
+                    presenceMemberId = null
+                )
+            ),
+            unreadTotal = 0
+        )
+
+        assertEquals("thread-2", content.defaultSelectedChannelId())
+    }
+
+    @Test
+    fun defaultSelectedChannelIdDoesNotSelectDirectMessages() {
+        val content = homeContent(
+            channels = emptyList(),
+            directMessages = listOf(
+                directMessage(
+                    id = "dm-1",
+                    threadId = "dm-thread-1",
+                    name = "Agent",
+                    presenceMemberId = null
+                )
+            ),
+            unreadTotal = 0
+        )
+
+        assertEquals(null, content.defaultSelectedChannelId())
+    }
+
     private fun homeContent(
         channels: List<ConversationSummary>,
         directMessages: List<ConversationSummary>,
