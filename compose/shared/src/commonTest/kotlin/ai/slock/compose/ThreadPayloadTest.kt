@@ -5,6 +5,9 @@ import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.ThreadId
+import ai.slock.compose.data.StoredAuthServer
+import ai.slock.compose.data.StoredAuthSession
+import ai.slock.compose.data.StoredAuthUser
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -93,6 +96,27 @@ class ThreadPayloadTest {
         assertEquals(7, payload.membersCount)
         assertEquals(false, payload.showReplyActions)
         assertEquals("Message #general", parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId).placeholder)
+    }
+
+    @Test
+    fun picksCurrentServerSummaryForSharedHomeShellLoadingState() {
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "artin@slock.ai"),
+                accessToken = "access",
+                refreshToken = "refresh",
+                selectedServerId = "server-2",
+                servers =
+                    listOf(
+                        StoredAuthServer(id = "server-1", name = "First", slug = "first"),
+                        StoredAuthServer(id = "server-2", name = "Second", slug = "second")
+                    )
+            )
+
+        val current = session.currentServerSummary()
+
+        assertEquals("server-2", current?.id?.value)
+        assertEquals("Second", current?.name)
     }
 
     @Test

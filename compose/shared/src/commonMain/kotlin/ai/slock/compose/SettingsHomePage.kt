@@ -427,21 +427,23 @@ private fun SharedHomeScreen(bridge: ai.slock.compose.base.BridgeModule) {
     var refreshNonce by remember { mutableStateOf(0) }
     var selectedServerId by remember { mutableStateOf<String?>(null) }
     var serverSwitcherExpanded by remember { mutableStateOf(false) }
-    var state by remember { mutableStateOf<SharedHomeUiState>(SharedHomeUiState.Loading) }
+    var state by remember { mutableStateOf<SharedHomeUiState>(SharedHomeUiState.Loading()) }
 
     LaunchedEffect(refreshNonce, selectedServerId) {
-        state = SharedHomeUiState.Loading
+        state = SharedHomeUiState.Loading()
         try {
             val session = authStore.readSession()
             if (session == null) {
                 state = SharedHomeUiState.Error("unauthenticated")
                 return@LaunchedEffect
             }
+            state = SharedHomeUiState.Loading(session)
             selectedServerId?.let { serverId ->
                 val server = session.servers.firstOrNull { it.id == serverId }
                 authStore.updateSelectedServer(serverId = serverId, serverSlug = server?.slug)
             }
             val activeSession = authStore.readSession() ?: session
+            state = SharedHomeUiState.Loading(activeSession)
             val activeServerId = selectedServerId ?: activeSession.currentServerId
             state =
                 when (val result = dataSource.loadHome(serverId = activeServerId?.let(::ServerId), priority = DataRequestPriority.Visible)) {
@@ -458,25 +460,35 @@ private fun SharedHomeScreen(bridge: ai.slock.compose.base.BridgeModule) {
     }
 
     when (val current = state) {
-        SharedHomeUiState.Loading ->
-            AppShellPlaceholderContent(
-                title = "Home",
-                subtitle = "Loading workspace...",
-                iconName = "house"
-            )
+        is SharedHomeUiState.Loading ->
+            if (current.session == null) {
+                AppShellPlaceholderContent(
+                    title = "Home",
+                    subtitle = "Loading workspace...",
+                    iconName = "house"
+                )
+            } else {
+                SharedHomeSessionShell(
+                    session = current.session,
+                    serverSwitcherExpanded = serverSwitcherExpanded,
+                    contentRefreshing = true,
+                    onRefresh = { refreshNonce += 1 },
+                    onServerBadgeClick = { serverSwitcherExpanded = !serverSwitcherExpanded },
+                    onServerSelected = { serverId ->
+                        serverSwitcherExpanded = false
+                        selectedServerId = serverId
+                    },
+                    onCreateServerClick = {
+                        bridge.toast("Create server is not available yet")
+                    }
+                )
+            }
         is SharedHomeUiState.Empty ->
-            SlockStructuralHomeShell(
-                currentServerName = current.session.servers.firstOrNull { it.id == current.session.currentServerId }?.name
-                    ?: "No server",
-                currentServerId = current.session.currentServerId.orEmpty(),
-                servers = current.session.servers.map { it.toServerSummary().toSharedSwitcherItem() },
-                channels = emptyList(),
-                directMessages = emptyList(),
+            SharedHomeSessionShell(
+                session = current.session,
                 serverSwitcherExpanded = serverSwitcherExpanded,
-                showBottomBar = false,
-                outerPadding = 0.dp,
                 contentRefreshing = false,
-                onContentRefresh = { refreshNonce += 1 },
+                onRefresh = { refreshNonce += 1 },
                 onServerBadgeClick = { serverSwitcherExpanded = !serverSwitcherExpanded },
                 onServerSelected = { serverId ->
                     serverSwitcherExpanded = false
@@ -546,10 +558,44 @@ private fun SharedHomeScreen(bridge: ai.slock.compose.base.BridgeModule) {
 }
 
 private sealed interface SharedHomeUiState {
-    data object Loading : SharedHomeUiState
+    data class Loading(val session: StoredAuthSession? = null) : SharedHomeUiState
     data class Empty(val session: StoredAuthSession) : SharedHomeUiState
     data class Error(val code: String) : SharedHomeUiState
     data class Content(val snapshot: HomeSnapshot, val session: StoredAuthSession) : SharedHomeUiState
+}
+
+@Composable
+private fun SharedHomeSessionShell(
+    session: StoredAuthSession,
+    serverSwitcherExpanded: Boolean,
+    contentRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    onServerBadgeClick: () -> Unit,
+    onServerSelected: (String) -> Unit,
+    onCreateServerClick: () -> Unit
+) {
+    val currentServer = session.currentServerSummary()
+    SlockStructuralHomeShell(
+        currentServerName = currentServer?.name ?: "No server",
+        currentServerId = currentServer?.id?.value ?: session.currentServerId.orEmpty(),
+        servers = session.servers.map { it.toServerSummary().toSharedSwitcherItem() },
+        channels = emptyList(),
+        directMessages = emptyList(),
+        serverSwitcherExpanded = serverSwitcherExpanded,
+        showBottomBar = false,
+        outerPadding = 0.dp,
+        contentRefreshing = contentRefreshing,
+        onContentRefresh = onRefresh,
+        onServerBadgeClick = onServerBadgeClick,
+        onServerSelected = onServerSelected,
+        onCreateServerClick = onCreateServerClick
+    )
+}
+
+internal fun StoredAuthSession.currentServerSummary(): ServerSummary? {
+    val currentId = currentServerId
+    return servers.firstOrNull { it.id == currentId }?.toServerSummary()
+        ?: servers.firstOrNull()?.toServerSummary()
 }
 
 private fun ServerSummary.toSharedSwitcherItem(): SlockServerSwitcherItem =
