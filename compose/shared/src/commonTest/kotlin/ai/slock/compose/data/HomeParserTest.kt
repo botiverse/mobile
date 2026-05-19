@@ -188,6 +188,37 @@ class HomeParserTest {
         )
     }
 
+    @Test
+    fun logsDirectMessageAvatarFieldKeysWhenAvatarIsMissing() {
+        val warnings = mutableListOf<String>()
+
+        val result =
+            parseSlockHome(
+                payload =
+                    HomeNetworkPayload(
+                        serverId = ServerId("server-1"),
+                        channels = HomeNetworkResponse(code = 200, bodyText = """{"channels":[]}"""),
+                        directMessages =
+                            HomeNetworkResponse(
+                                code = 200,
+                                bodyText =
+                                    """
+                                    {"directMessages":[
+                                      {"channelId":"dm-1","peer":{"id":"agent-1","displayName":"Agent One","kind":"agent"}}
+                                    ]}
+                                    """.trimIndent()
+                            ),
+                        unreadCounts = HomeNetworkResponse(code = 200, bodyText = """{"counts":{}}"""),
+                        serverUnreadSummary = HomeNetworkResponse(code = 200, bodyText = """{"unreadCount":0}""")
+                    ),
+                session = sampleSession(),
+                warningLogger = warnings::add
+            )
+
+        assertTrue(result is DataResult.Content)
+        assertTrue(warnings.any { it.contains("dm_avatar_missing") && it.contains("peerId=agent-1") })
+    }
+
     private fun sampleSession(): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "artin@slock.ai", displayName = "Artin"),

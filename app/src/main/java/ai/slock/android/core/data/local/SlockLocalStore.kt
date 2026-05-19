@@ -735,6 +735,7 @@ private fun Local_conversation.toConversationSummary(): ConversationSummary =
         name = name,
         subtitle = subtitle,
         avatarUrl = avatar_url,
+        avatar = AvatarReference.fromWireValue(avatar_url),
         unreadCount = unread_count.toInt(),
         unreadCountKnown = true,
         mentionCount = mention_count.toInt(),

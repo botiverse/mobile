@@ -247,6 +247,59 @@ class SlockLocalWriteThroughTest {
     }
 
     @Test
+    fun writeAgentDirectMessagePresenceCopiesAvatarIntoHomeProjection() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 42L })
+        val server = ServerSummary(id = ServerId("server-1"), name = "Slock")
+        val currentMember = memberProfile("user-1", MemberKind.Human)
+        writer.writeHomeResult(
+            DataResult.Content(
+                HomeSnapshot(
+                    server = server,
+                    currentMember = currentMember,
+                    channels = emptyList(),
+                    directMessages =
+                        listOf(
+                            ConversationSummary(
+                                threadId = ThreadId("dm-1"),
+                                channelId = ChannelId("dm-1"),
+                                kind = ConversationKind.DirectMessage,
+                                name = "Android-Developer",
+                                presenceMemberId = MemberId("agent-android")
+                            )
+                        ),
+                    unreadTotal = 0
+                )
+            ),
+            source = "seed_home"
+        )
+
+        writer.writeAgentDirectMessagePresence(
+            serverId = ServerId("server-1"),
+            members =
+                listOf(
+                    memberProfile("agent-android", MemberKind.Agent).copy(
+                        displayName = "Android-Developer",
+                        handle = "Android-Developer",
+                        avatarUrl = "pixel:robot",
+                        avatar = AvatarReference.Pixel("robot")
+                    )
+                ),
+            source = "members_presence_home"
+        )
+
+        val cached =
+            writer.readHomeSnapshot(
+                serverId = ServerId("server-1"),
+                serverFallback = server,
+                currentMemberFallback = currentMember
+            )
+
+        assertEquals("pixel:robot", cached?.directMessages?.single()?.avatarUrl)
+        assertEquals("pixel:robot", cached?.directMessages?.single()?.avatar?.wireValue)
+    }
+
+    @Test
     fun writeHomeResultPreservesUnreadWhenRefreshOmitsUnreadFields() {
         val store = createInMemoryStore()
         val writer = SlockLocalWriteThrough(store, clock = { 42L })

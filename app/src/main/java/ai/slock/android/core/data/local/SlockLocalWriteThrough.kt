@@ -9,6 +9,7 @@ import ai.slock.android.core.data.repository.ThreadSnapshot
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationKind
 import ai.slock.android.core.model.ConversationSummary
+import ai.slock.android.core.model.AvatarReference
 import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Message
@@ -40,6 +41,7 @@ import ai.slock.android.feature.thread.ThreadUiState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import ai.slock.compose.model.explicitMessageStreamChannelId
+import ai.slock.compose.model.toGravatarAvatarReference
 
 class SlockLocalWriteThrough(
     private val store: SlockLocalStore,
@@ -177,7 +179,17 @@ class SlockLocalWriteThrough(
                         conversation.copy(
                             presence = agent.presence,
                             agentStatus = agent.agentStatus,
-                            presenceMemberId = conversation.presenceMemberId ?: agent.id
+                            presenceMemberId = conversation.presenceMemberId ?: agent.id,
+                            avatarUrl =
+                                conversation.avatarUrl
+                                    ?: agent.avatar?.wireValue
+                                    ?: agent.avatarUrl
+                                    ?: agent.gravatarHash?.toGravatarAvatarReference()?.wireValue,
+                            avatar =
+                                conversation.avatar
+                                    ?: agent.avatar
+                                    ?: agent.avatarUrl?.let(AvatarReference::fromWireValue)
+                                    ?: agent.gravatarHash?.toGravatarAvatarReference()
                         )
                     } else {
                         conversation

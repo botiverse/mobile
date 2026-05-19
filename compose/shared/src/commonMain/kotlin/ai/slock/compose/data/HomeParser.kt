@@ -152,10 +152,15 @@ private fun JsonObject.toConversationOrNull(
         warningLogger("skip_item source=$source stage=item_map fieldPath=id|channelId|threadChannelId|_id reason=missing_id")
         return null
     }
-    return toConversation(kind, id)
+    return toConversation(kind, id, source, warningLogger)
 }
 
-private fun JsonObject.toConversation(kind: ConversationKind, id: String): ConversationSummary {
+private fun JsonObject.toConversation(
+    kind: ConversationKind,
+    id: String,
+    source: String,
+    warningLogger: (String) -> Unit
+): ConversationSummary {
     val presenceSource = firstObject("peer", "agent", "user", "member", "profile")
     val presenceMemberKind = explicitMemberKindOrNull() ?: presenceSource?.explicitMemberKindOrNull()
     val name =
@@ -178,6 +183,11 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
     val joined = if (kind == ConversationKind.DirectMessage) true else channelJoined()
     val canSend = boolean("canSend", "canWrite", "canMessage") ?: joined
     val avatarWireValue = conversationAvatarWireValue()
+    if (kind == ConversationKind.DirectMessage && avatarWireValue.isNullOrBlank()) {
+        warningLogger(
+            "dm_avatar_missing source=$source peerId=${presenceSource?.string("id", "agentId", "userId", "memberId") ?: id} peerName=$name finalAvatar=missing rootAvatarKeys=${avatarDebugKeys()} rootAvatarTypes=${avatarDebugTypes()} nestedAvatarKeys=${presenceSource?.avatarDebugKeys() ?: "none"} nestedAvatarTypes=${presenceSource?.avatarDebugTypes() ?: "none"}"
+        )
+    }
     val unreadCount = int("unreadCount", "unread")
     val mentionCount = int("mentionCount", "mentions")
     val hasDraft = boolean("hasDraft", "draft", "has_draft")
@@ -443,6 +453,54 @@ private fun JsonObject.avatarWireValue(vararg names: String): String? {
     }
     return null
 }
+
+private fun JsonObject.avatarDebugKeys(): String =
+    keys
+        .filter { key ->
+            val normalized = key.lowercase()
+            "avatar" in normalized ||
+                "gravatar" in normalized ||
+                "image" in normalized ||
+                "photo" in normalized ||
+                "picture" in normalized ||
+                "icon" in normalized ||
+                "emailhash" in normalized ||
+                "email_hash" in normalized
+        }
+        .sorted()
+        .joinToString("|")
+        .ifBlank { "none" }
+
+private fun JsonObject.avatarDebugTypes(): String =
+    keys
+        .filter { key ->
+            val normalized = key.lowercase()
+            "avatar" in normalized ||
+                "gravatar" in normalized ||
+                "image" in normalized ||
+                "photo" in normalized ||
+                "picture" in normalized ||
+                "icon" in normalized ||
+                "emailhash" in normalized ||
+                "email_hash" in normalized
+        }
+        .sorted()
+        .joinToString("|") { key -> "$key=${this[key].debugShape()}" }
+        .ifBlank { "none" }
+
+private fun JsonElement?.debugShape(): String =
+    when (this) {
+        null -> "null"
+        is JsonArray -> "array"
+        is JsonObject -> "object(${keys.sorted().joinToString(",")})"
+        is JsonPrimitive ->
+            when {
+                isString -> "string"
+                booleanOrNull != null -> "boolean"
+                intOrNull != null -> "number"
+                else -> "primitive"
+            }
+    }
 
 private fun JsonElement.toAvatarWireValue(): String? {
     if (this is JsonPrimitive) {
