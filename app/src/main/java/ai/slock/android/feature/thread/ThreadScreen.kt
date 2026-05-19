@@ -249,7 +249,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
-import com.mikepenz.markdown.coil3.Coil3ImageTransformerImpl
 import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.compose.elements.MarkdownCodeBlock
 import com.mikepenz.markdown.compose.elements.MarkdownCodeFence
@@ -262,10 +261,6 @@ import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.markdownAnnotator
 import com.mikepenz.markdown.model.markdownInlineContent
 import com.mikepenz.markdown.model.rememberMarkdownState
-import coil3.compose.AsyncImage
-import coil3.compose.LocalPlatformContext
-import coil3.request.CachePolicy
-import coil3.request.ImageRequest
 import dev.snipme.highlights.Highlights
 import dev.snipme.highlights.model.SyntaxThemes
 import java.time.Instant
@@ -2798,46 +2793,6 @@ private fun ThreadAttachmentRemoteImagePreview(
         thumbnailUrl: String?,
         name: String
 ) {
-    val imageUrl = url?.takeIf { it.isNotBlank() }
-    val fallbackUrl =
-            thumbnailUrl?.takeIf { it.isNotBlank() && it != imageUrl }
-    val context = LocalPlatformContext.current
-    val cacheKey = remember(imageUrl) { imageUrl?.let { "attachment-preview:$it" } }
-    val request =
-            remember(context, imageUrl, cacheKey) {
-                imageUrl?.let {
-                    ImageRequest.Builder(context)
-                            .data(it)
-                            .memoryCacheKey(cacheKey)
-                            .diskCacheKey(cacheKey)
-                            .memoryCachePolicy(CachePolicy.ENABLED)
-                            .diskCachePolicy(CachePolicy.ENABLED)
-                            .networkCachePolicy(CachePolicy.ENABLED)
-                            .build()
-                }
-            }
-    val fallbackCacheKey =
-            remember(fallbackUrl) { fallbackUrl?.let { "attachment-preview:$it" } }
-    val fallbackRequest =
-            remember(context, fallbackUrl, fallbackCacheKey) {
-                fallbackUrl?.let {
-                    ImageRequest.Builder(context)
-                            .data(it)
-                            .memoryCacheKey(fallbackCacheKey)
-                            .diskCacheKey(fallbackCacheKey)
-                            .memoryCachePolicy(CachePolicy.ENABLED)
-                            .diskCachePolicy(CachePolicy.ENABLED)
-                            .networkCachePolicy(CachePolicy.ENABLED)
-                            .build()
-                }
-            }
-    var hasFallbackImage by remember(fallbackUrl) { mutableStateOf(fallbackUrl != null) }
-    var loadState by remember(imageUrl) {
-        mutableStateOf(
-                if (imageUrl == null) RemoteImageLoadState.Missing
-                else RemoteImageLoadState.Loading
-        )
-    }
     Box(
             modifier =
                     Modifier.fillMaxWidth()
@@ -2854,53 +2809,13 @@ private fun ThreadAttachmentRemoteImagePreview(
                             .clip(RoundedCornerShape(SlockRadius.Xs)),
             contentAlignment = Alignment.Center
     ) {
-        if ((loadState == RemoteImageLoadState.Missing || loadState == RemoteImageLoadState.Error) &&
-                        !hasFallbackImage
-        ) {
-            Icon(
-                    imageVector = LucideIcons.Image,
-                    contentDescription = null,
-                    tint = SlockColor.TextMutedGray,
-                    modifier = Modifier.size(40.dp)
-            )
-        } else if (loadState == RemoteImageLoadState.Loading && !hasFallbackImage) {
-            CircularProgressIndicator(
-                    modifier = Modifier.size(28.dp),
-                    strokeWidth = 2.dp,
-                    color = SlockColor.TextBlack,
-                    trackColor = SlockColor.SurfaceWhite
-            )
-        }
-        if (fallbackRequest != null) {
-            AsyncImage(
-                    model = fallbackRequest,
-                    contentDescription = name,
-                    contentScale = ContentScale.Fit,
-                    onSuccess = { hasFallbackImage = true },
-                    modifier =
-                            Modifier.fillMaxWidth().heightIn(min = 220.dp).padding(SlockSpacing.Sm)
-            )
-        }
-        if (request != null) {
-            AsyncImage(
-                    model = request,
-                    contentDescription = name,
-                    contentScale = ContentScale.Fit,
-                    onLoading = { loadState = RemoteImageLoadState.Loading },
-                    onSuccess = { loadState = RemoteImageLoadState.Success },
-                    onError = { loadState = RemoteImageLoadState.Error },
-                    modifier =
-                            Modifier.fillMaxWidth().heightIn(min = 220.dp).padding(SlockSpacing.Sm)
-            )
-        }
+        Icon(
+                imageVector = LucideIcons.Image,
+                contentDescription = name,
+                tint = SlockColor.TextMutedGray,
+                modifier = Modifier.size(40.dp)
+        )
     }
-}
-
-private enum class RemoteImageLoadState {
-    Missing,
-    Loading,
-    Success,
-    Error
 }
 
 @Composable
@@ -4921,50 +4836,28 @@ private fun ThreadFileSourceBadge(
 
 @Composable
 private fun ThreadFileThumbnail(item: ChannelFileItem) {
-    val thumbnailUrl = item.attachment.thumbnailUrl
     val isImage = item.attachment.mimeType.startsWith("image/")
-    if (isImage && !thumbnailUrl.isNullOrBlank()) {
-        AsyncImage(
-                model =
-                        ImageRequest.Builder(LocalPlatformContext.current)
-                                .data(thumbnailUrl)
-                                .memoryCachePolicy(CachePolicy.ENABLED)
-                                .diskCachePolicy(CachePolicy.ENABLED)
-                                .build(),
+    Box(
+            modifier =
+                    Modifier.size(42.dp)
+                            .background(
+                                    SlockColor.SurfaceCream,
+                                    RoundedCornerShape(SlockRadius.Xs)
+                            )
+                            .border(
+                                    SlockStroke.Thin,
+                                    SlockColor.EmptyStateGray,
+                                    RoundedCornerShape(SlockRadius.Xs)
+                            ),
+            contentAlignment = Alignment.Center
+    ) {
+        Icon(
+                imageVector =
+                        if (isImage) LucideIcons.Image else LucideIcons.FileText,
                 contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier =
-                        Modifier.size(42.dp)
-                                .clip(RoundedCornerShape(SlockRadius.Xs))
-                                .border(
-                                        SlockStroke.Thin,
-                                        SlockColor.EmptyStateGray,
-                                        RoundedCornerShape(SlockRadius.Xs)
-                                )
+                tint = SlockColor.TextMutedGray,
+                modifier = Modifier.size(18.dp)
         )
-    } else {
-        Box(
-                modifier =
-                        Modifier.size(42.dp)
-                                .background(
-                                        SlockColor.SurfaceCream,
-                                        RoundedCornerShape(SlockRadius.Xs)
-                                )
-                                .border(
-                                        SlockStroke.Thin,
-                                        SlockColor.EmptyStateGray,
-                                        RoundedCornerShape(SlockRadius.Xs)
-                                ),
-                contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                    imageVector =
-                            if (isImage) LucideIcons.Image else LucideIcons.FileText,
-                    contentDescription = null,
-                    tint = SlockColor.TextMutedGray,
-                    modifier = Modifier.size(18.dp)
-            )
-        }
     }
 }
 
@@ -5896,35 +5789,11 @@ private fun ThreadAttachmentThumbnail(
         isImage: Boolean,
         isLoading: Boolean
 ) {
-    val imageUrl = thumbnailUrl?.takeIf { it.isNotBlank() }
-    val context = LocalPlatformContext.current
-    val cacheKey = remember(imageUrl) { imageUrl?.let { "attachment-thumbnail:$it" } }
-    val request =
-            remember(context, imageUrl, cacheKey) {
-                imageUrl?.let {
-                    ImageRequest.Builder(context)
-                            .data(it)
-                            .memoryCacheKey(cacheKey)
-                            .diskCacheKey(cacheKey)
-                            .memoryCachePolicy(CachePolicy.ENABLED)
-                            .diskCachePolicy(CachePolicy.ENABLED)
-                            .networkCachePolicy(CachePolicy.ENABLED)
-                            .build()
-                }
-            }
-    var loadState by remember(imageUrl) {
-        mutableStateOf(
-                if (imageUrl == null) RemoteImageLoadState.Missing
-                else RemoteImageLoadState.Loading
-        )
-    }
     Box(
             modifier =
                     Modifier.fillMaxSize()
                             .background(
-                                    if (loadState == RemoteImageLoadState.Success) {
-                                        SlockColor.SurfaceWhite
-                                    } else if (isImage) {
+                                    if (isImage) {
                                         SlockColor.AccentPink
                                     } else {
                                         SlockColor.SurfaceWhite
@@ -5941,26 +5810,12 @@ private fun ThreadAttachmentThumbnail(
                     trackColor = SlockColor.SurfaceWhite
             )
         } else {
-            if (request != null) {
-                AsyncImage(
-                        model = request,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        onLoading = { loadState = RemoteImageLoadState.Loading },
-                        onSuccess = { loadState = RemoteImageLoadState.Success },
-                        onError = { loadState = RemoteImageLoadState.Error },
-                        modifier =
-                                Modifier.fillMaxSize().clip(RoundedCornerShape(SlockRadius.Xs))
-                )
-            }
-            if (loadState != RemoteImageLoadState.Success) {
-                Icon(
-                        imageVector = if (isImage) LucideIcons.Image else LucideIcons.FileText,
-                        contentDescription = null,
-                        tint = SlockColor.TextBlack,
-                        modifier = Modifier.size(24.dp)
-                )
-            }
+            Icon(
+                    imageVector = if (isImage) LucideIcons.Image else LucideIcons.FileText,
+                    contentDescription = null,
+                    tint = SlockColor.TextBlack,
+                    modifier = Modifier.size(24.dp)
+            )
         }
     }
 }
@@ -6515,7 +6370,6 @@ private fun ThreadOfficialMarkdown(
                                                 textAlign = textAlign
                                         )
                         ),
-                imageTransformer = Coil3ImageTransformerImpl,
                 annotator = annotator,
                 inlineContent = inlineContent,
                 components = components,

@@ -6,21 +6,16 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -30,10 +25,6 @@ import ai.slock.android.core.model.AvatarReference
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockType
-import coil3.compose.AsyncImage
-import coil3.compose.LocalPlatformContext
-import coil3.request.CachePolicy
-import coil3.request.ImageRequest
 
 @Composable
 fun SlockAvatar(
@@ -49,61 +40,7 @@ fun SlockAvatar(
     val pixelSpec = remember(avatarWireValue) { avatarWireValue?.toSharedPixelAvatarSpec() }
     when {
         pixelSpec != null -> PixelAvatar(spec = pixelSpec, modifier = modifier, size = size)
-        avatarWireValue?.isHttpAvatarUrl() == true -> UrlAvatar(
-            url = avatarWireValue,
-            modifier = modifier,
-            size = size,
-            fallbackColor = fallbackColor
-        )
         else -> DefaultUserAvatar(modifier = modifier, size = size, fallbackColor = fallbackColor)
-    }
-}
-
-@Composable
-private fun UrlAvatar(
-    url: String,
-    modifier: Modifier,
-    size: Dp,
-    fallbackColor: Color
-) {
-    val context = LocalPlatformContext.current
-    val cacheKey = remember(url) { "avatar:$url" }
-    val request =
-        remember(context, url, cacheKey) {
-            ImageRequest.Builder(context)
-                    .data(url)
-                    .memoryCacheKey(cacheKey)
-                    .diskCacheKey(cacheKey)
-                    .memoryCachePolicy(CachePolicy.ENABLED)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .networkCachePolicy(CachePolicy.ENABLED)
-                    .build()
-        }
-    var failed by remember(url) { mutableStateOf(false) }
-
-    Box(
-        modifier = modifier
-            .size(size)
-            .background(fallbackColor)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = LucideIcons.User,
-            contentDescription = null,
-            tint = SlockColor.TextBlack,
-            modifier = Modifier.size(size * 0.56f)
-        )
-        if (!failed) {
-            AsyncImage(
-                model = request,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                onSuccess = { failed = false },
-                onError = { failed = true },
-                modifier = Modifier.fillMaxSize()
-            )
-        }
     }
 }
 
@@ -444,8 +381,6 @@ private fun String.toSharedPixelAvatarSpec(): SharedPixelAvatarSpec? {
     return null
 }
 
-private fun String.isHttpAvatarUrl(): Boolean =
-    startsWith("http://", ignoreCase = true) || startsWith("https://", ignoreCase = true)
 
 private fun String.removePrefixOrNull(prefix: String): String? =
     takeIf { it.startsWith(prefix) }?.substring(prefix.length)
