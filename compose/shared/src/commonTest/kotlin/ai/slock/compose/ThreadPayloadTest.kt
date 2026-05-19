@@ -251,6 +251,14 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun sanitizesSystemMessageInlineWhitespaceWithoutNativeRegexEscapes() {
+        assertEquals(
+            "one two three four five",
+            "one\t two\u000Bthree\u000Cfour\rfive".sanitizeThreadSystemText()
+        )
+    }
+
+    @Test
     fun formatsRawTimestampInSharedThreadPayload() {
         val payload =
             parseThreadScreenPayload(

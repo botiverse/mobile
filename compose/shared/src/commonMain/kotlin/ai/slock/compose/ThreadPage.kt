@@ -1387,9 +1387,28 @@ internal fun String.sanitizeThreadSystemText(): String =
         .replace(Regex("""</p\s*>""", RegexOption.IGNORE_CASE), "\n")
         .replace(Regex("""<[^>]+>"""), "")
         .decodeBasicHtmlEntities()
-        .replace(Regex("""[ \t\x0B\f\r]+"""), " ")
+        .collapseThreadInlineWhitespace()
         .replace(Regex("""\n{3,}"""), "\n\n")
         .trim()
+
+private fun String.collapseThreadInlineWhitespace(): String =
+    buildString(length) {
+        var pendingSpace = false
+        for (char in this@collapseThreadInlineWhitespace) {
+            if (char.isThreadInlineWhitespace()) {
+                pendingSpace = true
+            } else {
+                if (pendingSpace && isNotEmpty()) {
+                    append(' ')
+                }
+                append(char)
+                pendingSpace = false
+            }
+        }
+    }
+
+private fun Char.isThreadInlineWhitespace(): Boolean =
+    this == ' ' || this == '\t' || this == '\u000B' || this == '\u000C' || this == '\r'
 
 private fun String.decodeBasicHtmlEntities(): String =
     replace("&nbsp;", " ")
