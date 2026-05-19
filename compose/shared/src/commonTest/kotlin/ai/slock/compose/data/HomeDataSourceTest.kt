@@ -57,6 +57,21 @@ class HomeDataSourceTest {
         assertEquals("general", (result as DataResult.Content).data.channels.single().name)
     }
 
+    @Test
+    fun visibleLoadMapsThrownNetworkFailureToError() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = ThrowingHomeApi(),
+                parseHome = { _, _ -> error("network failure should not parse") }
+            )
+
+        val result = source.loadHome(priority = DataRequestPriority.Visible)
+
+        assertTrue(result is DataResult.Error)
+        assertEquals("home_network", (result as DataResult.Error).error.code)
+    }
+
     private class FakeHomeApi : SlockHomeApi {
         var calls: Int = 0
 
@@ -66,6 +81,20 @@ class HomeDataSourceTest {
         override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse = ok().also { calls++ }
 
         private fun ok(): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = "{}")
+    }
+
+    private class ThrowingHomeApi : SlockHomeApi {
+        override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
+            throw IllegalStateException("offline")
+
+        override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse =
+            error("not reached")
+
+        override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
+            error("not reached")
+
+        override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
+            error("not reached")
     }
 
     private fun sampleSession(): StoredAuthSession =

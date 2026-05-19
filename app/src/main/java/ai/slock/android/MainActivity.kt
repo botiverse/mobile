@@ -6852,71 +6852,107 @@ private fun SlockAppContent(
             coroutineScope {
                 val homeD =
                         async {
-                            withSlockRequestPriority(
-                                    priority = homeRefreshPriority,
-                                    key = "home:${selectedServerId.value}",
-                                    reason = "home_refresh_$refreshSource"
+                            recoverDataResult(
+                                    source = "home",
+                                    refreshSource = refreshSource,
+                                    serverId = selectedServerId
                             ) {
-                                channelRepository
-                                        .getHome(selectedServerId)
-                                        .retryInitialChannelsIfMissing(
-                                                refreshSource = refreshSource,
-                                                serverId = selectedServerId,
-                                                channelRepository = channelRepository
-                                        )
+                                withSlockRequestPriority(
+                                        priority = homeRefreshPriority,
+                                        key = "home:${selectedServerId.value}",
+                                        reason = "home_refresh_$refreshSource"
+                                ) {
+                                    channelRepository
+                                            .getHome(selectedServerId)
+                                            .retryInitialChannelsIfMissing(
+                                                    refreshSource = refreshSource,
+                                                    serverId = selectedServerId,
+                                                    channelRepository = channelRepository
+                                            )
+                                }
                             }
                         }
                 val membersD =
                         async {
-                            withSlockRequestPriority(
-                                    priority = homeRefreshPriority,
-                                    key = "members:${selectedServerId.value}",
-                                    reason = "home_refresh_members_$refreshSource"
+                            recoverDataResult(
+                                    source = "members",
+                                    refreshSource = refreshSource,
+                                    serverId = selectedServerId
                             ) {
-                                memberRepository.getMembers(homeRefreshPriority, selectedServerId)
+                                withSlockRequestPriority(
+                                        priority = homeRefreshPriority,
+                                        key = "members:${selectedServerId.value}",
+                                        reason = "home_refresh_members_$refreshSource"
+                                ) {
+                                    memberRepository.getMembers(homeRefreshPriority, selectedServerId)
+                                }
                             }
                         }
                 val inboxD =
                         async {
-                            withSlockRequestPriority(
-                                    priority = homeRefreshPriority,
-                                    key = "inbox:${selectedServerId.value}:${inboxFilter.name}",
-                                    reason = "home_refresh_inbox_$refreshSource"
+                            recoverDataResult(
+                                    source = "inbox",
+                                    refreshSource = refreshSource,
+                                    serverId = selectedServerId
                             ) {
-                                inboxRepository.loadInitial(
-                                        serverId = selectedServerId,
-                                        filter = inboxFilter.toRepositoryFilter()
-                                )
+                                withSlockRequestPriority(
+                                        priority = homeRefreshPriority,
+                                        key = "inbox:${selectedServerId.value}:${inboxFilter.name}",
+                                        reason = "home_refresh_inbox_$refreshSource"
+                                ) {
+                                    inboxRepository.loadInitial(
+                                            serverId = selectedServerId,
+                                            filter = inboxFilter.toRepositoryFilter()
+                                    )
+                                }
                             }
                         }
                 val followedD =
                         async {
-                            withSlockRequestPriority(
-                                    priority = homeRefreshPriority,
-                                    key = "followed:${selectedServerId.value}",
-                                    reason = "home_refresh_followed_$refreshSource"
+                            recoverDataResult(
+                                    source = "followed",
+                                    refreshSource = refreshSource,
+                                    serverId = selectedServerId
                             ) {
-                                conversationRepository.getFollowedThreads(selectedServerId)
+                                withSlockRequestPriority(
+                                        priority = homeRefreshPriority,
+                                        key = "followed:${selectedServerId.value}",
+                                        reason = "home_refresh_followed_$refreshSource"
+                                ) {
+                                    conversationRepository.getFollowedThreads(selectedServerId)
+                                }
                             }
                         }
                 val savedD =
                         async {
-                            withSlockRequestPriority(
-                                    priority = homeRefreshPriority,
-                                    key = "saved:${selectedServerId.value}",
-                                    reason = "home_refresh_saved_$refreshSource"
+                            recoverDataResult(
+                                    source = "saved",
+                                    refreshSource = refreshSource,
+                                    serverId = selectedServerId
                             ) {
-                                savedRepository.loadInitial(selectedServerId)
+                                withSlockRequestPriority(
+                                        priority = homeRefreshPriority,
+                                        key = "saved:${selectedServerId.value}",
+                                        reason = "home_refresh_saved_$refreshSource"
+                                ) {
+                                    savedRepository.loadInitial(selectedServerId)
+                                }
                             }
                         }
                 val unreadD =
                         async {
-                            withSlockRequestPriority(
-                                    priority = SlockRequestPriority.Background,
-                                    key = "unread:${selectedServerId.value}",
-                                    reason = "home_refresh_unread_$refreshSource"
+                            recoverDataResult(
+                                    source = "unread",
+                                    refreshSource = refreshSource,
+                                    serverId = selectedServerId
                             ) {
-                                serverUnreadRepository.getUnreadSummary(selectedServerId)
+                                withSlockRequestPriority(
+                                        priority = SlockRequestPriority.Background,
+                                        key = "unread:${selectedServerId.value}",
+                                        reason = "home_refresh_unread_$refreshSource"
+                                ) {
+                                    serverUnreadRepository.getUnreadSummary(selectedServerId)
+                                }
                             }
                         }
                 val searchQueryForRefresh = searchQuery
@@ -6927,16 +6963,22 @@ private fun SlockAppContent(
                             null
                         } else {
                             async {
-                                withSlockRequestPriority(
-                                        priority = homeRefreshPriority,
-                                        key = "search:${selectedServerId.value}:$searchCacheKeyForRefresh",
-                                        reason = "home_refresh_search_$refreshSource"
+                                recoverDataResult(
+                                        source = "search",
+                                        refreshSource = refreshSource,
+                                        serverId = selectedServerId
                                 ) {
-                                    searchRepository.search(
-                                            selectedServerId,
-                                            searchQueryForRefresh,
-                                            options = searchOptionsForRefresh
-                                    )
+                                    withSlockRequestPriority(
+                                            priority = homeRefreshPriority,
+                                            key = "search:${selectedServerId.value}:$searchCacheKeyForRefresh",
+                                            reason = "home_refresh_search_$refreshSource"
+                                    ) {
+                                        searchRepository.search(
+                                                selectedServerId,
+                                                searchQueryForRefresh,
+                                                options = searchOptionsForRefresh
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -12276,6 +12318,24 @@ private fun DataResult<HomeSnapshot>.diagnosticCode(): String =
             is DataResult.Empty -> reason.name
             is DataResult.Error -> error.code
             is DataResult.NoPermission -> blocker.code
+        }
+
+private suspend fun <T> recoverDataResult(
+        source: String,
+        refreshSource: String,
+        serverId: ServerId,
+        block: suspend () -> DataResult<T>
+): DataResult<T> =
+        try {
+            block()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (throwable: Throwable) {
+            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
+                    "SlockHomeRefresh",
+                    "branch_exception source=$source refreshSource=$refreshSource serverId=${serverId.value} reason=${throwable.javaClass.simpleName}"
+            )
+            DataResult.Error(ScreenError(code = "home_${source}_exception", retryable = true))
         }
 
 private fun String.toRefreshErrorLabel(): String {

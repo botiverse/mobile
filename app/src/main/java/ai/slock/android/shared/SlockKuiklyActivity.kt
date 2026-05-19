@@ -21,7 +21,6 @@ import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.res.ResourcesCompat
-import ai.slock.android.BuildConfig
 import ai.slock.android.R
 import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
@@ -205,9 +204,6 @@ private object SlockKuiklyLogAdapter : IKRLogAdapter {
 
 private object SlockKuiklyExceptionAdapter : IKRUncaughtExceptionHandlerAdapter {
     override fun uncaughtException(throwable: Throwable) {
-        if (BuildConfig.DEBUG) {
-            throw throwable
-        }
         Log.e("SlockKuikly", "Kuikly render error", throwable)
     }
 }

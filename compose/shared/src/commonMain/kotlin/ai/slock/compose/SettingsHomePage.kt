@@ -39,6 +39,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -237,24 +238,30 @@ private fun SharedHomeScreen(bridge: ai.slock.compose.base.BridgeModule) {
 
     LaunchedEffect(refreshNonce, selectedServerId) {
         state = SharedHomeUiState.Loading
-        val session = authStore.readSession()
-        if (session == null) {
-            state = SharedHomeUiState.Error("unauthenticated")
-            return@LaunchedEffect
-        }
-        selectedServerId?.let { serverId ->
-            val server = session.servers.firstOrNull { it.id == serverId }
-            authStore.updateSelectedServer(serverId = serverId, serverSlug = server?.slug)
-        }
-        val activeSession = authStore.readSession() ?: session
-        val activeServerId = selectedServerId ?: activeSession.currentServerId
-        state =
-            when (val result = dataSource.loadHome(serverId = activeServerId?.let(::ServerId), priority = DataRequestPriority.Visible)) {
-                is DataResult.Content -> SharedHomeUiState.Content(result.data, activeSession)
-                is DataResult.Empty -> SharedHomeUiState.Empty(activeSession)
-                is DataResult.Error -> SharedHomeUiState.Error(result.error.code)
-                is DataResult.NoPermission -> SharedHomeUiState.Error(result.blocker.code)
+        try {
+            val session = authStore.readSession()
+            if (session == null) {
+                state = SharedHomeUiState.Error("unauthenticated")
+                return@LaunchedEffect
             }
+            selectedServerId?.let { serverId ->
+                val server = session.servers.firstOrNull { it.id == serverId }
+                authStore.updateSelectedServer(serverId = serverId, serverSlug = server?.slug)
+            }
+            val activeSession = authStore.readSession() ?: session
+            val activeServerId = selectedServerId ?: activeSession.currentServerId
+            state =
+                when (val result = dataSource.loadHome(serverId = activeServerId?.let(::ServerId), priority = DataRequestPriority.Visible)) {
+                    is DataResult.Content -> SharedHomeUiState.Content(result.data, activeSession)
+                    is DataResult.Empty -> SharedHomeUiState.Empty(activeSession)
+                    is DataResult.Error -> SharedHomeUiState.Error(result.error.code)
+                    is DataResult.NoPermission -> SharedHomeUiState.Error(result.blocker.code)
+                }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            state = SharedHomeUiState.Error("home_network")
+        }
     }
 
     when (val current = state) {

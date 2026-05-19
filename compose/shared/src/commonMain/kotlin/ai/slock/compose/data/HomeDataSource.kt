@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ServerId
+import kotlinx.coroutines.CancellationException
 
 class SharedHomeDataSource(
     private val sessionStore: SlockAuthSessionStore,
@@ -31,13 +32,19 @@ class SharedHomeDataSource(
         }
 
         val payload =
-            HomeNetworkPayload(
-                serverId = resolvedServerId,
-                channels = api.channels(priority),
-                directMessages = api.directMessages(priority),
-                unreadCounts = api.channelUnreadCounts(priority),
-                serverUnreadSummary = api.serverUnreadSummary(priority)
-            )
+            try {
+                HomeNetworkPayload(
+                    serverId = resolvedServerId,
+                    channels = api.channels(priority),
+                    directMessages = api.directMessages(priority),
+                    unreadCounts = api.channelUnreadCounts(priority),
+                    serverUnreadSummary = api.serverUnreadSummary(priority)
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return DataResult.Error(ScreenError(code = "home_network", retryable = true))
+            }
         val result = parseHome(payload, session)
         localWriteThrough?.writeHomeResult(result, source = "shared_home_data_source")
         return result
