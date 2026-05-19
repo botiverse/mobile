@@ -23,7 +23,6 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
-import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
@@ -260,7 +259,7 @@ internal fun ThreadComposerContent(
     }
 
     Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).padding(horizontal = 8.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         payload.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
@@ -324,13 +323,13 @@ internal fun ThreadComposerContent(
             }
         }
         Box(
-            modifier = Modifier.fillMaxWidth().padding(end = 4.dp, bottom = 4.dp)
+            modifier = Modifier.fillMaxWidth().padding(end = 2.dp, bottom = 2.dp)
         ) {
             Box(
-                modifier = Modifier.matchParentSize().offset(x = 4f, y = 4f).background(SlockColor.ShadowBlack)
+                modifier = Modifier.matchParentSize().offset(x = 2f, y = 2f).background(SlockColor.ShadowBlack)
             )
             Column(
-                modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 6.dp),
+                modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 TextField(
@@ -530,23 +529,16 @@ private fun ComposerIconButton(
     onClick: () -> Unit
 ) {
     Box(
-        modifier = Modifier.size(31.dp)
+        modifier = Modifier.size(30.dp)
     ) {
         Box(
-            modifier = Modifier.offset(x = 3f, y = 3f).size(28.dp).background(SlockColor.ShadowBlack, RoundedCornerShape(SlockRadius.Xs))
+            modifier = Modifier.offset(x = 2f, y = 2f).size(28.dp).background(SlockColor.ShadowBlack)
         )
         Box(
             modifier = Modifier
                 .size(28.dp)
-                .background(
-                    if (enabled) backgroundColor else SlockColor.EmptyStateGray,
-                    RoundedCornerShape(SlockRadius.Xs)
-                )
-                .border(
-                    SlockStroke.Default,
-                    SlockColor.BorderBlack,
-                    RoundedCornerShape(SlockRadius.Xs)
-                )
+                .background(if (enabled) backgroundColor else SlockColor.EmptyStateGray)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .clickable(enabled = enabled, onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
