@@ -204,6 +204,8 @@ internal fun ThreadComposerContent(
     var text by remember(payload.seedText, payload.syncNonce) { mutableStateOf(payload.seedText) }
     var asTask by remember(payload.seedAsTask, payload.syncNonce) { mutableStateOf(payload.seedAsTask) }
     var focused by remember(payload.focusRequestNonce, payload.syncNonce) { mutableStateOf(false) }
+    var handledFocusRequestNonce by remember(payload.instanceId) { mutableStateOf(payload.focusRequestNonce) }
+    val shouldAutoFocus = payload.focusRequestNonce > handledFocusRequestNonce
     val suggestionTrigger = remember(text) { detectKuiklyComposerSuggestionTrigger(text) }
     val filteredMemberSuggestions =
         remember(suggestionTrigger, payload.memberSuggestions) {
@@ -344,12 +346,17 @@ internal fun ThreadComposerContent(
                 TextField(
                     value = text,
                     placeholder = payload.placeholder,
-                    autoFocus = payload.focusRequestNonce > 0,
+                    autoFocus = shouldAutoFocus,
                     onValueChange = {
                         text = it
                         emitChange()
                     },
-                    onFocus = { focused = true },
+                    onFocus = {
+                        focused = true
+                        if (shouldAutoFocus) {
+                            handledFocusRequestNonce = payload.focusRequestNonce
+                        }
+                    },
                     onBlur = {
                         focused = false
                         onEvent("blur", null, null, null)
