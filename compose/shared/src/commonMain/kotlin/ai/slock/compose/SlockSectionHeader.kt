@@ -80,30 +80,33 @@ internal fun SlockHeaderIconAction(
                 .offset(x = HeaderActionShadowOffset, y = HeaderActionShadowOffset)
                 .background(SlockColor.ShadowBlack)
         )
-        Row(
+        Button(
+            onClick = onClick,
             modifier = Modifier
                 .heightIn(min = 38.dp)
                 .widthIn(min = if (label == null) 38.dp else 54.dp)
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .clickable(onClick = onClick)
-                .padding(horizontal = if (label == null) 0.dp else SlockSpacing.Sm),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs, Alignment.CenterHorizontally)
+                .padding(horizontal = if (label == null) 0.dp else SlockSpacing.Sm)
         ) {
-            SlockLucideIcon(
-                name = icon,
-                modifier = Modifier.size(18.dp),
-                color = "#FF000000"
-            )
-            label?.let {
-                Text(
-                    text = it,
-                    style = SlockType.Button,
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs, Alignment.CenterHorizontally)
+            ) {
+                SlockLucideIcon(
+                    name = icon,
+                    modifier = Modifier.size(18.dp),
+                    color = "#FF000000"
                 )
+                label?.let {
+                    Text(
+                        text = it,
+                        style = SlockType.Button,
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
