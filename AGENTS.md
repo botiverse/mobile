@@ -1,5 +1,23 @@
 # Slock Android Agent Notes
 
+## Kuikly AI Skills
+
+- Workspace-level Kuikly guidance lives under `.codex/`:
+  - `.codex/skills/kuikly-*` contains the vendored skills from
+    `Tencent-TDS/KuiklyUI-AI`.
+  - `.codex/rules/kuiklyComposeDSL.mdc` and `.codex/rules/kuiklyDSL.mdc` contain
+    the Kuikly Compose / Kuikly DSL rules.
+  - `.codex/kuikly-ui-ai-source.txt` records the upstream source and commit.
+- For Kuikly, OHOS, shared shell, navigation, assets, native bridge, or
+  recomposition work, read the relevant workspace skill/rule first instead of
+  relying on Android-native assumptions.
+- To refresh these files from upstream, run:
+
+```bash
+cd /Users/artin/AndroidStudioProjects/Slock
+scripts/sync_kuikly_ai_skills.sh
+```
+
 ## Compose Shared Workflow
 
 - The Android app consumes Kuikly Compose shared code as the Maven artifact

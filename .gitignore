@@ -25,3 +25,5 @@ artifacts/releases
 /diagnostics
 
 temp_compose/
+
+.codex/.tmp/
