@@ -44,6 +44,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 internal const val THREAD_COMPOSER_PAGE = "compose_thread_composer"
@@ -96,6 +97,124 @@ internal data class KuiklyComposerChannelItem(
     val name: String,
     val subtitle: String? = null
 )
+
+data class SharedThreadComposerSnapshot(
+    val value: String = "",
+    val asTask: Boolean = false
+)
+
+data class SharedThreadComposerFlowState(
+    val hostDraftText: String,
+    val liveDraftText: String,
+    val payloadTextSeed: String,
+    val hostDraftAsTask: Boolean,
+    val liveDraftAsTask: Boolean,
+    val payloadAsTaskSeed: Boolean,
+    val syncNonce: Int = 0
+) {
+    companion object {
+        fun initial(snapshot: SharedThreadComposerSnapshot): SharedThreadComposerFlowState =
+            SharedThreadComposerFlowState(
+                hostDraftText = snapshot.value,
+                liveDraftText = snapshot.value,
+                payloadTextSeed = snapshot.value,
+                hostDraftAsTask = snapshot.asTask,
+                liveDraftAsTask = snapshot.asTask,
+                payloadAsTaskSeed = snapshot.asTask
+            )
+    }
+
+    fun applyHostSnapshot(snapshot: SharedThreadComposerSnapshot): SharedThreadComposerFlowState =
+        if (snapshot.value != hostDraftText || snapshot.asTask != hostDraftAsTask) {
+            copy(
+                hostDraftText = snapshot.value,
+                liveDraftText = snapshot.value,
+                payloadTextSeed = snapshot.value,
+                hostDraftAsTask = snapshot.asTask,
+                liveDraftAsTask = snapshot.asTask,
+                payloadAsTaskSeed = snapshot.asTask,
+                syncNonce = syncNonce + 1
+            )
+        } else {
+            this
+        }
+
+    fun applyLocalChange(value: String, asTask: Boolean = liveDraftAsTask): SharedThreadComposerFlowState =
+        copy(liveDraftText = value, liveDraftAsTask = asTask)
+}
+
+data class SharedThreadComposerAttachment(
+    val id: String,
+    val fileName: String,
+    val sizeLabel: String = "",
+    val mimeType: String? = null,
+    val status: String = "ready"
+)
+
+data class SharedThreadComposerMemberSuggestion(
+    val displayName: String,
+    val handle: String
+)
+
+data class SharedThreadComposerChannelSuggestion(
+    val name: String,
+    val subtitle: String? = null
+)
+
+data class SharedThreadComposerPayloadInput(
+    val seedText: String,
+    val seedAsTask: Boolean,
+    val syncNonce: Int,
+    val focusRequestNonce: Int,
+    val placeholder: String,
+    val enabled: Boolean,
+    val showAsTaskToggle: Boolean,
+    val composerMode: String,
+    val statusLabel: String? = null,
+    val pendingAttachments: List<SharedThreadComposerAttachment> = emptyList(),
+    val memberSuggestions: List<SharedThreadComposerMemberSuggestion> = emptyList(),
+    val channelSuggestions: List<SharedThreadComposerChannelSuggestion> = emptyList()
+)
+
+fun buildSharedThreadComposerPayloadJson(input: SharedThreadComposerPayloadInput): String =
+    threadComposerJson.encodeToString(
+        KuiklyThreadComposerPayload.serializer(),
+        KuiklyThreadComposerPayload(
+            seedText = input.seedText,
+            seedAsTask = input.seedAsTask,
+            syncNonce = input.syncNonce,
+            focusRequestNonce = input.focusRequestNonce,
+            placeholder = input.placeholder,
+            enabled = input.enabled,
+            showAsTaskToggle = input.showAsTaskToggle,
+            composerMode = input.composerMode,
+            statusLabel = input.statusLabel,
+            pendingAttachments =
+                input.pendingAttachments.map { attachment ->
+                    KuiklyPendingAttachmentItem(
+                        id = attachment.id,
+                        fileName = attachment.fileName,
+                        sizeLabel = attachment.sizeLabel,
+                        mimeType = attachment.mimeType,
+                        status = attachment.status
+                    )
+                },
+            memberSuggestions =
+                input.memberSuggestions.map { member ->
+                    KuiklyComposerMemberItem(
+                        displayName = member.displayName,
+                        handle = member.handle
+                    )
+                },
+            channelSuggestions =
+                input.channelSuggestions.map { channel ->
+                    KuiklyComposerChannelItem(
+                        name = channel.name,
+                        subtitle = channel.subtitle
+                    )
+                }
+        )
+    )
 
 private sealed class KuiklyComposerSuggestionTrigger {
     data class MemberTrigger(val query: String, val triggerStart: Int) : KuiklyComposerSuggestionTrigger()

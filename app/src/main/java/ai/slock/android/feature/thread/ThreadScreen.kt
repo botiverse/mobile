@@ -78,6 +78,13 @@ import ai.slock.compose.markdown.threadInlineCodeMatches
 import ai.slock.compose.markdown.threadInlineTagMatches
 import ai.slock.compose.markdown.threadMarkdownTagDisplayLabel
 import ai.slock.compose.markdown.threadMarkdownTaskReferenceKey
+import ai.slock.compose.SharedThreadComposerAttachment
+import ai.slock.compose.SharedThreadComposerChannelSuggestion
+import ai.slock.compose.SharedThreadComposerFlowState
+import ai.slock.compose.SharedThreadComposerMemberSuggestion
+import ai.slock.compose.SharedThreadComposerPayloadInput
+import ai.slock.compose.SharedThreadComposerSnapshot
+import ai.slock.compose.buildSharedThreadComposerPayloadJson
 import ai.slock.compose.model.formatSlockTimestampEpochMillis
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
 import ai.slock.compose.model.slockEpochDayForDate
@@ -160,6 +167,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -1041,36 +1049,41 @@ private fun ThreadKuiklyScreen(
                         .associateBy { it.id.value }
             }
 
-    var liveDraftText by rememberSaveable { mutableStateOf(composerState.value) }
-    var payloadTextSeed by rememberSaveable { mutableStateOf(composerState.value) }
-    var liveDraftAsTask by rememberSaveable { mutableStateOf(composerState.asTask) }
-    var payloadAsTaskSeed by rememberSaveable { mutableStateOf(composerState.asTask) }
-    var syncNonce by rememberSaveable { mutableStateOf(0) }
+    var composerFlowState by rememberSaveable(stateSaver = SharedThreadComposerFlowStateSaver) {
+        mutableStateOf(
+            SharedThreadComposerFlowState.initial(
+                SharedThreadComposerSnapshot(
+                    value = composerState.value,
+                    asTask = composerState.asTask
+                )
+            )
+        )
+    }
 
     LaunchedEffect(composerState.value, composerState.asTask) {
-        if (composerState.value != liveDraftText || composerState.asTask != liveDraftAsTask) {
-            liveDraftText = composerState.value
-            payloadTextSeed = composerState.value
-            liveDraftAsTask = composerState.asTask
-            payloadAsTaskSeed = composerState.asTask
-            syncNonce += 1
-        }
+        composerFlowState =
+            composerFlowState.applyHostSnapshot(
+                SharedThreadComposerSnapshot(
+                    value = composerState.value,
+                    asTask = composerState.asTask
+                )
+            )
     }
 
     val composerPayload =
             remember(
-                    payloadTextSeed,
-                    payloadAsTaskSeed,
-                    syncNonce,
+                    composerFlowState.payloadTextSeed,
+                    composerFlowState.payloadAsTaskSeed,
+                    composerFlowState.syncNonce,
                     composerFocusRequestNonce,
                     composerState,
                     replyHeaderContext,
                     channelSuggestions
             ) {
                 buildSharedThreadComposerPayload(
-                                seedText = payloadTextSeed,
-                                seedAsTask = payloadAsTaskSeed,
-                                syncNonce = syncNonce,
+                                seedText = composerFlowState.payloadTextSeed,
+                                seedAsTask = composerFlowState.payloadAsTaskSeed,
+                                syncNonce = composerFlowState.syncNonce,
                                 focusRequestNonce = composerFocusRequestNonce,
                                 placeholder =
                                         if (replyHeaderContext != null) {
@@ -1217,20 +1230,20 @@ private fun ThreadKuiklyScreen(
                     parentJumpTarget?.let(onOpenParentMessage)
             "change" -> {
                 val nextValue = event.optString("value")
-                val nextAsTask = event.optBoolean("asTask", liveDraftAsTask)
-                if (nextValue != liveDraftText) {
-                    liveDraftText = nextValue
+                val nextAsTask = event.optBoolean("asTask", composerFlowState.liveDraftAsTask)
+                if (nextValue != composerFlowState.liveDraftText) {
+                    composerFlowState = composerFlowState.applyLocalChange(nextValue, nextAsTask)
                     onComposerChange(nextValue)
                 }
-                if (nextAsTask != liveDraftAsTask) {
-                    liveDraftAsTask = nextAsTask
+                if (nextAsTask != composerFlowState.liveDraftAsTask) {
+                    composerFlowState = composerFlowState.applyLocalChange(nextValue, nextAsTask)
                     onAsTaskChange(nextAsTask)
                 }
             }
             "toggleAsTask" -> {
-                val nextAsTask = event.optBoolean("asTask", !liveDraftAsTask)
-                if (nextAsTask != liveDraftAsTask) {
-                    liveDraftAsTask = nextAsTask
+                val nextAsTask = event.optBoolean("asTask", !composerFlowState.liveDraftAsTask)
+                if (nextAsTask != composerFlowState.liveDraftAsTask) {
+                    composerFlowState = composerFlowState.applyLocalChange(composerFlowState.liveDraftText, nextAsTask)
                     onAsTaskChange(nextAsTask)
                 }
             }
@@ -6778,20 +6791,25 @@ fun ThreadComposerBar(
         onComposerTextToolbarHidden: () -> Unit = {},
         focusRequestNonce: Int = 0
 ) {
-    var liveDraftText by rememberSaveable { mutableStateOf(composerState.value) }
-    var payloadTextSeed by rememberSaveable { mutableStateOf(composerState.value) }
-    var liveDraftAsTask by rememberSaveable { mutableStateOf(composerState.asTask) }
-    var payloadAsTaskSeed by rememberSaveable { mutableStateOf(composerState.asTask) }
-    var syncNonce by rememberSaveable { mutableStateOf(0) }
+    var composerFlowState by rememberSaveable(stateSaver = SharedThreadComposerFlowStateSaver) {
+        mutableStateOf(
+            SharedThreadComposerFlowState.initial(
+                SharedThreadComposerSnapshot(
+                    value = composerState.value,
+                    asTask = composerState.asTask
+                )
+            )
+        )
+    }
 
     LaunchedEffect(composerState.value, composerState.asTask) {
-        if (composerState.value != liveDraftText || composerState.asTask != liveDraftAsTask) {
-            liveDraftText = composerState.value
-            payloadTextSeed = composerState.value
-            liveDraftAsTask = composerState.asTask
-            payloadAsTaskSeed = composerState.asTask
-            syncNonce += 1
-        }
+        composerFlowState =
+            composerFlowState.applyHostSnapshot(
+                SharedThreadComposerSnapshot(
+                    value = composerState.value,
+                    asTask = composerState.asTask
+                )
+            )
     }
 
     DisposableEffect(Unit) {
@@ -6800,9 +6818,9 @@ fun ThreadComposerBar(
 
     val payload =
             remember(
-                    payloadTextSeed,
-                    payloadAsTaskSeed,
-                    syncNonce,
+                    composerFlowState.payloadTextSeed,
+                    composerFlowState.payloadAsTaskSeed,
+                    composerFlowState.syncNonce,
                     focusRequestNonce,
                     placeholder,
                     composerState.enabled,
@@ -6815,9 +6833,9 @@ fun ThreadComposerBar(
                     showAsTaskToggle
             ) {
                 buildSharedThreadComposerPayload(
-                        seedText = payloadTextSeed,
-                        seedAsTask = payloadAsTaskSeed,
-                        syncNonce = syncNonce,
+                        seedText = composerFlowState.payloadTextSeed,
+                        seedAsTask = composerFlowState.payloadAsTaskSeed,
+                        syncNonce = composerFlowState.syncNonce,
                         focusRequestNonce = focusRequestNonce,
                         placeholder = placeholder,
                         composerState = composerState,
@@ -6841,20 +6859,20 @@ fun ThreadComposerBar(
         when (event.optString("action")) {
             "change" -> {
                 val nextValue = event.optString("value")
-                val nextAsTask = event.optBoolean("asTask", liveDraftAsTask)
-                if (nextValue != liveDraftText) {
-                    liveDraftText = nextValue
+                val nextAsTask = event.optBoolean("asTask", composerFlowState.liveDraftAsTask)
+                if (nextValue != composerFlowState.liveDraftText) {
+                    composerFlowState = composerFlowState.applyLocalChange(nextValue, nextAsTask)
                     onComposerChange(nextValue)
                 }
-                if (nextAsTask != liveDraftAsTask) {
-                    liveDraftAsTask = nextAsTask
+                if (nextAsTask != composerFlowState.liveDraftAsTask) {
+                    composerFlowState = composerFlowState.applyLocalChange(nextValue, nextAsTask)
                     onAsTaskChange(nextAsTask)
                 }
             }
             "toggleAsTask" -> {
-                val nextAsTask = event.optBoolean("asTask", !liveDraftAsTask)
-                if (nextAsTask != liveDraftAsTask) {
-                    liveDraftAsTask = nextAsTask
+                val nextAsTask = event.optBoolean("asTask", !composerFlowState.liveDraftAsTask)
+                if (nextAsTask != composerFlowState.liveDraftAsTask) {
+                    composerFlowState = composerFlowState.applyLocalChange(composerFlowState.liveDraftText, nextAsTask)
                     onAsTaskChange(nextAsTask)
                 }
             }
@@ -6876,6 +6894,32 @@ private val ThreadComposerIslandMaxHeight = 228.dp
 @Composable
 private fun threadComposerBottomPadding(): Dp = SlockSpacing.Xs
 
+private val SharedThreadComposerFlowStateSaver =
+        Saver<SharedThreadComposerFlowState, List<Any?>>(
+                save = { state ->
+                    listOf(
+                            state.hostDraftText,
+                            state.liveDraftText,
+                            state.payloadTextSeed,
+                            state.hostDraftAsTask,
+                            state.liveDraftAsTask,
+                            state.payloadAsTaskSeed,
+                            state.syncNonce
+                    )
+                },
+                restore = { values ->
+                    SharedThreadComposerFlowState(
+                            hostDraftText = values.getOrNull(0) as? String ?: "",
+                            liveDraftText = values.getOrNull(1) as? String ?: "",
+                            payloadTextSeed = values.getOrNull(2) as? String ?: "",
+                            hostDraftAsTask = values.getOrNull(3) as? Boolean ?: false,
+                            liveDraftAsTask = values.getOrNull(4) as? Boolean ?: false,
+                            payloadAsTaskSeed = values.getOrNull(5) as? Boolean ?: false,
+                            syncNonce = values.getOrNull(6) as? Int ?: 0
+                    )
+                }
+        )
+
 private fun buildSharedThreadComposerPayload(
         seedText: String,
         seedAsTask: Boolean,
@@ -6887,64 +6931,48 @@ private fun buildSharedThreadComposerPayload(
         channelSuggestions: List<ConversationSummary>,
         showAsTaskToggle: Boolean
 ): JSONObject =
-        JSONObject().apply {
-            put("seedText", seedText)
-            put("seedAsTask", seedAsTask)
-            put("syncNonce", syncNonce)
-            put("focusRequestNonce", focusRequestNonce)
-            put("placeholder", placeholder)
-            put(
-                    "enabled",
-                    composerState.enabled &&
+        JSONObject(
+            buildSharedThreadComposerPayloadJson(
+                SharedThreadComposerPayloadInput(
+                    seedText = seedText,
+                    seedAsTask = seedAsTask,
+                    syncNonce = syncNonce,
+                    focusRequestNonce = focusRequestNonce,
+                    placeholder = placeholder,
+                    enabled =
+                        composerState.enabled &&
                             composerState.status != ComposerStatus.NoPermission &&
-                            composerState.noPermissionCode == null
-            )
-            put("showAsTaskToggle", showAsTaskToggle)
-            put("composerMode", composerState.toSharedComposerMode())
-            composerState.activityLabel?.let { put("statusLabel", it) }
-            put(
-                    "pendingAttachments",
-                    JSONArray().apply {
-                        composerState.pendingAttachments.forEach { attachment ->
-                            put(
-                                    JSONObject().apply {
-                                        put("id", attachment.id)
-                                        put("fileName", attachment.fileName)
-                                        put("sizeLabel", attachment.sizeLabel)
-                                        attachment.mimeType?.let { put("mimeType", it) }
-                                        put("status", attachment.status.toSharedComposerAttachmentStatus())
-                                    }
+                            composerState.noPermissionCode == null,
+                    showAsTaskToggle = showAsTaskToggle,
+                    composerMode = composerState.toSharedComposerMode(),
+                    statusLabel = composerState.activityLabel,
+                    pendingAttachments =
+                        composerState.pendingAttachments.map { attachment ->
+                            SharedThreadComposerAttachment(
+                                id = attachment.id,
+                                fileName = attachment.fileName,
+                                sizeLabel = attachment.sizeLabel,
+                                mimeType = attachment.mimeType,
+                                status = attachment.status.toSharedComposerAttachmentStatus()
+                            )
+                        },
+                    memberSuggestions =
+                        memberSuggestions.map { member ->
+                            SharedThreadComposerMemberSuggestion(
+                                displayName = member.displayName,
+                                handle = member.handle
+                            )
+                        },
+                    channelSuggestions =
+                        channelSuggestions.map { channel ->
+                            SharedThreadComposerChannelSuggestion(
+                                name = channel.name,
+                                subtitle = channel.subtitle
                             )
                         }
-                    }
+                )
             )
-            put(
-                    "memberSuggestions",
-                    JSONArray().apply {
-                        memberSuggestions.forEach { member ->
-                            put(
-                                    JSONObject().apply {
-                                        put("displayName", member.displayName)
-                                        put("handle", member.handle)
-                                    }
-                            )
-                        }
-                    }
-            )
-            put(
-                    "channelSuggestions",
-                    JSONArray().apply {
-                        channelSuggestions.forEach { channel ->
-                            put(
-                                    JSONObject().apply {
-                                        put("name", channel.name)
-                                        channel.subtitle?.let { put("subtitle", it) }
-                                    }
-                            )
-                        }
-                    }
-            )
-        }
+        )
 
 private fun ComposerState.toSharedComposerMode(): String =
         when (status) {
