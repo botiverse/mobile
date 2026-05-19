@@ -9,6 +9,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import org.json.JSONObject
@@ -23,8 +24,11 @@ fun SlockKuiklyPageIsland(
         onEvent: (JSONObject) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
     val currentOnEvent = rememberUpdatedState(onEvent)
-    val instanceId = remember(pageName) { UUID.randomUUID().toString() }
+    val viewportKey =
+            "${configuration.screenWidthDp}x${configuration.screenHeightDp}:${configuration.orientation}"
+    val instanceId = remember(pageName, viewportKey) { UUID.randomUUID().toString() }
     val pageDataText =
             remember(pageData.toString(), instanceId) {
                 JSONObject(pageData.toString())
@@ -65,7 +69,8 @@ fun SlockKuiklyPageIsland(
         }
         AndroidView(
                 modifier = modifier,
-                factory = { host }
+                factory = { host },
+                update = { it.updatePageData(pageDataText) }
         )
         return
     }
