@@ -267,13 +267,16 @@ fun slockMarkdownAnnotator(content: String): MarkdownAnnotator {
     val inlineTagMatches = content.threadInlineTagMatches()
     val inlineTagById = inlineTagMatches.associateBy { it.id }
     val inlineCodeMatches = content.threadInlineCodeMatches()
-    val inlineCodeById = inlineCodeMatches.associateBy { it.id }
+    val inlineCodeChipById =
+        inlineCodeMatches
+            .filter { it.code.shouldRenderThreadInlineCodeAsChip() }
+            .associateBy { it.id }
     return markdownAnnotator(
         annotate = { markdownContent, child, _ ->
             if (child.type == MarkdownElementTypes.CODE_SPAN) {
                 val codeMatch =
-                    inlineCodeById["slock-code:${child.startOffset}"]
-                        ?: inlineCodeMatches.firstOrNull { child.startOffset in it.range }
+                    inlineCodeChipById["slock-code:${child.startOffset}"]
+                        ?: inlineCodeChipById.values.firstOrNull { child.startOffset in it.range }
                 if (codeMatch != null) {
                     appendInlineContent(codeMatch.id, codeMatch.code)
                     return@markdownAnnotator true
@@ -315,7 +318,7 @@ fun slockMarkdownAnnotator(content: String): MarkdownAnnotator {
                         SlockMarkdownInlineChip(label, slockMarkdownTagColor(match.tag.kind))
                     }
                 }
-            } + inlineCodeById.mapValues { (_, match) ->
+            } + inlineCodeChipById.mapValues { (_, match) ->
                 InlineTextContent(
                     Placeholder(
                         width = slockMarkdownInlineCodeWidthSp(match.code),
@@ -405,6 +408,11 @@ private fun slockMarkdownInlineChipWidthSp(label: String) =
 
 private fun slockMarkdownInlineCodeWidthSp(code: String) =
     (code.slockInlineTextWidthUnits() * 8 + 32).coerceAtLeast(28).sp
+
+internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
+    slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxWidthUnits
+
+private const val SlockMarkdownInlineCodeChipMaxWidthUnits = 28
 
 private fun String.slockInlineTextWidthUnits(): Int =
     fold(0) { total, char ->

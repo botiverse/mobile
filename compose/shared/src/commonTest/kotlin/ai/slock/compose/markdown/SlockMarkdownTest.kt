@@ -1,7 +1,9 @@
 package ai.slock.compose.markdown
 
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class SlockMarkdownTest {
     @Test
@@ -32,5 +34,19 @@ class SlockMarkdownTest {
             """.trimIndent(),
             body.escapeThreadMarkdownHtmlTagsForThread()
         )
+    }
+
+    @Test
+    fun longInlineCodeUsesWrappingMarkdownSpanInsteadOfInlineChip() {
+        val shortCode = "inline-code"
+        val longCode = "very-long-inline-code-value-that-should-wrap-normally"
+
+        assertTrue(shortCode.shouldRenderThreadInlineCodeAsChip())
+        assertFalse(longCode.shouldRenderThreadInlineCodeAsChip())
+
+        val inlineContent = slockMarkdownAnnotator("short `$shortCode` long `$longCode`").inlineContent?.invoke().orEmpty()
+
+        assertTrue(inlineContent.containsKey("slock-code:6"))
+        assertFalse(inlineContent.containsKey("slock-code:25"))
     }
 }
