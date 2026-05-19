@@ -1,0 +1,181 @@
+package ai.slock.compose.model
+
+private const val MillisPerSecond = 1_000L
+private const val MillisPerMinute = 60_000L
+private const val MillisPerHour = 3_600_000L
+private const val MillisPerDay = 86_400_000L
+
+fun parseSlockTimestampEpochMillisOrNull(
+    value: String?,
+    localOffsetMinutes: Int = 0
+): Long? {
+    val trimmed = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    trimmed.toEpochTimestampMillisOrNull()?.let { return it }
+    val match = SlockTimestampRegex.matchEntire(trimmed) ?: return null
+    val year = match.groupValues[1].toIntOrNull() ?: return null
+    val month = match.groupValues[2].toIntOrNull() ?: return null
+    val day = match.groupValues[3].toIntOrNull() ?: return null
+    val hour = match.groupValues[4].takeIf { it.isNotBlank() }?.toIntOrNull() ?: 0
+    val minute = match.groupValues[5].takeIf { it.isNotBlank() }?.toIntOrNull() ?: 0
+    val second = match.groupValues[6].takeIf { it.isNotBlank() }?.toIntOrNull() ?: 0
+    val millis = match.groupValues[7].toMillisFraction()
+    val offsetMinutes =
+        match.groupValues[8].toOffsetMinutesOrNull()
+            ?: localOffsetMinutes.takeIf { match.groupValues[8].isBlank() }
+            ?: return null
+    if (!isValidDateTime(year, month, day, hour, minute, second)) return null
+    val epochDay = daysSinceUnixEpoch(year, month, day)
+    return epochDay * MillisPerDay +
+        hour * MillisPerHour +
+        minute * MillisPerMinute +
+        second * MillisPerSecond +
+        millis -
+        offsetMinutes * MillisPerMinute
+}
+
+fun formatSlockTimestampLabel(
+    value: String?,
+    localOffsetMinutes: Int,
+    todayEpochDay: Long
+): String {
+    val trimmed = value?.trim().orEmpty()
+    if (trimmed.isEmpty()) return ""
+    val epochMillis =
+        parseSlockTimestampEpochMillisOrNull(trimmed, localOffsetMinutes) ?: return trimmed
+    return formatSlockTimestampEpochMillis(epochMillis, localOffsetMinutes, todayEpochDay)
+}
+
+fun formatSlockTimestampEpochMillis(
+    epochMillis: Long,
+    localOffsetMinutes: Int,
+    todayEpochDay: Long
+): String {
+    val localMillis = epochMillis + localOffsetMinutes * MillisPerMinute
+    val localEpochDay = floorDiv(localMillis, MillisPerDay)
+    val millisOfDay = floorMod(localMillis, MillisPerDay)
+    val date = civilDateFromEpochDay(localEpochDay)
+    val today = civilDateFromEpochDay(todayEpochDay)
+    val hour = (millisOfDay / MillisPerHour).toInt()
+    val minute = ((millisOfDay % MillisPerHour) / MillisPerMinute).toInt()
+    val time = "${hour.twoDigits()}:${minute.twoDigits()}"
+    return when {
+        localEpochDay == todayEpochDay -> time
+        date.year == today.year -> "${date.month.twoDigits()}-${date.day.twoDigits()} $time"
+        else -> "${date.year}-${date.month.twoDigits()}-${date.day.twoDigits()} $time"
+    }
+}
+
+fun slockEpochDayForDate(year: Int, month: Int, day: Int): Long =
+    daysSinceUnixEpoch(year, month, day)
+
+private val SlockTimestampRegex =
+    Regex("""^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(?:\s*(Z|[+-]\d{2}(?::?\d{2})?))?)?$""")
+
+private data class SlockCivilDate(
+    val year: Int,
+    val month: Int,
+    val day: Int
+)
+
+private fun String.toEpochTimestampMillisOrNull(): Long? {
+    if (!all { it.isDigit() }) return null
+    val epoch = toLongOrNull() ?: return null
+    return when (length) {
+        10 -> epoch * MillisPerSecond
+        13 -> epoch
+        else -> null
+    }
+}
+
+private fun String.toMillisFraction(): Long {
+    if (isBlank()) return 0L
+    return take(3).padEnd(3, '0').toLongOrNull() ?: 0L
+}
+
+private fun String.toOffsetMinutesOrNull(): Int? {
+    if (isBlank()) return null
+    if (this == "Z") return 0
+    val sign = when (firstOrNull()) {
+        '+' -> 1
+        '-' -> -1
+        else -> return null
+    }
+    val raw = drop(1).replace(":", "")
+    val hours = raw.take(2).toIntOrNull() ?: return null
+    val minutes =
+        when (raw.length) {
+            2 -> 0
+            4 -> raw.drop(2).toIntOrNull() ?: return null
+            else -> return null
+        }
+    if (hours !in 0..23 || minutes !in 0..59) return null
+    return sign * (hours * 60 + minutes)
+}
+
+private fun isValidDateTime(
+    year: Int,
+    month: Int,
+    day: Int,
+    hour: Int,
+    minute: Int,
+    second: Int
+): Boolean =
+    month in 1..12 &&
+        day in 1..daysInMonth(year, month) &&
+        hour in 0..23 &&
+        minute in 0..59 &&
+        second in 0..59
+
+private fun daysInMonth(year: Int, month: Int): Int =
+    when (month) {
+        1, 3, 5, 7, 8, 10, 12 -> 31
+        4, 6, 9, 11 -> 30
+        2 -> if (isLeapYear(year)) 29 else 28
+        else -> 0
+    }
+
+private fun isLeapYear(year: Int): Boolean =
+    year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+
+private fun daysSinceUnixEpoch(year: Int, month: Int, day: Int): Long {
+    val adjustedYear = year - if (month <= 2) 1 else 0
+    val era = floorDiv(adjustedYear, 400)
+    val yearOfEra = adjustedYear - era * 400
+    val adjustedMonth = month + if (month > 2) -3 else 9
+    val dayOfYear = (153 * adjustedMonth + 2) / 5 + day - 1
+    val dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear
+    return era * 146_097L + dayOfEra - 719_468L
+}
+
+private fun civilDateFromEpochDay(epochDay: Long): SlockCivilDate {
+    val zeroDay = epochDay + 719_468L
+    val era = floorDiv(zeroDay, 146_097L)
+    val dayOfEra = zeroDay - era * 146_097L
+    val yearOfEra =
+        (dayOfEra - dayOfEra / 1_460L + dayOfEra / 36_524L - dayOfEra / 146_096L) / 365L
+    val year = yearOfEra + era * 400L
+    val dayOfYear = dayOfEra - (365L * yearOfEra + yearOfEra / 4L - yearOfEra / 100L)
+    val monthPrime = (5L * dayOfYear + 2L) / 153L
+    val day = dayOfYear - (153L * monthPrime + 2L) / 5L + 1L
+    val month = monthPrime + if (monthPrime < 10L) 3L else -9L
+    val adjustedYear = year + if (month <= 2L) 1L else 0L
+    return SlockCivilDate(adjustedYear.toInt(), month.toInt(), day.toInt())
+}
+
+private fun floorDiv(value: Int, divisor: Int): Int {
+    val quotient = value / divisor
+    val remainder = value % divisor
+    return if (remainder != 0 && (value xor divisor) < 0) quotient - 1 else quotient
+}
+
+private fun floorDiv(value: Long, divisor: Long): Long {
+    val quotient = value / divisor
+    val remainder = value % divisor
+    return if (remainder != 0L && (value xor divisor) < 0L) quotient - 1 else quotient
+}
+
+private fun floorMod(value: Long, divisor: Long): Long =
+    value - floorDiv(value, divisor) * divisor
+
+private fun Int.twoDigits(): String =
+    if (this < 10) "0$this" else toString()

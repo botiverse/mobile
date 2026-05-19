@@ -25,11 +25,9 @@ import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.withUnreadReplyCount
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.tasks.TasksUiState
+import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
 import ai.slock.compose.model.withPreviewMembershipFallback
 import ai.slock.compose.model.withTitleFallback
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.OffsetDateTime
 import java.time.ZoneId
 
 data class ThreadUiState(
@@ -191,18 +189,8 @@ private fun String.toThreadMessageEpochMillisOrNull(): Long? {
 }
 
 private fun parseThreadMessageTimeOrNull(value: String): Long? {
-    val zoneId = ZoneId.systemDefault()
-    return runCatching { Instant.parse(value).toEpochMilli() }.getOrNull()
-        ?: runCatching { OffsetDateTime.parse(value).toInstant().toEpochMilli() }.getOrNull()
-        ?: runCatching { LocalDateTime.parse(value).atZone(zoneId).toInstant().toEpochMilli() }.getOrNull()
-        ?: runCatching {
-            val normalized = value.replace(" ", "T")
-            OffsetDateTime.parse(normalized).toInstant().toEpochMilli()
-        }.getOrNull()
-        ?: runCatching {
-            val normalized = value.replace(" ", "T")
-            LocalDateTime.parse(normalized).atZone(zoneId).toInstant().toEpochMilli()
-        }.getOrNull()
+    val offsetMinutes = ZoneId.systemDefault().currentOffsetMinutes()
+    return parseSlockTimestampEpochMillisOrNull(value, offsetMinutes)
 }
 
 fun ThreadUiState.mergeRealtimeTaskEvent(event: RealtimeEvent): ThreadUiState =

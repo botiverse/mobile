@@ -95,8 +95,8 @@ fun List<Message>.sortedByMessageTime(): List<Message> =
 
 private val MessageTimelineComparator =
     Comparator<Message> { left, right ->
-        val leftTime = left.timestampLabel.toMessageEpochMillisOrNull()
-        val rightTime = right.timestampLabel.toMessageEpochMillisOrNull()
+        val leftTime = parseSlockTimestampEpochMillisOrNull(left.timestampLabel)
+        val rightTime = parseSlockTimestampEpochMillisOrNull(right.timestampLabel)
         if (leftTime != null && rightTime != null) {
             compareValues(leftTime, rightTime).takeIf { it != 0 }?.let { return@Comparator it }
         }
@@ -104,69 +104,6 @@ private val MessageTimelineComparator =
             .takeIf { it != 0 }
             ?: left.id.value.compareTo(right.id.value)
     }
-
-private fun String.toMessageEpochMillisOrNull(): Long? {
-    val match =
-        IsoTimestampRegex.matchEntire(trim())
-            ?: return null
-    val year = match.groupValues[1].toIntOrNull() ?: return null
-    val month = match.groupValues[2].toIntOrNull() ?: return null
-    val day = match.groupValues[3].toIntOrNull() ?: return null
-    val hour = match.groupValues[4].takeIf { it.isNotBlank() }?.toIntOrNull() ?: 0
-    val minute = match.groupValues[5].takeIf { it.isNotBlank() }?.toIntOrNull() ?: 0
-    val second = match.groupValues[6].takeIf { it.isNotBlank() }?.toIntOrNull() ?: 0
-    val millis = match.groupValues[7].toMillisFraction()
-    val offsetMillis = match.groupValues[8].toOffsetMillisOrNull() ?: return null
-    if (month !in 1..12 || day !in 1..31 || hour !in 0..23 || minute !in 0..59 || second !in 0..59) {
-        return null
-    }
-    val epochDay = daysSinceUnixEpoch(year, month, day)
-    return epochDay * 86_400_000L +
-        hour * 3_600_000L +
-        minute * 60_000L +
-        second * 1_000L +
-        millis -
-        offsetMillis
-}
-
-private val IsoTimestampRegex =
-    Regex("""^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(?:\s*(Z|[+-]\d{2}:?\d{2}))?)?$""")
-
-private fun String.toMillisFraction(): Long {
-    if (isBlank()) return 0L
-    return take(3).padEnd(3, '0').toLongOrNull() ?: 0L
-}
-
-private fun String.toOffsetMillisOrNull(): Long? {
-    if (isBlank() || this == "Z") return 0L
-    val sign = when (firstOrNull()) {
-        '+' -> 1
-        '-' -> -1
-        else -> return null
-    }
-    val raw = drop(1).replace(":", "")
-    if (raw.length != 4) return null
-    val hours = raw.substring(0, 2).toIntOrNull() ?: return null
-    val minutes = raw.substring(2, 4).toIntOrNull() ?: return null
-    if (hours !in 0..23 || minutes !in 0..59) return null
-    return sign * (hours * 3_600_000L + minutes * 60_000L)
-}
-
-private fun daysSinceUnixEpoch(year: Int, month: Int, day: Int): Long {
-    val adjustedYear = year - if (month <= 2) 1 else 0
-    val era = floorDiv(adjustedYear, 400)
-    val yearOfEra = adjustedYear - era * 400
-    val adjustedMonth = month + if (month > 2) -3 else 9
-    val dayOfYear = (153 * adjustedMonth + 2) / 5 + day - 1
-    val dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear
-    return era * 146_097L + dayOfEra - 719_468L
-}
-
-private fun floorDiv(value: Int, divisor: Int): Int {
-    val quotient = value / divisor
-    val remainder = value % divisor
-    return if (remainder != 0 && (value xor divisor) < 0) quotient - 1 else quotient
-}
 
 // AgentProfile extensions
 fun AgentProfile.toMemberProfile(): MemberProfile =

@@ -78,6 +78,9 @@ import ai.slock.compose.markdown.threadInlineCodeMatches
 import ai.slock.compose.markdown.threadInlineTagMatches
 import ai.slock.compose.markdown.threadMarkdownTagDisplayLabel
 import ai.slock.compose.markdown.threadMarkdownTaskReferenceKey
+import ai.slock.compose.model.formatSlockTimestampEpochMillis
+import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
+import ai.slock.compose.model.slockEpochDayForDate
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -259,14 +262,7 @@ import dev.snipme.highlights.Highlights
 import dev.snipme.highlights.model.SyntaxThemes
 import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.OffsetDateTime
 import java.time.ZoneId
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeFormatterBuilder
-import java.time.format.DateTimeParseException
-import java.time.temporal.ChronoField
 import java.util.LinkedHashMap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -6573,16 +6569,9 @@ private val MessageDeliveryState.threadColor: Color
             }
 
 fun String.toThreadTimestampLabel(zoneId: ZoneId = ZoneId.systemDefault()): String {
-    val trimmed = trim()
-    if (trimmed.isEmpty()) return ""
-    val zoned = trimmed.toThreadZonedDateTime(zoneId) ?: return trimmed
-    return zoned.withZoneSameInstant(zoneId).toThreadTimestampLabel(LocalDate.now(zoneId))
+    val today = LocalDate.now(zoneId)
+    return toThreadTimestampLabel(zoneId, today)
 }
-
-private val ThreadCompactTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-private val ThreadMonthDayTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm")
-private val ThreadYearMonthDayTimeFormatter: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
 internal fun String.toThreadTimestampLabel(
         zoneId: ZoneId,
@@ -6590,109 +6579,22 @@ internal fun String.toThreadTimestampLabel(
 ): String {
     val trimmed = trim()
     if (trimmed.isEmpty()) return ""
-    val zoned = trimmed.toThreadZonedDateTime(zoneId) ?: return trimmed
-    return zoned.withZoneSameInstant(zoneId).toThreadTimestampLabel(today)
+    val fallbackOffsetMinutes = zoneId.currentOffsetMinutes()
+    val epochMillis = parseSlockTimestampEpochMillisOrNull(trimmed, fallbackOffsetMinutes)
+            ?: return trimmed
+    val timestampOffsetMinutes = zoneId.offsetMinutesAt(epochMillis)
+    return formatSlockTimestampEpochMillis(
+            epochMillis = epochMillis,
+            localOffsetMinutes = timestampOffsetMinutes,
+            todayEpochDay = slockEpochDayForDate(today.year, today.monthValue, today.dayOfMonth)
+    )
 }
 
-private fun ZonedDateTime.toThreadTimestampLabel(today: LocalDate): String =
-        when {
-            toLocalDate() == today -> ThreadCompactTimeFormatter.format(this)
-            year == today.year -> ThreadMonthDayTimeFormatter.format(this)
-            else -> ThreadYearMonthDayTimeFormatter.format(this)
-        }
+fun ZoneId.currentOffsetMinutes(): Int =
+        rules.getOffset(Instant.now()).totalSeconds / 60
 
-private val ThreadFlexibleDateTimeFormatters =
-        listOf(
-                DateTimeFormatter.ISO_LOCAL_DATE_TIME,
-                DateTimeFormatterBuilder()
-                        .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
-                        .optionalStart()
-                        .appendFraction(ChronoField.NANO_OF_SECOND, 1, 9, true)
-                        .optionalEnd()
-                        .optionalStart()
-                        .appendOffset("+HHMM", "Z")
-                        .optionalEnd()
-                        .toFormatter(),
-                DateTimeFormatterBuilder()
-                        .appendPattern("yyyy-MM-dd HH:mm:ss")
-                        .optionalStart()
-                        .appendFraction(ChronoField.NANO_OF_SECOND, 1, 9, true)
-                        .optionalEnd()
-                        .optionalStart()
-                        .appendOffset("+HHMM", "Z")
-                        .optionalEnd()
-                        .toFormatter()
-        )
-
-private fun String.toThreadZonedDateTime(zoneId: ZoneId): ZonedDateTime? {
-    val trimmed = trim()
-    val isoLikeTrimmed = trimmed.replace(' ', 'T')
-    val normalizedOffsetTrimmed = trimmed.normalizeShortOffsetSuffix()
-    val normalizedIsoLikeTrimmed = normalizedOffsetTrimmed.replace(' ', 'T')
-    return trimmed.toEpochInstantOrNull()?.atZone(zoneId)
-            ?: parseOrNull { Instant.parse(trimmed).atZone(zoneId) }
-            ?: parseOrNull { OffsetDateTime.parse(trimmed).toZonedDateTime() }
-                    ?: parseOrNull { ZonedDateTime.parse(trimmed) }
-                    ?: parseOrNull { LocalDateTime.parse(trimmed).atZone(zoneId) }
-                            ?: parseOrNull {
-                                OffsetDateTime.parse(normalizedOffsetTrimmed).toZonedDateTime()
-                            }
-                                    ?: parseOrNull {
-                                        ZonedDateTime.parse(normalizedOffsetTrimmed)
-                                    }
-                            ?: parseOrNull { Instant.parse(isoLikeTrimmed).atZone(zoneId) }
-                                    ?: parseOrNull {
-                                        OffsetDateTime.parse(isoLikeTrimmed).toZonedDateTime()
-                                    }
-                                            ?: parseOrNull { ZonedDateTime.parse(isoLikeTrimmed) }
-                                                    ?: parseOrNull {
-                                                        OffsetDateTime.parse(
-                                                                normalizedIsoLikeTrimmed
-                                                        ).toZonedDateTime()
-                                                    }
-                                                            ?: parseOrNull {
-                                                                ZonedDateTime.parse(
-                                                                        normalizedIsoLikeTrimmed
-                                                                )
-                                                            }
-                                                    ?: parseOrNull {
-                                                        LocalDateTime.parse(isoLikeTrimmed)
-                                                                .atZone(zoneId)
-                                                    }
-                                                            ?: trimmed.toFlexibleThreadDateTime(
-                                                                    zoneId
-                                                            )
-}
-
-private val ThreadShortOffsetSuffixPattern = Regex("([+-]\\d{2})$")
-
-private fun String.normalizeShortOffsetSuffix(): String =
-        replace(ThreadShortOffsetSuffixPattern) { match -> "${match.value}:00" }
-
-private fun String.toFlexibleThreadDateTime(zoneId: ZoneId): ZonedDateTime? {
-    for (formatter in ThreadFlexibleDateTimeFormatters) {
-        parseOrNull { return OffsetDateTime.parse(this, formatter).toZonedDateTime() }
-        parseOrNull { return LocalDateTime.parse(this, formatter).atZone(zoneId) }
-    }
-    return null
-}
-
-private fun String.toEpochInstantOrNull(): Instant? {
-    if (!all { it.isDigit() }) return null
-    val epoch = toLongOrNull() ?: return null
-    return when (length) {
-        in 10..10 -> Instant.ofEpochSecond(epoch)
-        in 13..13 -> Instant.ofEpochMilli(epoch)
-        else -> null
-    }
-}
-
-private inline fun <T> parseOrNull(block: () -> T): T? =
-        try {
-            block()
-        } catch (_: DateTimeParseException) {
-            null
-        }
+private fun ZoneId.offsetMinutesAt(epochMillis: Long): Int =
+        rules.getOffset(Instant.ofEpochMilli(epochMillis)).totalSeconds / 60
 
 @Composable
 private fun ThreadChip(
