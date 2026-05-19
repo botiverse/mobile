@@ -534,13 +534,12 @@ private fun ComposerIconButton(
         Box(
             modifier = Modifier.offset(x = 2f, y = 2f).size(28.dp).background(SlockColor.ShadowBlack)
         )
-        Box(
+        Button(
+            onClick = if (enabled) onClick else ({}),
             modifier = Modifier
                 .size(28.dp)
                 .background(if (enabled) backgroundColor else SlockColor.EmptyStateGray)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .clickable(enabled = enabled, onClick = onClick),
-            contentAlignment = Alignment.Center
         ) {
             SlockLucideIcon(icon, modifier = Modifier.size(16.dp), color = "#FF000000")
         }
@@ -590,9 +589,9 @@ private fun ComposerSendButton(
 
 @Composable
 private fun ComposerTextChip(text: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier.background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center
+    Button(
+        onClick = onClick,
+        modifier = Modifier.background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         Text(
             text = text,

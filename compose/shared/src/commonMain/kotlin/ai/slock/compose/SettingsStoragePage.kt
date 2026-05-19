@@ -6,7 +6,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -213,26 +212,28 @@ private fun SettingsStorageButton(
     loading: Boolean,
     onClick: () -> Unit
 ) {
-    val buttonModifier =
-        Modifier.fillMaxWidth()
+    Button(
+        onClick = if (enabled && !loading) onClick else ({}),
+        modifier = Modifier.fillMaxWidth()
             .height(44.dp)
             .background(if (enabled && !loading) SlockColor.SurfaceWhite else SlockColor.EmptyStateGray)
             .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .then(if (enabled && !loading) Modifier.clickable(onClick = onClick) else Modifier)
-    Row(
-        modifier = buttonModifier.padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = 12.dp)
     ) {
-        SlockLucideIcon(iconName, modifier = Modifier.size(16.dp))
-        Text(
-            if (loading) "$text..." else text,
-            style = SlockType.Button.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SlockLucideIcon(iconName, modifier = Modifier.size(16.dp))
+            Text(
+                if (loading) "$text..." else text,
+                style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 

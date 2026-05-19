@@ -285,14 +285,13 @@ private fun ThreadFileDownloadButton(onClick: () -> Unit) {
             .padding(end = 3.dp, bottom = 3.dp)
             .background(SlockColor.ShadowBlack)
     ) {
-        Box(
+        Button(
+            onClick = onClick,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = 0.dp, top = 0.dp, end = 3.dp, bottom = 3.dp)
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center
         ) {
             SlockLucideIcon(name = "download", modifier = Modifier.size(24.dp))
         }
@@ -305,12 +304,11 @@ private fun ThreadFilesLoadMore(loading: Boolean, onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth().padding(12.dp),
         contentAlignment = Alignment.Center
     ) {
-        Box(
+        Button(
+            onClick = if (!loading) onClick else ({}),
             modifier = Modifier
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .clickable(enabled = !loading, onClick = onClick)
-                .padding(horizontal = 18.dp, vertical = 10.dp),
-            contentAlignment = Alignment.Center
+                .padding(horizontal = 18.dp, vertical = 10.dp)
         ) {
             Text(
                 text = if (loading) "Loading..." else "Load more",

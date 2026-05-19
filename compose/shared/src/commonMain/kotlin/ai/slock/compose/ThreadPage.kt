@@ -476,12 +476,11 @@ private fun ThreadMembersHeaderButton(count: Int, onClick: () -> Unit) {
 
 @Composable
 private fun ThreadHeaderAction(label: String, onClick: () -> Unit) {
-    Box(
+    Button(
+        onClick = onClick,
         modifier = Modifier.border(SlockStroke.Default, SlockColor.BorderBlack)
             .background(SlockColor.SurfaceWhite)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center
+            .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
         Text(
             text = label,
@@ -687,25 +686,28 @@ private fun ThreadBackToBottomButton(
         Box(
             modifier = Modifier.matchParentSize().offset(x = 4f, y = 4f).background(SlockColor.ShadowBlack)
         )
-        Row(
+        Button(
+            onClick = onClick,
             modifier = Modifier
                 .background(SlockColor.AccentCyan)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .clickable(onClick = onClick)
-                .padding(horizontal = SlockSpacing.Sm, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                .padding(horizontal = SlockSpacing.Sm, vertical = 5.dp)
         ) {
-            Text(
-                text = "Back to bottom",
-                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack
-            )
-            SlockLucideIcon(
-                "chevron-down",
-                modifier = Modifier.size(14.dp),
-                color = "#FF000000"
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            ) {
+                Text(
+                    text = "Back to bottom",
+                    style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack
+                )
+                SlockLucideIcon(
+                    "chevron-down",
+                    modifier = Modifier.size(14.dp),
+                    color = "#FF000000"
+                )
+            }
         }
     }
 }
@@ -715,12 +717,11 @@ private const val ThreadInitialBottomAnchorAttempts = 10
 
 @Composable
 private fun ThreadInlineActionRow(label: String, onClick: () -> Unit) {
-    Box(
+    Button(
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
-            .clickable(onClick = onClick)
-            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
-        contentAlignment = Alignment.Center
+            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm)
     ) {
         Text(
             text = label,

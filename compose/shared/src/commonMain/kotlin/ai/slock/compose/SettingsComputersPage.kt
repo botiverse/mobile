@@ -353,9 +353,9 @@ private fun SettingsInfoStrip(label: String, value: String) {
 
 @Composable
 private fun SettingsPrimaryButton(text: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier.fillMaxWidth().height(44.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
+    Button(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().height(44.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack)
     ) {
         Text(text, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }

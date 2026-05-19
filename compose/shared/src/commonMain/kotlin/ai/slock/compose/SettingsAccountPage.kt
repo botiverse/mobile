@@ -296,9 +296,9 @@ private fun SettingsDisclosureRow(iconName: String, title: String, subtitle: Str
 private fun SettingsLogoutAction(detail: String, label: String, onClick: () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(detail, style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
-        Box(
-            modifier = Modifier.fillMaxWidth().height(48.dp).background(SlockColor.AccentRed).border(SlockStroke.Default, SlockColor.BorderBlack).clickable(onClick = onClick),
-            contentAlignment = Alignment.Center
+        Button(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth().height(48.dp).background(SlockColor.AccentRed).border(SlockStroke.Default, SlockColor.BorderBlack)
         ) {
             Text(label, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }

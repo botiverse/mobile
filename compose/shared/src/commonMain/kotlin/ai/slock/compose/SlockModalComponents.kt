@@ -97,13 +97,12 @@ internal fun SlockModalIconButton(
     icon: String,
     onClick: () -> Unit
 ) {
-    Box(
+    Button(
+        onClick = onClick,
         modifier = Modifier
             .size(34.dp)
             .background(SlockColor.SurfaceWhite)
             .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
     ) {
         SlockLucideIcon(icon, modifier = Modifier.size(17.dp))
     }
@@ -117,40 +116,43 @@ internal fun SlockActionSheetRow(
     destructive: Boolean = false,
     onClick: () -> Unit
 ) {
-    Row(
+    Button(
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
             .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .background(if (destructive) SlockColor.AccentRed else SlockColor.BrandYellow)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            SlockLucideIcon(icon, modifier = Modifier.size(17.dp))
-        }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = title,
-                style = SlockType.ButtonBold,
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (subtitle.isNotBlank()) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(if (destructive) SlockColor.AccentRed else SlockColor.BrandYellow)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon(icon, modifier = Modifier.size(17.dp))
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = subtitle,
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 2,
+                    text = title,
+                    style = SlockType.ButtonBold,
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        text = subtitle,
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
