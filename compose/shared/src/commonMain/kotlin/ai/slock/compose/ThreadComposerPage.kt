@@ -683,22 +683,28 @@ private fun ComposerIconButton(
     icon: String,
     enabled: Boolean,
     backgroundColor: Color = SlockColor.SurfaceWhite,
+    disabledBackgroundColor: Color = SlockColor.EmptyStateGray,
+    disabledAlpha: Float = 1f,
     onClick: () -> Unit
 ) {
+    val activeColor = if (enabled) backgroundColor else disabledBackgroundColor.copy(alpha = disabledAlpha)
+    val chromeColor = SlockColor.BorderBlack.copy(alpha = if (enabled) 1f else disabledAlpha)
+    val shadowColor = SlockColor.ShadowBlack.copy(alpha = if (enabled) 1f else disabledAlpha)
+    val iconColor = if (enabled) "#FF000000" else "#4D000000"
     Box(
         modifier = Modifier.size(30.dp)
     ) {
         Box(
-            modifier = Modifier.offset(x = 2f, y = 2f).size(28.dp).background(SlockColor.ShadowBlack)
+            modifier = Modifier.offset(x = 2f, y = 2f).size(28.dp).background(shadowColor)
         )
         Button(
             onClick = if (enabled) onClick else ({}),
             modifier = Modifier
                 .size(28.dp)
-                .background(if (enabled) backgroundColor else SlockColor.EmptyStateGray)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .background(activeColor)
+                .border(SlockStroke.Default, chromeColor)
         ) {
-            SlockLucideIcon(icon, modifier = Modifier.size(16.dp), color = "#FF000000")
+            SlockLucideIcon(icon, modifier = Modifier.size(16.dp), color = iconColor)
         }
     }
 }
@@ -715,17 +721,20 @@ private fun ComposerAsTaskToggle(
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Box(
-            modifier = Modifier.size(18.dp).background(if (checked) SlockColor.BrandYellow else SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack),
+            modifier = Modifier.size(14.dp)
+                .background(if (checked) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack),
             contentAlignment = Alignment.Center
         ) {
             if (checked) {
-                Text("✓", style = SlockType.Caption.copy(fontWeight = FontWeight.Bold), color = SlockColor.TextBlack)
+                Text("✓", style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, fontWeight = FontWeight.Bold), color = SlockColor.TextBlack)
             }
         }
+        val labelColor = if (enabled) SlockColor.TextBlack.copy(alpha = 0.6f) else SlockColor.TextMutedGray
         Text(
             text = "As Task",
-            style = SlockType.Caption.copy(lineHeight = 18.sp, color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray),
-            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, lineHeight = 18.sp, color = labelColor),
+            color = labelColor
         )
     }
 }
@@ -740,6 +749,8 @@ private fun ComposerSendButton(
         icon = "send",
         enabled = enabled,
         backgroundColor = SlockColor.AccentPink,
+        disabledBackgroundColor = SlockColor.AccentPink,
+        disabledAlpha = 0.3f,
         onClick = onClick
     )
 }
