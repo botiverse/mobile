@@ -440,8 +440,8 @@ private fun SlockJumpingLogoBadge(activeIndex: Int, modifier: Modifier = Modifie
             SlockRefreshLetters.forEachIndexed { index, letter ->
                 val letterOffset =
                     when {
-                        activeIndex == index -> (-9).dp
-                        activeIndex >= 0 && (activeIndex + SlockRefreshLetters.length - 1) % SlockRefreshLetters.length == index -> 4.dp
+                        activeIndex == index -> (-5).dp
+                        activeIndex >= 0 && (activeIndex + SlockRefreshLetters.length - 1) % SlockRefreshLetters.length == index -> 2.dp
                         else -> 0.dp
                     }
                 Text(
