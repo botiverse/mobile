@@ -259,6 +259,7 @@ fun SlockStructuralHomeShell(
     savedCount: Int = 0,
     notifications: List<SlockHomeNotificationItem> = emptyList(),
     serverSwitcherExpanded: Boolean = false,
+    pendingServerId: String? = null,
     contentRefreshing: Boolean = false,
     contentRefreshEnabled: Boolean = true,
     applyTopSafeArea: Boolean = true,
@@ -386,7 +387,7 @@ fun SlockStructuralHomeShell(
             HomeNotificationCenter(notifications, onNotificationView, onNotificationDismiss, Modifier.align(Alignment.TopEnd).padding(top = topSafeArea).padding(top = SlockSpacing.Lg, end = SlockSpacing.Lg))
             if (serverSwitcherExpanded) {
                 Box(Modifier.fillMaxSize().clickable(onClick = onServerSwitcherDismiss))
-                ServerSwitcherPanel(servers, currentServerId, labels, onServerSelected, onCreateServerClick, Modifier.padding(top = topSafeArea + SlockSize.PageHeaderHeight, start = SlockSpacing.Lg))
+                ServerSwitcherPanel(servers, currentServerId, pendingServerId, labels, onServerSelected, onCreateServerClick, Modifier.padding(top = topSafeArea + SlockSize.PageHeaderHeight, start = SlockSpacing.Lg))
             }
         }
         if (showBottomBar) {
@@ -574,12 +575,12 @@ private fun SlockHomeNotificationKind.notificationColor(): Color = when (this) {
 }
 
 @Composable
-private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentServerId: String, labels: SlockHomeShellLabels, onServerSelected: (String) -> Unit, onCreateServerClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentServerId: String, pendingServerId: String?, labels: SlockHomeShellLabels, onServerSelected: (String) -> Unit, onCreateServerClick: () -> Unit, modifier: Modifier = Modifier) {
     HardShadowPanel(modifier = modifier, minWidth = 276.dp, maxWidth = 328.dp) {
         if (servers.isEmpty()) {
             Text(labels.noServersAvailable, style = SlockType.Caption, color = SlockColor.TextMutedGray, modifier = Modifier.padding(SlockSpacing.Md))
         } else {
-            servers.forEach { ServerSwitcherRow(it, it.id == currentServerId) { onServerSelected(it.id) } }
+            servers.forEach { ServerSwitcherRow(it, it.id == currentServerId, it.id == pendingServerId) { onServerSelected(it.id) } }
         }
         Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
         com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).background(SlockColor.SurfaceWhite).clickable(onClick = onCreateServerClick).padding(horizontal = SlockSpacing.Md), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
@@ -618,9 +619,9 @@ private fun HardShadowPanel(
 }
 
 @Composable
-private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean, onClick: () -> Unit) {
+private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean, pending: Boolean, onClick: () -> Unit) {
     com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).background(SlockColor.SurfaceWhite).clickable(onClick = onClick).padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-        Text(if (selected) "✓" else "", style = SlockType.Button, color = SlockColor.TextBlack, modifier = Modifier.width(22.dp), textAlign = TextAlign.Center)
+        Text(if (pending) "..." else if (selected) "✓" else "", style = SlockType.Button, color = SlockColor.TextBlack, modifier = Modifier.width(22.dp), textAlign = TextAlign.Center)
         Column(modifier = Modifier.weight(1f)) {
             Text(server.name, style = SlockType.Button, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("/${server.slug}", style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)

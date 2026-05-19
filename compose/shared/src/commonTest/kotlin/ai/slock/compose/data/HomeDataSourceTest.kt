@@ -72,6 +72,50 @@ class HomeDataSourceTest {
         assertEquals("home_network", (result as DataResult.Error).error.code)
     }
 
+    @Test
+    fun loadHomeUsesRequestedServerForEveryApiCallAndSessionSelection() = runBlocking {
+        val sessionStore =
+            InMemorySlockAuthSessionStore(
+                sampleSession().copy(
+                    selectedServerId = "server-1",
+                    servers =
+                        listOf(
+                            StoredAuthServer(id = "server-1", name = "Server One"),
+                            StoredAuthServer(id = "server-2", name = "Server Two", slug = "two")
+                        )
+                )
+            )
+        val api = RecordingHomeApi()
+        val source =
+            SharedHomeDataSource(
+                sessionStore = sessionStore,
+                api = api,
+                parseHome = { payload, _ ->
+                    DataResult.Content(sampleHome(payload.serverId))
+                }
+            )
+
+        val result = source.loadHome(ServerId("server-2"))
+
+        assertEquals(ServerId("server-2"), (result as DataResult.Content).data.server.id)
+        assertEquals(listOf("channels:server-2", "dms:server-2", "unread:server-2", "summary:server-2"), api.calls)
+    }
+
+    @Test
+    fun serverSwitchStateAcceptsOnlyLatestRequestedServer() {
+        val initial = HomeServerSwitchState().select("server-a")
+        val firstGeneration = initial.requestGeneration
+        val latest = initial.select("server-b")
+        val latestGeneration = latest.requestGeneration
+
+        assertTrue(HomeServerSwitchState().isCurrent(0, ServerId("server-a")))
+        assertTrue(!latest.isCurrent(firstGeneration, ServerId("server-a")))
+        assertTrue(!latest.isCurrent(firstGeneration, ServerId("server-b")))
+        assertTrue(latest.isCurrent(latestGeneration, ServerId("server-b")))
+        assertEquals("server-b", latest.complete(latestGeneration, ServerId("server-b")).selectedServerId)
+        assertEquals(null, latest.complete(latestGeneration, ServerId("server-b")).pendingServerId)
+    }
+
     private class FakeHomeApi : SlockHomeApi {
         var calls: Int = 0
 
@@ -95,6 +139,39 @@ class HomeDataSourceTest {
 
         override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
             error("not reached")
+    }
+
+    private class RecordingHomeApi : SlockHomeApi {
+        val calls = mutableListOf<String>()
+
+        override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
+            error("server-specific overload should be used")
+
+        override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse =
+            error("server-specific overload should be used")
+
+        override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
+            error("server-specific overload should be used")
+
+        override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
+            error("server-specific overload should be used")
+
+        override suspend fun channels(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+            ok("channels", serverId)
+
+        override suspend fun directMessages(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+            ok("dms", serverId)
+
+        override suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+            ok("unread", serverId)
+
+        override suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+            ok("summary", serverId)
+
+        private fun ok(name: String, serverId: ServerId): HomeNetworkResponse {
+            calls += "$name:${serverId.value}"
+            return HomeNetworkResponse(code = 200, bodyText = "{}")
+        }
     }
 
     private fun sampleSession(): StoredAuthSession =

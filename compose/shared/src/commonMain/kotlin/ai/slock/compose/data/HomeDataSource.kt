@@ -35,10 +35,10 @@ class SharedHomeDataSource(
             try {
                 HomeNetworkPayload(
                     serverId = resolvedServerId,
-                    channels = api.channels(priority),
-                    directMessages = api.directMessages(priority),
-                    unreadCounts = api.channelUnreadCounts(priority),
-                    serverUnreadSummary = api.serverUnreadSummary(priority)
+                    channels = api.channels(resolvedServerId, priority),
+                    directMessages = api.directMessages(resolvedServerId, priority),
+                    unreadCounts = api.channelUnreadCounts(resolvedServerId, priority),
+                    serverUnreadSummary = api.serverUnreadSummary(resolvedServerId, priority)
                 )
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -56,6 +56,18 @@ interface SlockHomeApi {
     suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse
     suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse
     suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse
+
+    suspend fun channels(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+        channels(priority)
+
+    suspend fun directMessages(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+        directMessages(priority)
+
+    suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+        channelUnreadCounts(priority)
+
+    suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+        serverUnreadSummary(priority)
 }
 
 data class HomeNetworkPayload(

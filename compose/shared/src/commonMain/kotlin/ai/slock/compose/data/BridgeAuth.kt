@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.base.BridgeModule
+import ai.slock.compose.model.ServerId
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -65,10 +66,22 @@ internal class BridgeHomeApi(
     override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
         request("servers/unread-summary")
 
-    private suspend fun request(path: String): HomeNetworkResponse {
+    override suspend fun channels(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+        request("channels", serverId.value)
+
+    override suspend fun directMessages(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+        request("channels/dm", serverId.value)
+
+    override suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+        request("channels/unread", serverId.value)
+
+    override suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+        request("servers/unread-summary", serverId.value)
+
+    private suspend fun request(path: String, serverIdOverride: String? = null): HomeNetworkResponse {
         val session = sessionStore.readSession()
         val token = session?.accessToken.orEmpty()
-        val serverId = session?.currentServerId.orEmpty()
+        val serverId = serverIdOverride ?: session?.currentServerId.orEmpty()
         if (token.isBlank() || serverId.isBlank()) return HomeNetworkResponse(code = 401, bodyText = null)
         val response =
             bridge.authRequest(

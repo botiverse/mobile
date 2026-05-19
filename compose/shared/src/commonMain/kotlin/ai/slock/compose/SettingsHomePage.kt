@@ -6,6 +6,7 @@ import ai.slock.compose.data.BridgeMembersApi
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.HomeSnapshot
+import ai.slock.compose.data.HomeServerSwitchState
 import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklyRelationalStore
 import ai.slock.compose.data.SharedHomeDataSource
@@ -458,11 +459,13 @@ private fun SharedHomeScreen(
             )
         }
     var refreshNonce by remember { mutableStateOf(0) }
-    var selectedServerId by remember { mutableStateOf<String?>(null) }
+    var serverSwitchState by remember { mutableStateOf(HomeServerSwitchState()) }
     var serverSwitcherExpanded by remember { mutableStateOf(false) }
     var state by remember { mutableStateOf<SharedHomeUiState>(SharedHomeUiState.Loading()) }
 
-    LaunchedEffect(refreshNonce, selectedServerId) {
+    LaunchedEffect(serverSwitchState.requestGeneration, refreshNonce) {
+        val requestGeneration = serverSwitchState.requestGeneration
+        val requestedServerId = serverSwitchState.selectedServerId
         state = SharedHomeUiState.Loading()
         try {
             val session = authStore.readSession()
@@ -471,20 +474,28 @@ private fun SharedHomeScreen(
                 return@LaunchedEffect
             }
             state = SharedHomeUiState.Loading(session)
-            selectedServerId?.let { serverId ->
+            requestedServerId?.let { serverId ->
                 val server = session.servers.firstOrNull { it.id == serverId }
                 authStore.updateSelectedServer(serverId = serverId, serverSlug = server?.slug)
             }
             val activeSession = authStore.readSession() ?: session
             state = SharedHomeUiState.Loading(activeSession)
-            val activeServerId = selectedServerId ?: activeSession.currentServerId
-            state =
+            val activeServerId = requestedServerId ?: activeSession.currentServerId
+            val result =
                 when (val result = dataSource.loadHome(serverId = activeServerId?.let(::ServerId), priority = DataRequestPriority.Visible)) {
                     is DataResult.Content -> SharedHomeUiState.Content(result.data, activeSession)
                     is DataResult.Empty -> SharedHomeUiState.Empty(activeSession)
                     is DataResult.Error -> SharedHomeUiState.Error(result.error.code)
                     is DataResult.NoPermission -> SharedHomeUiState.Error(result.blocker.code)
                 }
+            val resultServerId = (result as? SharedHomeUiState.Content)?.snapshot?.server?.id
+                ?: activeServerId?.let(::ServerId)
+            if (resultServerId == null || serverSwitchState.isCurrent(requestGeneration, resultServerId)) {
+                state = result
+                if (resultServerId != null) {
+                    serverSwitchState = serverSwitchState.complete(requestGeneration, resultServerId)
+                }
+            }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
@@ -509,7 +520,7 @@ private fun SharedHomeScreen(
                     onServerBadgeClick = { serverSwitcherExpanded = !serverSwitcherExpanded },
                     onServerSelected = { serverId ->
                         serverSwitcherExpanded = false
-                        selectedServerId = serverId
+                        serverSwitchState = serverSwitchState.select(serverId)
                     },
                     onCreateServerClick = {
                         bridge.toast("Create server is not available yet")
@@ -525,7 +536,7 @@ private fun SharedHomeScreen(
                 onServerBadgeClick = { serverSwitcherExpanded = !serverSwitcherExpanded },
                 onServerSelected = { serverId ->
                     serverSwitcherExpanded = false
-                    selectedServerId = serverId
+                    serverSwitchState = serverSwitchState.select(serverId)
                 },
                 onCreateServerClick = {
                     bridge.toast("Create server is not available yet")
@@ -559,6 +570,7 @@ private fun SharedHomeScreen(
                 serverUnreadCount = snapshot.server.unreadCount,
                 inboxUnreadCount = snapshot.unreadTotal,
                 serverSwitcherExpanded = serverSwitcherExpanded,
+                pendingServerId = serverSwitchState.pendingServerId,
                 showBottomBar = false,
                 outerPadding = 0.dp,
                 contentRefreshing = false,
@@ -567,9 +579,10 @@ private fun SharedHomeScreen(
                 onServerSelected = { serverId ->
                     serverSwitcherExpanded = false
                     if (serverId == snapshot.server.id.value) {
+                        serverSwitchState = serverSwitchState.refresh()
                         refreshNonce += 1
                     } else {
-                        selectedServerId = serverId
+                        serverSwitchState = serverSwitchState.select(serverId)
                     }
                 },
                 onCreateServerClick = {
