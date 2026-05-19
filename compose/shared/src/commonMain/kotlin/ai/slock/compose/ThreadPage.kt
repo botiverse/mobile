@@ -745,7 +745,7 @@ private fun ThreadMessagesList(
         }
         actionMessageId?.let { messageId ->
             payload.messages.firstOrNull { it.id == messageId }?.let { message ->
-                ThreadMessageActionSheet(
+                ThreadMessageActionMenu(
                     message = message,
                     showReplyAction = payload.showReplyActions,
                     onDismiss = { actionMessageId = null },
@@ -1282,8 +1282,15 @@ private fun ThreadMetaChip(
     }
 }
 
+private data class ThreadMessageMenuAction(
+    val label: String,
+    val icon: String,
+    val group: String,
+    val onClick: () -> Unit
+)
+
 @Composable
-private fun ThreadMessageActionSheet(
+private fun ThreadMessageActionMenu(
     message: KuiklyThreadMessageItem,
     showReplyAction: Boolean,
     onDismiss: () -> Unit,
@@ -1292,43 +1299,108 @@ private fun ThreadMessageActionSheet(
     onSave: () -> Unit,
     onTaskStatusChange: (String) -> Unit
 ) {
-    SlockModalLayer(
-        title = "Message actions",
-        subtitle = message.authorName,
-        onDismiss = onDismiss
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+    val actions =
+        buildList {
             if (showReplyAction) {
-                SlockActionSheetRow(
-                    title = "Reply",
-                    subtitle = "Open this message thread",
-                    icon = "message-square",
-                    onClick = onReply
-                )
+                add(ThreadMessageMenuAction("Reply", "message-square", "message", onReply))
             }
-            SlockActionSheetRow(
-                title = "Copy markdown",
-                subtitle = "Copy this message body",
-                icon = "copy",
-                onClick = onCopy
-            )
-            SlockActionSheetRow(
-                title = "Save message",
-                subtitle = "Keep this message locally",
-                icon = "bookmark",
-                onClick = onSave
-            )
+            add(ThreadMessageMenuAction("Copy markdown", "copy", "copy", onCopy))
+            add(ThreadMessageMenuAction("Save message", "bookmark", "message", onSave))
             message.taskId?.takeIf { it.isNotBlank() }?.let {
                 val isDone = message.taskStatus?.trim()?.lowercase() in setOf("done", "closed")
-                SlockActionSheetRow(
-                    title = if (isDone) "Reopen task" else "Mark done",
-                    subtitle = message.taskNumber?.let { number -> "#$number" }.orEmpty(),
-                    icon = if (isDone) "refresh-cw" else "circle-check-big",
-                    onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
+                add(
+                    ThreadMessageMenuAction(
+                        label = if (isDone) "Reopen task" else "Mark done",
+                        icon = if (isDone) "refresh-cw" else "circle-check-big",
+                        group = "task",
+                        onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
+                    )
                 )
             }
         }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(onClick = onDismiss)
+            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Lg),
+        contentAlignment = Alignment.BottomEnd
+    ) {
+        Box(modifier = Modifier.padding(end = 6.dp, bottom = 6.dp).width(292.dp)) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .offset(x = 6f, y = 6f)
+                    .background(SlockColor.ShadowBlack)
+            )
+            Column(
+                modifier = Modifier
+                    .width(292.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+            ) {
+                ThreadMessageReactionRow()
+                ThreadMessageMenuDivider()
+                actions.forEachIndexed { index, action ->
+                    val previousGroup = actions.getOrNull(index - 1)?.group
+                    if (index > 0 && previousGroup != action.group) {
+                        ThreadMessageMenuDivider()
+                    }
+                    ThreadMessageMenuItem(action)
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun ThreadMessageReactionRow() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(54.dp)
+            .padding(horizontal = SlockSpacing.Md),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        listOf("👍", "❤", "🎉", "👀", "🔥", "🖼").forEach { reaction ->
+            Text(
+                text = reaction,
+                style = SlockType.Body.copy(fontSize = 21.sp, lineHeight = 24.sp),
+                color = SlockColor.TextBlack
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadMessageMenuItem(action: ThreadMessageMenuAction) {
+    Button(
+        onClick = action.onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(13.dp)
+        ) {
+            SlockLucideIcon(action.icon, modifier = Modifier.size(20.dp), color = "#FF000000")
+            Text(
+                text = action.label,
+                style = SlockType.Body.copy(fontWeight = FontWeight.Normal),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadMessageMenuDivider() {
+    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
 }
 
 @Composable
