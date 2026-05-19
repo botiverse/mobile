@@ -2,6 +2,10 @@ package ai.slock.compose
 
 import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
+import ai.slock.compose.data.BridgeThreadApi
+import ai.slock.compose.data.KuiklyAuthSessionStore
+import ai.slock.compose.data.KuiklyRelationalStore
+import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.toGravatarAvatarUrl
@@ -48,13 +52,21 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 
 internal const val THREAD_PAGE = "compose_thread"
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
@@ -74,6 +86,7 @@ internal data class KuiklyThreadScreenPayload(
     val title: String = "Thread",
     val subtitle: String? = null,
     val status: String = "loading",
+    val sourceThreadId: String? = null,
     val selectedTab: String = "chat",
     val navigationLabel: String = "Back",
     val showModeTabs: Boolean = true,
@@ -222,6 +235,55 @@ private fun ThreadPageScreen() {
             instanceId = instanceId
         )
     }
+    SharedThreadRouteContent(
+        initialPayload = payload,
+        bridge = bridge,
+        onBack = {
+            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+        }
+    )
+}
+
+@Composable
+internal fun SharedThreadRouteContent(
+    initialPayload: KuiklyThreadScreenPayload,
+    bridge: ai.slock.compose.base.BridgeModule,
+    onBack: () -> Unit
+) {
+    val authStore = remember { KuiklyAuthSessionStore(KuiklyRelationalStore(bridge)) }
+    val threadApi = remember { BridgeThreadApi(bridge, authStore) }
+    var payload by remember(initialPayload.instanceId) { mutableStateOf(initialPayload) }
+
+    LaunchedEffect(initialPayload) {
+        payload = initialPayload
+    }
+
+    LaunchedEffect(initialPayload.instanceId, initialPayload.sourceThreadId) {
+        val threadId = initialPayload.sourceThreadId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        payload = initialPayload.copy(status = "loading", errorCode = null)
+        try {
+            val session = authStore.readSession()
+            val response = threadApi.channelMessages(threadId)
+            payload =
+                if (response.isSuccessful && !response.bodyText.isNullOrBlank()) {
+                    buildSharedThreadPayloadFromMessagesResponse(
+                        basePayload = initialPayload,
+                        bodyText = response.bodyText,
+                        session = session
+                    )
+                } else {
+                    initialPayload.copy(
+                        status = "error",
+                        errorCode = response.errorBodyText?.takeIf { it.isNotBlank() } ?: "thread_network"
+                    )
+                }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            payload = initialPayload.copy(status = "error", errorCode = "thread_network")
+        }
+    }
+
     val filesPayload = remember(payload.filesPayload, payload.instanceId) {
         parseThreadFilesPayload(payload.filesPayload, payload.instanceId)
     }
@@ -241,6 +303,7 @@ private fun ThreadPageScreen() {
         payload = payload,
         filesPayload = filesPayload,
         composerPayload = composerPayload,
+        onBack = onBack,
         onThreadEvent = { action, itemId, attachmentId, tab ->
             bridge.threadEvent(
                 instanceId = payload.instanceId,
@@ -292,11 +355,154 @@ internal fun parseThreadScreenPayload(
     }
 }
 
+internal fun buildSharedThreadPayloadFromMessagesResponse(
+    basePayload: KuiklyThreadScreenPayload,
+    bodyText: String,
+    session: StoredAuthSession?
+): KuiklyThreadScreenPayload =
+    runCatching {
+        val root = threadPageJson.parseToJsonElement(bodyText)
+        val currentUserId = session?.user?.id
+        val messages =
+            root.collectThreadMessageObjects()
+                .mapIndexedNotNull { index, item -> item.toSharedThreadMessageItem(index, currentUserId) }
+        basePayload.copy(
+            status = if (messages.isEmpty()) "empty" else "content",
+            messages = messages,
+            errorCode = null
+        )
+    }.getOrElse {
+        basePayload.copy(status = "error", errorCode = "thread_payload_parse_failed")
+    }
+
+private fun JsonElement.collectThreadMessageObjects(): List<JsonObject> =
+    when (this) {
+        is JsonArray -> mapNotNull { it as? JsonObject }
+        is JsonObject -> {
+            val direct =
+                listOf("messages", "items", "results")
+                    .firstNotNullOfOrNull { this[it] as? JsonArray }
+                    ?.collectThreadMessageObjects()
+            direct ?: when (val data = this["data"]) {
+                is JsonArray -> data.collectThreadMessageObjects()
+                is JsonObject -> data.collectThreadMessageObjects()
+                else -> emptyList()
+            }
+        }
+        else -> emptyList()
+    }
+
+private fun JsonObject.toSharedThreadMessageItem(index: Int, currentUserId: String?): KuiklyThreadMessageItem? {
+    val author = firstThreadObject("author", "user", "sender", "member", "agent") ?: this
+    val id = threadString("id", "messageId", "message_id", "_id") ?: "message-$index"
+    val authorId =
+        author.threadString("id", "userId", "user_id", "memberId", "member_id", "agentId", "agent_id")
+            ?: threadString("authorId", "author_id", "userId", "user_id", "memberId", "member_id")
+            ?: "unknown"
+    val authorName =
+        author.threadString("displayName", "display_name", "name", "username", "email")
+            ?: threadString("authorName", "author_name", "displayName", "display_name")
+            ?: "Unknown"
+    val body = threadString("body", "content", "text", "markdown", "message").orEmpty()
+    val messageType =
+        threadString("messageType", "message_type", "type", "kind")
+            ?.takeIf { it.contains("system", ignoreCase = true) }
+            ?.let { "System" }
+            ?: "Chat"
+    val avatarWireValue =
+        author.threadAvatarWireValue()
+            ?: threadAvatarWireValue()
+    val gravatarHash =
+        author.threadString("gravatarHash", "gravatar_hash", "gravatarMd5", "gravatar_md5")
+            ?: threadString("gravatarHash", "gravatar_hash", "gravatarMd5", "gravatar_md5")
+    return KuiklyThreadMessageItem(
+        id = id,
+        authorId = authorId,
+        authorName = authorName,
+        isOwn = currentUserId != null && authorId == currentUserId,
+        avatarLabel = authorName.take(1).uppercase(),
+        avatarWireValue = avatarWireValue,
+        gravatarHash = gravatarHash,
+        timestampLabel = threadString("timestampLabel", "timestamp_label", "createdAt", "created_at", "timestamp", "updatedAt", "updated_at").orEmpty(),
+        messageType = messageType,
+        systemEventType = threadString("systemEventType", "system_event_type", "eventType", "event_type"),
+        metadata = (this["metadata"] as? JsonObject).threadStringMap(),
+        body = body,
+        replyCount = threadInt("replyCount", "reply_count", "repliesCount", "replies_count") ?: 0,
+        taskId = threadString("taskId", "task_id"),
+        taskNumber = threadInt("taskNumber", "task_number", "number"),
+        taskStatus = threadString("taskStatus", "task_status", "status"),
+        taskAssigneeName = threadString("taskAssigneeName", "task_assignee_name", "assigneeName", "assignee_name"),
+        attachments = (this["attachments"] as? JsonArray)?.mapIndexedNotNull { attachmentIndex, item ->
+            (item as? JsonObject)?.toSharedThreadAttachmentItem(attachmentIndex)
+        }.orEmpty()
+    )
+}
+
+private fun JsonObject.toSharedThreadAttachmentItem(index: Int): KuiklyThreadAttachmentItem? {
+    val id = threadString("id", "attachmentId", "attachment_id", "_id") ?: "attachment-$index"
+    val name = threadString("name", "filename", "fileName", "title") ?: id
+    return KuiklyThreadAttachmentItem(
+        id = id,
+        name = name,
+        mimeType = threadString("mimeType", "mime_type", "contentType", "content_type").orEmpty(),
+        sizeLabel = threadString("sizeLabel", "size_label", "size").orEmpty(),
+        thumbnailUrl = threadString("thumbnailUrl", "thumbnail_url", "previewUrl", "preview_url")
+    )
+}
+
+private fun JsonObject?.threadStringMap(): Map<String, String> =
+    this?.mapNotNull { (key, value) ->
+        (value as? JsonPrimitive)?.contentOrNull?.let { key to it.sanitizeThreadSystemText() }
+    }?.toMap().orEmpty()
+
+private fun JsonObject.threadAvatarWireValue(): String? {
+    threadString(
+        "avatarWireValue",
+        "avatarUrl",
+        "avatar_url",
+        "imageUrl",
+        "image_url",
+        "profileImageUrl",
+        "profile_image_url",
+        "pictureUrl",
+        "picture_url"
+    )?.let { return it }
+    (this["avatar"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }?.let { value ->
+        return if (value.startsWith("gravatar:", ignoreCase = true)) {
+            value.substringAfter(":").toGravatarAvatarUrl()
+        } else {
+            value
+        }
+    }
+    val avatar = this["avatar"] as? JsonObject ?: return null
+    val type = avatar.threadString("type", "kind")?.lowercase()
+    val hash = avatar.threadString("hash", "gravatarHash", "gravatar_hash", "emailHash", "email_hash")
+    return when {
+        type == "gravatar" && !hash.isNullOrBlank() -> hash.toGravatarAvatarUrl()
+        type == "pixel" -> avatar.threadString("key", "seed")?.let { "pixel:$it" }
+        type == "random" -> avatar.threadString("key", "seed")?.let { "random:$it" }
+        else -> avatar.threadString("url", "imageUrl", "image_url", "avatarUrl", "avatar_url")
+    }
+}
+
+private fun JsonObject.firstThreadObject(vararg names: String): JsonObject? =
+    names.firstNotNullOfOrNull { name -> this[name] as? JsonObject }
+
+private fun JsonObject.threadString(vararg names: String): String? =
+    names.firstNotNullOfOrNull { name ->
+        (this[name] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+private fun JsonObject.threadInt(vararg names: String): Int? =
+    names.firstNotNullOfOrNull { name -> (this[name] as? JsonPrimitive)?.intOrNull }
+
 @Composable
 private fun ThreadPageContent(
     payload: KuiklyThreadScreenPayload,
     filesPayload: KuiklyThreadFilesPayload,
     composerPayload: KuiklyThreadComposerPayload,
+    onBack: () -> Unit,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
 ) {
@@ -312,7 +518,7 @@ private fun ThreadPageContent(
         ) {
             ThreadPageHeader(
                 payload = payload,
-                onBack = { onThreadEvent("back", null, null, null) },
+                onBack = onBack,
                 onOpenInChannel = {
                     onThreadEvent("openParentMessage", payload.originParentMessageId, null, null)
                 },

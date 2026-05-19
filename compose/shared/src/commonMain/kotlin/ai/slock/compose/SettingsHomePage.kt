@@ -44,12 +44,9 @@ import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -62,6 +59,9 @@ const val SETTINGS_HOME_PAGE = "compose_settings_home"
 const val SETTINGS_TAB_BAR_SMOKE_PAGE = "compose_settings_tabbar_smoke"
 const val BOTTOM_TAB_BAR_SMOKE_PAGE = "compose_bottom_tabbar_smoke"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
+
+private const val AppShellRouteMain = "main"
+private const val AppShellRouteThread = "thread"
 
 @Page(SETTINGS_HOME_PAGE, supportInLocal = true)
 internal class ComposeSettingsHomePage : ai.slock.compose.base.BasePager() {
@@ -183,54 +183,78 @@ private fun appShellBottomTabs(selectedKey: String): List<SlockBottomTabItemPayl
         SlockBottomTabItemPayload("settings", "SETTINGS", "settings", selected = selectedKey == "settings")
     )
 
-private val appShellJson = Json {
-    ignoreUnknownKeys = true
-    encodeDefaults = true
-}
-
 @Composable
 private fun SlockAppShellContent() {
     var selectedTab by remember { mutableStateOf("home") }
     var selectedSettingsDestination by remember { mutableStateOf("home") }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    var route by remember { mutableStateOf(AppShellRouteMain) }
+    var activeThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
     val bottomSafeArea = slockBottomSafeAreaPadding()
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            when (selectedTab) {
-                "settings" -> {
-                    if (selectedSettingsDestination == "account") {
-                        SettingsAccountContent(settingsAccountSmokePayload) {
-                            selectedSettingsDestination = "home"
-                        }
-                    } else {
-                        SettingsHomeContent(
-                            settingsTabBarSmokePayload.copy(subtitle = "Shared settings"),
-                            onSelect = {
-                                if (it == "router") {
-                                    jumpPage(pager, "router")
-                                } else {
-                                    selectedSettingsDestination = it
-                                }
-                            }
-                        )
-                    }
-                }
-                "tasks" -> AppShellPlaceholderContent(
-                    title = "Tasks",
-                    subtitle = "Shared task surface will mount here",
-                    iconName = "square-check-big"
+    when (route) {
+        AppShellRouteThread -> {
+            val payload = activeThreadPayload
+            if (payload == null) {
+                AppShellPlaceholderContent(
+                    title = "Thread",
+                    subtitle = "No conversation selected.",
+                    iconName = "message-square"
                 )
-                "members" -> SharedMembersScreen(bridge)
-                else -> SharedHomeScreen(bridge)
+            } else {
+                SharedThreadRouteContent(
+                    initialPayload = payload,
+                    bridge = bridge,
+                    onBack = { route = AppShellRouteMain }
+                )
             }
         }
-        SlockAppBottomTabBarHost(
-            items = appShellBottomTabs(selectedTab),
-            onSelect = { selectedTab = it },
-            modifier = Modifier.fillMaxWidth(),
-            bottomSafeArea = bottomSafeArea
-        )
+        else -> {
+            Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+                Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    when (selectedTab) {
+                        "settings" -> {
+                            if (selectedSettingsDestination == "account") {
+                                SettingsAccountContent(settingsAccountSmokePayload) {
+                                    selectedSettingsDestination = "home"
+                                }
+                            } else {
+                                SettingsHomeContent(
+                                    settingsTabBarSmokePayload.copy(subtitle = "Shared settings"),
+                                    onSelect = {
+                                        if (it == "router") {
+                                            jumpPage(pager, "router")
+                                        } else {
+                                            selectedSettingsDestination = it
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        "tasks" -> AppShellPlaceholderContent(
+                            title = "Tasks",
+                            subtitle = "Shared task surface will mount here",
+                            iconName = "square-check-big"
+                        )
+                        "members" -> SharedMembersScreen(bridge)
+                        else ->
+                            SharedHomeScreen(
+                                bridge = bridge,
+                                onOpenConversation = { conversation ->
+                                    activeThreadPayload = buildAppShellThreadPayload(conversation)
+                                    route = AppShellRouteThread
+                                }
+                            )
+                    }
+                }
+                SlockAppBottomTabBarHost(
+                    items = appShellBottomTabs(selectedTab),
+                    onSelect = { selectedTab = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    bottomSafeArea = bottomSafeArea
+                )
+            }
+        }
     }
 }
 
@@ -411,8 +435,10 @@ private fun JsonObject.avatarWireValue(): String? =
     )
 
 @Composable
-private fun SharedHomeScreen(bridge: ai.slock.compose.base.BridgeModule) {
-    val pager = LocalActivity.current.getPager() as Pager
+private fun SharedHomeScreen(
+    bridge: ai.slock.compose.base.BridgeModule,
+    onOpenConversation: (ConversationSummary) -> Unit
+) {
     val authStore = remember { KuiklyAuthSessionStore(KuiklyRelationalStore(bridge)) }
     val dataSource =
         remember {
@@ -549,7 +575,7 @@ private fun SharedHomeScreen(bridge: ai.slock.compose.base.BridgeModule) {
                     if (conversation == null) {
                         bridge.toast("Conversation is no longer available")
                     } else {
-                        openSharedThreadPage(pager, conversation)
+                        onOpenConversation(conversation)
                     }
                 }
             )
@@ -631,7 +657,8 @@ internal fun buildAppShellThreadPayload(conversation: ConversationSummary): Kuik
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
         title = conversation.name.ifBlank { "Thread" },
         subtitle = conversation.subtitle ?: conversation.channelId?.value,
-        status = "empty",
+        status = "loading",
+        sourceThreadId = conversation.threadId.value,
         selectedTab = "chat",
         navigationLabel = "Back",
         showModeTabs = true,
@@ -643,7 +670,7 @@ internal fun buildAppShellThreadPayload(conversation: ConversationSummary): Kuik
         showMembersAction = true,
         showSettingsAction = true,
         emptyTitle = "Loading conversation",
-        emptyDetail = "Shared shell routing is active. Thread data will load through the shared thread data source in the next migration slice.",
+        emptyDetail = "Loading messages from this conversation.",
         composerPayload =
             buildSharedThreadComposerPayloadJson(
                 SharedThreadComposerPayloadInput(
@@ -658,16 +685,6 @@ internal fun buildAppShellThreadPayload(conversation: ConversationSummary): Kuik
                 )
             )
     )
-
-private fun openSharedThreadPage(pager: Pager, conversation: ConversationSummary) {
-    val payload = buildAppShellThreadPayload(conversation)
-    val pageData =
-        JSONObject()
-            .put("pageName", THREAD_PAGE)
-            .put("instanceId", payload.instanceId)
-            .put("payload", appShellJson.encodeToString(KuiklyThreadScreenPayload.serializer(), payload))
-    pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(THREAD_PAGE, pageData)
-}
 
 @Composable
 private fun AppShellPlaceholderContent(

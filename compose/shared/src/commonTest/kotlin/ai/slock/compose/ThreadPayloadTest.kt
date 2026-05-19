@@ -91,11 +91,67 @@ class ThreadPayloadTest {
         assertEquals("shared-shell-thread-channel-1", payload.instanceId)
         assertEquals("general", payload.title)
         assertEquals("Team channel", payload.subtitle)
-        assertEquals("empty", payload.status)
+        assertEquals("loading", payload.status)
+        assertEquals("channel-1", payload.sourceThreadId)
         assertEquals(true, payload.canSend)
         assertEquals(7, payload.membersCount)
         assertEquals(false, payload.showReplyActions)
         assertEquals("Message #general", parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId).placeholder)
+    }
+
+    @Test
+    fun buildsSharedThreadPayloadFromBridgeMessagesResponse() {
+        val base =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "general",
+                sourceThreadId = "channel-1",
+                status = "loading"
+            )
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "artin@slock.ai"),
+                accessToken = "access",
+                refreshToken = "refresh"
+            )
+
+        val payload =
+            buildSharedThreadPayloadFromMessagesResponse(
+                basePayload = base,
+                session = session,
+                bodyText =
+                    """
+                    {
+                      "data": {
+                        "messages": [
+                          {
+                            "id": "m1",
+                            "body": "hello from shared route",
+                            "createdAt": "2026-05-19T16:00:00Z",
+                            "replyCount": 3,
+                            "author": {
+                              "id": "u1",
+                              "displayName": "Artin",
+                              "avatar": {"type": "pixel", "key": "robot"}
+                            },
+                            "attachments": [
+                              {"id": "a1", "name": "log.txt", "mimeType": "text/plain"}
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                    """.trimIndent()
+            )
+
+        assertEquals("content", payload.status)
+        assertEquals("m1", payload.messages.first().id)
+        assertEquals("hello from shared route", payload.messages.first().body)
+        assertEquals("Artin", payload.messages.first().authorName)
+        assertEquals(true, payload.messages.first().isOwn)
+        assertEquals("pixel:robot", payload.messages.first().avatarWireValue)
+        assertEquals(3, payload.messages.first().replyCount)
+        assertEquals("log.txt", payload.messages.first().attachments.first().name)
     }
 
     @Test

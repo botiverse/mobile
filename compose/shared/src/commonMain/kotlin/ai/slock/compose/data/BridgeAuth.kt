@@ -116,6 +116,46 @@ internal class BridgeMembersApi(
     }
 }
 
+internal class BridgeThreadApi(
+    private val bridge: BridgeModule,
+    private val sessionStore: SlockAuthSessionStore,
+    private val baseUrl: String = AUTH_BASE_URL
+) {
+    suspend fun channelMessages(threadId: String, limit: Int = 50): HomeNetworkResponse =
+        request("messages/channel/${threadId.trim()}", "limit=$limit")
+
+    private suspend fun request(path: String, query: String? = null): HomeNetworkResponse {
+        val session = sessionStore.readSession()
+        val token = session?.accessToken.orEmpty()
+        val serverId = session?.currentServerId.orEmpty()
+        if (token.isBlank() || serverId.isBlank()) return HomeNetworkResponse(code = 401, bodyText = null)
+        val url =
+            buildString {
+                append(baseUrl.trimEnd('/'))
+                append('/')
+                append(path.trimStart('/'))
+                query?.takeIf { it.isNotBlank() }?.let {
+                    append('?')
+                    append(it)
+                }
+            }
+        val response =
+            bridge.authRequest(
+                JSONObject()
+                    .put("url", url)
+                    .put("method", "GET")
+                    .put("authorization", "Bearer $token")
+                    .put("serverId", serverId)
+            )
+        return HomeNetworkResponse(
+            code = response?.optString("code").orEmpty().toIntOrNull() ?: 0,
+            bodyText = response?.optString("bodyText").takeUnless { it.isNullOrBlank() },
+            errorBodyText = response?.optString("errorBodyText").takeUnless { it.isNullOrBlank() }
+                ?: response?.optString("message").takeUnless { it.isNullOrBlank() }
+        )
+    }
+}
+
 internal class KuiklyAuthSessionStore(
     private val store: SlockRelationalStore
 ) : SlockAuthSessionStore {
