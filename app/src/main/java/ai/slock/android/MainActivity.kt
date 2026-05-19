@@ -10688,73 +10688,76 @@ private fun HomeRouteScreen(
                     }
                 }
             } else {
-                ThreadScreen(
-                    state =
-                            threadScreenState,
-                    onBack = {
-                        if (!onThreadBack()) {
-                            onRouteChange(
-                                    previousRoute?.takeUnless { it == HomeRoute.Thread }
-                                            ?: HomeRoute.Shell
-                            )
-                        }
-                    },
-                    onModeSelected = onThreadTabChange,
-                    onComposerChange = onComposerValueChange,
-                    onAsTaskChange = onComposerAsTaskChange,
-                    onAttachImage = onAttachImage,
-                    onAttachFile = onAttachFile,
-                    onRemoveAttachment = onRemoveAttachment,
-                    onRetryAttachment = onRetryAttachments,
-                    onSend = onSend,
-                    onLoadOlderMessages = onLoadOlderThreadMessages,
-                    onRetryLoadOlderMessages = retryLoadOlderThreadMessagesHandler,
-                    onLoadNewerMessages = onLoadNewerThreadMessages,
-                    onRetryLoadNewerMessages = onLoadNewerThreadMessages,
-                    onRefreshThread = onRefreshThread,
-                    onNearBottomChange = onThreadNearBottomChange,
-                    onOpenMessageThread = { onOpenMessageThread(it) },
-                    onOpenMemberProfile = onOpenMemberProfile,
-                    onOpenMarkdownTag = onOpenMarkdownTag,
-                    onOpenSlockWebLink = onOpenSlockWebLink,
-                    onOpenTask = onOpenTask,
-                    onTaskStatusChange = onTaskStatusChange,
-                    onSaveMessage = onSaveMessage,
-                    onRetryTasks = onRetryThreadTasks,
-                    onRetryFiles = onRetryThreadFiles,
-                    onLoadMoreFiles = {
-                        onLoadThreadFilesMore(threadScreenState.filesState?.nextCursor)
-                    },
-                    attachmentOpenStates = attachmentOpenStates,
-                    attachmentPreviewState = attachmentPreviewState,
-                    onOpenAttachment = onOpenAttachment,
-                    onDismissAttachmentPreview = onDismissAttachmentPreview,
-                    onOpenAttachmentPreviewExternally = onOpenAttachmentPreviewExternally,
-                    onJoinChannel = onJoinChannel,
-                    membersPanelState = threadMembersPanelState,
-                    onAddChannelMember = onAddChannelMember,
-                    onRemoveChannelMember = onRemoveChannelMember,
-                    archiveChannelStatus = archiveChannelStatus,
-                    onArchiveChannel = { onArchiveChannel(threadScreenState.threadChannelId()) },
-                    onDeleteChannel = { onDeleteChannel(threadScreenState.threadChannelId()) },
-                    onLeaveChannel = { onLeaveChannel(threadScreenState.threadChannelId()) },
-                    currentMemberId = currentMemberId,
-                    myMessageAlignment = myMessageAlignment,
-                    replyHeaderContext = enrichedReplyHeaderContext,
-                    parentJumpTarget = parentJumpTarget,
-                    onOpenParentMessage = onOpenParentMessage,
-                    onRetryThreadLoad = onRetryThreadLoad,
-                    fallbackComposerHeader =
-                            (threadScreenState.loadState as? ScreenLoadState.Content)
-                                    ?.data
-                                    ?.header,
-                    selectedThreadId = selectedThreadId?.let(::ThreadId),
-                    composerFocusRequestNonce = composerFocusRequestNonce,
-                    useSharedThreadScreen = true,
-                    channelSuggestions =
-                            (homeState.loadState as? ScreenLoadState.Content)
-                                    ?.data?.channels.orEmpty()
-                )
+                Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+                    ThreadScreen(
+                            state =
+                                    threadScreenState,
+                            modifier = Modifier.fillMaxSize(),
+                            onBack = {
+                                if (!onThreadBack()) {
+                                    onRouteChange(
+                                            previousRoute?.takeUnless { it == HomeRoute.Thread }
+                                                    ?: HomeRoute.Shell
+                                    )
+                                }
+                            },
+                            onModeSelected = onThreadTabChange,
+                            onComposerChange = onComposerValueChange,
+                            onAsTaskChange = onComposerAsTaskChange,
+                            onAttachImage = onAttachImage,
+                            onAttachFile = onAttachFile,
+                            onRemoveAttachment = onRemoveAttachment,
+                            onRetryAttachment = onRetryAttachments,
+                            onSend = onSend,
+                            onLoadOlderMessages = onLoadOlderThreadMessages,
+                            onRetryLoadOlderMessages = retryLoadOlderThreadMessagesHandler,
+                            onLoadNewerMessages = onLoadNewerThreadMessages,
+                            onRetryLoadNewerMessages = onLoadNewerThreadMessages,
+                            onRefreshThread = onRefreshThread,
+                            onNearBottomChange = onThreadNearBottomChange,
+                            onOpenMessageThread = { onOpenMessageThread(it) },
+                            onOpenMemberProfile = onOpenMemberProfile,
+                            onOpenMarkdownTag = onOpenMarkdownTag,
+                            onOpenSlockWebLink = onOpenSlockWebLink,
+                            onOpenTask = onOpenTask,
+                            onTaskStatusChange = onTaskStatusChange,
+                            onSaveMessage = onSaveMessage,
+                            onRetryTasks = onRetryThreadTasks,
+                            onRetryFiles = onRetryThreadFiles,
+                            onLoadMoreFiles = {
+                                onLoadThreadFilesMore(threadScreenState.filesState?.nextCursor)
+                            },
+                            attachmentOpenStates = attachmentOpenStates,
+                            attachmentPreviewState = attachmentPreviewState,
+                            onOpenAttachment = onOpenAttachment,
+                            onDismissAttachmentPreview = onDismissAttachmentPreview,
+                            onOpenAttachmentPreviewExternally = onOpenAttachmentPreviewExternally,
+                            onJoinChannel = onJoinChannel,
+                            membersPanelState = threadMembersPanelState,
+                            onAddChannelMember = onAddChannelMember,
+                            onRemoveChannelMember = onRemoveChannelMember,
+                            archiveChannelStatus = archiveChannelStatus,
+                            onArchiveChannel = { onArchiveChannel(threadScreenState.threadChannelId()) },
+                            onDeleteChannel = { onDeleteChannel(threadScreenState.threadChannelId()) },
+                            onLeaveChannel = { onLeaveChannel(threadScreenState.threadChannelId()) },
+                            currentMemberId = currentMemberId,
+                            myMessageAlignment = myMessageAlignment,
+                            replyHeaderContext = enrichedReplyHeaderContext,
+                            parentJumpTarget = parentJumpTarget,
+                            onOpenParentMessage = onOpenParentMessage,
+                            onRetryThreadLoad = onRetryThreadLoad,
+                            fallbackComposerHeader =
+                                    (threadScreenState.loadState as? ScreenLoadState.Content)
+                                            ?.data
+                                            ?.header,
+                            selectedThreadId = selectedThreadId?.let(::ThreadId),
+                            composerFocusRequestNonce = composerFocusRequestNonce,
+                            useSharedThreadScreen = true,
+                            channelSuggestions =
+                                    (homeState.loadState as? ScreenLoadState.Content)
+                                            ?.data?.channels.orEmpty()
+                    )
+                }
             }
         }
         HomeRoute.Inbox ->

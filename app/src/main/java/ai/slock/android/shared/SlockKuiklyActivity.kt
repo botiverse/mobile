@@ -736,7 +736,9 @@ internal class SlockKuiklyIslandHost(
                 "SlockKuikly",
                 "island_attach pageName=$pageName instanceId=${pageData.optString("instanceId")} payloadBytes=${pageData.optString("payload").length}"
         )
-        setBackgroundColor(Color.TRANSPARENT)
+        setBackgroundColor(
+                if (pageName == SlockKuiklyActivity.PAGE_THREAD) Color.WHITE else Color.TRANSPARENT
+        )
         layoutParams =
                 LayoutParams(
                         LayoutParams.MATCH_PARENT,
