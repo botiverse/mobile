@@ -447,6 +447,7 @@ private fun ThreadPageHeader(
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit
 ) {
+    val showCloseActionAtEnd = payload.navigationLabel.equals("Close", ignoreCase = true)
     Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
         Row(
             modifier = Modifier.fillMaxWidth()
@@ -454,10 +455,9 @@ private fun ThreadPageHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            ThreadHeaderIconButton(
-                icon = if (payload.navigationLabel.equals("Close", ignoreCase = true)) "x" else "arrow-left",
-                onClick = onBack
-            )
+            if (!showCloseActionAtEnd) {
+                ThreadHeaderIconButton(icon = "arrow-left", onClick = onBack)
+            }
             ThreadHashTile()
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
@@ -482,6 +482,9 @@ private fun ThreadPageHeader(
             }
             if (payload.showMembersAction) {
                 ThreadMembersHeaderButton(count = payload.membersCount, onClick = onShowMembers)
+            }
+            if (showCloseActionAtEnd) {
+                ThreadHeaderIconButton(icon = "x", onClick = onBack)
             }
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
