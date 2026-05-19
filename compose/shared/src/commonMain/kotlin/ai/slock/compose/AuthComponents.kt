@@ -429,7 +429,7 @@ internal fun AuthProviderIcon(provider: AuthProvider) {
     )
 }
 
-private const val SlockLockupLightPngDataUri =
+internal const val SlockLockupLightPngDataUri =
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAI8AAAAfCAYAAADeBZ7QAAAABmJLR0QA/wD/AP+gvaeTAAAKpElEQVR4nO2ce7DVVRXHPx" +
     "cul3iD3EAQASOuCIK3eBYzikZCKhOiNjQBQxYPQTNlTHtOKo1iSShSCSKkZFmGDVTjA8wBFUVEeWr5gKRQUISrHOAC957+WL/t2b999l6/3+9clJr4zu" +
     "zhnvP77rXXbz/WXnvtdSjj2KMRcBpwFnAm0Df6uxL4ALgbmAXUfQRtn8DHiLIG1m+DTI7eQB+gPzJRWibUewQYC9Q0sP0TOI5IO3kqgDOQidIX6Bf9e0" +

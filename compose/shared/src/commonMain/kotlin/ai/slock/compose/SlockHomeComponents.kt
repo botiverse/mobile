@@ -227,6 +227,10 @@ private fun SlockHomePageContent() {
         onFollowedThreadsClick = { bridge.settingsEvent(payload.instanceId, "openFollowedThreads", null) },
         onSavedClick = { bridge.settingsEvent(payload.instanceId, "openSaved", null) },
         onSearchClick = { bridge.settingsEvent(payload.instanceId, "openSearch", null) },
+        onContentRefresh = {
+            bridge.log("home_refresh_request instanceId=${payload.instanceId}")
+            bridge.settingsEvent(payload.instanceId, "refreshHome", null)
+        },
         onNotificationView = { bridge.settingsEvent(payload.instanceId, "viewNotification", it.id) },
         onNotificationDismiss = { bridge.settingsEvent(payload.instanceId, "dismissNotification", it.id) },
         onChannelClick = { bridge.settingsEvent(payload.instanceId, "openChannel", it) }
@@ -319,7 +323,7 @@ fun SlockStructuralHomeShell(
                                 }
                             },
                             scrollState = listState,
-                            refreshThreshold = 80.dp
+                            refreshThreshold = 64.dp
                         ) { pullProgress, isRefreshing, _ ->
                             HomePullRefreshIndicator(
                                 pullProgress = pullProgress,
@@ -404,29 +408,37 @@ fun SlockStructuralHomeShell(
 
 @Composable
 private fun HomePullRefreshIndicator(pullProgress: Float, refreshing: Boolean) {
-    var bounceStep by remember { mutableStateOf(0) }
+    var sweepStep by remember { mutableStateOf(0) }
     LaunchedEffect(refreshing) {
         if (!refreshing) {
-            bounceStep = 0
+            sweepStep = 0
             return@LaunchedEffect
         }
         while (true) {
-            bounceStep = (bounceStep + 1) % 4
-            delay(140)
+            sweepStep = (sweepStep + 1) % 5
+            delay(160)
         }
     }
-    val bounceOffset =
-        if (refreshing) {
-            when (bounceStep) {
-                1 -> (-12).dp
-                3 -> 7.dp
-                else -> 0.dp
-            }
-        } else {
-            ((1f - pullProgress.coerceIn(0f, 1f)) * 10f).dp
-        }
+    val progress = if (refreshing) ((sweepStep + 1) / 5f) else pullProgress.coerceIn(0f, 1f)
+    val logoWidth = 172.dp
     Box(modifier = Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
-        SlockLogoBadge(text = "SLOCK", modifier = Modifier.offset(y = bounceOffset))
+        Box(modifier = Modifier.width(logoWidth).height(48.dp).padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
+            Box(Modifier.matchParentSize().offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset).background(SlockColor.ShadowBlack))
+            Box(Modifier.matchParentSize().background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack))
+            Image(
+                painter = rememberAsyncImagePainter(SlockLockupLightPngDataUri),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.align(Alignment.Center).width(143.dp).height(31.dp)
+            )
+            Box(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .height(SlockStroke.Default)
+                    .width((logoWidth.value * progress).dp)
+                    .background(SlockColor.AccentPink)
+            )
+        }
     }
 }
 

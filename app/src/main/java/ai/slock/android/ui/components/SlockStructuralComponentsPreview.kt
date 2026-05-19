@@ -136,6 +136,7 @@ fun SlockStructuralHomeShell(
                 "selectServer" -> event.optString("itemId").takeIf { it.isNotBlank() }?.let(onServerSelected)
                 "createServer" -> onCreateServerClick()
                 "createChannel" -> onCreateChannelClick()
+                "refreshHome" -> onContentRefresh()
                 "openInbox" -> onInboxClick()
                 "openFollowedThreads" -> onOpenFollowedThreadsSafely(onFollowedThreadsClick)
                 "openSaved" -> onSavedClick()
