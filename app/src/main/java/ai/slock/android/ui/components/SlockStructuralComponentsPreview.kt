@@ -78,6 +78,7 @@ fun SlockStructuralHomeShell(
     outerPadding: Dp = 0.dp,
     onContentRefresh: () -> Unit = {},
     onServerBadgeClick: () -> Unit = {},
+    onServerSwitcherDismiss: () -> Unit = {},
     onServerSelected: (String) -> Unit = {},
     onCreateServerClick: () -> Unit = {},
     onCreateChannelClick: () -> Unit = {},
@@ -131,6 +132,7 @@ fun SlockStructuralHomeShell(
         onEvent = { event ->
             when (event.optString("action")) {
                 "toggleServerSwitcher" -> onServerBadgeClick()
+                "dismissServerSwitcher" -> onServerSwitcherDismiss()
                 "selectServer" -> event.optString("itemId").takeIf { it.isNotBlank() }?.let(onServerSelected)
                 "createServer" -> onCreateServerClick()
                 "createChannel" -> onCreateChannelClick()

@@ -11552,6 +11552,7 @@ private fun HomeStructuralContent(
                 outerPadding = 0.dp,
                 onContentRefresh = onHomeRefresh,
                 onServerBadgeClick = { onServerSwitcherExpandedChange(!serverSwitcherExpanded) },
+                onServerSwitcherDismiss = { onServerSwitcherExpandedChange(false) },
                 onServerSelected = { id -> onServerSelected(id) },
                 onCreateServerClick = { onCreateServerClick() },
                 onCreateChannelClick = { onCreateChannelClick() },

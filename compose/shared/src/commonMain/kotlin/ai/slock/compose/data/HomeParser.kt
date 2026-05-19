@@ -353,36 +353,88 @@ private fun JsonObject.conversationAvatarWireValue(): String? =
         "avatar",
         "avatarUrl",
         "avatar_url",
+        "image",
+        "imageUrl",
+        "image_url",
+        "photo",
+        "photoUrl",
+        "photo_url",
+        "picture",
+        "pictureUrl",
+        "picture_url",
+        "profileImage",
+        "profileImageUrl",
+        "profile_image_url",
+        "icon",
+        "iconUrl",
+        "icon_url",
         "peerAvatar",
         "peerAvatarUrl",
+        "peerImageUrl",
+        "peerProfileImageUrl",
         "agentAvatar",
         "agentAvatarUrl",
+        "agentImageUrl",
+        "agentProfileImageUrl",
         "userAvatar",
-        "userAvatarUrl"
+        "userAvatarUrl",
+        "userImageUrl",
+        "userProfileImageUrl"
     )
         ?: firstObject("peer", "agent", "user", "member", "profile")?.avatarWireValue(
             "avatar",
             "avatarUrl",
             "avatar_url",
             "image",
-            "photo"
+            "imageUrl",
+            "image_url",
+            "photo",
+            "photoUrl",
+            "photo_url",
+            "picture",
+            "pictureUrl",
+            "picture_url",
+            "profileImage",
+            "profileImageUrl",
+            "profile_image_url",
+            "icon",
+            "iconUrl",
+            "icon_url"
         )
         ?: (string(
             "gravatarHash",
             "gravatar_hash",
             "gravatar",
+            "gravatarUrl",
+            "gravatar_url",
+            "emailHash",
+            "email_hash",
+            "emailMd5",
+            "email_md5",
             "peerGravatarHash",
             "peerGravatar",
+            "peerEmailHash",
+            "peerEmailMd5",
             "agentGravatarHash",
             "agentGravatar",
+            "agentEmailHash",
+            "agentEmailMd5",
             "userGravatarHash",
-            "userGravatar"
+            "userGravatar",
+            "userEmailHash",
+            "userEmailMd5"
         )
             ?: firstObject("peer", "agent", "user", "member", "profile")?.string(
                 "gravatarHash",
                 "gravatar_hash",
-                "gravatar"
-            ))?.toGravatarAvatarUrl()
+                "gravatar",
+                "gravatarUrl",
+                "gravatar_url",
+                "emailHash",
+                "email_hash",
+                "emailMd5",
+                "email_md5"
+            ))?.toGravatarWireValue()
 
 private fun JsonObject.avatarWireValue(vararg names: String): String? {
     for (name in names) {
@@ -428,7 +480,17 @@ private fun JsonElement.toAvatarWireValue(): String? {
         "avatarUrl",
         "avatar_url",
         "imageUrl",
-        "profileImageUrl"
+        "image_url",
+        "photoUrl",
+        "photo_url",
+        "picture",
+        "pictureUrl",
+        "picture_url",
+        "profileImage",
+        "profileImageUrl",
+        "profile_image_url",
+        "iconUrl",
+        "icon_url"
     )?.let { return it.toAvatarWireValueString() }
     avatarObject.avatarWireValue("data", "profile")?.let { return it }
     avatarObject.string(
@@ -455,11 +517,15 @@ private fun String.toAvatarWireValueString(): String =
     }
 
 private fun String.toGravatarWireValue(): String =
-    if (startsWith("gravatar:", ignoreCase = true)) substringAfter(":") else this
-        .trim()
-        .takeIf { it.isNotBlank() }
-        ?.toGravatarAvatarUrl()
-        .orEmpty()
+    when {
+        startsWith("http://", ignoreCase = true) || startsWith("https://", ignoreCase = true) -> this
+        startsWith("gravatar:", ignoreCase = true) -> substringAfter(":").toGravatarAvatarUrl()
+        else ->
+            trim()
+                .takeIf { it.isNotBlank() }
+                ?.toGravatarAvatarUrl()
+                .orEmpty()
+    }
 
 private fun String?.toPresenceOrNull(): Presence? =
     when (this?.lowercase()) {

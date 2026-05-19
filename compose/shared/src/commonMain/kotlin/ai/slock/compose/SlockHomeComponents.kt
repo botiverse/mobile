@@ -219,6 +219,7 @@ private fun SlockHomePageContent() {
         outerPadding = 0.dp,
         labels = payload.labels,
         onServerBadgeClick = { bridge.settingsEvent(payload.instanceId, "toggleServerSwitcher", null) },
+        onServerSwitcherDismiss = { bridge.settingsEvent(payload.instanceId, "dismissServerSwitcher", null) },
         onServerSelected = { bridge.settingsEvent(payload.instanceId, "selectServer", it) },
         onCreateServerClick = { bridge.settingsEvent(payload.instanceId, "createServer", null) },
         onCreateChannelClick = { bridge.settingsEvent(payload.instanceId, "createChannel", null) },
@@ -267,6 +268,7 @@ fun SlockStructuralHomeShell(
     labels: SlockHomeShellLabels = SlockHomeShellLabels.defaults(),
     onContentRefresh: () -> Unit = {},
     onServerBadgeClick: () -> Unit = {},
+    onServerSwitcherDismiss: () -> Unit = {},
     onServerSelected: (String) -> Unit = {},
     onCreateServerClick: () -> Unit = {},
     onCreateChannelClick: () -> Unit = {},
@@ -381,6 +383,7 @@ fun SlockStructuralHomeShell(
             }
             HomeNotificationCenter(notifications, onNotificationView, onNotificationDismiss, Modifier.align(Alignment.TopEnd).padding(top = topSafeArea).padding(top = SlockSpacing.Lg, end = SlockSpacing.Lg))
             if (serverSwitcherExpanded) {
+                Box(Modifier.fillMaxSize().clickable(onClick = onServerSwitcherDismiss))
                 ServerSwitcherPanel(servers, currentServerId, labels, onServerSelected, onCreateServerClick, Modifier.padding(top = topSafeArea).padding(start = SlockSpacing.Lg, top = 50.dp))
             }
         }

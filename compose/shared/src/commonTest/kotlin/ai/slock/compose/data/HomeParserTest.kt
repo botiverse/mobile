@@ -119,6 +119,75 @@ class HomeParserTest {
         )
     }
 
+    @Test
+    fun parsesDirectMessageImageAvatarAliases() {
+        val result =
+            parseSlockHome(
+                payload =
+                    HomeNetworkPayload(
+                        serverId = ServerId("server-1"),
+                        channels = HomeNetworkResponse(code = 200, bodyText = """{"channels":[]}"""),
+                        directMessages =
+                            HomeNetworkResponse(
+                                code = 200,
+                                bodyText =
+                                    """
+                                    {"directMessages":[
+                                      {"channelId":"dm-1","peer":{"id":"agent-1","displayName":"Agent One","kind":"agent","profileImageUrl":"https://cdn.slock.ai/a.png"}},
+                                      {"channelId":"dm-2","peer":{"id":"agent-2","displayName":"Agent Two","kind":"agent","pictureUrl":"https://cdn.slock.ai/b.png"}},
+                                      {"channelId":"dm-3","peerImageUrl":"https://cdn.slock.ai/c.png","peerDisplayName":"Agent Three","kind":"agent"}
+                                    ]}
+                                    """.trimIndent()
+                            ),
+                        unreadCounts = HomeNetworkResponse(code = 200, bodyText = """{"counts":{}}"""),
+                        serverUnreadSummary = HomeNetworkResponse(code = 200, bodyText = """{"unreadCount":0}""")
+                    ),
+                session = sampleSession()
+            )
+
+        assertTrue(result is DataResult.Content)
+        val avatars = result.data.directMessages.map { it.avatar?.wireValue }
+        assertEquals(
+            listOf(
+                "https://cdn.slock.ai/a.png",
+                "https://cdn.slock.ai/b.png",
+                "https://cdn.slock.ai/c.png"
+            ),
+            avatars
+        )
+    }
+
+    @Test
+    fun parsesDirectMessageGravatarUrlWithoutRewritingItAsHash() {
+        val result =
+            parseSlockHome(
+                payload =
+                    HomeNetworkPayload(
+                        serverId = ServerId("server-1"),
+                        channels = HomeNetworkResponse(code = 200, bodyText = """{"channels":[]}"""),
+                        directMessages =
+                            HomeNetworkResponse(
+                                code = 200,
+                                bodyText =
+                                    """
+                                    {"directMessages":[
+                                      {"channelId":"dm-1","peer":{"id":"agent-1","displayName":"Agent One","kind":"agent","gravatarUrl":"https://www.gravatar.com/avatar/abc123?s=52&d=404"}}
+                                    ]}
+                                    """.trimIndent()
+                            ),
+                        unreadCounts = HomeNetworkResponse(code = 200, bodyText = """{"counts":{}}"""),
+                        serverUnreadSummary = HomeNetworkResponse(code = 200, bodyText = """{"unreadCount":0}""")
+                    ),
+                session = sampleSession()
+            )
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(
+            "https://www.gravatar.com/avatar/abc123?s=52&d=404",
+            result.data.directMessages.single().avatar?.wireValue
+        )
+    }
+
     private fun sampleSession(): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "artin@slock.ai", displayName = "Artin"),
