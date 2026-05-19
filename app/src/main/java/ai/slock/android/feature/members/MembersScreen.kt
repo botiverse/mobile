@@ -461,9 +461,10 @@ private fun MembersKuiklyScreen(
     onAddHuman: () -> Unit = {},
     onMemberClick: (MemberProfile) -> Unit = {}
 ) {
+    val pageData = remember(content) { content.toKuiklyMembersPageData() }
     SlockKuiklyPageIsland(
         pageName = SlockKuiklyActivity.PAGE_MEMBERS,
-        pageData = content.toKuiklyMembersPageData(),
+        pageData = pageData,
         modifier = modifier.fillMaxSize(),
         supportsPageDataUpdates = true,
         onEvent = { event ->

@@ -1479,10 +1479,16 @@ private fun SlockAppContent(
             }
     val performanceOperation =
             when {
-                selectedThreadState.refreshStatus() == ThreadRefreshStatus.Loading ->
+                destination == AppDestination.Home &&
+                        homeRoute == HomeRoute.Thread &&
+                        selectedThreadState.refreshStatus() == ThreadRefreshStatus.Loading ->
                         "thread_refresh"
-                selectedThreadState.composerState.status == ComposerStatus.Uploading -> "send_upload"
-                selectedThreadState.composerState.status == ComposerStatus.Sending -> "send_message"
+                destination == AppDestination.Home &&
+                        homeRoute == HomeRoute.Thread &&
+                        selectedThreadState.composerState.status == ComposerStatus.Uploading -> "send_upload"
+                destination == AppDestination.Home &&
+                        homeRoute == HomeRoute.Thread &&
+                        selectedThreadState.composerState.status == ComposerStatus.Sending -> "send_message"
                 homeRefreshInProgress -> "home_refresh"
                 inboxRefreshInProgress -> "inbox_refresh"
                 followedThreadsRefreshInProgress -> "followed_refresh"

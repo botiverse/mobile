@@ -10,6 +10,7 @@ import ai.slock.compose.model.Presence
 import ai.slock.compose.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,6 +49,7 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 
 const val MEMBERS_PAGE = "compose_members"
@@ -310,7 +312,7 @@ internal fun MembersListContent(
                                 .padding(top = SlockSpacing.Xs)
                         )
                     }
-                    items(group.members.size) { index ->
+                    items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
                         val member = group.members[index]
                         MembersListRow(
                             member = member,
@@ -336,7 +338,7 @@ internal fun MembersListContent(
                 )
             }
             if (humansExpanded) {
-                items(humans.size) { index ->
+                items(humans.size, key = { "human_${humans[it].id.value}" }) { index ->
                     val member = humans[index]
                     MembersListRow(
                         member = member,
@@ -432,10 +434,22 @@ private fun MembersAvatar(member: MemberProfile) {
         member.avatar?.wireValue ?: member.avatarUrl ?: member.gravatarHash?.toGravatarAvatarUrl()
     }
     val pixelSpec = remember(avatarWireValue) { avatarWireValue?.toMembersPixelAvatarSpec() }
+    val isRemoteAvatar =
+        avatarWireValue?.startsWith("http://") == true || avatarWireValue?.startsWith("https://") == true
+    var renderRemoteAvatar by remember(avatarWireValue) { mutableStateOf(!isRemoteAvatar) }
+    LaunchedEffect(avatarWireValue, isRemoteAvatar) {
+        if (isRemoteAvatar) {
+            renderRemoteAvatar = false
+            delay(80L + member.id.value.staggerDelayMillis())
+            renderRemoteAvatar = true
+        } else {
+            renderRemoteAvatar = true
+        }
+    }
     Box(modifier = Modifier.size(MemberAvatarSize)) {
         when {
             pixelSpec != null -> MembersPixelAvatar(pixelSpec, member.kind)
-            avatarWireValue?.startsWith("http://") == true || avatarWireValue?.startsWith("https://") == true ->
+            isRemoteAvatar && renderRemoteAvatar ->
                 Box(
                     modifier = Modifier
                         .size(MemberAvatarSize)
@@ -474,6 +488,9 @@ private fun MembersAvatar(member: MemberProfile) {
         }
     }
 }
+
+private fun String.staggerDelayMillis(): Long =
+    (fold(0) { acc, char -> (acc * 31 + char.code) and 0x7fffffff } % 180).toLong()
 
 @Composable
 private fun MembersStatusDot(member: MemberProfile, modifier: Modifier = Modifier) {
