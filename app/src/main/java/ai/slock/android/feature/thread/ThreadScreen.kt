@@ -413,7 +413,7 @@ fun ThreadScreen(
         ThreadKuiklyScreen(
                 state = state,
                 membersPanelState = membersPanelState,
-                modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite).imePadding(),
+                modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
                 membersCount = membersCount ?: 0,
                 showComposer = showComposer,
                 showSettingsAction = showConversationActions,

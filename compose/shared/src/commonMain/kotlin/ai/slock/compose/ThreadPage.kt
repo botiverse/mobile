@@ -303,6 +303,7 @@ private fun ThreadPageContent(
     }
     var activeModal by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var activeMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
+    var composerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(0f) }
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(
             modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
@@ -362,11 +363,21 @@ private fun ThreadPageContent(
                 Box(
                     modifier = Modifier.fillMaxWidth()
                         .background(SlockColor.SurfaceWhite)
-                        .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm)
+                        .padding(
+                            start = SlockSpacing.Md,
+                            top = SlockSpacing.Sm,
+                            end = SlockSpacing.Md,
+                            bottom = SlockSpacing.Sm + composerKeyboardInsetDp.dp
+                        )
                 ) {
                     ThreadComposerContent(
                         payload = composerPayload,
-                        onEvent = onComposerEvent
+                        onEvent = onComposerEvent,
+                        onKeyboardHeightChange = { nextInset ->
+                            if (nextInset != composerKeyboardInsetDp) {
+                                composerKeyboardInsetDp = nextInset
+                            }
+                        }
                     )
                 }
             }

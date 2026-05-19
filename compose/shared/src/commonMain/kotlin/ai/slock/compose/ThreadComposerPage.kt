@@ -135,7 +135,7 @@ private fun ThreadComposerScreen() {
             "thread_composer_render instanceId=${payload.instanceId} syncNonce=${payload.syncNonce} attachments=${payload.pendingAttachments.size} mode=${payload.composerMode}"
         )
     }
-    ThreadComposerContent(payload = payload) { action, value, asTask, attachmentId ->
+    ThreadComposerContent(payload = payload, onEvent = { action, value, asTask, attachmentId ->
         bridge.composerEvent(
             instanceId = payload.instanceId,
             action = action,
@@ -143,7 +143,7 @@ private fun ThreadComposerScreen() {
             asTask = asTask,
             attachmentId = attachmentId
         )
-    }
+    })
 }
 
 @Composable
@@ -199,7 +199,8 @@ private fun KuiklyThreadComposerPayload.withInstanceIdFallback(instanceId: Strin
 @Composable
 internal fun ThreadComposerContent(
     payload: KuiklyThreadComposerPayload,
-    onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
+    onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onKeyboardHeightChange: (Float) -> Unit = {}
 ) {
     var text by remember(payload.seedText, payload.syncNonce) { mutableStateOf(payload.seedText) }
     var asTask by remember(payload.seedAsTask, payload.syncNonce) { mutableStateOf(payload.seedAsTask) }
@@ -376,6 +377,9 @@ internal fun ThreadComposerContent(
                         color = if (payload.enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                         lineHeight = 20.sp
                     ),
+                    keyboardHeightChange = { params ->
+                        onKeyboardHeightChange(params.height.coerceAtLeast(0f))
+                    },
                     placeholderColor = SlockColor.TextMutedGray,
                     cursorBrush = SolidColor(SlockColor.TextBlack),
                     modifier =
