@@ -1012,6 +1012,7 @@ private fun SlockAppContent(
     var authState by remember { mutableStateOf<AuthUiState>(AuthUiState.Restoring) }
     var restoreSplashVisible by remember { mutableStateOf(true) }
     var restoreCompletedState by remember { mutableStateOf<AuthUiState?>(null) }
+    var sharedShellLaunchRequested by rememberSaveable { mutableStateOf(false) }
     var authRoute by rememberSaveable { mutableStateOf(AuthRoute.Login) }
     var forgotPasswordStatus by remember { mutableStateOf(ForgotPasswordStatus.Default) }
     var createAccountStatus by remember { mutableStateOf(CreateAccountStatus.Default) }
@@ -5876,6 +5877,26 @@ private fun SlockAppContent(
                 onSignOut = { signOutFromAuthenticated("server_gate") },
                 modifier = modifier
         )
+        return
+    }
+
+    val selectedServerIdForSharedShell = currentAuthSession?.selectedServerId
+    LaunchedEffect(authState, selectedServerIdForSharedShell, sharedShellLaunchRequested) {
+        if (authState is AuthUiState.Authenticated &&
+                        !sharedShellLaunchRequested &&
+                        !selectedServerIdForSharedShell.isNullOrBlank()
+        ) {
+            sharedShellLaunchRequested = true
+            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                    "SlockKuikly",
+                    "start_unified_shell source=main_activity selectedServer=$selectedServerIdForSharedShell"
+            )
+            SlockKuiklyActivity.startAppShell(context)
+            context.findComponentActivity()?.finish()
+        }
+    }
+    if (sharedShellLaunchRequested) {
+        AuthRestoreScreen(modifier = modifier)
         return
     }
 
