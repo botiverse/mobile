@@ -67,7 +67,8 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         setContentView(R.layout.activity_slock_kuikly)
         setupImmersiveMode()
         val container = findViewById<ViewGroup>(R.id.slock_kuikly_container)
-        kuiklyRenderViewDelegator.onAttach(container, "", pageName, createPageData())
+        val spec = createPageSpec()
+        kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
     }
 
     override fun onDestroy() {
@@ -100,15 +101,11 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         )
     }
 
-    private fun createPageData(): Map<String, Any> {
-        return argsToMap().apply {
-            put("appId", 1)
-        }
-    }
-
-    private fun argsToMap(): MutableMap<String, Any> {
-        val jsonStr = intent.getStringExtra(KEY_PAGE_DATA) ?: return mutableMapOf()
-        return JSONObject(jsonStr).toMap().toMutableMap()
+    private fun createPageSpec(): SlockKuiklyPageSpec {
+        return SlockKuiklyPageSpec(
+                pageName = pageName,
+                pageData = SlockKuiklyPageData.fromText(intent.getStringExtra(KEY_PAGE_DATA))
+        )
     }
 
     private fun setupImmersiveMode() {
@@ -123,21 +120,22 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     companion object {
-        const val PAGE_LOGIN = "compose_login"
-        const val PAGE_REGISTER = "compose_register"
-        const val PAGE_FORGOT_PASSWORD = "compose_forgot_password"
-        const val PAGE_THREAD = "compose_thread"
-        const val PAGE_THREAD_FILES = "compose_thread_files"
-        const val PAGE_THREAD_COMPOSER = "compose_thread_composer"
-        const val PAGE_HOME = "compose_home"
-        const val PAGE_MEMBERS = "compose_members"
-        const val PAGE_SETTINGS_HOME = "compose_settings_home"
-        const val PAGE_SETTINGS_ACCOUNT = "compose_settings_account"
-        const val PAGE_SETTINGS_COMPUTERS = "compose_settings_computers"
-        const val PAGE_SETTINGS_COMPUTER_DETAIL = "compose_settings_computer_detail"
-        const val PAGE_SETTINGS_STORAGE = "compose_settings_storage"
-        const val PAGE_ICON_GALLERY = "compose_icon_gallery"
-        const val PAGE_ROUTER = "router"
+        const val PAGE_LOGIN = SlockKuiklyPages.LOGIN
+        const val PAGE_REGISTER = SlockKuiklyPages.REGISTER
+        const val PAGE_FORGOT_PASSWORD = SlockKuiklyPages.FORGOT_PASSWORD
+        const val PAGE_APP_SHELL = SlockKuiklyPages.APP_SHELL
+        const val PAGE_THREAD = SlockKuiklyPages.THREAD
+        const val PAGE_THREAD_FILES = SlockKuiklyPages.THREAD_FILES
+        const val PAGE_THREAD_COMPOSER = SlockKuiklyPages.THREAD_COMPOSER
+        const val PAGE_HOME = SlockKuiklyPages.HOME
+        const val PAGE_MEMBERS = SlockKuiklyPages.MEMBERS
+        const val PAGE_SETTINGS_HOME = SlockKuiklyPages.SETTINGS_HOME
+        const val PAGE_SETTINGS_ACCOUNT = SlockKuiklyPages.SETTINGS_ACCOUNT
+        const val PAGE_SETTINGS_COMPUTERS = SlockKuiklyPages.SETTINGS_COMPUTERS
+        const val PAGE_SETTINGS_COMPUTER_DETAIL = SlockKuiklyPages.SETTINGS_COMPUTER_DETAIL
+        const val PAGE_SETTINGS_STORAGE = SlockKuiklyPages.SETTINGS_STORAGE
+        const val PAGE_ICON_GALLERY = SlockKuiklyPages.ICON_GALLERY
+        const val PAGE_ROUTER = SlockKuiklyPages.ROUTER
 
         private const val KEY_PAGE_NAME = "pageName"
         private const val KEY_PAGE_DATA = "pageData"
@@ -147,11 +145,15 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             val starter =
                     Intent(context, SlockKuiklyActivity::class.java)
                             .putExtra(KEY_PAGE_NAME, pageName)
-                            .putExtra(KEY_PAGE_DATA, pageData.toString())
+                            .putExtra(KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(pageData).text)
             if (context !is Activity) {
                 starter.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(starter)
+        }
+
+        fun startAppShell(context: Context, pageData: JSONObject = JSONObject()) {
+            start(context, PAGE_APP_SHELL, pageData)
         }
     }
 }
@@ -720,23 +722,20 @@ internal object SlockKuiklyEventRegistry {
 internal class SlockKuiklyIslandHost(
         context: Context,
         private val pageName: String,
-        private val pageData: JSONObject
+        private val pageData: SlockKuiklyPageData
 ) : FrameLayout(context), KuiklyRenderViewBaseDelegatorDelegate {
     private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
     private var disposed = false
-    private var lastPageDataText = pageData.toString()
+    private var lastPageDataText = pageData.text
 
     init {
         SlockKuiklyAdapters.init(context.applicationContext)
         SlockDiagnosticsLogger.d(
                 "SlockKuikly",
-                "island_attach pageName=$pageName instanceId=${pageData.optString("instanceId")} payloadBytes=${pageData.optString("payload").length}"
+                "island_attach pageName=$pageName instanceId=${pageData.instanceId} payloadBytes=${pageData.payloadBytes}"
         )
         setBackgroundColor(
-                if (
-                        pageName == SlockKuiklyActivity.PAGE_THREAD ||
-                                pageName == SlockKuiklyActivity.PAGE_THREAD_COMPOSER
-                ) {
+                if (slockKuiklyPageIsOpaque(pageName)) {
                     Color.WHITE
                 } else {
                     Color.TRANSPARENT
@@ -751,7 +750,7 @@ internal class SlockKuiklyIslandHost(
                 this,
                 "",
                 pageName,
-                pageData.toMap().toMutableMap().apply { put("appId", 1) }
+                pageData.toKuiklyMap()
         )
     }
 
@@ -760,14 +759,14 @@ internal class SlockKuiklyIslandHost(
             return
         }
         lastPageDataText = pageDataText
-        val nextPageData = JSONObject(pageDataText)
+        val nextPageData = SlockKuiklyPageData.fromText(pageDataText)
         SlockDiagnosticsLogger.d(
                 "SlockKuikly",
-                "island_update pageName=$pageName instanceId=${nextPageData.optString("instanceId")} payloadBytes=${nextPageData.optString("payload").length}"
+                "island_update pageName=$pageName instanceId=${nextPageData.instanceId} payloadBytes=${nextPageData.payloadBytes}"
         )
         kuiklyRenderViewDelegator.sendEvent(
                 "slockPageData",
-                nextPageData.toMap().toMutableMap().apply { put("appId", 1) }
+                nextPageData.toKuiklyMap()
         )
     }
 
@@ -801,7 +800,7 @@ internal class SlockKuiklyIslandHost(
         disposed = true
         SlockDiagnosticsLogger.d(
                 "SlockKuikly",
-                "island_dispose pageName=$pageName instanceId=${pageData.optString("instanceId")}"
+                "island_dispose pageName=$pageName instanceId=${pageData.instanceId}"
         )
         kuiklyRenderViewDelegator.onDetach()
     }

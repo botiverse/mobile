@@ -29,17 +29,15 @@ fun SlockKuiklyPageIsland(
     val viewportKey =
             "${configuration.screenWidthDp}x${configuration.screenHeightDp}:${configuration.orientation}"
     val instanceId = remember(pageName, viewportKey) { UUID.randomUUID().toString() }
-    val pageDataText =
+    val kuiklyPageData =
             remember(pageData.toString(), instanceId) {
-                JSONObject(pageData.toString())
-                        .put("instanceId", instanceId)
-                        .toString()
+                SlockKuiklyPageData.fromJson(pageData).withInstanceId(instanceId)
             }
 
     SideEffect {
         SlockDiagnosticsLogger.d(
                 "SlockKuikly",
-                "island_compose pageName=$pageName instanceId=$instanceId pageDataBytes=${pageDataText.length}"
+                "island_compose pageName=$pageName instanceId=$instanceId pageDataBytes=${kuiklyPageData.text.length}"
         )
     }
 
@@ -58,11 +56,11 @@ fun SlockKuiklyPageIsland(
                     SlockKuiklyIslandHost(
                             context = context,
                             pageName = pageName,
-                            pageData = JSONObject(pageDataText)
+                            pageData = kuiklyPageData
                     )
                 }
-        LaunchedEffect(pageDataText) {
-            host.updatePageData(pageDataText)
+        LaunchedEffect(kuiklyPageData.text) {
+            host.updatePageData(kuiklyPageData.text)
         }
         DisposableEffect(host) {
             onDispose { host.dispose() }
@@ -70,18 +68,18 @@ fun SlockKuiklyPageIsland(
         AndroidView(
                 modifier = modifier,
                 factory = { host },
-                update = { it.updatePageData(pageDataText) }
+                update = { it.updatePageData(kuiklyPageData.text) }
         )
         return
     }
 
-    key(pageName, pageDataText) {
+    key(pageName, kuiklyPageData.text) {
         val host =
-                remember(context, pageName, pageDataText) {
+                remember(context, pageName, kuiklyPageData.text) {
                     SlockKuiklyIslandHost(
                             context = context,
                             pageName = pageName,
-                            pageData = JSONObject(pageDataText)
+                            pageData = kuiklyPageData
                     )
                 }
         DisposableEffect(host) {
