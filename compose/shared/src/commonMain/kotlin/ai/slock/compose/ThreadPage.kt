@@ -458,7 +458,9 @@ private fun ThreadPageHeader(
             if (!showCloseActionAtEnd) {
                 ThreadHeaderIconButton(icon = "arrow-left", onClick = onBack)
             }
-            ThreadHashTile()
+            if (payload.showModeTabs) {
+                ThreadHashTile()
+            }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = payload.title,
@@ -613,13 +615,11 @@ private fun ThreadMessagesList(
     val coroutineScope = rememberCoroutineScope()
     var actionMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     val latestItemIndex = payload.latestMessageListItemIndex()
-    LaunchedEffect(payload.instanceId, payload.messages.lastOrNull()?.id, latestItemIndex) {
+    val latestMessageLayoutKey = payload.messages.joinToString("|") { "${it.id}:${it.body.length}:${it.attachments.size}:${it.taskId.orEmpty()}:${it.replyCount}" }
+    LaunchedEffect(payload.instanceId, latestMessageLayoutKey, latestItemIndex) {
         if (latestItemIndex >= 0) {
             repeat(ThreadInitialBottomAnchorAttempts) {
-                if (listState.layoutInfo.totalItemsCount > latestItemIndex) {
-                    listState.scrollToItem(latestItemIndex, 0)
-                    return@LaunchedEffect
-                }
+                listState.scrollLatestItemToRenderedBottom(latestItemIndex)
                 delay(16)
             }
         }
@@ -702,7 +702,15 @@ private fun ThreadMessagesList(
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = SlockSpacing.Md, bottom = SlockSpacing.Md),
                 onClick = {
                     coroutineScope.launch {
-                        listState.scrollToItem(latestItemIndex, 0)
+                        repeat(ThreadBackToBottomAnchorAttempts) { attempt ->
+                            listState.scrollLatestItemToRenderedBottom(latestItemIndex)
+                            if (attempt >= ThreadBottomAnchorMinimumAttempts &&
+                                listState.isLatestItemAtRenderedBottom(latestItemIndex)
+                            ) {
+                                return@launch
+                            }
+                            delay(16)
+                        }
                     }
                 }
             )
@@ -748,6 +756,20 @@ internal fun KuiklyThreadScreenPayload.formatTimestampLabel(value: String): Stri
         formatSlockTimestampLabel(value, localOffsetMinutes, today)
     } ?: value
 
+private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemIndex: Int) {
+    if (latestItemIndex < 0) return
+    if (layoutInfo.totalItemsCount <= latestItemIndex) {
+        return
+    }
+    val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == latestItemIndex }
+    val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+    val offset =
+        latestItem
+            ?.let { it.size - viewportHeight }
+            ?: 0
+    scrollToItem(latestItemIndex, offset)
+}
+
 private fun LazyListState.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
     if (latestItemIndex <= 0) return false
     val layoutInfo = layoutInfo
@@ -755,6 +777,14 @@ private fun LazyListState.shouldShowThreadBackToBottom(latestItemIndex: Int): Bo
     val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == latestItemIndex }
     val latestBottom = latestItem?.let { it.offset + it.size } ?: return true
     return latestBottom < layoutInfo.viewportEndOffset - ThreadBackToBottomTolerancePx
+}
+
+private fun LazyListState.isLatestItemAtRenderedBottom(latestItemIndex: Int): Boolean {
+    val layoutInfo = layoutInfo
+    if (layoutInfo.totalItemsCount <= latestItemIndex) return false
+    val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == latestItemIndex } ?: return false
+    val latestBottom = latestItem.offset + latestItem.size
+    return kotlin.math.abs(latestBottom - layoutInfo.viewportEndOffset) <= ThreadBackToBottomTolerancePx
 }
 
 @Composable
@@ -793,7 +823,9 @@ private fun ThreadBackToBottomButton(
 }
 
 private const val ThreadBackToBottomTolerancePx = 24
-private const val ThreadInitialBottomAnchorAttempts = 10
+private const val ThreadBottomAnchorMinimumAttempts = 2
+private const val ThreadInitialBottomAnchorAttempts = 90
+private const val ThreadBackToBottomAnchorAttempts = 12
 
 @Composable
 private fun ThreadInlineActionRow(label: String, onClick: () -> Unit) {
