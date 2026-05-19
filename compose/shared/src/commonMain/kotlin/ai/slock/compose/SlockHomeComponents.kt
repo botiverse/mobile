@@ -388,7 +388,7 @@ fun SlockStructuralHomeShell(
             HomeNotificationCenter(notifications, onNotificationView, onNotificationDismiss, Modifier.align(Alignment.TopEnd).padding(top = topSafeArea).padding(top = SlockSpacing.Lg, end = SlockSpacing.Lg))
             if (serverSwitcherExpanded) {
                 Box(Modifier.fillMaxSize().clickable(onClick = onServerSwitcherDismiss))
-                ServerSwitcherPanel(servers, currentServerId, labels, onServerSelected, onCreateServerClick, Modifier.padding(top = topSafeArea).padding(start = SlockSpacing.Lg, top = 50.dp))
+                ServerSwitcherPanel(servers, currentServerId, labels, onServerSelected, onCreateServerClick, Modifier.padding(top = topSafeArea + SlockSize.PageHeaderHeight, start = SlockSpacing.Lg))
             }
         }
         if (showBottomBar) {
@@ -436,9 +436,9 @@ private fun HomePullRefreshIndicator(pullProgress: Float, refreshing: Boolean) {
 
 @Composable
 private fun HomeWorkspaceHeader(serverName: String, serverUnreadCount: Int, topSafeArea: Dp, onServerBadgeClick: () -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().background(SlockColor.BrandYellow)) {
+    Box(modifier = Modifier.fillMaxWidth().height(topSafeArea + SlockSize.PageHeaderHeight).background(SlockColor.BrandYellow)) {
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack).align(Alignment.BottomCenter))
-        Box(modifier = Modifier.padding(top = topSafeArea).padding(horizontal = SlockSpacing.Lg, vertical = SlockSpacing.Md).clickable(onClick = onServerBadgeClick)) {
+        Box(modifier = Modifier.padding(top = topSafeArea).height(SlockSize.PageHeaderHeight).padding(horizontal = SlockSpacing.Lg, vertical = SlockSpacing.Md).clickable(onClick = onServerBadgeClick)) {
             SlockLogoBadge(text = serverName, showDropdown = true)
             if (serverUnreadCount > 0) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
         }
