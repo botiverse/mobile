@@ -1,10 +1,13 @@
 import { ErrorReason, KRRecord, Kuikly, KuiklyRenderBaseView } from '@kuikly-open/render';
+import deviceInfo from '@ohos.deviceInfo';
 import router from '@ohos.router';
 import { KuiklyViewDelegate } from '../kuikly/KuiklyViewDelegate';
 import globalNativeManager from '../kuikly/MyNativeManager';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
 const SAFE_AREA_BOTTOM_PX = 'slockSafeAreaBottomPx';
+const HDS_MIN_API_VERSION = 20;
+const HDS_TAB_BAR_SYSCAP = 'SystemCapability.UIDesign.HDSComponent.Core';
 
 @Entry
 @Component
@@ -62,7 +65,24 @@ struct Index {
     pageData['statusBarHeight'] = this.safeAreaTopPx;
     pageData['safeAreaBottom'] = this.safeAreaBottomPx;
     pageData['navigationBarHeight'] = this.safeAreaBottomPx;
-    pageData['slockNativeTabBarRenderer'] = 'ohosHdsImmersive';
+    if (this.supportsHdsTabBar()) {
+      pageData['slockNativeTabBarRenderer'] = 'ohosHdsImmersive';
+    } else {
+      pageData['slockNativeTabBarRenderer'] = 'sharedCompose';
+      pageData['slockNativeTabBarFallbackReason'] = 'unsupported_ohos_hds';
+    }
     return pageData;
+  }
+
+  private supportsHdsTabBar(): boolean {
+    return this.currentApiVersion() >= HDS_MIN_API_VERSION && canIUse(HDS_TAB_BAR_SYSCAP);
+  }
+
+  private currentApiVersion(): number {
+    const distributionApiVersion = deviceInfo.distributionOSApiVersion;
+    if (distributionApiVersion > 0) {
+      return distributionApiVersion;
+    }
+    return deviceInfo.sdkApiVersion;
   }
 }
