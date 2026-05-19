@@ -1,5 +1,10 @@
 package ai.slock.compose
 
+import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.ConversationKind
+import ai.slock.compose.model.ConversationPermissions
+import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -62,6 +67,32 @@ class ThreadPayloadTest {
         assertEquals("bad-1", payload.instanceId)
         assertEquals("error", payload.status)
         assertEquals("payload_parse_failed", payload.errorCode)
+    }
+
+    @Test
+    fun buildsSharedShellThreadRoutePayloadFromConversation() {
+        val payload =
+            buildAppShellThreadPayload(
+                ConversationSummary(
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    kind = ConversationKind.Channel,
+                    name = "general",
+                    subtitle = "Team channel",
+                    joined = true,
+                    memberCount = 7,
+                    permissions = ConversationPermissions(canSend = true)
+                )
+            )
+
+        assertEquals("shared-shell-thread-channel-1", payload.instanceId)
+        assertEquals("general", payload.title)
+        assertEquals("Team channel", payload.subtitle)
+        assertEquals("empty", payload.status)
+        assertEquals(true, payload.canSend)
+        assertEquals(7, payload.membersCount)
+        assertEquals(false, payload.showReplyActions)
+        assertEquals("Message #general", parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId).placeholder)
     }
 
     @Test

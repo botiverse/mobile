@@ -44,9 +44,12 @@ import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.module.RouterModule
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -179,6 +182,11 @@ private fun appShellBottomTabs(selectedKey: String): List<SlockBottomTabItemPayl
         SlockBottomTabItemPayload("members", "MEMBERS", "users", selected = selectedKey == "members"),
         SlockBottomTabItemPayload("settings", "SETTINGS", "settings", selected = selectedKey == "settings")
     )
+
+private val appShellJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+}
 
 @Composable
 private fun SlockAppShellContent() {
@@ -404,6 +412,7 @@ private fun JsonObject.avatarWireValue(): String? =
 
 @Composable
 private fun SharedHomeScreen(bridge: ai.slock.compose.base.BridgeModule) {
+    val pager = LocalActivity.current.getPager() as Pager
     val authStore = remember { KuiklyAuthSessionStore(KuiklyRelationalStore(bridge)) }
     val dataSource =
         remember {
@@ -520,6 +529,16 @@ private fun SharedHomeScreen(bridge: ai.slock.compose.base.BridgeModule) {
                 },
                 onCreateServerClick = {
                     bridge.toast("Create server is not available yet")
+                },
+                onChannelClick = { threadId ->
+                    val conversation =
+                        (snapshot.channels + snapshot.directMessages)
+                            .firstOrNull { it.threadId.value == threadId }
+                    if (conversation == null) {
+                        bridge.toast("Conversation is no longer available")
+                    } else {
+                        openSharedThreadPage(pager, conversation)
+                    }
                 }
             )
         }
@@ -560,6 +579,49 @@ private fun Presence?.toSharedPresence(): SlockPresence? =
         Presence.Offline -> SlockPresence.Offline
         null -> null
     }
+
+internal fun buildAppShellThreadPayload(conversation: ConversationSummary): KuiklyThreadScreenPayload =
+    KuiklyThreadScreenPayload(
+        instanceId = "shared-shell-thread-${conversation.threadId.value}",
+        title = conversation.name.ifBlank { "Thread" },
+        subtitle = conversation.subtitle ?: conversation.channelId?.value,
+        status = "empty",
+        selectedTab = "chat",
+        navigationLabel = "Back",
+        showModeTabs = true,
+        showReplyActions = false,
+        showOpenInChannelAction = false,
+        joined = conversation.joined,
+        canSend = conversation.joined && conversation.permissions.canSend,
+        membersCount = conversation.memberCount ?: 0,
+        showMembersAction = true,
+        showSettingsAction = true,
+        emptyTitle = "Loading conversation",
+        emptyDetail = "Shared shell routing is active. Thread data will load through the shared thread data source in the next migration slice.",
+        composerPayload =
+            buildSharedThreadComposerPayloadJson(
+                SharedThreadComposerPayloadInput(
+                    seedText = "",
+                    seedAsTask = false,
+                    syncNonce = 0,
+                    focusRequestNonce = 0,
+                    placeholder = "Message #${conversation.name.ifBlank { conversation.threadId.value }}",
+                    enabled = conversation.joined && conversation.permissions.canSend,
+                    showAsTaskToggle = true,
+                    composerMode = "channel"
+                )
+            )
+    )
+
+private fun openSharedThreadPage(pager: Pager, conversation: ConversationSummary) {
+    val payload = buildAppShellThreadPayload(conversation)
+    val pageData =
+        JSONObject()
+            .put("pageName", THREAD_PAGE)
+            .put("instanceId", payload.instanceId)
+            .put("payload", appShellJson.encodeToString(KuiklyThreadScreenPayload.serializer(), payload))
+    pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(THREAD_PAGE, pageData)
+}
 
 @Composable
 private fun AppShellPlaceholderContent(
