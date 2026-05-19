@@ -6859,8 +6859,8 @@ fun ThreadComposerBar(
     }
 }
 
-private val ThreadComposerIslandMinHeight = 124.dp
-private val ThreadComposerIslandMaxHeight = 188.dp
+private val ThreadComposerIslandMinHeight = 144.dp
+private val ThreadComposerIslandMaxHeight = 208.dp
 
 @Composable
 private fun threadComposerBottomPadding(): Dp = SlockSpacing.Xs

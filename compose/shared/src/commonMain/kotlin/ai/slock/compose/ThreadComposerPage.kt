@@ -268,7 +268,7 @@ internal fun ThreadComposerContent(
     }
 
     Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).padding(horizontal = 8.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).padding(horizontal = 4.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         payload.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
@@ -338,7 +338,7 @@ internal fun ThreadComposerContent(
                 modifier = Modifier.matchParentSize().offset(x = 2f, y = 2f).background(SlockColor.ShadowBlack)
             )
             Column(
-                modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 6.dp),
+                modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 TextField(
@@ -372,7 +372,7 @@ internal fun ThreadComposerContent(
                     placeholderColor = SlockColor.TextMutedGray,
                     cursorBrush = SolidColor(SlockColor.TextBlack),
                     modifier =
-                        Modifier.fillMaxWidth().pointerInput(payload.enabled) {
+                        Modifier.fillMaxWidth().heightIn(min = 40.dp).pointerInput(payload.enabled) {
                             detectTapGestures(
                                 onLongPress = {
                                     insertNewline()
