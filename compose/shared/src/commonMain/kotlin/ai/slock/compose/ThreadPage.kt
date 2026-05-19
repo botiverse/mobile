@@ -24,10 +24,12 @@ import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
@@ -173,6 +175,14 @@ private enum class KuiklyThreadTab(val wireValue: String, val label: String) {
             entries.firstOrNull { it.wireValue == value?.trim()?.lowercase() } ?: Chat
     }
 }
+
+private val KuiklyThreadTab.icon: String
+    get() =
+        when (this) {
+            KuiklyThreadTab.Chat -> "message-square"
+            KuiklyThreadTab.Tasks -> "list-todo"
+            KuiklyThreadTab.Files -> "paperclip"
+        }
 
 @Composable
 private fun ThreadPageScreen() {
@@ -456,36 +466,12 @@ private fun ThreadHashTile() {
 
 @Composable
 private fun ThreadHeaderIconButton(icon: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier.size(SlockSize.IconButton)
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        SlockLucideIcon(icon, modifier = Modifier.size(20.dp), color = "#FF000000")
-    }
+    SlockHeaderIconAction(icon = icon, contentDescription = icon, onClick = onClick)
 }
 
 @Composable
 private fun ThreadMembersHeaderButton(count: Int, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.height(SlockSize.IconButton)
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        SlockLucideIcon("users", modifier = Modifier.size(18.dp), color = "#FF000000")
-        Text(
-            text = count.toString(),
-            style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
-            maxLines = 1
-        )
-    }
+    SlockHeaderIconAction(icon = "users", contentDescription = "Members", onClick = onClick, label = count.toString())
 }
 
 @Composable
@@ -511,27 +497,42 @@ private fun ThreadPageTabs(
     selectedTab: KuiklyThreadTab,
     onSelect: (KuiklyThreadTab) -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-    ) {
-        KuiklyThreadTab.entries.forEach { tab ->
-            Box(
-                modifier = Modifier.height(40.dp).border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .background(if (selectedTab == tab) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                    .clickable { onSelect(tab) }
-                    .padding(horizontal = 18.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = tab.label,
-                    style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack
+    Column(modifier = Modifier.fillMaxWidth().height(ThreadTabHeight).background(SlockColor.SurfaceWhite)) {
+        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            KuiklyThreadTab.entries.forEach { tab ->
+                val selected = selectedTab == tab
+                Row(
+                    modifier = Modifier.width(ThreadTabWidth)
+                        .fillMaxHeight()
+                        .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                        .clickable { onSelect(tab) }
+                        .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.CenterHorizontally)
+                ) {
+                    SlockLucideIcon(tab.icon, modifier = Modifier.size(18.dp), color = "#FF000000")
+                    Text(
+                        text = tab.label.uppercase(),
+                        style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .height(ThreadTabHeight - SlockStroke.Default)
+                        .width(SlockStroke.Default)
+                        .background(SlockColor.BorderBlack)
                 )
             }
+            Box(modifier = Modifier.weight(1f).fillMaxHeight().background(SlockColor.SurfaceWhite))
         }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
     }
 }
+
+private val ThreadTabWidth = 116.dp
+private val ThreadTabHeight = 38.dp
 
 @Composable
 private fun ThreadChatTab(
