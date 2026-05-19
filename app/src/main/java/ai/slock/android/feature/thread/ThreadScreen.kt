@@ -448,6 +448,13 @@ fun ThreadScreen(
                     addMemberError = false
                     showMembersModal = true
                 },
+                onRemoveThreadMember = { memberId ->
+                    (membersPanelState.loadState as? ScreenLoadState.Content)
+                            ?.data
+                            ?.members
+                            ?.firstOrNull { it.id.value == memberId }
+                            ?.let(onRemoveChannelMember)
+                },
                 onOpenTask = onOpenTask,
                 onRetryFiles = onRetryFiles,
                 onLoadMoreFiles = onLoadMoreFiles,
@@ -981,6 +988,7 @@ private fun ThreadKuiklyScreen(
         onOpenMemberProfile: (MemberProfile) -> Unit,
         onAddThreadMember: (String, MemberKind) -> Unit,
         onManageThreadMember: (String) -> Unit,
+        onRemoveThreadMember: (String) -> Unit,
         onOpenTask: (TaskSummary) -> Unit,
         onRetryFiles: () -> Unit,
         onLoadMoreFiles: () -> Unit,
@@ -1018,8 +1026,14 @@ private fun ThreadKuiklyScreen(
     val messagesById =
             remember(content) { content?.messages.orEmpty().associateBy { it.id.value } }
     val membersById =
-            remember(content) {
-                content?.messages.orEmpty().map { it.author }.associateBy { it.id.value }
+            remember(content, membersPanelState) {
+                (
+                        content?.messages.orEmpty().map { it.author } +
+                                (membersPanelState.loadState as? ScreenLoadState.Content)
+                                        ?.data
+                                        ?.members
+                                        .orEmpty()
+                        ).associateBy { it.id.value }
             }
     val tasksById =
             remember(content) {
@@ -1150,6 +1164,10 @@ private fun ThreadKuiklyScreen(
                     event.optString("itemId")
                             .takeIf { it.isNotBlank() }
                             ?.let(onManageThreadMember)
+            "removeMember" ->
+                    event.optString("itemId")
+                            .takeIf { it.isNotBlank() }
+                            ?.let(onRemoveThreadMember)
             "openTask" ->
                     event.optString("itemId")
                             .takeIf { it.isNotBlank() }
@@ -1292,6 +1310,9 @@ private fun ThreadUiState.toKuiklyThreadPagePayload(
                     .put("memberCandidates", membersPanelState.toKuiklyThreadMemberCandidatesJson())
                     .put("addMemberStatus", membersPanelState.addStatus.toKuiklyWireValue())
                     .putNullable("addMemberErrorCode", membersPanelState.addErrorCode)
+                    .put("removeMemberStatus", membersPanelState.removeStatus.toKuiklyWireValue())
+                    .putNullable("removingMemberId", membersPanelState.removingMemberId?.value)
+                    .putNullable("removeMemberErrorCode", membersPanelState.removeErrorCode)
                     .put(
                             "settingsActions",
                             buildKuiklyThreadSettingsActionsJson(
@@ -1361,6 +1382,14 @@ private fun ThreadMemberAddStatus.toKuiklyWireValue(): String =
             ThreadMemberAddStatus.Adding -> "adding"
             ThreadMemberAddStatus.Failed -> "failed"
             ThreadMemberAddStatus.NoPermission -> "no_permission"
+        }
+
+private fun ThreadMemberRemoveStatus.toKuiklyWireValue(): String =
+        when (this) {
+            ThreadMemberRemoveStatus.Idle -> "idle"
+            ThreadMemberRemoveStatus.Removing -> "removing"
+            ThreadMemberRemoveStatus.Failed -> "failed"
+            ThreadMemberRemoveStatus.NoPermission -> "no_permission"
         }
 
 private fun String.toKuiklyMemberKindOrDefault(): MemberKind =

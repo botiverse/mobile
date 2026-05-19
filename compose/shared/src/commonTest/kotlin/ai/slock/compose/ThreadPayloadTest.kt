@@ -17,6 +17,9 @@ class ThreadPayloadTest {
                       "canAddMembers": false,
                       "addMemberStatus": "failed",
                       "addMemberErrorCode": "member_exists",
+                      "removeMemberStatus": "failed",
+                      "removingMemberId": "a1",
+                      "removeMemberErrorCode": "member_remove_failed",
                       "members": [
                         {"id": "u1", "displayName": "Artin", "handle": "artin", "roleLabel": "Owner"},
                         {"id": "a1", "displayName": "Android Bot", "kind": "agent", "avatarLabel": "AB"}
@@ -41,6 +44,9 @@ class ThreadPayloadTest {
         assertEquals(false, payload.canAddMembers)
         assertEquals("failed", payload.addMemberStatus)
         assertEquals("member_exists", payload.addMemberErrorCode)
+        assertEquals("failed", payload.removeMemberStatus)
+        assertEquals("a1", payload.removingMemberId)
+        assertEquals("member_remove_failed", payload.removeMemberErrorCode)
         assertEquals("Artin", payload.members.first().displayName)
         assertEquals("agent", payload.members[1].kind)
         assertEquals("Cindy", payload.memberCandidates.first().displayName)

@@ -27,10 +27,12 @@ import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
@@ -106,6 +108,9 @@ internal data class KuiklyThreadScreenPayload(
     val canAddMembers: Boolean = true,
     val addMemberStatus: String = "idle",
     val addMemberErrorCode: String? = null,
+    val removeMemberStatus: String = "idle",
+    val removingMemberId: String? = null,
+    val removeMemberErrorCode: String? = null,
     val settingsActions: List<KuiklyThreadSettingsAction> = emptyList(),
     val showMembersAction: Boolean = true,
     val showSettingsAction: Boolean = true,
@@ -297,6 +302,7 @@ private fun ThreadPageContent(
         mutableStateOf(KuiklyThreadTab.fromWireValue(payload.selectedTab))
     }
     var activeModal by remember(payload.instanceId) { mutableStateOf<String?>(null) }
+    var activeMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(
             modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
@@ -376,10 +382,37 @@ private fun ThreadPageContent(
                         activeModal = "addMember"
                     },
                     onManageMember = { memberId ->
-                        activeModal = null
-                        onThreadEvent("manageMember", memberId, null, null)
+                        activeMemberId = memberId
+                        activeModal = "memberDetail"
                     }
                 )
+            "memberDetail" ->
+                payload.members.firstOrNull { it.id == activeMemberId }?.let { member ->
+                    ThreadMemberDetailModal(
+                        member = member,
+                        removeMemberStatus = payload.removeMemberStatus,
+                        removingMemberId = payload.removingMemberId,
+                        removeMemberErrorCode = payload.removeMemberErrorCode,
+                        onDismiss = { activeModal = null },
+                        onBack = { activeModal = "members" },
+                        onOpenProfile = {
+                            activeModal = null
+                            onThreadEvent("openMember", member.id, null, null)
+                        },
+                        onRemoveMember = {
+                            onThreadEvent("removeMember", member.id, null, null)
+                        }
+                    )
+                } ?: SlockModalLayer(
+                    title = "MEMBER",
+                    subtitle = "Member details are no longer available.",
+                    onDismiss = { activeModal = null }
+                ) {
+                    ThreadModalEmptyState(
+                        title = "Member not found",
+                        detail = "Go back to members and refresh the conversation."
+                    )
+                }
             "addMember" ->
                 ThreadAddMemberModal(
                     members = payload.members,
@@ -394,6 +427,8 @@ private fun ThreadPageContent(
                 )
             "settings" ->
                 ThreadSettingsModal(
+                    channelName = payload.title,
+                    subtitle = payload.subtitle,
                     actions = payload.settingsActions,
                     onDismiss = { activeModal = null },
                     onOpenAction = { actionId ->
@@ -1506,26 +1541,60 @@ private fun ThreadMembersModal(
     onAddMember: () -> Unit,
     onManageMember: (String) -> Unit
 ) {
+    val agents = members.filter { it.kind.equals("agent", ignoreCase = true) }
+    val humans = members.filter { !it.kind.equals("agent", ignoreCase = true) }
     SlockModalLayer(
-        title = "Thread members",
-        subtitle = "$membersCount people in this conversation",
+        title = "MEMBERS (${membersCount.takeIf { it > 0 } ?: members.size})",
+        subtitle = if (canAddMembers) "Manage people in this conversation" else "You do not have permission to add members.",
         onDismiss = onDismiss
     ) {
-        if (canAddMembers) {
-            Row(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
-                Spacer(modifier = Modifier.weight(1f))
-                ThreadHeaderAction(label = "Add member", onClick = onAddMember)
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(
+                modifier = Modifier.fillMaxWidth()
+                    .heightIn(max = 360.dp)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .background(SlockColor.SurfaceWhite)
+                    .padding(10.dp)
+            ) {
+                if (members.isEmpty()) {
+                    ThreadModalEmptyState(
+                        title = "No member details loaded",
+                        detail = "Refresh this conversation and try again."
+                    )
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (agents.isNotEmpty()) {
+                            item { ThreadMemberSectionHeader("AGENTS", agents.size) }
+                            items(agents.size, key = { agents[it].memberKey }) { index ->
+                                val member = agents[index]
+                                ThreadMemberRow(member = member, onClick = { onManageMember(member.id) })
+                            }
+                        }
+                        if (humans.isNotEmpty()) {
+                            item { ThreadMemberSectionHeader("HUMANS", humans.size) }
+                            items(humans.size, key = { humans[it].memberKey }) { index ->
+                                val member = humans[index]
+                                ThreadMemberRow(member = member, onClick = { onManageMember(member.id) })
+                            }
+                        }
+                    }
+                }
             }
-        }
-        if (members.isEmpty()) {
-            ThreadModalEmptyState(
-                title = "No member details loaded",
-                detail = "Android can still open the native members panel while this KMP payload is filled."
-            )
-        } else {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                members.forEach { member ->
-                    ThreadMemberRow(member = member, onClick = { onManageMember(member.id) })
+            Button(
+                onClick = { if (canAddMembers) onAddMember() },
+                modifier = Modifier.fillMaxWidth()
+                    .heightIn(min = 44.dp)
+                    .background(if (canAddMembers) SlockColor.AccentPink else SlockColor.SurfaceCream)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(horizontal = 12.dp)
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SlockLucideIcon("user-plus", modifier = Modifier.size(17.dp))
+                    Text(
+                        text = "+ Add Member",
+                        style = SlockType.ButtonBold,
+                        color = if (canAddMembers) SlockColor.TextBlack else SlockColor.TextMutedGray
+                    )
                 }
             }
         }
@@ -1558,6 +1627,8 @@ private fun ThreadAddMemberModal(
                     member.id.contains(normalizedQuery, ignoreCase = true)
             }
             .distinctBy { it.memberKey }
+    val agentCandidates = filteredCandidates.filter { it.kind.equals("agent", ignoreCase = true) }
+    val humanCandidates = filteredCandidates.filter { !it.kind.equals("agent", ignoreCase = true) }
     val blocked = !canAddMembers || addMemberStatus == "no_permission"
     val adding = addMemberStatus == "adding"
     val errorText =
@@ -1568,11 +1639,11 @@ private fun ThreadAddMemberModal(
             else -> null
         }
     SlockModalLayer(
-        title = "Add member",
+        title = "ADD MEMBER",
         subtitle = errorText ?: "Choose a user or agent to add",
         onDismiss = onDismiss
     ) {
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(
                 modifier = Modifier.fillMaxWidth()
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
@@ -1606,29 +1677,51 @@ private fun ThreadAddMemberModal(
                         )
                     }
                 } else {
-                    items(filteredCandidates.size, key = { filteredCandidates[it].memberKey }) { index ->
-                        val member = filteredCandidates[index]
-                        val alreadyJoined = member.memberKey in currentKeys
-                        ThreadMemberCandidateRow(
-                            member = member,
-                            selected = member.id == selectedId,
-                            alreadyJoined = alreadyJoined,
-                            enabled = !blocked && !adding && !alreadyJoined,
-                            onClick = {
-                                selectedId = if (selectedId == member.id) null else member.id
-                                localError = false
-                            }
-                        )
+                    if (agentCandidates.isNotEmpty()) {
+                        item { ThreadMemberSectionHeader("AGENTS", agentCandidates.size) }
+                        items(agentCandidates.size, key = { agentCandidates[it].memberKey }) { index ->
+                            val member = agentCandidates[index]
+                            val alreadyJoined = member.memberKey in currentKeys
+                            ThreadMemberCandidateRow(
+                                member = member,
+                                selected = member.id == selectedId,
+                                alreadyJoined = alreadyJoined,
+                                enabled = !blocked && !adding && !alreadyJoined,
+                                onClick = {
+                                    selectedId = if (selectedId == member.id) null else member.id
+                                    localError = false
+                                }
+                            )
+                        }
+                    }
+                    if (humanCandidates.isNotEmpty()) {
+                        item { ThreadMemberSectionHeader("HUMANS", humanCandidates.size) }
+                        items(humanCandidates.size, key = { humanCandidates[it].memberKey }) { index ->
+                            val member = humanCandidates[index]
+                            val alreadyJoined = member.memberKey in currentKeys
+                            ThreadMemberCandidateRow(
+                                member = member,
+                                selected = member.id == selectedId,
+                                alreadyJoined = alreadyJoined,
+                                enabled = !blocked && !adding && !alreadyJoined,
+                                onClick = {
+                                    selectedId = if (selectedId == member.id) null else member.id
+                                    localError = false
+                                }
+                            )
+                        }
                     }
                 }
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ThreadHeaderAction(label = "Back", onClick = onDismiss)
+                ThreadModalActionButton(label = "Back", icon = "arrow-left", onClick = onDismiss)
                 Spacer(modifier = Modifier.weight(1f))
-                ThreadHeaderAction(
+                ThreadModalActionButton(
                     label = if (adding) "Adding" else "Add selected",
+                    icon = "user-plus",
+                    color = SlockColor.AccentPink,
                     onClick = {
-                        if (adding || blocked) return@ThreadHeaderAction
+                        if (adding || blocked) return@ThreadModalActionButton
                         val member = selected
                         if (member == null || member.memberKey in currentKeys) {
                             localError = true
@@ -1639,6 +1732,29 @@ private fun ThreadAddMemberModal(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ThreadMemberSectionHeader(label: String, count: Int) {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .background(SlockColor.AppBgLightBlue)
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = count.toString(),
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+            color = SlockColor.TextMutedGray
+        )
     }
 }
 
@@ -1655,28 +1771,7 @@ private fun ThreadMemberRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(
-            modifier = Modifier.size(36.dp)
-                .background(if (member.kind == "agent") SlockColor.AccentLavender else SlockColor.BrandYellow)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            val avatarUrl = member.avatarUrl?.takeIf { it.isNotBlank() }
-            if (avatarUrl != null) {
-                Image(
-                    painter = rememberAsyncImagePainter(avatarUrl),
-                    contentDescription = null,
-                    contentScale = ContentScale.FillBounds,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Text(
-                    text = member.avatarLabel.ifBlank { member.displayName }.take(2).uppercase(),
-                    style = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp),
-                    color = SlockColor.TextBlack
-                )
-            }
-        }
+        ThreadMemberAvatar(member = member, sizeDp = 36)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = member.displayName,
@@ -1705,6 +1800,100 @@ private fun ThreadMemberRow(
 }
 
 @Composable
+private fun ThreadMemberDetailModal(
+    member: KuiklyThreadMemberItem,
+    removeMemberStatus: String,
+    removingMemberId: String?,
+    removeMemberErrorCode: String?,
+    onDismiss: () -> Unit,
+    onBack: () -> Unit,
+    onOpenProfile: () -> Unit,
+    onRemoveMember: () -> Unit
+) {
+    val isRemoving = removeMemberStatus == "removing" && removingMemberId == member.id
+    val errorText =
+        when {
+            removeMemberStatus == "failed" && removingMemberId == member.id ->
+                "Unable to remove member: ${removeMemberErrorCode ?: "member_remove_failed"}"
+            removeMemberStatus == "no_permission" && removingMemberId == member.id ->
+                "Unable to remove member: no permission"
+            else -> null
+        }
+    SlockModalLayer(
+        title = member.displayName.uppercase(),
+        subtitle = errorText ?: member.handle.takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty(),
+        onDismiss = onDismiss
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                ThreadMemberAvatar(member = member, sizeDp = 46)
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = member.displayName,
+                        style = SlockType.PageTitle,
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = member.handle.takeIf { it.isNotBlank() }?.let { "@$it" } ?: member.id,
+                        style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = member.roleLabel.ifBlank { if (member.kind.equals("agent", ignoreCase = true)) "Agent" else "Member" },
+                        style = SlockType.Body,
+                        color = SlockColor.TextBlack,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ThreadModalActionButton(label = "Back", icon = "arrow-left", onClick = onBack)
+                ThreadModalActionButton(label = "Open profile", icon = "user", onClick = onOpenProfile)
+                if (member.kind.equals("agent", ignoreCase = true)) {
+                    ThreadModalActionButton(
+                        label = if (isRemoving) "Removing" else "Remove Agent",
+                        icon = "user-minus",
+                        color = SlockColor.AccentRed,
+                        onClick = { if (!isRemoving) onRemoveMember() }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadMemberAvatar(member: KuiklyThreadMemberItem, sizeDp: Int) {
+    Box(
+        modifier = Modifier.size(sizeDp.dp)
+            .background(if (member.kind.equals("agent", ignoreCase = true)) SlockColor.AccentLavender else SlockColor.BrandYellow)
+            .border(SlockStroke.Default, SlockColor.BorderBlack),
+        contentAlignment = Alignment.Center
+    ) {
+        val avatarUrl = member.avatarUrl?.takeIf { it.isNotBlank() }
+        if (avatarUrl != null) {
+            Image(
+                painter = rememberAsyncImagePainter(avatarUrl),
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Text(
+                text = member.avatarLabel.ifBlank { member.displayName }.take(2).uppercase(),
+                style = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp),
+                color = SlockColor.TextBlack
+            )
+        }
+    }
+}
+
+@Composable
 private fun ThreadMemberCandidateRow(
     member: KuiklyThreadMemberItem,
     selected: Boolean,
@@ -1727,18 +1916,7 @@ private fun ThreadMemberCandidateRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(
-            modifier = Modifier.size(34.dp)
-                .background(if (member.kind == "agent") SlockColor.AccentLavender else SlockColor.BrandYellow)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = member.avatarLabel.ifBlank { member.displayName }.take(2).uppercase(),
-                style = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp),
-                color = SlockColor.TextBlack
-            )
-        }
+        ThreadMemberAvatar(member = member, sizeDp = 34)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = member.displayName,
@@ -1773,12 +1951,30 @@ private fun ThreadMemberCandidateRow(
 private val KuiklyThreadMemberItem.memberKey: String
     get() = "${kind.lowercase()}:$id"
 
+private enum class ThreadSettingsDangerAction(
+    val id: String,
+    val title: String,
+    val icon: String,
+    val buttonLabel: String,
+    val color: Color
+) {
+    Leave("leave", "LEAVE CHANNEL", "log-out", "Leave Channel", SlockColor.AccentOrange),
+    Archive("archive", "ARCHIVE CHANNEL", "archive", "Archive Channel", SlockColor.AccentOrange),
+    Delete("delete", "DELETE CHANNEL", "trash", "Delete Channel", SlockColor.AccentRed)
+}
+
 @Composable
 private fun ThreadSettingsModal(
+    channelName: String,
+    subtitle: String?,
     actions: List<KuiklyThreadSettingsAction>,
     onDismiss: () -> Unit,
     onOpenAction: (String) -> Unit
 ) {
+    var name by remember(channelName) { mutableStateOf(channelName) }
+    var description by remember(subtitle) { mutableStateOf(subtitle.orEmpty()) }
+    var dangerAction by remember { mutableStateOf<ThreadSettingsDangerAction?>(null) }
+    var confirmationName by remember(dangerAction) { mutableStateOf("") }
     val effectiveActions =
         actions.ifEmpty {
             listOf(
@@ -1803,21 +1999,195 @@ private fun ThreadSettingsModal(
                 )
             )
         }
+    val dangerActions = effectiveActions.mapNotNull { action ->
+        when (action.id) {
+            "leave" -> ThreadSettingsDangerAction.Leave
+            "archive" -> ThreadSettingsDangerAction.Archive
+            "delete" -> ThreadSettingsDangerAction.Delete
+            else -> null
+        }?.let { it to action }
+    }
+    val nonDangerActions = effectiveActions.filter { action ->
+        action.id != "leave" && action.id != "archive" && action.id != "delete"
+    }
+    val activeDanger = dangerAction
+    val confirmationMatches = confirmationName.trim() == channelName.trim()
     SlockModalLayer(
-        title = "Thread settings",
-        subtitle = "Conversation actions",
+        title = activeDanger?.title ?: "EDIT CHANNEL",
+        subtitle = if (activeDanger == null) "#$channelName" else "Confirm the channel action",
         onDismiss = onDismiss
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            effectiveActions.forEach { action ->
-                SlockActionSheetRow(
-                    title = action.title,
-                    subtitle = action.subtitle,
-                    icon = action.icon,
-                    destructive = action.destructive,
-                    onClick = { onOpenAction(action.id) }
+        if (activeDanger == null) {
+            Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                nonDangerActions.forEach { action ->
+                    SlockActionSheetRow(
+                        title = action.title,
+                        subtitle = action.subtitle,
+                        icon = action.icon,
+                        destructive = false,
+                        onClick = { onOpenAction(action.id) }
+                    )
+                }
+                ThreadSettingsTextField(
+                    label = "Name",
+                    value = name,
+                    placeholder = "channel-name",
+                    onValueChange = { name = it },
+                    required = true
                 )
+                ThreadSettingsTextField(
+                    label = "Description",
+                    value = description,
+                    placeholder = "What is this channel for?",
+                    onValueChange = { description = it },
+                    required = false
+                )
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    dangerActions.forEach { (danger, action) ->
+                        SlockActionSheetRow(
+                            title = action.title,
+                            subtitle = action.subtitle,
+                            icon = action.icon.ifBlank { danger.icon },
+                            destructive = true,
+                            onClick = { dangerAction = danger }
+                        )
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThreadModalActionButton(label = "Cancel", icon = "x", onClick = onDismiss)
+                    Spacer(modifier = Modifier.weight(1f))
+                    ThreadModalActionButton(
+                        label = "Save Changes",
+                        icon = "check",
+                        color = SlockColor.AccentPink,
+                        onClick = onDismiss
+                    )
+                }
             }
+        } else {
+            Column(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                when (activeDanger) {
+                    ThreadSettingsDangerAction.Leave -> {
+                        Text(
+                            text = "Leave #$channelName? You will be removed from this channel, but the channel itself will remain.",
+                            style = SlockType.Body,
+                            color = SlockColor.TextBlack
+                        )
+                        Text(
+                            text = "You can rejoin later if your permissions still allow it.",
+                            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                            color = SlockColor.TextMutedGray
+                        )
+                    }
+                    ThreadSettingsDangerAction.Archive,
+                    ThreadSettingsDangerAction.Delete -> {
+                        Text(
+                            text =
+                                if (activeDanger == ThreadSettingsDangerAction.Archive) {
+                                    "Archive #$channelName? Members keep read access and history, but writes will be frozen and the channel will be hidden from sidebars."
+                                } else {
+                                    "Delete #$channelName? This permanently removes the channel and its messages."
+                                },
+                            style = SlockType.Body,
+                            color = SlockColor.TextBlack
+                        )
+                        Text(
+                            text = "Type $channelName to confirm.",
+                            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                            color = SlockColor.TextMutedGray
+                        )
+                        ThreadSettingsTextField(
+                            label = "Channel name",
+                            value = confirmationName,
+                            placeholder = channelName,
+                            onValueChange = { confirmationName = it },
+                            required = true,
+                            isError = confirmationName.isNotBlank() && !confirmationMatches
+                        )
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThreadModalActionButton(label = "Back", icon = "arrow-left", onClick = { dangerAction = null })
+                    Spacer(modifier = Modifier.weight(1f))
+                    val enabled = activeDanger == ThreadSettingsDangerAction.Leave || confirmationMatches
+                    ThreadModalActionButton(
+                        label = activeDanger.buttonLabel,
+                        icon = activeDanger.icon,
+                        color = if (enabled) activeDanger.color else SlockColor.SurfaceCream,
+                        onClick = {
+                            if (enabled) {
+                                onOpenAction(activeDanger.id)
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadSettingsTextField(
+    label: String,
+    value: String,
+    placeholder: String,
+    onValueChange: (String) -> Unit,
+    required: Boolean,
+    isError: Boolean = required && value.isBlank()
+) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(text = label, style = SlockType.ButtonBold, color = SlockColor.TextBlack)
+            if (required) {
+                Text(text = "*", style = SlockType.ButtonBold, color = SlockColor.AccentRed)
+            }
+        }
+        Box(
+            modifier = Modifier.fillMaxWidth()
+                .border(SlockStroke.Default, if (isError) SlockColor.AccentRed else SlockColor.BorderBlack)
+                .background(SlockColor.SurfaceWhite)
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+        ) {
+            TextField(
+                modifier = Modifier.fillMaxWidth().height(32.dp),
+                value = value,
+                placeholder = placeholder,
+                autoFocus = false,
+                onValueChange = onValueChange,
+                textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                placeholderColor = SlockColor.TextMutedGray,
+                maxLines = 1
+            )
+        }
+        if (isError) {
+            Text(
+                text = if (value.isBlank()) "$label is required." else "Channel name does not match.",
+                style = SlockType.Caption.copy(color = SlockColor.AccentRed, fontWeight = FontWeight.Bold),
+                color = SlockColor.AccentRed
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadModalActionButton(
+    label: String,
+    icon: String,
+    onClick: () -> Unit,
+    color: Color = SlockColor.SurfaceWhite
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .heightIn(min = 38.dp)
+            .widthIn(min = 78.dp)
+            .background(color)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(horizontal = 10.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            SlockLucideIcon(icon, modifier = Modifier.size(16.dp))
+            Text(text = label, style = SlockType.ButtonBold, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
