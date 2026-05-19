@@ -465,10 +465,16 @@ private fun ThreadPageHeader(
     onShowSettings: () -> Unit
 ) {
     val showCloseActionAtEnd = payload.navigationLabel.equals("Close", ignoreCase = true)
+    val topSafeArea = slockTopSafeAreaPadding()
     Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
         Row(
             modifier = Modifier.fillMaxWidth()
-                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+                .padding(
+                    start = SlockSpacing.Md,
+                    top = topSafeArea + SlockSpacing.Sm,
+                    end = SlockSpacing.Md,
+                    bottom = SlockSpacing.Sm
+                ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
