@@ -650,13 +650,7 @@ private fun SidebarActivityRow(label: String, count: String?, selected: Boolean 
                     overflow = TextOverflow.Ellipsis
                 )
                 if (count != null) {
-                    Text(
-                        count,
-                        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 12.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.4f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    SidebarTrailingNumberText(count, color = SlockColor.TextBlack.copy(alpha = 0.4f))
                 }
             }
         }
@@ -668,7 +662,20 @@ private fun SidebarActionRow(icon: String, label: String, modifier: Modifier = M
     com.tencent.kuikly.compose.foundation.layout.Row(modifier = modifier.fillMaxWidth().heightIn(min = SidebarActionRowHeight).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = SidebarRowHorizontalPadding), verticalAlignment = Alignment.CenterVertically) {
         Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { SlockLucideIcon(icon, Modifier.size(SidebarActionIconSize)) }
         Text(label, style = SlockType.Button, color = SlockColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (badge != null) CountPill(badge, SlockColor.AccentPink) else if (trailingText != null) Text(trailingText, style = SlockType.Caption, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (badge != null) CountPill(badge, SlockColor.AccentPink) else if (trailingText != null) SidebarTrailingNumberText(trailingText, color = SlockColor.TextBlack)
+    }
+}
+
+@Composable
+private fun SidebarTrailingNumberText(text: String, color: Color) {
+    Box(modifier = Modifier.height(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) {
+        Text(
+            text,
+            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 10.sp),
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

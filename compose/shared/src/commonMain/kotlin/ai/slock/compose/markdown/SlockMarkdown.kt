@@ -24,6 +24,7 @@ import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -299,14 +300,20 @@ fun slockMarkdownAnnotator(content: String): MarkdownAnnotator {
                 if (match.range.first > cursor) {
                     append(nodeText.substring(cursor, match.range.first))
                 }
-                appendInlineContent(match.id, match.tag.label)
+                if (match.tag.kind == ThreadMarkdownTagKind.UserMention) {
+                    pushStyle(SlockMarkdownMentionSpanStyle)
+                    append(threadMarkdownTagDisplayLabel(match.tag.label))
+                    pop()
+                } else {
+                    appendInlineContent(match.id, match.tag.label)
+                }
                 cursor = match.range.last + 1
             }
             if (cursor < nodeText.length) append(nodeText.substring(cursor))
             true
         },
         inlineContent = {
-            inlineTagById.mapValues { (_, match) ->
+            inlineTagById.filterValues { it.tag.kind != ThreadMarkdownTagKind.UserMention }.mapValues { (_, match) ->
                 val label = threadMarkdownTagDisplayLabel(match.tag.label)
                 InlineTextContent(
                     Placeholder(
@@ -402,6 +409,13 @@ private fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography 
 }
 
 private val SlockMarkdownInlineChipHeight = 20.sp
+
+private val SlockMarkdownMentionSpanStyle =
+    SpanStyle(
+        color = SlockColor.TextBlack,
+        fontWeight = FontWeight.Bold,
+        textDecoration = TextDecoration.Underline
+    )
 
 private fun slockMarkdownInlineChipWidthSp(label: String) =
     (label.slockInlineTextWidthUnits() * 8 + 32).coerceAtLeast(28).sp

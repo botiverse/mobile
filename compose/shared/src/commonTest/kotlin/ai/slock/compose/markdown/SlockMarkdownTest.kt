@@ -49,4 +49,13 @@ class SlockMarkdownTest {
         assertTrue(inlineContent.containsKey("slock-code:6"))
         assertFalse(inlineContent.containsKey("slock-code:25"))
     }
+
+    @Test
+    fun userMentionsRenderAsTextStyleInsteadOfInlineChip() {
+        val inlineContent = slockMarkdownAnnotator("Ping @Android-App-Integrator in #markdown专修 for #15").inlineContent?.invoke().orEmpty()
+
+        assertFalse(inlineContent.containsKey("slock:5"))
+        assertTrue(inlineContent.containsKey("slock:32"))
+        assertTrue(inlineContent.containsKey("slock:48"))
+    }
 }
