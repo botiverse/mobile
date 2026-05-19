@@ -37,7 +37,10 @@ import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.material3.navigation.NavHost
 import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.material3.navigation.composable
+import com.tencent.kuikly.compose.material3.navigation.rememberNavController
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
@@ -189,11 +192,15 @@ private fun SlockAppShellContent() {
     var selectedSettingsDestination by remember { mutableStateOf("home") }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    var route by remember { mutableStateOf(AppShellRouteMain) }
     var activeThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
+    val navController = rememberNavController()
     val bottomSafeArea = slockBottomSafeAreaPadding()
-    when (route) {
-        AppShellRouteThread -> {
+    NavHost(
+        navController = navController,
+        startDestination = AppShellRouteMain,
+        modifier = Modifier.fillMaxSize()
+    ) {
+        composable(AppShellRouteThread) {
             val payload = activeThreadPayload
             if (payload == null) {
                 AppShellPlaceholderContent(
@@ -205,11 +212,11 @@ private fun SlockAppShellContent() {
                 SharedThreadRouteContent(
                     initialPayload = payload,
                     bridge = bridge,
-                    onBack = { route = AppShellRouteMain }
+                    onBack = { navController.popBackStack() }
                 )
             }
         }
-        else -> {
+        composable(AppShellRouteMain) {
             Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
                 Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     when (selectedTab) {
@@ -242,7 +249,7 @@ private fun SlockAppShellContent() {
                                 bridge = bridge,
                                 onOpenConversation = { conversation ->
                                     activeThreadPayload = buildAppShellThreadPayload(conversation)
-                                    route = AppShellRouteThread
+                                    navController.navigate(AppShellRouteThread)
                                 }
                             )
                     }
