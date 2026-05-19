@@ -134,6 +134,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         const val PAGE_SETTINGS_COMPUTERS = SlockKuiklyPages.SETTINGS_COMPUTERS
         const val PAGE_SETTINGS_COMPUTER_DETAIL = SlockKuiklyPages.SETTINGS_COMPUTER_DETAIL
         const val PAGE_SETTINGS_STORAGE = SlockKuiklyPages.SETTINGS_STORAGE
+        const val PAGE_SETTINGS_BILLING = SlockKuiklyPages.SETTINGS_BILLING
         const val PAGE_ICON_GALLERY = SlockKuiklyPages.ICON_GALLERY
         const val PAGE_ROUTER = SlockKuiklyPages.ROUTER
 

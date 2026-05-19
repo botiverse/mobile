@@ -29,6 +29,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import ai.slock.android.R
+import ai.slock.android.shared.SlockKuiklyActivity
+import ai.slock.android.shared.SlockKuiklyPageIsland
 import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.components.SlockKeySurface
@@ -40,6 +42,8 @@ import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
 import ai.slock.android.ui.theme.SlockType
 import ai.slock.android.ui.theme.slockHardShadow
+import org.json.JSONArray
+import org.json.JSONObject
 
 data class SettingsCurrentPlanState(
     val planName: String,
@@ -65,6 +69,42 @@ data class SettingsPlanCardState(
 
 @Composable
 fun SettingsBillingScreen(
+    currentPlan: SettingsCurrentPlanState,
+    plans: List<SettingsPlanCardState>,
+    modifier: Modifier = Modifier,
+    onChoosePlan: (String) -> Unit = {}
+) {
+    SlockKuiklyPageIsland(
+        pageName = SlockKuiklyActivity.PAGE_SETTINGS_BILLING,
+        pageData =
+            currentPlan.toKuiklyBillingPageData(
+                plans = plans,
+                labels =
+                    SettingsBillingKuiklyLabels(
+                        trialActive = stringResource(R.string.settings_billing_trial_active),
+                        trialDetail = stringResource(R.string.settings_billing_trial_detail),
+                        currentPlan = stringResource(R.string.settings_billing_current_plan),
+                        usage = stringResource(R.string.settings_billing_usage),
+                        currentPlanButton =
+                            stringResource(R.string.settings_billing_current_plan_button),
+                        choosePlan = stringResource(R.string.settings_billing_choose_plan),
+                        comingSoon = stringResource(R.string.settings_billing_coming_soon),
+                        loading = stringResource(R.string.settings_billing_loading),
+                        error = stringResource(R.string.settings_billing_error),
+                        noPermission = stringResource(R.string.settings_billing_no_permission)
+                    )
+            ),
+        modifier = modifier.fillMaxSize(),
+        onEvent = { event ->
+            when (event.optString("action")) {
+                "choosePlan" -> event.optString("itemId").takeIf { it.isNotBlank() }?.let(onChoosePlan)
+            }
+        }
+    )
+}
+
+@Composable
+private fun SettingsBillingNativeContent(
     currentPlan: SettingsCurrentPlanState,
     plans: List<SettingsPlanCardState>,
     modifier: Modifier = Modifier,
@@ -110,6 +150,87 @@ fun SettingsBillingScreen(
         }
     }
 }
+
+private data class SettingsBillingKuiklyLabels(
+    val trialActive: String,
+    val trialDetail: String,
+    val currentPlan: String,
+    val usage: String,
+    val currentPlanButton: String,
+    val choosePlan: String,
+    val comingSoon: String,
+    val loading: String,
+    val error: String,
+    val noPermission: String
+)
+
+private fun SettingsCurrentPlanState.toKuiklyBillingPageData(
+    plans: List<SettingsPlanCardState>,
+    labels: SettingsBillingKuiklyLabels
+): JSONObject =
+    JSONObject()
+        .put(
+            "payload",
+            JSONObject()
+                .put(
+                    "status",
+                    when {
+                        loading -> "loading"
+                        error -> "error"
+                        noPermission -> "noPermission"
+                        else -> "content"
+                    }
+                )
+                .put(
+                    "labels",
+                    JSONObject()
+                        .put("trialActive", labels.trialActive)
+                        .put("trialDetail", labels.trialDetail)
+                        .put("currentPlan", labels.currentPlan)
+                        .put("usage", labels.usage)
+                        .put("currentPlanButton", labels.currentPlanButton)
+                        .put("choosePlan", labels.choosePlan)
+                        .put("comingSoon", labels.comingSoon)
+                        .put("loading", labels.loading)
+                        .put("error", labels.error)
+                        .put("noPermission", labels.noPermission)
+                )
+                .put(
+                    "currentPlan",
+                    JSONObject()
+                        .put("planName", planName)
+                        .put("trialActive", trialActive)
+                        .put(
+                            "usageRows",
+                            JSONArray().also { rows ->
+                                usageRows.forEach { row ->
+                                    rows.put(
+                                        JSONObject()
+                                            .put("label", row.label)
+                                            .put("value", row.value)
+                                    )
+                                }
+                            }
+                        )
+                )
+                .put(
+                    "plans",
+                    JSONArray().also { planArray ->
+                        plans.forEach { plan ->
+                            planArray.put(
+                                JSONObject()
+                                    .put("id", plan.name)
+                                    .put("name", plan.name)
+                                    .put("price", plan.price)
+                                    .put("features", JSONArray(plan.features))
+                                    .put("current", plan.current)
+                                    .put("comingSoon", plan.comingSoon)
+                            )
+                        }
+                    }
+                )
+                .toString()
+        )
 
 @Composable
 fun PlanTrialBanner(modifier: Modifier = Modifier) {
@@ -366,7 +487,7 @@ private val planSamples = listOf(
 @Composable
 private fun SettingsBillingPreview() {
     SlockTheme {
-        SettingsBillingScreen(
+        SettingsBillingNativeContent(
             currentPlan = currentBillingSample,
             plans = planSamples
         )
@@ -389,7 +510,7 @@ private fun SettingsBillingStatesPreview() {
             PlanCard(plan = planSamples[2])
             SettingsBillingStatusPanel(title = stringResource(R.string.settings_billing_loading))
             SettingsBillingStatusPanel(title = stringResource(R.string.settings_billing_no_permission))
-            SettingsBillingScreen(
+            SettingsBillingNativeContent(
                 currentPlan = currentBillingSample.copy(error = true),
                 plans = planSamples,
                 modifier = Modifier.heightIn(max = 260.dp)
