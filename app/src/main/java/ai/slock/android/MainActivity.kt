@@ -1013,6 +1013,21 @@ private fun SlockAppContent(
     var restoreSplashVisible by remember { mutableStateOf(true) }
     var restoreCompletedState by remember { mutableStateOf<AuthUiState?>(null) }
     var sharedShellLaunchRequested by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(sharedShellLaunchRequested) {
+        if (!sharedShellLaunchRequested) {
+            sharedShellLaunchRequested = true
+            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                    "SlockKuikly",
+                    "start_unified_shell source=main_activity gate=shared"
+            )
+            SlockKuiklyActivity.startAppShell(context)
+            context.findComponentActivity()?.finish()
+        }
+    }
+    if (sharedShellLaunchRequested) {
+        AuthRestoreScreen(modifier = modifier)
+        return
+    }
     var authRoute by rememberSaveable { mutableStateOf(AuthRoute.Login) }
     var forgotPasswordStatus by remember { mutableStateOf(ForgotPasswordStatus.Default) }
     var createAccountStatus by remember { mutableStateOf(CreateAccountStatus.Default) }

@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.data.BridgeAuthApi
 import ai.slock.compose.data.BridgeHomeApi
 import ai.slock.compose.data.BridgeMembersApi
 import ai.slock.compose.data.DataRequestPriority
@@ -9,6 +10,9 @@ import ai.slock.compose.data.HomeSnapshot
 import ai.slock.compose.data.HomeServerSwitchState
 import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklyRelationalStore
+import ai.slock.compose.data.SharedAuthDataSource
+import ai.slock.compose.data.SharedAuthErrorCode
+import ai.slock.compose.data.SharedAuthResult
 import ai.slock.compose.data.SharedHomeDataSource
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.parseSlockHome
@@ -28,7 +32,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
@@ -47,6 +53,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CancellationException
@@ -193,9 +200,86 @@ private fun SlockAppShellContent() {
     var selectedSettingsDestination by remember { mutableStateOf("home") }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val authStore = remember { KuiklyAuthSessionStore(KuiklyRelationalStore(bridge)) }
+    val authDataSource =
+        remember {
+            SharedAuthDataSource(
+                api = BridgeAuthApi(bridge),
+                sessionStore = authStore
+            )
+        }
+    var authGateState by remember { mutableStateOf<AppShellAuthGateState>(AppShellAuthGateState.Restoring) }
+    var authGateNonce by remember { mutableStateOf(0) }
     var activeThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
     val navController = rememberNavController()
     val bottomSafeArea = slockBottomSafeAreaPadding()
+
+    LaunchedEffect(authGateNonce) {
+        authGateState = AppShellAuthGateState.Restoring
+        authGateState =
+            when (val result = runCatching { authDataSource.restoreSession() }.getOrElse { SharedAuthResult.Failure(SharedAuthErrorCode.Network, "Network unavailable. Check your connection.") }) {
+                is SharedAuthResult.Success ->
+                    if (result.data.selectedServerId.isNullOrBlank()) {
+                        AppShellAuthGateState.ServerRequired(result.data)
+                    } else {
+                        AppShellAuthGateState.Ready(result.data)
+                    }
+                SharedAuthResult.Unauthenticated -> AppShellAuthGateState.AuthRequired
+                is SharedAuthResult.Failure -> AppShellAuthGateState.Error(result.message)
+            }
+    }
+
+    when (val gate = authGateState) {
+        AppShellAuthGateState.Restoring -> {
+            AppShellPlaceholderContent(
+                title = "Slock",
+                subtitle = "Restoring session...",
+                iconName = "sparkles"
+            )
+            return
+        }
+        AppShellAuthGateState.AuthRequired -> {
+            AppShellAuthGateContent(
+                authDataSource = authDataSource,
+                onSignedIn = { session ->
+                    authGateState =
+                        if (session.selectedServerId.isNullOrBlank()) {
+                            AppShellAuthGateState.ServerRequired(session)
+                        } else {
+                            AppShellAuthGateState.Ready(session)
+                        }
+                }
+            )
+            return
+        }
+        is AppShellAuthGateState.ServerRequired -> {
+            AppShellServerGateContent(
+                session = gate.session,
+                authDataSource = authDataSource,
+                onReady = { session ->
+                    authGateState = AppShellAuthGateState.Ready(session)
+                    selectedTab = "home"
+                    activeThreadPayload = null
+                },
+                onSignOut = {
+                    authGateState = AppShellAuthGateState.AuthRequired
+                    selectedTab = "home"
+                    activeThreadPayload = null
+                }
+            )
+            return
+        }
+        is AppShellAuthGateState.Error -> {
+            AppShellAuthErrorContent(
+                message = gate.message,
+                onRetry = { authGateNonce += 1 },
+                onSignIn = { authGateState = AppShellAuthGateState.AuthRequired }
+            )
+            return
+        }
+        is AppShellAuthGateState.Ready -> Unit
+    }
+
     NavHost(
         navController = navController,
         startDestination = AppShellRouteMain,
@@ -263,6 +347,280 @@ private fun SlockAppShellContent() {
                 )
             }
         }
+    }
+}
+
+private sealed interface AppShellAuthGateState {
+    data object Restoring : AppShellAuthGateState
+    data object AuthRequired : AppShellAuthGateState
+    data class ServerRequired(val session: StoredAuthSession) : AppShellAuthGateState
+    data class Ready(val session: StoredAuthSession) : AppShellAuthGateState
+    data class Error(val message: String) : AppShellAuthGateState
+}
+
+@Composable
+private fun AppShellAuthGateContent(
+    authDataSource: SharedAuthDataSource,
+    onSignedIn: (StoredAuthSession) -> Unit
+) {
+    var mode by remember { mutableStateOf("login") }
+    val reducer = remember { LoginFormReducer() }
+    var state by remember { mutableStateOf(LoginFormState()) }
+    var pendingLogin by remember { mutableStateOf<PendingAppShellLogin?>(null) }
+
+    LaunchedEffect(pendingLogin) {
+        val effect = pendingLogin ?: return@LaunchedEffect
+        val result =
+            runCatching { authDataSource.login(effect.email, effect.password) }
+                .getOrElse { SharedAuthResult.Failure(SharedAuthErrorCode.Network, "Network unavailable. Check your connection.") }
+        pendingLogin = null
+        when (result) {
+            is SharedAuthResult.Success -> {
+                state = state.copy(submitting = false, errorMessage = null)
+                onSignedIn(result.data)
+            }
+            is SharedAuthResult.Failure ->
+                state = state.copy(submitting = false, errorMessage = result.message)
+            SharedAuthResult.Unauthenticated ->
+                state = state.copy(submitting = false, errorMessage = "Sign in failed. Try again.")
+        }
+    }
+
+    when (mode) {
+        "register" ->
+            RegisterContent(
+                name = "",
+                email = "",
+                password = "",
+                submitting = false,
+                errorMessage = "Create account will move into the shared app shell next.",
+                onNameChange = {},
+                onEmailChange = {},
+                onPasswordChange = {},
+                onSubmit = {},
+                onBackToSignIn = { mode = "login" }
+            )
+        "forgot" ->
+            ForgotPasswordContent(
+                email = "",
+                sending = false,
+                sent = false,
+                errorMessage = "Password reset will move into the shared app shell next.",
+                onEmailChange = {},
+                onSubmit = {},
+                onBackToSignIn = { mode = "login" }
+            )
+        else ->
+            LoginContent(
+                email = state.email,
+                password = state.password,
+                submitting = state.submitting,
+                errorMessage = state.errorMessage,
+                onEmailChange = { state = reducer.reduce(state, LoginFormEvent.EmailChanged(it)).state },
+                onPasswordChange = { state = reducer.reduce(state, LoginFormEvent.PasswordChanged(it)).state },
+                onSubmit = {
+                    val update = reducer.reduce(state, LoginFormEvent.Submit)
+                    state = update.state
+                    when (val effect = update.effect) {
+                        is LoginFormEffect.SubmitLogin ->
+                            pendingLogin =
+                                PendingAppShellLogin(
+                                    nonce = (pendingLogin?.nonce ?: 0) + 1,
+                                    email = effect.email,
+                                    password = effect.password
+                                )
+                        LoginFormEffect.FocusEmail -> Unit
+                        null -> Unit
+                    }
+                },
+                onForgotPassword = { mode = "forgot" },
+                onCreateAccount = { mode = "register" }
+            )
+    }
+}
+
+private data class PendingAppShellLogin(
+    val nonce: Int,
+    val email: String,
+    val password: String
+)
+
+@Composable
+private fun AppShellServerGateContent(
+    session: StoredAuthSession,
+    authDataSource: SharedAuthDataSource,
+    onReady: (StoredAuthSession) -> Unit,
+    onSignOut: () -> Unit
+) {
+    var latestSession by remember(session) { mutableStateOf(session) }
+    var mode by remember { mutableStateOf("choose") }
+    var createName by remember { mutableStateOf("") }
+    var pendingServerId by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        when (val result = runCatching { authDataSource.loadServers() }.getOrNull()) {
+            is SharedAuthResult.Success -> latestSession = result.data
+            is SharedAuthResult.Failure -> errorMessage = result.message
+            SharedAuthResult.Unauthenticated -> onSignOut()
+            null -> errorMessage = "Could not load servers."
+        }
+    }
+
+    AuthScaffold {
+        AuthLogoBadge("SLOCK")
+        Text(
+            text = if (mode == "create") "Create server" else "Choose server",
+            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack
+        )
+        AuthFormColumn {
+            AuthError(errorMessage)
+            if (mode == "create") {
+                AuthTextField(
+                    value = createName,
+                    onValueChange = { createName = it },
+                    label = "Server name",
+                    required = true,
+                    enabled = !loading
+                )
+                AuthActionButton(
+                    text = if (loading) "Creating..." else "Create server",
+                    onClick = {
+                        loading = true
+                        errorMessage = null
+                        pendingServerId = "__create__"
+                    },
+                    tone = AuthButtonTone.Pink,
+                    enabled = createName.isNotBlank() && !loading,
+                    loading = loading
+                )
+                AuthActionButton(
+                    text = "Back to servers",
+                    onClick = { mode = "choose" },
+                    tone = AuthButtonTone.White,
+                    enabled = !loading
+                )
+            } else {
+                latestSession.servers.forEach { server ->
+                    AppShellServerRow(
+                        server = server,
+                        selected = server.id == latestSession.selectedServerId,
+                        pending = pendingServerId == server.id,
+                        enabled = !loading,
+                        onClick = {
+                            loading = true
+                            errorMessage = null
+                            pendingServerId = server.id
+                        }
+                    )
+                }
+                AuthActionButton(
+                    text = "Create server",
+                    onClick = { mode = "create" },
+                    tone = AuthButtonTone.Cyan,
+                    enabled = !loading
+                )
+            }
+            AuthActionButton(
+                text = "Sign out",
+                onClick = {
+                    pendingServerId = "__logout__"
+                    loading = true
+                },
+                tone = AuthButtonTone.White,
+                enabled = !loading
+            )
+        }
+    }
+
+    LaunchedEffect(pendingServerId) {
+        val target = pendingServerId ?: return@LaunchedEffect
+        if (target == "__logout__") {
+            when (val result = authDataSource.logout()) {
+                is SharedAuthResult.Success -> onSignOut()
+                is SharedAuthResult.Failure -> errorMessage = result.message
+                SharedAuthResult.Unauthenticated -> onSignOut()
+            }
+            pendingServerId = null
+            loading = false
+            return@LaunchedEffect
+        }
+        val result =
+            if (target == "__create__") {
+                authDataSource.createServer(createName)
+            } else {
+                authDataSource.selectServer(target)
+            }
+        pendingServerId = null
+        loading = false
+        when (result) {
+            is SharedAuthResult.Success -> onReady(result.data)
+            is SharedAuthResult.Failure -> errorMessage = result.message
+            SharedAuthResult.Unauthenticated -> onSignOut()
+        }
+    }
+}
+
+@Composable
+private fun AppShellServerRow(
+    server: ai.slock.compose.data.StoredAuthServer,
+    selected: Boolean,
+    pending: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Box(modifier = Modifier.fillMaxWidth().height(42.dp).padding(end = 2.dp, bottom = 2.dp)) {
+        Box(Modifier.fillMaxSize().background(SlockColor.ShadowBlack).padding(0.dp))
+        Button(
+            onClick = if (enabled) onClick else ({}),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = com.tencent.kuikly.compose.ui.Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = server.name,
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (pending) "..." else if (selected) "Selected" else "Open",
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppShellAuthErrorContent(
+    message: String,
+    onRetry: () -> Unit,
+    onSignIn: () -> Unit
+) {
+    AuthScaffold {
+        AuthLogoBadge("SLOCK")
+        Text(
+            text = "Session error",
+            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack
+        )
+        AuthError(message)
+        AuthActionButton(text = "Retry", onClick = onRetry, tone = AuthButtonTone.Pink)
+        AuthActionButton(text = "Sign in", onClick = onSignIn, tone = AuthButtonTone.White)
     }
 }
 

@@ -11,8 +11,20 @@ class AndroidSlockAuthApi(
     override suspend fun login(bodyText: String): AuthNetworkResponse =
         api.login(bodyText.toJsonBody()).toAuthNetworkResponse()
 
+    override suspend fun currentUser(authorization: String): AuthNetworkResponse =
+        api.currentUser(authorization).toAuthNetworkResponse()
+
+    override suspend fun refresh(bodyText: String): AuthNetworkResponse =
+        api.refresh(bodyText.toJsonBody()).toAuthNetworkResponse()
+
+    override suspend fun logout(bodyText: String): AuthNetworkResponse =
+        api.logout(bodyText.toJsonBody()).toAuthNetworkResponse()
+
     override suspend fun servers(authorization: String): AuthNetworkResponse =
         api.servers(authorization).toAuthNetworkResponse()
+
+    override suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse =
+        api.createServer(authorization, bodyText.toJsonBody()).toAuthNetworkResponse()
 }
 
 private fun String.toJsonBody() =

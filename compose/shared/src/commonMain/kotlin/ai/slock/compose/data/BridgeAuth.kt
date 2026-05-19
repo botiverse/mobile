@@ -21,8 +21,20 @@ internal class BridgeAuthApi(
     override suspend fun login(bodyText: String): AuthNetworkResponse =
         request(path = "auth/login", method = "POST", bodyText = bodyText)
 
+    override suspend fun currentUser(authorization: String): AuthNetworkResponse =
+        request(path = "auth/me", method = "GET", authorization = authorization)
+
+    override suspend fun refresh(bodyText: String): AuthNetworkResponse =
+        request(path = "auth/refresh", method = "POST", bodyText = bodyText)
+
+    override suspend fun logout(bodyText: String): AuthNetworkResponse =
+        request(path = "auth/logout", method = "POST", bodyText = bodyText)
+
     override suspend fun servers(authorization: String): AuthNetworkResponse =
         request(path = "servers", method = "GET", authorization = authorization)
+
+    override suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse =
+        request(path = "servers", method = "POST", authorization = authorization, bodyText = bodyText)
 
     private suspend fun request(
         path: String,
