@@ -4,6 +4,7 @@ import ai.slock.compose.data.DataResult
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenError
+import ai.slock.compose.model.toGravatarAvatarUrl
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
@@ -107,7 +108,7 @@ internal fun JsonObject.avatarWireValue(vararg names: String): String? {
 
 private fun JsonElement.toAvatarWireValue(): String? {
     if (isJsonPrimitive && asJsonPrimitive.isString) {
-        return asString.takeIf { it.isNotBlank() }
+        return asString.takeIf { it.isNotBlank() }?.toAvatarWireValueString()
     }
     if (!isJsonObject) return null
     val avatarObject = asJsonObject
@@ -120,8 +121,16 @@ private fun JsonElement.toAvatarWireValue(): String? {
         "avatarUrl",
         "avatar_url",
         "imageUrl",
-        "profileImageUrl"
-    )?.let { return it }
+        "image_url",
+        "profileImageUrl",
+        "profile_image_url",
+        "pictureUrl",
+        "picture_url",
+        "photoUrl",
+        "photo_url",
+        "iconUrl",
+        "icon_url"
+    )?.let { return it.toAvatarWireValueString() }
     avatarObject.avatarWireValue("data", "profile")?.let { return it }
     avatarObject.string("pixel", "pixelKey", "key", "icon")?.let { key ->
         return "pixel:${key.removePrefix("pixel:")}"
@@ -130,14 +139,42 @@ private fun JsonElement.toAvatarWireValue(): String? {
         return "random:${seed.removePrefix("random:")}"
     }
     val type = avatarObject.string("type", "kind", "mode")?.lowercase()
-    val typedValue = avatarObject.string("id", "name", "slug")
+    val typedValue =
+        avatarObject.string(
+            "wireValue",
+            "value",
+            "id",
+            "name",
+            "slug",
+            "key",
+            "hash",
+            "md5",
+            "gravatarHash",
+            "gravatar_hash",
+            "gravatar"
+        )
     return when (type) {
         "pixel" -> "pixel:${typedValue?.removePrefix("pixel:") ?: "robot"}"
         "random" -> "random:${typedValue?.removePrefix("random:") ?: "default"}"
-        "url", "image", "photo" -> typedValue
+        "gravatar", "gravatar_hash", "gravatarhash" -> typedValue?.toGravatarWireValue()
+        "url", "image", "photo" -> typedValue?.toAvatarWireValueString()
         else -> null
     }
 }
+
+private fun String.toAvatarWireValueString(): String =
+    if (startsWith("gravatar:", ignoreCase = true)) {
+        substringAfter(":").toGravatarWireValue()
+    } else {
+        this
+    }
+
+private fun String.toGravatarWireValue(): String =
+    when {
+        startsWith("http://", ignoreCase = true) || startsWith("https://", ignoreCase = true) -> this
+        startsWith("gravatar:", ignoreCase = true) -> substringAfter(":").toGravatarAvatarUrl()
+        else -> trim().takeIf { it.isNotBlank() }?.toGravatarAvatarUrl().orEmpty()
+    }
 
 internal fun JsonObject.int(vararg names: String): Int? {
     for (name in names) {

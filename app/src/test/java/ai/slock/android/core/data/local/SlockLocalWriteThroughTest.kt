@@ -185,6 +185,65 @@ class SlockLocalWriteThroughTest {
     }
 
     @Test
+    fun writeHomeResultPreservesDirectMessageAvatarFallback() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 42L })
+        val server = ServerSummary(id = ServerId("server-1"), name = "Slock")
+        val currentMember = memberProfile("user-1", MemberKind.Human)
+        val seededDm =
+            ConversationSummary(
+                threadId = ThreadId("dm-1"),
+                channelId = ChannelId("dm-1"),
+                kind = ConversationKind.DirectMessage,
+                name = "Cindy",
+                avatarUrl = "pixel:heart",
+                avatar = AvatarReference.Pixel("heart")
+            )
+
+        writer.writeHomeResult(
+            DataResult.Content(
+                HomeSnapshot(
+                    server = server,
+                    currentMember = currentMember,
+                    channels = emptyList(),
+                    directMessages = listOf(seededDm),
+                    unreadTotal = 0
+                )
+            ),
+            source = "seed_home"
+        )
+
+        writer.writeHomeResult(
+            DataResult.Content(
+                HomeSnapshot(
+                    server = server,
+                    currentMember = currentMember,
+                    channels = emptyList(),
+                    directMessages =
+                        listOf(
+                            seededDm.copy(
+                                avatarUrl = null,
+                                avatar = null
+                            )
+                        ),
+                    unreadTotal = 0
+                )
+            ),
+            source = "refresh_home"
+        )
+
+        val cached =
+            writer.readHomeSnapshot(
+                serverId = ServerId("server-1"),
+                serverFallback = server,
+                currentMemberFallback = currentMember
+            )
+
+        assertEquals("pixel:heart", cached?.directMessages?.single()?.avatarUrl)
+        assertEquals("pixel:heart", cached?.directMessages?.single()?.avatar?.wireValue)
+    }
+
+    @Test
     fun writeHomeResultPrunesStaleHomeConversationsMissingFromRefresh() {
         val store = createInMemoryStore()
         val logs = mutableListOf<String>()
@@ -363,6 +422,60 @@ class SlockLocalWriteThroughTest {
 
         assertEquals("pixel:robot", cached?.directMessages?.single()?.avatarUrl)
         assertEquals("pixel:robot", cached?.directMessages?.single()?.avatar?.wireValue)
+    }
+
+    @Test
+    fun writeAgentDirectMessagePresenceCopiesAvatarWhenPresenceAlreadyExists() {
+        val store = createInMemoryStore()
+        val writer = SlockLocalWriteThrough(store, clock = { 42L })
+        val server = ServerSummary(id = ServerId("server-1"), name = "Slock")
+        val currentMember = memberProfile("user-1", MemberKind.Human)
+        writer.writeHomeResult(
+            DataResult.Content(
+                HomeSnapshot(
+                    server = server,
+                    currentMember = currentMember,
+                    channels = emptyList(),
+                    directMessages =
+                        listOf(
+                            ConversationSummary(
+                                threadId = ThreadId("dm-1"),
+                                channelId = ChannelId("dm-1"),
+                                kind = ConversationKind.DirectMessage,
+                                name = "Android-Developer",
+                                presence = ai.slock.android.core.model.Presence.Active,
+                                presenceMemberId = MemberId("agent-android")
+                            )
+                        ),
+                    unreadTotal = 0
+                )
+            ),
+            source = "seed_home"
+        )
+
+        writer.writeAgentDirectMessagePresence(
+            serverId = ServerId("server-1"),
+            members =
+                listOf(
+                    memberProfile("agent-android", MemberKind.Agent).copy(
+                        displayName = "Android-Developer",
+                        handle = "Android-Developer",
+                        avatarUrl = "random:android",
+                        avatar = AvatarReference.Random("android")
+                    )
+                ),
+            source = "members_presence_home"
+        )
+
+        val cached =
+            writer.readHomeSnapshot(
+                serverId = ServerId("server-1"),
+                serverFallback = server,
+                currentMemberFallback = currentMember
+            )
+
+        assertEquals("random:android", cached?.directMessages?.single()?.avatarUrl)
+        assertEquals("random:android", cached?.directMessages?.single()?.avatar?.wireValue)
     }
 
     @Test

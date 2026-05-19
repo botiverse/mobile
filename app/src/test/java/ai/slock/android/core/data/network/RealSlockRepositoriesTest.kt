@@ -327,6 +327,56 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
+    fun channelRepositoryParsesDirectMessageGravatarAvatarObjects() {
+        val repository = RealChannelRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api =
+                FakeSlockApi(
+                    channelsJson = """{"channels":[]}""",
+                    directMessagesJson = """
+                        {
+                          "directMessages": [
+                            {
+                              "channelId": "dm-1",
+                              "peer": {
+                                "id": "agent-1",
+                                "displayName": "Android-Developer",
+                                "kind": "agent",
+                                "avatar": {
+                                  "type": "gravatar",
+                                  "hash": "ABC123"
+                                }
+                              }
+                            },
+                            {
+                              "channelId": "dm-2",
+                              "peer": {
+                                "id": "agent-2",
+                                "displayName": "KMP-Expert",
+                                "kind": "agent",
+                                "avatar": "gravatar:DEF456"
+                              }
+                            }
+                          ]
+                        }
+                    """.trimIndent()
+                )
+        )
+
+        val result = runSuspend { repository.getHome(ServerId("server-1")) }
+
+        assertTrue(result is DataResult.Content)
+        val avatars = (result as DataResult.Content).data.directMessages.map { it.avatar?.wireValue }
+        assertEquals(
+            listOf(
+                "https://www.gravatar.com/avatar/abc123?s=52&d=404",
+                "https://www.gravatar.com/avatar/def456?s=52&d=404"
+            ),
+            avatars
+        )
+    }
+
+    @Test
     fun channelRepositoryDoesNotMapCancellationToParseFailure() {
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),

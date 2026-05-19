@@ -170,30 +170,30 @@ class SlockLocalWriteThrough(
         var changed = false
         home.directMessages
             .map { conversation ->
-                if (conversation.presence != null) {
+                val agent = agents.firstOrNull { it.matchesDirectMessage(conversation) }
+                if (agent == null) {
                     conversation
                 } else {
-                    val agent = agents.firstOrNull { it.matchesDirectMessage(conversation) }
-                    if (agent != null) {
-                        changed = true
+                    val mergedAvatarUrl =
+                        conversation.avatarUrl
+                            ?: agent.avatar?.wireValue
+                            ?: agent.avatarUrl
+                            ?: agent.gravatarHash?.toGravatarAvatarReference()?.wireValue
+                    val mergedAvatar =
+                        conversation.avatar
+                            ?: agent.avatar
+                            ?: agent.avatarUrl?.let(AvatarReference::fromWireValue)
+                            ?: agent.gravatarHash?.toGravatarAvatarReference()
+                    val updated =
                         conversation.copy(
-                            presence = agent.presence,
-                            agentStatus = agent.agentStatus,
+                            presence = conversation.presence ?: agent.presence,
+                            agentStatus = conversation.agentStatus ?: agent.agentStatus,
                             presenceMemberId = conversation.presenceMemberId ?: agent.id,
-                            avatarUrl =
-                                conversation.avatarUrl
-                                    ?: agent.avatar?.wireValue
-                                    ?: agent.avatarUrl
-                                    ?: agent.gravatarHash?.toGravatarAvatarReference()?.wireValue,
-                            avatar =
-                                conversation.avatar
-                                    ?: agent.avatar
-                                    ?: agent.avatarUrl?.let(AvatarReference::fromWireValue)
-                                    ?: agent.gravatarHash?.toGravatarAvatarReference()
+                            avatarUrl = mergedAvatarUrl,
+                            avatar = mergedAvatar
                         )
-                    } else {
-                        conversation
-                    }
+                    if (updated != conversation) changed = true
+                    updated
                 }
             }
             .forEach { conversation -> store.upsertConversation(conversation, syncedAtMs, serverId) }
@@ -313,7 +313,9 @@ class SlockLocalWriteThrough(
         copy(
             presence = presence ?: previous.presence,
             agentStatus = agentStatus ?: previous.agentStatus,
-            presenceMemberId = presenceMemberId ?: previous.presenceMemberId
+            presenceMemberId = presenceMemberId ?: previous.presenceMemberId,
+            avatarUrl = avatarUrl ?: previous.avatarUrl,
+            avatar = avatar ?: previous.avatar
         )
 
     private fun ConversationSummary.homeProjectionKey(): String =
