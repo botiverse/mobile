@@ -3,8 +3,6 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
-import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -240,8 +238,8 @@ private fun ThreadFileThumbnail(item: KuiklyThreadFileItem) {
         contentAlignment = Alignment.Center
     ) {
         if (isImage && thumbnailUrl != null) {
-            Image(
-                painter = rememberAsyncImagePainter(thumbnailUrl),
+            SlockCachedImage(
+                source = thumbnailUrl,
                 contentDescription = null,
                 contentScale = ContentScale.FillBounds,
                 modifier = Modifier.fillMaxSize()

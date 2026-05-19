@@ -14,7 +14,9 @@ import com.tencent.kuikly.compose.extension.keyboardHeightChange
 import com.tencent.kuikly.compose.extension.nativeRef
 import com.tencent.kuikly.compose.extension.placeHolder
 import com.tencent.kuikly.compose.extension.setProp
+import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
 import com.tencent.kuikly.compose.foundation.ExperimentalFoundationApi
+import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -51,6 +53,7 @@ import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.input.pointer.PointerId
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
+import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.boundsInRoot
 import com.tencent.kuikly.compose.ui.layout.layout
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
@@ -80,6 +83,21 @@ import kotlin.math.max
 
 fun Modifier.backgroundColor(color: Color): Modifier {
     return this.background(color)
+}
+
+@Composable
+fun SlockCachedImage(
+    source: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Fit
+) {
+    Image(
+        painter = rememberAsyncImagePainter(source),
+        contentDescription = contentDescription,
+        modifier = modifier,
+        contentScale = contentScale
+    )
 }
 
 fun Modifier.margin(

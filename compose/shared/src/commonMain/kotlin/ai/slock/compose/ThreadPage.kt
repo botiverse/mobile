@@ -13,9 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
 import com.tencent.kuikly.compose.foundation.Canvas
-import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -1509,8 +1507,8 @@ private fun ThreadMessageAvatar(
         contentAlignment = Alignment.Center
     ) {
         if (imageUrl != null) {
-            Image(
-                painter = rememberAsyncImagePainter(imageUrl),
+            SlockCachedImage(
+                source = imageUrl,
                 contentDescription = null,
                 contentScale = ContentScale.FillBounds,
                 modifier = Modifier.fillMaxSize()
@@ -1662,8 +1660,8 @@ private fun ThreadAttachmentChip(
             contentAlignment = Alignment.Center
         ) {
             if (attachment.mimeType.startsWith("image/") && attachment.thumbnailUrl != null) {
-                Image(
-                    painter = rememberAsyncImagePainter(attachment.thumbnailUrl),
+                SlockCachedImage(
+                    source = attachment.thumbnailUrl,
                     contentDescription = null,
                     contentScale = ContentScale.FillBounds,
                     modifier = Modifier.fillMaxSize()
@@ -2125,8 +2123,8 @@ private fun ThreadMemberAvatar(member: KuiklyThreadMemberItem, sizeDp: Int) {
     ) {
         val avatarUrl = member.avatarUrl?.takeIf { it.isNotBlank() }
         if (avatarUrl != null) {
-            Image(
-                painter = rememberAsyncImagePainter(avatarUrl),
+            SlockCachedImage(
+                source = avatarUrl,
                 contentDescription = null,
                 contentScale = ContentScale.FillBounds,
                 modifier = Modifier.fillMaxSize()

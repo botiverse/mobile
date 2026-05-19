@@ -5,8 +5,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
-import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -77,10 +75,10 @@ internal fun ComposeRouteImpl() {
             text = ComposeRoutePager.TITLE, fontSize = 18.sp, color = Color(0xFF7B7FE4)
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Image(
-            modifier = Modifier.size(250.dp),
-            painter = rememberAsyncImagePainter(ComposeRoutePager.LOGO),
+        SlockCachedImage(
+            source = ComposeRoutePager.LOGO,
             contentDescription = null,
+            modifier = Modifier.size(250.dp)
         )
 
         Row(verticalAlignment = Alignment.CenterVertically) {

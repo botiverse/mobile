@@ -5,8 +5,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
-import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -104,8 +102,8 @@ private fun AuthTopBar(statusBarHeight: Float) {
 
 @Composable
 private fun AuthSmallBrand() {
-    Image(
-        painter = rememberAsyncImagePainter(SlockLockupLightPngDataUri),
+    SlockCachedImage(
+        source = SlockLockupLightPngDataUri,
         contentDescription = null,
         modifier = Modifier.width(143.dp).height(31.dp)
     )
@@ -135,8 +133,8 @@ internal fun AuthBrandBlock(modifier: Modifier = Modifier) {
 
 @Composable
 internal fun AuthCenterMark(modifier: Modifier = Modifier) {
-    Image(
-        painter = rememberAsyncImagePainter(SlockIconPngDataUri),
+    SlockCachedImage(
+        source = SlockIconPngDataUri,
         contentDescription = null,
         modifier = modifier.width(44.dp).height(41.dp)
     )
@@ -422,8 +420,8 @@ internal fun AuthProviderIcon(provider: AuthProvider) {
             AuthProvider.Google -> GoogleIconDataUri
             AuthProvider.GitHub -> GitHubIconDataUri
         }
-    Image(
-        painter = rememberAsyncImagePainter(source),
+    SlockCachedImage(
+        source = source,
         contentDescription = null,
         modifier = Modifier.size(18.dp)
     )
