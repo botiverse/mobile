@@ -629,6 +629,9 @@ private fun ThreadMessagesList(
                     onOpenMember = { onThreadEvent("openMember", it, null, null) },
                     onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
                     onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                    onTaskStatusChange = { taskId, status ->
+                        onThreadEvent("setTaskStatus", taskId, null, status.key)
+                    },
                     onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) }
                 )
             }
@@ -770,6 +773,7 @@ private fun ThreadMessageCard(
     onOpenMember: (String) -> Unit,
     onOpenThread: (String) -> Unit,
     onOpenTask: (String) -> Unit,
+    onTaskStatusChange: (String, ThreadTaskStatusOption) -> Unit,
     onOpenAttachment: (String) -> Unit
 ) {
     val horizontalArrangement =
@@ -847,7 +851,8 @@ private fun ThreadMessageCard(
                         showReplyAction = showReplyAction,
                         alignEnd = alignOwnMessageRight,
                         onOpenThread = { onOpenThread(message.id) },
-                        onOpenTask = onOpenTask
+                        onOpenTask = onOpenTask,
+                        onTaskStatusChange = onTaskStatusChange
                     )
                 }
                 if (alignOwnMessageRight) {
@@ -870,11 +875,13 @@ private fun ThreadMessageFooterMeta(
     showReplyAction: Boolean,
     alignEnd: Boolean,
     onOpenThread: () -> Unit,
-    onOpenTask: (String) -> Unit
+    onOpenTask: (String) -> Unit,
+    onTaskStatusChange: (String, ThreadTaskStatusOption) -> Unit
 ) {
     val hasTask = !message.taskId.isNullOrBlank()
     val hasReplies = showReplyAction && message.replyCount > 0
     if (!hasTask && !hasReplies) return
+    var statusSheetOpen by remember(message.id, message.taskStatus) { mutableStateOf(false) }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -891,13 +898,29 @@ private fun ThreadMessageFooterMeta(
                         append(it.removePrefix("@"))
                     }
                 }
+            val selectedStatus = message.taskStatus.threadTaskStatusOption()
             ThreadMetaChip(
                 label = label,
-                icon = "circle-check-big",
-                color = message.taskStatus.threadTaskStatusColor(),
-                onClick = { message.taskId?.let(onOpenTask) },
+                icon = selectedStatus.icon,
+                color = selectedStatus.color,
+                onClick = { statusSheetOpen = true },
                 modifier = Modifier.weight(1f, fill = false)
             )
+            if (statusSheetOpen) {
+                ThreadTaskStatusSheet(
+                    message = message,
+                    selectedStatus = selectedStatus,
+                    onDismiss = { statusSheetOpen = false },
+                    onOpenTask = {
+                        statusSheetOpen = false
+                        message.taskId?.let(onOpenTask)
+                    },
+                    onStatusSelected = { status ->
+                        statusSheetOpen = false
+                        message.taskId?.let { taskId -> onTaskStatusChange(taskId, status) }
+                    }
+                )
+            }
         }
         if (hasReplies) {
             ThreadMetaChip(
@@ -907,6 +930,109 @@ private fun ThreadMessageFooterMeta(
                 onClick = onOpenThread,
                 modifier = Modifier.weight(1f, fill = false)
             )
+        }
+    }
+}
+
+private data class ThreadTaskStatusOption(
+    val key: String,
+    val label: String,
+    val icon: String,
+    val color: Color
+)
+
+private val threadTaskStatusOptions =
+    listOf(
+        ThreadTaskStatusOption("Todo", "Todo", "circle", SlockColor.AccentOrange),
+        ThreadTaskStatusOption("InProgress", "In progress", "play", SlockColor.AccentCyan),
+        ThreadTaskStatusOption("InReview", "In review", "eye", SlockColor.AccentLavender),
+        ThreadTaskStatusOption("Done", "Done", "circle-check-big", SlockColor.AccentLime),
+        ThreadTaskStatusOption("Closed", "Closed", "ban", SlockColor.AccentRed)
+    )
+
+private fun String?.threadTaskStatusOption(): ThreadTaskStatusOption {
+    val normalized =
+        this?.trim()?.lowercase().orEmpty().replace("-", "").replace("_", "").replace(" ", "")
+    return threadTaskStatusOptions.firstOrNull { option ->
+        option.key.lowercase() == normalized ||
+            option.label.lowercase().replace(" ", "") == normalized
+    } ?: threadTaskStatusOptions.first()
+}
+
+@Composable
+private fun ThreadTaskStatusSheet(
+    message: KuiklyThreadMessageItem,
+    selectedStatus: ThreadTaskStatusOption,
+    onDismiss: () -> Unit,
+    onOpenTask: () -> Unit,
+    onStatusSelected: (ThreadTaskStatusOption) -> Unit
+) {
+    SlockModalLayer(
+        title = "Task status",
+        subtitle =
+            listOfNotNull(
+                message.taskNumber?.let { "#$it" },
+                message.taskAssigneeName?.takeIf { it.isNotBlank() }?.let {
+                    "@${it.removePrefix("@")}"
+                }
+            ).joinToString(" "),
+        onDismiss = onDismiss
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            threadTaskStatusOptions.forEach { status ->
+                ThreadTaskStatusSheetRow(
+                    status = status,
+                    selected = status.key == selectedStatus.key,
+                    onClick = { onStatusSelected(status) }
+                )
+            }
+            SlockActionSheetRow(
+                title = "Open task",
+                subtitle = message.taskNumber?.let { "#$it" }.orEmpty(),
+                icon = "external-link",
+                onClick = onOpenTask
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadTaskStatusSheetRow(
+    status: ThreadTaskStatusOption,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        modifier =
+            Modifier.fillMaxWidth()
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier =
+                    Modifier.size(34.dp)
+                        .background(status.color)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon(status.icon, modifier = Modifier.size(17.dp))
+            }
+            Text(
+                text = status.label,
+                style = SlockType.ButtonBold,
+                color = SlockColor.TextBlack,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (selected) {
+                SlockLucideIcon("check", modifier = Modifier.size(16.dp))
+            }
         }
     }
 }
@@ -992,16 +1118,6 @@ private fun ThreadMessageActionSheet(
     }
 }
 
-private fun String?.threadTaskStatusColor(): Color =
-    when (this?.trim()?.lowercase()) {
-        "todo" -> SlockColor.AccentOrange
-        "inprogress", "in_progress", "in progress" -> SlockColor.AccentCyan
-        "inreview", "in_review", "in review" -> SlockColor.AccentLavender
-        "done" -> SlockColor.AccentLime
-        "closed" -> SlockColor.AccentRed
-        else -> SlockColor.AccentOrange
-    }
-
 @Composable
 private fun ThreadOriginCard(
     payload: KuiklyThreadScreenPayload,
@@ -1063,6 +1179,7 @@ private fun ThreadOriginCard(
                         onOpenMember = {},
                         onOpenThread = {},
                         onOpenTask = {},
+                        onTaskStatusChange = { _, _ -> },
                         onOpenAttachment = {}
                     )
                 } ?: payload.originPreview?.takeIf { it.isNotBlank() }?.let {

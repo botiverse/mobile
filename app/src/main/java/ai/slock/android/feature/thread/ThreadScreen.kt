@@ -1165,6 +1165,15 @@ private fun ThreadKuiklyScreen(
                             .takeIf { it.isNotBlank() }
                             ?.let(tasksById::get)
                             ?.let { task -> onTaskStatusChange(task, TaskStatus.InProgress) }
+            "setTaskStatus" ->
+                    event.optString("itemId")
+                            .takeIf { it.isNotBlank() }
+                            ?.let(tasksById::get)
+                            ?.let { task ->
+                                event.optString("tab")
+                                        .toKuiklyTaskStatusOrNull()
+                                        ?.let { status -> onTaskStatusChange(task, status) }
+                            }
             "openAttachment" ->
                     event.optString("attachmentId")
                             .takeIf { it.isNotBlank() }
@@ -1479,6 +1488,16 @@ private fun String.toThreadTabOrNull(): ThreadTab? =
             "chat" -> ThreadTab.Chat
             "tasks" -> ThreadTab.Tasks
             "files" -> ThreadTab.Files
+            else -> null
+        }
+
+private fun String.toKuiklyTaskStatusOrNull(): TaskStatus? =
+        when (trim().lowercase().replace("-", "").replace("_", "").replace(" ", "")) {
+            "todo", "open" -> TaskStatus.Todo
+            "inprogress", "progress" -> TaskStatus.InProgress
+            "inreview", "review" -> TaskStatus.InReview
+            "done", "complete", "completed" -> TaskStatus.Done
+            "closed" -> TaskStatus.Closed
             else -> null
         }
 
