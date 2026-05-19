@@ -1442,7 +1442,7 @@ private fun Message.toKuiklyThreadMessageJson(currentMemberId: MemberId?): JSONO
                 .put("avatarLabel", author.avatarLabel)
                 .putNullable("avatarWireValue", author.avatar?.wireValue ?: author.avatarUrl)
                 .putNullable("gravatarHash", author.gravatarHash)
-                .put("timestampLabel", timestampLabel)
+                .put("timestampLabel", timestampLabel.toThreadTimestampLabel())
                 .put("body", body)
                 .put("replyCount", replyCount)
                 .putNullable("taskId", task?.id?.value)
