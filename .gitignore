@@ -26,4 +26,4 @@ artifacts/releases
 
 temp_compose/
 
-.codex/.tmp/
+.agents/.tmp/

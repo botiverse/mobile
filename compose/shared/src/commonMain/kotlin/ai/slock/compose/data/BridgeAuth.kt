@@ -87,6 +87,35 @@ internal class BridgeHomeApi(
     }
 }
 
+internal class BridgeMembersApi(
+    private val bridge: BridgeModule,
+    private val sessionStore: SlockAuthSessionStore,
+    private val baseUrl: String = AUTH_BASE_URL
+) {
+    suspend fun serverMembers(serverId: String): HomeNetworkResponse =
+        request("servers/$serverId/members", serverId)
+
+    private suspend fun request(path: String, serverId: String): HomeNetworkResponse {
+        val session = sessionStore.readSession()
+        val token = session?.accessToken.orEmpty()
+        if (token.isBlank() || serverId.isBlank()) return HomeNetworkResponse(code = 401, bodyText = null)
+        val response =
+            bridge.authRequest(
+                JSONObject()
+                    .put("url", "${baseUrl.trimEnd('/')}/${path.trimStart('/')}")
+                    .put("method", "GET")
+                    .put("authorization", "Bearer $token")
+                    .put("serverId", serverId)
+            )
+        return HomeNetworkResponse(
+            code = response?.optString("code").orEmpty().toIntOrNull() ?: 0,
+            bodyText = response?.optString("bodyText").takeUnless { it.isNullOrBlank() },
+            errorBodyText = response?.optString("errorBodyText").takeUnless { it.isNullOrBlank() }
+                ?: response?.optString("message").takeUnless { it.isNullOrBlank() }
+        )
+    }
+}
+
 internal class KuiklyAuthSessionStore(
     private val store: SlockRelationalStore
 ) : SlockAuthSessionStore {

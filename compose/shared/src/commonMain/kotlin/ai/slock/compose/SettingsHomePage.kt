@@ -2,6 +2,7 @@ package ai.slock.compose
 
 import ai.slock.compose.base.Utils
 import ai.slock.compose.data.BridgeHomeApi
+import ai.slock.compose.data.BridgeMembersApi
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.HomeSnapshot
@@ -10,7 +11,12 @@ import ai.slock.compose.data.KuiklyRelationalStore
 import ai.slock.compose.data.SharedHomeDataSource
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.parseSlockHome
+import ai.slock.compose.model.AgentStatus
+import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
@@ -41,6 +47,12 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.Json
 
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
@@ -201,11 +213,7 @@ private fun SlockAppShellContent() {
                     subtitle = "Shared task surface will mount here",
                     iconName = "square-check-big"
                 )
-                "members" -> AppShellPlaceholderContent(
-                    title = "Members",
-                    subtitle = "Shared members surface will mount here",
-                    iconName = "users"
-                )
+                "members" -> SharedMembersScreen(bridge)
                 else -> SharedHomeScreen(bridge)
             }
         }
@@ -217,6 +225,182 @@ private fun SlockAppShellContent() {
         )
     }
 }
+
+@Composable
+private fun SharedMembersScreen(bridge: ai.slock.compose.base.BridgeModule) {
+    val authStore = remember { KuiklyAuthSessionStore(KuiklyRelationalStore(bridge)) }
+    val membersApi = remember { BridgeMembersApi(bridge, authStore) }
+    var state by remember { mutableStateOf<SharedMembersUiState>(SharedMembersUiState.Loading) }
+
+    LaunchedEffect(Unit) {
+        state = SharedMembersUiState.Loading
+        try {
+            val session = authStore.readSession()
+            val serverId = session?.currentServerId
+            val server = session?.servers?.firstOrNull { it.id == serverId }?.toServerSummary()
+            if (session == null || serverId.isNullOrBlank() || server == null) {
+                state = SharedMembersUiState.Error("server_required")
+                return@LaunchedEffect
+            }
+            val response = membersApi.serverMembers(serverId)
+            state =
+                if (response.isSuccessful) {
+                    val members = response.bodyText?.let(::parseSharedMembers).orEmpty()
+                    SharedMembersUiState.Content(server, members)
+                } else {
+                    SharedMembersUiState.Error(response.errorBodyText?.takeIf { it.isNotBlank() } ?: "members_network")
+                }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            state = SharedMembersUiState.Error("members_network")
+        }
+    }
+
+    when (val current = state) {
+        SharedMembersUiState.Loading ->
+            AppShellPlaceholderContent(
+                title = "Members",
+                subtitle = "Loading...",
+                iconName = "users"
+            )
+        is SharedMembersUiState.Error ->
+            AppShellPlaceholderContent(
+                title = "Members",
+                subtitle = "Could not load members: ${current.code}",
+                iconName = "users"
+            )
+        is SharedMembersUiState.Content ->
+            MembersListContent(
+                payload = KuiklyMembersPayload(
+                    instanceId = current.server.id.value,
+                    title = "Members",
+                    members = current.members
+                ),
+                onAddHuman = { bridge.toast("Add member is not available yet") },
+                onOpenMember = { bridge.toast(it.displayName) }
+            )
+    }
+}
+
+private sealed interface SharedMembersUiState {
+    data object Loading : SharedMembersUiState
+    data class Error(val code: String) : SharedMembersUiState
+    data class Content(val server: ServerSummary, val members: List<MemberProfile>) : SharedMembersUiState
+}
+
+private fun parseSharedMembers(bodyText: String): List<MemberProfile> =
+    runCatching { Json.parseToJsonElement(bodyText).collectMemberProfiles() }
+        .getOrDefault(emptyList())
+        .distinctBy { "${it.kind.name}:${it.id.value}" }
+
+private fun JsonElement.collectMemberProfiles(defaultKind: MemberKind? = null): List<MemberProfile> =
+    when (this) {
+        is JsonArray -> mapNotNull { it.asObjectOrNull()?.toSharedMemberProfile(defaultKind) }
+        is JsonObject -> buildList {
+            this@collectMemberProfiles.toSharedMemberProfile(defaultKind)?.let(::add)
+            addAll(this@collectMemberProfiles.arrayProfiles("members"))
+            addAll(this@collectMemberProfiles.arrayProfiles("items"))
+            addAll(this@collectMemberProfiles.arrayProfiles("results"))
+            addAll(this@collectMemberProfiles.arrayProfiles("humans", MemberKind.Human))
+            addAll(this@collectMemberProfiles.arrayProfiles("users", MemberKind.Human))
+            addAll(this@collectMemberProfiles.arrayProfiles("agents", MemberKind.Agent))
+            val data = this@collectMemberProfiles["data"]
+            if (data is JsonArray) addAll(data.collectMemberProfiles(defaultKind))
+            if (data is JsonObject) addAll(data.collectMemberProfiles(defaultKind))
+        }
+        else -> emptyList()
+    }
+
+private fun JsonObject.arrayProfiles(name: String, defaultKind: MemberKind? = null): List<MemberProfile> =
+    (this[name] as? JsonArray)?.collectMemberProfiles(defaultKind).orEmpty()
+
+private fun JsonObject.toSharedMemberProfile(defaultKind: MemberKind? = null): MemberProfile? {
+    val profile = firstObject("profile", "user", "account", "member", "agent") ?: this
+    val kind = explicitMemberKind(defaultKind, profile)
+    val id =
+        profile.string("id", "memberId", "userId", "agentId", "_id")
+            ?: string("id", "memberId", "userId", "agentId", "_id")
+            ?: return null
+    val displayName =
+        profile.string("displayName", "name", "username", "email")
+            ?: string("displayName", "name", "username", "email")
+            ?: id
+    val handle =
+        profile.string("handle", "username", "email")
+            ?: string("handle", "username", "email")
+            ?: displayName
+    val avatarWireValue =
+        profile.avatarWireValue()
+            ?: avatarWireValue()
+    val gravatarHash =
+        profile.string("gravatarHash", "gravatar_hash", "gravatar", "gravatarMd5", "gravatar_md5")
+            ?: string("gravatarHash", "gravatar_hash", "gravatar", "gravatarMd5", "gravatar_md5")
+    val agentStatus = AgentStatus.fromWireValue(profile.string("agentStatus", "activity", "status") ?: string("agentStatus", "activity", "status"))
+    return MemberProfile(
+        id = MemberId(id),
+        displayName = displayName,
+        handle = handle,
+        kind = kind,
+        description = profile.string("description") ?: string("description"),
+        roleDescription = profile.string("roleDescription", "role") ?: string("roleDescription", "role"),
+        avatarUrl = avatarWireValue?.takeIf { it.startsWith("http://") || it.startsWith("https://") },
+        gravatarHash = gravatarHash,
+        avatar = AvatarReference.fromWireValue(avatarWireValue),
+        avatarLabel = displayName.take(1).uppercase(),
+        presence = (profile.string("presence", "availability") ?: string("presence", "availability")).toSharedPresence(),
+        agentStatus = agentStatus,
+        permissionBadges = profile.stringArray("permissionBadges") ?: stringArray("permissionBadges") ?: emptyList()
+    )
+}
+
+private fun JsonObject.explicitMemberKind(defaultKind: MemberKind?, profile: JsonObject): MemberKind =
+    (profile.string("kind", "memberKind", "type", "memberType") ?: string("kind", "memberKind", "type", "memberType"))
+        ?.lowercase()
+        ?.let { value ->
+            when {
+                "agent" in value || "bot" in value -> MemberKind.Agent
+                "system" in value -> MemberKind.System
+                "human" in value || "user" in value -> MemberKind.Human
+                else -> null
+            }
+        }
+        ?: if (profile.boolean("isAgent") == true || boolean("isAgent") == true || firstObject("agent") != null) MemberKind.Agent else null
+        ?: defaultKind
+        ?: MemberKind.Human
+
+private fun String?.toSharedPresence(): Presence =
+    when (this?.trim()?.lowercase()) {
+        "active", "online", "available", "connected", "working", "thinking" -> Presence.Active
+        "away", "idle", "busy" -> Presence.Away
+        else -> Presence.Offline
+    }
+
+private fun JsonElement.asObjectOrNull(): JsonObject? = this as? JsonObject
+
+private fun JsonObject.firstObject(vararg names: String): JsonObject? =
+    names.firstNotNullOfOrNull { name -> this[name] as? JsonObject }
+
+private fun JsonObject.string(vararg names: String): String? =
+    names.firstNotNullOfOrNull { name -> (this[name] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotBlank() } }
+
+private fun JsonObject.boolean(vararg names: String): Boolean? =
+    names.firstNotNullOfOrNull { name -> (this[name] as? JsonPrimitive)?.booleanOrNull }
+
+private fun JsonObject.stringArray(name: String): List<String>? =
+    (this[name] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.takeIf { value -> value.isNotBlank() } }
+
+private fun JsonObject.avatarWireValue(): String? =
+    string(
+        "avatarWireValue",
+        "avatar",
+        "avatarUrl",
+        "avatar_url",
+        "imageUrl",
+        "profileImageUrl",
+        "profileAvatar",
+        "pictureUrl"
+    )
 
 @Composable
 private fun SharedHomeScreen(bridge: ai.slock.compose.base.BridgeModule) {

@@ -2,12 +2,12 @@
 
 ## Kuikly AI Skills
 
-- Workspace-level Kuikly guidance lives under `.codex/`:
-  - `.codex/skills/kuikly-*` contains the vendored skills from
+- Workspace-level Kuikly guidance lives under `.agents/`:
+  - `.agents/skills/kuikly-*` contains the vendored skills from
     `Tencent-TDS/KuiklyUI-AI`.
-  - `.codex/rules/kuiklyComposeDSL.mdc` and `.codex/rules/kuiklyDSL.mdc` contain
+  - `.agents/rules/kuiklyComposeDSL.mdc` and `.agents/rules/kuiklyDSL.mdc` contain
     the Kuikly Compose / Kuikly DSL rules.
-  - `.codex/kuikly-ui-ai-source.txt` records the upstream source and commit.
+  - `.agents/kuikly-ui-ai-source.txt` records the upstream source and commit.
 - For Kuikly, OHOS, shared shell, navigation, assets, native bridge, or
   recomposition work, read the relevant workspace skill/rule first instead of
   relying on Android-native assumptions.
