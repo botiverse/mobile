@@ -530,6 +530,7 @@ fun ThreadScreen(
                                 onRemoveAttachment = onRemoveAttachment,
                                 onRetryAttachment = onRetryAttachment,
                                 onSend = onSend,
+                                onComposerBlur = dismissComposerKeyboard,
                                 focusRequestNonce = composerFocusRequestNonce
                         )
                     }
@@ -695,6 +696,7 @@ fun ThreadScreen(
                                 onRemoveAttachment = onRemoveAttachment,
                                 onRetryAttachment = onRetryAttachment,
                                 onSend = onSend,
+                                onComposerBlur = dismissComposerKeyboard,
                                 focusRequestNonce = composerFocusRequestNonce,
                                 memberSuggestions = memberSuggestions,
                                 channelSuggestions = channelSuggestions,
@@ -822,7 +824,8 @@ fun ThreadScreen(
                                     onAttachFile = onAttachFile,
                                     onRemoveAttachment = onRemoveAttachment,
                                     onRetryAttachment = onRetryAttachment,
-                                    onSend = onSend
+                                    onSend = onSend,
+                                    onComposerBlur = dismissComposerKeyboard
                             )
                         }
                     }
@@ -1539,6 +1542,7 @@ private fun ColumnScope.ThreadScreenLoadFailure(
                 onRemoveAttachment = onRemoveAttachment,
                 onRetryAttachment = onRetryAttachment,
                 onSend = onSend,
+                onComposerBlur = dismissComposerKeyboard,
                 focusRequestNonce = focusRequestNonce
         )
     }
@@ -6662,6 +6666,7 @@ fun ThreadComposerBar(
         memberSuggestions: List<MemberProfile> = emptyList(),
         channelSuggestions: List<ConversationSummary> = emptyList(),
         showAsTaskToggle: Boolean = true,
+        onComposerBlur: () -> Unit = {},
         onComposerTextToolbarShown: () -> Unit = {},
         onComposerTextToolbarHidden: () -> Unit = {},
         focusRequestNonce: Int = 0
@@ -6752,6 +6757,7 @@ fun ThreadComposerBar(
                 event.optString("attachmentId").takeIf { it.isNotBlank() }?.let(onRemoveAttachment)
             }
             "retryAttachments" -> onRetryAttachment()
+            "blur" -> onComposerBlur()
             "send" -> onSend()
         }
     }
@@ -8034,7 +8040,8 @@ private fun ThreadComposerStatesPreview() {
                         placeholder = "#onboarding-artin",
                         onComposerChange = {},
                         onAsTaskChange = {},
-                        onSend = {}
+                        onSend = {},
+                        onComposerBlur = {}
                 )
             }
         }
