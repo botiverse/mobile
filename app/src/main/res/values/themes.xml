@@ -6,6 +6,8 @@
         <item name="android:windowActionBar">false</item>
         <item name="android:windowBackground">@color/slock_surface_cream</item>
         <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">@color/slock_accent_pink</item>
+        <item name="android:textColorHighlight">@color/slock_accent_pink</item>
     </style>
 
     <style name="Theme.Slock.Starting" parent="Theme.SplashScreen">

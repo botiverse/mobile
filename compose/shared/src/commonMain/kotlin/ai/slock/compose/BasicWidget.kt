@@ -61,6 +61,7 @@ import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.TextLayoutResult
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.IntSize
@@ -359,6 +360,72 @@ internal fun TextField(
     placeholder: String = "",
     autoFocus: Boolean = true,
     onValueChange: (String) -> Unit,
+    onBlur: () -> Unit = {},
+    onFocus: () -> Unit = {},
+    keyboardHeightChange: (KeyboardParams) -> Unit = {},
+    textStyle: TextStyle = TextStyle.Default,
+    placeholderColor: Color? = null,
+    cursorBrush: Brush = SolidColor(Color.Black),
+    maxLines: Int = Int.MAX_VALUE,
+    onTextLayout: (TextLayoutResult) -> Unit = {},
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    focusRequester: FocusRequester = remember { FocusRequester() }
+) {
+    var lastFocus by remember { mutableStateOf(false) }
+
+    val currentOnBlur by rememberUpdatedState(onBlur)
+    val currentOnFocus by rememberUpdatedState(onFocus)
+    val currentKeyboardHeightChange by rememberUpdatedState(keyboardHeightChange)
+    val currentOnValueChange by rememberUpdatedState(onValueChange)
+    val currentOnTextLayout by rememberUpdatedState(onTextLayout)
+
+    val updatedModifier = modifier
+        .keyboardHeightChange(currentKeyboardHeightChange)
+        .focusRequester(focusRequester)
+        .onFocusChanged {
+            if (it.isFocused) {
+                if (!lastFocus) {
+                    currentOnFocus()
+                    lastFocus = true
+                }
+            } else if (lastFocus) {
+                currentOnBlur()
+                lastFocus = false
+            }
+        }
+        .let {
+            if (placeholderColor != null) {
+                it.placeHolder(placeholder, placeholderColor)
+            } else it
+        }
+    BasicTextField(
+        modifier = updatedModifier,
+        value = value,
+        onValueChange = currentOnValueChange,
+        textStyle = textStyle,
+        maxLines = maxLines,
+        onTextLayout = currentOnTextLayout,
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        cursorBrush = cursorBrush
+    )
+
+    LaunchedEffect(autoFocus) {
+        if (autoFocus) {
+            delay(100)
+            focusRequester.requestFocus()
+        }
+    }
+}
+
+@Composable
+internal fun TextField(
+    modifier: Modifier = Modifier,
+    value: TextFieldValue,
+    placeholder: String = "",
+    autoFocus: Boolean = true,
+    onValueChange: (TextFieldValue) -> Unit,
     onBlur: () -> Unit = {},
     onFocus: () -> Unit = {},
     keyboardHeightChange: (KeyboardParams) -> Unit = {},

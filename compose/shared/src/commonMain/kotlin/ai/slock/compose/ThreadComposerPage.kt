@@ -34,6 +34,8 @@ import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
+import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -202,7 +204,10 @@ internal fun ThreadComposerContent(
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onKeyboardHeightChange: (Float) -> Unit = {}
 ) {
-    var text by remember(payload.seedText, payload.syncNonce) { mutableStateOf(payload.seedText) }
+    var fieldValue by remember(payload.seedText, payload.syncNonce) {
+        mutableStateOf(payload.seedText.toComposerFieldValueAtEnd())
+    }
+    val text = fieldValue.text
     var asTask by remember(payload.seedAsTask, payload.syncNonce) { mutableStateOf(payload.seedAsTask) }
     var focused by remember(payload.focusRequestNonce, payload.syncNonce) { mutableStateOf(false) }
     var handledFocusRequestNonce by remember(payload.instanceId) { mutableStateOf(payload.focusRequestNonce) }
@@ -253,21 +258,24 @@ internal fun ThreadComposerContent(
 
     fun insertNewline() {
         if (!payload.enabled) return
-        text += "\n"
-        emitChange()
+        val next = fieldValue.insertTextAtSelection("\n")
+        fieldValue = next
+        emitChange(nextText = next.text)
         focused = true
     }
 
     fun applyMemberSuggestion(member: KuiklyComposerMemberItem) {
         val trigger = suggestionTrigger as? KuiklyComposerSuggestionTrigger.MemberTrigger ?: return
-        text = text.replaceComposerTrigger(trigger.triggerStart, "@${member.handle} ")
-        emitChange()
+        val next = fieldValue.replaceComposerTrigger(trigger.triggerStart, "@${member.handle} ")
+        fieldValue = next
+        emitChange(nextText = next.text)
     }
 
     fun applyChannelSuggestion(channel: KuiklyComposerChannelItem) {
         val trigger = suggestionTrigger as? KuiklyComposerSuggestionTrigger.ChannelTrigger ?: return
-        text = text.replaceComposerTrigger(trigger.triggerStart, "#${channel.name} ")
-        emitChange()
+        val next = fieldValue.replaceComposerTrigger(trigger.triggerStart, "#${channel.name} ")
+        fieldValue = next
+        emitChange(nextText = next.text)
     }
 
     Column(
@@ -345,12 +353,12 @@ internal fun ThreadComposerContent(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 TextField(
-                    value = text,
+                    value = fieldValue,
                     placeholder = payload.placeholder,
                     autoFocus = shouldAutoFocus,
-                    onValueChange = {
-                        text = it
-                        emitChange()
+                    onValueChange = { next ->
+                        fieldValue = next
+                        emitChange(nextText = next.text)
                     },
                     onFocus = {
                         focused = true
@@ -368,7 +376,7 @@ internal fun ThreadComposerContent(
                         onSend = {
                             if (canSend) {
                                 onEvent("send", null, null, null)
-                                text = ""
+                                fieldValue = "".toComposerFieldValueAtEnd()
                                 asTask = false
                             }
                         }
@@ -431,7 +439,7 @@ internal fun ThreadComposerContent(
                         sending = payload.composerMode == "sending" || payload.composerMode == "uploading"
                     ) {
                         onEvent("send", null, null, null)
-                        text = ""
+                        fieldValue = "".toComposerFieldValueAtEnd()
                         asTask = false
                     }
                 }
@@ -673,5 +681,21 @@ private fun detectKuiklyComposerSuggestionTrigger(text: String): KuiklyComposerS
 
 private fun Char.isComposerSuggestionBoundary(): Boolean = !isLetterOrDigit()
 
-private fun String.replaceComposerTrigger(triggerStart: Int, replacement: String): String =
-    replaceRange(triggerStart, length, replacement)
+private fun String.toComposerFieldValueAtEnd(): TextFieldValue =
+    TextFieldValue(text = this, selection = TextRange(length))
+
+private fun TextFieldValue.replaceComposerTrigger(triggerStart: Int, replacement: String): TextFieldValue {
+    val end = selection.max.coerceIn(0, text.length)
+    val safeStart = triggerStart.coerceIn(0, end)
+    val nextText = text.replaceRange(safeStart, end, replacement)
+    val nextCursor = safeStart + replacement.length
+    return copy(text = nextText, selection = TextRange(nextCursor))
+}
+
+private fun TextFieldValue.insertTextAtSelection(textToInsert: String): TextFieldValue {
+    val start = selection.min.coerceIn(0, text.length)
+    val end = selection.max.coerceIn(0, text.length)
+    val nextText = text.replaceRange(start, end, textToInsert)
+    val nextCursor = start + textToInsert.length
+    return copy(text = nextText, selection = TextRange(nextCursor))
+}

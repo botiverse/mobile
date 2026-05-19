@@ -9512,31 +9512,98 @@ private fun SlockAppContent(
                                             }
 
                                             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
-                                                    .d("Feedback", "navigating_to_channel channelId=${feedbackChannel.channelId?.value}")
+                                                    .d(
+                                                            "Feedback",
+                                                            "navigating_to_channel channelId=${feedbackChannel.channelId?.value} " +
+                                                                    "fromSelectedThreadId=${selectedThreadId.orEmpty()} " +
+                                                                    "replyBackStackSize=${replyThreadBackStack.size}"
+                                                    )
 
                                             // Navigate to feedback channel
                                             val channelId = feedbackChannel.channelId
                                             if (channelId != null) {
-                                                selectedThreadId = channelId.value
-                                                homeRoute = HomeRoute.Thread
-                                                destination = AppDestination.Home
-
-                                                // Pre-fill composer with feedback message
                                                 composerDrafts = composerDrafts.saveComposerDraft(
-                                                        threadId = channelId.value,
+                                                        selectedThreadId,
+                                                        composerValue,
+                                                        composerAsTask,
+                                                        pendingAttachmentFiles,
+                                                        failedAttachmentIds
+                                                )
+                                                val feedbackDraft = ComposerDraft(
                                                         value = feedbackMessage,
                                                         asTask = false,
                                                         attachments = listOf(logAttachment),
                                                         failedAttachmentIds = emptySet()
                                                 )
+                                                composerDrafts = composerDrafts.saveComposerDraft(
+                                                        threadId = channelId.value,
+                                                        value = feedbackDraft.value,
+                                                        asTask = feedbackDraft.asTask,
+                                                        attachments = feedbackDraft.attachments,
+                                                        failedAttachmentIds = feedbackDraft.failedAttachmentIds
+                                                )
+                                                nextThreadNavigationGeneration()
+                                                clearThreadReturnTarget()
+                                                replyThreadBackStack = emptyList()
+                                                threadParentJumpTarget = null
+                                                previousHomeRoute = if (homeRoute == HomeRoute.Thread) null else homeRoute
+                                                homeRoute = HomeRoute.Thread
+                                                destination = AppDestination.Home
+                                                threadTab = ThreadTab.Chat
+                                                selectedThreadId = channelId.value
+                                                attachmentPreviewState = null
+                                                localComposerMessages = emptyList()
+                                                realtimeThreadMessages = emptyList()
+                                                attachmentOpenStates = emptyMap()
                                                 composerValue = feedbackMessage
                                                 composerAsTask = false
                                                 pendingAttachmentFiles = listOf(logAttachment)
                                                 failedAttachmentIds = emptySet()
                                                 composerFocusRequestNonce += 1
                                                 selectedThreadState =
-                                                        selectedThreadState.withComposerStatus(
-                                                                status = ComposerStatus.Ready
+                                                        (localThreadUiState(
+                                                                ThreadId(channelId.value),
+                                                                fallbackHeader = feedbackChannel
+                                                        )
+                                                                ?: ThreadUiState(
+                                                                        ScreenLoadState.Content(
+                                                                                ThreadContent(
+                                                                                        header = feedbackChannel,
+                                                                                        messages = emptyList()
+                                                                                )
+                                                                        ),
+                                                                        serverId = serverId,
+                                                                        composerState =
+                                                                                feedbackChannel.toComposerState()
+                                                                ))
+                                                                .copy(
+                                                                        serverId = serverId,
+                                                                        selectedTab = ThreadTab.Chat,
+                                                                        composerState =
+                                                                                feedbackChannel.toComposerState()
+                                                                                        .copy(
+                                                                                                value = feedbackDraft.value,
+                                                                                                asTask = feedbackDraft.asTask,
+                                                                                                attachmentIds =
+                                                                                                        List(feedbackDraft.attachments.size) {
+                                                                                                            index ->
+                                                                                                            AttachmentId("feedback-attachment-$index")
+                                                                                                        },
+                                                                                                pendingAttachments =
+                                                                                                        feedbackDraft.attachments
+                                                                                                                .toPendingAttachments(
+                                                                                                                        status = PendingAttachmentStatus.Ready,
+                                                                                                                        failedIds = feedbackDraft.failedAttachmentIds
+                                                                                                                ),
+                                                                                                status =
+                                                                                                        ComposerStatus.Ready
+                                                                                        )
+                                                                )
+                                                ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
+                                                        .d(
+                                                                "Feedback",
+                                                                "feedback_composer_targeted channelId=${channelId.value} " +
+                                                                        "replyBackStackCleared=true attachmentCount=1"
                                                         )
 
                                                 // Show success toast

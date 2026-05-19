@@ -19,6 +19,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.runBlocking
+import javax.net.ssl.SSLPeerUnverifiedException
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
@@ -285,6 +286,63 @@ class ComposeSlockApiAdapterTest {
         assertTrue(body.contains("filename=\"sample.png\"") || body.contains("filename=sample.png"))
         assertTrue(body.contains("Content-Type: image/png"))
         assertTrue(body.contains("hello"))
+    }
+
+    @Test
+    fun sslHostnameFailureReturnsNetworkErrorResponse() {
+        val api =
+                ComposeSlockApiAdapter(
+                        store = InMemoryAuthSessionStore(sampleSession),
+                        baseUrl = "https://api.example.test/api/",
+                        httpClient =
+                                HttpClient(
+                                        MockEngine {
+                                            throw SSLPeerUnverifiedException(
+                                                    "Hostname api.slock.ai not verified"
+                                            )
+                                        }
+                                ),
+                        foregroundHttpClient =
+                                HttpClient(
+                                        MockEngine {
+                                            throw SSLPeerUnverifiedException(
+                                                    "Hostname api.slock.ai not verified"
+                                            )
+                                        }
+                                ),
+                        visibleHttpClient =
+                                HttpClient(
+                                        MockEngine {
+                                            throw SSLPeerUnverifiedException(
+                                                    "Hostname api.slock.ai not verified"
+                                            )
+                                        }
+                                ),
+                        backgroundHttpClient =
+                                HttpClient(
+                                        MockEngine {
+                                            throw SSLPeerUnverifiedException(
+                                                    "Hostname api.slock.ai not verified"
+                                            )
+                                        }
+                                ),
+                        logger = {},
+                        warningLogger = {}
+                )
+
+        val response =
+                runBlocking {
+                    withSlockRequestPriority(
+                            priority = SlockRequestPriority.Visible,
+                            key = "channels",
+                            reason = "test_ssl_failure"
+                    ) {
+                        api.channels(SlockRequestPriority.Visible)
+                    }
+                }
+
+        assertEquals(0, response.code())
+        assertEquals("""{"error":"network_unavailable"}""", response.errorBody()?.string())
     }
 
     private class InMemoryAuthSessionStore(

@@ -22,8 +22,10 @@ import io.ktor.client.request.post
 import io.ktor.client.request.url
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
 
 class ComposeSlockApiAdapter(
@@ -234,10 +236,11 @@ class ComposeSlockApiAdapter(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (io: IOException) {
-                throw io
+                warningLogger("compose_api_failed reason=${io::class.java.simpleName}")
+                networkUnavailableResponse()
             } catch (error: Exception) {
                 warningLogger("compose_api_failed reason=${error::class.java.simpleName}")
-                throw IOException(error)
+                networkUnavailableResponse()
             }
 
     private fun RequestBody.bodyAsString(): String {
@@ -276,6 +279,15 @@ class ComposeSlockApiAdapter(
 
     private companion object {
         const val TAG = "SlockComposeApi"
+        val JSON = "application/json; charset=utf-8".toMediaType()
+
+        fun networkUnavailableResponse(): ApiResponse =
+                ApiResponse.error(
+                        code = 0,
+                        errorBody =
+                                """{"error":"network_unavailable"}"""
+                                        .toResponseBody(JSON)
+                )
     }
 }
 
