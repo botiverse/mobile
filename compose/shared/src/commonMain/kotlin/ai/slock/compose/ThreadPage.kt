@@ -651,7 +651,7 @@ private fun ThreadMessagesList(
             verticalArrangement = Arrangement.Bottom
         ) {
             if (payload.originStatus != "none") {
-                item {
+                item(key = payload.originListItemKey()) {
                     ThreadOriginCard(
                         payload = payload,
                         onOpenParentMessage = {
@@ -663,7 +663,7 @@ private fun ThreadMessagesList(
                 }
             }
             if (payload.canLoadMoreBefore) {
-                item {
+                item(key = ThreadOlderMessagesListItemKey) {
                     ThreadInlineActionRow(
                         label = when (payload.olderMessagesStatus) {
                             "loading" -> "Loading older messages…"
@@ -681,7 +681,7 @@ private fun ThreadMessagesList(
                     )
                 }
             }
-            items(payload.messages.size, key = { payload.messages[it].id }) { index ->
+            items(payload.messages.size, key = { payload.messages[it].messageListItemKey() }) { index ->
                 val message = payload.messages[index]
                 if (message.isSystemMessage()) {
                     ThreadSystemMessageRow(
@@ -712,7 +712,7 @@ private fun ThreadMessagesList(
                 }
             }
             if (payload.canLoadMoreAfter) {
-                item {
+                item(key = ThreadNewerMessagesListItemKey) {
                     ThreadInlineActionRow(
                         label = when (payload.newerMessagesStatus) {
                             "loading" -> "Loading new messages…"
@@ -776,6 +776,15 @@ private fun ThreadMessagesList(
         }
     }
 }
+
+private const val ThreadOlderMessagesListItemKey = "thread-page:older-messages"
+private const val ThreadNewerMessagesListItemKey = "thread-page:newer-messages"
+
+private fun KuiklyThreadScreenPayload.originListItemKey(): String =
+    "thread-page:origin:${originParentMessageId ?: originMessage?.id ?: instanceId}"
+
+private fun KuiklyThreadMessageItem.messageListItemKey(): String =
+    "thread-page:message:$id"
 
 private fun KuiklyThreadScreenPayload.latestMessageListItemIndex(): Int {
     if (messages.isEmpty()) return -1
