@@ -66,6 +66,9 @@ struct Index {
     pageData['statusBarHeight'] = this.safeAreaTopPx;
     pageData['safeAreaBottom'] = this.safeAreaBottomPx;
     pageData['navigationBarHeight'] = this.safeAreaBottomPx;
+    const now = new Date();
+    pageData['localOffsetMinutes'] = -now.getTimezoneOffset();
+    pageData['todayEpochDay'] = Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000);
     if (this.supportsHdsTabBar()) {
       pageData['slockNativeTabBarRenderer'] = 'ohosHdsImmersive';
     } else {

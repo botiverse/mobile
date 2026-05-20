@@ -1,5 +1,8 @@
 package ai.slock.android.shared
 
+import ai.slock.compose.model.slockEpochDayForDate
+import java.time.LocalDate
+import java.time.ZoneId
 import org.json.JSONObject
 
 internal object SlockKuiklyPages {
@@ -42,7 +45,10 @@ internal class SlockKuiklyPageData private constructor(
     }
 
     fun toKuiklyMap(): MutableMap<String, Any> =
-            json.toMap().toMutableMap().apply { put("appId", SLOCK_KUIKLY_APP_ID) }
+            json.toMap().toMutableMap().apply {
+                put("appId", SLOCK_KUIKLY_APP_ID)
+                putHostTimeContextIfAbsent()
+            }
 
     private fun put(key: String, value: Any): SlockKuiklyPageData =
             fromJson(json).also { it.json.put(key, value) }
@@ -68,3 +74,14 @@ internal fun slockKuiklyPageIsOpaque(pageName: String): Boolean =
                 pageName == SlockKuiklyPages.APP_SHELL
 
 private const val SLOCK_KUIKLY_APP_ID = 1
+
+private fun MutableMap<String, Any>.putHostTimeContextIfAbsent() {
+    if (!containsKey("localOffsetMinutes")) {
+        val zoneId = ZoneId.systemDefault()
+        put("localOffsetMinutes", zoneId.rules.getOffset(java.time.Instant.now()).totalSeconds / 60)
+    }
+    if (!containsKey("todayEpochDay")) {
+        val today = LocalDate.now(ZoneId.systemDefault())
+        put("todayEpochDay", slockEpochDayForDate(today.year, today.monthValue, today.dayOfMonth))
+    }
+}

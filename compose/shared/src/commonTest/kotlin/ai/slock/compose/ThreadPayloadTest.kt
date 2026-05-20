@@ -85,6 +85,10 @@ class ThreadPayloadTest {
                     joined = true,
                     memberCount = 7,
                     permissions = ConversationPermissions(canSend = true)
+                ),
+                AppShellThreadTimeContext(
+                    localOffsetMinutes = 480,
+                    todayEpochDay = 20593
                 )
             )
 
@@ -95,6 +99,8 @@ class ThreadPayloadTest {
         assertEquals("channel-1", payload.sourceThreadId)
         assertEquals(true, payload.canSend)
         assertEquals(7, payload.membersCount)
+        assertEquals(480, payload.localOffsetMinutes)
+        assertEquals(20593, payload.todayEpochDay)
         assertEquals(false, payload.showReplyActions)
         assertEquals("Message #general", parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId).placeholder)
     }
@@ -154,6 +160,60 @@ class ThreadPayloadTest {
         assertEquals(3, payload.messages.first().replyCount)
         assertEquals("log.txt", payload.messages.first().attachments.first().name)
         assertEquals("https://cdn.example/screen.png", payload.messages.first().attachments[1].thumbnailUrl)
+    }
+
+    @Test
+    fun hydratesSharedThreadAuthorsFromResponseDirectories() {
+        val base =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "general",
+                sourceThreadId = "channel-1",
+                status = "loading",
+                localOffsetMinutes = 480,
+                todayEpochDay = 20593
+            )
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "artin@slock.ai"),
+                accessToken = "access",
+                refreshToken = "refresh"
+            )
+
+        val payload =
+            buildSharedThreadPayloadFromMessagesResponse(
+                basePayload = base,
+                session = session,
+                bodyText =
+                    """
+                    {
+                      "data": {
+                        "messages": [
+                          {
+                            "id": "m1",
+                            "body": "directory author",
+                            "authorId": "u1",
+                            "created_at": "2026-05-19T16:00:00Z"
+                          }
+                        ],
+                        "users": [
+                          {
+                            "id": "u1",
+                            "displayName": "Artin",
+                            "avatar": {"type": "pixel", "key": "robot"}
+                          }
+                        ]
+                      }
+                    }
+                    """.trimIndent()
+            )
+
+        val message = payload.messages.single()
+        assertEquals("Artin", message.authorName)
+        assertEquals("pixel:robot", message.avatarWireValue)
+        assertEquals(true, message.isOwn)
+        assertEquals("2026-05-19T16:00:00Z", message.timestampLabel)
+        assertEquals("00:00", payload.formatTimestampLabel(message.timestampLabel))
     }
 
     @Test

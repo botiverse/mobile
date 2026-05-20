@@ -238,6 +238,9 @@ private fun SlockAppShellContent() {
     var homeState by remember { mutableStateOf<SharedHomeUiState>(SharedHomeUiState.Loading()) }
     val navController = rememberNavController()
     val bottomSafeArea = slockBottomSafeAreaPadding()
+    val threadTimeContext = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.threadTimeContext()
+    }
 
     LaunchedEffect(authGateNonce) {
         authGateState = AppShellAuthGateState.Restoring
@@ -406,7 +409,7 @@ private fun SlockAppShellContent() {
                                 state = homeState,
                                 onStateChange = { homeState = it },
                                 onOpenConversation = { conversation ->
-                                    activeThreadPayload = buildAppShellThreadPayload(conversation)
+                                    activeThreadPayload = buildAppShellThreadPayload(conversation, threadTimeContext)
                                     navController.navigate(AppShellRouteThread)
                                 }
                             )
@@ -1445,7 +1448,21 @@ private fun Presence?.toSharedPresence(): SlockPresence? =
         null -> null
     }
 
-internal fun buildAppShellThreadPayload(conversation: ConversationSummary): KuiklyThreadScreenPayload =
+internal data class AppShellThreadTimeContext(
+    val localOffsetMinutes: Int,
+    val todayEpochDay: Long
+)
+
+private fun com.tencent.kuikly.core.nvi.serialization.json.JSONObject.threadTimeContext(): AppShellThreadTimeContext? {
+    val offset = optString("localOffsetMinutes").toIntOrNull() ?: return null
+    val today = optString("todayEpochDay").toLongOrNull() ?: return null
+    return AppShellThreadTimeContext(offset, today)
+}
+
+internal fun buildAppShellThreadPayload(
+    conversation: ConversationSummary,
+    timeContext: AppShellThreadTimeContext? = null
+): KuiklyThreadScreenPayload =
     KuiklyThreadScreenPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
         title = conversation.name.ifBlank { "Thread" },
@@ -1460,6 +1477,8 @@ internal fun buildAppShellThreadPayload(conversation: ConversationSummary): Kuik
         joined = conversation.joined,
         canSend = conversation.joined && conversation.permissions.canSend,
         membersCount = conversation.memberCount ?: 0,
+        localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
+        todayEpochDay = timeContext?.todayEpochDay,
         showMembersAction = true,
         showSettingsAction = true,
         emptyTitle = "Loading conversation",

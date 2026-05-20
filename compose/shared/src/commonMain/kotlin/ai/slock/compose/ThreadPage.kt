@@ -611,9 +611,16 @@ internal fun buildSharedThreadPayloadFromMessagesResponse(
     runCatching {
         val root = threadPageJson.parseToJsonElement(bodyText)
         val currentUserId = session?.user?.id
+        val authorDirectory = root.collectThreadAuthorProfiles()
         val messages =
             root.collectThreadMessageObjects()
-                .mapIndexedNotNull { index, item -> item.toSharedThreadMessageItem(index, currentUserId) }
+                .mapIndexedNotNull { index, item ->
+                    item.toSharedThreadMessageItem(
+                        index = index,
+                        currentUserId = currentUserId,
+                        authorDirectory = authorDirectory
+                    )
+                }
         basePayload.copy(
             status = if (messages.isEmpty()) "empty" else "content",
             messages = messages,
@@ -671,16 +678,201 @@ private fun JsonElement.collectThreadMessageObjects(): List<JsonObject> =
         else -> emptyList()
     }
 
-private fun JsonObject.toSharedThreadMessageItem(index: Int, currentUserId: String?): KuiklyThreadMessageItem? {
-    val author = firstThreadObject("author", "user", "sender", "member", "agent") ?: this
+private data class ThreadAuthorProfile(
+    val id: String,
+    val displayName: String,
+    val handle: String? = null,
+    val avatarWireValue: String? = null,
+    val gravatarHash: String? = null
+)
+
+private fun JsonElement.collectThreadAuthorProfiles(): Map<String, ThreadAuthorProfile> {
+    val profiles = mutableMapOf<String, ThreadAuthorProfile>()
+    fun add(item: JsonObject) {
+        item.toThreadAuthorProfile()?.let { profile ->
+            profiles[profile.id] = profile
+        }
+    }
+    fun collect(element: JsonElement?) {
+        when (element) {
+            is JsonArray -> element.forEach { collect(it) }
+            is JsonObject -> {
+                val directDirectory =
+                    listOf(
+                        "authors",
+                        "members",
+                        "users",
+                        "agents",
+                        "participants",
+                        "profiles",
+                        "memberProfiles",
+                        "member_profiles"
+                    )
+                        .any { element[it] is JsonArray }
+                if (directDirectory) {
+                    listOf(
+                        "authors",
+                        "members",
+                        "users",
+                        "agents",
+                        "participants",
+                        "profiles",
+                        "memberProfiles",
+                        "member_profiles"
+                    ).forEach { key -> collect(element[key]) }
+                } else {
+                    add(element)
+                }
+                collect(element["data"])
+            }
+            else -> Unit
+        }
+    }
+    collect(this)
+    return profiles
+}
+
+private fun JsonObject.toThreadAuthorProfile(): ThreadAuthorProfile? {
+    val nested = nestedThreadProfileObject()
+    val id =
+        threadString(
+            "id",
+            "_id",
+            "memberId",
+            "member_id",
+            "userId",
+            "user_id",
+            "agentId",
+            "agent_id",
+            "authorId",
+            "author_id",
+            "senderId",
+            "sender_id"
+        )
+            ?: nested?.toThreadAuthorProfile()?.id
+            ?: return null
+    val name =
+        threadString(
+            "displayName",
+            "display_name",
+            "name",
+            "username",
+            "title",
+            "label",
+            "handle",
+            "email"
+        )
+            ?: nested?.toThreadAuthorProfile()?.displayName
+            ?: id
+    val nestedProfile = nested?.toThreadAuthorProfile()
+    return ThreadAuthorProfile(
+        id = id,
+        displayName = name,
+        handle = threadString("handle", "username", "email") ?: nestedProfile?.handle,
+        avatarWireValue = threadAvatarWireValue() ?: nestedProfile?.avatarWireValue,
+        gravatarHash =
+            threadString("gravatarHash", "gravatar_hash", "gravatarMd5", "gravatar_md5", "gravatar")
+                ?: nestedProfile?.gravatarHash
+    )
+}
+
+private fun JsonObject.toSharedThreadMessageItem(
+    index: Int,
+    currentUserId: String?,
+    authorDirectory: Map<String, ThreadAuthorProfile>
+): KuiklyThreadMessageItem? {
+    val author =
+        firstThreadObject(
+            "author",
+            "user",
+            "sender",
+            "member",
+            "agent",
+            "createdBy",
+            "createdByUser",
+            "senderUser",
+            "authorAgent"
+        )
     val id = threadString("id", "messageId", "message_id", "_id") ?: "message-$index"
+    val flatAuthorId =
+        threadString(
+            "authorId",
+            "author_id",
+            "senderId",
+            "sender_id",
+            "userId",
+            "user_id",
+            "memberId",
+            "member_id",
+            "createdById",
+            "created_by_id",
+            "createdByUserId",
+            "created_by_user_id",
+            "senderUserId",
+            "sender_user_id",
+            "agentId",
+            "agent_id",
+            "authorAgentId",
+            "author_agent_id",
+            "agentUserId",
+            "agent_user_id"
+        )
     val authorId =
-        author.threadString("id", "userId", "user_id", "memberId", "member_id", "agentId", "agent_id")
-            ?: threadString("authorId", "author_id", "userId", "user_id", "memberId", "member_id")
+        author?.threadString("id", "_id", "userId", "user_id", "memberId", "member_id", "agentId", "agent_id")
+            ?: flatAuthorId
             ?: "unknown"
+    val directoryAuthor = authorDirectory[authorId]
     val authorName =
-        author.threadString("displayName", "display_name", "name", "username", "email")
-            ?: threadString("authorName", "author_name", "displayName", "display_name")
+        author?.threadString("displayName", "display_name", "name", "username", "title", "label", "handle", "email")
+            ?: directoryAuthor?.displayName
+            ?: threadString(
+                "authorDisplayName",
+                "author_display_name",
+                "authorName",
+                "author_name",
+                "senderDisplayName",
+                "sender_display_name",
+                "senderName",
+                "sender_name",
+                "userDisplayName",
+                "user_display_name",
+                "userName",
+                "user_name",
+                "createdByName",
+                "created_by_name",
+                "createdByDisplayName",
+                "created_by_display_name",
+                "createdByUsername",
+                "created_by_username",
+                "createdByUserDisplayName",
+                "created_by_user_display_name",
+                "agentName",
+                "agent_name",
+                "agentDisplayName",
+                "agent_display_name",
+                "agentUsername",
+                "agent_username",
+                "agentTitle",
+                "agent_title",
+                "authorAgentName",
+                "author_agent_name",
+                "authorAgentDisplayName",
+                "author_agent_display_name",
+                "senderAgentName",
+                "sender_agent_name",
+                "senderAgentDisplayName",
+                "sender_agent_display_name",
+                "profileDisplayName",
+                "profile_display_name",
+                "profileName",
+                "profile_name",
+                "authorHandle",
+                "author_handle",
+                "senderHandle",
+                "sender_handle",
+                "displayName",
+                "display_name"
+            )
             ?: "Unknown"
     val body = threadString("body", "content", "text", "markdown", "message").orEmpty()
     val messageType =
@@ -689,11 +881,13 @@ private fun JsonObject.toSharedThreadMessageItem(index: Int, currentUserId: Stri
             ?.let { "System" }
             ?: "Chat"
     val avatarWireValue =
-        author.threadAvatarWireValue()
+        author?.threadAvatarWireValue()
+            ?: directoryAuthor?.avatarWireValue
             ?: threadAvatarWireValue()
     val gravatarHash =
-        author.threadString("gravatarHash", "gravatar_hash", "gravatarMd5", "gravatar_md5")
-            ?: threadString("gravatarHash", "gravatar_hash", "gravatarMd5", "gravatar_md5")
+        author?.threadString("gravatarHash", "gravatar_hash", "gravatarMd5", "gravatar_md5", "gravatar")
+            ?: directoryAuthor?.gravatarHash
+            ?: threadString("gravatarHash", "gravatar_hash", "gravatarMd5", "gravatar_md5", "gravatar")
     return KuiklyThreadMessageItem(
         id = id,
         authorId = authorId,
@@ -702,7 +896,18 @@ private fun JsonObject.toSharedThreadMessageItem(index: Int, currentUserId: Stri
         avatarLabel = authorName.take(1).uppercase(),
         avatarWireValue = avatarWireValue,
         gravatarHash = gravatarHash,
-        timestampLabel = threadString("timestampLabel", "timestamp_label", "createdAt", "created_at", "timestamp", "updatedAt", "updated_at").orEmpty(),
+        timestampLabel =
+            threadString(
+                "timestampLabel",
+                "timestamp_label",
+                "createdAt",
+                "created_at",
+                "sentAt",
+                "sent_at",
+                "timestamp",
+                "updatedAt",
+                "updated_at"
+            ).orEmpty(),
         messageType = messageType,
         systemEventType = threadString("systemEventType", "system_event_type", "eventType", "event_type"),
         metadata = (this["metadata"] as? JsonObject).threadStringMap(),
@@ -776,6 +981,9 @@ private fun JsonObject.threadAvatarWireValue(): String? {
 
 private fun JsonObject.firstThreadObject(vararg names: String): JsonObject? =
     names.firstNotNullOfOrNull { name -> this[name] as? JsonObject }
+
+private fun JsonObject.nestedThreadProfileObject(): JsonObject? =
+    firstThreadObject("profile", "member", "user", "agent", "author", "sender")
 
 private fun JsonObject.threadString(vararg names: String): String? =
     names.firstNotNullOfOrNull { name ->
