@@ -41,11 +41,25 @@ internal class SlockKuiklyPageData private constructor(
         return fromJson(json).put("instanceId", instanceId)
     }
 
+    fun withHostSafeArea(statusBarHeightPx: Int, navigationBarHeightPx: Int): SlockKuiklyPageData =
+            fromJson(json).also { copy ->
+                copy.putPositiveIfMissing("safeAreaTop", statusBarHeightPx)
+                copy.putPositiveIfMissing("statusBarHeight", statusBarHeightPx)
+                copy.putPositiveIfMissing("safeAreaBottom", navigationBarHeightPx)
+                copy.putPositiveIfMissing("navigationBarHeight", navigationBarHeightPx)
+            }
+
     fun toKuiklyMap(): MutableMap<String, Any> =
             json.toMap().toMutableMap().apply { put("appId", SLOCK_KUIKLY_APP_ID) }
 
     private fun put(key: String, value: Any): SlockKuiklyPageData =
             fromJson(json).also { it.json.put(key, value) }
+
+    private fun putPositiveIfMissing(key: String, value: Int) {
+        if (value > 0 && json.optDouble(key, 0.0) <= 0.0) {
+            json.put(key, value)
+        }
+    }
 
     companion object {
         fun empty(): SlockKuiklyPageData = SlockKuiklyPageData(JSONObject())
