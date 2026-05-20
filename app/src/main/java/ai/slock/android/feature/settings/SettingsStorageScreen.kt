@@ -3,8 +3,6 @@ package ai.slock.android.feature.settings
 import ai.slock.android.R
 import ai.slock.android.core.data.storage.StorageClearTarget
 import ai.slock.android.core.data.storage.StorageManagementSnapshot
-import ai.slock.android.shared.SlockKuiklyActivity
-import ai.slock.android.shared.SlockKuiklyPageIsland
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.icons.LucideIcons
@@ -51,79 +49,13 @@ fun SettingsStorageScreen(
         onRefresh: () -> Unit = {},
         onClear: (StorageClearTarget) -> Unit = {}
 ) {
-    SlockKuiklyPageIsland(
-            pageName = SlockKuiklyActivity.PAGE_SETTINGS_STORAGE,
-            pageData =
-                    snapshot.toKuiklyStoragePageData(
-                            labels =
-                                    SettingsStorageKuiklyLabels(
-                                            totalTitle =
-                                                    stringResource(
-                                                            R.string.settings_storage_total_title
-                                                    ),
-                                            refreshLabel =
-                                                    stringResource(
-                                                            R.string.settings_storage_refresh
-                                                    ),
-                                            databaseTitle =
-                                                    stringResource(
-                                                            R.string
-                                                                    .settings_storage_database_title
-                                                    ),
-                                            databaseDetail =
-                                                    stringResource(
-                                                            R.string
-                                                                    .settings_storage_database_detail
-                                                    ),
-                                            imageCacheTitle =
-                                                    stringResource(
-                                                            R.string
-                                                                    .settings_storage_image_cache_title
-                                                    ),
-                                            imageCacheDetail =
-                                                    stringResource(
-                                                            R.string
-                                                                    .settings_storage_image_cache_detail
-                                                    ),
-                                            clearImageCache =
-                                                    stringResource(
-                                                            R.string
-                                                                    .settings_storage_clear_image_cache
-                                                    ),
-                                            tempLogsTitle =
-                                                    stringResource(
-                                                            R.string
-                                                                    .settings_storage_temp_logs_title
-                                                    ),
-                                            tempLogsDetail =
-                                                    stringResource(
-                                                            R.string
-                                                                    .settings_storage_temp_logs_detail
-                                                    ),
-                                            clearTempLogs =
-                                                    stringResource(
-                                                            R.string
-                                                                    .settings_storage_clear_temp_logs
-                                                    ),
-                                            safeClearNote =
-                                                    stringResource(
-                                                            R.string
-                                                                    .settings_storage_safe_clear_note
-                                                    )
-                                    ),
-                            actionInProgress = actionInProgress,
-                            feedback = feedback
-                    ),
-            modifier = modifier.fillMaxSize(),
-            onEvent = { event ->
-                when (event.optString("action")) {
-                    "refreshStorage" -> onRefresh()
-                    "clearStorage" ->
-                            event.optString("itemId")
-                                    .toStorageClearTargetOrNull()
-                                    ?.let(onClear)
-                }
-            }
+    SettingsStorageNativeContent(
+            snapshot = snapshot,
+            actionInProgress = actionInProgress,
+            feedback = feedback,
+            modifier = modifier,
+            onRefresh = onRefresh,
+            onClear = onClear
     )
 }
 

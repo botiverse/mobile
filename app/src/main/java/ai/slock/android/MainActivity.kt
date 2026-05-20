@@ -107,7 +107,6 @@ import ai.slock.android.core.data.storage.StorageClearTarget
 import ai.slock.android.core.data.storage.StorageManagementRepository
 import ai.slock.android.core.data.storage.StorageManagementSnapshot
 import ai.slock.android.shared.SlockKuiklyActivity
-import ai.slock.android.shared.SlockKuiklyPageIsland
 import ai.slock.android.core.model.Attachment
 import ai.slock.android.core.model.AttachmentId
 import ai.slock.android.core.model.AvatarReference
@@ -10064,23 +10063,13 @@ private fun AuthRouteScreen(
         onAuthProviderUnavailable: (String) -> Unit,
         modifier: Modifier = Modifier
 ) {
-    if (route != AuthRoute.Login) {
-        BackHandler { onRouteChange(AuthRoute.Login) }
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        SlockKuiklyActivity.startAppShell(context)
+        context.findComponentActivity()?.finish()
     }
-    SlockKuiklyPageIsland(
-            pageName = route.sharedAuthPageName,
-            pageData = JSONObject(),
-            modifier = modifier.fillMaxSize()
-    )
+    AuthRestoreScreen(modifier = modifier)
 }
-
-private val AuthRoute.sharedAuthPageName: String
-    get() =
-            when (this) {
-                AuthRoute.Login -> SlockKuiklyActivity.PAGE_LOGIN
-                AuthRoute.ForgotPassword -> SlockKuiklyActivity.PAGE_FORGOT_PASSWORD
-                AuthRoute.CreateAccount -> SlockKuiklyActivity.PAGE_REGISTER
-            }
 
 @Composable
 private fun ServerGateScreen(

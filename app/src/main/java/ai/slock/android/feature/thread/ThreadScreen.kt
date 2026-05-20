@@ -4550,37 +4550,12 @@ private fun ThreadFilesPanel(
         onLoadMore: () -> Unit,
         modifier: Modifier = Modifier
 ) {
-    val loadState = state?.loadState ?: ScreenLoadState.Loading
-    val payloadJson = remember(state) { state.toKuiklyThreadFilesPayload().toString() }
-    SideEffect {
-        ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
-                "SlockThreadFiles",
-                "kuikly_panel_render status=${loadState.threadFilesStatusName()} items=${loadState.threadFilesItemCount()} hasMore=${loadState.threadFilesHasMore()} loadingMore=${state?.loadingMore == true} payloadBytes=${payloadJson.length}"
-        )
-    }
-    val attachmentsById =
-            remember(loadState) {
-                ((loadState as? ScreenLoadState.Content)?.data?.items.orEmpty())
-                        .associate { it.attachment.id.value to it.attachment }
-            }
-    SlockKuiklyPageIsland(
-            pageName = SlockKuiklyActivity.PAGE_THREAD_FILES,
-            pageData = JSONObject().put("payload", payloadJson),
-            modifier = modifier.fillMaxSize(),
-            onEvent = { event ->
-                val action = event.optString("action")
-                val attachmentId = event.optString("attachmentId")
-                ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
-                        "SlockThreadFiles",
-                        "kuikly_panel_event action=$action attachmentId=$attachmentId hasAttachment=${attachmentsById.containsKey(attachmentId)} mapSize=${attachmentsById.size}"
-                )
-                when (action) {
-                    "open", "download" ->
-                            attachmentsById[attachmentId]?.let(onOpenAttachment)
-                    "loadMore" -> onLoadMore()
-                    "retry" -> onRetry()
-                }
-            }
+    LegacyThreadFilesPanel(
+            state = state,
+            onOpenAttachment = onOpenAttachment,
+            onRetry = onRetry,
+            onLoadMore = onLoadMore,
+            modifier = modifier
     )
 }
 

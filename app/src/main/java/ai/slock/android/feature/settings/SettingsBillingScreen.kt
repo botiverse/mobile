@@ -29,8 +29,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import ai.slock.android.R
-import ai.slock.android.shared.SlockKuiklyActivity
-import ai.slock.android.shared.SlockKuiklyPageIsland
 import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.components.SlockKeySurface
@@ -74,32 +72,11 @@ fun SettingsBillingScreen(
     modifier: Modifier = Modifier,
     onChoosePlan: (String) -> Unit = {}
 ) {
-    SlockKuiklyPageIsland(
-        pageName = SlockKuiklyActivity.PAGE_SETTINGS_BILLING,
-        pageData =
-            currentPlan.toKuiklyBillingPageData(
-                plans = plans,
-                labels =
-                    SettingsBillingKuiklyLabels(
-                        trialActive = stringResource(R.string.settings_billing_trial_active),
-                        trialDetail = stringResource(R.string.settings_billing_trial_detail),
-                        currentPlan = stringResource(R.string.settings_billing_current_plan),
-                        usage = stringResource(R.string.settings_billing_usage),
-                        currentPlanButton =
-                            stringResource(R.string.settings_billing_current_plan_button),
-                        choosePlan = stringResource(R.string.settings_billing_choose_plan),
-                        comingSoon = stringResource(R.string.settings_billing_coming_soon),
-                        loading = stringResource(R.string.settings_billing_loading),
-                        error = stringResource(R.string.settings_billing_error),
-                        noPermission = stringResource(R.string.settings_billing_no_permission)
-                    )
-            ),
-        modifier = modifier.fillMaxSize(),
-        onEvent = { event ->
-            when (event.optString("action")) {
-                "choosePlan" -> event.optString("itemId").takeIf { it.isNotBlank() }?.let(onChoosePlan)
-            }
-        }
+    SettingsBillingNativeContent(
+        currentPlan = currentPlan,
+        plans = plans,
+        modifier = modifier,
+        onChoosePlan = onChoosePlan
     )
 }
 

@@ -25,8 +25,6 @@ import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Presence
 import ai.slock.android.feature.members.MemberFlatRow
-import ai.slock.android.shared.SlockKuiklyActivity
-import ai.slock.android.shared.SlockKuiklyPageIsland
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
@@ -129,19 +127,11 @@ fun SettingsComputersKuiklyScreen(
         onAddComputer: () -> Unit = {},
         onOpenComputer: (String) -> Unit = {}
 ) {
-    SlockKuiklyPageIsland(
-            pageName = SlockKuiklyActivity.PAGE_SETTINGS_COMPUTERS,
-            pageData = snapshot.toKuiklyComputersPageData(),
-            modifier = modifier.fillMaxSize(),
-            onEvent = { event ->
-                when (event.optString("action")) {
-                    "addComputer" -> onAddComputer()
-                    "openComputer" ->
-                            event.optString("itemId")
-                                    .takeIf { it.isNotBlank() }
-                                    ?.let(onOpenComputer)
-                }
-            }
+    SettingsComputersScreen(
+            snapshot = snapshot,
+            modifier = modifier,
+            onAddComputer = onAddComputer,
+            onOpenComputer = onOpenComputer
     )
 }
 
@@ -155,27 +145,14 @@ fun SettingsHomeKuiklyScreen(
         bottomContentPadding: Dp = 0.dp,
         onItemClick: (String) -> Unit = {}
 ) {
-    SlockKuiklyPageIsland(
-            pageName = SlockKuiklyActivity.PAGE_SETTINGS_HOME,
-            pageData =
-                    JSONObject()
-                            .put(
-                                    "payload",
-                                    JSONObject()
-                                            .put("title", title)
-                                            .put("subtitle", subtitle)
-                                            .put("showSelection", showSelection)
-                                            .put("items", items.toJsonArray { it.toKuiklyJson() })
-                                            .toString()
-                            ),
-            modifier = modifier.fillMaxSize().padding(bottom = bottomContentPadding),
-            onEvent = { event ->
-                if (event.optString("action") == "openSettingsDestination") {
-                    event.optString("itemId")
-                            .takeIf { it.isNotBlank() }
-                            ?.let(onItemClick)
-                }
-            }
+    SettingsHomeScreen(
+            items = items,
+            title = title,
+            subtitle = subtitle,
+            showSelection = showSelection,
+            bottomContentPadding = bottomContentPadding,
+            modifier = modifier,
+            onItemClick = onItemClick
     )
 }
 
@@ -186,95 +163,12 @@ fun SettingsAccountKuiklyScreen(
         modifier: Modifier = Modifier,
         onLogout: () -> Unit = {}
 ) {
-    SlockKuiklyPageIsland(
-            pageName = SlockKuiklyActivity.PAGE_SETTINGS_ACCOUNT,
-            pageData =
-                    profile.toKuiklyAccountPageData(
-                            connectedAccounts = connectedAccounts,
-                            labels =
-                                    SettingsAccountKuiklyLabels(
-                                            profileSectionTitle =
-                                                    stringResource(
-                                                            R.string
-                                                                    .settings_account_profile_section
-                                                    ),
-                                            displayNameLabel =
-                                                    stringResource(
-                                                            R.string
-                                                                    .settings_account_display_name_label
-                                                    ),
-                                            displayNamePlaceholder =
-                                                    stringResource(
-                                                            R.string
-                                                                    .settings_account_display_name_placeholder
-                                                    ),
-                                            handleLabel =
-                                                    stringResource(
-                                                            R.string.settings_account_handle_label
-                                                    ),
-                                            emailLabel =
-                                                    stringResource(
-                                                            R.string.settings_account_email_label
-                                                    ),
-                                            verifiedLabel =
-                                                    stringResource(
-                                                            R.string.settings_account_verified
-                                                    ),
-                                            saveChangesLabel =
-                                                    stringResource(
-                                                            R.string.settings_account_save_changes
-                                                    ),
-                                            cancelLabel =
-                                                    stringResource(
-                                                            R.string.settings_account_cancel
-                                                    ),
-                                            connectedAccountsTitle =
-                                                    stringResource(
-                                                            R.string
-                                                                    .settings_account_connected_accounts
-                                                    ),
-                                            connectedLabel =
-                                                    stringResource(
-                                                            R.string.settings_account_connected
-                                                    ),
-                                            connectLabel =
-                                                    stringResource(
-                                                            R.string.settings_account_connect
-                                                    ),
-                                            connectingLabel =
-                                                    stringResource(
-                                                            R.string.settings_account_connecting
-                                                    ),
-                                            failedLabel =
-                                                    stringResource(
-                                                            R.string.settings_account_failed
-                                                    ),
-                                            logoutDetail =
-                                                    stringResource(
-                                                            R.string.settings_account_logout_detail
-                                                    ),
-                                            logoutLabel =
-                                                    stringResource(
-                                                            R.string.settings_account_logout
-                                                    ),
-                                            changePasswordTitle =
-                                                    stringResource(
-                                                            R.string
-                                                                    .settings_account_change_password
-                                                    ),
-                                            changePasswordSubtitle =
-                                                    stringResource(
-                                                            R.string
-                                                                    .settings_account_change_password_subtitle
-                                                    )
-                                    )
-                    ),
-            modifier = modifier.fillMaxSize(),
-            onEvent = { event ->
-                if (event.optString("action") == "logout") {
-                    onLogout()
-                }
-            }
+    SettingsAccountScreen(
+            profile = profile,
+            connectedAccounts = connectedAccounts,
+            modifier = modifier,
+            showOuterBorder = false,
+            onLogout = onLogout
     )
 }
 
@@ -427,20 +321,11 @@ fun SettingsComputerDetailKuiklyScreen(
         onRetryAgents: () -> Unit = {},
         onOpenAgent: (String) -> Unit = {}
 ) {
-    SlockKuiklyPageIsland(
-            pageName = SlockKuiklyActivity.PAGE_SETTINGS_COMPUTER_DETAIL,
-            pageData = snapshot.toKuiklyComputerDetailPageData(),
-            modifier = modifier.fillMaxSize(),
-            onEvent = { event ->
-                when (event.optString("action")) {
-                    "retryWorkspaces" -> onRetryWorkspaces()
-                    "retryAgents" -> onRetryAgents()
-                    "openAgent" ->
-                            event.optString("itemId")
-                                    .takeIf { it.isNotBlank() }
-                                    ?.let(onOpenAgent)
-                }
-            }
+    SettingsComputerDetailScreen(
+            snapshot = snapshot,
+            modifier = modifier,
+            onRetryWorkspaces = onRetryWorkspaces,
+            onRetryAgents = onRetryAgents
     )
 }
 
