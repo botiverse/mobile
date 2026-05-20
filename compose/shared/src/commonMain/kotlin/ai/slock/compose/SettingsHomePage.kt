@@ -75,6 +75,15 @@ const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 
 private const val AppShellRouteMain = "main"
 private const val AppShellRouteThread = "thread"
+private const val SettingsDestinationHome = "home"
+private const val SettingsDestinationAccount = "account"
+private const val SettingsDestinationComputers = "computers"
+private const val SettingsDestinationServer = "server"
+private const val SettingsDestinationBilling = "billing"
+private const val SettingsDestinationMobile = "mobile"
+private const val SettingsDestinationStorage = "storage"
+private const val SettingsDestinationAbout = "about"
+private const val SettingsDestinationRouter = "router"
 
 @Page(SETTINGS_HOME_PAGE, supportInLocal = true)
 internal class ComposeSettingsHomePage : ai.slock.compose.base.BasePager() {
@@ -199,7 +208,7 @@ private fun appShellBottomTabs(selectedKey: String): List<SlockBottomTabItemPayl
 @Composable
 private fun SlockAppShellContent() {
     var selectedTab by remember { mutableStateOf("home") }
-    var selectedSettingsDestination by remember { mutableStateOf("home") }
+    var selectedSettingsDestination by remember { mutableStateOf(SettingsDestinationHome) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val authStore = remember { KuiklyAuthSessionStore(KuiklyRelationalStore(bridge)) }
@@ -312,13 +321,13 @@ private fun SlockAppShellContent() {
             homeServerSwitcherExpanded = false
             return true
         }
-        if (selectedTab == "settings" && selectedSettingsDestination != "home") {
-            selectedSettingsDestination = "home"
+        if (selectedTab == "settings" && selectedSettingsDestination != SettingsDestinationHome) {
+            selectedSettingsDestination = SettingsDestinationHome
             return true
         }
         if (selectedTab != "home") {
             selectedTab = "home"
-            selectedSettingsDestination = "home"
+            selectedSettingsDestination = SettingsDestinationHome
             return true
         }
         return false
@@ -363,22 +372,19 @@ private fun SlockAppShellContent() {
                 Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     when (selectedTab) {
                         "settings" -> {
-                            if (selectedSettingsDestination == "account") {
-                                SettingsAccountContent(settingsAccountSmokePayload) {
-                                    selectedSettingsDestination = "home"
+                            SettingsAppShellContent(
+                                session = (authGateState as? AppShellAuthGateState.Ready)?.session,
+                                authDataSource = authDataSource,
+                                selectedDestination = selectedSettingsDestination,
+                                onDestinationChange = { selectedSettingsDestination = it },
+                                onOpenRouter = { jumpPage(pager, "router") },
+                                onLogout = {
+                                    authGateState = AppShellAuthGateState.AuthRequired
+                                    selectedTab = "home"
+                                    selectedSettingsDestination = SettingsDestinationHome
+                                    activeThreadPayload = null
                                 }
-                            } else {
-                                SettingsHomeContent(
-                                    settingsTabBarSmokePayload.copy(subtitle = "Shared settings"),
-                                    onSelect = {
-                                        if (it == "router") {
-                                            jumpPage(pager, "router")
-                                        } else {
-                                            selectedSettingsDestination = it
-                                        }
-                                    }
-                                )
-                            }
+                            )
                         }
                         "tasks" -> AppShellPlaceholderContent(
                             title = "Tasks",
@@ -411,7 +417,7 @@ private fun SlockAppShellContent() {
                     onSelect = {
                         selectedTab = it
                         if (it != "settings") {
-                            selectedSettingsDestination = "home"
+                            selectedSettingsDestination = SettingsDestinationHome
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -429,6 +435,329 @@ private sealed interface AppShellAuthGateState {
     data class Ready(val session: StoredAuthSession) : AppShellAuthGateState
     data class Error(val message: String) : AppShellAuthGateState
 }
+
+@Composable
+private fun SettingsAppShellContent(
+    session: StoredAuthSession?,
+    authDataSource: SharedAuthDataSource,
+    selectedDestination: String,
+    onDestinationChange: (String) -> Unit,
+    onOpenRouter: () -> Unit,
+    onLogout: () -> Unit
+) {
+    var pendingLogout by remember { mutableStateOf(false) }
+
+    LaunchedEffect(pendingLogout) {
+        if (!pendingLogout) return@LaunchedEffect
+        pendingLogout = false
+        runCatching { authDataSource.logout() }
+        onLogout()
+    }
+
+    if (selectedDestination == SettingsDestinationHome) {
+        SettingsHomeContent(
+            payload = appShellSettingsHomePayload(session, selectedDestination),
+            onSelect = { key ->
+                if (key == SettingsDestinationRouter) {
+                    onOpenRouter()
+                } else {
+                    onDestinationChange(key)
+                }
+            }
+        )
+        return
+    }
+
+    SettingsDetailShell(
+        title = settingsDestinationTitle(selectedDestination),
+        subtitle = settingsDestinationSubtitle(selectedDestination),
+        iconName = settingsDestinationIcon(selectedDestination),
+        onBack = { onDestinationChange(SettingsDestinationHome) }
+    ) {
+        when (selectedDestination) {
+            SettingsDestinationAccount ->
+                SettingsAccountContent(appShellAccountPayload(session)) { action ->
+                    if (action == "logout") {
+                        pendingLogout = true
+                    }
+                }
+            SettingsDestinationComputers ->
+                SettingsComputersContent(appShellComputersPayload()) { _, _ -> }
+            SettingsDestinationStorage ->
+                SettingsStorageContent(appShellStoragePayload()) { _, _ -> }
+            SettingsDestinationBilling ->
+                SettingsBillingContent(appShellBillingPayload(session)) { _, _ -> }
+            SettingsDestinationServer ->
+                SettingsSharedPlaceholder(
+                    title = "Server settings",
+                    detail = "Server profile, admins, invites, onboarding, billing, and danger actions are next in the shared Settings migration.",
+                    iconName = "users"
+                )
+            SettingsDestinationMobile ->
+                SettingsSharedPlaceholder(
+                    title = "Mobile settings",
+                    detail = "Push notifications, language, and mobile layout controls are next in the shared Settings migration.",
+                    iconName = "smartphone"
+                )
+            SettingsDestinationAbout ->
+                SettingsSharedPlaceholder(
+                    title = "About and diagnostics",
+                    detail = "Version, diagnostics, feedback, and sanitized logs are next in the shared Settings migration.",
+                    iconName = "bug"
+                )
+            else ->
+                SettingsSharedPlaceholder(
+                    title = "Settings",
+                    detail = "This Settings section is not available in shared shell yet.",
+                    iconName = "settings"
+                )
+        }
+    }
+}
+
+@Composable
+private fun SettingsDetailShell(
+    title: String,
+    subtitle: String,
+    iconName: String,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(12.dp),
+            verticalAlignment = com.tencent.kuikly.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Button(
+                onClick = onBack,
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+            ) {
+                SlockLucideIcon("arrow-left", modifier = Modifier.size(18.dp))
+            }
+            SlockLucideIcon(iconName, modifier = Modifier.size(24.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    title,
+                    style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                subtitle.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        it,
+                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SettingsSharedPlaceholder(
+    title: String,
+    detail: String,
+    iconName: String
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier.size(52.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = com.tencent.kuikly.compose.ui.Alignment.Center
+        ) {
+            SlockLucideIcon(iconName, modifier = Modifier.size(26.dp))
+        }
+        Text(title, style = SlockType.PageTitle.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+        Text(detail, style = SlockType.Body.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+    }
+}
+
+private fun appShellSettingsHomePayload(
+    session: StoredAuthSession?,
+    selectedDestination: String
+): KuiklySettingsHomePayload =
+    KuiklySettingsHomePayload(
+        title = "Settings",
+        subtitle = session?.currentServerSummary()?.name ?: "Shared settings",
+        showSelection = true,
+        items =
+            listOf(
+                SlockTabItemPayload(
+                    key = SettingsDestinationAccount,
+                    title = "Account",
+                    subtitle = "Profile, email, password, connected accounts",
+                    iconName = "user",
+                    value = session?.user?.bestDisplayName,
+                    selected = selectedDestination == SettingsDestinationAccount
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationComputers,
+                    title = "Computers",
+                    subtitle = "Connected machines and active sessions",
+                    iconName = "monitor",
+                    selected = selectedDestination == SettingsDestinationComputers
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationServer,
+                    title = "Server",
+                    subtitle = "Workspace profile, admins, invites, onboarding",
+                    iconName = "users",
+                    value = session?.currentServerSummary()?.role?.replaceFirstChar { it.uppercase() },
+                    selected = selectedDestination == SettingsDestinationServer
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationBilling,
+                    title = "Billing",
+                    subtitle = "Plan and usage",
+                    iconName = "shield-check",
+                    value = session?.currentServerSummary()?.plan?.replaceFirstChar { it.uppercase() },
+                    selected = selectedDestination == SettingsDestinationBilling
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationMobile,
+                    title = "Mobile",
+                    subtitle = "Push notifications, language, layout",
+                    iconName = "smartphone",
+                    selected = selectedDestination == SettingsDestinationMobile
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationStorage,
+                    title = "Storage",
+                    subtitle = "Local cache and diagnostics",
+                    iconName = "archive",
+                    selected = selectedDestination == SettingsDestinationStorage
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationAbout,
+                    title = "About",
+                    subtitle = "Version, diagnostics, feedback",
+                    iconName = "bug",
+                    selected = selectedDestination == SettingsDestinationAbout
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationRouter,
+                    title = "Smoke previews",
+                    subtitle = "Open Kuikly router and shared test pages",
+                    iconName = "route",
+                    selected = false
+                )
+            )
+    )
+
+private fun appShellAccountPayload(session: StoredAuthSession?): KuiklySettingsAccountPayload {
+    val user = session?.user
+    val displayName = user?.bestDisplayName.orEmpty()
+    return KuiklySettingsAccountPayload(
+        instanceId = "shared-shell-settings-account",
+        profile =
+            KuiklySettingsAccountProfile(
+                displayName = displayName,
+                handle = user?.email.orEmpty(),
+                email = user?.email.orEmpty(),
+                avatarLabel = displayName.take(2).uppercase(),
+                verified = user?.emailVerified == true,
+                roleLabel = session?.currentServerSummary()?.role.orEmpty()
+            ),
+        connectedAccounts = emptyList()
+    )
+}
+
+private fun appShellComputersPayload(): KuiklySettingsComputersPayload =
+    KuiklySettingsComputersPayload(
+        instanceId = "shared-shell-settings-computers",
+        computers = emptyList(),
+        emptyTitle = "Computers are moving to shared Settings",
+        emptyDetail = "The shared Computers API and detail route will be connected in the next Settings migration slice."
+    )
+
+private fun appShellStoragePayload(): KuiklySettingsStoragePayload =
+    KuiklySettingsStoragePayload(
+        instanceId = "shared-shell-settings-storage",
+        totalSize = "Managed by Android",
+        rows =
+            listOf(
+                KuiklySettingsStorageRow(
+                    target = "database",
+                    iconName = "archive",
+                    title = "Local database",
+                    detail = "Messages, task metadata, and server snapshots stored on this device.",
+                    size = "--"
+                ),
+                KuiklySettingsStorageRow(
+                    target = "imageCache",
+                    iconName = "image",
+                    title = "Image cache",
+                    detail = "Downloaded image previews kept for faster viewing.",
+                    size = "--"
+                )
+            )
+    )
+
+private fun appShellBillingPayload(session: StoredAuthSession?): KuiklySettingsBillingPayload {
+    val plan = session?.currentServerSummary()?.plan?.takeIf { it.isNotBlank() } ?: "Hobby"
+    return KuiklySettingsBillingPayload(
+        instanceId = "shared-shell-settings-billing",
+        currentPlan = KuiklySettingsCurrentPlan(planName = plan.replaceFirstChar { it.uppercase() }),
+        plans =
+            listOf(
+                KuiklySettingsBillingPlan(id = plan, name = plan.replaceFirstChar { it.uppercase() }, price = "Current workspace plan", current = true),
+                KuiklySettingsBillingPlan(id = "team", name = "Team", price = "Coming soon", comingSoon = true)
+            )
+    )
+}
+
+private fun settingsDestinationTitle(destination: String): String =
+    when (destination) {
+        SettingsDestinationAccount -> "Account"
+        SettingsDestinationComputers -> "Computers"
+        SettingsDestinationServer -> "Server"
+        SettingsDestinationBilling -> "Billing"
+        SettingsDestinationMobile -> "Mobile"
+        SettingsDestinationStorage -> "Storage"
+        SettingsDestinationAbout -> "About"
+        else -> "Settings"
+    }
+
+private fun settingsDestinationSubtitle(destination: String): String =
+    when (destination) {
+        SettingsDestinationAccount -> "Profile and sign out"
+        SettingsDestinationComputers -> "Connected machines"
+        SettingsDestinationServer -> "Workspace controls"
+        SettingsDestinationBilling -> "Plan and usage"
+        SettingsDestinationMobile -> "Phone and language"
+        SettingsDestinationStorage -> "Local cache"
+        SettingsDestinationAbout -> "Diagnostics"
+        else -> ""
+    }
+
+private fun settingsDestinationIcon(destination: String): String =
+    when (destination) {
+        SettingsDestinationAccount -> "user"
+        SettingsDestinationComputers -> "monitor"
+        SettingsDestinationServer -> "users"
+        SettingsDestinationBilling -> "shield-check"
+        SettingsDestinationMobile -> "smartphone"
+        SettingsDestinationStorage -> "archive"
+        SettingsDestinationAbout -> "bug"
+        else -> "settings"
+    }
 
 @Composable
 private fun AppShellAuthGateContent(
