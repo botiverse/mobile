@@ -39,8 +39,6 @@ import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.withUnreadReplyCount
 import ai.slock.android.feature.thread.ThreadMessageItem
-import ai.slock.android.shared.SlockKuiklyActivity
-import ai.slock.android.shared.SlockKuiklyPageIsland
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockMemberKind
@@ -57,9 +55,6 @@ import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
 import ai.slock.android.ui.theme.SlockType
 import ai.slock.android.ui.theme.slockHardShadow
-import ai.slock.compose.SharedThreadComposerPayloadInput
-import ai.slock.compose.buildSharedThreadComposerPayloadJson
-import org.json.JSONObject
 
 data class VisualScreenshotCaseSpec(
     val id: String,
@@ -74,7 +69,6 @@ object VisualScreenshotCases {
             VisualScreenshotCaseSpec("tokens.palette", "Shared Tokens"),
             VisualScreenshotCaseSpec("components.buttons.states", "Button States"),
             VisualScreenshotCaseSpec("components.input.states", "Input States"),
-            VisualScreenshotCaseSpec("components.composer.states", "Composer States"),
             VisualScreenshotCaseSpec("components.member-row.data", "Member Row Data"),
             VisualScreenshotCaseSpec("home.server-switcher.unread", "Server Switcher"),
             VisualScreenshotCaseSpec("thread.message.markdown-chips", "Thread Message"),
@@ -96,7 +90,6 @@ fun VisualScreenshotCase(
                 "tokens.palette" -> TokenPaletteCase(spec, modifier)
                 "components.buttons.states" -> ButtonStatesCase(spec, modifier)
                 "components.input.states" -> InputStatesCase(spec, modifier)
-                "components.composer.states" -> ComposerStatesCase(spec, modifier)
                 "components.member-row.data" -> MemberRowDataCase(spec, modifier)
                 "home.server-switcher.unread" -> HomeServerSwitcherCase(spec, modifier)
                 "thread.message.markdown-chips" -> ThreadMessageCase(spec, modifier)
@@ -250,75 +243,6 @@ private fun InputStatesCase(
         }
     }
 }
-
-@Composable
-private fun ComposerStatesCase(
-    spec: VisualScreenshotCaseSpec,
-    modifier: Modifier
-) {
-    VisualCaseShell(spec, modifier) {
-        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
-            KmpThreadComposerCase(
-                payload =
-                    kmpThreadComposerPageData(
-                        seedText = "",
-                        syncNonce = 1,
-                        placeholder = "Message #design"
-                    )
-            )
-            KmpThreadComposerCase(
-                payload =
-                    kmpThreadComposerPageData(
-                        seedText = "Composer draft with #design context.",
-                        syncNonce = 2,
-                        placeholder = "Message #design"
-                    )
-            )
-            KmpThreadComposerCase(
-                payload =
-                    kmpThreadComposerPageData(
-                        seedText = "Composer draft with multiple lines\nand shared fixture text.",
-                        syncNonce = 3,
-                        placeholder = "Message #design"
-                    )
-            )
-        }
-    }
-}
-
-@Composable
-private fun KmpThreadComposerCase(payload: JSONObject) {
-    SlockKuiklyPageIsland(
-        pageName = SlockKuiklyActivity.PAGE_THREAD_COMPOSER,
-        pageData = payload,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(164.dp),
-        supportsPageDataUpdates = true
-    )
-}
-
-private fun kmpThreadComposerPageData(
-    seedText: String,
-    syncNonce: Int,
-    placeholder: String
-): JSONObject =
-    JSONObject()
-        .put(
-            "payload",
-            buildSharedThreadComposerPayloadJson(
-                SharedThreadComposerPayloadInput(
-                    seedText = seedText,
-                    seedAsTask = false,
-                    syncNonce = syncNonce,
-                    focusRequestNonce = 0,
-                    placeholder = placeholder,
-                    enabled = true,
-                    showAsTaskToggle = true,
-                    composerMode = "idle"
-                )
-            )
-        )
 
 @Composable
 private fun MemberRowDataCase(

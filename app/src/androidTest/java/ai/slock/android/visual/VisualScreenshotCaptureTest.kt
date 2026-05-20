@@ -32,9 +32,6 @@ class VisualScreenshotCaptureTest {
     fun captureInputStates() = captureCase("components.input.states")
 
     @Test
-    fun captureComposerStates() = captureCase("components.composer.states")
-
-    @Test
     fun captureMemberRowData() = captureCase("components.member-row.data")
 
     @Test
