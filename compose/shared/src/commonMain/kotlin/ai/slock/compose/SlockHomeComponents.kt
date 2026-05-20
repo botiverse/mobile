@@ -376,7 +376,7 @@ fun SlockStructuralHomeShell(
                                 avatarLabel = dm.avatarLabel,
                                 avatarUrl = dm.avatarUrl,
                                 avatarWireValue = dm.avatarWireValue,
-                                presence = dm.presence,
+                                trailingPresence = homeDmStatusPresence(dm.presence),
                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                 hasDraft = dm.hasDraft,
                                 badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
@@ -785,7 +785,7 @@ private fun HeaderIconAction(icon: String, contentDescription: String, onClick: 
 }
 
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null) {
+private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, trailingPresence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null) {
     val rowBackground = when (interactionState) {
         ChannelRowInteractionState.Default -> if (joined) Color.Transparent else SlockColor.EmptyStateGray.copy(alpha = 0.36f)
         ChannelRowInteractionState.Selected -> SlockColor.BrandYellow
@@ -807,6 +807,10 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             if (badge != null) {
                 if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
                 CountPill(badge, SlockColor.AccentPink)
+            }
+            if (trailingPresence != null) {
+                if (badge != null || hasDraft) Spacer(Modifier.width(SlockSpacing.Sm))
+                HomeDmStatusDot(trailingPresence)
             }
         }
     }
@@ -849,8 +853,15 @@ private fun PresenceDot(presence: SlockPresence, modifier: Modifier = Modifier) 
     Box(modifier = modifier.size(8.dp).background(presence.homeRowColor).border(SlockStroke.Thin, SlockColor.BorderBlack))
 }
 
+@Composable
+private fun HomeDmStatusDot(presence: SlockPresence) {
+    Box(modifier = Modifier.size(10.dp).background(presence.homeRowColor).border(SlockStroke.Thin, SlockColor.BorderBlack))
+}
+
 private val SlockPresence.homeRowColor: Color
     get() = when (this) { SlockPresence.Online -> SlockColor.AccentLime; SlockPresence.Offline -> SlockColor.EmptyStateGray; SlockPresence.Unknown -> SlockColor.BrandYellow }
+
+internal fun homeDmStatusPresence(presence: SlockPresence?): SlockPresence = presence ?: SlockPresence.Offline
 
 @Composable
 private fun PixelAvatar(spec: PixelAvatarSpec, modifier: Modifier = Modifier) {
