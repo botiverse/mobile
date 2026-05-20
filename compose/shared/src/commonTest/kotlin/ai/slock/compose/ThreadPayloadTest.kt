@@ -386,4 +386,32 @@ class ThreadPayloadTest {
         )
         assertEquals(null, parseSharedThreadAttachmentOpenUrl("""{"url":""}"""))
     }
+
+    @Test
+    fun sharedShellHidesUnsupportedThreadEventAffordances() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "general",
+                showReplyActions = true,
+                showOpenInChannelAction = true,
+                showMessageSaveAction = true,
+                showTaskOpenActions = true,
+                showTaskStatusActions = true,
+                canLoadMoreBefore = true,
+                canLoadMoreAfter = true,
+                canAddMembers = true,
+                showSettingsAction = true
+            ).withSharedShellEventCapabilities()
+
+        assertEquals(false, payload.showReplyActions)
+        assertEquals(false, payload.showOpenInChannelAction)
+        assertEquals(false, payload.showMessageSaveAction)
+        assertEquals(false, payload.showTaskOpenActions)
+        assertEquals(false, payload.showTaskStatusActions)
+        assertEquals(false, payload.canLoadMoreBefore)
+        assertEquals(false, payload.canLoadMoreAfter)
+        assertEquals(false, payload.canAddMembers)
+        assertEquals(false, payload.showSettingsAction)
+    }
 }

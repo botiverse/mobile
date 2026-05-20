@@ -128,8 +128,24 @@ internal data class KuiklyThreadScreenPayload(
     val showMembersAction: Boolean = true,
     val showSettingsAction: Boolean = true,
     val showOpenInChannelAction: Boolean = false,
+    val showMessageSaveAction: Boolean = true,
+    val showTaskOpenActions: Boolean = true,
+    val showTaskStatusActions: Boolean = true,
     val joinLabel: String = "Join channel"
 )
+
+internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): KuiklyThreadScreenPayload =
+    copy(
+        showReplyActions = false,
+        showOpenInChannelAction = false,
+        showMessageSaveAction = false,
+        showTaskOpenActions = false,
+        showTaskStatusActions = false,
+        canLoadMoreBefore = false,
+        canLoadMoreAfter = false,
+        canAddMembers = false,
+        showSettingsAction = false
+    )
 
 @Serializable
 internal data class KuiklyThreadMessageItem(
@@ -338,33 +354,45 @@ internal fun SharedThreadRouteContent(
             instanceId = payload.instanceId
         )
     }
-    LaunchedEffect(payload) {
+    val renderedPayload = remember(payload) {
+        payload.withSharedShellEventCapabilities()
+    }
+    LaunchedEffect(renderedPayload) {
         bridge.log(
-            "thread_render instanceId=${payload.instanceId} status=${payload.status} tab=${payload.selectedTab} messages=${payload.messages.size} tasks=${payload.tasks.size}"
+            "thread_render instanceId=${renderedPayload.instanceId} status=${renderedPayload.status} tab=${renderedPayload.selectedTab} messages=${renderedPayload.messages.size} tasks=${renderedPayload.tasks.size}"
         )
     }
     ThreadPageContent(
-        payload = payload,
+        payload = renderedPayload,
         filesPayload = filesPayload,
         composerPayload = composerPayload,
         onBack = onBack,
         onThreadEvent = { action, itemId, attachmentId, tab ->
-            if (action == "openAttachment" && !attachmentId.isNullOrBlank()) {
-                coroutineScope.launch {
-                    openSharedThreadAttachment(
-                        bridge = bridge,
-                        threadApi = threadApi,
-                        attachmentId = attachmentId
+            when {
+                action == "openAttachment" && !attachmentId.isNullOrBlank() -> {
+                    coroutineScope.launch {
+                        openSharedThreadAttachment(
+                            bridge = bridge,
+                            threadApi = threadApi,
+                            attachmentId = attachmentId
+                        )
+                    }
+                }
+                action == "copyMessage" && !itemId.isNullOrBlank() -> {
+                    val body = renderedPayload.messages.firstOrNull { it.id == itemId }?.body.orEmpty()
+                    if (body.isNotBlank()) {
+                        bridge.copyToPasteboard(body)
+                        bridge.toast("Copied")
+                    }
+                }
+                action == "selectTab" -> {
+                    // The shared shell owns tab state locally. There is no fullscreen host event to forward.
+                }
+                else -> {
+                    bridge.log(
+                        "thread_event_unsupported instanceId=${payload.instanceId} action=$action itemId=${itemId.orEmpty()} attachmentId=${attachmentId.orEmpty()} tab=${tab.orEmpty()}"
                     )
                 }
-            } else {
-                bridge.threadEvent(
-                    instanceId = payload.instanceId,
-                    action = action,
-                    itemId = itemId,
-                    attachmentId = attachmentId,
-                    tab = tab
-                )
             }
         },
         onComposerEvent = { action, value, asTask, attachmentId ->
@@ -784,11 +812,9 @@ private fun ThreadPageContent(
                 },
                 onShowMembers = {
                     activeModal = "members"
-                    onThreadEvent("showMembers", null, null, null)
                 },
                 onShowSettings = {
                     activeModal = "settings"
-                    onThreadEvent("showSettings", null, null, null)
                 }
             )
             if (payload.showModeTabs) {
@@ -812,6 +838,7 @@ private fun ThreadPageContent(
                     KuiklyThreadTab.Tasks ->
                         ThreadTasksTab(
                             tasks = payload.tasks,
+                            openTaskEnabled = payload.showTaskOpenActions,
                             onOpenTask = { onThreadEvent("openTask", it, null, null) }
                         )
                     KuiklyThreadTab.Files ->
@@ -1180,6 +1207,8 @@ private fun ThreadMessagesList(
                         message = message,
                         showReplyAction = payload.showReplyActions,
                         timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
+                        taskOpenEnabled = payload.showTaskOpenActions,
+                        taskStatusActionsEnabled = payload.showTaskStatusActions,
                         onOpenThread = { onThreadEvent("openMessageThread", message.id, null, null) },
                         onOpenTask = { onThreadEvent("openTask", it, null, null) },
                         onTaskStatusChange = { taskId, status ->
@@ -1191,6 +1220,8 @@ private fun ThreadMessagesList(
                         message = message,
                         alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                         showReplyAction = payload.showReplyActions,
+                        taskOpenEnabled = payload.showTaskOpenActions,
+                        taskStatusActionsEnabled = payload.showTaskStatusActions,
                         onShowActions = { anchor ->
                             actionMenuAnchor = anchor
                             actionMessageId = message.id
@@ -1251,6 +1282,8 @@ private fun ThreadMessagesList(
                     message = message,
                     anchor = actionMenuAnchor,
                     showReplyAction = payload.showReplyActions,
+                    showSaveAction = payload.showMessageSaveAction,
+                    showTaskStatusAction = payload.showTaskStatusActions,
                     onDismiss = { actionMessageId = null },
                     onReply = {
                         actionMessageId = null
@@ -1372,6 +1405,8 @@ private fun ThreadSystemMessageRow(
     message: KuiklyThreadMessageItem,
     showReplyAction: Boolean,
     timestampLabel: String,
+    taskOpenEnabled: Boolean,
+    taskStatusActionsEnabled: Boolean,
     onOpenThread: () -> Unit,
     onOpenTask: (String) -> Unit,
     onTaskStatusChange: (String, ThreadTaskStatusOption) -> Unit
@@ -1399,6 +1434,8 @@ private fun ThreadSystemMessageRow(
         ThreadMessageFooterMeta(
             message = message,
             showReplyAction = showReplyAction,
+            taskOpenEnabled = taskOpenEnabled,
+            taskStatusActionsEnabled = taskStatusActionsEnabled,
             alignEnd = false,
             onOpenThread = onOpenThread,
             onOpenTask = onOpenTask,
@@ -1458,6 +1495,8 @@ private fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
     alignOwnMessageRight: Boolean = false,
     showReplyAction: Boolean = true,
+    taskOpenEnabled: Boolean = true,
+    taskStatusActionsEnabled: Boolean = true,
     timestampLabel: String = message.timestampLabel,
     onShowActions: (Offset) -> Unit,
     onOpenMember: (String) -> Unit,
@@ -1549,6 +1588,8 @@ private fun ThreadMessageCard(
                     ThreadMessageFooterMeta(
                         message = message,
                         showReplyAction = showReplyAction,
+                        taskOpenEnabled = taskOpenEnabled,
+                        taskStatusActionsEnabled = taskStatusActionsEnabled,
                         alignEnd = alignOwnMessageRight,
                         onOpenThread = { onOpenThread(message.id) },
                         onOpenTask = onOpenTask,
@@ -1575,6 +1616,8 @@ private fun Modifier.threadMessageContentWidth(maxWidthFraction: Float): Modifie
 private fun ThreadMessageFooterMeta(
     message: KuiklyThreadMessageItem,
     showReplyAction: Boolean,
+    taskOpenEnabled: Boolean,
+    taskStatusActionsEnabled: Boolean,
     alignEnd: Boolean,
     onOpenThread: () -> Unit,
     onOpenTask: (String) -> Unit,
@@ -1605,21 +1648,29 @@ private fun ThreadMessageFooterMeta(
                 label = label,
                 icon = selectedStatus.icon,
                 color = selectedStatus.color,
-                onClick = { statusSheetOpen = true },
+                onClick = if (taskOpenEnabled || taskStatusActionsEnabled) {
+                    { statusSheetOpen = true }
+                } else {
+                    null
+                },
                 modifier = Modifier.weight(1f, fill = false)
             )
-            if (statusSheetOpen) {
+            if (statusSheetOpen && (taskOpenEnabled || taskStatusActionsEnabled)) {
                 ThreadTaskStatusSheet(
                     message = message,
                     selectedStatus = selectedStatus,
                     onDismiss = { statusSheetOpen = false },
                     onOpenTask = {
                         statusSheetOpen = false
-                        message.taskId?.let(onOpenTask)
+                        if (taskOpenEnabled) {
+                            message.taskId?.let(onOpenTask)
+                        }
                     },
                     onStatusSelected = { status ->
                         statusSheetOpen = false
-                        message.taskId?.let { taskId -> onTaskStatusChange(taskId, status) }
+                        if (taskStatusActionsEnabled) {
+                            message.taskId?.let { taskId -> onTaskStatusChange(taskId, status) }
+                        }
                     }
                 )
             }
@@ -1798,14 +1849,15 @@ private fun ThreadMetaChip(
     label: String,
     icon: String,
     color: Color,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
+    val clickableModifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
     Box(
         modifier = modifier
             .border(SlockStroke.Thin, SlockColor.BorderBlack)
             .background(color)
-            .clickable(onClick = onClick)
+            .then(clickableModifier)
             .padding(horizontal = 8.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -1837,6 +1889,8 @@ private fun ThreadMessageActionMenu(
     message: KuiklyThreadMessageItem,
     anchor: Offset,
     showReplyAction: Boolean,
+    showSaveAction: Boolean,
+    showTaskStatusAction: Boolean,
     onDismiss: () -> Unit,
     onReply: () -> Unit,
     onCopy: () -> Unit,
@@ -1849,8 +1903,10 @@ private fun ThreadMessageActionMenu(
                 add(ThreadMessageMenuAction("Reply", "message-square", "message", onReply))
             }
             add(ThreadMessageMenuAction("Copy markdown", "copy", "copy", onCopy))
-            add(ThreadMessageMenuAction("Save message", "bookmark", "message", onSave))
-            message.taskId?.takeIf { it.isNotBlank() }?.let {
+            if (showSaveAction) {
+                add(ThreadMessageMenuAction("Save message", "bookmark", "message", onSave))
+            }
+            message.taskId?.takeIf { showTaskStatusAction && it.isNotBlank() }?.let {
                 val isDone = message.taskStatus?.trim()?.lowercase() in setOf("done", "closed")
                 add(
                     ThreadMessageMenuAction(
@@ -2329,7 +2385,11 @@ private fun ThreadAttachmentChip(
 }
 
 @Composable
-private fun ThreadTasksTab(tasks: List<KuiklyThreadTaskItem>, onOpenTask: (String) -> Unit) {
+private fun ThreadTasksTab(
+    tasks: List<KuiklyThreadTaskItem>,
+    openTaskEnabled: Boolean,
+    onOpenTask: (String) -> Unit
+) {
     if (tasks.isEmpty()) {
         ThreadStateMessage("No tasks yet", "Tasks created from this conversation will show up here.")
         return
@@ -2340,10 +2400,16 @@ private fun ThreadTasksTab(tasks: List<KuiklyThreadTaskItem>, onOpenTask: (Strin
     ) {
         items(tasks.size, key = { tasks[it].id }) { index ->
             val task = tasks[index]
+            val clickableModifier =
+                if (openTaskEnabled) {
+                    Modifier.clickable { onOpenTask(task.id) }
+                } else {
+                    Modifier
+                }
             Row(
                 modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
                     .background(SlockColor.SurfaceWhite)
-                    .clickable { onOpenTask(task.id) }
+                    .then(clickableModifier)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
