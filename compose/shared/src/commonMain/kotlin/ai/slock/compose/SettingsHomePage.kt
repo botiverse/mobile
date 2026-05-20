@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -129,6 +130,33 @@ internal data class KuiklySettingsHomePayload(
     val subtitle: String = "",
     val showSelection: Boolean = true,
     val items: List<SlockTabItemPayload> = emptyList()
+)
+
+@Serializable
+internal data class KuiklySharedSettingsPayload(
+    val instanceId: String = "",
+    val title: String = "",
+    val detail: String = "",
+    val heroIconName: String = "settings",
+    val heroLabel: String = "",
+    val sections: List<KuiklySharedSettingsSection> = emptyList()
+)
+
+@Serializable
+internal data class KuiklySharedSettingsSection(
+    val title: String = "",
+    val rows: List<KuiklySharedSettingsRow> = emptyList()
+)
+
+@Serializable
+internal data class KuiklySharedSettingsRow(
+    val key: String = "",
+    val iconName: String = "settings",
+    val title: String = "",
+    val detail: String = "",
+    val value: String = "",
+    val status: String = "",
+    val enabled: Boolean = false
 )
 
 private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
@@ -381,6 +409,9 @@ private fun SlockAppShellContent() {
                                 selectedDestination = selectedSettingsDestination,
                                 onDestinationChange = { selectedSettingsDestination = it },
                                 onOpenRouter = { jumpPage(pager, "router") },
+                                onSettingsAction = { action, itemId ->
+                                    bridge.settingsEvent("shared-shell-settings", action, itemId)
+                                },
                                 onLogout = {
                                     authGateState = AppShellAuthGateState.AuthRequired
                                     selectedTab = "home"
@@ -446,6 +477,7 @@ private fun SettingsAppShellContent(
     selectedDestination: String,
     onDestinationChange: (String) -> Unit,
     onOpenRouter: () -> Unit,
+    onSettingsAction: (String, String?) -> Unit,
     onLogout: () -> Unit
 ) {
     var pendingLogout by remember { mutableStateOf(false) }
@@ -491,29 +523,112 @@ private fun SettingsAppShellContent(
             SettingsDestinationBilling ->
                 SettingsBillingContent(appShellBillingPayload(session)) { _, _ -> }
             SettingsDestinationServer ->
-                SettingsSharedPlaceholder(
-                    title = "Server settings",
-                    detail = "Server profile, admins, invites, onboarding, billing, and danger actions are next in the shared Settings migration.",
-                    iconName = "users"
-                )
+                SharedSettingsSectionContent(appShellServerPayload(session), onSettingsAction)
             SettingsDestinationMobile ->
-                SettingsSharedPlaceholder(
-                    title = "Mobile settings",
-                    detail = "Push notifications, language, and mobile layout controls are next in the shared Settings migration.",
-                    iconName = "smartphone"
-                )
+                SharedSettingsSectionContent(appShellMobilePayload(), onSettingsAction)
             SettingsDestinationAbout ->
-                SettingsSharedPlaceholder(
-                    title = "About and diagnostics",
-                    detail = "Version, diagnostics, feedback, and sanitized logs are next in the shared Settings migration.",
-                    iconName = "bug"
-                )
+                SharedSettingsSectionContent(appShellAboutPayload(session), onSettingsAction)
             else ->
                 SettingsSharedPlaceholder(
                     title = "Settings",
                     detail = "This Settings section is not available in shared shell yet.",
                     iconName = "settings"
                 )
+        }
+    }
+}
+
+@Composable
+private fun SharedSettingsSectionContent(
+    payload: KuiklySharedSettingsPayload,
+    onAction: (String, String?) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item { SharedSettingsHero(payload) }
+        payload.sections.forEach { section ->
+            item { SharedSettingsSectionCard(section, onAction) }
+        }
+    }
+}
+
+@Composable
+private fun SharedSettingsHero(payload: KuiklySharedSettingsPayload) {
+    Row(
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
+        verticalAlignment = com.tencent.kuikly.compose.ui.Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier.size(52.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = com.tencent.kuikly.compose.ui.Alignment.Center
+        ) {
+            SlockLucideIcon(payload.heroIconName, modifier = Modifier.size(26.dp))
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(payload.heroLabel.ifBlank { payload.title }, style = SlockType.PageTitle.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(payload.detail, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+        }
+    }
+}
+
+@Composable
+private fun SharedSettingsSectionCard(
+    section: KuiklySharedSettingsSection,
+    onAction: (String, String?) -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        Text(
+            section.title.uppercase(),
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)
+        )
+        section.rows.forEachIndexed { index, row ->
+            SharedSettingsRow(row, showDivider = index > 0, onAction = onAction)
+        }
+    }
+}
+
+@Composable
+private fun SharedSettingsRow(
+    row: KuiklySharedSettingsRow,
+    showDivider: Boolean,
+    onAction: (String, String?) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (showDivider) {
+            Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack))
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .clickable(enabled = row.enabled) { onAction(row.key, row.value.takeIf { it.isNotBlank() }) }
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = com.tencent.kuikly.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier.size(34.dp).background(if (row.enabled) SlockColor.AccentCyan else SlockColor.EmptyStateGray).border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = com.tencent.kuikly.compose.ui.Alignment.Center
+            ) {
+                SlockLucideIcon(row.iconName, modifier = Modifier.size(18.dp))
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(row.title, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                row.detail.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            row.status.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1)
+            }
         }
     }
 }
@@ -725,6 +840,107 @@ private fun appShellBillingPayload(session: StoredAuthSession?): KuiklySettingsB
             )
     )
 }
+
+private fun appShellServerPayload(session: StoredAuthSession?): KuiklySharedSettingsPayload {
+    val server = session?.currentServerSummary()
+    val role = server?.role?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Member"
+    val plan = server?.plan?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Unknown"
+    return KuiklySharedSettingsPayload(
+        instanceId = "shared-shell-settings-server",
+        title = "Server",
+        heroIconName = "users",
+        heroLabel = server?.name ?: "Workspace settings",
+        detail = "Shared workspace settings contract. Android and OHOS will attach the real API actions after this shared state is stable.",
+        sections =
+            listOf(
+                KuiklySharedSettingsSection(
+                    title = "Profile",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow("serverName", "badge-info", "Workspace name", server?.name ?: "No selected server", status = "Read only"),
+                            KuiklySharedSettingsRow("serverSlug", "link", "Slug", server?.slug?.let { "/$it" } ?: "Not provided", status = "Read only"),
+                            KuiklySharedSettingsRow("serverRole", "shield-check", "Your role", "Permission scope for workspace settings.", status = role)
+                        )
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Administration",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow("admins", "users", "Admins", "Admin list and role changes need the shared Server API slice.", status = "Pending"),
+                            KuiklySharedSettingsRow("invites", "mail-plus", "Pending invites", "Invite creation/listing will be wired through shared actions.", status = "Pending"),
+                            KuiklySharedSettingsRow("joinLinks", "link-2", "Join links", "Join link management is not exposed in shared yet.", status = "Pending"),
+                            KuiklySharedSettingsRow("onboarding", "bot", "Onboarding agent", "Current onboarding agent id: ${server?.onboardingAgentId ?: "not set"}.", status = "Pending")
+                        )
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Plan and danger",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow("billing", "shield-check", "Plan", "Billing detail has a shared page; server billing summary still needs API hydrate.", status = plan),
+                            KuiklySharedSettingsRow("danger", "triangle-alert", "Danger actions", "Delete workspace remains disabled until shared confirm + host API wiring is in place.", status = "Disabled")
+                        )
+                )
+            )
+    )
+}
+
+private fun appShellMobilePayload(): KuiklySharedSettingsPayload =
+    KuiklySharedSettingsPayload(
+        instanceId = "shared-shell-settings-mobile",
+        title = "Mobile",
+        heroIconName = "smartphone",
+        heroLabel = "Mobile preferences",
+        detail = "Shared mobile settings contract for platform capabilities. Host-specific permission and locale adapters still need to attach.",
+        sections =
+            listOf(
+                KuiklySharedSettingsSection(
+                    title = "Notifications",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow("notificationPermission", "bell", "Push permission", "Android/OHOS permission state must be supplied by host.", status = "Host pending"),
+                            KuiklySharedSettingsRow("sendTestNotification", "send", "Send test notification", "Requires host notification adapter before it can run.", status = "Disabled"),
+                            KuiklySharedSettingsRow("muteServer", "volume-x", "Mute workspace", "Server mute state/action is not in shared yet.", status = "Pending")
+                        )
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Local preferences",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow("language", "languages", "Language", "Locale selection needs shared preference state and host persistence.", status = "Pending"),
+                            KuiklySharedSettingsRow("messageAlignment", "align-horizontal-space-around", "My message alignment", "Personal chat layout preference should move into shared state.", status = "Pending")
+                        )
+                )
+            )
+    )
+
+private fun appShellAboutPayload(session: StoredAuthSession?): KuiklySharedSettingsPayload =
+    KuiklySharedSettingsPayload(
+        instanceId = "shared-shell-settings-about",
+        title = "About",
+        heroIconName = "bug",
+        heroLabel = "Slock diagnostics",
+        detail = "About and diagnostics are represented in shared now; runtime version/log buffers still need host data.",
+        sections =
+            listOf(
+                KuiklySharedSettingsSection(
+                    title = "App",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow("appName", "sparkles", "Application", "Slock", status = "Shared shell"),
+                            KuiklySharedSettingsRow("signedInUser", "user", "Signed in as", session?.user?.bestDisplayName ?: "Unknown", status = session?.user?.email.orEmpty()),
+                            KuiklySharedSettingsRow("selectedServer", "server", "Selected server", session?.currentServerSummary()?.name ?: "None", status = session?.currentServerId ?: "")
+                        )
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Diagnostics",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow("diagnostics", "clipboard-list", "Diagnostics log", "Needs host sanitized log buffer bridge before display/copy/share.", status = "Pending"),
+                            KuiklySharedSettingsRow("feedback", "message-square-plus", "Send feedback", "Feedback should route through the real shared thread composer.", status = "Pending")
+                        )
+                )
+            )
+    )
 
 private fun settingsDestinationTitle(destination: String): String =
     when (destination) {
