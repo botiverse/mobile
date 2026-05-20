@@ -389,7 +389,10 @@ fun SlockStructuralHomeShell(
             }
             HomeNotificationCenter(notifications, onNotificationView, onNotificationDismiss, Modifier.align(Alignment.TopEnd).padding(top = topSafeArea).padding(top = SlockSpacing.Lg, end = SlockSpacing.Lg))
             if (serverSwitcherExpanded) {
-                Box(Modifier.fillMaxSize().clickable(onClick = onServerSwitcherDismiss))
+                Button(
+                    modifier = Modifier.fillMaxSize().background(Color.Transparent),
+                    onClick = onServerSwitcherDismiss
+                )
                 ServerSwitcherPanel(servers, currentServerId, pendingServerId, labels, onServerSelected, onCreateServerClick, Modifier.padding(top = topSafeArea + SlockSize.PageHeaderHeight, start = SlockSpacing.Lg))
             }
         }
