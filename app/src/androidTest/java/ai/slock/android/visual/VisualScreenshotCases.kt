@@ -70,7 +70,8 @@ object VisualScreenshotCases {
             VisualScreenshotCaseSpec("tokens.palette", "Shared Tokens"),
             VisualScreenshotCaseSpec("components.buttons.states", "Button States"),
             VisualScreenshotCaseSpec("components.input.states", "Input States"),
-            VisualScreenshotCaseSpec("components.list-row.states", "List Row States"),
+            VisualScreenshotCaseSpec("components.composer.states", "Composer States"),
+            VisualScreenshotCaseSpec("components.member-row.data", "Member Row Data"),
             VisualScreenshotCaseSpec("home.server-switcher.unread", "Server Switcher"),
             VisualScreenshotCaseSpec("thread.message.markdown-chips", "Thread Message"),
             VisualScreenshotCaseSpec("conversation.flow.message-stack", "Conversation Flow")
@@ -91,7 +92,8 @@ fun VisualScreenshotCase(
                 "tokens.palette" -> TokenPaletteCase(spec, modifier)
                 "components.buttons.states" -> ButtonStatesCase(spec, modifier)
                 "components.input.states" -> InputStatesCase(spec, modifier)
-                "components.list-row.states" -> ListRowStatesCase(spec, modifier)
+                "components.composer.states" -> ComposerStatesCase(spec, modifier)
+                "components.member-row.data" -> MemberRowDataCase(spec, modifier)
                 "home.server-switcher.unread" -> HomeServerSwitcherCase(spec, modifier)
                 "thread.message.markdown-chips" -> ThreadMessageCase(spec, modifier)
                 "conversation.flow.message-stack" -> ConversationFlowCase(spec, modifier)
@@ -241,8 +243,35 @@ private fun InputStatesCase(
                 maxLines = 4,
                 reserveErrorSpace = false
             )
+        }
+    }
+}
+
+@Composable
+private fun ComposerStatesCase(
+    spec: VisualScreenshotCaseSpec,
+    modifier: Modifier
+) {
+    VisualCaseShell(spec, modifier) {
+        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
             SlockComposer(
-                value = "Composer draft",
+                value = "",
+                onValueChange = {},
+                onSend = {},
+                imageIcon = LucideIcons.ImagePlus,
+                attachmentIcon = LucideIcons.Paperclip,
+                modifier = Modifier.padding(0.dp)
+            )
+            SlockComposer(
+                value = "Composer draft with #design context.",
+                onValueChange = {},
+                onSend = {},
+                imageIcon = LucideIcons.ImagePlus,
+                attachmentIcon = LucideIcons.Paperclip,
+                modifier = Modifier.padding(0.dp)
+            )
+            SlockComposer(
+                value = "Composer draft with multiple lines\nand shared fixture text.",
                 onValueChange = {},
                 onSend = {},
                 imageIcon = LucideIcons.ImagePlus,
@@ -254,7 +283,7 @@ private fun InputStatesCase(
 }
 
 @Composable
-private fun ListRowStatesCase(
+private fun MemberRowDataCase(
     spec: VisualScreenshotCaseSpec,
     modifier: Modifier
 ) {
@@ -307,7 +336,7 @@ private fun ThreadMessageCase(
             message =
                 message(
                     id = "android-thread-message",
-                    body = "收到，补 MessageItem / MessageTimeline 的 fixture-driven case。关联 #design 和 @Product-UX-Designer。",
+                    body = "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。关联 #design 和 @Product-UX-Designer。",
                     replyCount = 5,
                     task = taskSummary()
                 ).withUnreadReplyCount(2),
@@ -545,17 +574,17 @@ private fun visualMessages() =
         message(
             id = "android-human-request",
             author = humanAuthor(),
-            body = "对话流组件也要用原 Android 组件截图，别只测单行。",
+            body = "对话流组件要用同一份 fixture 截图，别让文案差异污染 diff。",
             replyCount = 0
         ),
         message(
             id = "android-agent-reply",
-            body = "已迁移到 ThreadScreen + ThreadMessageItem，保留 replies / task footer。",
+            body = "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。关联 #design 和 @Product-UX-Designer。",
             replyCount = 4
         ).withUnreadReplyCount(2),
         message(
             id = "android-task-message",
-            body = "Android connected test 通过 MediaStore 写到 Downloads，再由 adb pull 进入 visual-testing-results。",
+            body = "Visual testing 现在用 raw content 截图，再由 compositor 统一拼接和计算相似度。",
             replyCount = 2,
             task = taskSummary()
         )
