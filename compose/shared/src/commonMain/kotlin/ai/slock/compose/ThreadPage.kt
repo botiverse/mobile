@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -1074,11 +1075,30 @@ private fun ThreadMessagesList(
     val coroutineScope = rememberCoroutineScope()
     var actionMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var actionMenuAnchor by remember(payload.instanceId) { mutableStateOf(Offset(16f, 16f)) }
+    var allowBottomAutoAnchor by remember(payload.instanceId) { mutableStateOf(true) }
     val latestItemIndex = payload.latestMessageListItemIndex()
     val latestMessageLayoutKey = payload.messages.joinToString("|") { "${it.id}:${it.body.length}:${it.attachments.size}:${it.taskId.orEmpty()}:${it.replyCount}" }
-    LaunchedEffect(payload.instanceId, latestMessageLayoutKey, latestItemIndex) {
+    LaunchedEffect(payload.instanceId, latestItemIndex) {
+        snapshotFlow {
+            listState.isScrollInProgress to listState.isLatestItemAtRenderedBottom(latestItemIndex)
+        }.collect { (isScrollInProgress, isAtBottom) ->
+            if (isScrollInProgress && !isAtBottom) {
+                allowBottomAutoAnchor = false
+            } else if (isAtBottom) {
+                allowBottomAutoAnchor = true
+            }
+        }
+    }
+    LaunchedEffect(payload.instanceId, latestMessageLayoutKey, latestItemIndex, allowBottomAutoAnchor) {
         if (latestItemIndex >= 0) {
+            if (!allowBottomAutoAnchor && !listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
+                return@LaunchedEffect
+            }
             repeat(ThreadInitialBottomAnchorAttempts) {
+                if (listState.isScrollInProgress && !listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
+                    allowBottomAutoAnchor = false
+                    return@LaunchedEffect
+                }
                 listState.scrollLatestItemToRenderedBottom(latestItemIndex)
                 delay(16)
             }
@@ -1179,6 +1199,7 @@ private fun ThreadMessagesList(
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = SlockSpacing.Md, bottom = SlockSpacing.Md),
                 onClick = {
                     coroutineScope.launch {
+                        allowBottomAutoAnchor = true
                         repeat(ThreadBackToBottomAnchorAttempts) { attempt ->
                             listState.scrollLatestItemToRenderedBottom(latestItemIndex)
                             if (attempt >= ThreadBottomAnchorMinimumAttempts &&
