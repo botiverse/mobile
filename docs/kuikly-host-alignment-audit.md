@@ -16,6 +16,7 @@ This notes the current gap between Kuikly's default Android host/router implemen
 - Slock OHOS host: `compose/ohosApp/entry/src/main/ets/pages/Index.ets`
 - Slock OHOS router: `compose/ohosApp/entry/src/main/ets/kuikly/adapter/RouterAdapter.ets`
 - Shared safe area consumer: `compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockSafeArea.kt`
+- Slock bridge contract: `docs/kuikly-bridge-module-contract.md`
 
 ## Kuikly Default Behavior
 
@@ -142,16 +143,15 @@ Slock Android exposes:
 Slock OHOS exposes:
 
 - `HRBridgeModule` (`KRBridgeModule.ets`): OHOS implementation of the same shared bridge name. It includes `authRequest`, `relationalStore`, asset reads, time helpers, log, and stubs for several demo-like methods.
-- `KRMyModule`: demo/example module still registered.
 
 Module conclusions:
 
 - The shared bridge name `HRBridgeModule` is good: Android and OHOS can bind the same shared code.
-- The method surface is not yet documented as a stable Slock contract. This is the largest non-UI gap. `authRequest`, `relationalStore`, secure auth/session store, file picker/upload, clipboard, toast/log, and route/back should each have explicit method names, payload schemas, threading expectations, and error response schemas.
+- The method surface is now documented in `docs/kuikly-bridge-module-contract.md`. New shared flows should only depend on methods marked required there, or promote an optional method by updating that contract first.
 - OHOS still has TODO/stub methods (`closePage`, `openPage`, pasteboard, toast, date formatting). If shared code starts depending on those methods, OHOS behavior will diverge even when Android works.
 - Android currently implements network with `HttpURLConnection` inside the bridge; OHOS uses ArkTS `http`. That is acceptable as host capability, but shared must own request/response shape and retry/error policy.
 - `relationalStore` exists on OHOS but Android side should be checked for equivalent shared local-store bridge behavior before moving more state machines fully into KMP.
-- `KRMyModule` / `KRMyView` should be removed from production registration once no smoke/demo page needs them.
+- `KRMyModule` / `KRMyView` have been removed from OHOS production registration/source; future smoke/demo components should live in a sample/debug host.
 
 ### External Render Views
 
@@ -167,7 +167,6 @@ Slock Android exports:
 
 Slock OHOS exports:
 
-- `KRMyView`: demo view.
 - `SlockLucideIconView`: native Lucide/icon render view.
 - `SlockOhosHdsTabBarView`: native HDS immersive tabbar renderer.
 
@@ -175,7 +174,7 @@ Render-view conclusions:
 
 - `SlockLucideIconView` is a valid Slock-specific production view, but Android/OHOS implementations should be treated as one capability with the same input schema and fallback path.
 - `SlockOhosHdsTabBarView` is intentionally OHOS-only, behind shared tabbar renderer capability. This is acceptable because shared still owns selected tab and route state.
-- `KRMyView` is demo residue in OHOS production registration and should be removed or gated to debug/smoke builds.
+- `KRMyView` has been removed from OHOS production registration/source.
 - Slock does not currently mirror upstream `MyModalView`; if shared modal/action sheet behavior differs on Android, this is a place to check.
 
 ### Performance / Monitoring Hooks
@@ -200,10 +199,10 @@ Recommendation:
    - Keep Slock colors and product-specific theme decisions separate.
 
 3. **Define the Slock bridge/module contract.**
-   - Document `HRBridgeModule` method names and payload/result schemas.
+   - Keep `docs/kuikly-bridge-module-contract.md` current for `HRBridgeModule` method names and payload/result schemas.
    - Mark each method as required, optional, debug-only, or deprecated.
    - Make Android/OHOS parity explicit for `authRequest`, `relationalStore`, storage/session, route/back, clipboard, toast/log, file picker/upload, and diagnostics.
-   - Remove or debug-gate `KRMyModule` / `KRMyView` from OHOS production registration.
+   - Keep demo-only modules/views out of OHOS production registration.
 
 4. **Normalize the Slock pageData contract.**
    - Keep Slock app data under user pageData/`param`.
@@ -233,8 +232,7 @@ Recommendation:
 
 - Rename or separate Slock custom safe-area fallback keys to make units explicit.
 - Open a follow-up for `SlockKuiklyActivity` window handling parity with Kuikly upstream.
-- Open a follow-up for `HRBridgeModule` contract documentation and Android/OHOS parity tests.
-- Remove or debug-gate OHOS `KRMyModule` / `KRMyView`.
+- Add Android/OHOS parity tests/checks for the required `HRBridgeModule` methods documented in `docs/kuikly-bridge-module-contract.md`.
 - Decide whether to add `krTextPostProcessorAdapter` / `krColorParseAdapter` for Android text/color parity.
 - Open a follow-up to retire remaining Android Compose islands from main navigation once shared app shell covers the route.
 - Add a lightweight host parity check that fails if Android app shell starts relying on resource-derived safe-area again.
