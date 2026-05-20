@@ -112,12 +112,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private fun createPageSpec(): SlockKuiklyPageSpec {
         return SlockKuiklyPageSpec(
                 pageName = pageName,
-                pageData =
-                        SlockKuiklyPageData.fromText(intent.getStringExtra(KEY_PAGE_DATA))
-                                .withHostSafeArea(
-                                        statusBarHeightPx = androidSystemDimensionPx("status_bar_height"),
-                                        navigationBarHeightPx = androidSystemDimensionPx("navigation_bar_height")
-                                )
+                pageData = SlockKuiklyPageData.fromText(intent.getStringExtra(KEY_PAGE_DATA))
         )
     }
 
@@ -130,11 +125,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                             View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
                             View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
         }
-    }
-
-    private fun androidSystemDimensionPx(name: String): Int {
-        val resourceId = resources.getIdentifier(name, "dimen", "android")
-        return if (resourceId > 0) resources.getDimensionPixelSize(resourceId) else 0
     }
 
     companion object {
