@@ -12,7 +12,6 @@ import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -30,7 +29,6 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
-import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
@@ -375,14 +373,6 @@ internal fun ThreadComposerContent(
         onEvent("change", nextText, nextAsTask, null)
     }
 
-    fun insertNewline() {
-        if (!payload.enabled) return
-        val next = fieldValue.insertTextAtSelection("\n")
-        fieldValue = next
-        emitChange(nextText = next.text)
-        focused = true
-    }
-
     fun applyMemberSuggestion(member: KuiklyComposerMemberItem) {
         val trigger = suggestionTrigger as? KuiklyComposerSuggestionTrigger.MemberTrigger ?: return
         val next = fieldValue.replaceComposerTrigger(trigger.triggerStart, "@${member.handle} ")
@@ -509,14 +499,7 @@ internal fun ThreadComposerContent(
                     },
                     placeholderColor = SlockColor.TextMutedGray,
                     cursorBrush = SolidColor(SlockColor.TextBlack),
-                    modifier =
-                        Modifier.fillMaxWidth().heightIn(min = 40.dp).pointerInput(payload.enabled) {
-                            detectTapGestures(
-                                onLongPress = {
-                                    insertNewline()
-                                }
-                            )
-                        }
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
                 )
                 if (payload.hookLabels.isNotEmpty()) {
                     Text(
