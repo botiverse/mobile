@@ -257,6 +257,7 @@ private fun SlockAppShellContent() {
                 }
             )
         }
+    val membersApi = remember { BridgeMembersApi(bridge, authStore) }
     var authGateState by remember { mutableStateOf<AppShellAuthGateState>(AppShellAuthGateState.Restoring) }
     var authGateNonce by remember { mutableStateOf(0) }
     var activeThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
@@ -406,6 +407,7 @@ private fun SlockAppShellContent() {
                             SettingsAppShellContent(
                                 session = (authGateState as? AppShellAuthGateState.Ready)?.session,
                                 authDataSource = authDataSource,
+                                membersApi = membersApi,
                                 selectedDestination = selectedSettingsDestination,
                                 onDestinationChange = { selectedSettingsDestination = it },
                                 onOpenRouter = { jumpPage(pager, "router") },
@@ -474,6 +476,7 @@ private sealed interface AppShellAuthGateState {
 private fun SettingsAppShellContent(
     session: StoredAuthSession?,
     authDataSource: SharedAuthDataSource,
+    membersApi: BridgeMembersApi,
     selectedDestination: String,
     onDestinationChange: (String) -> Unit,
     onOpenRouter: () -> Unit,
@@ -523,7 +526,7 @@ private fun SettingsAppShellContent(
             SettingsDestinationBilling ->
                 SettingsBillingContent(appShellBillingPayload(session)) { _, _ -> }
             SettingsDestinationServer ->
-                SharedSettingsSectionContent(appShellServerPayload(session), onSettingsAction)
+                SharedServerSettingsContent(session, membersApi, onSettingsAction)
             SettingsDestinationMobile ->
                 SharedSettingsSectionContent(appShellMobilePayload(), onSettingsAction)
             SettingsDestinationAbout ->
@@ -536,6 +539,57 @@ private fun SettingsAppShellContent(
                 )
         }
     }
+}
+
+@Composable
+private fun SharedServerSettingsContent(
+    session: StoredAuthSession?,
+    membersApi: BridgeMembersApi,
+    onAction: (String, String?) -> Unit
+) {
+    var state by remember(session?.currentServerId) {
+        mutableStateOf<SharedServerSettingsState>(SharedServerSettingsState.Loading)
+    }
+
+    LaunchedEffect(session?.currentServerId) {
+        val server = session?.currentServerSummary()
+        val serverId = session?.currentServerId
+        if (server == null || serverId.isNullOrBlank()) {
+            state = SharedServerSettingsState.Error("server_required")
+            return@LaunchedEffect
+        }
+        state = SharedServerSettingsState.Loading
+        try {
+            val response = membersApi.serverMembers(serverId)
+            state =
+                if (response.isSuccessful) {
+                    SharedServerSettingsState.Content(
+                        members = response.bodyText?.let(::parseSharedMembers).orEmpty(),
+                        memberErrorCode = null
+                    )
+                } else {
+                    SharedServerSettingsState.Content(
+                        members = emptyList(),
+                        memberErrorCode = response.errorBodyText?.takeIf { it.isNotBlank() } ?: "members_network"
+                    )
+                }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            state = SharedServerSettingsState.Content(emptyList(), "members_network")
+        }
+    }
+
+    SharedSettingsSectionContent(
+        payload = appShellServerPayload(session, state),
+        onAction = onAction
+    )
+}
+
+private sealed interface SharedServerSettingsState {
+    data object Loading : SharedServerSettingsState
+    data class Content(val members: List<MemberProfile>, val memberErrorCode: String?) : SharedServerSettingsState
+    data class Error(val code: String) : SharedServerSettingsState
 }
 
 @Composable
@@ -841,16 +895,39 @@ private fun appShellBillingPayload(session: StoredAuthSession?): KuiklySettingsB
     )
 }
 
-private fun appShellServerPayload(session: StoredAuthSession?): KuiklySharedSettingsPayload {
+private fun appShellServerPayload(
+    session: StoredAuthSession?,
+    state: SharedServerSettingsState
+): KuiklySharedSettingsPayload {
     val server = session?.currentServerSummary()
     val role = server?.role?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Member"
     val plan = server?.plan?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Unknown"
+    val members =
+        (state as? SharedServerSettingsState.Content)
+            ?.members
+            .orEmpty()
+    val memberErrorCode = (state as? SharedServerSettingsState.Content)?.memberErrorCode
+    val membersStatus =
+        when (state) {
+            SharedServerSettingsState.Loading -> "Loading"
+            is SharedServerSettingsState.Error -> state.code
+            is SharedServerSettingsState.Content ->
+                memberErrorCode?.takeIf { it.isNotBlank() } ?: members.size.toString()
+        }
+    val adminCount = members.count { it.isWorkspaceAdmin() }
+    val adminStatus =
+        when (state) {
+            SharedServerSettingsState.Loading -> "Loading"
+            is SharedServerSettingsState.Error -> state.code
+            is SharedServerSettingsState.Content ->
+                memberErrorCode?.takeIf { it.isNotBlank() } ?: adminCount.toString()
+        }
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-server",
         title = "Server",
         heroIconName = "users",
         heroLabel = server?.name ?: "Workspace settings",
-        detail = "Shared workspace settings contract. Android and OHOS will attach the real API actions after this shared state is stable.",
+        detail = "Shared workspace settings now hydrates server identity and members through the shared bridge. Mutating actions remain host/API follow-ups.",
         sections =
             listOf(
                 KuiklySharedSettingsSection(
@@ -866,7 +943,8 @@ private fun appShellServerPayload(session: StoredAuthSession?): KuiklySharedSett
                     title = "Administration",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("admins", "users", "Admins", "Admin list and role changes need the shared Server API slice.", status = "Pending"),
+                            KuiklySharedSettingsRow("members", "users", "Members", "Loaded from /servers/{serverId}/members through shared bridge.", status = membersStatus),
+                            KuiklySharedSettingsRow("admins", "shield", "Admins", "Derived from member roles and permission badges.", status = adminStatus),
                             KuiklySharedSettingsRow("invites", "mail-plus", "Pending invites", "Invite creation/listing will be wired through shared actions.", status = "Pending"),
                             KuiklySharedSettingsRow("joinLinks", "link-2", "Join links", "Join link management is not exposed in shared yet.", status = "Pending"),
                             KuiklySharedSettingsRow("onboarding", "bot", "Onboarding agent", "Current onboarding agent id: ${server?.onboardingAgentId ?: "not set"}.", status = "Pending")
@@ -882,6 +960,16 @@ private fun appShellServerPayload(session: StoredAuthSession?): KuiklySharedSett
                 )
             )
     )
+}
+
+private fun MemberProfile.isWorkspaceAdmin(): Boolean {
+    val role = roleDescription.orEmpty().lowercase()
+    return "owner" in role ||
+        "admin" in role ||
+        permissionBadges.any { badge ->
+            val normalized = badge.lowercase()
+            "owner" in normalized || "admin" in normalized || "manage" in normalized
+        }
 }
 
 private fun appShellMobilePayload(): KuiklySharedSettingsPayload =
