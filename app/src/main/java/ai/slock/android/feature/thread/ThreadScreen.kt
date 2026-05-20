@@ -28,8 +28,6 @@ import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.sample.SlockStateSamples
-import ai.slock.android.shared.SlockKuiklyActivity
-import ai.slock.android.shared.SlockKuiklyPageIsland
 import ai.slock.android.feature.tasks.TasksContent
 import ai.slock.android.feature.tasks.TasksPanel
 import ai.slock.android.feature.tasks.TasksUiState
@@ -78,13 +76,6 @@ import ai.slock.compose.markdown.threadInlineCodeMatches
 import ai.slock.compose.markdown.threadInlineTagMatches
 import ai.slock.compose.markdown.threadMarkdownTagDisplayLabel
 import ai.slock.compose.markdown.threadMarkdownTaskReferenceKey
-import ai.slock.compose.SharedThreadComposerAttachment
-import ai.slock.compose.SharedThreadComposerChannelSuggestion
-import ai.slock.compose.SharedThreadComposerFlowState
-import ai.slock.compose.SharedThreadComposerMemberSuggestion
-import ai.slock.compose.SharedThreadComposerPayloadInput
-import ai.slock.compose.SharedThreadComposerSnapshot
-import ai.slock.compose.buildSharedThreadComposerPayloadJson
 import ai.slock.compose.model.formatSlockTimestampEpochMillis
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
 import ai.slock.compose.model.slockEpochDayForDate
@@ -99,8 +90,6 @@ import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import org.json.JSONArray
-import org.json.JSONObject
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -343,8 +332,7 @@ fun ThreadScreen(
         showConversationActions: Boolean = true,
         fallbackComposerHeader: ConversationSummary? = null,
         selectedThreadId: ThreadId? = null,
-        composerFocusRequestNonce: Int = 0,
-        useSharedThreadScreen: Boolean = false
+        composerFocusRequestNonce: Int = 0
 ) {
     var showMembersModal by rememberSaveable { mutableStateOf(false) }
     var showSettingsModal by rememberSaveable { mutableStateOf(false) }
@@ -411,70 +399,7 @@ fun ThreadScreen(
             attachmentPreviewVisible -> onDismissAttachmentPreview()
         }
     }
-    val useSharedThreadHost = useSharedThreadScreen
-    if (useSharedThreadHost) {
-        ThreadKuiklyScreen(
-                state = state,
-                membersPanelState = membersPanelState,
-                modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
-                membersCount = membersCount ?: 0,
-                showComposer = showComposer,
-                showSettingsAction = showConversationActions,
-                showReplyActions = showReplyActions,
-                fallbackComposerHeader = fallbackComposerHeader,
-                replyHeaderContext = replyHeaderContext,
-                parentJumpTarget = parentJumpTarget,
-                headerNavigationIcon = headerNavigationIcon,
-                channelSuggestions = channelSuggestions,
-                composerFocusRequestNonce = composerFocusRequestNonce,
-                onBack = onBack,
-                onModeSelected = onModeSelected,
-                onComposerChange = onComposerChange,
-                onAsTaskChange = onAsTaskChange,
-                onAttachImage = onAttachImage,
-                onAttachFile = onAttachFile,
-                onRemoveAttachment = onRemoveAttachment,
-                onRetryAttachment = onRetryAttachment,
-                onSend = onSend,
-                onLoadOlderMessages = onLoadOlderMessages,
-                onRetryLoadOlderMessages = onRetryLoadOlderMessages,
-                onLoadNewerMessages = onLoadNewerMessages,
-                onRetryLoadNewerMessages = onRetryLoadNewerMessages,
-                onRefreshThread = onRefreshThread,
-                onOpenMessageThread = onOpenMessageThread,
-                onOpenMemberProfile = onOpenMemberProfile,
-                onAddThreadMember = { memberId, kind -> onAddChannelMember(memberId, kind) },
-                onManageThreadMember = { memberId ->
-                    selectedChannelMemberDetailId = memberId
-                    showAddMember = false
-                    selectedAddMemberId = null
-                    addMemberError = false
-                    showMembersModal = true
-                },
-                onRemoveThreadMember = { memberId ->
-                    (membersPanelState.loadState as? ScreenLoadState.Content)
-                            ?.data
-                            ?.members
-                            ?.firstOrNull { it.id.value == memberId }
-                            ?.let(onRemoveChannelMember)
-                },
-                onOpenTask = onOpenTask,
-                onRetryFiles = onRetryFiles,
-                onLoadMoreFiles = onLoadMoreFiles,
-                onOpenAttachment = onOpenAttachment,
-                onJoinChannel = onJoinChannel,
-                onArchiveChannel = onArchiveChannel,
-                onDeleteChannel = onDeleteChannel,
-                onLeaveChannel = onLeaveChannel,
-                onRetryThreadLoad = onRetryThreadLoad,
-                onOpenParentMessage = onOpenParentMessage,
-                onTaskStatusChange = onTaskStatusChange,
-                onSaveMessage = onSaveMessage,
-                currentMemberId = currentMemberId,
-                myMessageAlignment = myMessageAlignment
-        )
-    } else {
-        Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite).imePadding()) {
+    Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite).imePadding()) {
         val showModeTabs = replyHeaderContext == null
         Column(
                 modifier =
@@ -846,7 +771,6 @@ fun ThreadScreen(
                 }
             }
         }
-    }
 
         if (showMembersModal) {
             if (selectedChannelMemberDetail != null) {
@@ -956,625 +880,6 @@ fun ThreadScreen(
         }
     }
 }
-
-private const val ThreadKuiklyLoadPageSize = 40
-
-@Composable
-private fun ThreadKuiklyScreen(
-        state: ThreadUiState,
-        membersPanelState: ThreadMembersPanelState,
-        membersCount: Int,
-        showComposer: Boolean,
-        showSettingsAction: Boolean,
-        showReplyActions: Boolean,
-        fallbackComposerHeader: ConversationSummary?,
-        replyHeaderContext: ThreadReplyHeaderContext?,
-        parentJumpTarget: ThreadParentJumpTarget?,
-        headerNavigationIcon: ThreadHeaderNavigationIcon,
-        channelSuggestions: List<ConversationSummary>,
-        composerFocusRequestNonce: Int,
-        onBack: () -> Unit,
-        onModeSelected: (ThreadTab) -> Unit,
-        onComposerChange: (String) -> Unit,
-        onAsTaskChange: (Boolean) -> Unit,
-        onAttachImage: () -> Unit,
-        onAttachFile: () -> Unit,
-        onRemoveAttachment: (String) -> Unit,
-        onRetryAttachment: () -> Unit,
-        onSend: () -> Unit,
-        onLoadOlderMessages: (MessageId?, Int) -> Unit,
-        onRetryLoadOlderMessages: () -> Unit,
-        onLoadNewerMessages: () -> Unit,
-        onRetryLoadNewerMessages: () -> Unit,
-        onRefreshThread: () -> Unit,
-        onOpenMessageThread: (Message) -> Unit,
-        onOpenMemberProfile: (MemberProfile) -> Unit,
-        onAddThreadMember: (String, MemberKind) -> Unit,
-        onManageThreadMember: (String) -> Unit,
-        onRemoveThreadMember: (String) -> Unit,
-        onOpenTask: (TaskSummary) -> Unit,
-        onRetryFiles: () -> Unit,
-        onLoadMoreFiles: () -> Unit,
-        onOpenAttachment: (Attachment) -> Unit,
-        onJoinChannel: (ConversationSummary) -> Unit,
-        onArchiveChannel: () -> Unit,
-        onDeleteChannel: () -> Unit,
-        onLeaveChannel: () -> Unit,
-        onRetryThreadLoad: () -> Unit,
-        onOpenParentMessage: (ThreadParentJumpTarget) -> Unit,
-        onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
-        onSaveMessage: (Message) -> Unit,
-        currentMemberId: MemberId?,
-        myMessageAlignment: MyMessageAlignmentPreference,
-        modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-    val content = (state.loadState as? ScreenLoadState.Content)?.data
-    val header = content?.header ?: fallbackComposerHeader
-    val composerState = header?.let(state.composerState::forHeader) ?: state.composerState
-    val filesPayloadText = remember(state.filesState) { state.filesState.toKuiklyThreadFilesPayload().toString() }
-    val attachmentsById =
-            remember(content, state.filesState) {
-                buildMap {
-                    content?.messages.orEmpty().forEach { message ->
-                        message.attachments.forEach { attachment -> put(attachment.id.value, attachment) }
-                    }
-                    (state.filesState?.loadState as? ScreenLoadState.Content)
-                            ?.data
-                            ?.items
-                            .orEmpty()
-                            .forEach { item -> put(item.attachment.id.value, item.attachment) }
-                }
-            }
-    val messagesById =
-            remember(content) { content?.messages.orEmpty().associateBy { it.id.value } }
-    val membersById =
-            remember(content, membersPanelState) {
-                (
-                        content?.messages.orEmpty().map { it.author } +
-                                (membersPanelState.loadState as? ScreenLoadState.Content)
-                                        ?.data
-                                        ?.members
-                                        .orEmpty()
-                        ).associateBy { it.id.value }
-            }
-    val tasksById =
-            remember(content) {
-                (content?.tasks.orEmpty() + content?.messages.orEmpty().mapNotNull { it.task })
-                        .associateBy { it.id.value }
-            }
-
-    var composerFlowState by rememberSaveable(stateSaver = SharedThreadComposerFlowStateSaver) {
-        mutableStateOf(
-            SharedThreadComposerFlowState.initial(
-                SharedThreadComposerSnapshot(
-                    value = composerState.value,
-                    asTask = composerState.asTask
-                )
-            )
-        )
-    }
-
-    LaunchedEffect(composerState.value, composerState.asTask) {
-        composerFlowState =
-            composerFlowState.applyHostSnapshot(
-                SharedThreadComposerSnapshot(
-                    value = composerState.value,
-                    asTask = composerState.asTask
-                )
-            )
-    }
-
-    val composerPayload =
-            remember(
-                    composerFlowState.payloadTextSeed,
-                    composerFlowState.payloadAsTaskSeed,
-                    composerFlowState.syncNonce,
-                    composerFocusRequestNonce,
-                    composerState,
-                    replyHeaderContext,
-                    channelSuggestions
-            ) {
-                buildSharedThreadComposerPayload(
-                                seedText = composerFlowState.payloadTextSeed,
-                                seedAsTask = composerFlowState.payloadAsTaskSeed,
-                                syncNonce = composerFlowState.syncNonce,
-                                focusRequestNonce = composerFocusRequestNonce,
-                                placeholder =
-                                        if (replyHeaderContext != null) {
-                                            "Message Threads"
-                                        } else {
-                                            header?.let { "Message #${it.name}" } ?: "Message"
-                                        },
-                                composerState = composerState,
-                                memberSuggestions = membersById.values.toList(),
-                                channelSuggestions = channelSuggestions,
-                                showAsTaskToggle = true
-                        )
-                        .toString()
-            }
-    val pageData =
-            remember(
-                    state.loadState,
-                    state.selectedTab,
-                    membersCount,
-                    showComposer,
-                    showSettingsAction,
-                    showReplyActions,
-                    filesPayloadText,
-                    composerPayload,
-                    header,
-                    replyHeaderContext,
-                    parentJumpTarget,
-                    headerNavigationIcon
-            ) {
-                JSONObject().put(
-                        "payload",
-                        state.toKuiklyThreadPagePayload(
-                                        header = header,
-                                        membersCount = membersCount,
-                                        showComposer = showComposer,
-                                        showSettingsAction = showSettingsAction,
-                                        showReplyActions = showReplyActions,
-                                        membersPanelState = membersPanelState,
-                                        filesPayload = filesPayloadText,
-                                        composerPayload = composerPayload,
-                                        replyHeaderContext = replyHeaderContext,
-                                        parentJumpTarget = parentJumpTarget,
-                                        headerNavigationIcon = headerNavigationIcon,
-                                        currentMemberId = currentMemberId,
-                                        myMessageAlignment = myMessageAlignment
-                                )
-                                .toString()
-                )
-            }
-
-    SlockKuiklyPageIsland(
-            pageName = SlockKuiklyActivity.PAGE_THREAD,
-            pageData = pageData,
-            modifier = modifier.fillMaxSize(),
-            supportsPageDataUpdates = true
-    ) { event ->
-        when (event.optString("action")) {
-            "back" -> onBack()
-            "selectTab" -> event.optString("tab").toThreadTabOrNull()?.let(onModeSelected)
-            "retryThreadLoad" -> onRetryThreadLoad()
-            "loadOlder" ->
-                    onLoadOlderMessages(content?.messages?.firstOrNull()?.id, ThreadKuiklyLoadPageSize)
-            "retryLoadOlder" -> onRetryLoadOlderMessages()
-            "loadNewer" -> onLoadNewerMessages()
-            "retryLoadNewer" -> onRetryLoadNewerMessages()
-            "refreshThread" -> onRefreshThread()
-            "openMessageThread" ->
-                    event.optString("itemId")
-                            .takeIf { it.isNotBlank() }
-                            ?.let(messagesById::get)
-                            ?.let(onOpenMessageThread)
-            "copyMessage" ->
-                    event.optString("itemId")
-                            .takeIf { it.isNotBlank() }
-                            ?.let(messagesById::get)
-                            ?.let { message -> context.copyThreadMessageBody(message.body) }
-            "saveMessage" ->
-                    event.optString("itemId")
-                            .takeIf { it.isNotBlank() }
-                            ?.let(messagesById::get)
-                            ?.let(onSaveMessage)
-            "openMember" ->
-                    event.optString("itemId")
-                            .takeIf { it.isNotBlank() }
-                            ?.let(membersById::get)
-                            ?.let(onOpenMemberProfile)
-            "submitAddMember" ->
-                    event.optString("itemId")
-                            .takeIf { it.isNotBlank() }
-                            ?.let { memberId ->
-                                onAddThreadMember(
-                                        memberId,
-                                        event.optString("tab").toKuiklyMemberKindOrDefault()
-                                )
-                            }
-            "manageMember" ->
-                    event.optString("itemId")
-                            .takeIf { it.isNotBlank() }
-                            ?.let(onManageThreadMember)
-            "removeMember" ->
-                    event.optString("itemId")
-                            .takeIf { it.isNotBlank() }
-                            ?.let(onRemoveThreadMember)
-            "openTask" ->
-                    event.optString("itemId")
-                            .takeIf { it.isNotBlank() }
-                            ?.let(tasksById::get)
-                            ?.let(onOpenTask)
-            "markTaskDone" ->
-                    event.optString("itemId")
-                            .takeIf { it.isNotBlank() }
-                            ?.let(tasksById::get)
-                            ?.let { task -> onTaskStatusChange(task, TaskStatus.Done) }
-            "reopenTask" ->
-                    event.optString("itemId")
-                            .takeIf { it.isNotBlank() }
-                            ?.let(tasksById::get)
-                            ?.let { task -> onTaskStatusChange(task, TaskStatus.InProgress) }
-            "setTaskStatus" ->
-                    event.optString("itemId")
-                            .takeIf { it.isNotBlank() }
-                            ?.let(tasksById::get)
-                            ?.let { task ->
-                                event.optString("tab")
-                                        .toKuiklyTaskStatusOrNull()
-                                        ?.let { status -> onTaskStatusChange(task, status) }
-                            }
-            "openAttachment" ->
-                    event.optString("attachmentId")
-                            .takeIf { it.isNotBlank() }
-                            ?.let(attachmentsById::get)
-                            ?.let(onOpenAttachment)
-            "retryFiles" -> onRetryFiles()
-            "loadMoreFiles" -> onLoadMoreFiles()
-            "joinChannel" -> header?.let(onJoinChannel)
-            "settingsAction" ->
-                    when (event.optString("itemId")) {
-                        "files" -> onModeSelected(ThreadTab.Files)
-                        "leave" -> onLeaveChannel()
-                        "archive" -> onArchiveChannel()
-                        "delete" -> onDeleteChannel()
-                    }
-            "openParentMessage" ->
-                    parentJumpTarget?.let(onOpenParentMessage)
-            "change" -> {
-                val nextValue = event.optString("value")
-                val nextAsTask = event.optBoolean("asTask", composerFlowState.liveDraftAsTask)
-                if (nextValue != composerFlowState.liveDraftText) {
-                    composerFlowState = composerFlowState.applyLocalChange(nextValue, nextAsTask)
-                    onComposerChange(nextValue)
-                }
-                if (nextAsTask != composerFlowState.liveDraftAsTask) {
-                    composerFlowState = composerFlowState.applyLocalChange(nextValue, nextAsTask)
-                    onAsTaskChange(nextAsTask)
-                }
-            }
-            "toggleAsTask" -> {
-                val nextAsTask = event.optBoolean("asTask", !composerFlowState.liveDraftAsTask)
-                if (nextAsTask != composerFlowState.liveDraftAsTask) {
-                    composerFlowState = composerFlowState.applyLocalChange(composerFlowState.liveDraftText, nextAsTask)
-                    onAsTaskChange(nextAsTask)
-                }
-            }
-            "attachImage" -> onAttachImage()
-            "attachFile" -> onAttachFile()
-            "removeAttachment" -> {
-                event.optString("attachmentId").takeIf { it.isNotBlank() }?.let(onRemoveAttachment)
-            }
-            "retryAttachments" -> onRetryAttachment()
-            "send" -> onSend()
-        }
-    }
-}
-
-private fun ThreadUiState.toKuiklyThreadPagePayload(
-        header: ConversationSummary?,
-        membersCount: Int,
-        showComposer: Boolean,
-        showSettingsAction: Boolean,
-        showReplyActions: Boolean,
-        membersPanelState: ThreadMembersPanelState,
-        filesPayload: String,
-        composerPayload: String,
-        replyHeaderContext: ThreadReplyHeaderContext?,
-        parentJumpTarget: ThreadParentJumpTarget?,
-        headerNavigationIcon: ThreadHeaderNavigationIcon,
-        currentMemberId: MemberId?,
-        myMessageAlignment: MyMessageAlignmentPreference
-): JSONObject {
-    val zoneId = ZoneId.systemDefault()
-    val today = LocalDate.now(zoneId)
-    val originStatus =
-            when {
-                replyHeaderContext == null -> "none"
-                replyHeaderContext.parentMessageRefreshing -> "loading"
-                replyHeaderContext.parentMessage != null -> "message"
-                parentJumpTarget != null || replyHeaderContext.parentMessageId != null -> "missing"
-                replyHeaderContext.parentMessagePreview?.isNotBlank() == true -> "preview"
-                else -> "none"
-            }
-    val payload =
-            JSONObject()
-                    .put("title", if (replyHeaderContext != null) "Threads" else header?.name ?: "Thread")
-                    .putNullable(
-                            "subtitle",
-                            if (replyHeaderContext != null) {
-                                replyHeaderContext.replyHeaderSubtitle()
-                            } else {
-                                header?.toKuiklyThreadSubtitle()
-                            }
-                    )
-                    .put("selectedTab", selectedTab.toKuiklyWireValue())
-                    .put(
-                            "navigationLabel",
-                            when (headerNavigationIcon) {
-                                ThreadHeaderNavigationIcon.Back -> "Back"
-                                ThreadHeaderNavigationIcon.Close -> "Close"
-                            }
-                    )
-                    .put("showModeTabs", replyHeaderContext == null)
-                    .put("showReplyActions", showReplyActions && replyHeaderContext == null)
-                    .put("alignOwnMessagesRight", myMessageAlignment == MyMessageAlignmentPreference.Right)
-                    .put("localOffsetMinutes", zoneId.currentOffsetMinutes())
-                    .put("todayEpochDay", slockEpochDayForDate(today.year, today.monthValue, today.dayOfMonth))
-                    .put("membersCount", membersCount)
-                    .put("showComposer", showComposer)
-                    .put(
-                            "canAddMembers",
-                            (membersPanelState.loadState as? ScreenLoadState.Content)
-                                    ?.data
-                                    ?.canAddMembers
-                                    ?: true
-                    )
-                    .put(
-                            "showSettingsAction",
-                            showSettingsAction && replyHeaderContext == null && parentJumpTarget == null
-                    )
-                    .put("showMembersAction", replyHeaderContext == null && parentJumpTarget == null)
-                    .put("showOpenInChannelAction", parentJumpTarget != null)
-                    .put("joined", header?.joined ?: true)
-                    .put("canSend", header?.permissions?.canSend ?: true)
-                    .put("joinLabel", "Join channel")
-                    .put("members", membersPanelState.toKuiklyThreadMembersJson())
-                    .put("memberCandidates", membersPanelState.toKuiklyThreadMemberCandidatesJson())
-                    .put("addMemberStatus", membersPanelState.addStatus.toKuiklyWireValue())
-                    .putNullable("addMemberErrorCode", membersPanelState.addErrorCode)
-                    .put("removeMemberStatus", membersPanelState.removeStatus.toKuiklyWireValue())
-                    .putNullable("removingMemberId", membersPanelState.removingMemberId?.value)
-                    .putNullable("removeMemberErrorCode", membersPanelState.removeErrorCode)
-                    .put(
-                            "settingsActions",
-                            buildKuiklyThreadSettingsActionsJson(
-                                    showSettingsAction =
-                                            showSettingsAction && replyHeaderContext == null &&
-                                                    parentJumpTarget == null
-                            )
-                    )
-                    .put("filesPayload", filesPayload)
-                    .put("composerPayload", composerPayload)
-                    .put("emptyTitle", "No messages yet")
-                    .put("emptyDetail", "This conversation has no messages yet.")
-                    .put("originStatus", originStatus)
-                    .putNullable(
-                            "originParentMessageId",
-                            parentJumpTarget?.parentMessageId?.value ?: replyHeaderContext?.parentMessageId?.value
-                    )
-                    .putNullable("originPreview", replyHeaderContext?.parentMessagePreview)
-                    .putNullable("originErrorCode", replyHeaderContext?.parentMessageRefreshErrorCode)
-                    .putNullable(
-                            "originMessage",
-                            replyHeaderContext?.parentMessage?.toKuiklyThreadMessageJson(currentMemberId)
-                    )
-    return when (val loadState = loadState) {
-        ScreenLoadState.Loading -> payload.put("status", "loading")
-        is ScreenLoadState.Content ->
-                payload.put("status", if (loadState.data.messages.isEmpty()) "empty" else "content")
-                        .put("messages", loadState.data.messages.toKuiklyThreadMessagesJson(currentMemberId))
-                        .put("tasks", loadState.data.tasks.toKuiklyThreadTasksJson())
-                        .put("canLoadMoreBefore", loadState.data.canLoadMoreBefore)
-                        .put("canLoadMoreAfter", loadState.data.canLoadMoreAfter)
-                        .put("olderMessagesStatus", loadState.data.olderMessagesStatus.toKuiklyWireValue())
-                        .put("newerMessagesStatus", loadState.data.newerMessagesStatus.toKuiklyWireValue())
-        is ScreenLoadState.Empty ->
-                payload.put("status", "empty")
-                        .putNullable("errorCode", loadState.reason.name)
-        is ScreenLoadState.Error ->
-                payload.put("status", "error")
-                        .putNullable("errorCode", loadState.error.code)
-        is ScreenLoadState.NoPermission ->
-                payload.put("status", "no_permission")
-                        .putNullable("errorCode", loadState.blocker.code)
-    }
-}
-
-private fun ThreadMembersPanelState.toKuiklyThreadMembersJson(): JSONArray =
-        JSONArray().also { array ->
-            (loadState as? ScreenLoadState.Content)
-                    ?.data
-                    ?.members
-                    .orEmpty()
-                    .forEach { member -> array.put(member.toKuiklyThreadMemberJson()) }
-        }
-
-private fun ThreadMembersPanelState.toKuiklyThreadMemberCandidatesJson(): JSONArray =
-        JSONArray().also { array ->
-            (candidatesLoadState as? ScreenLoadState.Content)
-                    ?.data
-                    ?.candidates
-                    .orEmpty()
-                    .forEach { member -> array.put(member.toKuiklyThreadMemberJson()) }
-        }
-
-private fun ThreadMemberAddStatus.toKuiklyWireValue(): String =
-        when (this) {
-            ThreadMemberAddStatus.Idle -> "idle"
-            ThreadMemberAddStatus.Adding -> "adding"
-            ThreadMemberAddStatus.Failed -> "failed"
-            ThreadMemberAddStatus.NoPermission -> "no_permission"
-        }
-
-private fun ThreadMemberRemoveStatus.toKuiklyWireValue(): String =
-        when (this) {
-            ThreadMemberRemoveStatus.Idle -> "idle"
-            ThreadMemberRemoveStatus.Removing -> "removing"
-            ThreadMemberRemoveStatus.Failed -> "failed"
-            ThreadMemberRemoveStatus.NoPermission -> "no_permission"
-        }
-
-private fun String.toKuiklyMemberKindOrDefault(): MemberKind =
-        when (trim().lowercase()) {
-            "agent" -> MemberKind.Agent
-            "system" -> MemberKind.System
-            else -> MemberKind.Human
-        }
-
-private fun MemberProfile.toKuiklyThreadMemberJson(): JSONObject =
-        JSONObject()
-                .put("id", id.value)
-                .put("displayName", displayName)
-                .put("handle", handle)
-                .put(
-                        "roleLabel",
-                        roleDescription
-                                ?: when (kind) {
-                                    MemberKind.Agent -> "Agent"
-                                    MemberKind.Human -> "Member"
-                                    MemberKind.System -> "System"
-                                }
-                )
-                .putNullable("avatarUrl", avatarUrl ?: avatar?.wireValue)
-                .put("avatarLabel", avatarLabel)
-                .put("kind", kind.name.lowercase())
-
-private fun buildKuiklyThreadSettingsActionsJson(showSettingsAction: Boolean): JSONArray =
-        JSONArray().also { array ->
-            if (!showSettingsAction) return@also
-            array.put(
-                    JSONObject()
-                            .put("id", "files")
-                            .put("title", "Files")
-                            .put("subtitle", "Open files shared in this conversation")
-                            .put("icon", "folder-open")
-                            .put("destructive", false)
-            )
-            array.put(
-                    JSONObject()
-                            .put("id", "leave")
-                            .put("title", "Leave channel")
-                            .put("subtitle", "Stop following this conversation")
-                            .put("icon", "log-out")
-                            .put("destructive", true)
-            )
-            array.put(
-                    JSONObject()
-                            .put("id", "archive")
-                            .put("title", "Archive channel")
-                            .put("subtitle", "Hide this conversation from active lists")
-                            .put("icon", "archive")
-                            .put("destructive", true)
-            )
-            array.put(
-                    JSONObject()
-                            .put("id", "delete")
-                            .put("title", "Delete channel")
-                            .put("subtitle", "Permanently remove this conversation")
-                            .put("icon", "trash")
-                            .put("destructive", true)
-            )
-        }
-
-private fun ConversationSummary.toKuiklyThreadSubtitle(): String =
-        when {
-            !joined -> "Not joined"
-            !permissions.canSend -> "Read only"
-            kind == ConversationKind.DirectMessage -> "Direct message"
-            kind == ConversationKind.Thread -> "Reply thread"
-            else -> "Channel conversation"
-        }
-
-private fun List<Message>.toKuiklyThreadMessagesJson(currentMemberId: MemberId?): JSONArray =
-        JSONArray().also { array -> forEach { array.put(it.toKuiklyThreadMessageJson(currentMemberId)) } }
-
-private fun Message.toKuiklyThreadMessageJson(currentMemberId: MemberId?): JSONObject =
-        JSONObject()
-                .put("id", id.value)
-                .put("authorId", author.id.value)
-                .put("authorName", author.displayName)
-                .put("isOwn", isCurrentUserMessage(currentMemberId))
-                .put("avatarLabel", author.avatarLabel)
-                .putNullable("avatarWireValue", author.avatar?.wireValue ?: author.avatarUrl)
-                .putNullable("gravatarHash", author.gravatarHash)
-                .put("timestampLabel", timestampLabel)
-                .put("messageType", messageType.name)
-                .putNullable("systemEventType", systemEventType)
-                .put(
-                        "metadata",
-                        JSONObject().also { json ->
-                            metadata.entries.sortedBy { it.key }.forEach { (key, value) ->
-                                if (key.isNotBlank()) json.put(key, value)
-                            }
-                        }
-                )
-                .put("body", body)
-                .put("replyCount", replyCount)
-                .putNullable("taskId", task?.id?.value)
-                .put("taskNumber", task?.taskNumber)
-                .putNullable("taskStatus", task?.status?.name)
-                .putNullable("taskAssigneeName", task?.assignee?.resolvedFooterDisplayName())
-                .put(
-                        "attachments",
-                        JSONArray().also { array ->
-                            attachments.forEach { attachment -> array.put(attachment.toKuiklyThreadAttachmentJson()) }
-                        }
-                )
-
-private fun Attachment.toKuiklyThreadAttachmentJson(): JSONObject =
-        JSONObject()
-                .put("id", id.value)
-                .put("name", name)
-                .put("mimeType", mimeType)
-                .put("sizeLabel", sizeLabel)
-                .putNullable("thumbnailUrl", thumbnailUrl)
-
-private fun List<TaskSummary>.toKuiklyThreadTasksJson(): JSONArray =
-        JSONArray().also { array -> forEach { array.put(it.toKuiklyThreadTaskJson()) } }
-
-private fun TaskSummary.toKuiklyThreadTaskJson(): JSONObject =
-        JSONObject()
-                .put("id", id.value)
-                .put("title", title)
-                .put("status", status.name)
-                .put("taskNumber", taskNumber)
-                .putNullable("assigneeName", assignee?.displayName)
-                .put("updatedAtLabel", updatedAtLabel)
-
-private fun ThreadTab.toKuiklyWireValue(): String =
-        when (this) {
-            ThreadTab.Chat -> "chat"
-            ThreadTab.Tasks -> "tasks"
-            ThreadTab.Files -> "files"
-        }
-
-private fun String.toThreadTabOrNull(): ThreadTab? =
-        when (trim().lowercase()) {
-            "chat" -> ThreadTab.Chat
-            "tasks" -> ThreadTab.Tasks
-            "files" -> ThreadTab.Files
-            else -> null
-        }
-
-private fun String.toKuiklyTaskStatusOrNull(): TaskStatus? =
-        when (trim().lowercase().replace("-", "").replace("_", "").replace(" ", "")) {
-            "todo", "open" -> TaskStatus.Todo
-            "inprogress", "progress" -> TaskStatus.InProgress
-            "inreview", "review" -> TaskStatus.InReview
-            "done", "complete", "completed" -> TaskStatus.Done
-            "closed" -> TaskStatus.Closed
-            else -> null
-        }
-
-private fun MessagePageStatus.toKuiklyWireValue(): String =
-        when (this) {
-            MessagePageStatus.Idle -> "idle"
-            MessagePageStatus.Loading -> "loading"
-            MessagePageStatus.Error -> "error"
-            MessagePageStatus.EndReached -> "end_reached"
-        }
-
-private fun JSONObject.putNullable(key: String, value: Any?): JSONObject =
-        apply {
-            if (value == null) {
-                put(key, JSONObject.NULL)
-            } else {
-                put(key, value)
-            }
-        }
 
 private fun ComposerState.forHeader(header: ConversationSummary): ComposerState =
         if (header.joined && header.permissions.canSend) {
@@ -4574,77 +3879,6 @@ private fun ScreenLoadState<ThreadFilesContent>.threadFilesItemCount(): Int =
 private fun ScreenLoadState<ThreadFilesContent>.threadFilesHasMore(): Boolean =
         (this as? ScreenLoadState.Content)?.data?.hasMore == true
 
-private fun ThreadFilesUiState?.toKuiklyThreadFilesPayload(): JSONObject {
-    val loadState = this?.loadState ?: ScreenLoadState.Loading
-    val payload =
-            JSONObject()
-                    .put("loadingMore", this?.loadingMore == true)
-                    .put("emptyTitle", "No files yet")
-                    .put("emptyDetail", "Files shared in this thread will show up here.")
-    return when (loadState) {
-        ScreenLoadState.Loading -> payload.put("status", "loading")
-        is ScreenLoadState.Content -> {
-            val items = loadState.data.items
-            payload
-                    .put("status", if (items.isEmpty()) "empty" else "content")
-                    .put("hasMore", loadState.data.hasMore)
-                    .put(
-                            "items",
-                            JSONArray().apply {
-                                items.forEach { item -> put(item.toKuiklyThreadFileJson()) }
-                            }
-                    )
-        }
-        is ScreenLoadState.Empty ->
-                payload.put("status", "empty")
-        is ScreenLoadState.Error ->
-                payload.put("status", "error").put("errorCode", loadState.error.code)
-        is ScreenLoadState.NoPermission ->
-                payload
-                        .put("status", "no_permission")
-                        .put(
-                                "errorCode",
-                                loadState.blocker.requiredCapability ?: loadState.blocker.code
-                        )
-    }
-}
-
-private fun ChannelFileItem.toKuiklyThreadFileJson(): JSONObject =
-        JSONObject()
-                .put("attachmentId", attachment.id.value)
-                .put("name", attachment.name)
-                .put("sizeLabel", attachment.sizeLabel.toHumanReadableFileSizeLabel())
-                .put("createdAtLabel", createdAt?.toThreadTimestampLabel().orEmpty())
-                .put("sourceLabel", sourceLabel())
-                .put("mimeType", attachment.mimeType)
-                .put("thumbnailUrl", attachment.thumbnailUrl.orEmpty())
-
-private fun String.toHumanReadableFileSizeLabel(): String {
-    val raw = trim()
-    if (raw.isBlank()) {
-        return ""
-    }
-    val bytes =
-            raw.toLongOrNull()
-                    ?: Regex("""^(\d+)\s*(?:B|bytes?)$""", RegexOption.IGNORE_CASE)
-                            .find(raw)
-                            ?.groupValues
-                            ?.getOrNull(1)
-                            ?.toLongOrNull()
-                    ?: return raw
-    return when {
-        bytes >= 1024L * 1024L * 1024L -> "${bytes / (1024L * 1024L * 1024L)} GB"
-        bytes >= 1024L * 1024L -> "${bytes / (1024L * 1024L)} MB"
-        bytes >= 1024L -> "${bytes / 1024L} KB"
-        else -> "$bytes B"
-    }
-}
-
-private fun ChannelFileItem.sourceLabel(): String =
-        sourceParentMessageShortId?.takeIf { it.isNotBlank() }?.let { "#thread:$it" }
-                ?: messageId?.value?.take(8)?.takeIf { it.isNotBlank() }?.let { "#$it" }
-                ?: sourceType?.replace('_', ' ').orEmpty()
-
 @Composable
 private fun LegacyThreadFilesPanel(
         state: ThreadFilesUiState?,
@@ -6620,204 +5854,405 @@ fun ThreadComposerBar(
         onComposerTextToolbarHidden: () -> Unit = {},
         focusRequestNonce: Int = 0
 ) {
-    var composerFlowState by rememberSaveable(stateSaver = SharedThreadComposerFlowStateSaver) {
-        mutableStateOf(
-            SharedThreadComposerFlowState.initial(
-                SharedThreadComposerSnapshot(
-                    value = composerState.value,
-                    asTask = composerState.asTask
+    var composerFieldValue by remember { mutableStateOf(TextFieldValue(composerState.value)) }
+    var pendingPreviewAttachmentId by rememberSaveable { mutableStateOf<String?>(null) }
+    var restoreComposerToolbarAfterSelectAll by rememberSaveable { mutableStateOf(false) }
+    var composerFieldFocused by rememberSaveable { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    if (composerFieldValue.text != composerState.value) {
+        composerFieldValue =
+                TextFieldValue(
+                        text = composerState.value,
+                        selection = TextRange(composerState.value.length)
                 )
-            )
-        )
     }
-
-    LaunchedEffect(composerState.value, composerState.asTask) {
-        composerFlowState =
-            composerFlowState.applyHostSnapshot(
-                SharedThreadComposerSnapshot(
-                    value = composerState.value,
-                    asTask = composerState.asTask
-                )
-            )
-    }
-
-    DisposableEffect(Unit) {
-        onDispose { onComposerTextToolbarHidden() }
-    }
-
-    val payload =
-            remember(
-                    composerFlowState.payloadTextSeed,
-                    composerFlowState.payloadAsTaskSeed,
-                    composerFlowState.syncNonce,
-                    focusRequestNonce,
-                    placeholder,
-                    composerState.enabled,
-                    composerState.status,
-                    composerState.errorCode,
-                    composerState.noPermissionCode,
-                    composerState.pendingAttachments,
-                    memberSuggestions,
-                    channelSuggestions,
-                    showAsTaskToggle
-            ) {
-                buildSharedThreadComposerPayload(
-                        seedText = composerFlowState.payloadTextSeed,
-                        seedAsTask = composerFlowState.payloadAsTaskSeed,
-                        syncNonce = composerFlowState.syncNonce,
-                        focusRequestNonce = focusRequestNonce,
-                        placeholder = placeholder,
-                        composerState = composerState,
-                        memberSuggestions = memberSuggestions,
-                        channelSuggestions = channelSuggestions,
-                        showAsTaskToggle = showAsTaskToggle
-                )
-            }
-
-    SlockKuiklyPageIsland(
-            pageName = SlockKuiklyActivity.PAGE_THREAD_COMPOSER,
-            pageData = JSONObject().put("payload", payload.toString()),
-            modifier =
-                    modifier.fillMaxWidth()
-                            .heightIn(
-                                    min = ThreadComposerIslandMinHeight,
-                                    max = ThreadComposerIslandMaxHeight
-                            ),
-            supportsPageDataUpdates = true
-    ) { event ->
-        when (event.optString("action")) {
-            "change" -> {
-                val nextValue = event.optString("value")
-                val nextAsTask = event.optBoolean("asTask", composerFlowState.liveDraftAsTask)
-                if (nextValue != composerFlowState.liveDraftText) {
-                    composerFlowState = composerFlowState.applyLocalChange(nextValue, nextAsTask)
-                    onComposerChange(nextValue)
-                }
-                if (nextAsTask != composerFlowState.liveDraftAsTask) {
-                    composerFlowState = composerFlowState.applyLocalChange(nextValue, nextAsTask)
-                    onAsTaskChange(nextAsTask)
-                }
-            }
-            "toggleAsTask" -> {
-                val nextAsTask = event.optBoolean("asTask", !composerFlowState.liveDraftAsTask)
-                if (nextAsTask != composerFlowState.liveDraftAsTask) {
-                    composerFlowState = composerFlowState.applyLocalChange(composerFlowState.liveDraftText, nextAsTask)
-                    onAsTaskChange(nextAsTask)
-                }
-            }
-            "attachImage" -> onAttachImage()
-            "attachFile" -> onAttachFile()
-            "removeAttachment" -> {
-                event.optString("attachmentId").takeIf { it.isNotBlank() }?.let(onRemoveAttachment)
-            }
-            "retryAttachments" -> onRetryAttachment()
-            "blur" -> onComposerBlur()
-            "send" -> onSend()
+    LaunchedEffect(focusRequestNonce) {
+        if (focusRequestNonce <= 0 || !composerState.enabled) {
+            return@LaunchedEffect
         }
+        withFrameNanos { }
+        composerFieldValue =
+                TextFieldValue(
+                        text = composerState.value,
+                        selection = TextRange(composerState.value.length)
+                )
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
+    val horizontalPadding = threadHorizontalPadding()
+    val bottomPadding = threadComposerBottomPadding()
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val keyboardBottomPx = WindowInsets.ime.getBottom(density)
+    val keyboardVisible = keyboardBottomPx > 0
+    val composerTopPadding = SlockSpacing.Md
+    val composerSectionSpacing = SlockSpacing.Sm
+    val composerTextFieldMinHeight = 48.dp
+    val composerTextFieldVerticalPadding = 12.dp
+    val enabled =
+            composerState.enabled &&
+                    composerState.status != ComposerStatus.NoPermission &&
+                    composerState.noPermissionCode == null
+    val composerValueProvider = { composerFieldValue }
+    val handleComposerFieldValueChange = { nextValue: TextFieldValue ->
+        composerFieldValue = nextValue
+        onComposerChange(nextValue.text)
+    }
+    var composerFieldBounds by remember { mutableStateOf<Rect?>(null) }
+    var composerTextAreaBounds by remember { mutableStateOf<Rect?>(null) }
+    val suggestionTrigger = remember(composerFieldValue) {
+        detectComposerSuggestionTrigger(composerFieldValue)
+    }
+    val filteredMemberSuggestions = remember(suggestionTrigger, memberSuggestions) {
+        when (val trigger = suggestionTrigger) {
+            is ComposerSuggestionTrigger.MemberTrigger ->
+                memberSuggestions.filter { member ->
+                    val q = trigger.query.lowercase()
+                    member.displayName.lowercase().contains(q) ||
+                            member.handle.lowercase().contains(q)
+                }
+            else -> emptyList()
+        }
+    }
+    val filteredChannelSuggestions = remember(suggestionTrigger, channelSuggestions) {
+        when (val trigger = suggestionTrigger) {
+            is ComposerSuggestionTrigger.ChannelTrigger ->
+                channelSuggestions.filter { channel ->
+                    val q = trigger.query.lowercase()
+                    channel.name.lowercase().contains(q)
+                }
+            else -> emptyList()
+        }
+    }
+    val pendingPreviewAttachment =
+            composerState.pendingAttachments.firstOrNull { attachment ->
+                attachment.id == pendingPreviewAttachmentId && attachment.hasLocalImagePreview
+            }
+    val insertComposerNewline = {
+        handleComposerFieldValueChange(composerFieldValue.insertTextAtSelection("\n"))
+    }
+    val textToolbar =
+            rememberComposerTextToolbar(
+                    onInsertNewline = insertComposerNewline,
+                    onToolbarHidden = onComposerTextToolbarHidden
+            )
+    DisposableEffect(textToolbar) {
+        onDispose {
+            textToolbar.hide()
+        }
+    }
+    LaunchedEffect(pendingPreviewAttachmentId, composerState.pendingAttachments) {
+        if (pendingPreviewAttachmentId != null && pendingPreviewAttachment == null) {
+            pendingPreviewAttachmentId = null
+        }
+    }
+    var suggestionSelectionIndex by rememberSaveable { mutableStateOf(0) }
+    val showMemberSuggestions = composerFieldFocused && filteredMemberSuggestions.isNotEmpty()
+    val showChannelSuggestions = composerFieldFocused && filteredChannelSuggestions.isNotEmpty()
+    val visibleSuggestionCount =
+            when {
+                showMemberSuggestions -> filteredMemberSuggestions.size
+                showChannelSuggestions -> filteredChannelSuggestions.size
+                else -> 0
+            }
+    LaunchedEffect(
+            suggestionTrigger,
+            showMemberSuggestions,
+            showChannelSuggestions,
+            filteredMemberSuggestions.size,
+            filteredChannelSuggestions.size
+    ) {
+        suggestionSelectionIndex =
+                when {
+                    visibleSuggestionCount <= 0 -> 0
+                    suggestionSelectionIndex >= visibleSuggestionCount -> visibleSuggestionCount - 1
+                    else -> suggestionSelectionIndex
+                }
+    }
+    fun applySelectedSuggestion(): Boolean {
+        return when {
+            showMemberSuggestions -> {
+                val member = filteredMemberSuggestions.getOrNull(suggestionSelectionIndex) ?: return false
+                val trigger = suggestionTrigger as? ComposerSuggestionTrigger.MemberTrigger ?: return false
+                handleComposerFieldValueChange(
+                        composerFieldValue.replaceTriggerWith(
+                                trigger.triggerStart,
+                                "@${member.handle} "
+                        )
+                )
+                true
+            }
+            showChannelSuggestions -> {
+                val channel = filteredChannelSuggestions.getOrNull(suggestionSelectionIndex) ?: return false
+                val trigger = suggestionTrigger as? ComposerSuggestionTrigger.ChannelTrigger ?: return false
+                handleComposerFieldValueChange(
+                        composerFieldValue.replaceTriggerWith(
+                                trigger.triggerStart,
+                                "#${channel.name} "
+                        )
+                )
+                true
+            }
+            else -> false
+        }
+    }
+    BackHandler(enabled = showMemberSuggestions || showChannelSuggestions) {
+        focusManager.clearFocus()
+        keyboardController?.hide()
+    }
+    Column(modifier = modifier.fillMaxWidth().navigationBarsPadding()) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val suggestionDropdownWidth = maxWidth - horizontalPadding * 2
+            val suggestionPopupPositionProvider =
+                    remember(composerFieldBounds, density, horizontalPadding) {
+                        object : PopupPositionProvider {
+                            override fun calculatePosition(
+                                    anchorBounds: IntRect,
+                                    windowSize: IntSize,
+                                    layoutDirection: LayoutDirection,
+                                    popupContentSize: IntSize
+                            ): IntOffset {
+                                val horizontalPaddingPx =
+                                        with(density) { horizontalPadding.roundToPx() }
+                                val fieldTopPx =
+                                        composerFieldBounds?.top?.roundToInt()
+                                                ?: popupContentSize.height
+                                return IntOffset(
+                                        x =
+                                                horizontalPaddingPx.coerceIn(
+                                                        0,
+                                                        (windowSize.width - popupContentSize.width)
+                                                                .coerceAtLeast(0)
+                                                ),
+                                        y = (fieldTopPx - popupContentSize.height).coerceAtLeast(0)
+                                )
+                            }
+                        }
+                    }
+            if (showMemberSuggestions || showChannelSuggestions) {
+                Popup(
+                        popupPositionProvider = suggestionPopupPositionProvider,
+                        properties =
+                                PopupProperties(
+                                        focusable = false,
+                                        dismissOnBackPress = false,
+                                        dismissOnClickOutside = false
+                                )
+                ) {
+                    Box(
+                            modifier =
+                                    Modifier.width(suggestionDropdownWidth)
+                                            .heightIn(max = 244.dp)
+                                            .zIndex(1f)
+                    ) {
+                        if (showMemberSuggestions) {
+                            ComposerMemberSuggestionDropdown(
+                                    members = filteredMemberSuggestions,
+                                    selectedIndex = suggestionSelectionIndex,
+                                    onSelect = { member ->
+                                        suggestionSelectionIndex =
+                                                filteredMemberSuggestions.indexOf(member).coerceAtLeast(0)
+                                        applySelectedSuggestion()
+                                    }
+                            )
+                        } else {
+                            ComposerChannelSuggestionDropdown(
+                                    channels = filteredChannelSuggestions,
+                                    selectedIndex = suggestionSelectionIndex,
+                                    onSelect = { channel ->
+                                        suggestionSelectionIndex =
+                                                filteredChannelSuggestions.indexOf(channel).coerceAtLeast(0)
+                                        applySelectedSuggestion()
+                                    }
+                            )
+                        }
+                    }
+                }
+            }
+            Column(
+                modifier =
+                        Modifier.fillMaxWidth()
+                                .background(SlockColor.SurfaceWhite)
+                                .drawBehind {
+                                    val stroke = SlockStroke.Default.toPx()
+                                    drawLine(
+                                            color = SlockColor.BorderBlack,
+                                            start = Offset(0f, stroke / 2f),
+                                            end = Offset(size.width, stroke / 2f),
+                                            strokeWidth = stroke
+                                    )
+                                }
+                                .padding(
+                                        start = horizontalPadding,
+                                        top = composerTopPadding,
+                                        end = horizontalPadding,
+                                        bottom = bottomPadding
+                                ),
+                verticalArrangement = Arrangement.spacedBy(composerSectionSpacing)
+        ) {
+            val statusLabel = composerState.activityLabel
+            if (statusLabel != null) {
+                Text(
+                        text = statusLabel,
+                        style = SlockType.Caption,
+                        color =
+                                if (composerState.status == ComposerStatus.Failed) {
+                                    SlockColor.AccentRed
+                                } else {
+                                    SlockColor.TextMutedGray
+                                }
+                )
+            }
+            if (composerState.pendingAttachments.isNotEmpty()) {
+                PendingAttachmentTray(
+                        attachments = composerState.pendingAttachments,
+                        enabled = enabled,
+                        onRemoveAttachment = onRemoveAttachment,
+                        onRetryAttachment = onRetryAttachment,
+                        onPreviewAttachment = { pendingPreviewAttachmentId = it }
+                )
+            }
+            val showComposerToolbar = {
+                onComposerTextToolbarShown()
+                textToolbar.showComposerMenu(
+                        rect =
+                                composerTextAreaBounds
+                                        ?: Rect(
+                                                left = 0f,
+                                                top = 0f,
+                                                right = 1f,
+                                                bottom = 1f
+                        ),
+                        fieldValueProvider = composerValueProvider,
+                        onValueChange = handleComposerFieldValueChange,
+                        context = context,
+                        onSelectAllApplied = { restoreComposerToolbarAfterSelectAll = true }
+                )
+            }
+            LaunchedEffect(
+                    restoreComposerToolbarAfterSelectAll,
+                    composerFieldValue.text,
+                    composerFieldValue.selection,
+                    composerTextAreaBounds
+            ) {
+                if (!restoreComposerToolbarAfterSelectAll) return@LaunchedEffect
+                val fullSelection = TextRange(0, composerFieldValue.text.length)
+                if (composerFieldValue.text.isEmpty() || composerFieldValue.selection != fullSelection) {
+                    return@LaunchedEffect
+                }
+                withFrameNanos { }
+                showComposerToolbar()
+                restoreComposerToolbarAfterSelectAll = false
+            }
+            CompositionLocalProvider(LocalTextToolbar provides textToolbar) {
+                SlockTextField(
+                    value = composerState.value,
+                    onValueChange = onComposerChange,
+                    fieldValue = composerFieldValue,
+                    onFieldValueChange = handleComposerFieldValueChange,
+                    placeholder = placeholder,
+                    enabled = enabled,
+                    singleLine = false,
+                    minLines = 1,
+                    maxLines = 4,
+                    reserveErrorSpace = false,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions =
+                            KeyboardActions(
+                                    onSend = {
+                                        if (composerState.canSend) {
+                                            onSend()
+                                        }
+                                    }
+                            ),
+                    inputModifier =
+                            Modifier.focusRequester(focusRequester)
+                                    .testTag(THREAD_COMPOSER_FIELD_TAG)
+                                    .threadComposerNewlineInput(
+                                            composerValueProvider,
+                                            handleComposerFieldValueChange,
+                                            canSend = composerState.canSend,
+                                            onSend = onSend,
+                                            onSelectSuggestion = ::applySelectedSuggestion,
+                                            onMoveSuggestionSelection = { direction ->
+                                                if (visibleSuggestionCount > 0) {
+                                                    suggestionSelectionIndex =
+                                                            (suggestionSelectionIndex + direction)
+                                                                    .coerceIn(
+                                                                            0,
+                                                                            visibleSuggestionCount - 1
+                                                                    )
+                                                }
+                                            },
+                                            consumeDirectionalKeys =
+                                                    showMemberSuggestions || showChannelSuggestions
+                                    )
+                                    .onFocusChanged { focusState ->
+                                        composerFieldFocused = focusState.isFocused
+                                        if (!focusState.isFocused) {
+                                            textToolbar.hide()
+                                            onComposerBlur()
+                                        }
+                                    }
+                                    .onGloballyPositioned { coordinates ->
+                                        val position = coordinates.positionInWindow()
+                                        composerFieldBounds =
+                                                Rect(
+                                                        left = position.x,
+                                                        top = position.y,
+                                                        right = position.x + coordinates.size.width,
+                                                        bottom =
+                                                                position.y +
+                                                                        coordinates.size.height
+                                                )
+                                    },
+                    textAreaModifier =
+                            Modifier.testTag(THREAD_COMPOSER_TEXT_AREA_TAG)
+                                    .threadComposerDoubleTapToolbar(showComposerToolbar)
+                                    .onGloballyPositioned { coordinates ->
+                                        val position = coordinates.positionInWindow()
+                                        composerTextAreaBounds =
+                                                Rect(
+                                                        left = position.x,
+                                                        top = position.y,
+                                                        right = position.x + coordinates.size.width,
+                                                        bottom =
+                                                                position.y +
+                                                                        coordinates.size.height
+                                                )
+                                    },
+                    bottomContent = {
+                        ThreadComposerInlineActions(
+                                composerState = composerState,
+                                enabled = enabled,
+                                onAttachImage = onAttachImage,
+                                onAttachFile = onAttachFile,
+                                showAsTaskToggle = showAsTaskToggle,
+                                onAsTaskChange = onAsTaskChange,
+                                onSend = onSend
+                        )
+                    },
+                    minContentHeight = composerTextFieldMinHeight,
+                    contentPaddingVertical = composerTextFieldVerticalPadding,
+                    inputFontWeight = FontWeight.Normal,
+                    inputFontFamily = SlockNormalFontFamily
+                )
+            }
+	        }
+	    }
+	}
+	    if (pendingPreviewAttachment != null) {
+	        PendingAttachmentPreviewModal(
+	                attachment = pendingPreviewAttachment,
+                onDismiss = { pendingPreviewAttachmentId = null }
+        )
     }
 }
 
-private val ThreadComposerIslandMinHeight = 144.dp
-private val ThreadComposerIslandMaxHeight = 228.dp
-
 @Composable
 private fun threadComposerBottomPadding(): Dp = SlockSpacing.Xs
-
-private val SharedThreadComposerFlowStateSaver =
-        Saver<SharedThreadComposerFlowState, List<Any?>>(
-                save = { state ->
-                    listOf(
-                            state.hostDraftText,
-                            state.liveDraftText,
-                            state.payloadTextSeed,
-                            state.hostDraftAsTask,
-                            state.liveDraftAsTask,
-                            state.payloadAsTaskSeed,
-                            state.syncNonce
-                    )
-                },
-                restore = { values ->
-                    SharedThreadComposerFlowState(
-                            hostDraftText = values.getOrNull(0) as? String ?: "",
-                            liveDraftText = values.getOrNull(1) as? String ?: "",
-                            payloadTextSeed = values.getOrNull(2) as? String ?: "",
-                            hostDraftAsTask = values.getOrNull(3) as? Boolean ?: false,
-                            liveDraftAsTask = values.getOrNull(4) as? Boolean ?: false,
-                            payloadAsTaskSeed = values.getOrNull(5) as? Boolean ?: false,
-                            syncNonce = values.getOrNull(6) as? Int ?: 0
-                    )
-                }
-        )
-
-private fun buildSharedThreadComposerPayload(
-        seedText: String,
-        seedAsTask: Boolean,
-        syncNonce: Int,
-        focusRequestNonce: Int,
-        placeholder: String,
-        composerState: ComposerState,
-        memberSuggestions: List<MemberProfile>,
-        channelSuggestions: List<ConversationSummary>,
-        showAsTaskToggle: Boolean
-): JSONObject =
-        JSONObject(
-            buildSharedThreadComposerPayloadJson(
-                SharedThreadComposerPayloadInput(
-                    seedText = seedText,
-                    seedAsTask = seedAsTask,
-                    syncNonce = syncNonce,
-                    focusRequestNonce = focusRequestNonce,
-                    placeholder = placeholder,
-                    enabled =
-                        composerState.enabled &&
-                            composerState.status != ComposerStatus.NoPermission &&
-                            composerState.noPermissionCode == null,
-                    showAsTaskToggle = showAsTaskToggle,
-                    composerMode = composerState.toSharedComposerMode(),
-                    statusLabel = composerState.activityLabel,
-                    pendingAttachments =
-                        composerState.pendingAttachments.map { attachment ->
-                            SharedThreadComposerAttachment(
-                                id = attachment.id,
-                                fileName = attachment.fileName,
-                                sizeLabel = attachment.sizeLabel,
-                                mimeType = attachment.mimeType,
-                                status = attachment.status.toSharedComposerAttachmentStatus()
-                            )
-                        },
-                    memberSuggestions =
-                        memberSuggestions.map { member ->
-                            SharedThreadComposerMemberSuggestion(
-                                displayName = member.displayName,
-                                handle = member.handle
-                            )
-                        },
-                    channelSuggestions =
-                        channelSuggestions.map { channel ->
-                            SharedThreadComposerChannelSuggestion(
-                                name = channel.name,
-                                subtitle = channel.subtitle
-                            )
-                        }
-                )
-            )
-        )
-
-private fun ComposerState.toSharedComposerMode(): String =
-        when (status) {
-            ComposerStatus.IdleEmpty, ComposerStatus.Ready -> "idle"
-            ComposerStatus.Uploading -> "uploading"
-            ComposerStatus.Sending -> "sending"
-            ComposerStatus.Failed -> "failed"
-            ComposerStatus.NoPermission -> "no_permission"
-        }
-
-private fun PendingAttachmentStatus.toSharedComposerAttachmentStatus(): String =
-        when (this) {
-            PendingAttachmentStatus.Ready -> "ready"
-            PendingAttachmentStatus.Uploading -> "uploading"
-            PendingAttachmentStatus.Failed -> "failed"
-        }
 
 private sealed class ComposerSuggestionTrigger {
     data class MemberTrigger(val query: String, val triggerStart: Int) : ComposerSuggestionTrigger()

@@ -10746,8 +10746,7 @@ private fun HomeRouteScreen(
                             fallbackComposerHeader = parentThreadHeader,
                             selectedThreadId =
                                     parentReplyEntry.selectedThreadId?.let(::ThreadId)
-                                            ?: parentThreadHeader?.threadId,
-                            useSharedThreadScreen = true
+                                            ?: parentThreadHeader?.threadId
                     )
                     Box(
                             modifier =
@@ -10820,7 +10819,6 @@ private fun HomeRouteScreen(
                                                 ?.header,
                                 selectedThreadId = selectedThreadId?.let(::ThreadId),
                                 composerFocusRequestNonce = composerFocusRequestNonce,
-                                useSharedThreadScreen = true,
                                 channelSuggestions =
                                         (homeState.loadState as? ScreenLoadState.Content)
                                                 ?.data?.channels.orEmpty()
@@ -10892,7 +10890,6 @@ private fun HomeRouteScreen(
                                             ?.header,
                             selectedThreadId = selectedThreadId?.let(::ThreadId),
                             composerFocusRequestNonce = composerFocusRequestNonce,
-                            useSharedThreadScreen = true,
                             channelSuggestions =
                                     (homeState.loadState as? ScreenLoadState.Content)
                                             ?.data?.channels.orEmpty()
