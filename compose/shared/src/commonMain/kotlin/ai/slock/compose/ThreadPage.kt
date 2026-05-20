@@ -1073,6 +1073,7 @@ private fun ThreadMessagesList(
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     var actionMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
+    var actionMenuAnchor by remember(payload.instanceId) { mutableStateOf(Offset(16f, 16f)) }
     val latestItemIndex = payload.latestMessageListItemIndex()
     val latestMessageLayoutKey = payload.messages.joinToString("|") { "${it.id}:${it.body.length}:${it.attachments.size}:${it.taskId.orEmpty()}:${it.replyCount}" }
     LaunchedEffect(payload.instanceId, latestMessageLayoutKey, latestItemIndex) {
@@ -1138,7 +1139,10 @@ private fun ThreadMessagesList(
                         message = message,
                         alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                         showReplyAction = payload.showReplyActions,
-                        onShowActions = { actionMessageId = message.id },
+                        onShowActions = { anchor ->
+                            actionMenuAnchor = anchor
+                            actionMessageId = message.id
+                        },
                         onOpenMember = { onThreadEvent("openMember", it, null, null) },
                         onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
                         onOpenTask = { onThreadEvent("openTask", it, null, null) },
@@ -1192,6 +1196,7 @@ private fun ThreadMessagesList(
             payload.messages.firstOrNull { it.id == messageId }?.let { message ->
                 ThreadMessageActionMenu(
                     message = message,
+                    anchor = actionMenuAnchor,
                     showReplyAction = payload.showReplyActions,
                     onDismiss = { actionMessageId = null },
                     onReply = {
@@ -1401,7 +1406,7 @@ private fun ThreadMessageCard(
     alignOwnMessageRight: Boolean = false,
     showReplyAction: Boolean = true,
     timestampLabel: String = message.timestampLabel,
-    onShowActions: () -> Unit,
+    onShowActions: (Offset) -> Unit,
     onOpenMember: (String) -> Unit,
     onOpenThread: (String) -> Unit,
     onOpenTask: (String) -> Unit,
@@ -1437,37 +1442,43 @@ private fun ThreadMessageCard(
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                     horizontalAlignment = contentAlignment
                 ) {
-                    Row(
+                    Button(
                         modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
-                            .clickable(onClick = onShowActions),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement =
-                            if (alignOwnMessageRight) {
-                                Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End)
-                            } else {
-                                Arrangement.spacedBy(SlockSpacing.Sm)
-                            }
+                            .background(Color.Transparent),
+                        onClick2 = onShowActions
                     ) {
-                        Text(
-                            text = message.authorName,
-                            style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                            color = SlockColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.widthIn(max = 220.dp).clickable { onOpenMember(message.authorId) }
-                        )
-                        Text(
-                            text = timestampLabel,
-                            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                            color = SlockColor.TextMutedGray,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement =
+                                if (alignOwnMessageRight) {
+                                    Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End)
+                                } else {
+                                    Arrangement.spacedBy(SlockSpacing.Sm)
+                                }
+                        ) {
+                            Text(
+                                text = message.authorName,
+                                style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                                color = SlockColor.TextBlack,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 220.dp).clickable { onOpenMember(message.authorId) }
+                            )
+                            Text(
+                                text = timestampLabel,
+                                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                                color = SlockColor.TextMutedGray,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                     if (message.body.isNotBlank()) {
-                        Box(
+                        Button(
                             modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
-                                .clickable(onClick = onShowActions)
+                                .background(Color.Transparent),
+                            onClick2 = onShowActions
                         ) {
                             SlockMarkdownBody(
                                 body = message.body,
@@ -1771,6 +1782,7 @@ private data class ThreadMessageMenuAction(
 @Composable
 private fun ThreadMessageActionMenu(
     message: KuiklyThreadMessageItem,
+    anchor: Offset,
     showReplyAction: Boolean,
     onDismiss: () -> Unit,
     onReply: () -> Unit,
@@ -1802,9 +1814,14 @@ private fun ThreadMessageActionMenu(
             .fillMaxSize()
             .clickable(onClick = onDismiss)
             .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Lg),
-        contentAlignment = Alignment.BottomEnd
+        contentAlignment = Alignment.TopStart
     ) {
-        Box(modifier = Modifier.padding(end = 6.dp, bottom = 6.dp).width(292.dp)) {
+        Box(
+            modifier = Modifier
+                .offset(x = anchor.x.coerceAtLeast(8f), y = anchor.y.coerceAtLeast(8f))
+                .padding(end = 6.dp, bottom = 6.dp)
+                .width(292.dp)
+        ) {
             Box(
                 modifier = Modifier
                     .matchParentSize()
