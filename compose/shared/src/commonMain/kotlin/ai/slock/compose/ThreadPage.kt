@@ -349,13 +349,23 @@ internal fun SharedThreadRouteContent(
         composerPayload = composerPayload,
         onBack = onBack,
         onThreadEvent = { action, itemId, attachmentId, tab ->
-            bridge.threadEvent(
-                instanceId = payload.instanceId,
-                action = action,
-                itemId = itemId,
-                attachmentId = attachmentId,
-                tab = tab
-            )
+            if (action == "openAttachment" && !attachmentId.isNullOrBlank()) {
+                coroutineScope.launch {
+                    openSharedThreadAttachment(
+                        bridge = bridge,
+                        threadApi = threadApi,
+                        attachmentId = attachmentId
+                    )
+                }
+            } else {
+                bridge.threadEvent(
+                    instanceId = payload.instanceId,
+                    action = action,
+                    itemId = itemId,
+                    attachmentId = attachmentId,
+                    tab = tab
+                )
+            }
         },
         onComposerEvent = { action, value, asTask, attachmentId ->
             when (action) {
@@ -473,6 +483,28 @@ internal fun SharedThreadRouteContent(
         }
     )
 }
+
+private suspend fun openSharedThreadAttachment(
+    bridge: ai.slock.compose.base.BridgeModule,
+    threadApi: BridgeThreadApi,
+    attachmentId: String
+) {
+    val response = threadApi.attachmentUrl(attachmentId)
+    val url = parseSharedThreadAttachmentOpenUrl(response.bodyText)
+    if (response.isSuccessful && !url.isNullOrBlank()) {
+        bridge.openUrl(url)
+    } else {
+        bridge.toast("Unable to open attachment")
+    }
+}
+
+internal fun parseSharedThreadAttachmentOpenUrl(bodyText: String?): String? =
+    bodyText?.takeIf { it.isNotBlank() }?.let { source ->
+        runCatching {
+            (threadPageJson.parseToJsonElement(source) as? JsonObject)
+                ?.threadString("url", "href", "downloadUrl", "download_url")
+        }.getOrNull()
+    }
 
 private fun KuiklyThreadScreenPayload.appShellComposerPayload(
     seedText: String,

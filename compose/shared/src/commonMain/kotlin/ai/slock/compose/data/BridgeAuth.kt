@@ -166,6 +166,9 @@ internal class BridgeThreadApi(
             )
         )
 
+    suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse =
+        request("attachments/${attachmentId.trim()}/url")
+
     private suspend fun request(
         path: String,
         query: String? = null,

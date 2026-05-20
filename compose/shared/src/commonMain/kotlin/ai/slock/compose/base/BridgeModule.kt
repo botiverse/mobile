@@ -71,6 +71,13 @@ internal class BridgeModule : Module() {
         callNativeMethod("toast", methodArgs, null)
     }
 
+    fun openUrl(url: String, mimeType: String? = null) {
+        val methodArgs = JSONObject()
+        methodArgs.put("url", url)
+        mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
+        callNativeMethod("openUrl", methodArgs, null)
+    }
+
     fun filesEvent(instanceId: String, action: String, attachmentId: String? = null) {
         val methodArgs = JSONObject()
         methodArgs.put("instanceId", instanceId)

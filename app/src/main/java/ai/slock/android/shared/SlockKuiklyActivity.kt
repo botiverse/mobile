@@ -1,6 +1,7 @@
 package ai.slock.android.shared
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.database.sqlite.SQLiteDatabase
@@ -11,6 +12,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
 import android.util.Log
@@ -485,6 +487,7 @@ internal class SlockKuiklyBridgeModule(
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
         return when (method) {
             "toast" -> toast(params)
+            "openUrl" -> openUrl(params)
             "closePage" -> {
                 activity?.finish()
                 null
@@ -648,6 +651,32 @@ internal class SlockKuiklyBridgeModule(
         val content = JSONObject(params ?: "{}").optString("content")
         if (content.isNotBlank()) {
             Toast.makeText(appContext, content, Toast.LENGTH_SHORT).show()
+        }
+        return null
+    }
+
+    private fun openUrl(params: String?): Any? {
+        val request = JSONObject(params ?: "{}")
+        val url = request.optString("url").takeIf { it.isNotBlank() } ?: return null
+        val mimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
+        val intent =
+                Intent(Intent.ACTION_VIEW).apply {
+                    if (mimeType != null) {
+                        setDataAndType(Uri.parse(url), mimeType)
+                    } else {
+                        data = Uri.parse(url)
+                    }
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+        runCatching {
+            appContext.startActivity(intent)
+        }.onFailure { throwable ->
+            if (throwable is ActivityNotFoundException) {
+                Toast.makeText(appContext, "No app can open this attachment", Toast.LENGTH_SHORT)
+                        .show()
+            } else {
+                Toast.makeText(appContext, "Unable to open attachment", Toast.LENGTH_SHORT).show()
+            }
         }
         return null
     }

@@ -16,6 +16,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly OPEN_PAGE = "openPage";
   static readonly COPY_TO_PASTE_BOARD = "copyToPasteboard";
   static readonly TOAST = "toast";
+  static readonly OPEN_URL = "openUrl";
   static readonly LOG = "log";
   static readonly REPORT_DT = "reportDT";
   static readonly REPORT_REAL_TIME = "reportRealtime";
@@ -52,6 +53,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.TOAST: {
         this.toast();
+        break;
+      }
+      case KRBridgeModule.OPEN_URL: {
+        this.openUrl(params);
         break;
       }
       case KRBridgeModule.LOG: {
@@ -111,6 +116,25 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
 
   // TODO open toast
   private toast() {
+  }
+
+  private openUrl(params: KRAny) {
+    if (params == null) {
+      return;
+    }
+    const payload = params as Record<string, string>;
+    const url = payload['url'];
+    if (url === undefined || url.length === 0) {
+      return;
+    }
+    const context = getContext(this) as common.UIAbilityContext;
+    context.startAbility({
+      action: 'ohos.want.action.viewData',
+      uri: url,
+      type: payload['mimeType']
+    }).catch((error: BusinessError) => {
+      console.error(`KuiklyRender openUrl failed ${error.code}: ${error.message}`);
+    });
   }
 
   private log(params: KRAny) {
