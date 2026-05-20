@@ -150,20 +150,37 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         private const val KEY_PAGE_NAME = "pageName"
         private const val KEY_PAGE_DATA = "pageData"
 
-        fun start(context: Context, pageName: String, pageData: JSONObject = JSONObject()) {
+        private const val KEY_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
+
+        fun start(
+            context: Context,
+            pageName: String,
+            pageData: JSONObject = JSONObject(),
+            clearTask: Boolean = false
+        ) {
             SlockKuiklyAdapters.init(context.applicationContext)
             val starter =
                     Intent(context, SlockKuiklyActivity::class.java)
                             .putExtra(KEY_PAGE_NAME, pageName)
                             .putExtra(KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(pageData).text)
-            if (context !is Activity) {
+            if (clearTask) {
+                starter.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            } else if (context !is Activity) {
                 starter.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(starter)
         }
 
-        fun startAppShell(context: Context, pageData: JSONObject = JSONObject()) {
-            start(context, PAGE_APP_SHELL, pageData)
+        fun startAppShell(
+            context: Context,
+            pageData: JSONObject = JSONObject(),
+            clearTask: Boolean = false
+        ) {
+            start(context, PAGE_APP_SHELL, pageData, clearTask)
+        }
+
+        internal fun shouldReplaceCurrentPage(pageData: JSONObject): Boolean {
+            return pageData.optBoolean(KEY_REPLACE_CURRENT_PAGE, false)
         }
     }
 }
@@ -191,6 +208,9 @@ internal object SlockKuiklyAdapters {
 private object SlockKuiklyRouterAdapter : IKRRouterAdapter {
     override fun openPage(context: Context, pageName: String, pageData: JSONObject) {
         SlockKuiklyActivity.start(context, pageName, pageData)
+        if (SlockKuiklyActivity.shouldReplaceCurrentPage(pageData)) {
+            (context as? Activity)?.finish()
+        }
     }
 
     override fun closePage(context: Context) {

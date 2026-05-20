@@ -1014,7 +1014,7 @@ private fun SlockAppContent(
                     "SlockKuikly",
                     "start_unified_shell source=main_activity gate=shared"
             )
-            SlockKuiklyActivity.startAppShell(context)
+            SlockKuiklyActivity.startAppShell(context, clearTask = true)
             context.findComponentActivity()?.finish()
         }
     }
@@ -5900,7 +5900,7 @@ private fun SlockAppContent(
                     "SlockKuikly",
                     "start_unified_shell source=main_activity selectedServer=$selectedServerIdForSharedShell"
             )
-            SlockKuiklyActivity.startAppShell(context)
+            SlockKuiklyActivity.startAppShell(context, clearTask = true)
             context.findComponentActivity()?.finish()
         }
     }
@@ -10060,7 +10060,7 @@ private fun AuthRouteScreen(
 ) {
     val context = LocalContext.current
     LaunchedEffect(Unit) {
-        SlockKuiklyActivity.startAppShell(context)
+        SlockKuiklyActivity.startAppShell(context, clearTask = true)
         context.findComponentActivity()?.finish()
     }
     AuthRestoreScreen(modifier = modifier)

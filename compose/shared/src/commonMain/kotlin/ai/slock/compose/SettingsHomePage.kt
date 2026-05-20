@@ -307,11 +307,28 @@ private fun SlockAppShellContent() {
         return popped
     }
 
+    fun popMainRoute(): Boolean {
+        if (homeServerSwitcherExpanded) {
+            homeServerSwitcherExpanded = false
+            return true
+        }
+        if (selectedTab == "settings" && selectedSettingsDestination != "home") {
+            selectedSettingsDestination = "home"
+            return true
+        }
+        if (selectedTab != "home") {
+            selectedTab = "home"
+            selectedSettingsDestination = "home"
+            return true
+        }
+        return false
+    }
+
     DisposableEffect(pager, navController) {
         val callback =
             object : BackPressCallback() {
                 override fun handleOnBackPressed() {
-                    if (!popThreadRoute()) {
+                    if (!popThreadRoute() && !popMainRoute()) {
                         bridge.closePage()
                     }
                 }
@@ -391,7 +408,12 @@ private fun SlockAppShellContent() {
                 }
                 SlockAppBottomTabBarHost(
                     items = appShellBottomTabs(selectedTab),
-                    onSelect = { selectedTab = it },
+                    onSelect = {
+                        selectedTab = it
+                        if (it != "settings") {
+                            selectedSettingsDestination = "home"
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     bottomSafeArea = bottomSafeArea
                 )
