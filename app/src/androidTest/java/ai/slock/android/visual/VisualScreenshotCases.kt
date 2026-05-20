@@ -41,11 +41,13 @@ import ai.slock.android.core.model.withUnreadReplyCount
 import ai.slock.android.feature.thread.ThreadMessageItem
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
+import ai.slock.android.ui.components.SlockComposer
 import ai.slock.android.ui.components.SlockMemberKind
 import ai.slock.android.ui.components.SlockMemberRow
 import ai.slock.android.ui.components.SlockPresence
 import ai.slock.android.ui.components.SlockSegmentOption
 import ai.slock.android.ui.components.SlockServerSwitcherItem
+import ai.slock.android.ui.components.SlockTextField
 import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockShadow
@@ -67,6 +69,7 @@ object VisualScreenshotCases {
         listOf(
             VisualScreenshotCaseSpec("tokens.palette", "Shared Tokens"),
             VisualScreenshotCaseSpec("components.buttons.states", "Button States"),
+            VisualScreenshotCaseSpec("components.input.states", "Input States"),
             VisualScreenshotCaseSpec("components.list-row.states", "List Row States"),
             VisualScreenshotCaseSpec("home.server-switcher.unread", "Server Switcher"),
             VisualScreenshotCaseSpec("thread.message.markdown-chips", "Thread Message"),
@@ -87,6 +90,7 @@ fun VisualScreenshotCase(
             when (spec.id) {
                 "tokens.palette" -> TokenPaletteCase(spec, modifier)
                 "components.buttons.states" -> ButtonStatesCase(spec, modifier)
+                "components.input.states" -> InputStatesCase(spec, modifier)
                 "components.list-row.states" -> ListRowStatesCase(spec, modifier)
                 "home.server-switcher.unread" -> HomeServerSwitcherCase(spec, modifier)
                 "thread.message.markdown-chips" -> ThreadMessageCase(spec, modifier)
@@ -177,7 +181,7 @@ private fun ButtonStatesCase(
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
                 SlockButton(
-                    text = "Pressed",
+                    text = "Accent",
                     onClick = {},
                     variant = SlockButtonVariant.Pink,
                     leadingContent = { CaseIcon(LucideIcons.BellRing) }
@@ -194,6 +198,57 @@ private fun ButtonStatesCase(
                 SlockSegmentOption("Tasks 3", selected = false, onSelected = {})
                 SlockSegmentOption("Saved", selected = false, enabled = false, onSelected = {})
             }
+        }
+    }
+}
+
+@Composable
+private fun InputStatesCase(
+    spec: VisualScreenshotCaseSpec,
+    modifier: Modifier
+) {
+    VisualCaseShell(spec, modifier) {
+        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
+            SlockTextField(
+                value = "",
+                onValueChange = {},
+                label = "Empty",
+                placeholder = "Message title",
+                reserveErrorSpace = false
+            )
+            SlockTextField(
+                value = "Focused value",
+                onValueChange = {},
+                label = "Focused",
+                forceFocused = true,
+                reserveErrorSpace = false
+            )
+            SlockTextField(
+                value = "https://",
+                onValueChange = {},
+                label = "Disabled / Error",
+                enabled = false,
+                isError = true,
+                errorText = "Server URL is required",
+                reserveErrorSpace = true
+            )
+            SlockTextField(
+                value = "Composer draft with multiple lines\nand #design context.",
+                onValueChange = {},
+                label = "Multiline",
+                singleLine = false,
+                minLines = 3,
+                maxLines = 4,
+                reserveErrorSpace = false
+            )
+            SlockComposer(
+                value = "Composer draft",
+                onValueChange = {},
+                onSend = {},
+                imageIcon = LucideIcons.ImagePlus,
+                attachmentIcon = LucideIcons.Paperclip,
+                modifier = Modifier.padding(0.dp)
+            )
         }
     }
 }

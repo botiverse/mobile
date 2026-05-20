@@ -29,6 +29,9 @@ class VisualScreenshotCaptureTest {
     fun captureButtonStates() = captureCase("components.buttons.states")
 
     @Test
+    fun captureInputStates() = captureCase("components.input.states")
+
+    @Test
     fun captureListRowStates() = captureCase("components.list-row.states")
 
     @Test
