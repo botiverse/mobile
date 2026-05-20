@@ -86,6 +86,14 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         kuiklyRenderViewDelegator.onResume()
     }
 
+    @Suppress("DEPRECATION")
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (!kuiklyRenderViewDelegator.onBackPressed()) {
+            super.onBackPressed()
+        }
+    }
+
     override fun registerExternalModule(kuiklyRenderExport: IKuiklyRenderExport) {
         super.registerExternalModule(kuiklyRenderExport)
         kuiklyRenderExport.moduleExport(SlockKuiklyBridgeModule.MODULE_NAME) {

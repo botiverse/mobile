@@ -26,6 +26,7 @@ import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +56,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.base.BackPressCallback
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
@@ -280,6 +282,30 @@ private fun SlockAppShellContent() {
         is AppShellAuthGateState.Ready -> Unit
     }
 
+    fun popThreadRoute(): Boolean {
+        if (navController.currentRoute != AppShellRouteThread && !navController.canNavigateBack) {
+            return false
+        }
+        val popped = navController.popBackStack()
+        if (popped) {
+            activeThreadPayload = null
+        }
+        return popped
+    }
+
+    DisposableEffect(pager, navController) {
+        val callback =
+            object : BackPressCallback() {
+                override fun handleOnBackPressed() {
+                    if (!popThreadRoute()) {
+                        bridge.closePage()
+                    }
+                }
+            }
+        pager.getBackPressHandler().addCallback(callback)
+        onDispose { pager.getBackPressHandler().removeCallback(callback) }
+    }
+
     NavHost(
         navController = navController,
         startDestination = AppShellRouteMain,
@@ -297,7 +323,7 @@ private fun SlockAppShellContent() {
                 SharedThreadRouteContent(
                     initialPayload = payload,
                     bridge = bridge,
-                    onBack = { navController.popBackStack() }
+                    onBack = { popThreadRoute() }
                 )
             }
         }
