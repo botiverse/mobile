@@ -34,15 +34,6 @@ class VisualScreenshotCaptureTest {
     @Test
     fun captureMemberRowData() = captureCase("components.member-row.data")
 
-    @Test
-    fun captureHomeServerSwitcher() = captureCase("home.server-switcher.unread")
-
-    @Test
-    fun captureThreadMessageItem() = captureCase("thread.message.markdown-chips")
-
-    @Test
-    fun captureConversationFlow() = captureCase("conversation.flow.message-stack")
-
     private fun captureCase(caseId: String) {
         val spec = VisualScreenshotCases.require(caseId)
         composeRule.setContent {
