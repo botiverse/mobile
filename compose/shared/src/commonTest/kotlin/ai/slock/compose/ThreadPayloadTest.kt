@@ -217,6 +217,61 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun prefersAgentAuthorFieldsOverCurrentUserFieldsForDirectMessageRows() {
+        val base =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-dm-1",
+                title = "stdrc",
+                sourceThreadId = "dm-1",
+                status = "loading",
+                localOffsetMinutes = 480,
+                todayEpochDay = 20593
+            )
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u-artin", email = "artin@slock.ai"),
+                accessToken = "access",
+                refreshToken = "refresh"
+            )
+
+        val payload =
+            buildSharedThreadPayloadFromMessagesResponse(
+                basePayload = base,
+                session = session,
+                bodyText =
+                    """
+                    {
+                      "data": {
+                        "messages": [
+                          {
+                            "id": "m1",
+                            "body": "agent dm reply",
+                            "userId": "u-artin",
+                            "userDisplayName": "artin",
+                            "agentId": "agent-stdrc",
+                            "createdAt": "2026-05-19T16:00:00Z"
+                          }
+                        ],
+                        "agents": [
+                          {
+                            "id": "agent-stdrc",
+                            "displayName": "stdrc",
+                            "avatar": {"type": "pixel", "key": "stdrc"}
+                          }
+                        ]
+                      }
+                    }
+                    """.trimIndent()
+            )
+
+        val message = payload.messages.single()
+        assertEquals("agent-stdrc", message.authorId)
+        assertEquals("stdrc", message.authorName)
+        assertEquals("pixel:stdrc", message.avatarWireValue)
+        assertEquals(false, message.isOwn)
+    }
+
+    @Test
     fun appendsSentMessageFromSendResponseWhenRefreshIsUnavailable() {
         val base =
             KuiklyThreadScreenPayload(

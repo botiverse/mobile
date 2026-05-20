@@ -798,22 +798,21 @@ private fun JsonObject.toSharedThreadMessageItem(
             "authorAgent"
         )
     val id = threadString("id", "messageId", "message_id", "_id") ?: "message-$index"
-    val flatAuthorId =
+    val flatActorId =
         threadString(
             "authorId",
             "author_id",
             "senderId",
             "sender_id",
-            "userId",
-            "user_id",
-            "memberId",
-            "member_id",
             "createdById",
             "created_by_id",
             "createdByUserId",
             "created_by_user_id",
             "senderUserId",
-            "sender_user_id",
+            "sender_user_id"
+        )
+    val flatAgentId =
+        threadString(
             "agentId",
             "agent_id",
             "authorAgentId",
@@ -821,62 +820,88 @@ private fun JsonObject.toSharedThreadMessageItem(
             "agentUserId",
             "agent_user_id"
         )
+    val flatUserId =
+        threadString(
+            "userId",
+            "user_id",
+            "memberId",
+            "member_id"
+        )
     val authorId =
         author?.threadString("id", "_id", "userId", "user_id", "memberId", "member_id", "agentId", "agent_id")
-            ?: flatAuthorId
+            ?: flatActorId
+            ?: flatAgentId
+            ?: flatUserId
             ?: "unknown"
     val directoryAuthor = authorDirectory[authorId]
+    val actorName =
+        threadString(
+            "authorDisplayName",
+            "author_display_name",
+            "authorName",
+            "author_name",
+            "senderDisplayName",
+            "sender_display_name",
+            "senderName",
+            "sender_name",
+            "createdByName",
+            "created_by_name",
+            "createdByDisplayName",
+            "created_by_display_name",
+            "createdByUsername",
+            "created_by_username",
+            "createdByUserDisplayName",
+            "created_by_user_display_name",
+            "profileDisplayName",
+            "profile_display_name",
+            "profileName",
+            "profile_name",
+            "authorHandle",
+            "author_handle",
+            "senderHandle",
+            "sender_handle"
+        )
+    val agentName =
+        threadString(
+            "agentName",
+            "agent_name",
+            "agentDisplayName",
+            "agent_display_name",
+            "agentUsername",
+            "agent_username",
+            "agentTitle",
+            "agent_title",
+            "authorAgentName",
+            "author_agent_name",
+            "authorAgentDisplayName",
+            "author_agent_display_name",
+            "senderAgentName",
+            "sender_agent_name",
+            "senderAgentDisplayName",
+            "sender_agent_display_name"
+        )
+    val userName =
+        threadString(
+            "userDisplayName",
+            "user_display_name",
+            "userName",
+            "user_name",
+            "memberDisplayName",
+            "member_display_name",
+            "memberName",
+            "member_name"
+        )
+    val flatAuthorName =
+        when {
+            flatActorId != null -> actorName ?: agentName ?: userName
+            flatAgentId != null -> agentName ?: actorName
+            flatUserId != null -> userName ?: actorName
+            else -> actorName ?: agentName ?: userName
+        }
     val authorName =
         author?.threadString("displayName", "display_name", "name", "username", "title", "label", "handle", "email")
             ?: directoryAuthor?.displayName
-            ?: threadString(
-                "authorDisplayName",
-                "author_display_name",
-                "authorName",
-                "author_name",
-                "senderDisplayName",
-                "sender_display_name",
-                "senderName",
-                "sender_name",
-                "userDisplayName",
-                "user_display_name",
-                "userName",
-                "user_name",
-                "createdByName",
-                "created_by_name",
-                "createdByDisplayName",
-                "created_by_display_name",
-                "createdByUsername",
-                "created_by_username",
-                "createdByUserDisplayName",
-                "created_by_user_display_name",
-                "agentName",
-                "agent_name",
-                "agentDisplayName",
-                "agent_display_name",
-                "agentUsername",
-                "agent_username",
-                "agentTitle",
-                "agent_title",
-                "authorAgentName",
-                "author_agent_name",
-                "authorAgentDisplayName",
-                "author_agent_display_name",
-                "senderAgentName",
-                "sender_agent_name",
-                "senderAgentDisplayName",
-                "sender_agent_display_name",
-                "profileDisplayName",
-                "profile_display_name",
-                "profileName",
-                "profile_name",
-                "authorHandle",
-                "author_handle",
-                "senderHandle",
-                "sender_handle",
-                "displayName",
-                "display_name"
-            )
+            ?: flatAuthorName
             ?: "Unknown"
     val body = threadString("body", "content", "text", "markdown", "message").orEmpty()
     val messageType =
