@@ -389,10 +389,7 @@ fun SlockStructuralHomeShell(
             }
             HomeNotificationCenter(notifications, onNotificationView, onNotificationDismiss, Modifier.align(Alignment.TopEnd).padding(top = topSafeArea).padding(top = SlockSpacing.Lg, end = SlockSpacing.Lg))
             if (serverSwitcherExpanded) {
-                Button(
-                    modifier = Modifier.fillMaxSize().background(Color.Transparent),
-                    onClick = onServerSwitcherDismiss
-                )
+                HomeServerSwitcherDismissLayer(onServerSwitcherDismiss)
                 ServerSwitcherPanel(servers, currentServerId, pendingServerId, labels, onServerSelected, onCreateServerClick, Modifier.padding(top = topSafeArea + SlockSize.PageHeaderHeight, start = SlockSpacing.Lg))
             }
         }
@@ -409,6 +406,16 @@ fun SlockStructuralHomeShell(
             )
         }
     }
+}
+
+@Composable
+private fun HomeServerSwitcherDismissLayer(onDismiss: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SlockColor.TextBlack.copy(alpha = 0.01f))
+            .clickable(onClick = onDismiss)
+    )
 }
 
 @Composable
