@@ -39,9 +39,10 @@ import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.withUnreadReplyCount
 import ai.slock.android.feature.thread.ThreadMessageItem
+import ai.slock.android.shared.SlockKuiklyActivity
+import ai.slock.android.shared.SlockKuiklyPageIsland
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
-import ai.slock.android.ui.components.SlockComposer
 import ai.slock.android.ui.components.SlockMemberKind
 import ai.slock.android.ui.components.SlockMemberRow
 import ai.slock.android.ui.components.SlockPresence
@@ -56,6 +57,9 @@ import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
 import ai.slock.android.ui.theme.SlockType
 import ai.slock.android.ui.theme.slockHardShadow
+import ai.slock.compose.SharedThreadComposerPayloadInput
+import ai.slock.compose.buildSharedThreadComposerPayloadJson
+import org.json.JSONObject
 
 data class VisualScreenshotCaseSpec(
     val id: String,
@@ -254,33 +258,67 @@ private fun ComposerStatesCase(
 ) {
     VisualCaseShell(spec, modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
-            SlockComposer(
-                value = "",
-                onValueChange = {},
-                onSend = {},
-                imageIcon = LucideIcons.ImagePlus,
-                attachmentIcon = LucideIcons.Paperclip,
-                modifier = Modifier.padding(0.dp)
+            KmpThreadComposerCase(
+                payload =
+                    kmpThreadComposerPageData(
+                        seedText = "",
+                        syncNonce = 1,
+                        placeholder = "Message #design"
+                    )
             )
-            SlockComposer(
-                value = "Composer draft with #design context.",
-                onValueChange = {},
-                onSend = {},
-                imageIcon = LucideIcons.ImagePlus,
-                attachmentIcon = LucideIcons.Paperclip,
-                modifier = Modifier.padding(0.dp)
+            KmpThreadComposerCase(
+                payload =
+                    kmpThreadComposerPageData(
+                        seedText = "Composer draft with #design context.",
+                        syncNonce = 2,
+                        placeholder = "Message #design"
+                    )
             )
-            SlockComposer(
-                value = "Composer draft with multiple lines\nand shared fixture text.",
-                onValueChange = {},
-                onSend = {},
-                imageIcon = LucideIcons.ImagePlus,
-                attachmentIcon = LucideIcons.Paperclip,
-                modifier = Modifier.padding(0.dp)
+            KmpThreadComposerCase(
+                payload =
+                    kmpThreadComposerPageData(
+                        seedText = "Composer draft with multiple lines\nand shared fixture text.",
+                        syncNonce = 3,
+                        placeholder = "Message #design"
+                    )
             )
         }
     }
 }
+
+@Composable
+private fun KmpThreadComposerCase(payload: JSONObject) {
+    SlockKuiklyPageIsland(
+        pageName = SlockKuiklyActivity.PAGE_THREAD_COMPOSER,
+        pageData = payload,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(164.dp),
+        supportsPageDataUpdates = true
+    )
+}
+
+private fun kmpThreadComposerPageData(
+    seedText: String,
+    syncNonce: Int,
+    placeholder: String
+): JSONObject =
+    JSONObject()
+        .put(
+            "payload",
+            buildSharedThreadComposerPayloadJson(
+                SharedThreadComposerPayloadInput(
+                    seedText = seedText,
+                    seedAsTask = false,
+                    syncNonce = syncNonce,
+                    focusRequestNonce = 0,
+                    placeholder = placeholder,
+                    enabled = true,
+                    showAsTaskToggle = true,
+                    composerMode = "idle"
+                )
+            )
+        )
 
 @Composable
 private fun MemberRowDataCase(
