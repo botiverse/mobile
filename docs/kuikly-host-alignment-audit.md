@@ -83,6 +83,110 @@ Slock's OHOS host is also custom:
 | OHOS safe area | Android render has root fields | OHOS host manually injects px fields | Medium | Keep OHOS bridge, but name/convert explicitly so shared code cannot confuse px and dp. |
 | Native HDS tabbar | Not part of Android default | OHOS host injects capability renderer | Medium | Keep renderer seam in shared; host should only inject when capability is present. |
 
+## Adapter / Module / Render View Diff
+
+The top safe-area issue was only one symptom. Slock's host also differs from Kuikly `androidApp` in adapter and module coverage.
+
+### Global Adapter Manager
+
+Kuikly upstream demo registers these adapters, usually only when the slot is still `null`:
+
+- `krImageAdapter`
+- `krLogAdapter`
+- `krUncaughtExceptionHandlerAdapter`
+- `krFontAdapter`
+- `krColorParseAdapter`
+- `krRouterAdapter`
+- `krThreadAdapter`
+- `krPagViewAdapter`
+- `krAPNGViewAdapter`
+- `krVideoViewAdapter`
+- `krTextPostProcessorAdapter`
+
+Slock Android currently registers:
+
+- `krImageAdapter = SlockKuiklyImageAdapter`
+- `krLogAdapter = SlockKuiklyLogAdapter`
+- `krUncaughtExceptionHandlerAdapter = SlockKuiklyExceptionAdapter`
+- `krFontAdapter = SlockKuiklyFontAdapter`
+- `krRouterAdapter = SlockKuiklyRouterAdapter`
+- `krThreadAdapter = SlockKuiklyThreadAdapter`
+
+Slock Android does not currently register:
+
+- `krColorParseAdapter`
+- `krPagViewAdapter`
+- `krAPNGViewAdapter`
+- `krVideoViewAdapter`
+- `krTextPostProcessorAdapter`
+
+Risk notes:
+
+- `krColorParseAdapter`: low immediate risk if shared uses only literal colors, but any Kuikly CSS color parsing edge case will differ from the demo/default path.
+- `krTextPostProcessorAdapter`: medium risk for text rendering parity, emoji/font post-processing, accessibility labels, or platform text adjustments. This is relevant because several reported issues are visual/text-quality related.
+- `PAG/APNG/Video`: low immediate risk for current Slock pages unless animated media or video attachments become shared-rendered.
+- Registration policy: upstream avoids overwriting adapters if a host already set them. Slock's own `initialized` guard is okay for the app, but it still unconditionally owns the global adapter manager once initialized. Mixed demo/app testing can diverge.
+
+### External Modules
+
+Kuikly upstream demo exposes:
+
+- `HRBridgeModule` (`KRBridgeModule`): demo/native capability bridge. It supports alert, close/open page, pasteboard, toast, log, telemetry stubs, local time/timestamp, date formatting, local image path, asset reads, and demo helpers.
+- `HRShareModule` (`KRShareModule`): placeholder share module.
+- Optional TDF module in the demo handler.
+
+Slock Android exposes:
+
+- `HRBridgeModule` (`SlockKuiklyBridgeModule`): Slock production bridge. It includes auth/session storage, selected server/session actions, event dispatch back to Android islands, logging/toast, `authRequest`, and other Slock-specific capabilities.
+
+Slock OHOS exposes:
+
+- `HRBridgeModule` (`KRBridgeModule.ets`): OHOS implementation of the same shared bridge name. It includes `authRequest`, `relationalStore`, asset reads, time helpers, log, and stubs for several demo-like methods.
+- `KRMyModule`: demo/example module still registered.
+
+Module conclusions:
+
+- The shared bridge name `HRBridgeModule` is good: Android and OHOS can bind the same shared code.
+- The method surface is not yet documented as a stable Slock contract. This is the largest non-UI gap. `authRequest`, `relationalStore`, secure auth/session store, file picker/upload, clipboard, toast/log, and route/back should each have explicit method names, payload schemas, threading expectations, and error response schemas.
+- OHOS still has TODO/stub methods (`closePage`, `openPage`, pasteboard, toast, date formatting). If shared code starts depending on those methods, OHOS behavior will diverge even when Android works.
+- Android currently implements network with `HttpURLConnection` inside the bridge; OHOS uses ArkTS `http`. That is acceptable as host capability, but shared must own request/response shape and retry/error policy.
+- `relationalStore` exists on OHOS but Android side should be checked for equivalent shared local-store bridge behavior before moving more state machines fully into KMP.
+- `KRMyModule` / `KRMyView` should be removed from production registration once no smoke/demo page needs them.
+
+### External Render Views
+
+Kuikly upstream demo exports:
+
+- `KuiklyPageView`: native page embedding demo.
+- `MyModalView`: overrides built-in modal behavior for demo accessibility.
+- Optional PAG/APNG/video adapters via adapter manager.
+
+Slock Android exports:
+
+- `SlockLucideIconView`: native Lucide/icon render view.
+
+Slock OHOS exports:
+
+- `KRMyView`: demo view.
+- `SlockLucideIconView`: native Lucide/icon render view.
+- `SlockOhosHdsTabBarView`: native HDS immersive tabbar renderer.
+
+Render-view conclusions:
+
+- `SlockLucideIconView` is a valid Slock-specific production view, but Android/OHOS implementations should be treated as one capability with the same input schema and fallback path.
+- `SlockOhosHdsTabBarView` is intentionally OHOS-only, behind shared tabbar renderer capability. This is acceptable because shared still owns selected tab and route state.
+- `KRMyView` is demo residue in OHOS production registration and should be removed or gated to debug/smoke builds.
+- Slock does not currently mirror upstream `MyModalView`; if shared modal/action sheet behavior differs on Android, this is a place to check.
+
+### Performance / Monitoring Hooks
+
+Kuikly upstream demo's `ContextCodeHandler` wires launch/frame/memory performance callbacks and logs performance data. Slock Android currently logs Slock diagnostics around island attach/update and exceptions, but does not mirror the full Kuikly `KRMonitorType.LAUNCH/FRAME/MEMORY` setup in the main host path.
+
+Recommendation:
+
+- Add a Slock host performance adapter layer that records Kuikly first paint/createInstance/frame metrics into existing Slock diagnostics.
+- Use it for the reported cold `createInstance` and route-switch jank work instead of inferring from unrelated thread/home diagnostics.
+
 ## Recommended Migration Order
 
 1. **Keep shared safe-area units pinned.**
@@ -95,21 +199,33 @@ Slock's OHOS host is also custom:
    - Mirror cutout mode and status/navigation contrast handling.
    - Keep Slock colors and product-specific theme decisions separate.
 
-3. **Normalize the Slock pageData contract.**
+3. **Define the Slock bridge/module contract.**
+   - Document `HRBridgeModule` method names and payload/result schemas.
+   - Mark each method as required, optional, debug-only, or deprecated.
+   - Make Android/OHOS parity explicit for `authRequest`, `relationalStore`, storage/session, route/back, clipboard, toast/log, file picker/upload, and diagnostics.
+   - Remove or debug-gate `KRMyModule` / `KRMyView` from OHOS production registration.
+
+4. **Normalize the Slock pageData contract.**
    - Keep Slock app data under user pageData/`param`.
    - Do not duplicate Kuikly root fields unless the platform render lacks them.
    - Use explicit names for px fallbacks, e.g. `slockSafeAreaTopPx`, to avoid collision with Kuikly root `statusBarHeight`.
 
-4. **Reduce Android islands.**
+5. **Complete adapter parity decisions.**
+   - Decide whether Slock needs `krColorParseAdapter` and `krTextPostProcessorAdapter`.
+   - Keep PAG/APNG/video as explicit "not needed yet" unless attachments/media require them.
+   - Avoid overwriting global adapters in mixed debug/demo contexts.
+
+6. **Reduce Android islands.**
    - Use `compose_slock_app_shell` + shared router for Home -> Thread -> Settings/Members.
    - Keep `SlockKuiklyPageIsland` only for temporary migration slices or isolated previews.
 
-5. **Add host parity smoke tests/checks.**
+7. **Add host parity smoke tests/checks.**
    - Android app shell launch receives non-zero root safe area from Kuikly render.
    - Shared safe-area resolver unit covers Android dp root fields and OHOS px fallback fields separately.
    - Router open/close preserves pageData and Back returns inside shared route before finishing Activity.
+   - Required `HRBridgeModule` methods exist on both Android and OHOS and return the documented error schema.
 
-6. **Document platform capability seams.**
+8. **Document platform capability seams.**
    - HDS tabbar renderer, file picker, keyboard, storage, network, and secure store should all be host capabilities behind shared contracts.
    - Shared state/router decides behavior; host only provides platform primitives.
 
@@ -117,5 +233,8 @@ Slock's OHOS host is also custom:
 
 - Rename or separate Slock custom safe-area fallback keys to make units explicit.
 - Open a follow-up for `SlockKuiklyActivity` window handling parity with Kuikly upstream.
+- Open a follow-up for `HRBridgeModule` contract documentation and Android/OHOS parity tests.
+- Remove or debug-gate OHOS `KRMyModule` / `KRMyView`.
+- Decide whether to add `krTextPostProcessorAdapter` / `krColorParseAdapter` for Android text/color parity.
 - Open a follow-up to retire remaining Android Compose islands from main navigation once shared app shell covers the route.
 - Add a lightweight host parity check that fails if Android app shell starts relying on resource-derived safe-area again.
