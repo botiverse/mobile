@@ -37,6 +37,7 @@ import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
+import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
@@ -664,7 +665,16 @@ private fun JsonObject.toSharedThreadAttachmentItem(index: Int): KuiklyThreadAtt
         name = name,
         mimeType = threadString("mimeType", "mime_type", "contentType", "content_type").orEmpty(),
         sizeLabel = threadString("sizeLabel", "size_label", "size").orEmpty(),
-        thumbnailUrl = threadString("thumbnailUrl", "thumbnail_url", "previewUrl", "preview_url")
+        thumbnailUrl =
+            threadString(
+                "thumbnailUrl",
+                "thumbnail_url",
+                "previewUrl",
+                "preview_url",
+                "imageUrl",
+                "image_url",
+                "url"
+            )
     )
 }
 
@@ -1458,16 +1468,11 @@ private fun ThreadMessageCard(
                             textStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp, color = SlockColor.TextBlack)
                         )
                     }
-                    if (message.attachments.isNotEmpty()) {
-                        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-                            message.attachments.forEach { attachment ->
-                                ThreadAttachmentChip(
-                                    attachment = attachment,
-                                    onOpen = { onOpenAttachment(attachment.id) }
-                                )
-                            }
-                        }
-                    }
+                    ThreadMessageAttachments(
+                        attachments = message.attachments,
+                        alignEnd = alignOwnMessageRight,
+                        onOpenAttachment = onOpenAttachment
+                    )
                     ThreadMessageFooterMeta(
                         message = message,
                         showReplyAction = showReplyAction,
@@ -2095,6 +2100,95 @@ private class ThreadPixelAvatarRandom(seed: Int) {
         mixed = (mixed + ((mixed xor (mixed ushr 7)) * (61 or mixed))) xor mixed
         val unsigned = (mixed xor (mixed ushr 14)).toLong() and 0xffffffffL
         return unsigned.toDouble() / 4294967296.0
+    }
+}
+
+private val SharedThreadAttachmentImageSize = 92.dp
+
+private fun KuiklyThreadAttachmentItem.isImageAttachment(): Boolean =
+    mimeType.startsWith("image/", ignoreCase = true)
+
+@Composable
+private fun ThreadMessageAttachments(
+    attachments: List<KuiklyThreadAttachmentItem>,
+    alignEnd: Boolean,
+    onOpenAttachment: (String) -> Unit
+) {
+    if (attachments.isEmpty()) return
+
+    val imageAttachments = attachments.filter { it.isImageAttachment() }
+    val fileAttachments = attachments.filterNot { it.isImageAttachment() }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+        horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start
+    ) {
+        if (imageAttachments.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement =
+                    Arrangement.spacedBy(
+                        SlockSpacing.Sm,
+                        if (alignEnd) Alignment.End else Alignment.Start
+                    ),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                items(imageAttachments.size, key = { imageAttachments[it].id }) { index ->
+                    ThreadImageAttachmentTile(
+                        attachment = imageAttachments[index],
+                        onOpen = { onOpenAttachment(imageAttachments[index].id) }
+                    )
+                }
+            }
+        }
+        fileAttachments.forEach { attachment ->
+            ThreadAttachmentChip(
+                attachment = attachment,
+                onOpen = { onOpenAttachment(attachment.id) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadImageAttachmentTile(
+    attachment: KuiklyThreadAttachmentItem,
+    onOpen: () -> Unit
+) {
+    Box(
+        modifier = Modifier.size(SharedThreadAttachmentImageSize)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .background(SlockColor.SurfaceCream)
+            .clickable(onClick = onOpen),
+        contentAlignment = Alignment.Center
+    ) {
+        val thumbnailUrl = attachment.thumbnailUrl?.takeIf { it.isNotBlank() }
+        if (thumbnailUrl != null) {
+            SlockCachedImage(
+                source = thumbnailUrl,
+                contentDescription = attachment.name,
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Text(
+                text = "IMG",
+                style = SlockType.Button.copy(fontSize = 11.sp, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack
+            )
+        }
+        Text(
+            text = attachment.name,
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite.copy(alpha = 0.92f))
+                .padding(horizontal = SlockSpacing.Xs, vertical = 3.dp)
+        )
     }
 }
 
