@@ -19,7 +19,6 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.res.ResourcesCompat
@@ -479,7 +478,8 @@ private class SlockKuiklyImageAdapter(
 }
 
 internal class SlockKuiklyBridgeModule(
-        private val appContext: Context
+        private val appContext: Context,
+        private val legacyIslandEventsEnabled: Boolean = false
 ) : KuiklyRenderBaseModule() {
     private val databases = ConcurrentHashMap<String, SQLiteDatabase>()
     private val gson = Gson()
@@ -499,39 +499,19 @@ internal class SlockKuiklyBridgeModule(
                 null
             }
             "filesEvent" -> {
-                val event = JSONObject(params ?: "{}")
-                SlockDiagnosticsLogger.d(
-                        "SlockKuikly",
-                        "bridge_files_event method=filesEvent instanceId=${event.optString("instanceId")} action=${event.optString("action")} attachmentId=${event.optString("attachmentId")}"
-                )
-                SlockKuiklyEventRegistry.dispatch(event)
+                dispatchLegacyIslandEvent(method = method, params = params)
                 null
             }
             "composerEvent" -> {
-                val event = JSONObject(params ?: "{}")
-                SlockDiagnosticsLogger.d(
-                        "SlockKuikly",
-                        "bridge_composer_event method=composerEvent instanceId=${event.optString("instanceId")} action=${event.optString("action")} valueBytes=${event.optString("value").length} asTask=${event.optString("asTask")} attachmentId=${event.optString("attachmentId")}"
-                )
-                SlockKuiklyEventRegistry.dispatch(event)
+                dispatchLegacyIslandEvent(method = method, params = params)
                 null
             }
             "settingsEvent" -> {
-                val event = JSONObject(params ?: "{}")
-                SlockDiagnosticsLogger.d(
-                        "SlockKuikly",
-                        "bridge_settings_event method=settingsEvent instanceId=${event.optString("instanceId")} action=${event.optString("action")} itemId=${event.optString("itemId")}"
-                )
-                SlockKuiklyEventRegistry.dispatch(event)
+                dispatchLegacyIslandEvent(method = method, params = params)
                 null
             }
             "threadEvent" -> {
-                val event = JSONObject(params ?: "{}")
-                SlockDiagnosticsLogger.d(
-                        "SlockKuikly",
-                        "bridge_thread_event method=threadEvent instanceId=${event.optString("instanceId")} action=${event.optString("action")} itemId=${event.optString("itemId")} attachmentId=${event.optString("attachmentId")} tab=${event.optString("tab")}"
-                )
-                SlockKuiklyEventRegistry.dispatch(event)
+                dispatchLegacyIslandEvent(method = method, params = params)
                 null
             }
             "authRequest" -> {
@@ -548,6 +528,22 @@ internal class SlockKuiklyBridgeModule(
                 null
             }
         }
+    }
+
+    private fun dispatchLegacyIslandEvent(method: String, params: String?) {
+        val event = JSONObject(params ?: "{}")
+        if (!legacyIslandEventsEnabled) {
+            SlockDiagnosticsLogger.w(
+                    "SlockKuikly",
+                    "legacy_island_event_ignored method=$method instanceId=${event.optString("instanceId")} action=${event.optString("action")} itemId=${event.optString("itemId")} attachmentId=${event.optString("attachmentId")}"
+            )
+            return
+        }
+        SlockDiagnosticsLogger.d(
+                "SlockKuikly",
+                "legacy_island_event_dispatch method=$method instanceId=${event.optString("instanceId")} action=${event.optString("action")} itemId=${event.optString("itemId")} attachmentId=${event.optString("attachmentId")} tab=${event.optString("tab")} valueBytes=${event.optString("value").length}"
+        )
+        SlockKuiklyEventRegistry.dispatch(event)
     }
 
     private fun relationalStore(params: String?, callback: KuiklyRenderCallback?) {
@@ -730,117 +726,6 @@ internal class SlockKuiklyBridgeModule(
     companion object {
         const val MODULE_NAME = "HRBridgeModule"
         private const val AUTH_SESSION_KEY = "auth_session"
-    }
-}
-
-internal object SlockKuiklyEventRegistry {
-    private val handlers = ConcurrentHashMap<String, (JSONObject) -> Unit>()
-
-    fun register(instanceId: String, handler: (JSONObject) -> Unit) {
-        SlockDiagnosticsLogger.d("SlockKuikly", "event_registry_register instanceId=$instanceId")
-        handlers[instanceId] = handler
-    }
-
-    fun unregister(instanceId: String) {
-        SlockDiagnosticsLogger.d("SlockKuikly", "event_registry_unregister instanceId=$instanceId")
-        handlers.remove(instanceId)
-    }
-
-    fun dispatch(params: JSONObject) {
-        val instanceId = params.optString("instanceId")
-        val handler = handlers[instanceId]
-        SlockDiagnosticsLogger.d(
-                "SlockKuikly",
-                "event_registry_dispatch instanceId=$instanceId hasHandler=${handler != null} action=${params.optString("action")} attachmentId=${params.optString("attachmentId")} itemId=${params.optString("itemId")} valueBytes=${params.optString("value").length}"
-        )
-        handler?.invoke(params)
-    }
-}
-
-internal class SlockKuiklyIslandHost(
-        context: Context,
-        private val pageName: String,
-        private val pageData: SlockKuiklyPageData
-) : FrameLayout(context), KuiklyRenderViewBaseDelegatorDelegate {
-    private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
-    private var disposed = false
-    private var lastPageDataText = pageData.text
-
-    init {
-        SlockKuiklyAdapters.init(context.applicationContext)
-        SlockDiagnosticsLogger.d(
-                "SlockKuikly",
-                "island_attach pageName=$pageName instanceId=${pageData.instanceId} payloadBytes=${pageData.payloadBytes}"
-        )
-        setBackgroundColor(
-                if (slockKuiklyPageIsOpaque(pageName)) {
-                    Color.WHITE
-                } else {
-                    Color.TRANSPARENT
-                }
-        )
-        layoutParams =
-                LayoutParams(
-                        LayoutParams.MATCH_PARENT,
-                        LayoutParams.MATCH_PARENT
-                )
-        kuiklyRenderViewDelegator.onAttach(
-                this,
-                "",
-                pageName,
-                pageData.toKuiklyMap()
-        )
-    }
-
-    fun updatePageData(pageDataText: String) {
-        if (disposed || pageDataText == lastPageDataText) {
-            return
-        }
-        lastPageDataText = pageDataText
-        val nextPageData = SlockKuiklyPageData.fromText(pageDataText)
-        SlockDiagnosticsLogger.d(
-                "SlockKuikly",
-                "island_update pageName=$pageName instanceId=${nextPageData.instanceId} payloadBytes=${nextPageData.payloadBytes}"
-        )
-        kuiklyRenderViewDelegator.sendEvent(
-                "slockPageData",
-                nextPageData.toKuiklyMap()
-        )
-    }
-
-    override fun registerExternalModule(kuiklyRenderExport: IKuiklyRenderExport) {
-        kuiklyRenderExport.moduleExport(SlockKuiklyBridgeModule.MODULE_NAME) {
-            SlockKuiklyBridgeModule(context.applicationContext)
-        }
-    }
-
-    override fun registerExternalRenderView(kuiklyRenderExport: IKuiklyRenderExport) {
-        kuiklyRenderExport.renderViewExport(
-                SlockLucideIconRenderView.VIEW_NAME,
-                renderViewExportCreator = { context -> SlockLucideIconRenderView(context) }
-        )
-    }
-
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        kuiklyRenderViewDelegator.onResume()
-    }
-
-    override fun onDetachedFromWindow() {
-        kuiklyRenderViewDelegator.onPause()
-        super.onDetachedFromWindow()
-    }
-
-    fun dispose() {
-        if (disposed) {
-            return
-        }
-        disposed = true
-        SlockDiagnosticsLogger.d(
-                "SlockKuikly",
-                "island_dispose pageName=$pageName instanceId=${pageData.instanceId}"
-        )
-        kuiklyRenderViewDelegator.onDetach()
     }
 }
 
