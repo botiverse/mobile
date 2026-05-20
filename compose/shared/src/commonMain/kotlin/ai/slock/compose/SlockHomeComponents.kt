@@ -29,6 +29,7 @@ import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
+import com.tencent.kuikly.compose.extension.bouncesEnable
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.material3.pullToRefreshItem
 import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
@@ -312,7 +313,7 @@ fun SlockStructuralHomeShell(
                 HomeWorkspaceHeader(currentServerName, serverUnreadCount, topSafeArea, onServerBadgeClick)
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    modifier = Modifier.weight(1f).fillMaxWidth().bouncesEnable(false),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     if (contentRefreshEnabled) {
