@@ -269,16 +269,11 @@ import ai.slock.android.ui.components.SlockModalAction
 import ai.slock.android.ui.components.SlockModalActionStyle
 import ai.slock.android.ui.components.SlockModalTextField
 import ai.slock.android.ui.components.SlockPageHeader
-import ai.slock.android.ui.components.SlockPresence
 import ai.slock.android.ui.components.SlockAppBottomBarHost
 import ai.slock.android.ui.components.SlockAdaptiveAppLayoutInfo
 import ai.slock.android.ui.components.SlockAdaptiveAppScaffold
 import ai.slock.android.ui.components.SlockAdaptiveBottomContentPadding
 import ai.slock.android.ui.components.SlockLargeScreenNavigationStyle
-import ai.slock.android.ui.components.SlockHomeNotificationItem
-import ai.slock.android.ui.components.SlockHomeNotificationKind
-import ai.slock.android.ui.components.SlockServerSwitcherItem
-import ai.slock.android.ui.components.SlockStructuralHomeShell
 import ai.slock.android.ui.components.SlockTextField
 import ai.slock.android.ui.components.SlockWorkspaceTreeState
 import ai.slock.android.ui.components.SlockWindowLayoutMode
@@ -11388,6 +11383,17 @@ private fun searchFilterConversations(homeState: HomeUiState): List<SearchChanne
             .distinctBy { it.id }
 }
 
+private data class SlockHomeNotificationItem(
+        val id: String,
+        val title: String,
+        val body: String,
+        val actionLabel: String = "View",
+        val targetId: String? = null,
+        val kind: SlockHomeNotificationKind = SlockHomeNotificationKind.Warning
+)
+
+private enum class SlockHomeNotificationKind { Warning, Info, Error }
+
 private fun settingsComputersToHomeNotificationItems(
         snapshot: SettingsComputersSnapshot,
         dismissedIds: Set<String>
@@ -11550,165 +11556,22 @@ private fun HomeShellScreen(
         adaptiveLayoutInfo: SlockAdaptiveAppLayoutInfo,
         showNavigation: Boolean
 ) {
-    val currentHomeContent = (homeState.loadState as? ScreenLoadState.Content)?.data
-            ?.withDraftIndicators(draftThreadIds)
-    val content =
-            currentHomeContent
-                    ?: fallbackHomeContent(
-                            serverListState = serverListState,
-                            selectedServerId = homeState.selectedServerId
+    Box(
+            modifier = Modifier.fillMaxSize().padding(SlockSpacing.Lg),
+            contentAlignment = Alignment.Center
+    ) {
+        SlockEmptyState(
+                title = "Shared Home moved to Kuikly",
+                detail =
+                        "This legacy Android Home fallback has been removed. Restart the shared shell if this screen appears.",
+                action = {
+                    SlockButton(
+                            text = stringResource(R.string.settings_retry),
+                            onClick = onHomeRefresh,
+                            variant = SlockButtonVariant.Yellow
                     )
-    HomeStructuralContent(
-            onOpenThread = onOpenThread,
-            onOpenInbox = onOpenInbox,
-            onOpenFollowedThreads = onOpenFollowedThreads,
-            onOpenSaved = onOpenSaved,
-            onOpenSearch = onOpenSearch,
-            serverListState = serverListState,
-            content = content,
-            inboxState = inboxState,
-            savedState = savedState,
-            notifications = notifications,
-            onNotificationView = onNotificationView,
-            onNotificationDismiss = onNotificationDismiss,
-            selectedThreadId = selectedThreadId ?: homeState.selectedThreadId,
-            homeRefreshInProgress =
-                    homeRefreshInProgress || homeState.loadState == ScreenLoadState.Loading,
-            homeRefreshError = homeRefreshError,
-            homeRefreshErrorLabel = homeRefreshErrorLabel,
-            onHomeRefresh = onHomeRefresh,
-            serverSwitcherExpanded = serverSwitcherExpanded,
-            onServerSwitcherExpandedChange = onServerSwitcherExpandedChange,
-            onServerSelected = onServerSelected,
-            onCreateServerClick = onCreateServerClick,
-            onCreateChannelClick = onCreateChannelClick,
-            adaptiveLayoutInfo = adaptiveLayoutInfo,
-            showNavigation = showNavigation
-    )
-}
-
-@Composable
-private fun fallbackHomeContent(
-        serverListState: ScreenLoadState<ServerListSnapshot>,
-        selectedServerId: String?
-): HomeContent {
-    val selectedServer =
-            (serverListState as? ScreenLoadState.Content)?.data?.let { snapshot ->
-                snapshot.selectedServer ?: snapshot.servers.firstOrNull()
-            }
-    val server =
-            selectedServer
-                    ?: ServerSummary(
-                            id = ServerId(selectedServerId ?: "pending-server"),
-                            name =
-                                    when (serverListState) {
-                                        ScreenLoadState.Loading ->
-                                                stringResource(R.string.home_server_loading)
-                                        is ScreenLoadState.Empty ->
-                                                stringResource(R.string.home_server_empty)
-                                        is ScreenLoadState.Error ->
-                                                stringResource(R.string.home_server_error)
-                                        is ScreenLoadState.NoPermission ->
-                                                stringResource(R.string.home_server_auth_required)
-                                        is ScreenLoadState.Content ->
-                                                stringResource(R.string.home_server_fallback)
-                                    }
-                    )
-    return HomeContent(
-            server = server,
-            currentMember = localComposerAuthor,
-            channels = emptyList(),
-            directMessages = emptyList(),
-            unreadTotal = 0,
-            serverUnreadCount = 0
-    )
-}
-
-@Composable
-private fun HomeStructuralContent(
-        onOpenThread: (ConversationSummary) -> Unit,
-        onOpenInbox: () -> Unit,
-        onOpenFollowedThreads: () -> Unit,
-        onOpenSaved: () -> Unit,
-        onOpenSearch: () -> Unit,
-        serverListState: ScreenLoadState<ServerListSnapshot>,
-        content: HomeContent,
-        inboxState: InboxUiState,
-        savedState: InboxUiState,
-        notifications: List<SlockHomeNotificationItem>,
-        onNotificationView: (SlockHomeNotificationItem) -> Unit,
-        onNotificationDismiss: (SlockHomeNotificationItem) -> Unit,
-        selectedThreadId: String?,
-        homeRefreshInProgress: Boolean,
-        homeRefreshError: String?,
-        homeRefreshErrorLabel: String?,
-        onHomeRefresh: () -> Unit,
-        serverSwitcherExpanded: Boolean,
-        onServerSwitcherExpandedChange: (Boolean) -> Unit,
-        onServerSelected: (String) -> Unit,
-        onCreateServerClick: () -> Unit,
-        onCreateChannelClick: () -> Unit,
-        adaptiveLayoutInfo: SlockAdaptiveAppLayoutInfo,
-        showNavigation: Boolean
-) {
-    val serverSnapshot = (serverListState as? ScreenLoadState.Content)?.data
-    val servers = serverSnapshot?.servers?.map { it.toSwitcherItem() }.orEmpty()
-    val selectedServer = serverSnapshot?.selectedServer ?: serverSnapshot?.servers?.firstOrNull()
-    val appBottomBarContentPadding =
-            SlockAdaptiveBottomContentPadding(
-                    layoutInfo = adaptiveLayoutInfo,
-                    showNavigation = showNavigation
-            )
-    val currentServerName =
-            selectedServer?.name
-                    ?: when (serverListState) {
-                        ScreenLoadState.Loading -> stringResource(R.string.home_server_loading)
-                        is ScreenLoadState.Empty -> stringResource(R.string.home_server_empty)
-                        is ScreenLoadState.Error -> stringResource(R.string.home_server_error)
-                        is ScreenLoadState.NoPermission ->
-                                stringResource(R.string.home_server_auth_required)
-                        is ScreenLoadState.Content -> stringResource(R.string.home_server_fallback)
-                    }
-    Box(modifier = Modifier.fillMaxSize()) {
-        SlockStructuralHomeShell(
-                currentServerName = currentServerName,
-                currentServerId = selectedServer?.id?.value.orEmpty(),
-                servers = servers,
-                channels = content.channels.map { it.toHomeConversationItem() },
-                directMessages = content.directMessages.map { it.toHomeConversationItem() },
-                selectedChannelId = selectedThreadId,
-                serverUnreadCount = content.serverUnreadCount,
-                inboxUnreadCount = content.serverUnreadCount,
-                savedCount = savedState.visibleTotalCount() ?: 0,
-                notifications = notifications,
-                serverSwitcherExpanded = serverSwitcherExpanded,
-                contentRefreshing = homeRefreshInProgress,
-                contentRefreshEnabled = true,
-                showBottomBar = false,
-                bottomContentPadding = appBottomBarContentPadding,
-                outerPadding = 0.dp,
-                onContentRefresh = onHomeRefresh,
-                onServerBadgeClick = { onServerSwitcherExpandedChange(!serverSwitcherExpanded) },
-                onServerSwitcherDismiss = { onServerSwitcherExpandedChange(false) },
-                onServerSelected = { id -> onServerSelected(id) },
-                onCreateServerClick = { onCreateServerClick() },
-                onCreateChannelClick = { onCreateChannelClick() },
-                onInboxClick = { onOpenInbox() },
-                onFollowedThreadsClick = { onOpenFollowedThreads() },
-                onSavedClick = { onOpenSaved() },
-                onSearchClick = { onOpenSearch() },
-                onNotificationView = onNotificationView,
-                onNotificationDismiss = onNotificationDismiss,
-                onChannelClick = { content.findConversation(it)?.let(onOpenThread) }
+                }
         )
-        if (homeRefreshError != null) {
-            HomeRefreshErrorStrip(
-                    errorCode = homeRefreshError,
-                    errorLabel = homeRefreshErrorLabel,
-                    onRetry = onHomeRefresh,
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 72.dp)
-            )
-        }
     }
 }
 
@@ -11988,14 +11851,6 @@ private fun List<String>.withSelection(value: String, selected: Boolean): List<S
         } else {
             filterNot { it == value }
         }
-
-private fun ai.slock.android.core.model.ServerSummary.toSwitcherItem(): SlockServerSwitcherItem =
-        SlockServerSwitcherItem(
-                id = id.value,
-                name = name,
-                slug = slug ?: description?.removePrefix("/") ?: id.value,
-                unreadCount = unreadCount
-        )
 
 private fun ScreenLoadState<ServerListSnapshot>.selectServerOptimistically(
         serverId: ServerId
@@ -12449,26 +12304,6 @@ private fun String.toRefreshErrorLabel(): String {
         else -> this
     }
 }
-
-private fun ConversationSummary.toHomeConversationItem():
-        ai.slock.android.ui.components.SlockHomeConversationItem =
-        ai.slock.android.ui.components.SlockHomeConversationItem(
-                id = threadId.value,
-                name = name,
-                unreadCount = unreadCount,
-                avatarUrl = avatarUrl,
-                avatar = avatar,
-                presence = presence?.toSlockPresence(),
-                hasDraft = hasDraft,
-                joined = joined && permissions.canRead
-        )
-
-private fun Presence.toSlockPresence(): SlockPresence =
-        when (this) {
-            Presence.Active -> SlockPresence.Online
-            Presence.Away -> SlockPresence.Unknown
-            Presence.Offline -> SlockPresence.Offline
-        }
 
 private fun Long.updateFrom(event: RealtimeEvent): Long =
         when (event) {
