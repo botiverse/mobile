@@ -46,6 +46,7 @@ import com.tencent.kuikly.core.pager.Pager
 const val LOGIN_PAGE = "compose_login"
 const val REGISTER_PAGE = "compose_register"
 const val FORGOT_PASSWORD_PAGE = "compose_forgot_password"
+private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 
 @Page(LOGIN_PAGE, supportInLocal = true)
 internal class ComposeLoginPage : ai.slock.compose.base.BasePager() {
@@ -450,6 +451,12 @@ private fun ForgotPasswordSuccessPreview() {
 }
 
 private fun Pager.openAuthPage(pageName: String) {
-    val pageData = JSONObject().apply { put("pageName", pageName) }
+    val pageData =
+        JSONObject().apply {
+            put("pageName", pageName)
+            if (pageName == SLOCK_APP_SHELL_PAGE) {
+                put(AUTH_REPLACE_CURRENT_PAGE, true)
+            }
+        }
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
 }

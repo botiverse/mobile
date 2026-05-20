@@ -6,6 +6,7 @@ import globalNativeManager from '../kuikly/MyNativeManager';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
 const SAFE_AREA_BOTTOM_PX = 'slockSafeAreaBottomPx';
+const DEFAULT_PAGE_NAME = 'compose_slock_app_shell';
 const HDS_MIN_API_VERSION = 20;
 const HDS_TAB_BAR_SYSCAP = 'SystemCapability.UIDesign.HDSComponent.Core';
 
@@ -30,7 +31,7 @@ struct Index {
   build() {
     Stack() {
       Kuikly({
-        pagerName: this.pageName ?? 'compose_login',
+        pagerName: this.pageName ?? DEFAULT_PAGE_NAME,
         pagerData: this.pageDataWithSafeArea(),
         delegate: this.kuiklyViewDelegate,
         nativeManager: globalNativeManager,
