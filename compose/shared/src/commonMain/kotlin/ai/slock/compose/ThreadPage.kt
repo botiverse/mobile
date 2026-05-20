@@ -1409,14 +1409,15 @@ private fun ThreadMessageCard(
     onOpenAttachment: (String) -> Unit
 ) {
     val horizontalArrangement =
-        if (alignOwnMessageRight) Arrangement.spacedBy(10.dp, Alignment.End) else Arrangement.spacedBy(10.dp)
+        if (alignOwnMessageRight) Arrangement.spacedBy(SlockSpacing.Md, Alignment.End) else Arrangement.spacedBy(SlockSpacing.Md)
     val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start
+    val messageMaxWidthFraction = if (alignOwnMessageRight) 0.82f else 1f
     Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).clickable(onClick = onShowActions)
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1433,11 +1434,12 @@ private fun ThreadMessageCard(
                 }
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                     horizontalAlignment = contentAlignment
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
+                            .clickable(onClick = onShowActions),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement =
                             if (alignOwnMessageRight) {
@@ -1448,11 +1450,11 @@ private fun ThreadMessageCard(
                     ) {
                         Text(
                             text = message.authorName,
-                            style = SlockType.ButtonBold.copy(fontSize = 15.sp, lineHeight = 19.sp, color = SlockColor.TextBlack),
+                            style = SlockType.Button.copy(color = SlockColor.TextBlack),
                             color = SlockColor.TextBlack,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f).clickable { onOpenMember(message.authorId) }
+                            modifier = Modifier.widthIn(max = 220.dp).clickable { onOpenMember(message.authorId) }
                         )
                         Text(
                             text = timestampLabel,
@@ -1463,16 +1465,23 @@ private fun ThreadMessageCard(
                         )
                     }
                     if (message.body.isNotBlank()) {
-                        SlockMarkdownBody(
-                            body = message.body,
-                            textStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp, color = SlockColor.TextBlack)
+                        Box(
+                            modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
+                                .clickable(onClick = onShowActions)
+                        ) {
+                            SlockMarkdownBody(
+                                body = message.body,
+                                textStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp, color = SlockColor.TextBlack)
+                            )
+                        }
+                    }
+                    Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                        ThreadMessageAttachments(
+                            attachments = message.attachments,
+                            alignEnd = alignOwnMessageRight,
+                            onOpenAttachment = onOpenAttachment
                         )
                     }
-                    ThreadMessageAttachments(
-                        attachments = message.attachments,
-                        alignEnd = alignOwnMessageRight,
-                        onOpenAttachment = onOpenAttachment
-                    )
                     ThreadMessageFooterMeta(
                         message = message,
                         showReplyAction = showReplyAction,
@@ -1492,9 +1501,11 @@ private fun ThreadMessageCard(
                 }
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack))
     }
 }
+
+private fun Modifier.threadMessageContentWidth(maxWidthFraction: Float): Modifier =
+    widthIn(max = 680.dp).fillMaxWidth(maxWidthFraction)
 
 @Composable
 private fun ThreadMessageFooterMeta(
