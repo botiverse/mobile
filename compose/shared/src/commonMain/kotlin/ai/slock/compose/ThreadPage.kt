@@ -48,9 +48,13 @@ import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.ContentScale
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Density
+import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
@@ -2092,6 +2096,11 @@ private data class ThreadMessageMenuAction(
     val onClick: () -> Unit
 )
 
+private val ThreadMessageMenuWidth = 208.dp
+private const val ThreadMessageMenuFallbackHeight = 210f
+private const val ThreadMessageMenuAnchorGap = 8f
+private const val ThreadMessageMenuHorizontalNudge = 16f
+
 @Composable
 private fun ThreadMessageActionMenu(
     message: KuiklyThreadMessageItem,
@@ -2126,28 +2135,66 @@ private fun ThreadMessageActionMenu(
                 )
             }
         }
+    val density = LocalDensity.current
+    var overlaySize by remember { mutableStateOf(Size.Zero) }
+    var menuSize by remember { mutableStateOf(Size.Zero) }
+    val menuWidth = menuSize.width.takeIf { it > 0f } ?: ThreadMessageMenuWidth.value
+    val menuHeight = menuSize.height.takeIf { it > 0f } ?: ThreadMessageMenuFallbackHeight
+    val menuX =
+        if (overlaySize.width > 0f) {
+            (anchor.x - ThreadMessageMenuHorizontalNudge)
+                .coerceIn(
+                    ThreadMessageMenuAnchorGap,
+                    (overlaySize.width - menuWidth - ThreadMessageMenuAnchorGap).coerceAtLeast(ThreadMessageMenuAnchorGap)
+                )
+        } else {
+            anchor.x.coerceAtLeast(ThreadMessageMenuAnchorGap)
+        }
+    val preferredBelowY = anchor.y + ThreadMessageMenuAnchorGap
+    val preferredAboveY = anchor.y - menuHeight - ThreadMessageMenuAnchorGap
+    val maxY =
+        if (overlaySize.height > 0f) {
+            (overlaySize.height - menuHeight - ThreadMessageMenuAnchorGap).coerceAtLeast(ThreadMessageMenuAnchorGap)
+        } else {
+            preferredBelowY
+        }
+    val menuY =
+        if (overlaySize.height > 0f && preferredBelowY + menuHeight > overlaySize.height - ThreadMessageMenuAnchorGap) {
+            if (preferredAboveY >= ThreadMessageMenuAnchorGap) {
+                preferredAboveY
+            } else {
+                maxY
+            }
+        } else {
+            preferredBelowY.coerceIn(ThreadMessageMenuAnchorGap, maxY)
+        }
     Box(
         modifier = Modifier
             .fillMaxSize()
             .clickable(onClick = onDismiss)
-            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Lg),
+            .onGloballyPositioned { coordinates ->
+                overlaySize = coordinates.size.toDpSize(density)
+            },
         contentAlignment = Alignment.TopStart
     ) {
         Box(
             modifier = Modifier
-                .offset(x = anchor.x.coerceAtLeast(8f), y = anchor.y.coerceAtLeast(8f))
-                .padding(end = 6.dp, bottom = 6.dp)
-                .width(292.dp)
+                .offset(x = menuX, y = menuY)
+                .padding(end = 4.dp, bottom = 4.dp)
+                .width(ThreadMessageMenuWidth)
+                .onGloballyPositioned { coordinates ->
+                    menuSize = coordinates.size.toDpSize(density)
+                }
         ) {
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .offset(x = 6f, y = 6f)
+                    .offset(x = 4f, y = 4f)
                     .background(SlockColor.ShadowBlack)
             )
             Column(
                 modifier = Modifier
-                    .width(292.dp)
+                    .width(ThreadMessageMenuWidth)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
             ) {
@@ -2165,20 +2212,25 @@ private fun ThreadMessageActionMenu(
     }
 }
 
+private fun IntSize.toDpSize(density: Density): Size =
+    with(density) {
+        Size(width.toDp().value, height.toDp().value)
+    }
+
 @Composable
 private fun ThreadMessageReactionRow() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(54.dp)
-            .padding(horizontal = SlockSpacing.Md),
+            .height(42.dp)
+            .padding(horizontal = SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         listOf("👍", "❤", "🎉", "👀", "🔥", "🖼").forEach { reaction ->
             Text(
                 text = reaction,
-                style = SlockType.Body.copy(fontSize = 21.sp, lineHeight = 24.sp),
+                style = SlockType.Body.copy(fontSize = 18.sp, lineHeight = 20.sp),
                 color = SlockColor.TextBlack
             )
         }
@@ -2191,18 +2243,18 @@ private fun ThreadMessageMenuItem(action: ThreadMessageMenuAction) {
         onClick = action.onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp)
-            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm)
+            .heightIn(min = 42.dp)
+            .padding(horizontal = SlockSpacing.Sm, vertical = 7.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(13.dp)
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            SlockLucideIcon(action.icon, modifier = Modifier.size(20.dp), color = "#FF000000")
+            SlockLucideIcon(action.icon, modifier = Modifier.size(16.dp), color = "#FF000000")
             Text(
                 text = action.label,
-                style = SlockType.Body.copy(fontWeight = FontWeight.Normal),
+                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
