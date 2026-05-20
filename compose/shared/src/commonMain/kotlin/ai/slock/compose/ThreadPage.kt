@@ -2082,7 +2082,6 @@ private fun ThreadOriginCard(
                 }
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack))
     }
 }
 
