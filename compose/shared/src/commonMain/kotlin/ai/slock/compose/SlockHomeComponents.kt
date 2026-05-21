@@ -40,6 +40,8 @@ import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.Path
+import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
@@ -480,12 +482,12 @@ private fun HomeWorkspaceHeader(serverName: String, serverUnreadCount: Int, topS
 
 @Composable
 private fun SlockLogoBadge(text: String, modifier: Modifier = Modifier, showDropdown: Boolean = false, tilted: Boolean = true) {
-    val badgeModifier = if (tilted) {
-        modifier.padding(end = 2.dp, bottom = 2.dp).rotate(-2f)
-    } else {
-        modifier.padding(end = 2.dp, bottom = 2.dp)
+    if (tilted) {
+        SlockTiltedLogoBadge(text = text, modifier = modifier, showDropdown = showDropdown)
+        return
     }
-    Box(modifier = badgeModifier) {
+
+    Box(modifier = modifier.padding(end = 2.dp, bottom = 2.dp)) {
         Box(Modifier.matchParentSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier = Modifier.background(SlockColor.TextBlack).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 16.dp, vertical = SlockSpacing.Sm),
@@ -499,6 +501,59 @@ private fun SlockLogoBadge(text: String, modifier: Modifier = Modifier, showDrop
         }
     }
 }
+
+@Composable
+private fun SlockTiltedLogoBadge(text: String, modifier: Modifier = Modifier, showDropdown: Boolean = false) {
+    Box(modifier = modifier) {
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val shadowOffset = HomeSmallShadowOffset.toPx()
+            val tilt = 2.dp.toPx()
+            val strokeWidth = SlockStroke.Default.toPx()
+            val surfaceWidth = (size.width - shadowOffset).coerceAtLeast(0f)
+            val surfaceHeight = (size.height - shadowOffset).coerceAtLeast(0f)
+            val shadowPath =
+                slockTiltedBadgePath(
+                    left = shadowOffset,
+                    top = shadowOffset,
+                    width = surfaceWidth,
+                    height = surfaceHeight,
+                    tilt = tilt
+                )
+            val surfacePath =
+                slockTiltedBadgePath(
+                    left = 0f,
+                    top = 0f,
+                    width = surfaceWidth,
+                    height = surfaceHeight,
+                    tilt = tilt
+                )
+            drawPath(shadowPath, SlockColor.ShadowBlack)
+            drawPath(surfacePath, SlockColor.TextBlack)
+            drawPath(surfacePath, SlockColor.BorderBlack, style = Stroke(width = strokeWidth))
+        }
+        com.tencent.kuikly.compose.foundation.layout.Row(
+            modifier =
+                Modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)
+                    .padding(horizontal = 16.dp, vertical = SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text, color = SlockColor.BrandYellow, style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
+            if (showDropdown) {
+                Spacer(Modifier.width(SlockSpacing.Xs))
+                SlockLucideIcon("chevron-down", Modifier.size(18.dp), color = "#FFFFD440")
+            }
+        }
+    }
+}
+
+private fun slockTiltedBadgePath(left: Float, top: Float, width: Float, height: Float, tilt: Float): Path =
+    Path().apply {
+        moveTo(left, top + tilt)
+        lineTo(left + width - tilt, top)
+        lineTo(left + width, top + height - tilt)
+        lineTo(left + tilt, top + height)
+        close()
+    }
 
 @Composable
 private fun ServerUnreadMarker(modifier: Modifier = Modifier) {
