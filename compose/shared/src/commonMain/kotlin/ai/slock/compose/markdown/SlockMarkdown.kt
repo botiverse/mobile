@@ -211,11 +211,6 @@ fun threadMarkdownTagDisplayLabel(label: String): String {
     return prefix + trimmed.dropWhile { it == prefix.first() }
 }
 
-private fun threadInlineTagRegex(): Regex =
-    Regex(
-        """(?<![\p{L}\p{N}_])@[\p{L}\p{N}][\p{L}\p{N}_.\-]{0,63}|(?<![\p{L}\p{N}_])#\d+|(?<![\p{L}\p{N}_])#[\p{L}][\p{L}\p{N}_-]{0,63}:[\dA-Fa-f]{6,8}|(?<![\p{L}\p{N}_])#[\p{L}][\p{L}\p{N}_-]{0,63}"""
-    )
-
 private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
     when {
         startsWith('@') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.UserMention)
@@ -243,21 +238,98 @@ private fun String.isThreadChannelReference(): Boolean {
 }
 
 fun String.threadInlineTagMatches(baseOffset: Int = 0): List<ThreadInlineTagMatch> =
-    threadMarkdownCodeProtectionRanges().let { protectedRanges ->
-        threadInlineTagRegex().findAll(this).mapNotNull { match ->
-            if (protectedRanges.any { match.range.first in it }) {
-                null
-            } else {
-                match.value.toThreadMarkdownTagOrNull()?.let { tag ->
-                    ThreadInlineTagMatch(
-                        id = "slock:${baseOffset + match.range.first}",
-                        tag = tag,
-                        range = match.range
-                    )
-                }
-            }
-        }.toList()
+    threadInlineTagRanges().mapNotNull { range ->
+        substring(range).toThreadMarkdownTagOrNull()?.let { tag ->
+            ThreadInlineTagMatch(
+                id = "slock:${baseOffset + range.first}",
+                tag = tag,
+                range = range
+            )
+        }
     }
+
+private fun String.threadInlineTagRanges(): List<IntRange> {
+    val protectedRanges = threadMarkdownCodeProtectionRanges()
+    val ranges = mutableListOf<IntRange>()
+    var index = 0
+    while (index < length) {
+        if (protectedRanges.any { index in it }) {
+            index++
+            continue
+        }
+        val char = this[index]
+        val range =
+            when (char) {
+                '@' -> scanThreadMentionRange(index)
+                '#' -> scanThreadHashRange(index)
+                else -> null
+            }
+        if (range != null && isThreadInlineTagBoundary(index - 1)) {
+            ranges += range
+            index = range.last + 1
+        } else {
+            index++
+        }
+    }
+    return ranges
+}
+
+private fun String.scanThreadMentionRange(start: Int): IntRange? {
+    val nameStart = start + 1
+    if (nameStart >= length || !this[nameStart].isLetterOrDigit()) return null
+    var endExclusive = nameStart + 1
+    var count = 1
+    while (endExclusive < length && count < 64 && this[endExclusive].isThreadMentionPart()) {
+        endExclusive++
+        count++
+    }
+    return start until endExclusive
+}
+
+private fun String.scanThreadHashRange(start: Int): IntRange? {
+    val valueStart = start + 1
+    if (valueStart >= length) return null
+    if (this[valueStart].isDigit()) {
+        var endExclusive = valueStart + 1
+        while (endExclusive < length && this[endExclusive].isDigit()) endExclusive++
+        return start until endExclusive
+    }
+    if (!this[valueStart].isLetter()) return null
+
+    var nameEndExclusive = valueStart + 1
+    var count = 1
+    while (nameEndExclusive < length && count < 64 && this[nameEndExclusive].isThreadChannelPart()) {
+        nameEndExclusive++
+        count++
+    }
+    val shortStart = nameEndExclusive + 1
+    if (nameEndExclusive < length && this[nameEndExclusive] == ':' && shortStart < length) {
+        var shortEndExclusive = shortStart
+        while (shortEndExclusive < length &&
+            shortEndExclusive - shortStart < 8 &&
+            this[shortEndExclusive].isThreadShortIdPart()
+        ) {
+            shortEndExclusive++
+        }
+        val shortLength = shortEndExclusive - shortStart
+        if (shortLength in 6..8 && (shortEndExclusive >= length || !this[shortEndExclusive].isThreadShortIdPart())) {
+            return start until shortEndExclusive
+        }
+    }
+    return start until nameEndExclusive
+}
+
+private fun Char.isThreadMentionPart(): Boolean =
+    isLetterOrDigit() || this == '_' || this == '.' || this == '-'
+
+private fun Char.isThreadChannelPart(): Boolean =
+    isLetterOrDigit() || this == '_' || this == '-'
+
+private fun Char.isThreadShortIdPart(): Boolean =
+    isDigit() || this in 'a'..'f' || this in 'A'..'F'
+
+private fun String.isThreadInlineTagBoundary(index: Int): Boolean =
+    index < 0 || !(this[index].isLetterOrDigit() || this[index] == '_')
 
 fun String.threadInlineCodeMatches(baseOffset: Int = 0): List<ThreadInlineCodeMatch> {
     val matches = mutableListOf<ThreadInlineCodeMatch>()
