@@ -78,6 +78,7 @@ private val MiniActionSize = 30.dp
 private val MiniActionIconSize = 16.dp
 private val CountPillMinWidth = 20.dp
 private val CountPillHeight = 18.dp
+private val HomeUnreadBadgeRadius = 4.dp
 private val HomeListHorizontalPadding = SlockSpacing.Md
 private val HomePanelShadowOffset = 4.dp
 
@@ -672,13 +673,7 @@ private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean
             }
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(
-                server.name,
-                style = if (selected) SlockType.ButtonBold else SlockType.Button,
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Text(server.name, style = SlockType.Button, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 "/${server.slug}",
                 style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 14.sp),
@@ -687,7 +682,7 @@ private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean
                 overflow = TextOverflow.Ellipsis
             )
         }
-        if (!selected && server.unreadCount > 0) ServerSwitcherUnreadBadge(server.unreadCount.toString())
+        if (!selected && server.unreadCount > 0) HomeUnreadBadge(server.unreadCount.toString())
     }
 }
 
@@ -706,28 +701,6 @@ private fun ServerSwitcherActionRow(label: String, onClick: () -> Unit) {
     ) {
         SlockLucideIcon("plus", Modifier.size(14.dp))
         Text(label, style = SlockType.ButtonBold, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-private fun ServerSwitcherUnreadBadge(text: String) {
-    Box(
-        modifier =
-            Modifier
-                .background(SlockColor.AccentPink)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .height(16.dp)
-                .widthIn(min = 18.dp)
-                .padding(horizontal = 6.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text,
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp, lineHeight = 10.sp),
-            color = SlockColor.SurfaceWhite,
-            maxLines = 1,
-            textAlign = TextAlign.Center
-        )
     }
 }
 
@@ -968,7 +941,28 @@ private class PixelAvatarRandom(seed: Int) { private var value = seed; fun next(
 
 @Composable
 private fun CountPill(text: String, color: Color) {
-    Box(modifier = Modifier.background(color).border(SlockStroke.Thin, SlockColor.BorderBlack).height(CountPillHeight).widthIn(min = CountPillMinWidth).padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
-        Text(text, style = SlockType.Caption.copy(lineHeight = CountPillHeight.value.sp), color = SlockColor.SurfaceWhite, maxLines = 1, textAlign = TextAlign.Center)
+    HomeUnreadBadge(text = text, color = color)
+}
+
+@Composable
+private fun HomeUnreadBadge(text: String, color: Color = SlockColor.AccentPink) {
+    Box(
+        modifier =
+            Modifier
+                .height(CountPillHeight)
+                .widthIn(min = CountPillMinWidth)
+                .borderRadius(HomeUnreadBadgeRadius)
+                .background(color)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .padding(horizontal = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text,
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp, lineHeight = 10.sp),
+            color = SlockColor.SurfaceWhite,
+            maxLines = 1,
+            textAlign = TextAlign.Center
+        )
     }
 }
