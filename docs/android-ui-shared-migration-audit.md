@@ -6,6 +6,15 @@ Date: 2026-05-21
 
 Android should stop carrying product UI that already belongs to the shared Kuikly shell. New KMP work should move reusable UI and business state to `compose/shared/commonMain`; Android should keep only platform host capabilities, temporary native fallback, and real Android test harness.
 
+
+## Shared ViewModel Lifecycle Rule
+
+Shared Kuikly Compose ViewModels must not touch Pager-backed runtime state during construction. Constructor/property initializers and `init {}` blocks may store pure dependencies only; they must not access `viewModelScope`, `pagerId`, `Utils.bridgeModule(pagerId)`, host bridge modules, or any object that indirectly needs Pager context.
+
+Stores, effects, and coroutine jobs that need `viewModelScope` should be created lazily or after an explicit route start/attach intent. `onCleared()` must check whether lazy stores were initialized before clearing them.
+
+This rule prevents startup white screens caused by reading Kuikly `viewModelScope` before Pager initialization (`lateinit property pagerId has not been initialized`). It is now part of the local `kuikly-coroutines-threading` skill and applies to Home, Tasks, Thread, Settings, and future shared MVI routes.
+
 ## Current State
 
 The Android `app/src/main/java/ai/slock/android/ui` tree still contains native Compose design-system code from the pre-shared-shell migration:

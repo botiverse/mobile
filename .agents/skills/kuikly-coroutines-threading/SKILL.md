@@ -133,6 +133,59 @@ fun MyContent() {
 - `withContext` 返回后自动回到 Kuikly 线程
 - `viewModelScope` 也绑定到 Kuikly 线程，ViewModel 销毁时自动取消
 
+
+### Compose ViewModel 生命周期规则（Slock 必守）
+
+Kuikly Compose 的 `viewModelScope` 依赖 Pager 上下文。Slock shared ViewModel **禁止**在 constructor、property initializer、`init {}` 中访问 `viewModelScope`、`pagerId`、`Utils.bridgeModule(pagerId)` 或任何依赖 Pager/runtime context 的对象。
+
+原因：ViewModel 构造阶段 Kuikly 可能还没有完成 Pager 初始化，过早访问会触发类似 `lateinit property pagerId has not been initialized` 的首屏白屏/渲染失败。
+
+正确做法：
+
+- constructor 只保存纯依赖（repository、auth store、data source、configuration）。
+- `Store` / `Effect` / coroutine job 需要 `viewModelScope` 时，使用 `lazy { ... viewModelScope ... }`，或在明确的 `start` / `attach` / `dispatch(Start)` 之后创建。
+- Composable 中需要 host bridge/page context 时，在页面已进入 composition 后用 `remember { Utils.bridgeModule(pager.pagerId) }` 或显式传入已经可用的 capability，不要让 ViewModel constructor 间接创建 bridge。
+- `onCleared()` 清理 lazy store 时先检查 `isInitialized()`，避免为了清理又触发初始化。
+
+```kotlin
+class SharedExampleViewModel(
+    private val dataSource: SharedExampleDataSource
+) : ViewModel() {
+    private val storeDelegate = lazy {
+        SharedExampleStore(dataSource = dataSource, scope = viewModelScope)
+    }
+    private val store: SharedExampleStore by storeDelegate
+
+    val state: StateFlow<SharedExampleState>
+        get() = store.state
+
+    fun dispatch(intent: SharedExampleIntent) {
+        store.dispatch(intent)
+    }
+
+    override fun onCleared() {
+        if (storeDelegate.isInitialized()) {
+            store.clear()
+        }
+        super.onCleared()
+    }
+}
+```
+
+反例：
+
+```kotlin
+class BrokenViewModel(dataSource: SharedExampleDataSource) : ViewModel() {
+    // ❌ property initializer 在构造期访问 viewModelScope
+    private val store = SharedExampleStore(dataSource, viewModelScope)
+
+    init {
+        // ❌ init 中启动依赖 Kuikly scope/page context 的业务流
+        viewModelScope.launch { /* ... */ }
+    }
+}
+```
+
 **Dispatchers.IO 跨平台定义：**
 ```kotlin
 // commonMain 中声明 expect
