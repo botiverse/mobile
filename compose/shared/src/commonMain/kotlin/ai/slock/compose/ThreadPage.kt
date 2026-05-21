@@ -279,10 +279,12 @@ internal fun SharedThreadRouteContent(
     var composerDraftAsTask by remember(initialPayload.instanceId) { mutableStateOf(false) }
     var composerSyncNonce by remember(initialPayload.instanceId) { mutableStateOf(0) }
     var composerSending by remember(initialPayload.instanceId) { mutableStateOf(false) }
+    var highlightedMentions by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(initialPayload) {
         payload = initialPayload
+        highlightedMentions = emptySet()
         val composer = parseThreadComposerPayload(initialPayload.composerPayload, "{}", initialPayload.instanceId)
         composerDraftText = composer.seedText
         composerDraftAsTask = composer.seedAsTask
@@ -295,6 +297,7 @@ internal fun SharedThreadRouteContent(
         payload = initialPayload.copy(status = "loading", errorCode = null)
         try {
             val session = authStore.readSession()
+            highlightedMentions = session.threadSelfMentionNames()
             val response = threadApi.channelMessages(threadId)
             payload =
                 if (response.isSuccessful && !response.bodyText.isNullOrBlank()) {
@@ -370,6 +373,7 @@ internal fun SharedThreadRouteContent(
         payload = renderedPayload,
         filesPayload = filesPayload,
         composerPayload = composerPayload,
+        highlightedMentions = highlightedMentions,
         onBack = onBack,
         onThreadEvent = { action, itemId, attachmentId, tab ->
             when {
@@ -961,6 +965,19 @@ private fun JsonObject.toSharedThreadMessageItem(
     )
 }
 
+private fun StoredAuthSession?.threadSelfMentionNames(): Set<String> =
+    this?.user?.let { user ->
+        listOfNotNull(
+            user.displayName,
+            user.name,
+            user.email.substringBefore("@").ifBlank { null },
+            user.bestDisplayName
+        )
+            .map { it.removePrefix("@").trim().lowercase() }
+            .filter { it.isNotBlank() }
+            .toSet()
+    }.orEmpty()
+
 private fun JsonObject.toSharedThreadAttachmentItem(index: Int): KuiklyThreadAttachmentItem? {
     val id = threadString("id", "attachmentId", "attachment_id", "_id") ?: "attachment-$index"
     val name = threadString("name", "filename", "fileName", "title") ?: id
@@ -1078,6 +1095,7 @@ private fun ThreadPageContent(
     payload: KuiklyThreadScreenPayload,
     filesPayload: KuiklyThreadFilesPayload,
     composerPayload: KuiklyThreadComposerPayload,
+    highlightedMentions: Set<String>,
     onBack: () -> Unit,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
@@ -1121,6 +1139,7 @@ private fun ThreadPageContent(
                     KuiklyThreadTab.Chat ->
                         ThreadChatTab(
                             payload = payload,
+                            highlightedMentions = highlightedMentions,
                             onThreadEvent = onThreadEvent
                         )
                     KuiklyThreadTab.Tasks ->
@@ -1390,6 +1409,7 @@ private val ThreadTabHeight = 38.dp
 @Composable
 private fun ThreadChatTab(
     payload: KuiklyThreadScreenPayload,
+    highlightedMentions: Set<String>,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit
 ) {
     when (payload.status) {
@@ -1406,6 +1426,7 @@ private fun ThreadChatTab(
         else ->
             ThreadMessagesList(
                 payload = payload,
+                highlightedMentions = highlightedMentions,
                 onThreadEvent = onThreadEvent
             )
     }
@@ -1414,6 +1435,7 @@ private fun ThreadChatTab(
 @Composable
 private fun ThreadMessagesList(
     payload: KuiklyThreadScreenPayload,
+    highlightedMentions: Set<String>,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit
 ) {
     if (payload.messages.isEmpty()) {
@@ -1495,6 +1517,7 @@ private fun ThreadMessagesList(
                 if (message.isSystemMessage()) {
                     ThreadSystemMessageRow(
                         message = message,
+                        highlightedMentions = highlightedMentions,
                         showReplyAction = payload.showReplyActions,
                         timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
                         taskOpenEnabled = payload.showTaskOpenActions,
@@ -1508,6 +1531,7 @@ private fun ThreadMessagesList(
                 } else {
                     ThreadMessageCard(
                         message = message,
+                        highlightedMentions = highlightedMentions,
                         alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                         showReplyAction = payload.showReplyActions,
                         taskOpenEnabled = payload.showTaskOpenActions,
@@ -1693,6 +1717,7 @@ private const val ThreadBackToBottomAnchorAttempts = 12
 @Composable
 private fun ThreadSystemMessageRow(
     message: KuiklyThreadMessageItem,
+    highlightedMentions: Set<String>,
     showReplyAction: Boolean,
     timestampLabel: String,
     taskOpenEnabled: Boolean,
@@ -1719,7 +1744,7 @@ private fun ThreadSystemMessageRow(
             overflow = TextOverflow.Ellipsis
         )
         if (expanded) {
-            ThreadSystemMessageExpandedContent(message)
+            ThreadSystemMessageExpandedContent(message, highlightedMentions = highlightedMentions)
         }
         ThreadMessageFooterMeta(
             message = message,
@@ -1735,7 +1760,10 @@ private fun ThreadSystemMessageRow(
 }
 
 @Composable
-private fun ThreadSystemMessageExpandedContent(message: KuiklyThreadMessageItem) {
+private fun ThreadSystemMessageExpandedContent(
+    message: KuiklyThreadMessageItem,
+    highlightedMentions: Set<String>
+) {
     Column(
         modifier =
             Modifier.fillMaxWidth()
@@ -1751,7 +1779,8 @@ private fun ThreadSystemMessageExpandedContent(message: KuiklyThreadMessageItem)
         )
         SlockMarkdownBody(
             body = message.body.sanitizeThreadSystemText(),
-            textStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp, color = SlockColor.TextBlack)
+            textStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp, color = SlockColor.TextBlack),
+            highlightedMentions = highlightedMentions
         )
         val details = message.expandedSystemDetails()
         if (details.isNotBlank()) {
@@ -1783,6 +1812,7 @@ private fun ThreadInlineActionRow(label: String, onClick: () -> Unit) {
 @Composable
 private fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
+    highlightedMentions: Set<String> = emptySet(),
     alignOwnMessageRight: Boolean = false,
     showReplyAction: Boolean = true,
     taskOpenEnabled: Boolean = true,
@@ -1864,7 +1894,8 @@ private fun ThreadMessageCard(
                         ) {
                             SlockMarkdownBody(
                                 body = message.body,
-                                textStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp, color = SlockColor.TextBlack)
+                                textStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp, color = SlockColor.TextBlack),
+                                highlightedMentions = highlightedMentions
                             )
                         }
                     }
@@ -2408,6 +2439,7 @@ private fun ThreadOriginCard(
                 payload.originMessage?.let { origin ->
                     ThreadMessageCard(
                         message = origin,
+                        highlightedMentions = emptySet(),
                         showReplyAction = false,
                         onShowActions = {},
                         onOpenMember = {},

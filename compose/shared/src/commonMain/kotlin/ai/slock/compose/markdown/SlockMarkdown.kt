@@ -211,6 +211,14 @@ fun threadMarkdownTagDisplayLabel(label: String): String {
     return prefix + trimmed.dropWhile { it == prefix.first() }
 }
 
+private fun threadMarkdownMentionKey(label: String): String =
+    label.removePrefix("@").trim().lowercase()
+
+private fun Set<String>.containsThreadMention(label: String): Boolean {
+    val key = threadMarkdownMentionKey(label)
+    return key.isNotBlank() && contains(key)
+}
+
 private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
     when {
         startsWith('@') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.UserMention)
@@ -366,9 +374,17 @@ private fun String.normalizeMarkdownInlineCodeText(): String =
         this
     }
 
-fun slockMarkdownAnnotator(content: String): MarkdownAnnotator {
+fun slockMarkdownAnnotator(
+    content: String,
+    highlightedMentions: Set<String> = emptySet()
+): MarkdownAnnotator {
+    val highlightedMentionKeys = highlightedMentions.mapTo(mutableSetOf()) { threadMarkdownMentionKey(it) }
     val inlineTagMatches = content.threadInlineTagMatches()
     val inlineTagById = inlineTagMatches.associateBy { it.id }
+    val highlightedMentionById =
+        inlineTagMatches
+            .filter { it.tag.kind == ThreadMarkdownTagKind.UserMention && highlightedMentionKeys.containsThreadMention(it.tag.label) }
+            .associateBy { it.id }
     val inlineCodeMatches = content.threadInlineCodeMatches()
     val inlineCodeChipById =
         inlineCodeMatches
@@ -402,7 +418,9 @@ fun slockMarkdownAnnotator(content: String): MarkdownAnnotator {
                 if (match.range.first > cursor) {
                     append(nodeText.substring(cursor, match.range.first))
                 }
-                if (match.tag.kind == ThreadMarkdownTagKind.UserMention) {
+                if (highlightedMentionById.containsKey(match.id)) {
+                    appendInlineContent(match.id, match.tag.label)
+                } else if (match.tag.kind == ThreadMarkdownTagKind.UserMention) {
                     pushStyle(SlockMarkdownMentionSpanStyle)
                     append(threadMarkdownTagDisplayLabel(match.tag.label))
                     pop()
@@ -415,8 +433,14 @@ fun slockMarkdownAnnotator(content: String): MarkdownAnnotator {
             true
         },
         inlineContent = {
-            inlineTagById.filterValues { it.tag.kind != ThreadMarkdownTagKind.UserMention }.mapValues { (_, match) ->
+            (inlineTagById.filterValues { it.tag.kind != ThreadMarkdownTagKind.UserMention } + highlightedMentionById).mapValues { (_, match) ->
                 val label = threadMarkdownTagDisplayLabel(match.tag.label)
+                val chipColor =
+                    if (highlightedMentionById.containsKey(match.id)) {
+                        SlockColor.BrandYellow
+                    } else {
+                        slockMarkdownTagColor(match.tag.kind)
+                    }
                 InlineTextContent(
                     Placeholder(
                         width = slockMarkdownInlineChipWidthSp(label),
@@ -424,7 +448,7 @@ fun slockMarkdownAnnotator(content: String): MarkdownAnnotator {
                     )
                 ) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        SlockMarkdownInlineChip(label, slockMarkdownTagColor(match.tag.kind))
+                        SlockMarkdownInlineChip(label, chipColor)
                     }
                 }
             } + inlineCodeChipById.mapValues { (_, match) ->
@@ -447,14 +471,15 @@ fun slockMarkdownAnnotator(content: String): MarkdownAnnotator {
 fun SlockMarkdownBody(
     body: String,
     modifier: Modifier = Modifier,
-    textStyle: TextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp)
+    textStyle: TextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp),
+    highlightedMentions: Set<String> = emptySet()
 ) {
     val content = body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
     Markdown(
         content = content,
         colors = slockMarkdownColors(),
         typography = slockMarkdownTypography(textStyle),
-        annotator = slockMarkdownAnnotator(content),
+        annotator = slockMarkdownAnnotator(content, highlightedMentions = highlightedMentions),
         padding = markdownPadding(
             block = 0.dp,
             paragraphVerPadding = PaddingValues(vertical = 0.dp),

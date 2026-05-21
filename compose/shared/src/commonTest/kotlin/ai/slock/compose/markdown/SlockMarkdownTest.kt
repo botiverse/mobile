@@ -60,6 +60,19 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun highlightedUserMentionsRenderAsInlineChip() {
+        val inlineContent =
+            slockMarkdownAnnotator(
+                "Ping @artin and @Android-App-Integrator in #markdown专修",
+                highlightedMentions = setOf("artin")
+            ).inlineContent?.invoke().orEmpty()
+
+        assertTrue(inlineContent.containsKey("slock:5"))
+        assertFalse(inlineContent.containsKey("slock:16"))
+        assertTrue(inlineContent.containsKey("slock:43"))
+    }
+
+    @Test
     fun channelThreadReferencesRenderAsSingleInlineChip() {
         val matches = "See #markdown专修:7933cf78 and #general:abc123 in chat".threadInlineTagMatches()
 
