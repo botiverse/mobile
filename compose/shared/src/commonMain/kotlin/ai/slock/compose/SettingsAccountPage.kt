@@ -131,10 +131,12 @@ private fun rememberAccountPayload(payload: String, instanceId: String): KuiklyS
 @Composable
 internal fun SettingsAccountContent(
     payload: KuiklySettingsAccountPayload,
+    applyTopSafeArea: Boolean = true,
     onEvent: (String) -> Unit
 ) {
+    val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(top = slockTopSafeAreaPadding()).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(top = topSafeArea).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item { SettingsAccountHeader(payload.profile, payload.verifiedLabel) }

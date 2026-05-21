@@ -535,7 +535,7 @@ private fun SettingsAppShellContent(
     ) {
         when (selectedDestination) {
             SettingsDestinationAccount ->
-                SettingsAccountContent(appShellAccountPayload(session)) { action ->
+                SettingsAccountContent(appShellAccountPayload(session), applyTopSafeArea = false) { action ->
                     if (action == "logout") {
                         pendingLogout = true
                     }
@@ -716,13 +716,14 @@ private fun SettingsDetailShell(
     onBack: () -> Unit,
     content: @Composable () -> Unit
 ) {
+    val topSafeArea = slockTopSafeAreaPadding()
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(12.dp),
+                .padding(start = 12.dp, top = topSafeArea + 12.dp, end = 12.dp, bottom = 12.dp),
             verticalAlignment = com.tencent.kuikly.compose.ui.Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
