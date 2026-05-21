@@ -206,11 +206,8 @@ import ai.slock.android.feature.settings.SettingsServerManagementScreen
 import ai.slock.android.feature.settings.SettingsStorageScreen
 import ai.slock.android.feature.tasks.TasksContent
 import ai.slock.android.feature.tasks.TasksPanel
-import ai.slock.android.feature.tasks.TasksScreen
 import ai.slock.android.feature.tasks.TasksUiState
 import ai.slock.android.feature.tasks.filteredForConversationIds
-import ai.slock.android.feature.tasks.filteredForTasksFilter
-import ai.slock.android.feature.tasks.mergeTasksRefreshResult
 import ai.slock.android.feature.tasks.mergeThreadTasksRefreshResult
 import ai.slock.android.feature.tasks.toTasksUiState
 import ai.slock.android.feature.tasks.toTasksUiStateForThreadTasks
@@ -1130,15 +1127,11 @@ private fun SlockAppContent(
     var savedSnapshotsByServer by remember {
         mutableStateOf<Map<String, InboxContent>>(emptyMap())
     }
-    var tasksFilter by rememberSaveable { mutableStateOf<TaskStatus?>(null) }
     var tasksState by remember {
         mutableStateOf<TasksUiState>(TasksUiState(ScreenLoadState.Loading))
     }
-    var nextTasksRefreshSilent by remember { mutableStateOf(false) }
     var taskReferenceCache by remember { mutableStateOf<Map<TaskId, TaskSummary>>(emptyMap()) }
     var taskReferenceCacheVersion by remember { mutableStateOf(0) }
-    var tasksRefreshNonce by remember { mutableStateOf(0) }
-    var lastTasksRefreshKey by rememberSaveable { mutableStateOf<String?>(null) }
     var taskReferenceChooserLabel by rememberSaveable { mutableStateOf<String?>(null) }
     var taskReferenceChooserIds by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -1454,7 +1447,6 @@ private fun SlockAppContent(
                             HomeRoute.Saved -> "saved"
                             HomeRoute.Search -> "search:${searchQuery.isNotBlank()}"
                         }
-                AppDestination.Tasks -> "tasks:${tasksFilter?.name?.lowercase() ?: "all"}"
                 AppDestination.Members ->
                         if (membersDetailVisible || membersDetailSelectedMemberId != null) {
                             "members:detail"
@@ -1479,8 +1471,6 @@ private fun SlockAppContent(
                 inboxRefreshInProgress -> "inbox_refresh"
                 followedThreadsRefreshInProgress -> "followed_refresh"
                 savedRefreshInProgress -> "saved_refresh"
-                destination == AppDestination.Tasks && tasksState.loadState is ScreenLoadState.Loading ->
-                        "tasks_refresh"
                 else -> "idle"
             }
     SideEffect {
@@ -3339,7 +3329,7 @@ private fun SlockAppContent(
                 destination = AppDestination.Home
                 homeRoute = returnHomeRoute ?: HomeRoute.Shell
             }
-            AppDestination.Tasks, AppDestination.Settings -> {
+            AppDestination.Settings -> {
                 destination = returnDestination
             }
             AppDestination.Members, null -> {
@@ -4105,11 +4095,6 @@ private fun SlockAppContent(
         val returnFailedAttachmentIds = threadReturnFailedAttachmentIds
         val returnSelectedThreadNearBottom = threadReturnSelectedThreadNearBottom
         clearThreadReturnTarget()
-        if (returnDestination == AppDestination.Tasks &&
-                        tasksState.loadState is ScreenLoadState.Content
-        ) {
-            nextTasksRefreshSilent = true
-        }
         destination = returnDestination
         if (returnDestination == AppDestination.Home) {
             previousHomeRoute = returnPreviousHomeRoute
@@ -6953,120 +6938,6 @@ private fun SlockAppContent(
     LaunchedEffect(
             authState,
             destination,
-            tasksFilter,
-            selectedServerIdValueForEffects,
-            homeConversationIdentityKey,
-            localWriteThrough
-    ) {
-        if (authState !is AuthUiState.Authenticated) return@LaunchedEffect
-        if (destination != AppDestination.Tasks) return@LaunchedEffect
-        localWriteThrough.observeTaskSnapshot(selectedServerIdForUi()).collectLatest { snapshot ->
-            if (snapshot == null) return@collectLatest
-            val selectedServerId =
-                    selectedServerOverride
-                            ?: (serverListState as? ScreenLoadState.Content)
-                                    ?.data
-                                    ?.selectedServer
-                                    ?.id
-                            ?: currentAuthSession?.currentServerId?.let(::ServerId)
-                            ?: return@collectLatest
-            val serverSnapshot =
-                    snapshot
-                            .filteredForCurrentServerTasks(homeState, selectedServerId)
-                            .filteredForTasksFilter(tasksFilter)
-            if (serverSnapshot.tasks.isEmpty()) return@collectLatest
-            rememberTaskReferences(serverSnapshot.tasks)
-            val localState =
-                    DataResult.Content(serverSnapshot)
-                            .toTasksUiState(tasksFilter)
-                            .withCachedTaskReferences(taskReferenceCache)
-            tasksState =
-                    localState.copy(
-                            refreshing =
-                                    (tasksState.loadState as? ScreenLoadState.Content) != null &&
-                                            tasksState.refreshing,
-                            navigationErrorCode = tasksState.navigationErrorCode,
-                            statusUpdatingTaskId = tasksState.statusUpdatingTaskId,
-                            statusUpdateErrorCode = tasksState.statusUpdateErrorCode
-                    )
-        }
-    }
-
-    LaunchedEffect(
-            authState,
-            destination,
-            selectedServerIdValueForEffects,
-            homeConversationIdentityKey,
-            tasksFilter,
-            tasksRefreshNonce,
-            taskRepository
-    ) {
-        if (authState !is AuthUiState.Authenticated || destination != AppDestination.Tasks) {
-            return@LaunchedEffect
-        }
-        val selectedServerId =
-                selectedServerOverride
-                        ?: (serverListState as? ScreenLoadState.Content)?.data?.selectedServer?.id
-                                ?: currentAuthSession?.currentServerId?.let(::ServerId)
-                                ?: return@LaunchedEffect
-        val refreshKey = "${selectedServerId.value}:${tasksFilter?.name.orEmpty()}:$tasksRefreshNonce"
-        val localSnapshot = localWriteThrough.readTaskSnapshot(selectedServerId)
-        if (localSnapshot != null && tasksState.loadState !is ScreenLoadState.Content) {
-            val serverSnapshot =
-                    localSnapshot
-                            .filteredForCurrentServerTasks(homeState, selectedServerId)
-                            .filteredForTasksFilter(tasksFilter)
-            if (serverSnapshot.tasks.isNotEmpty()) {
-                tasksState =
-                        DataResult.Content(serverSnapshot)
-                                .toTasksUiState(tasksFilter)
-                                .withCachedTaskReferences(taskReferenceCache)
-            }
-        }
-        if (lastTasksRefreshKey == refreshKey && tasksState.loadState is ScreenLoadState.Content) {
-            return@LaunchedEffect
-        }
-        lastTasksRefreshKey = refreshKey
-        val silentRefresh =
-                tasksState.loadState is ScreenLoadState.Content ||
-                        (nextTasksRefreshSilent && tasksState.loadState is ScreenLoadState.Content)
-        nextTasksRefreshSilent = false
-        if (silentRefresh) {
-            tasksState =
-                    tasksState.copy(
-                            selectedFilter = tasksFilter,
-                            navigationErrorCode = null,
-                            refreshing = false
-                    )
-        } else {
-            tasksState = tasksState.withLoading(tasksFilter)
-        }
-        val result =
-                withSlockRequestPriority(
-                        priority =
-                                if (silentRefresh) SlockRequestPriority.Background
-                                else SlockRequestPriority.Visible,
-                        key = "tasks:${selectedServerId.value}",
-                        reason = "tasks_route_refresh"
-                ) {
-                    taskRepository.getTasks(
-                            serverId = selectedServerId,
-                            filter =
-                                    TaskFilter(
-                                            statuses = tasksFilter?.let { setOf(it) }.orEmpty()
-                                    )
-                    )
-                }
-        writeTaskResultQueued(result, source = "tasks_route_refresh", serverId = selectedServerId)
-        result.rememberTaskReferences()
-        tasksState =
-                tasksState.mergeTasksRefreshResult(result, tasksFilter)
-                        .withCachedTaskReferences(taskReferenceCache)
-    }
-
-    LaunchedEffect(
-            authState,
-            destination,
             settingsDestination,
             settingsRepository,
             storageManagementRepository
@@ -7518,7 +7389,6 @@ private fun SlockAppContent(
             }
         }
         fun refreshAndOpenTaskReference(label: String) {
-            tasksRefreshNonce += 1
             coroutineScope.launch {
                 val selectedServerId =
                         selectedServerOverride
@@ -7547,7 +7417,7 @@ private fun SlockAppContent(
                                 source = "task_reference_refresh",
                                 serverId = selectedServerId
                         )
-                        tasksState = result.toTasksUiState(tasksFilter).copy(refreshing = false)
+                        tasksState = result.toTasksUiState(selectedFilter = null).copy(refreshing = false)
                         val refreshedMatches = result.data.tasks.matchingTaskReference(label)
                         if (!openTaskReferenceMatches(refreshedMatches, label, "refresh")) {
                             tasksState =
@@ -8838,21 +8708,6 @@ private fun SlockAppContent(
                                     adaptiveLayoutInfo = adaptiveLayoutInfo,
                                     showNavigation = showNavigation
                             )
-                    AppDestination.Tasks ->
-                            TasksScreen(
-                                    state = tasksState,
-                                    onFilterSelected = { filter ->
-                                        tasksFilter = filter
-                                        tasksState = tasksState.withLoading(filter)
-                                        tasksRefreshNonce += 1
-                                    },
-                                    onTaskClick = ::openTaskContext,
-                                    onTaskStatusChange = ::updateTaskStatus,
-                                    onRetry = {
-                                        tasksState = tasksState.withLoading(tasksFilter)
-                                        tasksRefreshNonce += 1
-                                    }
-                            )
                     AppDestination.Members ->
                             MembersRouteScreen(
                                     state = membersState,
@@ -9420,7 +9275,6 @@ private fun AuthRouteScreen(modifier: Modifier = Modifier) {
 
 private enum class AppDestination(val key: String, val label: String) {
     Home("home", "Home"),
-    Tasks("tasks", "Tasks"),
     Members("members", "Members"),
     Settings("settings", "Settings")
 }
@@ -9432,11 +9286,6 @@ private fun appBottomTabs(): List<SlockBottomTabItem> =
                         AppDestination.Home.key,
                         stringResource(R.string.bottom_tab_home),
                         LucideIcons.House
-                ),
-                SlockBottomTabItem(
-                        AppDestination.Tasks.key,
-                        stringResource(R.string.bottom_tab_tasks),
-                        LucideIcons.SquareCheckBig
                 ),
                 SlockBottomTabItem(
                         AppDestination.Members.key,
