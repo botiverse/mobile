@@ -136,6 +136,7 @@ data class SlockHomeShellLabels(
     val directMessages: String = "DIRECT MESSAGES",
     val addChannel: String = "Add channel",
     val noServersAvailable: String = "No servers available",
+    val joinCommunityServer: String = "Join community server",
     val switchOrCreateServer: String = "Switch or create server"
 ) {
     companion object {
@@ -607,6 +608,7 @@ private fun SlockHomeNotificationKind.notificationColor(): Color = when (this) {
 
 @Composable
 private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentServerId: String, pendingServerId: String?, labels: SlockHomeShellLabels, onServerSelected: (String) -> Unit, onCreateServerClick: () -> Unit, modifier: Modifier = Modifier) {
+    val hasCommunityServer = servers.any { it.slug == "community" }
     HardShadowPanel(modifier = modifier, minWidth = 276.dp, maxWidth = 328.dp) {
         if (servers.isEmpty()) {
             Text(labels.noServersAvailable, style = SlockType.Caption, color = SlockColor.TextMutedGray, modifier = Modifier.padding(SlockSpacing.Md))
@@ -614,10 +616,10 @@ private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentS
             servers.forEach { ServerSwitcherRow(it, it.id == currentServerId, it.id == pendingServerId) { onServerSelected(it.id) } }
         }
         Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-        com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).background(SlockColor.SurfaceWhite).clickable(onClick = onCreateServerClick).padding(horizontal = SlockSpacing.Md), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-            Text("+", style = SlockType.Body.copy(fontWeight = FontWeight.Bold), color = SlockColor.TextBlack)
-            Text(labels.switchOrCreateServer, style = SlockType.Button, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (!hasCommunityServer) {
+            ServerSwitcherActionRow(labels.joinCommunityServer, onCreateServerClick)
         }
+        ServerSwitcherActionRow(labels.switchOrCreateServer, onCreateServerClick)
     }
 }
 
@@ -651,13 +653,81 @@ private fun HardShadowPanel(
 
 @Composable
 private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean, pending: Boolean, onClick: () -> Unit) {
-    com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).background(SlockColor.SurfaceWhite).clickable(onClick = onClick).padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-        Text(if (pending) "..." else if (selected) "✓" else "", style = SlockType.Button, color = SlockColor.TextBlack, modifier = Modifier.width(22.dp), textAlign = TextAlign.Center)
-        Column(modifier = Modifier.weight(1f)) {
-            Text(server.name, style = SlockType.Button, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("/${server.slug}", style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    com.tencent.kuikly.compose.foundation.layout.Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 46.dp)
+                .background(SlockColor.SurfaceWhite)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Box(modifier = Modifier.width(14.dp), contentAlignment = Alignment.Center) {
+            when {
+                pending -> Text("...", style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, lineHeight = 14.sp), color = SlockColor.TextBlack, maxLines = 1, textAlign = TextAlign.Center)
+                selected -> SlockLucideIcon("check", Modifier.size(14.dp))
+                else -> Spacer(Modifier.size(14.dp))
+            }
         }
-        if (server.unreadCount > 0) CountPill(server.unreadCount.toString(), SlockColor.AccentPink)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(
+                server.name,
+                style = if (selected) SlockType.ButtonBold else SlockType.Button,
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                "/${server.slug}",
+                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 14.sp),
+                color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (!selected && server.unreadCount > 0) ServerSwitcherUnreadBadge(server.unreadCount.toString())
+    }
+}
+
+@Composable
+private fun ServerSwitcherActionRow(label: String, onClick: () -> Unit) {
+    com.tencent.kuikly.compose.foundation.layout.Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 42.dp)
+                .background(SlockColor.SurfaceWhite)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        SlockLucideIcon("plus", Modifier.size(14.dp))
+        Text(label, style = SlockType.ButtonBold, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun ServerSwitcherUnreadBadge(text: String) {
+    Box(
+        modifier =
+            Modifier
+                .background(SlockColor.AccentPink)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .height(16.dp)
+                .widthIn(min = 18.dp)
+                .padding(horizontal = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text,
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp, lineHeight = 10.sp),
+            color = SlockColor.SurfaceWhite,
+            maxLines = 1,
+            textAlign = TextAlign.Center
+        )
     }
 }
 

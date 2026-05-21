@@ -135,8 +135,8 @@ class KmpVisualScreenshotCaptureTest {
         val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
         val left = (24 * density).toInt().coerceIn(0, width - 1)
         val top = (60 * density).toInt().coerceIn(0, height - 1)
-        val desiredWidth = (330 * density).toInt()
-        val desiredHeight = (200 * density).toInt()
+        val desiredWidth = (342 * density).toInt()
+        val desiredHeight = (238 * density).toInt()
         val cropWidth = desiredWidth.coerceAtMost(width - left)
         val cropHeight = desiredHeight.coerceAtMost(height - top)
         return Bitmap.createBitmap(this, left, top, cropWidth, cropHeight)
