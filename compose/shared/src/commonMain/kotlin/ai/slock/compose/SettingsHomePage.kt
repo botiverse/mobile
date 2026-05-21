@@ -4,16 +4,16 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.data.BridgeAuthApi
 import ai.slock.compose.data.BridgeHomeApi
 import ai.slock.compose.data.BridgeMembersApi
-import ai.slock.compose.data.DataRequestPriority
-import ai.slock.compose.data.DataResult
-import ai.slock.compose.data.HomeSnapshot
-import ai.slock.compose.data.HomeServerSwitchState
 import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklyRelationalStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthErrorCode
 import ai.slock.compose.data.SharedAuthResult
+import ai.slock.compose.data.SharedHomeContentState
 import ai.slock.compose.data.SharedHomeDataSource
+import ai.slock.compose.data.SharedHomeIntent
+import ai.slock.compose.data.SharedHomeState
+import ai.slock.compose.data.SharedHomeViewModel
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.parseSlockHome
 import ai.slock.compose.model.AgentStatus
@@ -28,6 +28,7 @@ import ai.slock.compose.model.ServerSummary
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,6 +60,7 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.BackPressCallback
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
@@ -261,10 +263,14 @@ private fun SlockAppShellContent() {
     var authGateState by remember { mutableStateOf<AppShellAuthGateState>(AppShellAuthGateState.Restoring) }
     var authGateNonce by remember { mutableStateOf(0) }
     var activeThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
-    var homeRefreshNonce by remember { mutableStateOf(0) }
-    var homeServerSwitchState by remember { mutableStateOf(HomeServerSwitchState()) }
-    var homeServerSwitcherExpanded by remember { mutableStateOf(false) }
-    var homeState by remember { mutableStateOf<SharedHomeUiState>(SharedHomeUiState.Loading()) }
+    val homeViewModel: SharedHomeViewModel =
+        viewModel(key = "shared-home") {
+            SharedHomeViewModel(
+                authStore = authStore,
+                dataSource = homeDataSource
+            )
+        }
+    val homeState by homeViewModel.state.collectAsState()
     val navController = rememberNavController()
     val bottomSafeArea = slockBottomSafeAreaPadding()
     val threadTimeContext = remember(pager.pageData.params.toString()) {
@@ -349,8 +355,8 @@ private fun SlockAppShellContent() {
     }
 
     fun popMainRoute(): Boolean {
-        if (homeServerSwitcherExpanded) {
-            homeServerSwitcherExpanded = false
+        if (homeState.serverSwitcherExpanded) {
+            homeViewModel.dispatch(SharedHomeIntent.DismissServerSwitcher)
             return true
         }
         if (selectedTab == "settings" && selectedSettingsDestination != SettingsDestinationHome) {
@@ -431,16 +437,8 @@ private fun SlockAppShellContent() {
                         else ->
                             SharedHomeScreen(
                                 bridge = bridge,
-                                authStore = authStore,
-                                dataSource = homeDataSource,
-                                refreshNonce = homeRefreshNonce,
-                                onRefreshNonceChange = { homeRefreshNonce = it },
-                                serverSwitchState = homeServerSwitchState,
-                                onServerSwitchStateChange = { homeServerSwitchState = it },
-                                serverSwitcherExpanded = homeServerSwitcherExpanded,
-                                onServerSwitcherExpandedChange = { homeServerSwitcherExpanded = it },
                                 state = homeState,
-                                onStateChange = { homeState = it },
+                                onIntent = homeViewModel::dispatch,
                                 onOpenConversation = { conversation ->
                                     activeThreadPayload = buildAppShellThreadPayload(conversation, threadTimeContext)
                                     navController.navigate(AppShellRouteThread)
@@ -1511,60 +1509,18 @@ private fun JsonObject.avatarWireValue(): String? =
 @Composable
 private fun SharedHomeScreen(
     bridge: ai.slock.compose.base.BridgeModule,
-    authStore: KuiklyAuthSessionStore,
-    dataSource: SharedHomeDataSource,
-    refreshNonce: Int,
-    onRefreshNonceChange: (Int) -> Unit,
-    serverSwitchState: HomeServerSwitchState,
-    onServerSwitchStateChange: (HomeServerSwitchState) -> Unit,
-    serverSwitcherExpanded: Boolean,
-    onServerSwitcherExpandedChange: (Boolean) -> Unit,
-    state: SharedHomeUiState,
-    onStateChange: (SharedHomeUiState) -> Unit,
+    state: SharedHomeState,
+    onIntent: (SharedHomeIntent) -> Unit,
     onOpenConversation: (ConversationSummary) -> Unit
 ) {
-    LaunchedEffect(serverSwitchState.requestGeneration, refreshNonce) {
-        val requestGeneration = serverSwitchState.requestGeneration
-        val requestedServerId = serverSwitchState.selectedServerId
-        onStateChange(state.asRefreshing())
-        try {
-            val session = authStore.readSession()
-            if (session == null) {
-                onStateChange(SharedHomeUiState.Error("unauthenticated"))
-                return@LaunchedEffect
-            }
-            onStateChange(state.asRefreshing(session))
-            requestedServerId?.let { serverId ->
-                val server = session.servers.firstOrNull { it.id == serverId }
-                authStore.updateSelectedServer(serverId = serverId, serverSlug = server?.slug)
-            }
-            val activeSession = authStore.readSession() ?: session
-            onStateChange(state.asRefreshing(activeSession))
-            val activeServerId = requestedServerId ?: activeSession.currentServerId
-            val result =
-                when (val result = dataSource.loadHome(serverId = activeServerId?.let(::ServerId), priority = DataRequestPriority.Visible)) {
-                    is DataResult.Content -> SharedHomeUiState.Content(result.data, activeSession)
-                    is DataResult.Empty -> SharedHomeUiState.Empty(activeSession)
-                    is DataResult.Error -> SharedHomeUiState.Error(result.error.code)
-                    is DataResult.NoPermission -> SharedHomeUiState.Error(result.blocker.code)
-                }
-            val resultServerId = (result as? SharedHomeUiState.Content)?.snapshot?.server?.id
-                ?: activeServerId?.let(::ServerId)
-            if (resultServerId == null || serverSwitchState.isCurrent(requestGeneration, resultServerId)) {
-                onStateChange(result)
-                if (resultServerId != null) {
-                    onServerSwitchStateChange(serverSwitchState.complete(requestGeneration, resultServerId))
-                }
-            }
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Throwable) {
-            onStateChange(state.asRefreshFailed("home_network"))
-        }
+    LaunchedEffect(Unit) {
+        onIntent(SharedHomeIntent.Start)
     }
 
-    when (val current = state) {
-        is SharedHomeUiState.Loading ->
+    val serverSwitchState = state.serverSwitchState
+    val serverSwitcherExpanded = state.serverSwitcherExpanded
+    when (val current = state.content) {
+        is SharedHomeContentState.Loading ->
             if (current.session == null) {
                 AppShellPlaceholderContent(
                     title = "Home",
@@ -1576,39 +1532,33 @@ private fun SharedHomeScreen(
                     session = current.session,
                     serverSwitcherExpanded = serverSwitcherExpanded,
                     contentRefreshing = true,
-                    onRefresh = { onRefreshNonceChange(refreshNonce + 1) },
-                    onServerBadgeClick = { onServerSwitcherExpandedChange(!serverSwitcherExpanded) },
-                    onServerSelected = { serverId ->
-                        onServerSwitcherExpandedChange(false)
-                        onServerSwitchStateChange(serverSwitchState.select(serverId))
-                    },
+                    onRefresh = { onIntent(SharedHomeIntent.Refresh) },
+                    onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
+                    onServerSelected = { serverId -> onIntent(SharedHomeIntent.SelectServer(serverId)) },
                     onCreateServerClick = {
                         bridge.toast("Create server is not available yet")
                     }
                 )
             }
-        is SharedHomeUiState.Empty ->
+        is SharedHomeContentState.Empty ->
             SharedHomeSessionShell(
                 session = current.session,
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 contentRefreshing = false,
-                onRefresh = { onRefreshNonceChange(refreshNonce + 1) },
-                onServerBadgeClick = { onServerSwitcherExpandedChange(!serverSwitcherExpanded) },
-                onServerSelected = { serverId ->
-                    onServerSwitcherExpandedChange(false)
-                    onServerSwitchStateChange(serverSwitchState.select(serverId))
-                },
+                onRefresh = { onIntent(SharedHomeIntent.Refresh) },
+                onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
+                onServerSelected = { serverId -> onIntent(SharedHomeIntent.SelectServer(serverId)) },
                 onCreateServerClick = {
                     bridge.toast("Create server is not available yet")
                 }
             )
-        is SharedHomeUiState.Error ->
+        is SharedHomeContentState.Error ->
             AppShellPlaceholderContent(
                 title = "Home",
                 subtitle = "Could not load home: ${current.code}",
                 iconName = "house"
             )
-        is SharedHomeUiState.Content -> {
+        is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
             val servers = current.session.servers.map { server ->
                 server.toServerSummary().let { summary ->
@@ -1634,17 +1584,9 @@ private fun SharedHomeScreen(
                 showBottomBar = false,
                 outerPadding = 0.dp,
                 contentRefreshing = current.contentRefreshing,
-                onContentRefresh = { onRefreshNonceChange(refreshNonce + 1) },
-                onServerBadgeClick = { onServerSwitcherExpandedChange(!serverSwitcherExpanded) },
-                onServerSelected = { serverId ->
-                    onServerSwitcherExpandedChange(false)
-                    if (serverId == snapshot.server.id.value) {
-                        onServerSwitchStateChange(serverSwitchState.refresh())
-                        onRefreshNonceChange(refreshNonce + 1)
-                    } else {
-                        onServerSwitchStateChange(serverSwitchState.select(serverId))
-                    }
-                },
+                onContentRefresh = { onIntent(SharedHomeIntent.Refresh) },
+                onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
+                onServerSelected = { serverId -> onIntent(SharedHomeIntent.SelectServer(serverId)) },
                 onCreateServerClick = {
                     bridge.toast("Create server is not available yet")
                 },
@@ -1662,33 +1604,6 @@ private fun SharedHomeScreen(
         }
     }
 }
-
-private sealed interface SharedHomeUiState {
-    data class Loading(val session: StoredAuthSession? = null) : SharedHomeUiState
-    data class Empty(val session: StoredAuthSession) : SharedHomeUiState
-    data class Error(val code: String) : SharedHomeUiState
-    data class Content(
-        val snapshot: HomeSnapshot,
-        val session: StoredAuthSession,
-        val contentRefreshing: Boolean = false
-    ) : SharedHomeUiState
-}
-
-private fun SharedHomeUiState.asRefreshing(
-    session: StoredAuthSession? = (this as? SharedHomeUiState.Content)?.session
-): SharedHomeUiState =
-    when (this) {
-        is SharedHomeUiState.Content -> copy(contentRefreshing = true)
-        is SharedHomeUiState.Empty -> SharedHomeUiState.Loading(session ?: this.session)
-        is SharedHomeUiState.Loading -> SharedHomeUiState.Loading(session ?: this.session)
-        is SharedHomeUiState.Error -> SharedHomeUiState.Loading(session)
-    }
-
-private fun SharedHomeUiState.asRefreshFailed(code: String): SharedHomeUiState =
-    when (this) {
-        is SharedHomeUiState.Content -> copy(contentRefreshing = false)
-        else -> SharedHomeUiState.Error(code)
-    }
 
 @Composable
 private fun SharedHomeSessionShell(
