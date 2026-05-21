@@ -113,6 +113,7 @@ private fun SlockMarkdownSmokeContent() {
 
 private fun smokeTagColor(kind: ThreadMarkdownTagKind): Color =
     when (kind) {
+        ThreadMarkdownTagKind.ChannelThread -> SlockColor.AccentCyan
         ThreadMarkdownTagKind.Channel -> SlockColor.AccentCyan
         ThreadMarkdownTagKind.Task -> SlockColor.AccentOrange
         ThreadMarkdownTagKind.UserMention -> SlockColor.AccentLavender

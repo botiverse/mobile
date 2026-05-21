@@ -58,4 +58,27 @@ class SlockMarkdownTest {
         assertTrue(inlineContent.containsKey("slock:32"))
         assertTrue(inlineContent.containsKey("slock:48"))
     }
+
+    @Test
+    fun channelThreadReferencesRenderAsSingleInlineChip() {
+        val matches = "See #markdown专修:7933cf78 and #general:abc123 in chat".threadInlineTagMatches()
+
+        assertEquals(2, matches.size)
+        assertEquals(ThreadMarkdownTagKind.ChannelThread, matches[0].tag.kind)
+        assertEquals("#markdown专修:7933cf78", matches[0].tag.label)
+        assertEquals("markdown专修", matches[0].tag.channelName)
+        assertEquals("7933cf78", matches[0].tag.threadShortId)
+
+        val inlineContent = slockMarkdownAnnotator("See #markdown专修:7933cf78 and #general:abc123 in chat").inlineContent?.invoke().orEmpty()
+        assertTrue(inlineContent.containsKey("slock:4"))
+        assertTrue(inlineContent.containsKey("slock:29"))
+    }
+
+    @Test
+    fun channelThreadReferencesAreIgnoredInsideInlineCode() {
+        val inlineContent = slockMarkdownAnnotator("Use `#markdown专修:7933cf78` outside #markdown专修:7933cf78").inlineContent?.invoke().orEmpty()
+
+        assertFalse(inlineContent.containsKey("slock:5"))
+        assertTrue(inlineContent.containsKey("slock:35"))
+    }
 }

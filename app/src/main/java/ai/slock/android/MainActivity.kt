@@ -7659,18 +7659,84 @@ private fun SlockAppContent(
                 }
             }
         }
+        fun markdownChannel(value: String): ConversationSummary? {
+            val content = (homeState.loadState as? ScreenLoadState.Content)?.data
+            return content?.channels?.firstOrNull { channel ->
+                channel.name.equals(value, ignoreCase = true) ||
+                        channel.channelId?.value?.equals(value, ignoreCase = true) == true ||
+                        channel.threadId.value.equals(value, ignoreCase = true)
+            }
+        }
+        fun openChannelThreadReference(tag: ThreadMarkdownTag) {
+            val channelName = tag.channelName ?: tag.label.removePrefix("#").substringBefore(":")
+            val shortId = tag.threadShortId ?: tag.label.substringAfter(":", missingDelimiterValue = "")
+            val conversation = markdownChannel(channelName)
+            if (conversation == null || shortId.isBlank()) {
+                ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
+                        "SlockMarkdownTag",
+                        "open_channel_thread_missing tag=${tag.label} channel=$channelName shortId=$shortId"
+                )
+                return
+            }
+            coroutineScope.launch {
+                val result =
+                        withSlockRequestPriority(
+                                priority = SlockRequestPriority.Foreground,
+                                key = "thread-ref:$channelName:$shortId",
+                                reason = "open_markdown_thread_ref"
+                        ) {
+                            conversationRepository.getMessageContext(MessageId(shortId))
+                        }
+                cacheOpenedThreadResult(
+                        localWriteThrough = localWriteThrough,
+                        result = result,
+                        source = "open_markdown_thread_ref",
+                        fallbackThreadId = ThreadId(conversation.messageStreamChannelId().value),
+                        fallbackHeader = conversation,
+                        serverId = selectedServerIdForUi()
+                )
+                result.rememberTaskReferences()
+                val snapshot = (result as? DataResult.Content)?.data
+                val targetMessage =
+                        snapshot
+                                ?.messages
+                                ?.firstOrNull { it.id.value.startsWith(shortId, ignoreCase = true) }
+                                ?: snapshot
+                                        ?.parentMessage
+                                        ?.takeIf {
+                                            it.id.value.startsWith(shortId, ignoreCase = true)
+                                        }
+                if (targetMessage != null) {
+                    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                            "SlockMarkdownTag",
+                            "open_channel_thread tag=${tag.label} messageId=${targetMessage.id.value}"
+                    )
+                    openMessageThread(
+                            targetMessage.copy(
+                                    channelId = targetMessage.channelId ?: conversation.channelId
+                            ),
+                            fromParentPane = fromParentPane
+                    )
+                } else {
+                    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
+                            "SlockMarkdownTag",
+                            "open_channel_thread_unresolved tag=${tag.label} result=${result.realtimeResultName()}"
+                    )
+                    selectedThreadState =
+                            selectedThreadState.withReplyActionError(
+                                    result.readDiagnosticCode()
+                            )
+                }
+            }
+        }
         when (tag.kind) {
+            ThreadMarkdownTagKind.ChannelThread -> {
+                openChannelThreadReference(tag)
+            }
             ThreadMarkdownTagKind.Channel -> {
                 val value = tag.label.removePrefix("#")
                 val normalized = value.lowercase()
-                val content = (homeState.loadState as? ScreenLoadState.Content)?.data
-                val conversation =
-                        content?.channels?.firstOrNull { channel ->
-                            channel.name.equals(value, ignoreCase = true) ||
-                                    channel.channelId?.value?.equals(value, ignoreCase = true) ==
-                                            true ||
-                                    channel.threadId.value.equals(value, ignoreCase = true)
-                        }
+                val conversation = markdownChannel(value)
                 if (conversation != null) {
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                             "SlockMarkdownTag",

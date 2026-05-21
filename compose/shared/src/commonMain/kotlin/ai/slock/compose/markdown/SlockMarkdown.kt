@@ -38,9 +38,15 @@ import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.getTextInNode
 
-data class ThreadMarkdownTag(val label: String, val kind: ThreadMarkdownTagKind)
+data class ThreadMarkdownTag(
+    val label: String,
+    val kind: ThreadMarkdownTagKind,
+    val channelName: String? = null,
+    val threadShortId: String? = null
+)
 
 enum class ThreadMarkdownTagKind {
+    ChannelThread,
     Channel,
     Task,
     UserMention
@@ -207,27 +213,51 @@ fun threadMarkdownTagDisplayLabel(label: String): String {
 
 private fun threadInlineTagRegex(): Regex =
     Regex(
-        """(?<![\p{L}\p{N}_])@[\p{L}\p{N}][\p{L}\p{N}_.\-]{0,63}|(?<![\p{L}\p{N}_])#\d+|(?<![\p{L}\p{N}_])#[\p{L}][\p{L}\p{N}_-]{0,63}"""
+        """(?<![\p{L}\p{N}_])@[\p{L}\p{N}][\p{L}\p{N}_.\-]{0,63}|(?<![\p{L}\p{N}_])#\d+|(?<![\p{L}\p{N}_])#[\p{L}][\p{L}\p{N}_-]{0,63}:[\dA-Fa-f]{6,8}|(?<![\p{L}\p{N}_])#[\p{L}][\p{L}\p{N}_-]{0,63}"""
     )
 
 private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
     when {
         startsWith('@') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.UserMention)
         drop(1).all { it.isDigit() } -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.Task)
+        isThreadChannelReference() -> {
+            val channel = substringAfter("#").substringBefore(":")
+            val shortId = substringAfter(":")
+            ThreadMarkdownTag(
+                label = this,
+                kind = ThreadMarkdownTagKind.ChannelThread,
+                channelName = channel,
+                threadShortId = shortId
+            )
+        }
         startsWith('#') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.Channel)
         else -> null
     }
 
+private fun String.isThreadChannelReference(): Boolean {
+    if (!startsWith('#')) return false
+    val colonIndex = indexOf(':')
+    if (colonIndex <= 1 || colonIndex == lastIndex) return false
+    val shortId = substring(colonIndex + 1)
+    return shortId.length in 6..8 && shortId.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
+}
+
 fun String.threadInlineTagMatches(baseOffset: Int = 0): List<ThreadInlineTagMatch> =
-    threadInlineTagRegex().findAll(this).mapNotNull { match ->
-        match.value.toThreadMarkdownTagOrNull()?.let { tag ->
-            ThreadInlineTagMatch(
-                id = "slock:${baseOffset + match.range.first}",
-                tag = tag,
-                range = match.range
-            )
-        }
-    }.toList()
+    threadMarkdownCodeProtectionRanges().let { protectedRanges ->
+        threadInlineTagRegex().findAll(this).mapNotNull { match ->
+            if (protectedRanges.any { match.range.first in it }) {
+                null
+            } else {
+                match.value.toThreadMarkdownTagOrNull()?.let { tag ->
+                    ThreadInlineTagMatch(
+                        id = "slock:${baseOffset + match.range.first}",
+                        tag = tag,
+                        range = match.range
+                    )
+                }
+            }
+        }.toList()
+    }
 
 fun String.threadInlineCodeMatches(baseOffset: Int = 0): List<ThreadInlineCodeMatch> {
     val matches = mutableListOf<ThreadInlineCodeMatch>()
@@ -435,6 +465,7 @@ private fun String.slockInlineTextWidthUnits(): Int =
 
 private fun slockMarkdownTagColor(kind: ThreadMarkdownTagKind): Color =
     when (kind) {
+        ThreadMarkdownTagKind.ChannelThread -> SlockColor.AccentCyan
         ThreadMarkdownTagKind.Channel -> SlockColor.AccentCyan
         ThreadMarkdownTagKind.Task -> SlockColor.AccentOrange
         ThreadMarkdownTagKind.UserMention -> SlockColor.AccentLavender

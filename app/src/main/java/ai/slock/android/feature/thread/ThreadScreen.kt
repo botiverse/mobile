@@ -5245,6 +5245,7 @@ private fun String.escapeMarkdownHtmlTagText(): String =
 
 private fun threadMarkdownTagColor(kind: ThreadMarkdownTagKind): Color =
         when (kind) {
+            ThreadMarkdownTagKind.ChannelThread -> SlockColor.AccentCyan
             ThreadMarkdownTagKind.Channel -> SlockColor.AccentCyan
             ThreadMarkdownTagKind.Task -> SlockColor.AccentOrange
             ThreadMarkdownTagKind.UserMention -> SlockColor.AccentLavender
