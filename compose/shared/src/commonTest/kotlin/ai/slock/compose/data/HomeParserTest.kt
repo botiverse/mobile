@@ -54,6 +54,79 @@ class HomeParserTest {
     }
 
     @Test
+    fun directMessageNamePrefersPeerFieldsOverChannelName() {
+        val result =
+            parseSlockHome(
+                payload =
+                    HomeNetworkPayload(
+                        serverId = ServerId("server-1"),
+                        channels = HomeNetworkResponse(code = 200, bodyText = """{"channels":[]}"""),
+                        directMessages =
+                            HomeNetworkResponse(
+                                code = 200,
+                                bodyText =
+                                    """
+                                    {"directMessages":[
+                                      {
+                                        "id":"dm-stdrc",
+                                        "name":"artin",
+                                        "type":"dm",
+                                        "peerId":"user-2",
+                                        "peerName":"stdrc",
+                                        "peerDisplayName":"stdrc",
+                                        "peerType":"user",
+                                        "peerAvatarUrl":"https://cdn.slock.ai/avatars/users/stdrc.webp"
+                                      }
+                                    ]}
+                                    """.trimIndent()
+                            ),
+                        unreadCounts = HomeNetworkResponse(code = 200, bodyText = """{"counts":{}}"""),
+                        serverUnreadSummary = HomeNetworkResponse(code = 200, bodyText = """{"unreadCount":0}""")
+                    ),
+                session = sampleSession()
+            )
+
+        assertTrue(result is DataResult.Content)
+        val directMessage = result.data.directMessages.single()
+        assertEquals("stdrc", directMessage.name)
+        assertEquals("user-2", directMessage.presenceMemberId?.value)
+    }
+
+    @Test
+    fun directMessageNameDoesNotFallbackToRootNameWhenPeerNameIsMissing() {
+        val result =
+            parseSlockHome(
+                payload =
+                    HomeNetworkPayload(
+                        serverId = ServerId("server-1"),
+                        channels = HomeNetworkResponse(code = 200, bodyText = """{"channels":[]}"""),
+                        directMessages =
+                            HomeNetworkResponse(
+                                code = 200,
+                                bodyText =
+                                    """
+                                    {"directMessages":[
+                                      {
+                                        "id":"dm-current-user-root-name",
+                                        "name":"artin",
+                                        "type":"dm",
+                                        "peerId":"user-2",
+                                        "peerType":"user"
+                                      }
+                                    ]}
+                                    """.trimIndent()
+                            ),
+                        unreadCounts = HomeNetworkResponse(code = 200, bodyText = """{"counts":{}}"""),
+                        serverUnreadSummary = HomeNetworkResponse(code = 200, bodyText = """{"unreadCount":0}""")
+                    ),
+                session = sampleSession()
+            )
+
+        assertTrue(result is DataResult.Content)
+        assertEquals("dm-current-user-root-name", result.data.directMessages.single().name)
+    }
+
+    @Test
     fun parsesDirectMessagePixelAvatarWireValues() {
         val result =
             parseSlockHome(

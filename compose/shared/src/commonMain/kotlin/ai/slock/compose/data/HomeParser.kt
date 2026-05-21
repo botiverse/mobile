@@ -164,22 +164,13 @@ private fun JsonObject.toConversation(
     val presenceSource = firstObject("peer", "agent", "user", "member", "profile")
     val presenceMemberKind = explicitMemberKindOrNull() ?: presenceSource?.explicitMemberKindOrNull()
     val name =
-        string(
-            "name",
-            "channelName",
-            "peerDisplayName",
-            "peerName",
-            "agentName",
-            "agentDisplayName",
-            "agentUsername",
-            "userDisplayName",
-            "username",
-            "slug",
-            "channelSlug",
-            "title"
-        )
-            ?: presenceSource?.string("displayName", "name", "username", "email")
-            ?: id
+        if (kind == ConversationKind.DirectMessage) {
+            directMessagePeerName(presenceSource)
+        } else {
+            string("name", "channelName", "slug", "channelSlug", "title")
+                ?: presenceSource?.string("displayName", "name", "username", "email")
+                ?: id
+        }
     val joined = if (kind == ConversationKind.DirectMessage) true else channelJoined()
     val canSend = boolean("canSend", "canWrite", "canMessage") ?: joined
     val avatarWireValue = conversationAvatarWireValue()
@@ -357,6 +348,16 @@ private fun JsonObject.explicitMemberKindOrNull(): ParsedMemberKind? =
 
 private fun JsonObject.channelJoined(): Boolean =
     boolean("joined", "isJoined", "member", "isMember", "participating") ?: true
+
+private fun JsonObject.directMessagePeerName(presenceSource: JsonObject?): String =
+    string(
+        "peerDisplayName",
+        "peerName",
+        "peerUsername"
+    )
+        ?: presenceSource?.string("displayName", "name", "username", "email")
+        ?: string("id", "channelId", "threadChannelId", "_id")
+        ?: "Direct message"
 
 private fun JsonObject.conversationAvatarWireValue(): String? =
     avatarWireValue(
