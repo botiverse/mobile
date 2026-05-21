@@ -189,18 +189,24 @@ internal class BridgeTasksApi(
     }
 }
 
+internal interface SharedThreadNetworkApi {
+    suspend fun channelMessages(threadId: String, limit: Int = 50): HomeNetworkResponse
+    suspend fun sendMessage(channelId: String, body: String, asTask: Boolean = false): HomeNetworkResponse
+    suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse
+}
+
 internal class BridgeThreadApi(
     private val bridge: BridgeModule,
     private val sessionStore: SlockAuthSessionStore,
     private val baseUrl: String = AUTH_BASE_URL
-) {
-    suspend fun channelMessages(threadId: String, limit: Int = 50): HomeNetworkResponse =
+) : SharedThreadNetworkApi {
+    override suspend fun channelMessages(threadId: String, limit: Int): HomeNetworkResponse =
         request("messages/channel/${threadId.trim()}", "limit=$limit")
 
-    suspend fun sendMessage(
+    override suspend fun sendMessage(
         channelId: String,
         body: String,
-        asTask: Boolean = false
+        asTask: Boolean
     ): HomeNetworkResponse =
         request(
             path = "messages",
@@ -213,7 +219,7 @@ internal class BridgeThreadApi(
             )
         )
 
-    suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse =
+    override suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse =
         request("attachments/${attachmentId.trim()}/url")
 
     private suspend fun request(

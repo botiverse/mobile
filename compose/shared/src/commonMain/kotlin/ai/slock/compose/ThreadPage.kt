@@ -12,6 +12,7 @@ import ai.slock.compose.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,6 +63,7 @@ import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -257,9 +259,18 @@ private fun ThreadPageScreen() {
             instanceId = instanceId
         )
     }
+    val authStore = remember { KuiklyAuthSessionStore(KuiklyRelationalStore(bridge)) }
+    val dataSource =
+        remember {
+            SharedThreadDataSource(
+                api = BridgeThreadApi(bridge, authStore),
+                sessionStore = authStore
+            )
+        }
     SharedThreadRouteContent(
         initialPayload = payload,
         bridge = bridge,
+        dataSource = dataSource,
         onBack = {
             pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
         }
@@ -270,53 +281,30 @@ private fun ThreadPageScreen() {
 internal fun SharedThreadRouteContent(
     initialPayload: KuiklyThreadScreenPayload,
     bridge: ai.slock.compose.base.BridgeModule,
+    dataSource: SharedThreadDataSource,
     onBack: () -> Unit
 ) {
-    val authStore = remember { KuiklyAuthSessionStore(KuiklyRelationalStore(bridge)) }
-    val threadApi = remember { BridgeThreadApi(bridge, authStore) }
-    var payload by remember(initialPayload.instanceId) { mutableStateOf(initialPayload) }
+    val threadViewModel: SharedThreadViewModel =
+        viewModel(key = "shared-thread-${initialPayload.sourceThreadId ?: initialPayload.instanceId}") {
+            SharedThreadViewModel(dataSource)
+        }
+    val threadState by threadViewModel.state.collectAsState()
+    val payload = threadState.payload
     var composerDraftText by remember(initialPayload.instanceId) { mutableStateOf("") }
     var composerDraftAsTask by remember(initialPayload.instanceId) { mutableStateOf(false) }
     var composerSyncNonce by remember(initialPayload.instanceId) { mutableStateOf(0) }
     var composerSending by remember(initialPayload.instanceId) { mutableStateOf(false) }
-    var highlightedMentions by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
+    var composerFailureLabel by remember(initialPayload.instanceId) { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(initialPayload) {
-        payload = initialPayload
-        highlightedMentions = emptySet()
         val composer = parseThreadComposerPayload(initialPayload.composerPayload, "{}", initialPayload.instanceId)
         composerDraftText = composer.seedText
         composerDraftAsTask = composer.seedAsTask
         composerSyncNonce = composer.syncNonce
         composerSending = false
-    }
-
-    LaunchedEffect(initialPayload.instanceId, initialPayload.sourceThreadId) {
-        val threadId = initialPayload.sourceThreadId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        payload = initialPayload.copy(status = "loading", errorCode = null)
-        try {
-            val session = authStore.readSession()
-            highlightedMentions = session.threadSelfMentionNames()
-            val response = threadApi.channelMessages(threadId)
-            payload =
-                if (response.isSuccessful && !response.bodyText.isNullOrBlank()) {
-                    buildSharedThreadPayloadFromMessagesResponse(
-                        basePayload = initialPayload,
-                        bodyText = response.bodyText,
-                        session = session
-                    )
-                } else {
-                    initialPayload.copy(
-                        status = "error",
-                        errorCode = response.errorBodyText?.takeIf { it.isNotBlank() } ?: "thread_network"
-                    )
-                }
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Throwable) {
-            payload = initialPayload.copy(status = "error", errorCode = "thread_network")
-        }
+        composerFailureLabel = null
+        threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
     }
 
     val filesPayload = remember(payload.filesPayload, payload.instanceId) {
@@ -332,6 +320,7 @@ internal fun SharedThreadRouteContent(
             composerDraftAsTask,
             composerSyncNonce,
             composerSending,
+            composerFailureLabel,
             payload.canSend
         ) {
             payload.appShellComposerPayload(
@@ -342,12 +331,14 @@ internal fun SharedThreadRouteContent(
                 composerMode =
                     when {
                         composerSending -> "sending"
+                        composerFailureLabel != null -> "failed"
                         renderedComposerPayload.composerMode == "failed" -> "failed"
                         else -> renderedComposerPayload.composerMode
                     },
                 statusLabel =
                     when {
                         composerSending -> "Sending..."
+                        composerFailureLabel != null -> composerFailureLabel
                         renderedComposerPayload.composerMode == "failed" -> renderedComposerPayload.statusLabel
                         else -> renderedComposerPayload.statusLabel
                     },
@@ -373,7 +364,7 @@ internal fun SharedThreadRouteContent(
         payload = renderedPayload,
         filesPayload = filesPayload,
         composerPayload = composerPayload,
-        highlightedMentions = highlightedMentions,
+        highlightedMentions = threadState.highlightedMentions,
         onBack = onBack,
         onThreadEvent = { action, itemId, attachmentId, tab ->
             when {
@@ -381,7 +372,7 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         openSharedThreadAttachment(
                             bridge = bridge,
-                            threadApi = threadApi,
+                            dataSource = dataSource,
                             attachmentId = attachmentId
                         )
                     }
@@ -408,9 +399,11 @@ internal fun SharedThreadRouteContent(
                 "change" -> {
                     value?.let { composerDraftText = it }
                     asTask?.let { composerDraftAsTask = it }
+                    composerFailureLabel = null
                 }
                 "toggleAsTask" -> {
                     asTask?.let { composerDraftAsTask = it }
+                    composerFailureLabel = null
                 }
                 "send" -> {
                     val threadId = payload.sourceThreadId?.takeIf { it.isNotBlank() }
@@ -420,13 +413,14 @@ internal fun SharedThreadRouteContent(
                     }
                     val draftAsTask = composerDraftAsTask
                     composerSending = true
+                    composerFailureLabel = null
                     composerDraftText = ""
                     composerDraftAsTask = false
                     composerSyncNonce += 1
                     coroutineScope.launch {
                         val sendResponse =
                             runCatching {
-                                threadApi.sendMessage(
+                                dataSource.sendMessage(
                                     channelId = threadId,
                                     body = draftText,
                                     asTask = draftAsTask
@@ -435,76 +429,46 @@ internal fun SharedThreadRouteContent(
                                 composerSending = false
                                 composerDraftText = draftText
                                 composerDraftAsTask = draftAsTask
+                                composerFailureLabel = "Send failed. Try again."
                                 composerSyncNonce += 1
-                                payload =
-                                    payload.copy(
-                                        composerPayload =
-                                            payload.appShellComposerPayload(
-                                                seedText = draftText,
-                                                seedAsTask = draftAsTask,
-                                                syncNonce = composerSyncNonce,
-                                                composerMode = "failed",
-                                                statusLabel = "Send failed. Try again.",
-                                                enabled = payload.canSend
-                                            )
-                                    )
                                 return@launch
                             }
                         if (!sendResponse.isSuccessful) {
                             composerSending = false
                             composerDraftText = draftText
                             composerDraftAsTask = draftAsTask
+                            composerFailureLabel =
+                                sendResponse.errorBodyText?.takeIf { it.isNotBlank() }
+                                    ?: "Send failed. Try again."
                             composerSyncNonce += 1
-                            payload =
-                                payload.copy(
-                                    composerPayload =
-                                        payload.appShellComposerPayload(
-                                            seedText = draftText,
-                                            seedAsTask = draftAsTask,
-                                            syncNonce = composerSyncNonce,
-                                            composerMode = "failed",
-                                            statusLabel =
-                                                sendResponse.errorBodyText?.takeIf { it.isNotBlank() }
-                                                    ?: "Send failed. Try again.",
-                                            enabled = payload.canSend
-                                        )
-                                )
                             return@launch
                         }
-                        val session = authStore.readSession()
-                        val refreshResponse =
-                            runCatching { threadApi.channelMessages(threadId) }.getOrNull()
-                        payload =
-                            if (refreshResponse?.isSuccessful == true && !refreshResponse.bodyText.isNullOrBlank()) {
-                                buildSharedThreadPayloadFromMessagesResponse(
-                                    basePayload = payload,
-                                    bodyText = refreshResponse.bodyText,
-                                    session = session
-                                )
-                            } else if (!sendResponse.bodyText.isNullOrBlank()) {
-                                appendSharedThreadSentMessageFromResponse(
-                                    basePayload = payload,
-                                    bodyText = sendResponse.bodyText,
-                                    session = session
-                                )
-                            } else {
-                                payload.copy(
-                                    status = if (payload.messages.isEmpty()) "empty" else payload.status,
-                                    errorCode = null
-                                )
-                            }.copy(
-                                composerPayload =
-                                    payload.appShellComposerPayload(
-                                        seedText = "",
-                                        seedAsTask = false,
-                                        syncNonce = composerSyncNonce,
-                                        composerMode = "channel",
-                                        statusLabel = null,
-                                        enabled = payload.canSend
+                        val refreshed =
+                            runCatching {
+                                dataSource.fetchThreadPayload(payload)
+                            }.getOrNull()
+                        if (refreshed is ai.slock.compose.data.DataResult.Content) {
+                            threadViewModel.dispatch(SharedThreadIntent.SetPayload(refreshed.data))
+                        } else if (!sendResponse.bodyText.isNullOrBlank()) {
+                            val session = dataSource.readSession()
+                            threadViewModel.dispatch(
+                                SharedThreadIntent.SetPayload(
+                                    appendSharedThreadSentMessageFromResponse(
+                                        basePayload = payload,
+                                        bodyText = sendResponse.bodyText,
+                                        session = session
                                     )
+                                )
                             )
+                        } else {
+                            threadViewModel.dispatch(SharedThreadIntent.Refresh)
+                        }
+                        composerFailureLabel = null
                         composerSending = false
                     }
+                }
+                "retryThreadLoad" -> {
+                    threadViewModel.dispatch(SharedThreadIntent.Refresh)
                 }
                 else -> {
                     bridge.composerEvent(
@@ -522,10 +486,10 @@ internal fun SharedThreadRouteContent(
 
 private suspend fun openSharedThreadAttachment(
     bridge: ai.slock.compose.base.BridgeModule,
-    threadApi: BridgeThreadApi,
+    dataSource: SharedThreadDataSource,
     attachmentId: String
 ) {
-    val response = threadApi.attachmentUrl(attachmentId)
+    val response = dataSource.attachmentUrl(attachmentId)
     val url = parseSharedThreadAttachmentOpenUrl(response.bodyText)
     if (response.isSuccessful && !url.isNullOrBlank()) {
         bridge.openUrl(url)
@@ -965,7 +929,7 @@ private fun JsonObject.toSharedThreadMessageItem(
     )
 }
 
-private fun StoredAuthSession?.threadSelfMentionNames(): Set<String> =
+internal fun StoredAuthSession?.threadSelfMentionNames(): Set<String> =
     this?.user?.let { user ->
         listOfNotNull(
             user.displayName,

@@ -20,6 +20,7 @@ import ai.slock.compose.data.SharedHomeState
 import ai.slock.compose.data.SharedHomeViewModel
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.parseSlockHome
+import ai.slock.compose.data.BridgeThreadApi
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ConversationSummary
@@ -264,6 +265,13 @@ private fun SlockAppShellContent() {
             )
         }
     val membersApi = remember { BridgeMembersApi(bridge, authStore) }
+    val threadDataSource =
+        remember {
+            SharedThreadDataSource(
+                api = BridgeThreadApi(bridge, authStore),
+                sessionStore = authStore
+            )
+        }
     val tasksDataSource =
         remember {
             SharedTasksDataSource(
@@ -425,6 +433,7 @@ private fun SlockAppShellContent() {
                 SharedThreadRouteContent(
                     initialPayload = payload,
                     bridge = bridge,
+                    dataSource = threadDataSource,
                     onBack = { popThreadRoute() }
                 )
             }
