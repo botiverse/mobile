@@ -40,8 +40,6 @@ import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.graphics.Path
-import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
@@ -474,16 +472,15 @@ private fun HomeWorkspaceHeader(serverName: String, serverUnreadCount: Int, topS
     Box(modifier = Modifier.fillMaxWidth().height(topSafeArea + SlockSize.PageHeaderHeight).background(SlockColor.BrandYellow)) {
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack).align(Alignment.BottomCenter))
         Box(modifier = Modifier.padding(top = topSafeArea).height(SlockSize.PageHeaderHeight).padding(horizontal = SlockSpacing.Lg, vertical = SlockSpacing.Md).clickable(onClick = onServerBadgeClick)) {
-            SlockLogoBadge(text = serverName, showDropdown = true, tilted = true)
-            if (serverUnreadCount > 0) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
+            SlockLogoBadge(text = serverName, showDropdown = true, tilted = true, unread = serverUnreadCount > 0)
         }
     }
 }
 
 @Composable
-private fun SlockLogoBadge(text: String, modifier: Modifier = Modifier, showDropdown: Boolean = false, tilted: Boolean = true) {
+private fun SlockLogoBadge(text: String, modifier: Modifier = Modifier, showDropdown: Boolean = false, tilted: Boolean = true, unread: Boolean = false) {
     if (tilted) {
-        SlockTiltedLogoBadge(text = text, modifier = modifier, showDropdown = showDropdown)
+        SlockTiltedLogoBadge(text = text, modifier = modifier, showDropdown = showDropdown, unread = unread)
         return
     }
 
@@ -503,61 +500,29 @@ private fun SlockLogoBadge(text: String, modifier: Modifier = Modifier, showDrop
 }
 
 @Composable
-private fun SlockTiltedLogoBadge(text: String, modifier: Modifier = Modifier, showDropdown: Boolean = false) {
-    Box(modifier = modifier) {
-        Canvas(modifier = Modifier.matchParentSize()) {
-            val shadowOffset = HomeSmallShadowOffset.toPx()
-            val tilt = 2.dp.toPx()
-            val strokeWidth = SlockStroke.Default.toPx()
-            val surfaceWidth = (size.width - shadowOffset).coerceAtLeast(0f)
-            val surfaceHeight = (size.height - shadowOffset).coerceAtLeast(0f)
-            val shadowPath =
-                slockTiltedBadgePath(
-                    left = shadowOffset,
-                    top = shadowOffset,
-                    width = surfaceWidth,
-                    height = surfaceHeight,
-                    tilt = tilt
-                )
-            val surfacePath =
-                slockTiltedBadgePath(
-                    left = 0f,
-                    top = 0f,
-                    width = surfaceWidth,
-                    height = surfaceHeight,
-                    tilt = tilt
-                )
-            drawPath(shadowPath, SlockColor.ShadowBlack)
-            drawPath(surfacePath, SlockColor.TextBlack)
-            drawPath(surfacePath, SlockColor.BorderBlack, style = Stroke(width = strokeWidth))
-        }
+private fun SlockTiltedLogoBadge(text: String, modifier: Modifier = Modifier, showDropdown: Boolean = false, unread: Boolean = false) {
+    Box(modifier = modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset).rotate(-2f)) {
+        Box(Modifier.matchParentSize().offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset).background(SlockColor.ShadowBlack))
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier =
-                Modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)
-                    .padding(horizontal = 16.dp, vertical = SlockSpacing.Sm),
+                Modifier.background(SlockColor.TextBlack)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text, color = SlockColor.BrandYellow, style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
+            Text(text, color = SlockColor.BrandYellow, style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
             if (showDropdown) {
                 Spacer(Modifier.width(SlockSpacing.Xs))
-                SlockLucideIcon("chevron-down", Modifier.size(18.dp), color = "#FFFFD440")
+                SlockLucideIcon("chevron-down", Modifier.size(16.dp).rotate(2f), color = "#FFFFD440")
             }
         }
+        if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
     }
 }
 
-private fun slockTiltedBadgePath(left: Float, top: Float, width: Float, height: Float, tilt: Float): Path =
-    Path().apply {
-        moveTo(left, top + tilt)
-        lineTo(left + width - tilt, top)
-        lineTo(left + width, top + height - tilt)
-        lineTo(left + tilt, top + height)
-        close()
-    }
-
 @Composable
 private fun ServerUnreadMarker(modifier: Modifier = Modifier) {
-    Box(modifier = modifier.offset(x = 3.dp, y = (-3).dp).size(9.dp).background(SlockColor.AccentRed).border(SlockStroke.Thin, SlockColor.BorderBlack))
+    Box(modifier = modifier.offset(x = 4.dp, y = (-4).dp).size(10.dp).background(SlockColor.AccentPink).border(SlockStroke.Thin, SlockColor.BorderBlack))
 }
 
 @Composable
