@@ -1557,6 +1557,7 @@ private fun SharedHomeScreen(
                     contentRefreshing = true,
                     onRefresh = { onIntent(SharedHomeIntent.Refresh) },
                     onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
+                    onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
                     onServerSelected = { serverId -> onIntent(SharedHomeIntent.SelectServer(serverId)) },
                     onCreateServerClick = {
                         bridge.toast("Create server is not available yet")
@@ -1570,6 +1571,7 @@ private fun SharedHomeScreen(
                 contentRefreshing = false,
                 onRefresh = { onIntent(SharedHomeIntent.Refresh) },
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
+                onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
                 onServerSelected = { serverId -> onIntent(SharedHomeIntent.SelectServer(serverId)) },
                 onCreateServerClick = {
                     bridge.toast("Create server is not available yet")
@@ -1609,6 +1611,7 @@ private fun SharedHomeScreen(
                 contentRefreshing = current.contentRefreshing,
                 onContentRefresh = { onIntent(SharedHomeIntent.Refresh) },
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
+                onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
                 onServerSelected = { serverId -> onIntent(SharedHomeIntent.SelectServer(serverId)) },
                 onCreateServerClick = {
                     bridge.toast("Create server is not available yet")
@@ -1635,6 +1638,7 @@ private fun SharedHomeSessionShell(
     contentRefreshing: Boolean,
     onRefresh: () -> Unit,
     onServerBadgeClick: () -> Unit,
+    onServerSwitcherDismiss: () -> Unit,
     onServerSelected: (String) -> Unit,
     onCreateServerClick: () -> Unit
 ) {
@@ -1651,6 +1655,7 @@ private fun SharedHomeSessionShell(
         contentRefreshing = contentRefreshing,
         onContentRefresh = onRefresh,
         onServerBadgeClick = onServerBadgeClick,
+        onServerSwitcherDismiss = onServerSwitcherDismiss,
         onServerSelected = onServerSelected,
         onCreateServerClick = onCreateServerClick
     )
