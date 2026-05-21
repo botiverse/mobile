@@ -208,6 +208,12 @@ import ai.slock.android.feature.tasks.TasksContent
 import ai.slock.android.feature.tasks.TasksPanel
 import ai.slock.android.feature.tasks.TasksScreen
 import ai.slock.android.feature.tasks.TasksUiState
+import ai.slock.android.feature.tasks.filteredForConversationIds
+import ai.slock.android.feature.tasks.filteredForTasksFilter
+import ai.slock.android.feature.tasks.mergeTasksRefreshResult
+import ai.slock.android.feature.tasks.mergeThreadTasksRefreshResult
+import ai.slock.android.feature.tasks.toTasksUiState
+import ai.slock.android.feature.tasks.toTasksUiStateForThreadTasks
 import ai.slock.android.feature.tasks.withLoading
 import ai.slock.android.feature.tasks.withRefreshFailure
 import ai.slock.android.feature.tasks.withTaskStatusUpdateFailure
@@ -12686,34 +12692,6 @@ private fun ThreadSnapshot.toThreadContent(
                 highlightedMessageId = highlightedMessageId
         )
 
-private fun DataResult<TaskSnapshot>.toTasksUiState(selectedFilter: TaskStatus?): TasksUiState =
-        TasksUiState(
-                loadState =
-                        when (this) {
-                            is DataResult.Content ->
-                                    ScreenLoadState.Content(
-                                            TasksContent(
-                                                    summaryCounts = data.summaryCounts,
-                                                    tasks = data.tasks
-                                            )
-                                    )
-                            is DataResult.Empty -> ScreenLoadState.Empty(reason)
-                            is DataResult.Error -> ScreenLoadState.Error(error)
-                            is DataResult.NoPermission -> ScreenLoadState.NoPermission(blocker)
-                        },
-                selectedFilter = selectedFilter
-        )
-
-private fun TaskSnapshot.filteredForTasksFilter(filter: TaskStatus?): TaskSnapshot {
-    val filteredTasks = filter?.let { status -> tasks.filter { it.status == status } } ?: tasks
-    return copy(
-            tasks = filteredTasks,
-            summaryCounts = TaskStatus.entries.associateWith { status ->
-                tasks.count { it.status == status }
-            }
-    )
-}
-
 private fun TaskSnapshot.filteredForCurrentServerTasks(
         homeState: HomeUiState,
         serverId: ServerId
@@ -12737,98 +12715,7 @@ private fun TaskSnapshot.filteredForCurrentServerTasks(
                                 .toSet()
                     }
                     .orEmpty()
-    val filteredTasks =
-            tasks.filter { task ->
-                if (knownConversationIds.isNotEmpty()) {
-                    listOfNotNull(
-                                    task.channelId?.value,
-                                    task.threadId?.value
-                            )
-                            .any { it in knownConversationIds }
-                } else {
-                    task.channelId != null || task.threadId != null
-                }
-            }
-    return copy(
-            tasks = filteredTasks,
-            summaryCounts =
-                    TaskStatus.entries.associateWith { status ->
-                        filteredTasks.count { it.status == status }
-                    }
-    )
-}
-
-private fun TasksUiState.mergeTasksRefreshResult(
-        result: DataResult<TaskSnapshot>,
-        selectedFilter: TaskStatus?
-): TasksUiState =
-        when (result) {
-            is DataResult.Content ->
-                    result.toTasksUiState(selectedFilter).copy(refreshing = false)
-            is DataResult.Empty ->
-                    takeIf { loadState is ScreenLoadState.Content }
-                            ?.copy(
-                                    selectedFilter = selectedFilter,
-                                    refreshing = false,
-                                    navigationErrorCode = result.reason.name
-                            )
-                            ?: result.toTasksUiState(selectedFilter).copy(refreshing = false)
-            is DataResult.Error ->
-                    takeIf { loadState is ScreenLoadState.Content }
-                            ?.copy(
-                                    selectedFilter = selectedFilter,
-                                    refreshing = false,
-                                    navigationErrorCode = result.error.code
-                            )
-                            ?: result.toTasksUiState(selectedFilter).copy(refreshing = false)
-            is DataResult.NoPermission ->
-                    takeIf { loadState is ScreenLoadState.Content }
-                            ?.copy(
-                                    selectedFilter = selectedFilter,
-                                    refreshing = false,
-                                    navigationErrorCode = result.blocker.code
-                            )
-                            ?: result.toTasksUiState(selectedFilter).copy(refreshing = false)
-        }
-
-private fun TasksUiState?.mergeThreadTasksRefreshResult(
-        result: DataResult<TaskSnapshot>
-): TasksUiState {
-    val existing = this
-    return when (result) {
-        is DataResult.Content -> result.toTasksUiState(null).copy(refreshing = false)
-        is DataResult.Empty ->
-                existing
-                        ?.takeIf { it.loadState is ScreenLoadState.Content }
-                        ?.copy(refreshing = false)
-                        ?: result.toTasksUiState(null).copy(refreshing = false)
-        is DataResult.Error ->
-                existing
-                        ?.takeIf { it.loadState is ScreenLoadState.Content }
-                        ?.withRefreshFailure(result.error.code)
-                        ?: result.toTasksUiState(null).copy(refreshing = false)
-        is DataResult.NoPermission ->
-                existing
-                        ?.takeIf { it.loadState is ScreenLoadState.Content }
-                        ?.withRefreshFailure(result.blocker.code)
-                        ?: result.toTasksUiState(null).copy(refreshing = false)
-    }
-}
-
-private fun List<TaskSummary>.toTasksUiStateForThreadTasks(): TasksUiState {
-    return TasksUiState(
-            loadState =
-                    if (isEmpty()) {
-                        ScreenLoadState.Empty(EmptyReason.NoTasks)
-                    } else {
-                        ScreenLoadState.Content(
-                                TasksContent(
-                                        summaryCounts = summaryCounts(),
-                                        tasks = this
-                                )
-                        )
-                    }
-    )
+    return filteredForConversationIds(knownConversationIds)
 }
 
 private fun List<TaskSummary>.matchingTaskReference(label: String): List<TaskSummary> {
