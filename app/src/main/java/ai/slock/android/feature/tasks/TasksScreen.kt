@@ -79,6 +79,10 @@ import ai.slock.compose.data.TasksPresentationIntent
 import ai.slock.compose.data.TasksPresentationState
 import ai.slock.compose.data.TasksViewMode
 import ai.slock.compose.data.reduce
+import ai.slock.compose.data.boardColumns
+import ai.slock.compose.data.tasksAssigneeDisplayName
+import ai.slock.compose.data.tasksDisplayTitle
+import ai.slock.compose.data.tasksSourceLabel
 import ai.slock.compose.data.visibleContent
 import ai.slock.compose.data.TasksContent as SharedTasksContent
 import ai.slock.compose.data.TasksVisibleContent as SharedTasksVisibleContent
@@ -1076,16 +1080,15 @@ private fun TasksContent.toTaskBoardData(
     onTaskStatusChange: (TaskSummary, TaskStatus) -> Unit,
     updatingTaskId: String?
 ): TasksBoardData {
-    val tasksByStatus = tasks.groupBy { it.status.toSlockTaskStatus() }
-    val totalCounts = SlockTaskStatus.entries.associateWith { status ->
-        tasksByStatus[status].orEmpty().size
+    val sharedColumns = toShared().boardColumns(renderLimit)
+    val totalCounts = sharedColumns.associate { column ->
+        column.status.toSlockTaskStatus() to column.totalCount
     }
-    val columns = SlockTaskStatus.entries.associateWith { status ->
-        val statusTasks = tasksByStatus[status].orEmpty()
-        val visibleTasks = if (renderLimit > 0) statusTasks.take(renderLimit) else statusTasks
-        visibleTasks.map { task ->
-            task.toTaskCardData(copy, onTaskClick, onTaskStatusChange, updatingTaskId)
-        }
+    val columns = sharedColumns.associate { column ->
+        column.status.toSlockTaskStatus() to
+            column.tasks.map { task ->
+                task.toTaskCardData(copy, onTaskClick, onTaskStatusChange, updatingTaskId)
+            }
     }
     return TasksBoardData(columns = columns, totalCounts = totalCounts)
 }
@@ -1150,53 +1153,6 @@ private fun TaskSummary.toTaskCardData(
         updatingLabel = copy.statusUpdating
     )
 }
-
-internal fun TaskSummary.tasksSourceLabel(): String? =
-    channelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
-
-internal fun TaskSummary.tasksDisplayTitle(): String {
-    val numberLabel = taskNumber?.let { "#$it" }
-    val meaningfulTitle = title.tasksMeaningfulTitle(taskNumber)
-    return when {
-        numberLabel != null && meaningfulTitle != null -> "$numberLabel $meaningfulTitle"
-        numberLabel != null -> "Task $numberLabel"
-        meaningfulTitle != null -> meaningfulTitle
-        else -> "Task"
-    }
-}
-
-internal fun TaskSummary.tasksAssigneeDisplayName(): String? =
-    assignee?.displayName
-        ?.trim()
-        ?.takeIf { it.isNotBlank() }
-        ?.takeUnless { it.isUuidLike() }
-        ?.takeUnless { assignee?.id?.value == it }
-
-private fun String.tasksMeaningfulTitle(taskNumber: Int?): String? {
-    val trimmed = trim()
-    if (trimmed.isBlank()) return null
-    val number = taskNumber ?: return trimmed
-    val withoutNumberPrefix =
-        trimmed.replaceFirst(
-            Regex("""^\s*(?:task\s*)?#$number(?:\s*[-:：,，]\s*|\s+)""", RegexOption.IGNORE_CASE),
-            ""
-        ).trim()
-    if (withoutNumberPrefix.isNotBlank() && withoutNumberPrefix != trimmed) return withoutNumberPrefix
-    val placeholders =
-        setOf(
-            "#$number",
-            number.toString(),
-            "task #$number",
-            "task $number"
-        )
-    return trimmed.takeUnless { it.lowercase(Locale.ROOT) in placeholders }
-}
-
-private fun String.isUuidLike(): Boolean =
-    uuidLikeRegex.matches(trim())
-
-private val uuidLikeRegex =
-    Regex("""[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}""")
 
 private fun TaskStatus.toSlockTaskStatus(): SlockTaskStatus {
     return when (this) {

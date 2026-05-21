@@ -42,6 +42,12 @@ data class TasksVisibleContent(
     val filteredTasks: List<TaskSummary>
 )
 
+data class TasksBoardColumn(
+    val status: TaskStatus,
+    val totalCount: Int,
+    val tasks: List<TaskSummary>
+)
+
 sealed interface SharedTasksIntent {
     data class SetContent(val snapshot: TaskSnapshot, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
     data class StartLoading(val filter: TaskStatus? = null) : SharedTasksIntent
@@ -262,6 +268,39 @@ fun List<TaskSummary>.toTasksUiStateForThreadTasks(): TasksUiState =
             }
     )
 
+fun TasksContent.boardColumns(renderLimit: Int): List<TasksBoardColumn> {
+    val tasksByStatus = tasks.groupBy { it.status }
+    return TaskStatus.entries.map { status ->
+        val statusTasks = tasksByStatus[status].orEmpty()
+        TasksBoardColumn(
+            status = status,
+            totalCount = statusTasks.size,
+            tasks = if (renderLimit > 0) statusTasks.take(renderLimit) else statusTasks
+        )
+    }
+}
+
+fun TaskSummary.tasksSourceLabel(): String? =
+    channelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
+
+fun TaskSummary.tasksDisplayTitle(): String {
+    val numberLabel = taskNumber?.let { "#$it" }
+    val meaningfulTitle = title.tasksMeaningfulTitle(taskNumber)
+    return when {
+        numberLabel != null && meaningfulTitle != null -> "$numberLabel $meaningfulTitle"
+        numberLabel != null -> "Task $numberLabel"
+        meaningfulTitle != null -> meaningfulTitle
+        else -> "Task"
+    }
+}
+
+fun TaskSummary.tasksAssigneeDisplayName(): String? =
+    assignee?.displayName
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?.takeUnless { it.isUuidLike() }
+        ?.takeUnless { assignee?.id?.value == it }
+
 fun TasksUiState.withLoading(filter: TaskStatus? = selectedFilter): TasksUiState =
     if (loadState is ScreenLoadState.Content) {
         copy(
@@ -368,3 +407,65 @@ private fun TasksContent.withTaskStatus(
 
 fun List<TaskSummary>.summaryCounts(): Map<TaskStatus, Int> =
     TaskStatus.entries.associateWith { status -> count { it.status == status } }
+
+private fun String.tasksMeaningfulTitle(taskNumber: Int?): String? {
+    val trimmed = trim()
+    if (trimmed.isBlank()) return null
+    val number = taskNumber ?: return trimmed
+    val withoutNumberPrefix = trimmed.withoutTaskNumberPrefix(number)
+    if (withoutNumberPrefix.isNotBlank() && withoutNumberPrefix != trimmed) return withoutNumberPrefix
+    val placeholders =
+        setOf(
+            "#$number",
+            number.toString(),
+            "task #$number",
+            "task $number"
+        )
+    return trimmed.takeUnless { it.lowercase() in placeholders }
+}
+
+private fun String.withoutTaskNumberPrefix(number: Int): String {
+    var index = 0
+    index = skipWhitespace(index)
+    val lower = lowercase()
+    if (lower.startsWith("task", index)) {
+        index += "task".length
+        index = skipWhitespace(index)
+    }
+    if (getOrNull(index) == '#') {
+        index += 1
+    }
+    val numberStart = index
+    while (index < length && this[index].isDigit()) {
+        index += 1
+    }
+    if (numberStart == index) return trim()
+    if (substring(numberStart, index).toIntOrNull() != number) return trim()
+    index = skipWhitespace(index)
+    if (getOrNull(index) in setOf('-', ':', '：', ',', '，')) {
+        index += 1
+    }
+    index = skipWhitespace(index)
+    return substring(index).trim()
+}
+
+private fun String.skipWhitespace(start: Int): Int {
+    var index = start
+    while (index < length && this[index].isWhitespace()) {
+        index += 1
+    }
+    return index
+}
+
+private fun String.isUuidLike(): Boolean {
+    val trimmed = trim()
+    if (trimmed.length != 36) return false
+    val dashPositions = setOf(8, 13, 18, 23)
+    return trimmed.withIndex().all { (index, char) ->
+        if (index in dashPositions) {
+            char == '-'
+        } else {
+            char in '0'..'9' || char in 'a'..'f' || char in 'A'..'F'
+        }
+    }
+}

@@ -1,7 +1,11 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.Presence
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -186,19 +190,67 @@ class SharedTasksStoreTest {
         assertEquals(1, threadContent.summaryCounts[TaskStatus.Done])
     }
 
+    @Test
+    fun boardColumnsAndTaskDisplayLabelsAreShared() {
+        val assignedTask =
+            task(
+                "task-42",
+                TaskStatus.InProgress,
+                channelName = "kmp",
+                title = "Task #42: migrate state",
+                assignee = member("stdrc")
+            )
+        val uuidAssigneeTask =
+            task(
+                "task-43",
+                TaskStatus.InProgress,
+                title = "#43",
+                assignee = member("550e8400-e29b-41d4-a716-446655440000")
+            )
+
+        val content =
+            TasksContent(
+                summaryCounts = emptyMap(),
+                tasks = listOf(assignedTask, uuidAssigneeTask, task("task-44", TaskStatus.Done))
+            )
+
+        val columns = content.boardColumns(renderLimit = 1)
+        val inProgressColumn = columns.single { it.status == TaskStatus.InProgress }
+        assertEquals(2, inProgressColumn.totalCount)
+        assertEquals(listOf("task-42"), inProgressColumn.tasks.map { it.id.value })
+
+        assertEquals("#kmp", assignedTask.tasksSourceLabel())
+        assertEquals("#42 migrate state", assignedTask.tasksDisplayTitle())
+        assertEquals("stdrc", assignedTask.tasksAssigneeDisplayName())
+        assertEquals("Task #43", uuidAssigneeTask.tasksDisplayTitle())
+        assertEquals(null, uuidAssigneeTask.tasksAssigneeDisplayName())
+    }
+
     private fun task(
         id: String,
         status: TaskStatus,
-        channelName: String? = null
+        channelName: String? = null,
+        title: String = "Task $id",
+        assignee: MemberProfile? = null
     ): TaskSummary =
         TaskSummary(
             id = TaskId(id),
-            title = "Task $id",
+            title = title,
             status = status,
             taskNumber = id.substringAfter("task-").toIntOrNull(),
             messageId = MessageId("message-$id"),
             channelId = ChannelId("channel-1"),
             channelName = channelName,
+            assignee = assignee,
             updatedAtLabel = "now"
+        )
+
+    private fun member(displayName: String): MemberProfile =
+        MemberProfile(
+            id = MemberId("member-$displayName"),
+            displayName = displayName,
+            handle = displayName,
+            kind = MemberKind.Agent,
+            presence = Presence.Active
         )
 }
