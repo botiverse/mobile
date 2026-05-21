@@ -75,6 +75,26 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun inlineReferencesParseWithoutPlatformRegexClasses() {
+        val body =
+            "Ping @KMP-专家 in #markdown专修:d93db904 from #general:abc123 and task #16; " +
+                "ignore `#markdown专修:d93db904` plus <https://slock.ai/#general:abc123>."
+
+        val matches = body.threadInlineTagMatches()
+
+        assertEquals(
+            listOf("@KMP-专家", "#markdown专修:d93db904", "#general:abc123", "#16"),
+            matches.map { it.tag.label }
+        )
+        assertEquals(ThreadMarkdownTagKind.UserMention, matches[0].tag.kind)
+        assertEquals(ThreadMarkdownTagKind.ChannelThread, matches[1].tag.kind)
+        assertEquals("markdown专修", matches[1].tag.channelName)
+        assertEquals("d93db904", matches[1].tag.threadShortId)
+        assertEquals(ThreadMarkdownTagKind.ChannelThread, matches[2].tag.kind)
+        assertEquals(ThreadMarkdownTagKind.Task, matches[3].tag.kind)
+    }
+
+    @Test
     fun channelThreadReferencesAreIgnoredInsideInlineCode() {
         val inlineContent = slockMarkdownAnnotator("Use `#markdown专修:7933cf78` outside #markdown专修:7933cf78").inlineContent?.invoke().orEmpty()
 
