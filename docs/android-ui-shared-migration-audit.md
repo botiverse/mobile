@@ -32,6 +32,16 @@ These were Android Studio preview/harness only and do not represent the real pro
 - `ui/components/SlockTaskMemberComponentsPreview.kt`
 - `ui/theme/SlockThemePreview.kt`
 
+These legacy Android auth screens are no longer product paths after `compose_slock_app_shell`
+became the auth/server gate owner:
+
+- `feature/auth/LoginScreen.kt`
+- `feature/auth/ForgotPasswordScreen.kt`
+- `feature/auth/CreateAccountScreen.kt`
+
+Android `MainActivity` should only show the short restore splash while it hands off to the
+shared shell; login, reset-password, and create-account state belong in shared auth/MVI.
+
 ### Migrate To Shared
 
 These are reusable product UI concepts and should be moved to shared variants instead of remaining Android-only:

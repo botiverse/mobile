@@ -149,9 +149,6 @@ import ai.slock.compose.model.withTitleFallback
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.ScreenError
 import ai.slock.android.core.state.ScreenLoadState
-import ai.slock.android.feature.auth.AuthLogoBadge
-import ai.slock.android.feature.auth.CreateAccountStatus
-import ai.slock.android.feature.auth.ForgotPasswordStatus
 import ai.slock.android.feature.home.HomeContent
 import ai.slock.android.feature.home.HomeUiState
 import ai.slock.android.feature.home.defaultSelectedChannelId
@@ -375,6 +372,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -1016,9 +1014,6 @@ private fun SlockAppContent(
         AuthRestoreScreen(modifier = modifier)
         return
     }
-    var authRoute by rememberSaveable { mutableStateOf(AuthRoute.Login) }
-    var forgotPasswordStatus by remember { mutableStateOf(ForgotPasswordStatus.Default) }
-    var createAccountStatus by remember { mutableStateOf(CreateAccountStatus.Default) }
     var destination by rememberSaveable { mutableStateOf(AppDestination.Home) }
     var homeRoute by rememberSaveable { mutableStateOf(HomeRoute.Shell) }
     var previousHomeRoute by rememberSaveable { mutableStateOf<HomeRoute?>(null) }
@@ -1849,7 +1844,6 @@ private fun SlockAppContent(
         failedAttachmentIds = emptySet()
         currentAuthSession = null
         authState = AuthUiState.SignedOut(message)
-        authRoute = AuthRoute.Login
         destination = AppDestination.Home
         homeRoute = HomeRoute.Shell
         previousHomeRoute = null
@@ -5582,7 +5576,6 @@ private fun SlockAppContent(
                 when (val restoreResult = authRepository.restoreSession()) {
                     is AuthResult.Success -> {
                         currentAuthSession = authSessionStore.readSession()
-                        authRoute = AuthRoute.Login
                         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                                 "SlockAuth",
                                 "restore_effect_success direct_home=true hasSession=${currentAuthSession != null} serverCount=${currentAuthSession?.servers?.size ?: 0} selectedServer=${currentAuthSession?.currentServerId != null} emailVerified=${currentAuthSession?.user?.emailVerified}"
@@ -5617,99 +5610,7 @@ private fun SlockAppContent(
     }
 
     if (authState !is AuthUiState.Authenticated) {
-        AuthRouteScreen(
-                route = authRoute,
-                onRouteChange = { route ->
-                    authRoute = route
-                    authState = AuthUiState.SignedOut()
-                    forgotPasswordStatus = ForgotPasswordStatus.Default
-                    createAccountStatus = CreateAccountStatus.Default
-                },
-                onLogin = { email, password ->
-                    coroutineScope.launch {
-                        authRoute = AuthRoute.Login
-                        forgotPasswordStatus = ForgotPasswordStatus.Default
-                        createAccountStatus = CreateAccountStatus.Default
-                        authState = AuthUiState.Submitting
-                        when (val result = authRepository.login(email, password)) {
-                            is AuthResult.Success -> {
-                                currentAuthSession = authSessionStore.readSession()
-                                authState = AuthUiState.Authenticated
-                                authRoute = AuthRoute.Login
-                                destination = AppDestination.Home
-                                homeRoute = HomeRoute.Shell
-                                previousHomeRoute = null
-                                ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
-                                        "SlockAuth",
-                                        "login_success direct_home=true hasSession=${currentAuthSession != null} serverCount=${currentAuthSession?.servers?.size ?: 0} selectedServer=${currentAuthSession?.currentServerId != null} emailVerified=${currentAuthSession?.user?.emailVerified}"
-                                )
-                            }
-                            AuthResult.Unauthenticated -> {
-                                authState = AuthUiState.SignedOut("Session expired. Sign in again.")
-                            }
-                            is AuthResult.Failure -> {
-                                authState = AuthUiState.SignedOut(result.message)
-                            }
-                        }
-                    }
-                },
-                onSendResetLink = { email ->
-                    coroutineScope.launch {
-                        forgotPasswordStatus = ForgotPasswordStatus.Sending
-                        when (val result = authRepository.forgotPassword(email)) {
-                            is AuthResult.Success -> {
-                                authState = AuthUiState.SignedOut()
-                                forgotPasswordStatus = ForgotPasswordStatus.Success
-                            }
-                            AuthResult.Unauthenticated -> {
-                                authState = AuthUiState.SignedOut("Session expired. Sign in again.")
-                                forgotPasswordStatus = ForgotPasswordStatus.Error
-                            }
-                            is AuthResult.Failure -> {
-                                authState = AuthUiState.SignedOut(result.message)
-                                forgotPasswordStatus = ForgotPasswordStatus.Error
-                            }
-                        }
-                    }
-                },
-                onCreateAccount = { name, email, password ->
-                    coroutineScope.launch {
-                        authRoute = AuthRoute.CreateAccount
-                        createAccountStatus = CreateAccountStatus.Saving
-                        when (val result = authRepository.register(name, email, password)) {
-                            is AuthResult.Success -> {
-                                currentAuthSession = authSessionStore.readSession()
-                                authState = AuthUiState.Authenticated
-                                authRoute = AuthRoute.Login
-                                createAccountStatus = CreateAccountStatus.Default
-                                forgotPasswordStatus = ForgotPasswordStatus.Default
-                                destination = AppDestination.Home
-                                homeRoute = HomeRoute.Shell
-                                previousHomeRoute = null
-                                ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
-                                        "SlockAuth",
-                                        "register_success direct_home=true hasSession=${currentAuthSession != null} serverCount=${currentAuthSession?.servers?.size ?: 0} selectedServer=${currentAuthSession?.currentServerId != null} emailVerified=${currentAuthSession?.user?.emailVerified}"
-                                )
-                            }
-                            AuthResult.Unauthenticated -> {
-                                authState = AuthUiState.SignedOut("Session expired. Sign in again.")
-                                createAccountStatus = CreateAccountStatus.Error
-                            }
-                            is AuthResult.Failure -> {
-                                authState = AuthUiState.SignedOut(result.message)
-                                createAccountStatus = CreateAccountStatus.Error
-                            }
-                        }
-                    }
-                },
-                authState = authState,
-                forgotPasswordStatus = forgotPasswordStatus,
-                createAccountStatus = createAccountStatus,
-                onAuthProviderUnavailable = { provider ->
-                    authState = AuthUiState.SignedOut("$provider sign-in is not connected yet.")
-                },
-                modifier = modifier
-        )
+        AuthRouteScreen(modifier = modifier)
         return
     }
 
@@ -9446,13 +9347,6 @@ private fun SlockAppContent(
     }
 }
 
-private enum class AuthRoute {
-    Login,
-    ForgotPassword,
-    CreateAccount
-}
-
-
 private sealed interface AuthUiState {
     data object Restoring : AuthUiState
     data object Submitting : AuthUiState
@@ -9475,7 +9369,7 @@ private fun AuthRestoreScreen(modifier: Modifier = Modifier) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(restoreSpacing)
         ) {
-            AuthLogoBadge(text = stringResource(R.string.auth_logo))
+            AuthRestoreLogoBadge(text = stringResource(R.string.auth_logo))
             Text(
                     text = stringResource(R.string.auth_tagline),
                     style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
@@ -9486,18 +9380,30 @@ private fun AuthRestoreScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun AuthRouteScreen(
-        route: AuthRoute,
-        onRouteChange: (AuthRoute) -> Unit,
-        onLogin: (email: String, password: String) -> Unit,
-        onSendResetLink: (email: String) -> Unit,
-        onCreateAccount: (name: String, email: String, password: String) -> Unit,
-        authState: AuthUiState,
-        forgotPasswordStatus: ForgotPasswordStatus,
-        createAccountStatus: CreateAccountStatus,
-        onAuthProviderUnavailable: (String) -> Unit,
-        modifier: Modifier = Modifier
-) {
+private fun AuthRestoreLogoBadge(text: String, modifier: Modifier = Modifier) {
+    val shadow = SlockShadow.Default
+    Box(
+            modifier =
+                    modifier.padding(end = shadow.offsetX, bottom = shadow.offsetY)
+                            .rotate(-2f)
+                            .slockHardShadow(shadow)
+                            .background(SlockColor.TextBlack)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .padding(horizontal = 22.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center
+    ) {
+        Text(
+                text = text,
+                style = SlockType.PageTitle.copy(fontSize = 32.sp, lineHeight = 38.sp),
+                color = SlockColor.BrandYellow,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun AuthRouteScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     LaunchedEffect(Unit) {
         SlockKuiklyActivity.startAppShell(context, clearTask = true)
