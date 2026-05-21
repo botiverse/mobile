@@ -95,7 +95,15 @@ private fun TokenPaletteCase(
                 "Orange" to SlockColor.AccentOrange,
                 "Lime" to SlockColor.AccentLime,
                 "Red" to SlockColor.AccentRed,
-                "Stone" to SlockColor.EmptyStateGray
+                "Stone" to SlockColor.EmptyStateGray,
+                "Surface White" to SlockColor.SurfaceWhite,
+                "Surface Cream" to SlockColor.SurfaceCream,
+                "App Bg Light Blue" to SlockColor.AppBgLightBlue,
+                "Empty State Gray" to SlockColor.EmptyStateGray,
+                "Text Black" to SlockColor.TextBlack,
+                "Text Muted Gray" to SlockColor.TextMutedGray,
+                "Border Black" to SlockColor.BorderBlack,
+                "Shadow Black" to SlockColor.ShadowBlack
             )
         Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
             swatches.chunked(2).forEach { row ->
