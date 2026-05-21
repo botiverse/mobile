@@ -42,6 +42,22 @@ became the auth/server gate owner:
 Android `MainActivity` should only show the short restore splash while it hands off to the
 shared shell; login, reset-password, and create-account state belong in shared auth/MVI.
 
+### Migrated To Shared MVI
+
+The Android legacy Tasks route still renders native UI, but its load/update reducer no longer
+owns business state transitions directly. `compose/shared/commonMain` now owns:
+
+- `ScreenLoadState`
+- `TasksUiState` / `TasksContent`
+- `SharedTasksIntent`
+- `SharedTasksStore`
+- optimistic task status update / success / failure reducers
+- task summary count derivation
+
+Android `feature/tasks/TasksUiState.kt` remains only as a temporary compatibility adapter while
+the native Tasks route is removed or replaced by a shared Tasks page. New task logic should target
+the shared store/reducer first.
+
 ### Migrate To Shared
 
 These are reusable product UI concepts and should be moved to shared variants instead of remaining Android-only:
@@ -65,7 +81,7 @@ These are platform/host-specific and should not move into common UI:
 
 ### Still Blocking Full Removal
 
-The old `MainActivity` native fallback still references multiple `ui/components` classes through legacy routes such as Activity/Inbox, Saved, Search, Tasks, Members, Thread, and Settings native wrappers. As each route moves fully into shared shell/MVI, delete the corresponding Android native UI and tests instead of keeping a second implementation.
+The old `MainActivity` native fallback still references multiple `ui/components` classes through legacy routes such as Activity/Inbox, Saved, Search, Tasks, Members, Thread, and Settings native wrappers. Tasks reducer state has started moving to shared MVI, but the route UI is still native. As each route moves fully into shared shell/MVI, delete the corresponding Android native UI and tests instead of keeping a second implementation.
 
 ## Recommended Order
 

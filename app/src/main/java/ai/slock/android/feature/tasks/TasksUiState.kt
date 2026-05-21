@@ -3,6 +3,14 @@ package ai.slock.android.feature.tasks
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.state.ScreenLoadState
+import ai.slock.compose.data.TasksContent as SharedTasksContent
+import ai.slock.compose.data.TasksUiState as SharedTasksUiState
+import ai.slock.compose.data.ScreenLoadState as SharedScreenLoadState
+import ai.slock.compose.data.withLoading as sharedWithLoading
+import ai.slock.compose.data.withRefreshFailure as sharedWithRefreshFailure
+import ai.slock.compose.data.withTaskStatusUpdateFailure as sharedWithTaskStatusUpdateFailure
+import ai.slock.compose.data.withTaskStatusUpdateSuccess as sharedWithTaskStatusUpdateSuccess
+import ai.slock.compose.data.withTaskStatusUpdating as sharedWithTaskStatusUpdating
 
 data class TasksUiState(
     val loadState: ScreenLoadState<TasksContent>,
@@ -20,102 +28,76 @@ data class TasksContent(
 )
 
 fun TasksUiState.withLoading(filter: TaskStatus? = selectedFilter): TasksUiState =
-    if (loadState is ScreenLoadState.Content) {
-        copy(
-            selectedFilter = filter,
-            navigationErrorCode = null,
-            refreshing = true
-        )
-    } else {
-        copy(
-            loadState = ScreenLoadState.Loading,
-            selectedFilter = filter,
-            navigationErrorCode = null,
-            refreshing = false
-        )
-    }
+    toShared().sharedWithLoading(filter).toAndroid()
 
 fun TasksUiState.withRefreshFailure(errorCode: String): TasksUiState =
-    copy(
-        refreshing = false,
-        statusUpdateErrorCode = errorCode
-    )
+    toShared().sharedWithRefreshFailure(errorCode).toAndroid()
 
 fun TasksUiState.withTaskStatusUpdating(
     taskId: String,
     nextStatus: TaskStatus
-): TasksUiState {
-    val contentState = loadState as? ScreenLoadState.Content
-    return if (contentState != null) {
-        copy(
-            loadState =
-                ScreenLoadState.Content(
-                    contentState.data.withTaskStatus(taskId = taskId, status = nextStatus)
-                ),
-            navigationErrorCode = null,
-            statusUpdatingTaskId = taskId,
-            statusUpdateErrorCode = null
-        )
-    } else {
-        copy(
-            navigationErrorCode = null,
-            statusUpdatingTaskId = taskId,
-            statusUpdateErrorCode = null
-        )
-    }
-}
+): TasksUiState =
+    toShared().sharedWithTaskStatusUpdating(taskId = taskId, nextStatus = nextStatus).toAndroid()
 
-fun TasksUiState.withTaskStatusUpdateSuccess(task: TaskSummary): TasksUiState {
-    val contentState = loadState as? ScreenLoadState.Content
-    return copy(
-        loadState =
-            if (contentState != null) {
-                ScreenLoadState.Content(contentState.data.withTask(task))
-            } else {
-                loadState
-            },
-        statusUpdatingTaskId = null,
-        statusUpdateErrorCode = null
-    )
-}
+fun TasksUiState.withTaskStatusUpdateSuccess(task: TaskSummary): TasksUiState =
+    toShared().sharedWithTaskStatusUpdateSuccess(task).toAndroid()
 
 fun TasksUiState.withTaskStatusUpdateFailure(
     previousTask: TaskSummary,
     errorCode: String
-): TasksUiState {
-    val contentState = loadState as? ScreenLoadState.Content
-    return copy(
-        loadState =
-            if (contentState != null) {
-                ScreenLoadState.Content(contentState.data.withTask(previousTask))
-            } else {
-                loadState
-            },
-        statusUpdatingTaskId = null,
-        statusUpdateErrorCode = errorCode
+): TasksUiState =
+    toShared()
+        .sharedWithTaskStatusUpdateFailure(previousTask = previousTask, errorCode = errorCode)
+        .toAndroid()
+
+private fun TasksUiState.toShared(): SharedTasksUiState =
+    SharedTasksUiState(
+        loadState = loadState.toShared(),
+        selectedFilter = selectedFilter,
+        availableFilters = availableFilters,
+        navigationErrorCode = navigationErrorCode,
+        refreshing = refreshing,
+        statusUpdatingTaskId = statusUpdatingTaskId,
+        statusUpdateErrorCode = statusUpdateErrorCode
     )
-}
 
-private fun TasksContent.withTask(task: TaskSummary): TasksContent {
-    val nextTasks =
-        if (tasks.any { it.id == task.id }) {
-            tasks.map { current -> if (current.id == task.id) task else current }
-        } else {
-            tasks + task
-        }
-    return copy(tasks = nextTasks, summaryCounts = nextTasks.summaryCounts())
-}
+private fun SharedTasksUiState.toAndroid(): TasksUiState =
+    TasksUiState(
+        loadState = loadState.toAndroid(),
+        selectedFilter = selectedFilter,
+        availableFilters = availableFilters,
+        navigationErrorCode = navigationErrorCode,
+        refreshing = refreshing,
+        statusUpdatingTaskId = statusUpdatingTaskId,
+        statusUpdateErrorCode = statusUpdateErrorCode
+    )
 
-private fun TasksContent.withTaskStatus(
-    taskId: String,
-    status: TaskStatus
-): TasksContent {
-    val nextTasks =
-        tasks.map { task ->
-            if (task.id.value == taskId) task.copy(status = status) else task
-        }
-    return copy(tasks = nextTasks, summaryCounts = nextTasks.summaryCounts())
-}
+private fun ScreenLoadState<TasksContent>.toShared(): SharedScreenLoadState<SharedTasksContent> =
+    when (this) {
+        is ScreenLoadState.Content ->
+            SharedScreenLoadState.Content(
+                SharedTasksContent(
+                    summaryCounts = data.summaryCounts,
+                    tasks = data.tasks
+                )
+            )
+        is ScreenLoadState.Empty -> SharedScreenLoadState.Empty(reason)
+        is ScreenLoadState.Error -> SharedScreenLoadState.Error(error)
+        is ScreenLoadState.NoPermission -> SharedScreenLoadState.NoPermission(blocker)
+        ScreenLoadState.Loading -> SharedScreenLoadState.Loading
+    }
 
-private fun List<TaskSummary>.summaryCounts(): Map<TaskStatus, Int> =
-    TaskStatus.entries.associateWith { status -> count { it.status == status } }
+private fun SharedScreenLoadState<SharedTasksContent>.toAndroid(): ScreenLoadState<TasksContent> =
+    when (this) {
+        is SharedScreenLoadState.Content ->
+            ScreenLoadState.Content(
+                TasksContent(
+                    summaryCounts = data.summaryCounts,
+                    tasks = data.tasks
+                )
+            )
+        is SharedScreenLoadState.Empty -> ScreenLoadState.Empty(reason)
+        is SharedScreenLoadState.Error -> ScreenLoadState.Error(error)
+        is SharedScreenLoadState.NoPermission -> ScreenLoadState.NoPermission(blocker)
+        SharedScreenLoadState.Loading -> ScreenLoadState.Loading
+    }
