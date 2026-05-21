@@ -76,8 +76,8 @@ private val ChannelRowHorizontalPadding = 8.dp
 private val SectionChevronSize = 12.dp
 private val MiniActionSize = 30.dp
 private val MiniActionIconSize = 16.dp
-private val CountPillMinWidth = 20.dp
-private val CountPillHeight = 18.dp
+private val CountPillMinWidth = 18.dp
+private val CountPillHeight = 16.dp
 private val HomeUnreadBadgeRadius = 4.dp
 private val HomeListHorizontalPadding = SlockSpacing.Md
 private val HomePanelShadowOffset = 4.dp
@@ -961,6 +961,7 @@ private fun HomeUnreadBadge(text: String, color: Color = SlockColor.AccentPink) 
             text,
             style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp, lineHeight = 10.sp),
             color = SlockColor.SurfaceWhite,
+            modifier = Modifier.offset(y = 1.dp),
             maxLines = 1,
             textAlign = TextAlign.Center
         )
