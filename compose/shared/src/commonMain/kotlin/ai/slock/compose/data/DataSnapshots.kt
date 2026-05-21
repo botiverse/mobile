@@ -1,7 +1,9 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.*
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class InboxItem(
     val key: String,
     val kind: InboxItemKind,
@@ -31,6 +33,7 @@ data class InboxItem(
     val taskClaimedByName: String? = null
 )
 
+@Serializable
 data class HomeSnapshot(
     val server: ServerSummary,
     val currentMember: MemberProfile,
@@ -271,6 +274,7 @@ data class ChannelDeleteResult(
     val deleted: Boolean = true
 )
 
+@Serializable
 data class ChannelUnreadSnapshot(
     val server: ServerSummary,
     val unreadCounts: Map<ChannelId, Int>,

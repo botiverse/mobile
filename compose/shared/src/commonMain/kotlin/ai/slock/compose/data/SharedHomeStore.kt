@@ -90,12 +90,29 @@ class SharedHomeStore(
             val activeSession = authStore.readSession() ?: session
             _state.value = _state.value.copy(content = _state.value.content.asRefreshing(activeSession))
             val activeServerId = requestedServerId ?: activeSession.currentServerId
+            val activeServer = activeServerId?.let(::ServerId)
+            when (val cached = dataSource.readCachedHome(serverId = activeServer)) {
+                is DataResult.Content -> {
+                    val latestSwitch = _state.value.serverSwitchState
+                    val cachedServerId = cached.data.server.id
+                    if (latestSwitch.isCurrent(request.requestGeneration, cachedServerId)) {
+                        _state.value =
+                            _state.value.copy(
+                                content = SharedHomeContentState.Content(cached.data, activeSession, contentRefreshing = true),
+                                serverSwitchState = latestSwitch.complete(request.requestGeneration, cachedServerId)
+                            )
+                    }
+                }
+                is DataResult.Empty,
+                is DataResult.Error,
+                is DataResult.NoPermission -> Unit
+            }
             val result =
-                when (val result = dataSource.loadHome(serverId = activeServerId?.let(::ServerId), priority = DataRequestPriority.Visible)) {
+                when (val result = dataSource.loadHome(serverId = activeServer, priority = DataRequestPriority.Visible)) {
                     is DataResult.Content -> SharedHomeContentState.Content(result.data, activeSession)
                     is DataResult.Empty -> SharedHomeContentState.Empty(activeSession)
-                    is DataResult.Error -> SharedHomeContentState.Error(result.error.code)
-                    is DataResult.NoPermission -> SharedHomeContentState.Error(result.blocker.code)
+                    is DataResult.Error -> _state.value.content.asRefreshFailed(result.error.code)
+                    is DataResult.NoPermission -> _state.value.content.asRefreshFailed(result.blocker.code)
                 }
             val resultServerId = (result as? SharedHomeContentState.Content)?.snapshot?.server?.id
                 ?: activeServerId?.let(::ServerId)

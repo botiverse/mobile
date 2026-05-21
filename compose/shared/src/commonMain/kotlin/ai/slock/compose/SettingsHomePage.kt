@@ -5,8 +5,10 @@ import ai.slock.compose.data.BridgeAuthApi
 import ai.slock.compose.data.BridgeHomeApi
 import ai.slock.compose.data.BridgeMembersApi
 import ai.slock.compose.data.BridgeTasksApi
+import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklyRelationalStore
+import ai.slock.compose.data.RelationalComposeLocalDataStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthErrorCode
 import ai.slock.compose.data.SharedAuthResult
@@ -246,7 +248,15 @@ private fun SlockAppShellContent() {
     var selectedSettingsDestination by remember { mutableStateOf(SettingsDestinationHome) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val authStore = remember { KuiklyAuthSessionStore(KuiklyRelationalStore(bridge)) }
+    val relationalStore = remember { KuiklyRelationalStore(bridge) }
+    val authStore = remember { KuiklyAuthSessionStore(relationalStore) }
+    val localWriteThrough =
+        remember {
+            ComposeLocalWriteThrough(
+                RelationalComposeLocalDataStore(relationalStore),
+                logger = { message -> bridge.log("shared_home_cache $message") }
+            )
+        }
     val authDataSource =
         remember {
             SharedAuthDataSource(
@@ -259,6 +269,7 @@ private fun SlockAppShellContent() {
             SharedHomeDataSource(
                 sessionStore = authStore,
                 api = BridgeHomeApi(bridge, authStore),
+                localWriteThrough = localWriteThrough,
                 parseHome = { payload, session ->
                     parseSlockHome(payload, session) { message -> bridge.log(message) }
                 }

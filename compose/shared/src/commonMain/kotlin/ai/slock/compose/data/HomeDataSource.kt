@@ -49,6 +49,16 @@ class SharedHomeDataSource(
         localWriteThrough?.writeHomeResult(result, source = "shared_home_data_source")
         return result
     }
+
+    suspend fun readCachedHome(serverId: ServerId? = null): DataResult<HomeSnapshot> {
+        val session = sessionStore.readSession()
+            ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
+        val resolvedServerId = serverId ?: session.currentServerId?.let(::ServerId)
+            ?: return DataResult.Empty(EmptyReason.NoChannels)
+        val cached = localWriteThrough?.readHomeSnapshot(resolvedServerId)
+            ?: return DataResult.Empty(EmptyReason.NoChannels)
+        return DataResult.Content(cached)
+    }
 }
 
 interface SlockHomeApi {

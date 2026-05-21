@@ -79,6 +79,32 @@ class SharedHomeStoreTest {
         scope.cancel()
     }
 
+    @Test
+    fun startUsesCachedHomeAndKeepsContentOnVisibleNetworkError() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(sampleHome(ServerId("server-1")))
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = ThrowingHomeApi(),
+                    localWriteThrough = ComposeLocalWriteThrough(localStore),
+                    parseHome = { _, _ -> error("network failure should not parse") }
+                ),
+            scope = scope
+        )
+
+        store.accept(SharedHomeIntent.Start)
+
+        val content = store.state.value.content
+        assertTrue(content is SharedHomeContentState.Content)
+        assertEquals("general", content.snapshot.channels.single().name)
+        assertEquals(false, content.contentRefreshing)
+        scope.cancel()
+    }
+
     private fun source(api: SlockHomeApi): SharedHomeDataSource =
         SharedHomeDataSource(
             sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -117,6 +143,20 @@ class SharedHomeStoreTest {
             calls += "$name:${serverId.value}"
             return HomeNetworkResponse(code = 200, bodyText = "{}")
         }
+    }
+
+    private class ThrowingHomeApi : SlockHomeApi {
+        override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
+            throw IllegalStateException("offline")
+
+        override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse =
+            error("not reached")
+
+        override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
+            error("not reached")
+
+        override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
+            error("not reached")
     }
 
     private fun sampleSession(): StoredAuthSession =

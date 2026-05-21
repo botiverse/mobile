@@ -58,6 +58,26 @@ class HomeDataSourceTest {
     }
 
     @Test
+    fun cachedHomeReadUsesLocalSnapshotWithoutNetwork() = runBlocking {
+        val serverId = ServerId("server-1")
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(sampleHome(serverId))
+        val api = FakeHomeApi()
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = api,
+                localWriteThrough = ComposeLocalWriteThrough(localStore),
+                parseHome = { _, _ -> error("cached read should not parse network") }
+            )
+
+        val result = source.readCachedHome(serverId)
+
+        assertEquals(0, api.calls)
+        assertEquals("general", (result as DataResult.Content).data.channels.single().name)
+    }
+
+    @Test
     fun visibleLoadMapsThrownNetworkFailureToError() = runBlocking {
         val source =
             SharedHomeDataSource(
