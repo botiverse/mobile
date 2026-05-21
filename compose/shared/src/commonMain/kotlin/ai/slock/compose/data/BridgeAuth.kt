@@ -2,6 +2,8 @@ package ai.slock.compose.data
 
 import ai.slock.compose.base.BridgeModule
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.TaskId
+import ai.slock.compose.model.TaskStatus
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -132,6 +134,51 @@ internal class BridgeMembersApi(
                     .put("method", "GET")
                     .put("authorization", "Bearer $token")
                     .put("serverId", serverId)
+            )
+        return HomeNetworkResponse(
+            code = response?.optString("code").orEmpty().toIntOrNull() ?: 0,
+            bodyText = response?.optString("bodyText").takeUnless { it.isNullOrBlank() },
+            errorBodyText = response?.optString("errorBodyText").takeUnless { it.isNullOrBlank() }
+                ?: response?.optString("message").takeUnless { it.isNullOrBlank() }
+        )
+    }
+}
+
+internal class BridgeTasksApi(
+    private val bridge: BridgeModule,
+    private val sessionStore: SlockAuthSessionStore,
+    private val baseUrl: String = AUTH_BASE_URL
+) : SlockTasksApi {
+    override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+        request(path = "tasks/server", serverId = serverId.value)
+
+    override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): HomeNetworkResponse =
+        request(
+            path = "tasks/${taskId.value}/status",
+            method = "PATCH",
+            bodyText = buildSharedTaskStatusBody(status)
+        )
+
+    private suspend fun request(
+        path: String,
+        serverId: String? = null,
+        method: String = "GET",
+        bodyText: String? = null
+    ): HomeNetworkResponse {
+        val session = sessionStore.readSession()
+        val token = session?.accessToken.orEmpty()
+        val resolvedServerId = serverId ?: session?.currentServerId.orEmpty()
+        if (token.isBlank() || resolvedServerId.isBlank()) return HomeNetworkResponse(code = 401, bodyText = null)
+        val response =
+            bridge.authRequest(
+                JSONObject()
+                    .put("url", "${baseUrl.trimEnd('/')}/${path.trimStart('/')}")
+                    .put("method", method)
+                    .put("authorization", "Bearer $token")
+                    .put("serverId", resolvedServerId)
+                    .also { command ->
+                        bodyText?.let { command.put("bodyText", it) }
+                    }
             )
         return HomeNetworkResponse(
             code = response?.optString("code").orEmpty().toIntOrNull() ?: 0,

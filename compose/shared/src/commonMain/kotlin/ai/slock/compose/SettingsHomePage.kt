@@ -4,11 +4,15 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.data.BridgeAuthApi
 import ai.slock.compose.data.BridgeHomeApi
 import ai.slock.compose.data.BridgeMembersApi
+import ai.slock.compose.data.BridgeTasksApi
 import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklyRelationalStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthErrorCode
 import ai.slock.compose.data.SharedAuthResult
+import ai.slock.compose.data.SharedTasksDataSource
+import ai.slock.compose.data.SharedTasksRouteIntent
+import ai.slock.compose.data.SharedTasksViewModel
 import ai.slock.compose.data.SharedHomeContentState
 import ai.slock.compose.data.SharedHomeDataSource
 import ai.slock.compose.data.SharedHomeIntent
@@ -260,6 +264,12 @@ private fun SlockAppShellContent() {
             )
         }
     val membersApi = remember { BridgeMembersApi(bridge, authStore) }
+    val tasksDataSource =
+        remember {
+            SharedTasksDataSource(
+                api = BridgeTasksApi(bridge, authStore)
+            )
+        }
     var authGateState by remember { mutableStateOf<AppShellAuthGateState>(AppShellAuthGateState.Restoring) }
     var authGateNonce by remember { mutableStateOf(0) }
     var activeThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
@@ -271,6 +281,14 @@ private fun SlockAppShellContent() {
             )
         }
     val homeState by homeViewModel.state.collectAsState()
+    val tasksViewModel: SharedTasksViewModel =
+        viewModel(key = "shared-tasks") {
+            SharedTasksViewModel(
+                authStore = authStore,
+                dataSource = tasksDataSource
+            )
+        }
+    val tasksState by tasksViewModel.state.collectAsState()
     val navController = rememberNavController()
     val bottomSafeArea = slockBottomSafeAreaPadding()
     val threadTimeContext = remember(pager.pageData.params.toString()) {
@@ -384,6 +402,12 @@ private fun SlockAppShellContent() {
         onDispose { pager.getBackPressHandler().removeCallback(callback) }
     }
 
+    LaunchedEffect(selectedTab) {
+        if (selectedTab == "tasks") {
+            tasksViewModel.dispatch(SharedTasksRouteIntent.Start)
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = AppShellRouteMain,
@@ -428,10 +452,9 @@ private fun SlockAppShellContent() {
                                 }
                             )
                         }
-                        "tasks" -> AppShellPlaceholderContent(
-                            title = "Tasks",
-                            subtitle = "Shared task surface will mount here",
-                            iconName = "square-check-big"
+                        "tasks" -> SharedTasksScreen(
+                            state = tasksState,
+                            onIntent = tasksViewModel::dispatch
                         )
                         "members" -> SharedMembersScreen(bridge)
                         else ->

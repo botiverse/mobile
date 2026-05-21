@@ -2,7 +2,12 @@ package ai.slock.compose.data
 
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
+import ai.slock.compose.model.ServerId
+import com.tencent.kuikly.lifecycle.ViewModel
+import com.tencent.kuikly.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,6 +54,9 @@ data class TasksBoardColumn(
 )
 
 sealed interface SharedTasksIntent {
+    data object StartLoadingCurrentFilter : SharedTasksIntent
+    data class SetResult(val result: DataResult<TaskSnapshot>, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
+    data class MergeRefreshResult(val result: DataResult<TaskSnapshot>, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
     data class SetContent(val snapshot: TaskSnapshot, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
     data class StartLoading(val filter: TaskStatus? = null) : SharedTasksIntent
     data class RefreshFailed(val errorCode: String) : SharedTasksIntent
@@ -58,12 +66,105 @@ sealed interface SharedTasksIntent {
     data class NavigationFailed(val errorCode: String?) : SharedTasksIntent
 }
 
+sealed interface SharedTasksRouteIntent {
+    data object Start : SharedTasksRouteIntent
+    data object Refresh : SharedTasksRouteIntent
+    data class SelectFilter(val status: TaskStatus?) : SharedTasksRouteIntent
+    data class UpdateStatus(val task: TaskSummary, val status: TaskStatus) : SharedTasksRouteIntent
+    data object ClearNavigationError : SharedTasksRouteIntent
+}
+
 sealed interface TasksPresentationIntent {
     data class SetChannelSelectorExpanded(val expanded: Boolean) : TasksPresentationIntent
     data class ToggleChannel(val channelName: String) : TasksPresentationIntent
     data object ClearChannels : TasksPresentationIntent
     data class SelectMode(val mode: TasksViewMode) : TasksPresentationIntent
     data class PruneUnavailableChannels(val availableChannels: Set<String>) : TasksPresentationIntent
+}
+
+class SharedTasksViewModel(
+    private val authStore: SlockAuthSessionStore,
+    private val dataSource: SharedTasksDataSource
+) : ViewModel() {
+    private val store = SharedTasksStore(scope = viewModelScope)
+    val state: StateFlow<TasksUiState> = store.state
+
+    private var loadJob: Job? = null
+    private var statusJob: Job? = null
+
+    fun dispatch(intent: SharedTasksRouteIntent) {
+        when (intent) {
+            SharedTasksRouteIntent.Start,
+            SharedTasksRouteIntent.Refresh,
+            is SharedTasksRouteIntent.SelectFilter -> {
+                loadJob?.cancel()
+                loadJob =
+                    viewModelScope.launch {
+                        load(intent)
+                    }
+            }
+            is SharedTasksRouteIntent.UpdateStatus -> {
+                statusJob?.cancel()
+                statusJob =
+                    viewModelScope.launch {
+                        updateStatus(intent.task, intent.status)
+                    }
+            }
+            SharedTasksRouteIntent.ClearNavigationError ->
+                store.dispatch(SharedTasksIntent.NavigationFailed(null))
+        }
+    }
+
+    private suspend fun load(intent: SharedTasksRouteIntent) {
+        val selectedFilter =
+            when (intent) {
+                is SharedTasksRouteIntent.SelectFilter -> intent.status
+                else -> state.value.selectedFilter
+            }
+        store.accept(SharedTasksIntent.StartLoading(selectedFilter))
+        try {
+            val serverId =
+                authStore.readSession()?.currentServerId?.let(::ServerId)
+                    ?: run {
+                        store.accept(SharedTasksIntent.RefreshFailed("selected_server_missing"))
+                        return
+            }
+            val result = dataSource.loadTasks(serverId, TaskFilter(statuses = selectedFilter?.let(::setOf) ?: emptySet()))
+            store.accept(
+                if (intent == SharedTasksRouteIntent.Refresh) {
+                    SharedTasksIntent.MergeRefreshResult(result, selectedFilter)
+                } else {
+                    SharedTasksIntent.SetResult(result, selectedFilter)
+                }
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            store.accept(SharedTasksIntent.RefreshFailed("tasks_network"))
+        }
+    }
+
+    private suspend fun updateStatus(task: TaskSummary, status: TaskStatus) {
+        store.accept(SharedTasksIntent.UpdateTaskStatus(task.id.value, status))
+        try {
+            when (val result = dataSource.updateTaskStatus(task.id, status)) {
+                is DataResult.Content -> store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(result.data.task))
+                is DataResult.Empty -> store.accept(SharedTasksIntent.TaskStatusUpdateFailed(task, result.reason.name))
+                is DataResult.Error -> store.accept(SharedTasksIntent.TaskStatusUpdateFailed(task, result.error.code))
+                is DataResult.NoPermission -> store.accept(SharedTasksIntent.TaskStatusUpdateFailed(task, result.blocker.code))
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            store.accept(SharedTasksIntent.TaskStatusUpdateFailed(task, "tasks_status_network"))
+        }
+    }
+
+    override fun onCleared() {
+        loadJob?.cancel()
+        statusJob?.cancel()
+        super.onCleared()
+    }
 }
 
 class SharedTasksStore(
@@ -86,6 +187,9 @@ class SharedTasksStore(
 
 fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
     when (intent) {
+        SharedTasksIntent.StartLoadingCurrentFilter -> withLoading(selectedFilter)
+        is SharedTasksIntent.SetResult -> intent.result.toTasksUiState(intent.selectedFilter)
+        is SharedTasksIntent.MergeRefreshResult -> mergeTasksRefreshResult(intent.result, intent.selectedFilter)
         is SharedTasksIntent.SetContent ->
             TasksUiState(
                 loadState = ScreenLoadState.Content(intent.snapshot.toTasksContent()),

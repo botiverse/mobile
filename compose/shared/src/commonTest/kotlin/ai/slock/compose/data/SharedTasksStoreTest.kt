@@ -226,6 +226,43 @@ class SharedTasksStoreTest {
         assertEquals(null, uuidAssigneeTask.tasksAssigneeDisplayName())
     }
 
+    @Test
+    fun taskNetworkResponseParsesRealPayloadAliasesWithoutPlatformRegex() {
+        val response =
+            HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """
+                    {
+                      "data": [
+                        {
+                          "taskId": "task-65",
+                          "number": 65,
+                          "messagePreview": "Task #65: migrate Android UI to shared MVI",
+                          "taskStatus": "in_review",
+                          "channel": { "id": "channel-kmp", "name": "KMP" },
+                          "claimedById": "agent-kmp",
+                          "claimedByName": "KMP-专家",
+                          "claimedByType": "agent",
+                          "updated_at": "1779360000000"
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+            )
+
+        val result = response.toTasksResult()
+        val content = assertIs<DataResult.Content<TaskSnapshot>>(result)
+        val task = content.data.tasks.single()
+
+        assertEquals("task-65", task.id.value)
+        assertEquals(TaskStatus.InReview, task.status)
+        assertEquals("#65 migrate Android UI to shared MVI", task.tasksDisplayTitle())
+        assertEquals("KMP", task.channelName)
+        assertEquals("KMP-专家", task.tasksAssigneeDisplayName())
+        assertEquals(1, content.data.summaryCounts[TaskStatus.InReview])
+    }
+
     private fun task(
         id: String,
         status: TaskStatus,
