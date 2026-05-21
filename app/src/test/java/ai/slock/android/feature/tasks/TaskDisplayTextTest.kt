@@ -6,6 +6,9 @@ import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.TaskId
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskSummary
+import ai.slock.compose.data.tasksAssigneeDisplayName
+import ai.slock.compose.data.tasksDisplayTitle
+import ai.slock.compose.data.tasksSourceLabel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

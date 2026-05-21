@@ -28,9 +28,6 @@ import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.sample.SlockStateSamples
-import ai.slock.android.feature.tasks.TasksContent
-import ai.slock.android.feature.tasks.TasksPanel
-import ai.slock.android.feature.tasks.TasksUiState
 import ai.slock.android.ui.components.SlockAvatar
 import ai.slock.android.ui.components.SlockAgentStatusIndicator
 import ai.slock.android.ui.components.SlockButton
@@ -504,16 +501,11 @@ fun ThreadScreen(
                         )
                     }
                     if (state.selectedTab == ThreadTab.Tasks) {
-                        TasksPanel(
-                                state = state.tasksState
-                                        ?: loadState.data.tasks.toThreadTasksUiState(),
-                                showChannelFilter = false,
-                                onTaskClick = onOpenTask,
-                                onTaskStatusChange = onTaskStatusChange,
-                                onRetry = onRetryTasks,
+                        Box(
                                 modifier =
                                         Modifier.weight(1f)
                                                 .fillMaxWidth()
+                                                .verticalScroll(rememberScrollState())
                                                 .threadTabSwipe(
                                                         selectedTab = state.selectedTab,
                                                         enabled = showModeTabs,
@@ -522,7 +514,17 @@ fun ThreadScreen(
                                                 .dismissKeyboardOnPointerDown(
                                                         dismissComposerKeyboard
                                                 )
-                        )
+                                                .padding(SlockSpacing.Lg)
+                        ) {
+                            ThreadTaskSummary(
+                                    tasks =
+                                            (state.tasksState?.loadState as?
+                                                            ScreenLoadState.Content)
+                                                    ?.data
+                                                    ?.tasks
+                                                    ?: loadState.data.tasks
+                            )
+                        }
                     } else if (state.selectedTab == ThreadTab.Files) {
                         ThreadFilesPanel(
                                 state = state.filesState,
@@ -4126,20 +4128,6 @@ internal const val THREAD_COMPOSER_SUGGESTIONS_TAG = "thread-composer-suggestion
 internal const val THREAD_INLINE_CODE_TAG = "thread-inline-code"
 internal const val THREAD_MESSAGE_HEADER_DESCRIPTION_TAG = "thread-message-header-description"
 internal const val THREAD_MESSAGE_HEADER_TIME_TAG = "thread-message-header-time"
-
-private fun List<TaskSummary>.toThreadTasksUiState(): TasksUiState =
-        if (isEmpty()) {
-            TasksUiState(ScreenLoadState.Empty(EmptyReason.NoTasks))
-        } else {
-            TasksUiState(
-                    ScreenLoadState.Content(
-                            TasksContent(
-                                    summaryCounts = summaryCounts(),
-                                    tasks = this
-                            )
-                    )
-            )
-        }
 
 private fun List<TaskSummary>.summaryCounts(): Map<TaskStatus, Int> =
         TaskStatus.entries.associateWith { status -> count { it.status == status } }
