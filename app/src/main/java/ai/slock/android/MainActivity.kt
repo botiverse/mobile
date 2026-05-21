@@ -1446,7 +1446,6 @@ private fun SlockAppContent(
     var notificationPermissionGranted by remember {
         mutableStateOf(context.hasNotificationPermission())
     }
-    var serverSwitcherExpanded by rememberSaveable { mutableStateOf(false) }
     var createServerVisible by rememberSaveable { mutableStateOf(false) }
     var createServerName by rememberSaveable { mutableStateOf("") }
     var createServerSlug by rememberSaveable { mutableStateOf("") }
@@ -8528,129 +8527,6 @@ private fun SlockAppContent(
                                             homeRefreshRetryNonce += 1
                                         }
                                     },
-                                    serverSwitcherExpanded = serverSwitcherExpanded,
-                                    onServerSwitcherExpandedChange = {
-                                        serverSwitcherExpanded = it
-                                    },
-                                    onServerSelected = { id ->
-                                        serverSwitcherExpanded = false
-                                        coroutineScope.launch {
-                                            val serverId = ServerId(id)
-                                            selectedServerOverride = serverId
-                                            serverListState =
-                                                    serverListState.selectServerOptimistically(
-                                                            serverId
-                                                    )
-                                            homeRefreshError = null
-                                            homeRefreshErrorLabel = null
-                                            homeRefreshAutoRetryAttempted = false
-                                            manualHomeRefreshRequested = false
-                                            selectedServerRefreshRequested = true
-                                            ai.slock.android.core.data.diagnostics
-                                                    .SlockDiagnosticsLogger.d(
-                                                    "SlockHomeRefresh",
-                                                    "server_switch_start serverId=${serverId.value}"
-                                            )
-                                            if (homeState.loadState is ScreenLoadState.Content) {
-                                                homeRefreshInProgress = true
-                                            } else {
-                                                homeState =
-                                                        HomeUiState(
-                                                                ScreenLoadState.Loading,
-                                                                selectedServerId = id
-                                                        )
-                                            }
-                                            currentAuthSession = authSessionStore.readSession()
-                                            clearInboxRouteCachesForServerSwitch()
-                                            setInboxState(inboxState.withBodyLoading(inboxFilter))
-                                            setFollowedThreadsState(
-                                                    followedThreadsState.withBodyLoading()
-                                            )
-                                            setSavedState(savedState.withBodyLoading())
-                                            setSearchState(
-                                                    if (searchQuery.isBlank()) {
-                                                        InboxUiState(
-                                                                ScreenLoadState.Empty(
-                                                                        EmptyReason.NoSearchResults
-                                                                )
-                                                        )
-                                                    } else {
-                                                        searchState.withBodyLoading()
-                                                    },
-                                                    query = searchQuery
-                                            )
-                                            val previousServerListState = serverListState
-                                            val selectedServerListState =
-                                                    serverRepository
-                                                            .selectServer(serverId)
-                                                            .toScreenLoadState()
-                                                            .withPreservedUnreadCounts(
-                                                                    previousServerListState
-                                                            )
-                                            val oldUnread =
-                                                    previousServerListState.serverUnreadFor(
-                                                            serverId
-                                                    )
-                                            val newUnread =
-                                                    selectedServerListState.serverUnreadFor(
-                                                            serverId
-                                                    )
-                                            serverListState = selectedServerListState
-                                            currentAuthSession = authSessionStore.readSession()
-                                            ai.slock.android.core.data.diagnostics
-                                                    .SlockDiagnosticsLogger.d(
-                                                    "SlockHomeRefresh",
-                                                    "server_switch_result serverId=${serverId.value} result=${selectedServerListState.logName()} code=${selectedServerListState.diagnosticCode()}"
-                                            )
-                                            ai.slock.android.core.data.diagnostics
-                                                    .SlockDiagnosticsLogger.d(
-                                                    "SlockUnread",
-                                                    "server_switch_merge source=switch serverId=${serverId.value} old=${oldUnread ?: -1} new=${newUnread ?: -1} result=${selectedServerListState.logName()}"
-                                            )
-                                            if (selectedServerListState !is ScreenLoadState.Content
-                                            ) {
-                                                homeRefreshInProgress = false
-                                                selectedServerRefreshRequested = false
-                                                homeRefreshError =
-                                                        selectedServerListState.refreshErrorCode()
-                                                homeRefreshErrorLabel =
-                                                        selectedServerListState.refreshErrorLabel()
-                                                ai.slock.android.core.data.diagnostics
-                                                        .SlockDiagnosticsLogger.w(
-                                                        "SlockHomeRefresh",
-                                                        "ui_error source=server_switch serverId=${serverId.value} result=${selectedServerListState.logName()} code=${selectedServerListState.diagnosticCode()} retryAttempted=false"
-                                                )
-                                            }
-                                        }
-                                    },
-                                    onCreateServerClick = {
-                                        serverSwitcherExpanded = false
-                                        createServerVisible = true
-                                    },
-                                    onCreateChannelClick = {
-                                        serverSwitcherExpanded = false
-                                        createChannelVisible = true
-                                        createChannelError = null
-                                        val selectedServerId =
-                                                selectedServerOverride
-                                                        ?: (serverListState as? ScreenLoadState.Content)
-                                                                ?.data
-                                                                ?.selectedServer
-                                                                ?.id
-                                                        ?: currentAuthSession
-                                                                ?.currentServerId
-                                                                ?.let(::ServerId)
-                                        if (selectedServerId != null) {
-                                            membersState =
-                                                    MembersUiState(ScreenLoadState.Loading)
-                                            coroutineScope.launch {
-                                                membersState =
-                                                        memberRepository
-                                                                .getMembers(SlockRequestPriority.Visible, selectedServerId)
-                                                                .toMembersUiState()
-                                            }
-                                        }
-                                    },
                                     onSend = {
                                         if (selectedThreadState.composerState.status != ComposerStatus.Sending &&
                                                         selectedThreadState.composerState.status !=
@@ -10467,11 +10343,6 @@ private fun HomeRouteScreen(
         onHomeNotificationView: (SlockHomeNotificationItem) -> Unit,
         onHomeNotificationDismiss: (SlockHomeNotificationItem) -> Unit,
         onHomeRefresh: () -> Unit,
-        serverSwitcherExpanded: Boolean,
-        onServerSwitcherExpandedChange: (Boolean) -> Unit,
-        onServerSelected: (String) -> Unit,
-        onCreateServerClick: () -> Unit,
-        onCreateChannelClick: () -> Unit,
         onSend: () -> Unit,
         onLoadOlderThreadMessages: (MessageId?, Int) -> Unit,
         onLoadNewerThreadMessages: () -> Unit,
@@ -10526,11 +10397,6 @@ private fun HomeRouteScreen(
                         homeRefreshError = homeRefreshError,
                         homeRefreshErrorLabel = homeRefreshErrorLabel,
                         onHomeRefresh = onHomeRefresh,
-                        serverSwitcherExpanded = serverSwitcherExpanded,
-                        onServerSwitcherExpandedChange = onServerSwitcherExpandedChange,
-                        onServerSelected = onServerSelected,
-                        onCreateServerClick = onCreateServerClick,
-                        onCreateChannelClick = onCreateChannelClick,
                         adaptiveLayoutInfo = adaptiveLayoutInfo,
                         showNavigation = showNavigation
                 )
@@ -11548,11 +11414,6 @@ private fun HomeShellScreen(
         homeRefreshError: String?,
         homeRefreshErrorLabel: String?,
         onHomeRefresh: () -> Unit,
-        serverSwitcherExpanded: Boolean,
-        onServerSwitcherExpandedChange: (Boolean) -> Unit,
-        onServerSelected: (String) -> Unit,
-        onCreateServerClick: () -> Unit,
-        onCreateChannelClick: () -> Unit,
         adaptiveLayoutInfo: SlockAdaptiveAppLayoutInfo,
         showNavigation: Boolean
 ) {
