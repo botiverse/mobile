@@ -23,6 +23,25 @@ data class TasksContent(
     val tasks: List<TaskSummary>
 )
 
+enum class TasksViewMode {
+    Board,
+    List
+}
+
+data class TasksPresentationState(
+    val selectedChannelNames: Set<String> = emptySet(),
+    val channelSelectorExpanded: Boolean = false,
+    val selectedMode: TasksViewMode = TasksViewMode.Board
+)
+
+data class TasksVisibleContent(
+    val channelOptions: List<String>,
+    val selectedChannelNames: Set<String>,
+    val channelScopedContent: TasksContent,
+    val filteredContent: TasksContent,
+    val filteredTasks: List<TaskSummary>
+)
+
 sealed interface SharedTasksIntent {
     data class SetContent(val snapshot: TaskSnapshot, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
     data class StartLoading(val filter: TaskStatus? = null) : SharedTasksIntent
@@ -31,6 +50,14 @@ sealed interface SharedTasksIntent {
     data class TaskStatusUpdateSucceeded(val task: TaskSummary) : SharedTasksIntent
     data class TaskStatusUpdateFailed(val previousTask: TaskSummary, val errorCode: String) : SharedTasksIntent
     data class NavigationFailed(val errorCode: String?) : SharedTasksIntent
+}
+
+sealed interface TasksPresentationIntent {
+    data class SetChannelSelectorExpanded(val expanded: Boolean) : TasksPresentationIntent
+    data class ToggleChannel(val channelName: String) : TasksPresentationIntent
+    data object ClearChannels : TasksPresentationIntent
+    data class SelectMode(val mode: TasksViewMode) : TasksPresentationIntent
+    data class PruneUnavailableChannels(val availableChannels: Set<String>) : TasksPresentationIntent
 }
 
 class SharedTasksStore(
@@ -70,6 +97,63 @@ fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
             )
         is SharedTasksIntent.NavigationFailed -> copy(navigationErrorCode = intent.errorCode)
     }
+
+fun TasksPresentationState.reduce(intent: TasksPresentationIntent): TasksPresentationState =
+    when (intent) {
+        is TasksPresentationIntent.SetChannelSelectorExpanded -> copy(channelSelectorExpanded = intent.expanded)
+        is TasksPresentationIntent.ToggleChannel ->
+            copy(
+                selectedChannelNames =
+                    if (intent.channelName in selectedChannelNames) {
+                        selectedChannelNames - intent.channelName
+                    } else {
+                        selectedChannelNames + intent.channelName
+                    }
+            )
+        TasksPresentationIntent.ClearChannels -> copy(selectedChannelNames = emptySet())
+        is TasksPresentationIntent.SelectMode -> copy(selectedMode = intent.mode)
+        is TasksPresentationIntent.PruneUnavailableChannels ->
+            copy(selectedChannelNames = selectedChannelNames.filter { it in intent.availableChannels }.toSet())
+    }
+
+fun TasksContent.visibleContent(
+    selectedFilter: TaskStatus?,
+    presentationState: TasksPresentationState,
+    showChannelFilter: Boolean
+): TasksVisibleContent {
+    val channelOptions =
+        tasks
+            .mapNotNull { it.channelName }
+            .distinct()
+            .sorted()
+    val selectedChannels =
+        if (showChannelFilter) {
+            presentationState.selectedChannelNames.filter { it in channelOptions }.toSet()
+        } else {
+            emptySet()
+        }
+    val channelScopedTasks =
+        tasks.filter { task ->
+            selectedChannels.isEmpty() || task.channelName in selectedChannels
+        }
+    val channelScopedContent =
+        copy(
+            summaryCounts = channelScopedTasks.summaryCounts(),
+            tasks = channelScopedTasks
+        )
+    val filteredTasks =
+        channelScopedTasks.filter { task ->
+            selectedFilter == null || task.status == selectedFilter
+        }
+    val filteredContent = channelScopedContent.copy(tasks = filteredTasks)
+    return TasksVisibleContent(
+        channelOptions = channelOptions,
+        selectedChannelNames = selectedChannels,
+        channelScopedContent = channelScopedContent,
+        filteredContent = filteredContent,
+        filteredTasks = filteredTasks
+    )
+}
 
 fun TasksUiState.withLoading(filter: TaskStatus? = selectedFilter): TasksUiState =
     if (loadState is ScreenLoadState.Content) {
@@ -175,5 +259,5 @@ private fun TasksContent.withTaskStatus(
     return copy(tasks = nextTasks, summaryCounts = nextTasks.summaryCounts())
 }
 
-private fun List<TaskSummary>.summaryCounts(): Map<TaskStatus, Int> =
+fun List<TaskSummary>.summaryCounts(): Map<TaskStatus, Int> =
     TaskStatus.entries.associateWith { status -> count { it.status == status } }

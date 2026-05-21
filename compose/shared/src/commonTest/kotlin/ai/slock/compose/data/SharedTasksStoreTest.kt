@@ -93,7 +93,47 @@ class SharedTasksStoreTest {
         assertEquals(1, content.summaryCounts[TaskStatus.InProgress])
     }
 
-    private fun task(id: String, status: TaskStatus): TaskSummary =
+    @Test
+    fun presentationReducerPrunesChannelsAndFiltersVisibleTasks() {
+        val content =
+            TasksContent(
+                summaryCounts = emptyMap(),
+                tasks =
+                    listOf(
+                        task("task-1", TaskStatus.Todo, channelName = "android"),
+                        task("task-2", TaskStatus.InReview, channelName = "kmp"),
+                        task("task-3", TaskStatus.Todo, channelName = "kmp")
+                    )
+            )
+
+        val presentation =
+            TasksPresentationState()
+                .reduce(TasksPresentationIntent.ToggleChannel("kmp"))
+                .reduce(TasksPresentationIntent.ToggleChannel("missing"))
+                .reduce(TasksPresentationIntent.PruneUnavailableChannels(setOf("android", "kmp")))
+                .reduce(TasksPresentationIntent.SelectMode(TasksViewMode.List))
+
+        val visible =
+            content.visibleContent(
+                selectedFilter = TaskStatus.Todo,
+                presentationState = presentation,
+                showChannelFilter = true
+            )
+
+        assertEquals(TasksViewMode.List, presentation.selectedMode)
+        assertEquals(setOf("kmp"), visible.selectedChannelNames)
+        assertEquals(listOf("android", "kmp"), visible.channelOptions)
+        assertEquals(listOf("task-3"), visible.filteredTasks.map { it.id.value })
+        assertEquals(2, visible.channelScopedContent.tasks.size)
+        assertEquals(1, visible.channelScopedContent.summaryCounts[TaskStatus.Todo])
+        assertEquals(1, visible.channelScopedContent.summaryCounts[TaskStatus.InReview])
+    }
+
+    private fun task(
+        id: String,
+        status: TaskStatus,
+        channelName: String? = null
+    ): TaskSummary =
         TaskSummary(
             id = TaskId(id),
             title = "Task $id",
@@ -101,6 +141,7 @@ class SharedTasksStoreTest {
             taskNumber = id.substringAfter("task-").toIntOrNull(),
             messageId = MessageId("message-$id"),
             channelId = ChannelId("channel-1"),
+            channelName = channelName,
             updatedAtLabel = "now"
         )
 }

@@ -75,6 +75,13 @@ import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
 import ai.slock.android.ui.theme.SlockType
 import ai.slock.android.ui.theme.slockHardShadow
+import ai.slock.compose.data.TasksPresentationIntent
+import ai.slock.compose.data.TasksPresentationState
+import ai.slock.compose.data.TasksViewMode
+import ai.slock.compose.data.reduce
+import ai.slock.compose.data.visibleContent
+import ai.slock.compose.data.TasksContent as SharedTasksContent
+import ai.slock.compose.data.TasksVisibleContent as SharedTasksVisibleContent
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -215,50 +222,34 @@ private fun TasksLoadedBody(
     showChannelFilter: Boolean,
     refreshing: Boolean
 ) {
-    val channelOptions = remember(content.tasks) {
-        content.tasks
-            .mapNotNull { it.channelName }
-            .distinct()
-            .sorted()
+    var presentationState by remember { mutableStateOf(TasksPresentationState()) }
+    val sortedContent = remember(content) {
+        content.copy(tasks = content.tasks.sortedByRecentTaskTime())
     }
-    var selectedChannelNames by rememberSaveable { mutableStateOf(emptySet<String>()) }
-    var channelSelectorExpanded by rememberSaveable { mutableStateOf(false) }
-    val selectedChannels =
-        if (showChannelFilter) {
-            selectedChannelNames.filter { it in channelOptions }.toSet()
-        } else {
-            emptySet()
-        }
-    val channelScopedTasks = remember(content.tasks, selectedChannels) {
-        content.tasks
-            .filter { task -> selectedChannels.isEmpty() || task.channelName in selectedChannels }
-            .sortedByRecentTaskTime()
+    val visibleContent = remember(sortedContent, state.selectedFilter, presentationState, showChannelFilter) {
+        sortedContent.toShared().visibleContent(
+            selectedFilter = state.selectedFilter,
+            presentationState = presentationState,
+            showChannelFilter = showChannelFilter
+        ).toAndroid()
     }
-    val channelScopedContent = remember(channelScopedTasks, content) {
-        content.copy(
-            summaryCounts = TaskStatus.entries.associateWith { status ->
-                channelScopedTasks.count { it.status == status }
-            },
-            tasks = channelScopedTasks
-        )
-    }
-    val filteredTasks = remember(channelScopedTasks, state.selectedFilter) {
-        channelScopedTasks.filter { task ->
-            state.selectedFilter == null || task.status == state.selectedFilter
+    LaunchedEffect(visibleContent.channelOptions) {
+        val nextState =
+            presentationState.reduce(
+                TasksPresentationIntent.PruneUnavailableChannels(visibleContent.channelOptions.toSet())
+            )
+        if (nextState != presentationState) {
+            presentationState = nextState
         }
     }
-    val filteredContent = remember(channelScopedContent, filteredTasks) {
-        channelScopedContent.copy(tasks = filteredTasks)
-    }
-    var selectedMode by rememberSaveable { mutableStateOf(TasksViewMode.Board) }
-    var renderedMode by rememberSaveable { mutableStateOf(selectedMode) }
-    LaunchedEffect(selectedMode) {
-        if (renderedMode != selectedMode) {
+    var renderedMode by remember { mutableStateOf(presentationState.selectedMode) }
+    LaunchedEffect(presentationState.selectedMode) {
+        if (renderedMode != presentationState.selectedMode) {
             delay(80)
-            renderedMode = selectedMode
+            renderedMode = presentationState.selectedMode
         }
     }
-    val modeSwitching = renderedMode != selectedMode
+    val modeSwitching = renderedMode != presentationState.selectedMode
     val listFilterScrollState = rememberScrollState()
     val boardScrollState = rememberScrollState()
 
@@ -270,7 +261,7 @@ private fun TasksLoadedBody(
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
         item(key = "summary") {
-            TasksSummaryBar(content = channelScopedContent, copy = copy)
+            TasksSummaryBar(content = visibleContent.channelScopedContent, copy = copy)
         }
         state.navigationErrorCode?.let { code ->
             item(key = "navigation-error") {
@@ -293,34 +284,38 @@ private fun TasksLoadedBody(
                 state = state,
                 copy = copy,
                 filterScrollState = listFilterScrollState,
-                channelOptions = channelOptions,
-                selectedChannelNames = selectedChannels,
-                channelSelectorExpanded = channelSelectorExpanded,
-                selectedMode = selectedMode,
+                channelOptions = visibleContent.channelOptions,
+                selectedChannelNames = visibleContent.selectedChannelNames,
+                channelSelectorExpanded = presentationState.channelSelectorExpanded,
+                selectedMode = presentationState.selectedMode,
                 showChannelFilter = showChannelFilter,
                 onFilterSelected = onFilterSelected,
-                onChannelSelectorExpandedChange = { channelSelectorExpanded = it },
-                onChannelToggled = { channelName ->
-                    selectedChannelNames = if (channelName in selectedChannels) {
-                        selectedChannels - channelName
-                    } else {
-                        selectedChannels + channelName
-                    }
+                onChannelSelectorExpandedChange = { expanded ->
+                    presentationState =
+                        presentationState.reduce(TasksPresentationIntent.SetChannelSelectorExpanded(expanded))
                 },
-                onClearChannels = { selectedChannelNames = emptySet() },
-                onModeSelected = { selectedMode = it }
+                onChannelToggled = { channelName ->
+                    presentationState =
+                        presentationState.reduce(TasksPresentationIntent.ToggleChannel(channelName))
+                },
+                onClearChannels = {
+                    presentationState = presentationState.reduce(TasksPresentationIntent.ClearChannels)
+                },
+                onModeSelected = { mode ->
+                    presentationState = presentationState.reduce(TasksPresentationIntent.SelectMode(mode))
+                }
             )
         }
         if (refreshing || modeSwitching) {
             item(key = "loading-section") {
-                TasksContentLoadingSection(mode = selectedMode, copy = copy)
+                TasksContentLoadingSection(mode = presentationState.selectedMode, copy = copy)
             }
         } else {
             when (renderedMode) {
                 TasksViewMode.Board ->
                     item(key = "board-section") {
                         TasksBoardSection(
-                            content = filteredContent,
+                            content = visibleContent.filteredContent,
                             copy = copy,
                             boardScrollState = boardScrollState,
                             onTaskClick = onTaskClick,
@@ -330,7 +325,7 @@ private fun TasksLoadedBody(
                     }
                 TasksViewMode.List ->
                     tasksListSection(
-                        tasks = filteredTasks,
+                        tasks = visibleContent.filteredTasks,
                         copy = copy,
                         onTaskClick = onTaskClick,
                         onTaskStatusChange = onTaskStatusChange,
@@ -785,11 +780,6 @@ private fun TasksModeButton(
     }
 }
 
-private enum class TasksViewMode {
-    Board,
-    List
-}
-
 @Composable
 private fun TasksCompactAction(
     label: String,
@@ -1049,6 +1039,35 @@ private data class TasksBoardData(
     val columns: Map<SlockTaskStatus, List<SlockTaskCardData>>,
     val totalCounts: Map<SlockTaskStatus, Int>
 )
+
+private data class TasksVisibleContent(
+    val channelOptions: List<String>,
+    val selectedChannelNames: Set<String>,
+    val channelScopedContent: TasksContent,
+    val filteredContent: TasksContent,
+    val filteredTasks: List<TaskSummary>
+)
+
+private fun TasksContent.toShared(): SharedTasksContent =
+    SharedTasksContent(
+        summaryCounts = summaryCounts,
+        tasks = tasks
+    )
+
+private fun SharedTasksVisibleContent.toAndroid(): TasksVisibleContent =
+    TasksVisibleContent(
+        channelOptions = channelOptions,
+        selectedChannelNames = selectedChannelNames,
+        channelScopedContent = channelScopedContent.toAndroid(),
+        filteredContent = filteredContent.toAndroid(),
+        filteredTasks = filteredTasks
+    )
+
+private fun SharedTasksContent.toAndroid(): TasksContent =
+    TasksContent(
+        summaryCounts = summaryCounts,
+        tasks = tasks
+    )
 
 private fun TasksContent.toTaskBoardData(
     copy: TasksScreenCopy,
