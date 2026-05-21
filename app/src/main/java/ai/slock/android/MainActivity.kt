@@ -62,8 +62,6 @@ import ai.slock.android.core.data.repository.ChannelFilesSnapshot
 import ai.slock.android.core.data.repository.ConnectedAccountSnapshot
 import ai.slock.android.core.data.repository.ConnectedAccountStatus as RepositoryConnectedAccountStatus
 import ai.slock.android.core.data.repository.ConversationRepository
-import ai.slock.android.core.data.repository.CreateChannelRequest
-import ai.slock.android.core.data.repository.CreateServerRequest
 import ai.slock.compose.data.DataResult
 import ai.slock.android.core.data.repository.HomeSnapshot
 import ai.slock.android.core.data.repository.InboxSnapshot
@@ -258,9 +256,6 @@ import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.components.SlockErrorState
 import ai.slock.android.ui.icons.LucideIcons
-import ai.slock.android.ui.components.SlockMemberPickerSection
-import ai.slock.android.ui.components.SlockMemberPickerMessage
-import ai.slock.android.ui.components.SlockMemberPickerItem
 import ai.slock.compose.markdown.ThreadMarkdownTag
 import ai.slock.compose.markdown.ThreadMarkdownTagKind
 import ai.slock.compose.markdown.threadMarkdownTaskReferenceKey
@@ -277,7 +272,6 @@ import ai.slock.android.ui.components.SlockLargeScreenNavigationStyle
 import ai.slock.android.ui.components.SlockTextField
 import ai.slock.android.ui.components.SlockWorkspaceTreeState
 import ai.slock.android.ui.components.SlockWindowLayoutMode
-import ai.slock.android.ui.components.toSlockMemberPickerItem
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockRadius
 import ai.slock.android.ui.theme.SlockShadow
@@ -1073,7 +1067,6 @@ private fun SlockAppContent(
     var homeRefreshRetryNonce by rememberSaveable { mutableStateOf(0) }
     var homeRefreshAutoRetryAttempted by rememberSaveable { mutableStateOf(false) }
     var manualHomeRefreshRequested by rememberSaveable { mutableStateOf(false) }
-    var selectedServerRefreshRequested by rememberSaveable { mutableStateOf(false) }
     var homeResumeRefreshNonce by remember { mutableStateOf(0) }
     var handledHomeResumeRefreshNonce by remember { mutableStateOf(0) }
     var homeProgressivePrefetchedThreadIdsByServer by remember {
@@ -1446,23 +1439,6 @@ private fun SlockAppContent(
     var notificationPermissionGranted by remember {
         mutableStateOf(context.hasNotificationPermission())
     }
-    var createServerVisible by rememberSaveable { mutableStateOf(false) }
-    var createServerName by rememberSaveable { mutableStateOf("") }
-    var createServerSlug by rememberSaveable { mutableStateOf("") }
-    var createServerSubmitting by rememberSaveable { mutableStateOf(false) }
-    var createServerError by rememberSaveable { mutableStateOf<String?>(null) }
-    var serverGateMode by rememberSaveable { mutableStateOf(ServerGateMode.Choose) }
-    var serverGateSubmitting by rememberSaveable { mutableStateOf(false) }
-    var serverGateError by rememberSaveable { mutableStateOf<String?>(null) }
-    var createChannelVisible by rememberSaveable { mutableStateOf(false) }
-    var createChannelName by rememberSaveable { mutableStateOf("") }
-    var createChannelDescription by rememberSaveable { mutableStateOf("") }
-    var createChannelAgentMemberIds by rememberSaveable {
-        mutableStateOf<List<String>>(emptyList())
-    }
-    var createChannelUserMemberIds by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
-    var createChannelSubmitting by rememberSaveable { mutableStateOf(false) }
-    var createChannelError by rememberSaveable { mutableStateOf<String?>(null) }
     var appInForeground by remember { mutableStateOf(true) }
     var networkAvailable by remember { mutableStateOf(context.hasUsableNetwork()) }
     var networkResumeNonce by remember { mutableStateOf(0) }
@@ -1881,40 +1857,6 @@ private fun SlockAppContent(
         settingsSelectedComputerId = null
         selectedServerOverride = null
         serverListState = ScreenLoadState.Loading
-        serverGateMode = ServerGateMode.Choose
-        serverGateSubmitting = false
-        serverGateError = null
-    }
-
-    fun enterSelectedServer(snapshot: ServerListSnapshot) {
-        val selected = snapshot.selectedServer ?: snapshot.servers.firstOrNull() ?: return
-        selectedServerOverride = selected.id
-        serverListState = ScreenLoadState.Content(snapshot.copy(selectedServer = selected))
-        destination = AppDestination.Home
-        homeRoute = HomeRoute.Shell
-        previousHomeRoute = null
-        homeRefreshError = null
-        homeRefreshErrorLabel = null
-        homeRefreshAutoRetryAttempted = false
-        manualHomeRefreshRequested = false
-        selectedServerRefreshRequested = true
-        homeState = HomeUiState(ScreenLoadState.Loading, selectedServerId = selected.id.value)
-        clearInboxRouteCachesForServerSwitch()
-        setInboxState(inboxState.withBodyLoading(inboxFilter))
-        setFollowedThreadsState(followedThreadsState.withBodyLoading())
-        setSavedState(savedState.withBodyLoading())
-        setSearchState(
-                if (searchQuery.isBlank()) {
-                    InboxUiState(ScreenLoadState.Empty(EmptyReason.NoSearchResults))
-                } else {
-                    searchState.withBodyLoading()
-                },
-                query = searchQuery
-        )
-        serverGateMode = ServerGateMode.Choose
-        serverGateSubmitting = false
-        serverGateError = null
-        homeResumeRefreshNonce += 1
     }
 
     fun signOutFromAuthenticated(source: String) {
@@ -5771,128 +5713,10 @@ private fun SlockAppContent(
         return
     }
 
-    LaunchedEffect(authState, serverRepository) {
-        if (authState is AuthUiState.Authenticated) {
-            serverListState = serverRepository.getServers().toScreenLoadState()
-            currentAuthSession = authSessionStore.readSession()
-            selectedServerOverride = null
-            serverGateMode = ServerGateMode.Choose
-            serverGateError = null
-        }
-    }
-
-    val sessionHasSelectedServer = currentAuthSession?.selectedServerId != null
-    val requiresServerSelection =
-            !sessionHasSelectedServer &&
-                    (serverListState is ScreenLoadState.Content ||
-                            serverListState is ScreenLoadState.Empty ||
-                            serverListState is ScreenLoadState.Error ||
-                            serverListState is ScreenLoadState.NoPermission)
-    if (requiresServerSelection) {
-        ServerGateScreen(
-                state = serverListState,
-                currentEmail = currentAuthSession?.user?.email.orEmpty(),
-                mode = serverGateMode,
-                name = createServerName,
-                slug = createServerSlug,
-                submitting = serverGateSubmitting,
-                errorCode = serverGateError,
-                onRetry = {
-                    coroutineScope.launch {
-                        serverGateError = null
-                        serverListState = ScreenLoadState.Loading
-                        serverListState = serverRepository.getServers().toScreenLoadState()
-                        currentAuthSession = authSessionStore.readSession()
-                    }
-                },
-                onSelectServer = { serverId ->
-                    coroutineScope.launch {
-                        serverGateSubmitting = true
-                        serverGateError = null
-                        when (val result = serverRepository.selectServer(serverId)) {
-                            is DataResult.Content -> enterSelectedServer(result.data)
-                            is DataResult.Empty -> {
-                                serverGateSubmitting = false
-                                serverGateError = result.reason.name
-                            }
-                            is DataResult.Error -> {
-                                serverGateSubmitting = false
-                                serverGateError = result.error.code
-                            }
-                            is DataResult.NoPermission -> {
-                                serverGateSubmitting = false
-                                serverGateError = result.blocker.code
-                            }
-                        }
-                    }
-                },
-                onShowCreate = {
-                    serverGateMode = ServerGateMode.Create
-                    serverGateError = null
-                },
-                onCancelCreate = {
-                    if (!serverGateSubmitting) {
-                        serverGateMode = ServerGateMode.Choose
-                        serverGateError = null
-                    }
-                },
-                onNameChange = {
-                    createServerName = it
-                    serverGateError = null
-                },
-                onSlugChange = {
-                    createServerSlug = it.lowercase().replace(Regex("[^a-z0-9-]"), "-")
-                    serverGateError = null
-                },
-                onCreateServer = {
-                    val name = createServerName.trim()
-                    val slug = createServerSlug.trim()
-                    if (name.isBlank()) {
-                        serverGateError = "server_name_required"
-                        return@ServerGateScreen
-                    }
-                    coroutineScope.launch {
-                        serverGateSubmitting = true
-                        serverGateError = null
-                        when (val result =
-                                        serverRepository.createServer(
-                                                CreateServerRequest(
-                                                        name = name,
-                                                        slug = slug.ifBlank { null }
-                                                )
-                                        )
-                        ) {
-                            is DataResult.Content -> {
-                                createServerName = ""
-                                createServerSlug = ""
-                                enterSelectedServer(result.data)
-                            }
-                            is DataResult.Empty -> {
-                                serverGateSubmitting = false
-                                serverGateError = result.reason.name
-                            }
-                            is DataResult.Error -> {
-                                serverGateSubmitting = false
-                                serverGateError = result.error.code
-                            }
-                            is DataResult.NoPermission -> {
-                                serverGateSubmitting = false
-                                serverGateError = result.blocker.code
-                            }
-                        }
-                    }
-                },
-                onSignOut = { signOutFromAuthenticated("server_gate") },
-                modifier = modifier
-        )
-        return
-    }
-
     val selectedServerIdForSharedShell = currentAuthSession?.selectedServerId
     LaunchedEffect(authState, selectedServerIdForSharedShell, sharedShellLaunchRequested) {
         if (authState is AuthUiState.Authenticated &&
-                        !sharedShellLaunchRequested &&
-                        !selectedServerIdForSharedShell.isNullOrBlank()
+                        !sharedShellLaunchRequested
         ) {
             sharedShellLaunchRequested = true
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
@@ -6728,7 +6552,7 @@ private fun SlockAppContent(
 
             val hasVisibleHomeContent = homeState.loadState is ScreenLoadState.Content
             val isManualRefresh = manualHomeRefreshRequested
-            val isSelectedServerRefresh = selectedServerRefreshRequested
+            val isSelectedServerRefresh = false
             val isResumeRefresh = homeResumeRefreshNonce != handledHomeResumeRefreshNonce
             if (isResumeRefresh) {
                 handledHomeResumeRefreshNonce = homeResumeRefreshNonce
@@ -7057,7 +6881,6 @@ private fun SlockAppContent(
                     homeRefreshErrorLabel = null
                     homeRefreshAutoRetryAttempted = false
                     manualHomeRefreshRequested = false
-                    selectedServerRefreshRequested = false
                 } else if (shouldSurfaceHomeRefreshError && !homeRefreshAutoRetryAttempted) {
                     homeRefreshInProgress = isManualRefresh || isSelectedServerRefresh
                     homeRefreshError = null
@@ -7071,7 +6894,6 @@ private fun SlockAppContent(
                 } else {
                     homeRefreshInProgress = false
                     manualHomeRefreshRequested = false
-                    selectedServerRefreshRequested = false
                     homeRefreshAutoRetryAttempted = false
                     if (shouldSurfaceHomeRefreshError) {
                         homeRefreshError = homeResult.refreshErrorCode()
@@ -8516,7 +8338,6 @@ private fun SlockAppContent(
                                         homeRefreshErrorLabel = null
                                         homeRefreshAutoRetryAttempted = false
                                         manualHomeRefreshRequested = true
-                                        selectedServerRefreshRequested = false
                                         if (!homeRefreshInProgress) {
                                             homeRefreshInProgress = true
                                             ai.slock.android.core.data.diagnostics
@@ -9541,325 +9362,6 @@ private fun SlockAppContent(
                                     }
                             )
                     }
-        if (createServerVisible) {
-            val trimmedCreateServerName = createServerName.trim()
-            val trimmedCreateServerSlug = createServerSlug.trim()
-            val createServerSubmitEnabled =
-                    trimmedCreateServerName.isNotBlank() && !createServerSubmitting
-            SlockModal(
-                    title = stringResource(R.string.home_create_server_title),
-                    onDismiss = {
-                        if (!createServerSubmitting) {
-                            createServerVisible = false
-                            createServerError = null
-                        }
-                    },
-                    enabled = !createServerSubmitting,
-                    dismissOnScrimClick = !createServerSubmitting,
-                    errorText =
-                            createServerError?.let {
-                                stringResource(R.string.home_create_server_error, it)
-                            },
-                    primaryAction =
-                            SlockModalAction(
-                                    text = stringResource(R.string.home_create_server_primary),
-                                    enabled = createServerSubmitEnabled,
-                                    loading = createServerSubmitting,
-                                    onClick = {
-                                        if (!createServerSubmitEnabled) return@SlockModalAction
-                                        coroutineScope.launch {
-                                            createServerSubmitting = true
-                                            createServerError = null
-                                            when (val result =
-                                                            serverRepository.createServer(
-                                                                    CreateServerRequest(
-                                                                            name =
-                                                                                    trimmedCreateServerName,
-                                                                            slug =
-                                                                                    trimmedCreateServerSlug
-                                                                                            .ifBlank {
-                                                                                                null
-                                                                                            }
-                                                                    )
-                                                            )
-                                            ) {
-                                                is DataResult.Content -> {
-                                                    enterSelectedServer(result.data)
-                                                    createServerSubmitting = false
-                                                    createServerVisible = false
-                                                    createServerName = ""
-                                                    createServerSlug = ""
-                                                }
-                                                is DataResult.Empty -> {
-                                                    createServerSubmitting = false
-                                                    createServerError = result.reason.name
-                                                }
-                                                is DataResult.Error -> {
-                                                    createServerSubmitting = false
-                                                    createServerError = result.error.code
-                                                }
-                                                is DataResult.NoPermission -> {
-                                                    createServerSubmitting = false
-                                                    createServerError = result.blocker.code
-                                                }
-                                            }
-                                        }
-                                    }
-                            ),
-                    secondaryAction =
-                            SlockModalAction(
-                                    text = stringResource(R.string.home_create_server_cancel),
-                                    onClick = {
-                                        createServerVisible = false
-                                        createServerError = null
-                                    },
-                                    enabled = !createServerSubmitting,
-                                    style = SlockModalActionStyle.Outline
-                            )
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-                    Text(
-                            text = stringResource(R.string.home_create_server_detail),
-                            style = SlockType.Body,
-                            color = SlockColor.TextBlack
-                    )
-                    SlockModalTextField(
-                            value = createServerName,
-                            onValueChange = {
-                                createServerName = it
-                                createServerError = null
-                            },
-                            label = stringResource(R.string.home_create_server_name_label),
-                            placeholder =
-                                    stringResource(R.string.home_create_server_name_placeholder),
-                            required = true,
-                            enabled = !createServerSubmitting
-                    )
-                    SlockModalTextField(
-                            value = createServerSlug,
-                            onValueChange = {
-                                createServerSlug =
-                                        it.lowercase().filter { char ->
-                                            char.isLetterOrDigit() || char == '-'
-                                        }
-                                createServerError = null
-                            },
-                            label = stringResource(R.string.home_create_server_slug_label),
-                            placeholder =
-                                    stringResource(R.string.home_create_server_slug_placeholder),
-                            optional = true,
-                            enabled = !createServerSubmitting
-                    )
-                }
-            }
-        }
-        if (createChannelVisible) {
-            val trimmedCreateChannelName = createChannelName.trim()
-            val trimmedCreateChannelDescription = createChannelDescription.trim()
-            val createChannelSubmitEnabled =
-                    trimmedCreateChannelName.isNotBlank() && !createChannelSubmitting
-            val createChannelModalBodyMaxHeight =
-                    (LocalConfiguration.current.screenHeightDp.dp - 280.dp)
-                            .coerceIn(220.dp, 520.dp)
-            val createChannelMembersLoadState = membersState.loadState
-            val createChannelMembers =
-                    (createChannelMembersLoadState as? ScreenLoadState.Content)
-                            ?.data
-                            ?.members
-                            .orEmpty()
-            val createChannelAgents = createChannelMembers.filter { it.kind == MemberKind.Agent }
-            val createChannelUsers = createChannelMembers.filter { it.kind == MemberKind.Human }
-            SlockModal(
-                    title = stringResource(R.string.home_create_channel_title),
-                    onDismiss = {
-                        if (!createChannelSubmitting) {
-                            createChannelVisible = false
-                            createChannelError = null
-                        }
-                    },
-                    enabled = !createChannelSubmitting,
-                    dismissOnScrimClick = !createChannelSubmitting,
-                    errorText =
-                            createChannelError?.let {
-                                stringResource(R.string.home_create_channel_error, it)
-                            },
-                    primaryAction =
-                            SlockModalAction(
-                                    text = stringResource(R.string.home_create_channel_primary),
-                                    enabled = createChannelSubmitEnabled,
-                                    loading = createChannelSubmitting,
-                                    onClick = {
-                                        if (!createChannelSubmitEnabled) return@SlockModalAction
-                                        coroutineScope.launch {
-                                            createChannelSubmitting = true
-                                            createChannelError = null
-                                            when (val result =
-                                                            withSlockRequestPriority(
-                                                                    priority =
-                                                                            SlockRequestPriority
-                                                                                    .Foreground,
-                                                                    key =
-                                                                            "server:${selectedServerIdForUi()?.value.orEmpty()}:create-channel",
-                                                                    reason = "create_channel"
-                                                            ) {
-                                                                channelRepository.createChannel(
-                                                                        CreateChannelRequest(
-                                                                                name =
-                                                                                        trimmedCreateChannelName,
-                                                                                description =
-                                                                                        trimmedCreateChannelDescription
-                                                                                                .ifBlank {
-                                                                                                    null
-                                                                                                },
-                                                                                agentMemberIds =
-                                                                                        createChannelAgentMemberIds,
-                                                                                userMemberIds =
-                                                                                        createChannelUserMemberIds
-                                                                        )
-                                                                )
-                                                            }
-                                            ) {
-                                                is DataResult.Content -> {
-                                                    val channel = result.data.channel
-                                                    val serverId =
-                                                            selectedServerOverride
-                                                                    ?: (serverListState as?
-                                                                            ScreenLoadState.Content)
-                                                                            ?.data
-                                                                            ?.selectedServer
-                                                                            ?.id
-                                                                    ?: currentAuthSession
-                                                                            ?.currentServerId
-                                                                            ?.let(::ServerId)
-                                                    if (serverId != null) {
-                                                        localWriteThrough.writeHomeConversations(
-                                                                serverId = serverId,
-                                                                conversations = listOf(channel),
-                                                                source = "create_channel"
-                                                        )
-                                                        publishHomeFromLocal(serverId)
-                                                    } else {
-                                                        homeState =
-                                                                homeState.withCreatedChannel(channel)
-                                                    }
-                                                    realtimeRepository.joinChannel(
-                                                            channel.channelId
-                                                                    ?: ChannelId(
-                                                                            channel.threadId.value
-                                                                    )
-                                                    )
-                                                    createChannelSubmitting = false
-                                                    createChannelVisible = false
-                                                    createChannelName = ""
-                                                    createChannelDescription = ""
-                                                    createChannelAgentMemberIds = emptyList()
-                                                    createChannelUserMemberIds = emptyList()
-                                                    destination = AppDestination.Home
-                                                    previousHomeRoute = HomeRoute.Shell
-                                                    homeRoute = HomeRoute.Thread
-                                                    openThread(channel)
-                                                }
-                                                is DataResult.Empty -> {
-                                                    createChannelSubmitting = false
-                                                    createChannelError = result.reason.name
-                                                }
-                                                is DataResult.Error -> {
-                                                    createChannelSubmitting = false
-                                                    createChannelError = result.error.code
-                                                }
-                                                is DataResult.NoPermission -> {
-                                                    createChannelSubmitting = false
-                                                    createChannelError = result.blocker.code
-                                                }
-                                            }
-                                        }
-                                    }
-                            ),
-                    secondaryAction =
-                            SlockModalAction(
-                                    text = stringResource(R.string.home_create_channel_cancel),
-                                    onClick = {
-                                        createChannelVisible = false
-                                        createChannelError = null
-                                    },
-                                    enabled = !createChannelSubmitting,
-                                    style = SlockModalActionStyle.Outline
-                            )
-            ) {
-                Column(
-                        modifier =
-                                Modifier.fillMaxWidth()
-                                        .heightIn(max = createChannelModalBodyMaxHeight)
-                                        .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-                ) {
-                    Text(
-                            text = stringResource(R.string.home_create_channel_detail),
-                            style = SlockType.Body,
-                            color = SlockColor.TextBlack
-                    )
-                    SlockModalTextField(
-                            value = createChannelName,
-                            onValueChange = {
-                                createChannelName = it
-                                createChannelError = null
-                            },
-                            label = stringResource(R.string.home_create_channel_name_label),
-                            placeholder =
-                                    stringResource(R.string.home_create_channel_name_placeholder),
-                            required = true,
-                            enabled = !createChannelSubmitting
-                    )
-                    SlockModalTextField(
-                            value = createChannelDescription,
-                            onValueChange = {
-                                createChannelDescription = it
-                                createChannelError = null
-                            },
-                            label = stringResource(R.string.home_create_channel_description_label),
-                            placeholder =
-                                    stringResource(
-                                            R.string.home_create_channel_description_placeholder
-                                    ),
-                            optional = true,
-                            enabled = !createChannelSubmitting,
-                            singleLine = false,
-                            minLines = 2,
-                            maxLines = 4
-                    )
-                    CreateChannelMemberSection(
-                            title = stringResource(R.string.home_create_channel_agents_label),
-                            members = createChannelAgents,
-                            selectedIds = createChannelAgentMemberIds,
-                            enabled = !createChannelSubmitting,
-                            membersLoadState = createChannelMembersLoadState,
-                            onSelectionChange = { memberId, selected ->
-                                val agentId = memberId.removeCreateChannelKindPrefix()
-                                createChannelAgentMemberIds =
-                                        createChannelAgentMemberIds.withSelection(
-                                                agentId,
-                                                selected
-                                        )
-                                createChannelError = null
-                            }
-                    )
-                    CreateChannelMemberSection(
-                            title = stringResource(R.string.home_create_channel_users_label),
-                            members = createChannelUsers,
-                            selectedIds = createChannelUserMemberIds,
-                            enabled = !createChannelSubmitting,
-                            membersLoadState = createChannelMembersLoadState,
-                            emptyText = stringResource(R.string.home_create_channel_no_members),
-                            onSelectionChange = { memberId, selected ->
-                                val userId = memberId.removeCreateChannelKindPrefix()
-                                createChannelUserMemberIds =
-                                        createChannelUserMemberIds.withSelection(userId, selected)
-                                createChannelError = null
-                            }
-                    )
-                }
-            }
-        }
         if (taskReferenceChooserLabel != null && taskReferenceChooserTasks.isNotEmpty()) {
             TaskReferenceChooserModal(
                     label = taskReferenceChooserLabel.orEmpty(),
@@ -9884,10 +9386,6 @@ private enum class AuthRoute {
     CreateAccount
 }
 
-private enum class ServerGateMode {
-    Choose,
-    Create
-}
 
 private sealed interface AuthUiState {
     data object Restoring : AuthUiState
@@ -9940,263 +9438,6 @@ private fun AuthRouteScreen(
         context.findComponentActivity()?.finish()
     }
     AuthRestoreScreen(modifier = modifier)
-}
-
-@Composable
-private fun ServerGateScreen(
-        state: ScreenLoadState<ServerListSnapshot>,
-        currentEmail: String,
-        mode: ServerGateMode,
-        name: String,
-        slug: String,
-        submitting: Boolean,
-        errorCode: String?,
-        onRetry: () -> Unit,
-        onSelectServer: (ServerId) -> Unit,
-        onShowCreate: () -> Unit,
-        onCancelCreate: () -> Unit,
-        onNameChange: (String) -> Unit,
-        onSlugChange: (String) -> Unit,
-        onCreateServer: () -> Unit,
-        onSignOut: () -> Unit,
-        modifier: Modifier = Modifier
-) {
-    Box(
-            modifier = modifier.fillMaxSize().background(SlockColor.SurfaceCream).padding(24.dp),
-            contentAlignment = Alignment.Center
-    ) {
-        Column(
-                modifier =
-                        Modifier.fillMaxWidth()
-                                .widthIn(max = 520.dp)
-                                .padding(
-                                        end = SlockShadow.Default.offsetX,
-                                        bottom = SlockShadow.Default.offsetY
-                                )
-                                .slockHardShadow(SlockShadow.Default)
-                                .background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
-                                .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Xs))
-                                .padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-        ) {
-            AuthLogoBadge(text = stringResource(R.string.auth_logo))
-            Text(
-                    text =
-                            if (mode == ServerGateMode.Create) {
-                                stringResource(R.string.server_gate_create_title)
-                            } else {
-                                stringResource(R.string.server_gate_choose_title)
-                            },
-                    style = SlockType.PageTitle,
-                    color = SlockColor.TextBlack
-            )
-            Text(
-                    text =
-                            stringResource(
-                                    R.string.server_gate_signed_in_as,
-                                    currentEmail.ifBlank { "Slock user" }
-                            ),
-                    style = SlockType.Body,
-                    color = SlockColor.TextMutedGray
-            )
-            if (!errorCode.isNullOrBlank()) {
-                Text(
-                        text = stringResource(R.string.server_gate_error, errorCode),
-                        style = SlockType.Caption,
-                        color = SlockColor.AccentRed
-                )
-            }
-            when (mode) {
-                ServerGateMode.Choose ->
-                        ServerChooseContent(
-                                state = state,
-                                submitting = submitting,
-                                onRetry = onRetry,
-                                onSelectServer = onSelectServer,
-                                onShowCreate = onShowCreate,
-                                onSignOut = onSignOut
-                        )
-                ServerGateMode.Create ->
-                        ServerCreateContent(
-                                name = name,
-                                slug = slug,
-                                submitting = submitting,
-                                onNameChange = onNameChange,
-                                onSlugChange = onSlugChange,
-                                onCreateServer = onCreateServer,
-                                onCancelCreate = onCancelCreate,
-                                onSignOut = onSignOut
-                        )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ServerChooseContent(
-        state: ScreenLoadState<ServerListSnapshot>,
-        submitting: Boolean,
-        onRetry: () -> Unit,
-        onSelectServer: (ServerId) -> Unit,
-        onShowCreate: () -> Unit,
-        onSignOut: () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
-        when (state) {
-            ScreenLoadState.Loading ->
-                    Text(
-                            text = stringResource(R.string.server_gate_loading),
-                            style = SlockType.Body,
-                            color = SlockColor.TextBlack
-                    )
-            is ScreenLoadState.Content -> {
-                if (state.data.servers.isEmpty()) {
-                    SlockEmptyState(
-                            title = stringResource(R.string.server_gate_empty_title),
-                            detail = stringResource(R.string.server_gate_empty_detail)
-                    )
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-                        state.data.servers.forEach { server ->
-                            ServerChoiceRow(
-                                    server = server,
-                                    enabled = !submitting,
-                                    onClick = { onSelectServer(server.id) }
-                            )
-                        }
-                    }
-                }
-            }
-            is ScreenLoadState.Empty ->
-                    SlockEmptyState(
-                            title = stringResource(R.string.server_gate_empty_title),
-                            detail = stringResource(R.string.server_gate_empty_detail)
-                    )
-            is ScreenLoadState.Error ->
-                    SlockErrorState(
-                            title = stringResource(R.string.server_gate_load_failed),
-                            detail = state.error.code,
-                            onRetry = onRetry
-                    )
-            is ScreenLoadState.NoPermission ->
-                    SlockErrorState(
-                            title = stringResource(R.string.server_gate_auth_required),
-                            detail = state.blocker.code,
-                            onRetry = onSignOut,
-                            retryLabel = stringResource(R.string.server_gate_sign_out)
-                    )
-        }
-        SlockButton(
-                text = stringResource(R.string.server_gate_create_new),
-                onClick = onShowCreate,
-                enabled = !submitting,
-                variant = SlockButtonVariant.Pink,
-                modifier = Modifier.fillMaxWidth()
-        )
-        SlockButton(
-                text = stringResource(R.string.server_gate_sign_out),
-                onClick = onSignOut,
-                enabled = !submitting,
-                variant = SlockButtonVariant.Outline,
-                modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-@Composable
-private fun ServerChoiceRow(
-        server: ServerSummary,
-        enabled: Boolean,
-        onClick: () -> Unit
-) {
-    Column(
-            modifier =
-                    Modifier.fillMaxWidth()
-                            .padding(
-                                    end = SlockShadow.Small.offsetX,
-                                    bottom = SlockShadow.Small.offsetY
-                            )
-                            .slockHardShadow(SlockShadow.Small)
-                            .background(SlockColor.AppBgLightBlue, RoundedCornerShape(SlockRadius.Xs))
-                            .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Xs))
-                            .clickable(enabled = enabled, onClick = onClick)
-                            .padding(SlockSpacing.Md),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-    ) {
-        Text(
-                text = server.name,
-                style = SlockType.Button,
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-        )
-        Text(
-                text = server.slug?.let { "/$it" } ?: server.id.value,
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-private fun ServerCreateContent(
-        name: String,
-        slug: String,
-        submitting: Boolean,
-        onNameChange: (String) -> Unit,
-        onSlugChange: (String) -> Unit,
-        onCreateServer: () -> Unit,
-        onCancelCreate: () -> Unit,
-        onSignOut: () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
-        SlockTextField(
-                value = name,
-                onValueChange = onNameChange,
-                label = stringResource(R.string.server_gate_name_label),
-                placeholder = stringResource(R.string.server_gate_name_placeholder),
-                enabled = !submitting,
-                singleLine = true,
-                reserveErrorSpace = false,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
-        )
-        SlockTextField(
-                value = slug,
-                onValueChange = onSlugChange,
-                label = stringResource(R.string.server_gate_slug_label),
-                placeholder = stringResource(R.string.server_gate_slug_placeholder),
-                enabled = !submitting,
-                singleLine = true,
-                reserveErrorSpace = false,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-            SlockButton(
-                    text = stringResource(R.string.server_gate_cancel),
-                    onClick = onCancelCreate,
-                    enabled = !submitting,
-                    variant = SlockButtonVariant.Outline,
-                    modifier = Modifier.weight(1f)
-            )
-            SlockButton(
-                    text = stringResource(R.string.server_gate_create),
-                    onClick = onCreateServer,
-                    enabled = name.isNotBlank() && !submitting,
-                    loading = submitting,
-                    variant = SlockButtonVariant.Pink,
-                    modifier = Modifier.weight(1f)
-            )
-        }
-        SlockButton(
-                text = stringResource(R.string.server_gate_sign_out),
-                onClick = onSignOut,
-                enabled = !submitting,
-                variant = SlockButtonVariant.Outline,
-                modifier = Modifier.fillMaxWidth()
-        )
-    }
 }
 
 private enum class AppDestination(val key: String, val label: String) {
@@ -11477,84 +10718,6 @@ private fun HomeRefreshErrorStrip(
     }
 }
 
-@Composable
-private fun CreateChannelMemberSection(
-        title: String,
-        members: List<MemberProfile>,
-        selectedIds: List<String>,
-        enabled: Boolean,
-        membersLoadState: ScreenLoadState<MembersContent>,
-        modifier: Modifier = Modifier,
-        emptyText: String? = null,
-        onSelectionChange: (String, Boolean) -> Unit
-) {
-    val pickerMembers = members.map { it.toSlockMemberPickerItem().withStableCreateChannelId() }
-    val selectedIdSet =
-            selectedIds.map { memberId ->
-                val kind =
-                        members.firstOrNull { it.id.value == memberId }?.kind ?: MemberKind.Human
-                kind.name + ":" + memberId
-            }.toSet()
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-        when (membersLoadState) {
-            ScreenLoadState.Loading -> {
-                Text(text = title, style = SlockType.SectionLabel, color = SlockColor.TextMutedGray)
-                SlockMemberPickerMessage(
-                        text = stringResource(R.string.home_create_channel_members_loading)
-                )
-            }
-            is ScreenLoadState.Error -> {
-                Text(text = title, style = SlockType.SectionLabel, color = SlockColor.TextMutedGray)
-                SlockMemberPickerMessage(
-                        text =
-                                stringResource(
-                                        R.string.home_create_channel_members_error,
-                                        membersLoadState.error.code
-                                )
-                )
-            }
-            is ScreenLoadState.NoPermission -> {
-                Text(text = title, style = SlockType.SectionLabel, color = SlockColor.TextMutedGray)
-                SlockMemberPickerMessage(
-                        text =
-                                stringResource(
-                                        R.string.home_create_channel_members_error,
-                                        membersLoadState.blocker.code
-                                )
-                )
-            }
-            is ScreenLoadState.Empty,
-            is ScreenLoadState.Content -> {
-                SlockMemberPickerSection(
-                        label = title,
-                        members = pickerMembers,
-                        selectedIds = selectedIdSet,
-                        enabled = enabled,
-                        emptyText = emptyText ?: stringResource(R.string.home_create_channel_no_members),
-                        selectedText = stringResource(R.string.home_create_channel_member_selected),
-                        disabledText = stringResource(R.string.home_create_channel_member_joined),
-                        availableText = stringResource(R.string.home_create_channel_member_add),
-                        onMemberSelected = { member ->
-                            onSelectionChange(member.id, member.id !in selectedIdSet)
-                        }
-                )
-            }
-        }
-    }
-}
-
-private fun SlockMemberPickerItem.withStableCreateChannelId(): SlockMemberPickerItem =
-        copy(
-                id =
-                        when (kind) {
-                            MemberKind.Agent -> MemberKind.Agent.name + ":" + id
-                            MemberKind.Human -> MemberKind.Human.name + ":" + id
-                            MemberKind.System -> MemberKind.System.name + ":" + id
-                        }
-        )
-
-private fun String.removeCreateChannelKindPrefix(): String =
-        substringAfter(":", this)
 
 @Composable
 private fun TaskReferenceChooserModal(
