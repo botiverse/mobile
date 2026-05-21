@@ -55,11 +55,17 @@ class VisualScreenshotCaptureTest {
         metadataFile.writeText(
             """
             {
-              "provider": "android-connected",
+              "provider": "android",
               "providerType": "android-compose-connected-test",
+              "source": "android-native",
               "caseId": "$caseId",
               "image": "${imageFile.absolutePath}",
               "viewport": { "width": ${bitmap.width}, "height": ${bitmap.height}, "density": 1 },
+              "crop": {
+                "mode": "compose-test-tag",
+                "contract": "shell-canvas",
+                "rect": { "x": 0, "y": 0, "width": ${bitmap.width}, "height": ${bitmap.height} }
+              },
               "capturedAt": "${System.currentTimeMillis()}"
             }
             """.trimIndent() + "\n"
@@ -70,14 +76,14 @@ class VisualScreenshotCaptureTest {
 
     private fun visualOutputDir(): File {
         val context: Context = InstrumentationRegistry.getInstrumentation().targetContext
-        return File(context.filesDir, "visual-testing/android-connected")
+        return File(context.filesDir, "visual-testing/android")
     }
 
     private fun mirrorFileForAdbPull(file: File) {
         val context: Context = InstrumentationRegistry.getInstrumentation().targetContext
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val relativePath =
-                "${Environment.DIRECTORY_DOWNLOADS}/slock-visual-testing/android-connected/"
+                "${Environment.DIRECTORY_DOWNLOADS}/slock-visual-testing/android/"
             val resolver = context.contentResolver
             resolver.delete(
                 MediaStore.Downloads.EXTERNAL_CONTENT_URI,
@@ -107,7 +113,7 @@ class VisualScreenshotCaptureTest {
             val outputDir =
                 File(
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                    "slock-visual-testing/android-connected"
+                    "slock-visual-testing/android"
                 )
             outputDir.mkdirs()
             file.copyTo(File(outputDir, file.name), overwrite = true)

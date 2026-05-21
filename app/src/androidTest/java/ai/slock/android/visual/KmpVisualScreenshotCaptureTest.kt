@@ -46,11 +46,17 @@ class KmpVisualScreenshotCaptureTest {
             metadataFile.writeText(
                 """
                 {
-                  "provider": "kmp-shared",
+                  "provider": "android",
                   "providerType": "android-kuikly-shared-page",
+                  "source": "kmp-shared",
                   "caseId": "$caseId",
                   "image": "${imageFile.absolutePath}",
                   "viewport": { "width": ${normalized.width}, "height": ${normalized.height}, "density": 1 },
+                  "crop": {
+                    "mode": "manual-rect",
+                    "contract": "component-bounds",
+                    "rect": { "x": 24, "y": 60, "width": 342, "height": 238 }
+                  },
                   "capturedAt": "${System.currentTimeMillis()}"
                 }
                 """.trimIndent() + "\n"
@@ -151,12 +157,12 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     private fun visualOutputDir(context: Context): File =
-        File(context.filesDir, "visual-testing/kmp-shared")
+        File(context.filesDir, "visual-testing/android")
 
     private fun mirrorFileForAdbPull(context: Context, file: File) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val relativePath =
-                "${Environment.DIRECTORY_DOWNLOADS}/slock-visual-testing/kmp-shared/"
+                "${Environment.DIRECTORY_DOWNLOADS}/slock-visual-testing/android/"
             val resolver = context.contentResolver
             resolver.delete(
                 MediaStore.Downloads.EXTERNAL_CONTENT_URI,
@@ -186,7 +192,7 @@ class KmpVisualScreenshotCaptureTest {
             val outputDir =
                 File(
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                    "slock-visual-testing/kmp-shared"
+                    "slock-visual-testing/android"
                 )
             outputDir.mkdirs()
             file.copyTo(File(outputDir, file.name), overwrite = true)
