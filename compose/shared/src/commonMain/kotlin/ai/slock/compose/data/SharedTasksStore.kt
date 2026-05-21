@@ -86,8 +86,11 @@ class SharedTasksViewModel(
     private val authStore: SlockAuthSessionStore,
     private val dataSource: SharedTasksDataSource
 ) : ViewModel() {
-    private val store = SharedTasksStore(scope = viewModelScope)
-    val state: StateFlow<TasksUiState> = store.state
+    private val store by lazy {
+        SharedTasksStore(scope = viewModelScope)
+    }
+    val state: StateFlow<TasksUiState>
+        get() = store.state
 
     private var loadJob: Job? = null
     private var statusJob: Job? = null

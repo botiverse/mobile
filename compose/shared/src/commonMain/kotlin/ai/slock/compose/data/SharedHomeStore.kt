@@ -124,15 +124,22 @@ class SharedHomeViewModel(
     authStore: SlockAuthSessionStore,
     dataSource: SharedHomeDataSource
 ) : ViewModel() {
-    private val store = SharedHomeStore(authStore, dataSource, viewModelScope)
-    val state: StateFlow<SharedHomeState> = store.state
+    private val storeDelegate =
+        lazy {
+            SharedHomeStore(authStore, dataSource, viewModelScope)
+        }
+    private val store: SharedHomeStore by storeDelegate
+    val state: StateFlow<SharedHomeState>
+        get() = store.state
 
     fun dispatch(intent: SharedHomeIntent) {
         store.dispatch(intent)
     }
 
     override fun onCleared() {
-        store.clear()
+        if (storeDelegate.isInitialized()) {
+            store.clear()
+        }
         super.onCleared()
     }
 }
