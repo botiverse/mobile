@@ -917,6 +917,7 @@ private fun JsonObject.toSharedThreadMessageItem(
         author?.threadString("gravatarHash", "gravatar_hash", "gravatarMd5", "gravatar_md5", "gravatar")
             ?: directoryAuthor?.gravatarHash
             ?: threadString("gravatarHash", "gravatar_hash", "gravatarMd5", "gravatar_md5", "gravatar")
+    val task = firstThreadObject("task", "taskInfo", "task_info", "taskSummary", "task_summary")
     return KuiklyThreadMessageItem(
         id = id,
         authorId = authorId,
@@ -941,11 +942,19 @@ private fun JsonObject.toSharedThreadMessageItem(
         systemEventType = threadString("systemEventType", "system_event_type", "eventType", "event_type"),
         metadata = (this["metadata"] as? JsonObject).threadStringMap(),
         body = body,
-        replyCount = threadInt("replyCount", "reply_count", "repliesCount", "replies_count") ?: 0,
-        taskId = threadString("taskId", "task_id"),
-        taskNumber = threadInt("taskNumber", "task_number", "number"),
-        taskStatus = threadString("taskStatus", "task_status", "status"),
-        taskAssigneeName = threadString("taskAssigneeName", "task_assignee_name", "assigneeName", "assignee_name"),
+        replyCount = threadReplyCount(),
+        taskId =
+            threadString("taskId", "task_id")
+                ?: task?.threadString("id", "_id", "taskId", "task_id"),
+        taskNumber =
+            threadInt("taskNumber", "task_number")
+                ?: task?.threadInt("taskNumber", "task_number", "number"),
+        taskStatus =
+            threadString("taskStatus", "task_status")
+                ?: task?.threadString("status", "taskStatus", "task_status"),
+        taskAssigneeName =
+            threadString("taskAssigneeName", "task_assignee_name", "assigneeName", "assignee_name")
+                ?: task?.threadTaskAssigneeName(),
         attachments = (this["attachments"] as? JsonArray)?.mapIndexedNotNull { attachmentIndex, item ->
             (item as? JsonObject)?.toSharedThreadAttachmentItem(attachmentIndex)
         }.orEmpty()
@@ -1013,6 +1022,48 @@ private fun JsonObject.firstThreadObject(vararg names: String): JsonObject? =
 
 private fun JsonObject.nestedThreadProfileObject(): JsonObject? =
     firstThreadObject("profile", "member", "user", "agent", "author", "sender")
+
+private fun JsonObject.threadReplyCount(): Int =
+    threadInt(
+        "replyCount",
+        "reply_count",
+        "repliesCount",
+        "replies_count",
+        "threadReplyCount",
+        "thread_reply_count",
+        "threadRepliesCount",
+        "thread_replies_count",
+        "replies"
+    )
+        ?: firstThreadObject("thread", "replyThread", "reply_thread", "repliesSummary", "replies_summary")
+            ?.threadInt(
+                "replyCount",
+                "reply_count",
+                "repliesCount",
+                "replies_count",
+                "count",
+                "total"
+            )
+        ?: 0
+
+private fun JsonObject.threadTaskAssigneeName(): String? =
+    threadString(
+        "taskAssigneeName",
+        "task_assignee_name",
+        "assigneeName",
+        "assignee_name",
+        "claimedByName",
+        "claimed_by_name"
+    )
+        ?: firstThreadObject("assignee", "assignedTo", "assigned_to", "claimedBy", "claimed_by")
+            ?.threadString(
+                "displayName",
+                "display_name",
+                "name",
+                "handle",
+                "username",
+                "email"
+            )
 
 private fun JsonObject.threadString(vararg names: String): String? =
     names.firstNotNullOfOrNull { name ->
@@ -1095,25 +1146,27 @@ private fun ThreadPageContent(
                     onJoin = { onThreadEvent("joinChannel", null, null, null) }
                 )
             } else if (payload.showComposer) {
-                Box(
-                    modifier = Modifier.fillMaxWidth()
-                        .background(SlockColor.SurfaceWhite)
-                        .padding(
-                            start = SlockSpacing.Md,
-                            top = SlockSpacing.Sm,
-                            end = SlockSpacing.Md,
-                            bottom = SlockSpacing.Sm + composerKeyboardInsetDp.dp
-                        )
-                ) {
-                    ThreadComposerContent(
-                        payload = composerPayload,
-                        onEvent = onComposerEvent,
-                        onKeyboardHeightChange = { nextInset ->
-                            if (nextInset != composerKeyboardInsetDp) {
-                                composerKeyboardInsetDp = nextInset
+                Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
+                    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+                    Box(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(
+                                start = SlockSpacing.Md,
+                                top = SlockSpacing.Sm,
+                                end = SlockSpacing.Md,
+                                bottom = SlockSpacing.Sm + composerKeyboardInsetDp.dp
+                            )
+                    ) {
+                        ThreadComposerContent(
+                            payload = composerPayload,
+                            onEvent = onComposerEvent,
+                            onKeyboardHeightChange = { nextInset ->
+                                if (nextInset != composerKeyboardInsetDp) {
+                                    composerKeyboardInsetDp = nextInset
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -1822,16 +1875,18 @@ private fun ThreadMessageCard(
                             onOpenAttachment = onOpenAttachment
                         )
                     }
-                    ThreadMessageFooterMeta(
-                        message = message,
-                        showReplyAction = showReplyAction,
-                        taskOpenEnabled = taskOpenEnabled,
-                        taskStatusActionsEnabled = taskStatusActionsEnabled,
-                        alignEnd = alignOwnMessageRight,
-                        onOpenThread = { onOpenThread(message.id) },
-                        onOpenTask = onOpenTask,
-                        onTaskStatusChange = onTaskStatusChange
-                    )
+                    Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                        ThreadMessageFooterMeta(
+                            message = message,
+                            showReplyAction = showReplyAction,
+                            taskOpenEnabled = taskOpenEnabled,
+                            taskStatusActionsEnabled = taskStatusActionsEnabled,
+                            alignEnd = alignOwnMessageRight,
+                            onOpenThread = { onOpenThread(message.id) },
+                            onOpenTask = onOpenTask,
+                            onTaskStatusChange = onTaskStatusChange
+                        )
+                    }
                 }
                 if (alignOwnMessageRight) {
                     ThreadMessageAvatar(
@@ -1860,7 +1915,11 @@ private fun ThreadMessageFooterMeta(
     onOpenTask: (String) -> Unit,
     onTaskStatusChange: (String, ThreadTaskStatusOption) -> Unit
 ) {
-    val hasTask = !message.taskId.isNullOrBlank()
+    val hasTask =
+        !message.taskId.isNullOrBlank() ||
+            message.taskNumber != null ||
+            !message.taskStatus.isNullOrBlank() ||
+            !message.taskAssigneeName.isNullOrBlank()
     val hasReplies = showReplyAction && message.replyCount > 0
     if (!hasTask && !hasReplies) return
     var statusSheetOpen by remember(message.id, message.taskStatus) { mutableStateOf(false) }

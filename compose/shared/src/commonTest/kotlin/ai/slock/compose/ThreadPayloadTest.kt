@@ -377,6 +377,63 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun parsesMessageFooterMetadataFromNestedTaskAndReplyAliases() {
+        val base =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-1",
+                title = "对话流专修",
+                sourceThreadId = "channel-1",
+                status = "loading"
+            )
+        val payload =
+            buildSharedThreadPayloadFromMessagesResponse(
+                basePayload = base,
+                session = null,
+                bodyText =
+                    """
+                    {
+                      "data": {
+                        "messages": [
+                          {
+                            "id": "m1",
+                            "authorId": "u1",
+                            "authorName": "Artin",
+                            "body": "please check this",
+                            "replies": 4,
+                            "task": {
+                              "id": "task-193",
+                              "number": 193,
+                              "status": "Todo",
+                              "assignee": {
+                                "displayName": "Android-Developer-2"
+                              }
+                            }
+                          },
+                          {
+                            "id": "m2",
+                            "authorId": "u2",
+                            "authorName": "Cindy",
+                            "body": "nested replies",
+                            "replyThread": {
+                              "count": 3
+                            }
+                          }
+                        ]
+                      }
+                    }
+                    """.trimIndent()
+            )
+
+        val message = payload.messages.first()
+        assertEquals("task-193", message.taskId)
+        assertEquals(193, message.taskNumber)
+        assertEquals("Todo", message.taskStatus)
+        assertEquals("Android-Developer-2", message.taskAssigneeName)
+        assertEquals(4, message.replyCount)
+        assertEquals(3, payload.messages[1].replyCount)
+    }
+
+    @Test
     fun parsesSystemMessageMetadataAndBuildsCollapsedSummary() {
         val payload =
             parseThreadScreenPayload(
