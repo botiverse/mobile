@@ -961,7 +961,6 @@ private fun HomeUnreadBadge(text: String, color: Color = SlockColor.AccentPink) 
             text,
             style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp, lineHeight = 10.sp),
             color = SlockColor.SurfaceWhite,
-            modifier = Modifier.offset(y = 1.dp),
             maxLines = 1,
             textAlign = TextAlign.Center
         )
