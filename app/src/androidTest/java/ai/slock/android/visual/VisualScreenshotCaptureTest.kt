@@ -1,11 +1,7 @@
 package ai.slock.android.visual
 
-import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
-import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -15,6 +11,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
 
@@ -47,6 +44,7 @@ class VisualScreenshotCaptureTest {
         val bitmap = composeRule.onNodeWithTag(VisualCaseTag).captureToImage().asAndroidBitmap()
         val outputDir = visualOutputDir()
         outputDir.mkdirs()
+        clearMirroredCaseArtifacts(caseId)
         val imageFile = File(outputDir, "$caseId.png")
         imageFile.outputStream().use { out ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
@@ -61,10 +59,15 @@ class VisualScreenshotCaptureTest {
               "caseId": "$caseId",
               "image": "${imageFile.absolutePath}",
               "viewport": { "width": ${bitmap.width}, "height": ${bitmap.height}, "density": 1 },
+              "systemBars": "not-applicable",
               "crop": {
                 "mode": "compose-test-tag",
                 "contract": "shell-canvas",
                 "rect": { "x": 0, "y": 0, "width": ${bitmap.width}, "height": ${bitmap.height} }
+              },
+              "capture": {
+                "method": "compose-test-tag-captureToImage",
+                "systemBars": "not-applicable"
               },
               "capturedAt": "${System.currentTimeMillis()}"
             }
@@ -80,54 +83,27 @@ class VisualScreenshotCaptureTest {
     }
 
     private fun mirrorFileForAdbPull(file: File) {
-        val context: Context = InstrumentationRegistry.getInstrumentation().targetContext
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val relativePath =
-                "${Environment.DIRECTORY_DOWNLOADS}/slock-visual-testing/android/"
-            val resolver = context.contentResolver
-            resolver.delete(
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                "${MediaStore.MediaColumns.DISPLAY_NAME}=? AND " +
-                    "${MediaStore.MediaColumns.RELATIVE_PATH}=?",
-                arrayOf(file.name, relativePath)
-            )
-            val values =
-                ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
-                    put(MediaStore.MediaColumns.MIME_TYPE, mimeTypeFor(file))
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                }
-            val uri =
-                requireNotNull(resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)) {
-                    "Unable to create visual screenshot artifact ${file.name}"
-                }
-            resolver.openOutputStream(uri).use { output ->
-                requireNotNull(output) { "Unable to open visual screenshot artifact ${file.name}" }
-                file.inputStream().use { input -> input.copyTo(output) }
-            }
-            values.clear()
-            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-            resolver.update(uri, values, null, null)
-        } else {
-            val outputDir =
-                File(
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                    "slock-visual-testing/android"
-                )
-            outputDir.mkdirs()
-            file.copyTo(File(outputDir, file.name), overwrite = true)
-        }
+        VisualAndroidArtifacts.mirrorFile(file)
     }
 
-    private fun mimeTypeFor(file: File): String =
-        when (file.extension) {
-            "png" -> "image/png"
-            "json" -> "application/json"
-            else -> "application/octet-stream"
-        }
+    private fun clearMirroredCaseArtifacts(caseId: String) {
+        File(visualOutputDir(), "$caseId.png").delete()
+        File(visualOutputDir(), "$caseId.metadata.json").delete()
+        deletePublicDownloadArtifactsWithShell(caseId)
+    }
+
+    private fun deletePublicDownloadArtifactsWithShell(caseId: String) {
+        VisualAndroidArtifacts.deleteCaseArtifacts(caseId)
+    }
+
 
     private companion object {
         const val VisualCaseTag = "visual-testing-case-root"
+
+        @BeforeClass
+        @JvmStatic
+        fun ensureVisualOutputDirectory() {
+            VisualAndroidArtifacts.ensurePublicOutput()
+        }
     }
 }
