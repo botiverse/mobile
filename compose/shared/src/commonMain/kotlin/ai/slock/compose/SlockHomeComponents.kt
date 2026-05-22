@@ -65,12 +65,12 @@ private const val HOME_TOP_ACTIONS_VISUAL_PAGE = "compose_home_top_actions_visua
 private const val HOME_PAGE_DATA_EVENT = "slockPageData"
 
 private val SidebarActionIconSize = 14.dp
-private val SidebarActionIconBoxSize = 22.dp
-private val SidebarActionRowHeight = 38.dp
+private val SidebarActionIconBoxSize = 14.dp
+private val SidebarActionRowHeight = 32.dp
 private val HomeSmallShadowOffset = 2.dp
 private val SidebarActivityBottomGap = 4.dp
 private val SidebarRowHorizontalPadding = 8.dp
-private val SidebarActionLabelGap = 10.dp
+private val SidebarActionLabelGap = 6.dp
 private val ChannelSymbolWidth = 18.dp
 private val ChannelSymbolIconSize = 14.dp
 private val ChannelAvatarSize = 20.dp
@@ -278,18 +278,15 @@ private fun SlockHomePageContent() {
 
 @Composable
 private fun HomeTitlebarVisualScreen() {
-    Box(modifier = Modifier.width(342.dp).height(104.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {
-        HomeWorkspaceHeader(
+    Box(modifier = Modifier.width(342.dp).height(110.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {
+        HomeTitlebar(
             serverName = "Slock Design",
             serverUnreadCount = 24,
-            topSafeArea = 0.dp,
-            onServerBadgeClick = {}
-        )
-        HomeNotificationCenter(
             notifications = visualHomeNotifications(),
+            topSafeArea = 0.dp,
+            onServerBadgeClick = {},
             onView = {},
-            onDismiss = {},
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = 48.dp).padding(top = SlockSpacing.Lg, end = SlockSpacing.Lg)
+            onDismiss = {}
         )
     }
 }
@@ -454,7 +451,15 @@ fun SlockStructuralHomeShell(
     ) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)) {
             Column(modifier = Modifier.fillMaxSize()) {
-                HomeWorkspaceHeader(currentServerName, serverUnreadCount, topSafeArea, onServerBadgeClick)
+                HomeTitlebar(
+                    serverName = currentServerName,
+                    serverUnreadCount = serverUnreadCount,
+                    notifications = notifications,
+                    topSafeArea = topSafeArea,
+                    onServerBadgeClick = onServerBadgeClick,
+                    onView = onNotificationView,
+                    onDismiss = onNotificationDismiss
+                )
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.weight(1f).fillMaxWidth().bouncesEnable(false),
@@ -531,7 +536,6 @@ fun SlockStructuralHomeShell(
                     item { Spacer(Modifier.height(bottomContentPadding)) }
                 }
             }
-            HomeNotificationCenter(notifications, onNotificationView, onNotificationDismiss, Modifier.align(Alignment.TopEnd).padding(top = topSafeArea).padding(top = SlockSpacing.Lg, end = SlockSpacing.Lg))
             if (serverSwitcherExpanded) {
                 HomeServerSwitcherDismissLayer(onServerSwitcherDismiss)
                 ServerSwitcherPanel(servers, currentServerId, pendingServerId, labels, onServerSelected, onCreateServerClick, Modifier.padding(top = topSafeArea + SlockSize.PageHeaderHeight, start = SlockSpacing.Lg))
@@ -614,11 +618,31 @@ private fun SlockJumpingLogoBadge(activeIndex: Int, modifier: Modifier = Modifie
 }
 
 @Composable
-private fun HomeWorkspaceHeader(serverName: String, serverUnreadCount: Int, topSafeArea: Dp, onServerBadgeClick: () -> Unit) {
+private fun HomeTitlebar(
+    serverName: String,
+    serverUnreadCount: Int,
+    notifications: List<SlockHomeNotificationItem>,
+    topSafeArea: Dp,
+    onServerBadgeClick: () -> Unit,
+    onView: (SlockHomeNotificationItem) -> Unit,
+    onDismiss: (SlockHomeNotificationItem) -> Unit
+) {
     Box(modifier = Modifier.fillMaxWidth().height(topSafeArea + SlockSize.PageHeaderHeight).background(SlockColor.BrandYellow)) {
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack).align(Alignment.BottomCenter))
-        Box(modifier = Modifier.padding(top = topSafeArea).height(SlockSize.PageHeaderHeight).padding(horizontal = SlockSpacing.Lg, vertical = SlockSpacing.Md).clickable(onClick = onServerBadgeClick)) {
-            SlockLogoBadge(text = serverName, showDropdown = true, tilted = true, unread = serverUnreadCount > 0)
+        com.tencent.kuikly.compose.foundation.layout.Row(
+            modifier =
+                Modifier
+                    .padding(top = topSafeArea)
+                    .height(SlockSize.PageHeaderHeight)
+                    .padding(horizontal = SlockSpacing.Md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(modifier = Modifier.clickable(onClick = onServerBadgeClick)) {
+                SlockLogoBadge(text = serverName, showDropdown = true, tilted = true, unread = serverUnreadCount > 0)
+            }
+            Spacer(Modifier.weight(1f))
+            HomeNotificationCenter(notifications, onView, onDismiss)
         }
     }
 }
@@ -680,19 +704,19 @@ private fun HomeNotificationCenter(notifications: List<SlockHomeNotificationItem
         Box(modifier = Modifier.align(Alignment.TopEnd).padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(32.dp)
                     .offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
                     .background(SlockColor.ShadowBlack)
             )
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(32.dp)
                     .background(activeKind.notificationColor())
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .clickable { expanded = !expanded },
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon("triangle-alert", Modifier.size(18.dp))
+                SlockLucideIcon("triangle-alert", Modifier.size(16.dp))
             }
         }
         ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
@@ -855,7 +879,7 @@ private fun SidebarActivityRow(label: String, count: String?, selected: Boolean 
             icon = "activity",
             label = label,
             modifier = modifier.padding(bottom = SidebarActivityBottomGap),
-            trailingText = count,
+            badge = count,
             onClick = onClick
         )
         return
