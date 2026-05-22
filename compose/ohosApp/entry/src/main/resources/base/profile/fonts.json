@@ -1,0 +1,26 @@
+[
+  {
+    "familyName": "space_grotesk_regular",
+    "fileName": "space_grotesk_regular.ttf"
+  },
+  {
+    "familyName": "space_grotesk_medium",
+    "fileName": "space_grotesk_medium.ttf"
+  },
+  {
+    "familyName": "space_grotesk_semibold",
+    "fileName": "space_grotesk_semibold.ttf"
+  },
+  {
+    "familyName": "space_grotesk_bold",
+    "fileName": "space_grotesk_bold.ttf"
+  },
+  {
+    "familyName": "space_grotesk_light",
+    "fileName": "space_grotesk_light.ttf"
+  },
+  {
+    "familyName": "space_grotesk",
+    "fileName": "space_grotesk.ttf"
+  }
+]
