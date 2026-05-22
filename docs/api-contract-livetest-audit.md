@@ -52,7 +52,7 @@ Android/KMP consumers:
 | Server members | `GET servers/{serverId}/members` | `serverRouter.get("/:id/members")` | Match | Upstream returns a direct array. Canonical member id field is `userId`, not generic `id`. |
 | Human member profile | `GET servers/{serverId}/members/{memberId}/profile` | `serverRouter.get("/:id/members/:memberId/profile")` | Fixed in this pass | Android/KMP had guessed `members/{memberId}/profile`; no matching upstream public route exists. |
 | Saved messages | `GET channels/saved`, `POST channels/saved`, `DELETE channels/saved/{messageId}` | `channelRouter.get/post("/saved")`, `delete("/saved/:messageId")` | Fixed in this pass | Android/KMP had guessed `messages/{id}/save`; no matching upstream public route exists. |
-| Server settings | `PATCH servers/{serverId}`, usage, invites, onboarding | `serverRouter` | Mostly match | Some Settings UI is still pending by capability task, but route paths are confirmed. |
+| Server settings | `PATCH servers/{serverId}`, usage, invites, onboarding | `serverRouter` | Typed first slice | Android Settings now uses a typed `SlockSettingsServerApi` boundary for profile patch, delete, usage, invite create, billing subscription, onboarding, machines, workspaces, and server admins. |
 | Machines/workspaces | `GET servers/{serverId}/machines`, `.../workspaces` | `serverRouter` | Match | Machine detail/log history is still not confirmed as a product capability. |
 | Auth refresh | `POST auth/refresh` | `authRouter.post("/refresh")` | Match | Upstream rotates the refresh token and returns `{ accessToken, refreshToken }`; Android/KMP restore/token refresh should keep using this route. |
 | Settings active sessions | Removed: old guessed `GET auth/sessions`, `DELETE auth/sessions/{sessionId}` | No public route in current `auth.ts` | Removed from client contract | These were migration-era Settings/session-management guesses, not the token refresh chain. Client request methods and mock Settings surface were deleted until upstream/web exposes a real public sessions management route. |
@@ -75,9 +75,9 @@ responses are still acceptable only at the lowest network/bridge boundary.
 | Servers list/create | `GET servers`, `POST servers` | Wired through Android auth API, not `SlockApiClient` | Indirect | Shared app shell restore uses selected server; add a live contract test for list/create only if using a safe disposable server fixture. |
 | Server profile/settings | `GET/PATCH/DELETE servers/:id`, `leave`, agreement, onboarding, translation, notification, usage, sidebar-order, scope-attestation | Partially wired | Partial | Wired: profile patch, delete, usage, onboarding. Missing: GET detail, leave, agreement, translation, notification, sidebar order, scope attestation. |
 | Server members/admin | `GET/POST servers/:id/members`, `PATCH/DELETE members/:memberId`, `GET member-graph`, `GET members/:memberId/profile` | Partially wired | Partial | Wired: list, profile. Missing: add/update/remove server members and member graph. Profile path fixed in this pass. |
-| Server invites/join links | `POST/GET/DELETE servers/:id/invites`, `POST/GET/DELETE join-links`, `join-community` | Partially wired | Missing | Wired only create invite and join-community through auth API. Missing invite list/delete and join-link flows. |
-| Machines/runtime | `GET/POST/PATCH/DELETE machines`, rotate-key, workspaces, runtime-models | Partially wired | Missing | Wired: list machines and workspaces. Missing create/update/delete/rotate-key/runtime models. |
-| Billing | `GET billing/subscription`, `POST checkout`, `POST portal` | Partially wired | Missing | Wired only subscription. Checkout/portal are not wired, so Billing actions cannot be called from Android/KMP yet. |
+| Server invites/join links | `POST/GET/DELETE servers/:id/invites`, `POST/GET/DELETE join-links`, `join-community` | Partially typed | Missing | Typed Settings facade wires create invite only. Invite list/delete and join-link create/list/delete are real upstream routes but still disabled/not exposed in Android/KMP Settings. |
+| Machines/runtime | `GET/POST/PATCH/DELETE machines`, rotate-key, workspaces, runtime-models | Partially typed | Missing | Typed Settings facade wires list machines and direct-array workspaces. Missing create/update/delete/rotate-key/runtime models. |
+| Billing | `GET billing/subscription`, `POST checkout`, `POST portal` | Partially typed | Missing | Typed Settings facade wires subscription only. Checkout/portal are real upstream routes but not wired, so Billing actions cannot be called from Android/KMP yet. |
 | Channels core | `GET/POST/PATCH channels`, detail, join/leave, archive/unarchive/delete, files | Partially wired | Partial | Wired: list/create/join/leave/archive/delete/files. Missing PATCH, detail, unarchive. |
 | Channel members/agents | `GET/POST/DELETE channels/:id/members`, `GET/POST/DELETE agents`, stop-all/resume-all | Partially wired | Partial | Wired: members list/add/remove. Missing channel agents list/add/remove and stop/resume-all agents. |
 | Channel inbox/followed/saved | inbox, inbox done/read-all, followed threads, saved list/save/delete/check | Partially wired | Partial | Wired: inbox list/read-all, followed/follow/unfollow/done/undone, saved list/save/delete. Missing inbox item done and saved check. Saved write paths fixed in this pass. |
@@ -119,7 +119,22 @@ responses are still acceptable only at the lowest network/bridge boundary.
   Guessed nested wrappers such as `data.messages`, `data.thread.threadChannelId`,
   and attachment aliases such as `downloadUrl` / `href` now fail with explicit
   contract mismatch codes at the API boundary.
-- Home, Tasks, Settings, Billing, Machines, Push, Integrations, Actions,
+- Settings/Billing/Server first slice is now typed at the Android repository
+  boundary: `SlockSettingsServerApi.computers/machineWorkspaces/serverAdmins/serverUsage/billingSubscription/serverOnboarding/updateServerProfile/createServerInvite/deleteServer`
+  returns typed Settings snapshots/action results before `RealSettingsRepository`
+  sees them. The raw `SlockApi` response remains at the lowest network boundary.
+- The typed Settings parser accepts canonical upstream shapes only for the
+  covered Settings routes: machines must be a root object with `machines`;
+  machine workspaces must be a root array; server members must be a root array
+  with canonical admin id `userId`; server usage must be root
+  `{ agents, machines, channels }`; billing subscription must be root
+  `{ subscription, stripeConfigured }`; onboarding must use root
+  `setupModalReminderOptOut` or the upstream server-provided compatibility alias
+  `onboardingReminderOptOut`; delete must return `{ ok: true }`.
+  Migration-era wrappers such as `data.nodes`, `members`, `usage.rows`,
+  `billing.plan`, and generic `ok/success/sent` invite responses now fail at the
+  typed API boundary for these paths.
+- Home, Tasks, Files/attachments/search/reactions, Push, Integrations, Actions,
   Announcements, and Reminders still need the same typed API facade treatment.
   They should not keep expanding raw JSON aliases inside repositories or UI
   stores without a source-backed contract.
@@ -156,8 +171,10 @@ broken upstream contract. High-risk examples:
   current shared thread parser also accepts nested author/member aliases because
   earlier migration payloads were inconsistent; new product code should not add
   more aliases without pointing to upstream source.
-- Server members should use `userId` as the canonical id. Generic `id` fallback
-  can stay as a defensive parser path but should not be required by livetest.
+- Server members should use `userId` as the canonical id. For the typed
+  Settings admin path, generic `id` fallback has been removed; older broad
+  member parsers remain only in legacy/non-Settings paths until their typed
+  facade slices are migrated.
 - Settings active-session management must not use the old guessed
   `auth/sessions` route. Upstream auth refresh/session rotation is
   `POST auth/refresh`; listing/revoking other sessions has no current public
@@ -169,6 +186,10 @@ broken upstream contract. High-risk examples:
 - Shared Thread save-message now uses upstream `POST channels/saved` with body
   `{ messageId }`. The guessed `messages/{id}/save` route has no matching
   upstream route and must not be reintroduced.
+- Settings machines/workspaces/admins/usage/billing/onboarding consumers should
+  not accept guessed `data.nodes`, `workspaces` wrappers for workspace arrays,
+  `billing.plan`, or nested `settings/onboarding` wrappers. The first Settings
+  typed slice now rejects those shapes with explicit contract mismatch errors.
 - Task list/action consumers should expect `{ tasks }` and `{ task }` wrappers,
   not raw arrays for tasks.
 
@@ -213,9 +234,13 @@ parser aliases:
    send message, upload attachment, save/unsave, mark read/unread, task
    claim/status, channel join/leave/archive/delete. Add guarded live mutation
    tests only when a safe test server/channel convention exists.
-3. Settings route coverage is partial. Members are now live-checked; account,
-   sessions, billing, machines/workspaces, usage, onboarding, and invite flows
-   need either read-only live tests or explicitly disabled capability gates.
+3. Settings route coverage is partial. Members are live-checked, and the
+   Android Settings repository now has typed unit coverage for canonical
+   machines/workspaces/server-admins/usage/billing/onboarding/invite/delete
+   shapes. Account/profile, billing checkout/portal, invite list/delete,
+   join-link management, machine mutations/rotate-key/runtime models, and
+   remaining Settings mutations still need live tests or explicit disabled
+   capability gates.
 4. Realtime/socket contract is not closed by REST livetests. The existing
    realtime unit tests should be complemented by a live server-scope test that
    validates event payloads against `SharedThreadStore` and Home cache updates.

@@ -138,13 +138,13 @@ class RealSettingsRepositoryTest {
             store = InMemoryAuthSessionStore(sampleSession),
             api = FakeSlockApi(
                 membersJson = """
-                    {"members":[
+                    [
                       {"userId":"user-1","displayName":"Owner","email":"owner@slock.ai","role":"owner"},
                       {"userId":"admin-1","displayName":"Admin User","email":"admin@slock.ai","role":"admin"}
-                    ]}
+                    ]
                 """.trimIndent(),
-                usageJson = """{"computers":1,"computersLimit":"Unlimited","agents":10,"agentsLimit":"Unlimited","channels":12,"channelsLimit":"Unlimited"}""",
-                billingSubscriptionJson = """{"subscription":{"plan":"hobby"}}""",
+                usageJson = """{"machines":1,"agents":10,"channels":12}""",
+                billingSubscriptionJson = """{"subscription":{"status":"active","currentPeriodEnd":"2026-06-01T00:00:00Z"},"stripeConfigured":true}""",
                 onboardingJson = """{"setupModalReminderOptOut":true}"""
             )
         )
@@ -162,8 +162,8 @@ class RealSettingsRepositoryTest {
         )
         assertEquals("Admin User", serverSnapshot.admins.single().name)
         assertEquals("Admin", serverSnapshot.admins.single().role)
-        assertTrue(serverSnapshot.usageRows.any { it.label == "Plan" && it.value == "Hobby" })
-        assertTrue(serverSnapshot.usageRows.any { it.label == "Computers" && it.value == "1 / Unlimited" })
+        assertTrue(serverSnapshot.usageRows.any { it.label == "Billing Status" && it.value == "Active" })
+        assertTrue(serverSnapshot.usageRows.any { it.label == "Computers" && it.value == "1" })
         assertEquals(true, serverSnapshot.onboarding?.setupModalReminderOptOut)
         assertEquals(SettingsSectionAvailability.Empty, serverSnapshot.sections.first { it.key == "join_links" }.state)
         assertTrue(serverSnapshot.sections.all { it.state != SettingsSectionAvailability.Unavailable })
@@ -191,14 +191,14 @@ class RealSettingsRepositoryTest {
     }
 
     @Test
-    fun computersUseSelectedServerMachinesEndpointAndMapWrappers() {
+    fun computersUseSelectedServerMachinesEndpointAndMapCanonicalFields() {
         val logs = mutableListOf<String>()
         val api = FakeSlockApi(
             machinesJson = """
                 {
                   "machines": [
                     {"id":"machine-1","hostname":"Jiachengs-MacBook-Pro","daemonVersion":"1.4.2","status":"online"},
-                    {"machineId":"machine-2","displayName":"Build host","version":"1.3.0","online":false}
+                    {"id":"machine-2","name":"Build host","daemonVersion":"1.3.0","online":false}
                   ],
                   "latestDaemonVersion": "1.5.0",
                   "canAddComputer": true
@@ -231,8 +231,8 @@ class RealSettingsRepositoryTest {
     }
 
     @Test
-    fun computersMapArrayNestedNodesAndMissingServer() {
-        val arrayResult = runSuspend {
+    fun computersRejectGuessedNestedWrappersAndHandleMissingServer() {
+        val nestedWrapperResult = runSuspend {
             RealSettingsRepository(
                 store = InMemoryAuthSessionStore(sampleSession),
                 api = FakeSlockApi(
@@ -247,28 +247,65 @@ class RealSettingsRepositoryTest {
             ).getComputers()
         }
 
-        assertTrue(arrayResult is DataResult.Content)
-        val computers = (arrayResult as DataResult.Content).data.computers
-        assertEquals(1, computers.size)
-        assertEquals("Desktop", computers.first().name)
-        assertEquals(true, computers.first().online)
+        assertTrue(nestedWrapperResult is DataResult.Error)
+        assertEquals(
+            "settings_machines_contract_mismatch",
+            (nestedWrapperResult as DataResult.Error).error.code
+        )
         assertTrue(missingServer is DataResult.NoPermission)
         assertEquals("server_required", (missingServer as DataResult.NoPermission).blocker.code)
+    }
+
+    @Test
+    fun serverSettingsRejectsGuessedBillingPlanWrapper() {
+        val repository = RealSettingsRepository(
+            store = InMemoryAuthSessionStore(sampleSession),
+            api = FakeSlockApi(
+                billingSubscriptionJson = """{"subscription":{"plan":"hobby"}}"""
+            )
+        )
+
+        val server = runSuspend { repository.getServerSettings() }
+
+        assertTrue(server is DataResult.Content)
+        val billing = (server as DataResult.Content).data.sections.first { it.key == "billing" }
+        assertTrue(billing.detail.contains("settings_billing_subscription_contract_mismatch"))
+    }
+
+    @Test
+    fun serverInviteRejectsGenericOkWrapperAndAcceptsCanonicalInvite() {
+        val rejected = runSuspend {
+            RealSettingsRepository(
+                store = InMemoryAuthSessionStore(sampleSession),
+                api = FakeSlockApi(inviteJson = """{"ok":true}""")
+            ).createServerInvite(ai.slock.android.core.data.repository.SettingsServerInviteCreateRequest("new@slock.ai"))
+        }
+        val accepted = runSuspend {
+            RealSettingsRepository(
+                store = InMemoryAuthSessionStore(sampleSession),
+                api = FakeSlockApi(inviteJson = """{"id":"invite-1","email":"new@slock.ai"}""")
+            ).createServerInvite(ai.slock.android.core.data.repository.SettingsServerInviteCreateRequest("new@slock.ai"))
+        }
+
+        assertTrue(rejected is DataResult.Error)
+        assertEquals("settings_server_invite_contract_mismatch", (rejected as DataResult.Error).error.code)
+        assertTrue(accepted is DataResult.Content)
+        assertEquals(true, (accepted as DataResult.Content).data.success)
     }
 
     @Test
     fun computerDetailCombinesMachineWorkspacesAndAgents() {
         val api = FakeSlockApi(
             machinesJson = """
-                {"machines":[{"id":"machine-1","name":"MacBook","hostname":"mac.local","os":"macOS","daemonVersion":"1.4.2","status":"online","lastSeenAt":"2026-05-07T01:00:00Z"}]}
+                {"machines":[{"id":"machine-1","name":"MacBook","hostname":"mac.local","platform":"macOS","daemonVersion":"1.4.2","status":"online","lastSeenAt":"2026-05-07T01:00:00Z"}]}
             """.trimIndent(),
             membersJson = """
-                {"members":[
+                [
                   {"id":"agent-1","displayName":"Settings Integrator","handle":"@settings-integrator","description":"Settings real-data wiring","avatar":"pixel:diamond","status":"online"}
-                ]}
+                ]
             """.trimIndent(),
             workspacesJson = """
-                {"workspaces":[{"directoryName":"Slock","path":"~/AndroidStudioProjects/Slock","status":"active","lastActivityAt":"2026-05-07T01:01:00Z"}]}
+                [{"id":"workspace-1","name":"Slock","path":"~/AndroidStudioProjects/Slock","status":"active","lastActiveAt":"2026-05-07T01:01:00Z"}]
             """.trimIndent(),
             agentsJson = """
                 {"agents":[
@@ -330,10 +367,11 @@ class RealSettingsRepositoryTest {
 
     private class FakeSlockApi(
         private val accountJson: String = """{"user":{"id":"user-1","email":"user@slock.ai","displayName":"Slock User"}}""",
-        private val membersJson: String = """{"members":[]}""",
-        private val usageJson: String = """{"usage":{}}""",
-        private val billingSubscriptionJson: String = """{"subscription":{}}""",
-        private val onboardingJson: String = """{"settings":{}}""",
+        private val membersJson: String = """[]""",
+        private val usageJson: String = """{"machines":0,"agents":0,"channels":0}""",
+        private val billingSubscriptionJson: String = """{"subscription":null,"stripeConfigured":false}""",
+        private val onboardingJson: String = """{"setupModalReminderOptOut":false}""",
+        private val inviteJson: String = """{"id":"invite-1","email":"new@slock.ai"}""",
         private val machinesJson: String = """{"machines":[]}""",
         private val workspacesJson: String = """{"workspaces":[]}""",
         private val agentsJson: String = """{"agents":[]}""",
@@ -408,7 +446,7 @@ class RealSettingsRepositoryTest {
             serverId: String,
             body: RequestBody
         ): ApiResponse =
-            response("""{"invite":{}}""")
+            response(inviteJson)
 
         override suspend fun settingsServerOnboardingSettings(priority: SlockRequestPriority,
             serverId: String

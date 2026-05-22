@@ -52,6 +52,7 @@ class RealSettingsRepository(
     private val logger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
 ) : SettingsRepository {
+    private val settingsApi: SlockSettingsServerApi = SlockSettingsServerApiClient(api, warningLogger)
     override suspend fun getAccount(): DataResult<AccountSettingsSnapshot> {
         val session = store.readSession() ?: return authRequired()
         return execute(
@@ -77,14 +78,8 @@ class RealSettingsRepository(
                 PermissionBlocker(code = "server_required", requiredCapability = "selected_server")
             )
         logger("machines_fetch_start serverId=$serverId")
-        val result = execute(
-            emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsMachines(currentSlockApiPriority(), serverId) },
-            emptyWhen = { it.computers.isEmpty() },
-            source = "settings_machines",
-            warningLogger = warningLogger,
-            mapper = { json -> json.toSettingsComputersSnapshot(warningLogger) }
-        ).mapSettingsContractMismatch("settings_machines_contract_mismatch")
+        val result = settingsApi.computers(currentSlockApiPriority(), serverId)
+            .emptyWhen { it.computers.isEmpty() }
         when (result) {
             is DataResult.Content -> logger(
                 "machines_fetch_content serverId=$serverId count=${result.data.computers.size} canAdd=${result.data.canAddComputer}"
@@ -105,14 +100,8 @@ class RealSettingsRepository(
         if (machineId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         logger("machine_detail_fetch_start serverId=$serverId machineId=$machineId")
         logger("machine_detail_section_start serverId=$serverId machineId=$machineId section=machines")
-        val machines = execute(
-            emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsMachines(currentSlockApiPriority(), serverId) },
-            emptyWhen = { it.computers.isEmpty() },
-            source = "settings_machine_detail_machines",
-            warningLogger = warningLogger,
-            mapper = { json -> json.toSettingsComputersSnapshot(warningLogger) }
-        ).mapSettingsContractMismatch("settings_machines_contract_mismatch")
+        val machines = settingsApi.computers(currentSlockApiPriority(), serverId)
+            .emptyWhen { it.computers.isEmpty() }
         machines.logMachineDetailSection(
             serverId = serverId,
             machineId = machineId,
@@ -125,13 +114,7 @@ class RealSettingsRepository(
         val computer = machines.data.computers.firstOrNull { it.id == machineId }
             ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         logger("machine_detail_section_start serverId=$serverId machineId=$machineId section=workspaces")
-        val workspaces = execute(
-            emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsMachineWorkspaces(currentSlockApiPriority(), serverId, machineId) },
-            source = "settings_machine_workspaces",
-            warningLogger = warningLogger,
-            mapper = { json -> json.toSettingsComputerWorkspaces(warningLogger) }
-        ).mapSettingsContractMismatch("settings_machine_workspaces_contract_mismatch")
+        val workspaces = settingsApi.machineWorkspaces(currentSlockApiPriority(), serverId, machineId)
         workspaces.logMachineDetailSection(
             serverId = serverId,
             machineId = machineId,
@@ -294,7 +277,7 @@ class RealSettingsRepository(
         val admins = (members as? DataResult.Content)?.data.orEmpty()
         val usageRows = mergeServerUsageRows(
             usage = (usage as? DataResult.Content)?.data.orEmpty(),
-            billing = (billing as? DataResult.Content)?.data
+            billing = (billing as? DataResult.Content)?.data.orEmpty()
         )
         val onboardingSnapshot = (onboarding as? DataResult.Content)?.data
         val sections = listOf(
@@ -362,42 +345,18 @@ class RealSettingsRepository(
     private suspend fun fetchServerMembers(
         serverId: String
     ): DataResult<List<SettingsServerAdminSnapshot>> =
-        execute(
-            emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.serverMembers(currentSlockApiPriority(), serverId) },
-            source = "settings_server_members",
-            warningLogger = warningLogger,
-            mapper = { json -> json.toSettingsServerAdmins() }
-        ).mapSettingsContractMismatch("settings_server_members_contract_mismatch")
+        settingsApi.serverAdmins(currentSlockApiPriority(), serverId)
 
     private suspend fun fetchServerUsage(serverId: String): DataResult<List<SettingsPlanUsageSnapshot>> =
-        execute(
-            emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsServerUsage(currentSlockApiPriority(), serverId) },
-            source = "settings_server_usage",
-            warningLogger = warningLogger,
-            mapper = { json -> json.toSettingsServerUsageRows() }
-        ).mapSettingsContractMismatch("settings_server_usage_contract_mismatch")
+        settingsApi.serverUsage(currentSlockApiPriority(), serverId)
 
-    private suspend fun fetchServerBilling(): DataResult<String?> =
-        execute(
-            emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsBillingSubscription(currentSlockApiPriority()) },
-            source = "settings_server_billing_subscription",
-            warningLogger = warningLogger,
-            mapper = { json -> json.toSettingsServerBillingPlanName() }
-        ).mapSettingsContractMismatch("settings_billing_subscription_contract_mismatch")
+    private suspend fun fetchServerBilling(): DataResult<List<SettingsPlanUsageSnapshot>> =
+        settingsApi.billingSubscription(currentSlockApiPriority())
 
     private suspend fun fetchServerOnboarding(
         serverId: String
     ): DataResult<SettingsServerOnboardingSnapshot> =
-        execute(
-            emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsServerOnboardingSettings(currentSlockApiPriority(), serverId) },
-            source = "settings_server_onboarding_settings",
-            warningLogger = warningLogger,
-            mapper = { json -> json.toSettingsServerOnboardingSnapshot() }
-        ).mapSettingsContractMismatch("settings_server_onboarding_contract_mismatch")
+        settingsApi.serverOnboarding(currentSlockApiPriority(), serverId)
 
     private fun adminsSectionDetail(result: DataResult<List<SettingsServerAdminSnapshot>>, count: Int): String =
         when (result) {
@@ -409,10 +368,10 @@ class RealSettingsRepository(
 
     private fun billingSectionDetail(
         sessionPlan: String?,
-        billing: DataResult<String?>,
+        billing: DataResult<List<SettingsPlanUsageSnapshot>>,
         usageRowCount: Int
     ): String {
-        val plan = (billing as? DataResult.Content)?.data ?: sessionPlan.toPlanDisplayName()
+        val plan = sessionPlan.toPlanDisplayName()
         val usage = if (usageRowCount > 0) " Usage rows: $usageRowCount." else ""
         return when (billing) {
             is DataResult.NoPermission -> "Billing requires owner/admin permission."
@@ -441,7 +400,7 @@ class RealSettingsRepository(
         }
 
     private fun combineSectionState(
-        billing: DataResult<String?>,
+        billing: DataResult<List<SettingsPlanUsageSnapshot>>,
         usage: DataResult<List<SettingsPlanUsageSnapshot>>,
         empty: Boolean
     ): SettingsSectionAvailability =
@@ -456,12 +415,10 @@ class RealSettingsRepository(
 
     private fun mergeServerUsageRows(
         usage: List<SettingsPlanUsageSnapshot>,
-        billing: String?
+        billing: List<SettingsPlanUsageSnapshot>
     ): List<SettingsPlanUsageSnapshot> =
         buildList {
-            if (!billing.isNullOrBlank()) {
-                add(SettingsPlanUsageSnapshot(label = "Plan", value = billing))
-            }
+            addAll(billing)
             addAll(usage)
         }
 
@@ -481,18 +438,11 @@ class RealSettingsRepository(
         val name = request.name.trim()
         if (name.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         val update =
-            execute(
-                emptyReason = EmptyReason.NoSettingsAvailable,
-                block = {
-                    api.updateSettingsServerProfile(currentSlockApiPriority(),
-                        server.id,
-                        mapOf("name" to name).toJsonBody()
-                    )
-                },
-                source = "settings_server_profile_update",
-                warningLogger = warningLogger,
-                mapper = { Unit }
-            ).mapSettingsContractMismatch("settings_server_profile_contract_mismatch")
+            settingsApi.updateServerProfile(
+                currentSlockApiPriority(),
+                server.id,
+                mapOf("name" to name).toJsonBody()
+            )
         return when (update) {
             is DataResult.Content -> getServerSettings()
             is DataResult.Empty -> DataResult.Empty(update.reason)
@@ -516,23 +466,11 @@ class RealSettingsRepository(
         }
         val email = request.email.trim()
         if (email.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
-        return execute(
-            emptyReason = EmptyReason.NoSettingsAvailable,
-            block = {
-                api.createSettingsServerInvite(currentSlockApiPriority(),
-                    server.id,
-                    mapOf("email" to email).toJsonBody()
-                )
-            },
-            source = "settings_server_invite_create",
-            warningLogger = warningLogger,
-            mapper = { json ->
-                SettingsServerActionResult(
-                    success = json.boolean("ok", "success", "sent") ?: true,
-                    message = json.string("message", "status")
-                )
-            }
-        ).mapSettingsContractMismatch("settings_server_invite_contract_mismatch")
+        return settingsApi.createServerInvite(
+            currentSlockApiPriority(),
+            server.id,
+            mapOf("email" to email).toJsonBody()
+        )
     }
 
     override suspend fun deleteServer(
@@ -551,18 +489,7 @@ class RealSettingsRepository(
         if (request.confirmationName.trim() != server.name) {
             return DataResult.Error(ScreenError(code = "server_delete_confirmation_mismatch", retryable = false))
         }
-        return execute(
-            emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.deleteSettingsServer(currentSlockApiPriority(), server.id) },
-            source = "settings_server_delete",
-            warningLogger = warningLogger,
-            mapper = { json ->
-                SettingsServerActionResult(
-                    success = json.boolean("ok", "success", "deleted") ?: true,
-                    message = json.string("message", "status")
-                )
-            }
-        ).mapSettingsContractMismatch("settings_server_delete_contract_mismatch")
+        return settingsApi.deleteServer(currentSlockApiPriority(), server.id)
     }
 
     override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> {
@@ -605,6 +532,12 @@ private fun <T> DataResult<T>.mapSettingsContractMismatch(code: String): DataRes
                 this
             }
         }
+        else -> this
+    }
+
+private fun <T> DataResult<T>.emptyWhen(predicate: (T) -> Boolean): DataResult<T> =
+    when {
+        this is DataResult.Content && predicate(data) -> DataResult.Empty(EmptyReason.NoSettingsAvailable)
         else -> this
     }
 
@@ -673,75 +606,8 @@ private fun JsonObject.toConnectedAccount(): ConnectedAccountSnapshot {
     )
 }
 
-private fun JsonObject.toSettingsComputersSnapshot(warningLogger: (String) -> Unit): SettingsComputersSnapshot {
-    val computers = machineItems()
-        .map { it.asObject().toSettingsComputerSnapshot() }
-        .filter { it.id.isNotBlank() || it.name.isNotBlank() }
-    if (computers.isEmpty()) {
-        warningLogger("empty_items source=settings_machines stage=list_extract rootKeys=${safeKeyList()}")
-    }
-    return SettingsComputersSnapshot(
-        computers = computers,
-        canAddComputer = boolean("canAddComputer", "canCreate", "canRegisterMachine") ?: false,
-        addComputerUnavailableReason = string("addComputerUnavailableReason", "unavailableReason"),
-        latestDaemonVersion = string("latestDaemonVersion", "latest_daemon_version")
-    )
-}
-
-private fun JsonObject.toSettingsComputerSnapshot(): SettingsComputerSnapshot {
-    val id = string("id", "machineId", "computerId", "uuid") ?: ""
-    val hostname = string("hostname", "hostName")
-    val name = string("name", "displayName", "deviceName") ?: hostname
-        ?: id.ifBlank { "Unknown computer" }
-    val version = string("daemonVersion", "daemon_version", "version", "agentVersion", "clientVersion")
-    return SettingsComputerSnapshot(
-        id = id.ifBlank { name },
-        name = name,
-        daemonVersion = version ?: "daemon unavailable",
-        online = machineOnline(),
-        hostname = hostname,
-        platform = string("platform", "os", "operatingSystem"),
-        lastSeenLabel = string("lastSeen", "lastSeenAt", "lastActiveAt", "updatedAt")
-    )
-}
-
-private fun JsonObject.machineOnline(): Boolean {
-    boolean("online", "isOnline", "is_online", "connected", "active", "isActive")?.let { return it }
-    val status = string("status", "state", "connectionStatus", "connection_state")?.lowercase() ?: return false
-    return status in setOf("online", "connected", "active", "ready", "running")
-}
-
-private fun JsonObject.machineItems() =
-    items("machines", "computers", "items", "nodes", "records", "rows", "list", "results", "data")
-
 private fun JsonObject.safeKeyList(): String =
     entrySet().map { it.key }.sorted().joinToString("|").ifBlank { "none" }
-
-private fun JsonObject.toSettingsComputerWorkspaces(
-    warningLogger: (String) -> Unit
-): List<SettingsComputerWorkspaceSnapshot> {
-    val workspaces = items("workspaces", "items", "nodes", "records", "rows", "list", "results", "data")
-        .map { it.asObject().toSettingsComputerWorkspaceSnapshot() }
-        .filter { it.id.isNotBlank() || it.path.isNotBlank() }
-    if (workspaces.isEmpty()) {
-        warningLogger("empty_items source=settings_machine_workspaces stage=list_extract rootKeys=${safeKeyList()}")
-    }
-    return workspaces
-}
-
-private fun JsonObject.toSettingsComputerWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot {
-    val path = string("path", "workspacePath", "directory", "rootPath") ?: ""
-    val name = string("name", "workspaceName", "directoryName")
-        ?: path.substringAfterLast('/').ifBlank { path.ifBlank { "Workspace" } }
-    val id = string("id", "workspaceId", "directoryName") ?: path.ifBlank { name }
-    return SettingsComputerWorkspaceSnapshot(
-        id = id,
-        name = name,
-        path = path.ifBlank { name },
-        statusLabel = string("status", "state"),
-        lastActiveLabel = string("lastActiveAt", "lastActivityAt", "updatedAt")
-    )
-}
 
 private fun JsonObject.toSettingsComputerAgents(
     machineId: String,
@@ -813,86 +679,6 @@ private fun List<SettingsComputerAgentSnapshot>.enrichWithMembers(
             memberProfile = membersById[agent.id] ?: membersByName[agent.name.lowercase()]
         )
     }
-}
-
-private fun JsonObject.toSettingsServerAdmins(): List<SettingsServerAdminSnapshot> =
-    items("members", "users", "items", "nodes", "records", "rows", "list", "results", "data")
-        .map { it.asObject() }
-        .filter { it.string("role")?.lowercase() == "admin" }
-        .map { it.toSettingsServerAdminSnapshot() }
-
-private fun JsonObject.toSettingsServerAdminSnapshot(): SettingsServerAdminSnapshot {
-    val id = string("userId", "id", "memberId") ?: ""
-    val name = string("displayName", "name", "username", "email") ?: id.ifBlank { "Admin" }
-    return SettingsServerAdminSnapshot(
-        id = id.ifBlank { name },
-        name = name,
-        detail = string("email", "handle", "username"),
-        role = string("role")?.toRoleLabel()
-    )
-}
-
-private fun JsonObject.toSettingsServerUsageRows(): List<SettingsPlanUsageSnapshot> {
-    val explicitRows = items("usageRows", "usage", "rows", "items", "data")
-        .mapNotNull { element ->
-            val row = element.asObject()
-            val label = row.string("label", "name", "key", "metric") ?: return@mapNotNull null
-            val value = row.string("value", "displayValue", "current", "count")
-                ?: row.int("value", "current", "count")?.toString()
-                ?: return@mapNotNull null
-            val limit = row.string("limit", "max", "quota")
-                ?: row.int("limit", "max", "quota")?.takeIf { it >= 0 }?.toString()
-            SettingsPlanUsageSnapshot(
-                label = label.toSettingsUsageLabel(),
-                value = if (limit.isNullOrBlank()) value else "$value / $limit"
-            )
-        }
-    if (explicitRows.isNotEmpty()) return explicitRows
-
-    val source = objectValue("usage") ?: this
-    return listOfNotNull(
-        source.toUsageRow("Computers", "computers", "machineCount", "machines", "computerCount"),
-        source.toUsageRow("Agents", "agents", "agentCount", "activeAgents"),
-        source.toUsageRow("Channels", "channels", "channelCount"),
-        source.toUsageRow("Members", "members", "memberCount"),
-        source.toUsageRow("History", "history", "historyDays", "historyLimit")
-    )
-}
-
-private fun JsonObject.toUsageRow(label: String, vararg names: String): SettingsPlanUsageSnapshot? {
-    val value = string(*names) ?: int(*names)?.toString() ?: return null
-    val limit = string("${names.first()}Limit", "max${label}", "${names.first()}Max")
-        ?: int("${names.first()}Limit", "max${label}", "${names.first()}Max")?.takeIf { it >= 0 }?.toString()
-    return SettingsPlanUsageSnapshot(
-        label = label,
-        value = if (limit.isNullOrBlank()) value else "$value / $limit"
-    )
-}
-
-private fun String.toSettingsUsageLabel(): String =
-    replace("_", " ")
-        .replace("-", " ")
-        .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-
-private fun JsonObject.toSettingsServerBillingPlanName(): String? {
-    val source = objectValue("subscription", "billing", "plan") ?: this
-    return source.string("planName", "plan", "name", "tier", "currentPlan")?.toPlanDisplayName()
-}
-
-private fun JsonObject.toSettingsServerOnboardingSnapshot(): SettingsServerOnboardingSnapshot {
-    val source = objectValue("settings", "onboarding") ?: this
-    val optOut =
-        source.boolean("setupModalReminderOptOut", "onboardingReminderOptOut", "reminderOptOut")
-            ?: false
-    return SettingsServerOnboardingSnapshot(
-        setupModalReminderOptOut = optOut,
-        statusLabel = if (optOut) "Reminder muted" else "Reminder active",
-        detail = if (optOut) {
-            "The onboarding setup reminder is muted for this server."
-        } else {
-            "The onboarding setup reminder can appear when the server has no computer or agent."
-        }
-    )
 }
 
 private fun <T> DataResult<T>.mapSettingsDetailError(
