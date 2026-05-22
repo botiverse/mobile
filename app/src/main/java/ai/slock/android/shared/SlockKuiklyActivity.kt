@@ -22,10 +22,28 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.res.ResourcesCompat
+import androidx.lifecycle.lifecycleScope
 import ai.slock.android.R
 import ai.slock.android.core.data.auth.AuthSession
+import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
+import ai.slock.android.core.data.realtime.SessionRealtimeRepository
+import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
+import ai.slock.android.core.data.realtime.SocketIoSocketTransport
+import ai.slock.android.core.data.repository.RealtimeRepository
+import ai.slock.android.core.data.repository.RealtimeSubscription
+import ai.slock.android.core.model.DirectMessageCreated
+import ai.slock.android.core.model.Heartbeat
+import ai.slock.android.core.model.MemberKind
+import ai.slock.android.core.model.MemberPresenceUpdated
+import ai.slock.android.core.model.MessageNew
+import ai.slock.android.core.model.MessageUpdated
+import ai.slock.android.core.model.Presence
+import ai.slock.android.core.model.RealtimeEvent
+import ai.slock.android.core.model.ServerId
+import ai.slock.android.core.model.SyncResumeResponse
+import ai.slock.android.core.model.ThreadUpdated
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext
 import com.tencent.kuikly.core.render.android.adapter.HRImageLoadOption
@@ -51,6 +69,8 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
@@ -58,6 +78,11 @@ import org.json.JSONObject
 class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDelegate {
 
     private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
+    private var realtimeRepository: RealtimeRepository? = null
+    private var realtimeSubscription: RealtimeSubscription? = null
+    private var realtimeConnectJob: Job? = null
+    private var realtimeServerId: ServerId? = null
+    private var realtimeLastSeq: Long = 0L
 
     private val pageName: String
         get() = intent.getStringExtra(KEY_PAGE_NAME).takeUnless { it.isNullOrBlank() } ?: PAGE_ROUTER
@@ -70,21 +95,25 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         val container = findViewById<ViewGroup>(R.id.slock_kuikly_container)
         val spec = createPageSpec()
         kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
+        startRealtimeBridgeIfNeeded()
     }
 
     override fun onDestroy() {
+        stopRealtimeBridge()
         super.onDestroy()
         kuiklyRenderViewDelegator.onDetach()
     }
 
     override fun onPause() {
         super.onPause()
+        stopRealtimeBridge()
         kuiklyRenderViewDelegator.onPause()
     }
 
     override fun onResume() {
         super.onResume()
         kuiklyRenderViewDelegator.onResume()
+        startRealtimeBridgeIfNeeded()
     }
 
     @Suppress("DEPRECATION")
@@ -128,6 +157,79 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         }
     }
 
+    private fun startRealtimeBridgeIfNeeded() {
+        if (pageName != PAGE_APP_SHELL || realtimeConnectJob != null) return
+        val sessionStore = EncryptedAuthSessionStore(applicationContext)
+        val repository =
+                SessionRealtimeRepository(
+                        store = sessionStore,
+                        client =
+                                SocketIoRealtimeClient(
+                                        transport = SocketIoSocketTransport(),
+                                        logger = { message ->
+                                            SlockDiagnosticsLogger.d("SlockKuiklyRealtime", message)
+                                        }
+                                ),
+                        tokenRefresher = AuthTokenRefresher(sessionStore)
+                )
+        realtimeRepository = repository
+        realtimeSubscription =
+                repository.observeEvents { event ->
+                    lifecycleScope.launch {
+                        val serverId = realtimeServerId ?: return@launch
+                        realtimeLastSeq = realtimeLastSeq.updateFrom(event)
+                        if (event is DirectMessageCreated) {
+                            repository.joinChannel(event.channelId)
+                        }
+                        sendRealtimeEventToSharedShell(serverId, event)
+                    }
+                }
+        realtimeConnectJob =
+                lifecycleScope.launch {
+                    val session = sessionStore.readSession()
+                    val serverId =
+                            session?.currentServerId?.let(::ServerId)
+                                    ?: run {
+                                        SlockDiagnosticsLogger.w(
+                                                "SlockKuiklyRealtime",
+                                                "connect_skip reason=missing_selected_server"
+                                        )
+                                        return@launch
+                                    }
+                    realtimeServerId = serverId
+                    val result = repository.connect(serverId, realtimeLastSeq)
+                    SlockDiagnosticsLogger.d(
+                            "SlockKuiklyRealtime",
+                            "connect_result serverId=${serverId.value} result=${result::class.simpleName}"
+                    )
+                }
+    }
+
+    private fun stopRealtimeBridge() {
+        realtimeConnectJob?.cancel()
+        realtimeConnectJob = null
+        realtimeSubscription?.close()
+        realtimeSubscription = null
+        realtimeRepository?.disconnect()
+        realtimeRepository = null
+        realtimeServerId = null
+    }
+
+    private fun sendRealtimeEventToSharedShell(serverId: ServerId, event: RealtimeEvent) {
+        val payload = event.toSharedShellJson().toString()
+        kuiklyRenderViewDelegator.sendEvent(
+                REALTIME_EVENT_NAME,
+                mapOf(
+                        "serverId" to serverId.value,
+                        "payload" to payload
+                )
+        )
+        SlockDiagnosticsLogger.d(
+                "SlockKuiklyRealtime",
+                "event_forwarded type=${event::class.simpleName} serverId=${serverId.value}"
+        )
+    }
+
     companion object {
         const val PAGE_LOGIN = SlockKuiklyPages.LOGIN
         const val PAGE_REGISTER = SlockKuiklyPages.REGISTER
@@ -151,6 +253,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         private const val KEY_PAGE_DATA = "pageData"
 
         private const val KEY_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
+        private const val REALTIME_EVENT_NAME = "slockRealtimeEvent"
 
         fun start(
             context: Context,
@@ -184,6 +287,89 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         }
     }
 }
+
+private fun Long.updateFrom(event: RealtimeEvent): Long =
+        when (event) {
+            is Heartbeat -> maxOf(this, event.seq)
+            is SyncResumeResponse -> maxOf(this, event.currentSeq)
+            is MessageNew -> maxOf(this, event.message.seq ?: 0L)
+            is MessageUpdated -> maxOf(this, event.message.seq ?: 0L)
+            else -> this
+        }
+
+private fun RealtimeEvent.toSharedShellJson(): JSONObject =
+        when (this) {
+            is MessageNew -> JSONObject().put("type", "message_new").put("message", message.toJson())
+            is MessageUpdated -> JSONObject().put("type", "message_updated").put("message", message.toJson())
+            is SyncResumeResponse ->
+                    JSONObject()
+                            .put("type", "sync_resume")
+                            .put("currentSeq", currentSeq)
+                            .put("hasMore", hasMore)
+                            .put("messages", JSONArray().also { array -> messages.forEach { array.put(it.toJson()) } })
+            is ThreadUpdated ->
+                    JSONObject()
+                            .put("type", "thread_updated")
+                            .put("parentMessageId", parentMessageId.value)
+                            .put("threadChannelId", threadChannelId.value)
+                            .put("replyCount", replyCount)
+                            .put("lastReplyAt", lastReplyAt)
+                            .put("participantIds", JSONArray().also { array -> participantIds.forEach { array.put(it.value) } })
+            is MemberPresenceUpdated ->
+                    JSONObject()
+                            .put("type", "member_presence")
+                            .put("memberId", memberId.value)
+                            .put("presence", presence.toWireValue())
+                            .put("kind", kind?.toWireValue())
+                            .put("agentStatus", agentStatus?.name)
+                            .put("statusLabel", statusLabel)
+            is DirectMessageCreated ->
+                    JSONObject()
+                            .put("type", "direct_message_created")
+                            .put("channelId", channelId.value)
+            is Heartbeat -> JSONObject().put("type", "heartbeat").put("seq", seq)
+            else -> JSONObject().put("type", "unsupported")
+        }
+
+private fun ai.slock.android.core.model.Message.toJson(): JSONObject =
+        JSONObject()
+                .put("id", id.value)
+                .put("threadId", threadId.value)
+                .put("channelId", channelId?.value)
+                .put("threadChannelId", threadChannelId?.value)
+                .put("seq", seq)
+                .put("author", author.toJson())
+                .put("timestampLabel", timestampLabel)
+                .put("body", body)
+                .put("messageType", messageType.name)
+                .put("systemEventType", systemEventType)
+                .put("replyCount", replyCount)
+                .put("parentMessageId", parentMessageId?.value)
+
+private fun ai.slock.android.core.model.MemberProfile.toJson(): JSONObject =
+        JSONObject()
+                .put("id", id.value)
+                .put("displayName", displayName)
+                .put("handle", handle)
+                .put("kind", kind.toWireValue())
+                .put("avatarUrl", avatarUrl)
+                .put("avatarLabel", avatarLabel)
+                .put("presence", presence.toWireValue())
+                .put("agentStatus", agentStatus?.name)
+
+private fun MemberKind.toWireValue(): String =
+        when (this) {
+            MemberKind.Agent -> "agent"
+            MemberKind.Human -> "human"
+            MemberKind.System -> "system"
+        }
+
+private fun Presence.toWireValue(): String =
+        when (this) {
+            Presence.Active -> "active"
+            Presence.Away -> "away"
+            Presence.Offline -> "offline"
+        }
 
 internal object SlockKuiklyAdapters {
     private var initialized = false

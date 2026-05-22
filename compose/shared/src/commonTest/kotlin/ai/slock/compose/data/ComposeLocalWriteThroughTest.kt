@@ -9,6 +9,7 @@ import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
@@ -128,6 +129,64 @@ class ComposeLocalWriteThroughTest {
         val homeChannel = store.readHome(serverId)?.channels?.single()
         assertEquals("new body", homeChannel?.lastMessagePreview)
         assertEquals(1, homeChannel?.unreadCount)
+    }
+
+    @Test
+    fun realtimePresenceUpdatesCachedDirectMessage() = runBlocking {
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store)
+        val dm =
+            ConversationSummary(
+                threadId = ThreadId("dm-1"),
+                channelId = ChannelId("dm-1"),
+                kind = ConversationKind.DirectMessage,
+                name = "Agent",
+                presence = Presence.Offline,
+                presenceMemberId = MemberId("agent-1")
+            )
+        store.writeHome(home(directMessages = listOf(dm)))
+
+        writer.writeRealtimeEvent(
+            serverId,
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent
+            )
+        )
+
+        val cached = store.readHome(serverId)?.directMessages?.single()
+        assertEquals(Presence.Active, cached?.presence)
+    }
+
+    @Test
+    fun clearConversationUnreadUpdatesCachedHomeRow() = runBlocking {
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store)
+        store.writeHome(
+            home(
+                channels =
+                    listOf(
+                        channel().copy(
+                            unreadCount = 3,
+                            unreadCountKnown = true,
+                            mentionCount = 1,
+                            mentionCountKnown = true,
+                            firstUnreadMessageId = MessageId("message-1")
+                        )
+                    )
+            ).copy(unreadTotal = 3)
+        )
+
+        writer.clearConversationUnread(ChannelId("channel-1"), "test", serverId)
+
+        val cached = store.readHome(serverId)
+        val channel = cached?.channels?.single()
+        assertEquals(0, channel?.unreadCount)
+        assertEquals(true, channel?.unreadCountKnown)
+        assertEquals(0, channel?.mentionCount)
+        assertEquals(null, channel?.firstUnreadMessageId)
+        assertEquals(0, cached?.unreadTotal)
     }
 
     @Test

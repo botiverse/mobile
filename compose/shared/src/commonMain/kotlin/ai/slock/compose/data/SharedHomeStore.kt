@@ -1,6 +1,8 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.DirectMessageCreated
+import ai.slock.compose.model.RealtimeEvent
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -52,6 +54,8 @@ class SharedHomeStore(
                 _state.value = _state.value.copy(serverSwitcherExpanded = !_state.value.serverSwitcherExpanded)
             SharedHomeIntent.DismissServerSwitcher ->
                 _state.value = _state.value.copy(serverSwitcherExpanded = false)
+            is SharedHomeIntent.ApplyRealtimeEvent ->
+                applyRealtimeEvent(ServerId(intent.serverId), intent.event)
             is SharedHomeIntent.SelectServer -> {
                 val currentServerId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
                 val nextSwitch =
@@ -67,6 +71,36 @@ class SharedHomeStore(
                     )
                 load(nextSwitch)
             }
+        }
+    }
+
+    private suspend fun applyRealtimeEvent(serverId: ServerId, event: RealtimeEvent) {
+        val current = _state.value.content
+        val currentContent = current as? SharedHomeContentState.Content
+        val visibleServerId = currentContent?.snapshot?.server?.id
+        val result = dataSource.applyRealtimeEvent(serverId, event)
+        if (visibleServerId != null && visibleServerId != serverId) {
+            return
+        }
+        if (event is DirectMessageCreated) {
+            val nextSwitch = _state.value.serverSwitchState.refresh()
+            _state.value = _state.value.copy(serverSwitchState = nextSwitch)
+            load(nextSwitch)
+            return
+        }
+        if (result is DataResult.Content) {
+            val session = currentContent?.session
+                ?: authStore.readSession()
+                ?: return
+            _state.value =
+                _state.value.copy(
+                    content =
+                        SharedHomeContentState.Content(
+                            snapshot = result.data,
+                            session = session,
+                            contentRefreshing = currentContent?.contentRefreshing == true
+                        )
+                )
         }
     }
 
@@ -173,6 +207,7 @@ sealed interface SharedHomeIntent {
     data object ToggleServerSwitcher : SharedHomeIntent
     data object DismissServerSwitcher : SharedHomeIntent
     data class SelectServer(val serverId: String) : SharedHomeIntent
+    data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
 }
 
 private val SharedHomeIntent.loadsHome: Boolean
@@ -182,7 +217,8 @@ private val SharedHomeIntent.loadsHome: Boolean
             SharedHomeIntent.Refresh,
             is SharedHomeIntent.SelectServer -> true
             SharedHomeIntent.ToggleServerSwitcher,
-            SharedHomeIntent.DismissServerSwitcher -> false
+            SharedHomeIntent.DismissServerSwitcher,
+            is SharedHomeIntent.ApplyRealtimeEvent -> false
         }
 
 sealed interface SharedHomeContentState {

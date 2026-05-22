@@ -112,8 +112,16 @@ class ComposeLocalWriteThrough(
         )
     }
 
-    suspend fun clearConversationUnread(channelId: ChannelId, source: String) {
+    suspend fun clearConversationUnread(channelId: ChannelId, source: String, serverId: ServerId? = null) {
         store.clearChannelUnread(channelId)
+        serverId?.let { id ->
+            store.readHome(id)?.let { home ->
+                val updatedHome = home.clearConversationUnread(channelId)
+                if (updatedHome != home) {
+                    store.writeHome(updatedHome)
+                }
+            }
+        }
         logger("clear_home_unread source=$source channelId=${channelId.value}")
     }
 
@@ -125,6 +133,7 @@ class ComposeLocalWriteThrough(
             is ThreadUpdated -> writeThreadMetadata(serverId, event)
             is TaskCreated -> writeRealtimeTasks(event.tasks)
             is TaskUpdated -> writeRealtimeTasks(listOf(event.task))
+            is ai.slock.compose.model.MemberPresenceUpdated -> updateHomePresence(serverId, event)
             is Heartbeat -> logger("write_realtime_skip type=heartbeat seq=${event.seq}")
             else -> Unit
         }
@@ -219,6 +228,30 @@ class ComposeLocalWriteThrough(
                 existing.copy(tasks = (existing.tasks + threadTasks).distinctBy { it.id })
             )
         }
+    }
+
+    private suspend fun updateHomePresence(
+        serverId: ServerId,
+        event: ai.slock.compose.model.MemberPresenceUpdated
+    ) {
+        val home = store.readHome(serverId) ?: return
+        val updatedDirectMessages =
+            home.directMessages.map { conversation ->
+                if (conversation.matchesPresenceMember(event)) {
+                    conversation.copy(
+                        presence = event.presence,
+                        agentStatus = event.agentStatus ?: conversation.agentStatus,
+                        presenceMemberId = conversation.presenceMemberId ?: event.memberId
+                    )
+                } else {
+                    conversation
+                }
+            }
+        if (updatedDirectMessages == home.directMessages) return
+        store.writeHome(home.copy(directMessages = updatedDirectMessages))
+        logger(
+            "write_home_realtime source=presence serverId=${serverId.value} memberId=${event.memberId.value}"
+        )
     }
 
     private suspend fun updateHomePreview(
@@ -348,6 +381,37 @@ private fun ConversationSummary.withUnreadCounts(
     val unread = unreadCounts[channelKey] ?: return copy(unreadCount = 0, unreadCountKnown = true)
     return copy(unreadCount = unread, unreadCountKnown = true)
 }
+
+private fun HomeSnapshot.clearConversationUnread(channelId: ChannelId): HomeSnapshot {
+    var cleared = 0
+    fun ConversationSummary.clearIfMatches(): ConversationSummary {
+        if (messageStreamChannelId() != channelId && this.channelId != channelId && threadId.value != channelId.value) {
+            return this
+        }
+        cleared += unreadCount
+        return copy(
+            unreadCount = 0,
+            unreadCountKnown = true,
+            mentionCount = 0,
+            mentionCountKnown = true,
+            firstUnreadMessageId = null
+        )
+    }
+    return copy(
+        channels = channels.map { it.clearIfMatches() },
+        directMessages = directMessages.map { it.clearIfMatches() },
+        unreadTotal = (unreadTotal - cleared).coerceAtLeast(0)
+    )
+}
+
+private fun ConversationSummary.matchesPresenceMember(
+    event: ai.slock.compose.model.MemberPresenceUpdated
+): Boolean =
+    kind == ConversationKind.DirectMessage &&
+        (event.kind == null || event.kind == ai.slock.compose.model.MemberKind.Agent || event.kind == ai.slock.compose.model.MemberKind.Human) &&
+        (presenceMemberId == event.memberId ||
+            channelId?.value == event.memberId.value ||
+            threadId.value == event.memberId.value)
 
 private fun ConversationSummary.withThreadMetadata(event: ThreadUpdated): ConversationSummary =
     if (lastMessageId == event.parentMessageId || thread?.parentMessageId == event.parentMessageId) {

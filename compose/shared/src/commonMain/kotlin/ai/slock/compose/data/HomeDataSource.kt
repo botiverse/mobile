@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.RealtimeEvent
 import kotlinx.coroutines.CancellationException
 
 class SharedHomeDataSource(
@@ -58,6 +59,12 @@ class SharedHomeDataSource(
         val cached = localWriteThrough?.readHomeSnapshot(resolvedServerId)
             ?: return DataResult.Empty(EmptyReason.NoChannels)
         return DataResult.Content(cached)
+    }
+
+    suspend fun applyRealtimeEvent(serverId: ServerId, event: RealtimeEvent): DataResult<HomeSnapshot> {
+        localWriteThrough?.writeRealtimeEvent(serverId, event)
+            ?: return DataResult.Empty(EmptyReason.NoChannels)
+        return readCachedHome(serverId)
     }
 }
 

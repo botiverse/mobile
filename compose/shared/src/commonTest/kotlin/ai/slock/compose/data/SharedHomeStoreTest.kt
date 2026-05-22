@@ -6,6 +6,9 @@ import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.Message
+import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
@@ -105,6 +108,51 @@ class SharedHomeStoreTest {
         scope.cancel()
     }
 
+    @Test
+    fun realtimeMessageUpdatesVisibleHomeFromLocalSnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(sampleHome(ServerId("server-1")))
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = ThrowingHomeApi(),
+                    localWriteThrough = ComposeLocalWriteThrough(localStore),
+                    parseHome = { _, _ -> error("network failure should not parse") }
+                ),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MessageNew(
+                        Message(
+                            id = MessageId("message-2"),
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            seq = 2,
+                            author = sampleMember(),
+                            timestampLabel = "12:01",
+                            body = "live update"
+                        )
+                    )
+            )
+        )
+
+        val content = store.state.value.content
+        assertTrue(content is SharedHomeContentState.Content)
+        assertEquals("live update", content.snapshot.channels.single().lastMessagePreview)
+        assertEquals(1, content.snapshot.channels.single().unreadCount)
+        assertEquals(1, content.snapshot.unreadTotal)
+        assertEquals("live update", localStore.readHome(ServerId("server-1"))?.channels?.single()?.lastMessagePreview)
+        scope.cancel()
+    }
+
     private fun source(api: SlockHomeApi): SharedHomeDataSource =
         SharedHomeDataSource(
             sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -175,14 +223,7 @@ class SharedHomeStoreTest {
     private fun sampleHome(serverId: ServerId): HomeSnapshot =
         HomeSnapshot(
             server = ServerSummary(serverId, if (serverId.value == "server-2") "Work" else "Slock Community"),
-            currentMember =
-                MemberProfile(
-                    id = MemberId("user-1"),
-                    displayName = "Artin",
-                    handle = "artin@slock.ai",
-                    kind = MemberKind.Human,
-                    presence = Presence.Active
-                ),
+            currentMember = sampleMember(),
             channels =
                 listOf(
                     ConversationSummary(
@@ -194,5 +235,14 @@ class SharedHomeStoreTest {
                 ),
             directMessages = emptyList(),
             unreadTotal = 0
+        )
+
+    private fun sampleMember(): MemberProfile =
+        MemberProfile(
+            id = MemberId("user-1"),
+            displayName = "Artin",
+            handle = "artin@slock.ai",
+            kind = MemberKind.Human,
+            presence = Presence.Active
         )
 }

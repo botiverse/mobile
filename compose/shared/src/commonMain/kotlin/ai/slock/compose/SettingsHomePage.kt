@@ -29,12 +29,25 @@ import ai.slock.compose.data.BridgeThreadApi
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.DirectMessageCreated
+import ai.slock.compose.model.Heartbeat
+import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.Message
+import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.MessageType
+import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
+import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
+import ai.slock.compose.model.SyncResumeResponse
+import ai.slock.compose.model.ThreadId
+import ai.slock.compose.model.ThreadUpdated
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -70,6 +83,8 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.BackPressCallback
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
@@ -101,6 +116,7 @@ private const val SettingsDestinationMobile = "mobile"
 private const val SettingsDestinationStorage = "storage"
 private const val SettingsDestinationAbout = "about"
 private const val SettingsDestinationRouter = "router"
+private const val AppShellRealtimeEvent = "slockRealtimeEvent"
 
 @Page(SETTINGS_HOME_PAGE, supportInLocal = true)
 internal class ComposeSettingsHomePage : ai.slock.compose.base.BasePager() {
@@ -513,6 +529,25 @@ private fun SlockAppShellContent() {
         if (selectedTab == "tasks") {
             tasksViewModel.dispatch(SharedTasksRouteIntent.Start)
         }
+    }
+
+    DisposableEffect(pager, homeViewModel) {
+        val observer =
+            object : IPagerEventObserver {
+                override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
+                    if (pagerEvent != AppShellRealtimeEvent) return
+                    val serverId = eventData.optString("serverId").takeIf { it.isNotBlank() } ?: return
+                    val payload = eventData.optString("payload").takeIf { it.isNotBlank() } ?: return
+                    val event =
+                        parseSharedShellRealtimeEvent(payload).getOrElse { throwable ->
+                            bridge.log("shared_realtime_decode_failed ${throwable.message.orEmpty()}")
+                            return
+                        }
+                    homeViewModel.dispatch(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
+                }
+            }
+        pager.addPagerEventObserver(observer)
+        onDispose { pager.removePagerEventObserver(observer) }
     }
 
     NavHost(
@@ -1834,6 +1869,108 @@ internal fun buildAppShellThreadPayload(
                 )
             )
     )
+
+private fun parseSharedShellRealtimeEvent(payload: String): Result<RealtimeEvent> =
+    runCatching {
+        val json = JSONObject(payload)
+        when (json.optString("type")) {
+            "message_new" -> MessageNew(json.optJSONObject("message").toSharedMessage())
+            "message_updated" -> MessageUpdated(json.optJSONObject("message").toSharedMessage())
+            "sync_resume" ->
+                SyncResumeResponse(
+                    messages =
+                        buildList {
+                            val messages = json.optJSONArray("messages")
+                            if (messages != null) {
+                                for (index in 0 until messages.length()) {
+                                    add(messages.optJSONObject(index).toSharedMessage())
+                                }
+                            }
+                        },
+                    currentSeq = json.optLong("currentSeq", 0L),
+                    hasMore = json.optBoolean("hasMore", false)
+                )
+            "thread_updated" ->
+                ThreadUpdated(
+                    parentMessageId = MessageId(json.optString("parentMessageId")),
+                    threadChannelId = ChannelId(json.optString("threadChannelId")),
+                    replyCount = json.optInt("replyCount", 0),
+                    lastReplyAt = json.optString("lastReplyAt").takeIf { it.isNotBlank() },
+                    participantIds =
+                        buildList {
+                            val ids = json.optJSONArray("participantIds")
+                            if (ids != null) {
+                                for (index in 0 until ids.length()) {
+                                    ids.optString(index)?.takeIf { it.isNotBlank() }?.let { add(MemberId(it)) }
+                                }
+                            }
+                        }
+                )
+            "member_presence" ->
+                MemberPresenceUpdated(
+                    memberId = MemberId(json.optString("memberId")),
+                    presence = json.optString("presence").toRealtimePresence(),
+                    kind = json.optString("kind").toSharedMemberKind(),
+                    agentStatus = AgentStatus.fromWireValue(json.optString("agentStatus")),
+                    statusLabel = json.optString("statusLabel").takeIf { it.isNotBlank() }
+                )
+            "direct_message_created" -> DirectMessageCreated(ChannelId(json.optString("channelId")))
+            "heartbeat" -> Heartbeat(json.optLong("seq", 0L))
+            else -> error("unsupported realtime event ${json.optString("type")}")
+        }
+    }
+
+private fun JSONObject?.toSharedMessage(): Message {
+    val json = this ?: JSONObject()
+    return Message(
+        id = MessageId(json.optString("id")),
+        threadId = ThreadId(json.optString("threadId")),
+        channelId = json.optString("channelId").takeIf { it.isNotBlank() }?.let(::ChannelId),
+        threadChannelId = json.optString("threadChannelId").takeIf { it.isNotBlank() }?.let(::ChannelId),
+        seq = json.optLong("seq", 0L).takeIf { it > 0L },
+        author = json.optJSONObject("author").toSharedMemberProfile(),
+        timestampLabel = json.optString("timestampLabel"),
+        body = json.optString("body"),
+        messageType =
+            when (json.optString("messageType").lowercase()) {
+                "system" -> MessageType.System
+                else -> MessageType.Chat
+            },
+        systemEventType = json.optString("systemEventType").takeIf { it.isNotBlank() },
+        replyCount = json.optInt("replyCount", 0),
+        parentMessageId = json.optString("parentMessageId").takeIf { it.isNotBlank() }?.let(::MessageId)
+    )
+}
+
+private fun JSONObject?.toSharedMemberProfile(): MemberProfile {
+    val json = this ?: JSONObject()
+    val displayName = json.optString("displayName").takeIf { it.isNotBlank() } ?: "Unknown"
+    return MemberProfile(
+        id = MemberId(json.optString("id")),
+        displayName = displayName,
+        handle = json.optString("handle").takeIf { it.isNotBlank() } ?: displayName,
+        kind = json.optString("kind").toSharedMemberKind() ?: MemberKind.Human,
+        avatarUrl = json.optString("avatarUrl").takeIf { it.isNotBlank() },
+        avatarLabel = json.optString("avatarLabel").takeIf { it.isNotBlank() } ?: displayName.take(1).uppercase(),
+        presence = json.optString("presence").toRealtimePresence(),
+        agentStatus = AgentStatus.fromWireValue(json.optString("agentStatus"))
+    )
+}
+
+private fun String.toSharedMemberKind(): MemberKind? =
+    when (trim().lowercase()) {
+        "agent" -> MemberKind.Agent
+        "human", "user" -> MemberKind.Human
+        "system" -> MemberKind.System
+        else -> null
+    }
+
+private fun String.toRealtimePresence(): Presence =
+    when (trim().lowercase()) {
+        "active", "online" -> Presence.Active
+        "away", "idle" -> Presence.Away
+        else -> Presence.Offline
+    }
 
 @Composable
 private fun AppShellRestoreSplashContent() {

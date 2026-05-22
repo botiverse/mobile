@@ -163,7 +163,8 @@ internal class SharedThreadDataSource(
             }
         return if (response.isSuccessful) {
             val id = ChannelId(channelId)
-            localWriteThrough?.clearConversationUnread(id, "shared_thread_read_all")
+            val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+            localWriteThrough?.clearConversationUnread(id, "shared_thread_read_all", serverId)
             DataResult.Content(ReadReceiptResult(channelId = id, changed = true))
         } else {
             DataResult.Error(
