@@ -86,6 +86,8 @@ const val SETTINGS_HOME_PAGE = "compose_settings_home"
 const val SETTINGS_TAB_BAR_SMOKE_PAGE = "compose_settings_tabbar_smoke"
 const val BOTTOM_TAB_BAR_SMOKE_PAGE = "compose_bottom_tabbar_smoke"
 const val BOTTOM_TAB_BAR_VISUAL_PAGE = "compose_bottom_tabbar_visual"
+private const val SETTINGS_ROW_VISUAL_PAGE = "compose_settings_row_visual"
+private const val SETTINGS_PAGE_VISUAL_PAGE = "compose_settings_page_visual"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 
 private const val AppShellRouteMain = "main"
@@ -134,6 +136,22 @@ internal class ComposeBottomTabBarVisualPage : ai.slock.compose.base.BasePager()
     override fun willInit() {
         super.willInit()
         setContent { BottomTabBarVisualContent() }
+    }
+}
+
+@Page(SETTINGS_ROW_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeSettingsRowVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { SettingsRowVisualContent() }
+    }
+}
+
+@Page(SETTINGS_PAGE_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeSettingsPageVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { SettingsPageVisualContent() }
     }
 }
 
@@ -236,6 +254,79 @@ private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
             title = "Smoke previews",
             subtitle = "Open Kuikly router and shared test pages",
             iconName = "route"
+        )
+    )
+)
+
+private val settingsVisualItems = listOf(
+    SlockTabItemPayload(
+        key = "account",
+        title = "Account",
+        subtitle = "Profile, email, password, connected accounts",
+        iconName = "user",
+        value = "Verified",
+        selected = true
+    ),
+    SlockTabItemPayload(
+        key = "language-region",
+        title = "Language & Region",
+        subtitle = "Language, timezone, translation",
+        iconName = "languages"
+    ),
+    SlockTabItemPayload(
+        key = "appearance",
+        title = "Appearance",
+        subtitle = "Message font size and reading density",
+        iconName = "type"
+    ),
+    SlockTabItemPayload(
+        key = "browser",
+        title = "Browser",
+        subtitle = "Notifications and local browser state",
+        iconName = "app-window"
+    ),
+    SlockTabItemPayload(
+        key = "server",
+        title = "Server",
+        subtitle = "Workspace, members, invites, permissions",
+        iconName = "building-2",
+        value = "Owner"
+    ),
+    SlockTabItemPayload(
+        key = "computers",
+        title = "Computers",
+        subtitle = "Connected machines and sessions",
+        iconName = "monitor"
+    ),
+    SlockTabItemPayload(
+        key = "release-notes",
+        title = "Release Notes",
+        subtitle = "Product changes and migration notes",
+        iconName = "file-text"
+    )
+)
+
+private val settingsPageVisualPayload = KuiklySharedSettingsPayload(
+    instanceId = "visual-settings-page",
+    title = "Account",
+    detail = "Profile, email, password, connected accounts",
+    heroIconName = "user",
+    heroLabel = "Artin",
+    sections = listOf(
+        KuiklySharedSettingsSection(
+            title = "Profile",
+            rows = listOf(
+                KuiklySharedSettingsRow("displayName", "user", "Display name", "Shown across messages, tasks, and mentions.", status = "Artin"),
+                KuiklySharedSettingsRow("email", "mail", "Email", "artin@slock.test", status = "Verified"),
+                KuiklySharedSettingsRow("avatar", "upload", "Avatar", "Upload a custom human avatar.", status = "Ready")
+            )
+        ),
+        KuiklySharedSettingsSection(
+            title = "Session",
+            rows = listOf(
+                KuiklySharedSettingsRow("password", "shield", "Password", "Change password and connected credentials.", status = "Enabled"),
+                KuiklySharedSettingsRow("logout", "log-out", "Log out", "Sign out of this browser.", status = "Action")
+            )
         )
     )
 )
@@ -1913,6 +2004,47 @@ private fun BottomTabBarVisualContent() {
             onSelect = {},
             modifier = Modifier.width(342.dp)
         )
+    }
+}
+
+@Composable
+private fun SettingsRowVisualContent() {
+    Column(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .background(SlockColor.SurfaceCream)
+                .padding(top = 48.dp)
+                .padding(horizontal = 8.dp, vertical = 12.dp)
+    ) {
+        SlockVerticalTabBar(
+            items = settingsVisualItems,
+            showSelection = true,
+            onSelect = {}
+        )
+    }
+}
+
+@Composable
+private fun SettingsPageVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(top = 48.dp)
+    ) {
+        SettingsDetailShell(
+            title = "Account",
+            subtitle = "Profile, email, password, connected accounts",
+            iconName = "user",
+            onBack = {}
+        ) {
+            SharedSettingsSectionContent(
+                payload = settingsPageVisualPayload,
+                onAction = { _, _ -> }
+            )
+        }
     }
 }
 

@@ -83,6 +83,24 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    @Test
+    fun captureSettingsRowStates() {
+        captureKmpComponentCase(
+            caseId = "settings.row.states",
+            pageName = "compose_settings_row_visual",
+            crop = VisualCrop(leftDp = 0, topDp = 48, widthDp = 342, heightDp = 332)
+        )
+    }
+
+    @Test
+    fun captureSettingsPageStates() {
+        captureKmpComponentCase(
+            caseId = "settings.page.states",
+            pageName = "compose_settings_page_visual",
+            crop = VisualCrop(leftDp = 0, topDp = 48, widthDp = 342, heightDp = 520)
+        )
+    }
+
     private fun captureKmpHomeCase(caseId: String, pageData: JSONObject) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
