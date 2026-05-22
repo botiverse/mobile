@@ -15,8 +15,10 @@ import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
+import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
@@ -24,6 +26,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -136,108 +139,185 @@ internal fun SettingsAccountContent(
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(top = topSafeArea).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+                .padding(top = topSafeArea)
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item { SettingsAccountHeader(payload.profile, payload.verifiedLabel) }
-        item { SettingsProfileFields(payload) }
-        item { SettingsConnectedAccounts(payload) }
-        item {
-            SettingsDisclosureRow(
-                iconName = "key",
-                title = payload.changePasswordTitle,
-                subtitle = payload.changePasswordSubtitle
-            )
+        item { SettingsAccountSectionHeader(payload.profileSectionTitle) }
+        item { SettingsAccountProfileCard(payload, onEvent) }
+        if (payload.connectedAccounts.isNotEmpty()) {
+            item { SettingsConnectedAccounts(payload) }
         }
         item { SettingsLogoutAction(payload.logoutDetail, payload.logoutLabel) { onEvent("logout") } }
     }
 }
 
 @Composable
-private fun SettingsAccountHeader(profile: KuiklySettingsAccountProfile, verifiedLabel: String) {
+private fun SettingsAccountSectionHeader(title: String) {
     Row(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 2.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Box(
-            modifier = Modifier.size(58.dp).background(SlockColor.AccentPink).border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                profile.avatarLabel.take(2).uppercase().ifBlank { profile.displayName.take(2).uppercase() },
-                style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
-                maxLines = 1
-            )
-        }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SlockLucideIcon("user", color = "#FF737373", modifier = Modifier.size(14.dp))
+        Text(
+            title.uppercase(),
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun SettingsAccountProfileCard(
+    payload: KuiklySettingsAccountPayload,
+    onEvent: (String) -> Unit
+) {
+    val profile = payload.profile
+    SettingsAccountHardShadowCard {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Box(
+                modifier = Modifier.size(56.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon("user", modifier = Modifier.size(24.dp))
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     profile.displayName.ifBlank { "Account" },
-                    style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
+                    style = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    overflow = TextOverflow.Ellipsis
                 )
-                if (profile.verified) {
-                    SettingsStatusBadge(verifiedLabel, SlockColor.AccentCyan, "shield-check")
+                profile.handle.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        it,
+                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
-            profile.handle.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            SettingsMetaRow("mail", profile.email)
-            profile.roleLabel.takeIf { it.isNotBlank() }?.let {
-                SettingsStatusBadge(it, SlockColor.SurfaceCream)
-            }
         }
+        SettingsProfileTextField(
+            label = "Name",
+            value = profile.handle.removePrefix("@"),
+            placeholder = payload.handlePlaceholder.removePrefix("@"),
+            muted = true
+        )
+        SettingsProfileTextField(
+            label = "Display Name",
+            value = profile.displayName,
+            placeholder = payload.displayNamePlaceholder,
+            muted = false
+        )
+        SettingsEmailField(payload.emailLabel, profile.email, payload.emailPlaceholder, profile.verified, payload.verifiedLabel)
+        SettingsProfileSaveButton(payload.saveChangesLabel, onClick = { onEvent("saveProfile") })
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        SettingsPasswordDisclosure(payload.changePasswordTitle) { onEvent("changePassword") }
     }
 }
 
 @Composable
-private fun SettingsProfileFields(payload: KuiklySettingsAccountPayload) {
-    val profile = payload.profile
-    Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        SettingsAccountSectionTitle(payload.profileSectionTitle.uppercase())
-        SettingsReadonlyField(payload.displayNameLabel, profile.displayName, payload.displayNamePlaceholder)
-        SettingsReadonlyField(payload.handleLabel, profile.handle, payload.handlePlaceholder)
-        SettingsReadonlyField(payload.emailLabel, profile.email, payload.emailPlaceholder, trailing = payload.verifiedLabel)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            SettingsInlineButton(payload.saveChangesLabel, SlockColor.AccentPink, enabled = false, modifier = Modifier.weight(1f))
-            SettingsInlineButton(payload.cancelLabel, SlockColor.SurfaceWhite, enabled = false, modifier = Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun SettingsReadonlyField(
+private fun SettingsProfileTextField(
     label: String,
     value: String,
     placeholder: String,
-    trailing: String? = null
+    muted: Boolean
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label.uppercase(), style = SlockType.SectionLabel.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(label, style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
         Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    .background(if (muted) SlockColor.EmptyStateGray else SlockColor.SurfaceWhite)
+                    .border(if (muted) SlockStroke.Thin else SlockStroke.Default, if (muted) SlockColor.TextMutedGray else SlockColor.BorderBlack)
+                    .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 value.ifBlank { placeholder },
-                style = SlockType.Input.copy(color = if (value.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack),
-                color = if (value.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                style = SlockType.Input.copy(fontSize = 15.sp, lineHeight = 18.sp, color = if (muted || value.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack),
+                color = if (muted || value.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+                overflow = TextOverflow.Ellipsis
             )
-            trailing?.let { SettingsStatusBadge(it, SlockColor.AccentCyan, "check") }
         }
+    }
+}
+
+@Composable
+private fun SettingsEmailField(
+    label: String,
+    value: String,
+    placeholder: String,
+    verified: Boolean,
+    verifiedLabel: String
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                value.ifBlank { placeholder },
+                style = SlockType.Input.copy(fontSize = 15.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (verified) {
+                SettingsStatusBadge(verifiedLabel.uppercase(), SlockColor.AccentLime, "shield")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsProfileSaveButton(text: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier.width(96.dp).height(32.dp).clickable(onClick = onClick).background(SlockColor.AccentPink).border(SlockStroke.Default, SlockColor.BorderBlack),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, style = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun SettingsAccountHardShadowCard(content: @Composable () -> Unit) {
+    Box(modifier = Modifier.fillMaxWidth().padding(end = 3.dp, bottom = 3.dp)) {
+        Box(Modifier.matchParentSize().offset(x = 3.dp, y = 3.dp).background(SlockColor.ShadowBlack))
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SettingsPasswordDisclosure(title: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().height(32.dp).clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SlockLucideIcon("chevron-right", modifier = Modifier.size(14.dp))
+        Text(title, style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

@@ -822,40 +822,29 @@ private fun SettingsDetailShell(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(start = 12.dp, top = topSafeArea + 12.dp, end = 12.dp, bottom = 12.dp),
+                .padding(start = 20.dp, top = topSafeArea + 16.dp, end = 20.dp, bottom = 14.dp),
             verticalAlignment = com.tencent.kuikly.compose.ui.Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Button(
                 onClick = onBack,
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(28.dp)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
             ) {
-                SlockLucideIcon("arrow-left", modifier = Modifier.size(18.dp))
+                SlockLucideIcon("arrow-left", modifier = Modifier.size(16.dp))
             }
-            SlockLucideIcon(iconName, modifier = Modifier.size(24.dp))
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    title,
-                    style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                subtitle.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        it,
-                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
+            Text(
+                title,
+                style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
         }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             content()
         }
@@ -2040,9 +2029,19 @@ private fun SettingsPageVisualContent() {
             iconName = "user",
             onBack = {}
         ) {
-            SharedSettingsSectionContent(
-                payload = settingsPageVisualPayload,
-                onAction = { _, _ -> }
+            SettingsAccountContent(
+                payload =
+                    settingsAccountSmokePayload.copy(
+                        instanceId = "visual-settings-account-page",
+                        profile =
+                            settingsAccountSmokePayload.profile.copy(
+                                email = "artin@slock.test",
+                                verified = true
+                            ),
+                        connectedAccounts = emptyList()
+                    ),
+                applyTopSafeArea = false,
+                onEvent = {}
             )
         }
     }
