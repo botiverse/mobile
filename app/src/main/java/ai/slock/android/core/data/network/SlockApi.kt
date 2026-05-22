@@ -74,6 +74,10 @@ interface SlockApi {
         agentId: String,
         path: String
     ): ApiResponse
+    suspend fun agentSkills(
+        priority: SlockRequestPriority,
+        agentId: String
+    ): ApiResponse
     suspend fun agentDirectMessages(
         priority: SlockRequestPriority,
         agentId: String

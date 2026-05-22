@@ -876,8 +876,7 @@ class RealMemberRepository(
                 source = "agent_profile_update",
                 warningLogger = warningLogger,
                 mapper = { json ->
-                    json.unwrap("agent", "profile", "member", "data")
-                            .toMemberProfile()
+                    json.toMemberProfile()
                             ?.copy(kind = MemberKind.Agent)
                             ?: throw IllegalStateException(
                                     "Agent profile update response missing agent"
@@ -937,7 +936,7 @@ class RealMemberRepository(
                 warningLogger = warningLogger,
                 mapper = { json ->
                     val items =
-                            json.items("directMessages", "dms", "items", "data").mapNotNull {
+                            json.items().mapNotNull {
                                 it.asObjectOrNull()?.toAgentDmSummary()
                             }
                     AgentDmSnapshot(agentId = agentId, directMessages = items)
@@ -978,15 +977,7 @@ class RealMemberRepository(
                         warningLogger = warningLogger,
                         mapper = { json ->
                             val items =
-                                    json.items(
-                                                    "activityLog",
-                                                    "activity",
-                                                    "trajectoryLogs",
-                                                    "logs",
-                                                    "items",
-                                                    "entries",
-                                                    "data"
-                                            )
+                                    json.items()
                                             .mapNotNull {
                                                 it.asObjectOrNull()?.toAgentActivityEntry()
                                             }
@@ -1136,6 +1127,8 @@ class RealMemberRepository(
                 source = "agent_workspace_root",
                 warningLogger = warningLogger,
                 mapper = { json ->
+                    val files = json.getAsJsonArray("files")
+                            ?: throw IllegalStateException("Workspace file response missing files")
                     AgentWorkspaceTreeSnapshot(
                             agentId = agentId,
                             rootPath = "Workspace",
@@ -1145,7 +1138,9 @@ class RealMemberRepository(
                                             name = "workspace",
                                             path = "/",
                                             kind = SlockWorkspaceFileKind.Folder,
-                                            children = json.toWorkspaceFileNodes()
+                                            children = files.toList().mapNotNull {
+                                                it.asObjectOrNull()?.toWorkspaceFileNode()
+                                            }
                                     )
                     )
                 }
@@ -1167,10 +1162,14 @@ class RealMemberRepository(
                 source = "agent_workspace_children",
                 warningLogger = warningLogger,
                 mapper = { json ->
+                    val files = json.getAsJsonArray("files")
+                            ?: throw IllegalStateException("Workspace file response missing files")
                     AgentWorkspaceChildrenSnapshot(
                             agentId = agentId,
                             dirPath = dirPath,
-                            children = json.toWorkspaceFileNodes()
+                            children = files.toList().mapNotNull {
+                                it.asObjectOrNull()?.toWorkspaceFileNode()
+                            }
                     )
                 }
         )
@@ -1189,11 +1188,10 @@ class RealMemberRepository(
                 source = "agent_workspace_file_read",
                 warningLogger = warningLogger,
                 mapper = { json ->
-                    val payload = json.unwrap("file", "data")
                     AgentWorkspaceFilePreviewSnapshot(
                             agentId = agentId,
-                            path = payload.string("path") ?: path,
-                            preview = payload.toWorkspaceFilePreview(path)
+                            path = json.string("path") ?: path,
+                            preview = json.toWorkspaceFilePreview(path)
                     )
                 }
         )
@@ -1207,17 +1205,11 @@ class RealMemberRepository(
         if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
         return execute(
                 emptyReason = EmptyReason.NoMembers,
-                block = { api.settingsAgents(priority) },
+                block = { api.agentSkills(priority, agentId.value) },
                 source = "agent_skills",
                 warningLogger = warningLogger,
                 mapper = { json ->
-                    val agent =
-                            json.agentObjects()
-                                    .firstOrNull { it.memberId() == agentId.value }
-                                    ?: json.unwrap("agent", "data").takeIf {
-                                        it.memberId() == agentId.value
-                                    }
-                    agent?.toAgentSkillsSnapshot(agentId) ?: AgentSkillsSnapshot(agentId = agentId)
+                    json.toAgentSkillsSnapshot(agentId)
                 }
         )
     }
@@ -3548,6 +3540,14 @@ private fun JsonObject.agentSkillGroups(): List<AgentSkillGroup> {
                     value.toAgentSkillGroup(defaultTitle = key.toSkillGroupTitle())
                 }
             }
+    val rootArrayGroups =
+            entrySet()
+                    .filter { (key, value) ->
+                        value.isJsonArray && key in setOf("global", "workspace")
+                    }
+                    .mapNotNull { (key, value) ->
+                        value.toAgentSkillGroup(defaultTitle = key.toSkillGroupTitle())
+                    }
     val namedGroups =
             items("skillGroups", "skill_groups", "groups")
                     .mapNotNull { it.toAgentSkillGroup(defaultTitle = "Skills") }
@@ -3556,7 +3556,7 @@ private fun JsonObject.agentSkillGroups(): List<AgentSkillGroup> {
                     .mapNotNull { it.toParsedAgentSkill(defaultGroup = "Skills") }
     val directGroup =
             if (directSkills.isNotEmpty()) listOf(directSkills.toAgentSkillGroup("Skills")) else emptyList()
-    return (objectGroups + namedGroups + directGroup)
+    return (objectGroups + rootArrayGroups + namedGroups + directGroup)
             .filter { it.paths.any { path -> path.skills.isNotEmpty() } }
             .mergeAgentSkillGroups()
 }

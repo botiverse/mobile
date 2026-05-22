@@ -1997,31 +1997,22 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
-    fun memberRepositoryLoadsAgentSkillsFromAgentsEndpoint() {
+    fun memberRepositoryLoadsAgentSkillsFromAgentSkillsEndpoint() {
         val api = FakeSlockApi(
-            settingsAgentsJson = """
+            agentSkillsJson = """
                 {
-                  "agents": [
+                  "global": [
                     {
-                      "id": "agent-1",
-                      "name": "Android Developer",
-                      "handle": "android-dev",
-                      "skills": {
-                        "global": [
-                          {
-                            "name": "openai-docs",
-                            "description": "Use official OpenAI documentation.",
-                            "path": "~/.codex/skills/.system"
-                          }
-                        ],
-                        "workspace": [
-                          {
-                            "name": "android-regression",
-                            "detail": "Run focused Android regression checks.",
-                            "path": "/repo/.codex/skills"
-                          }
-                        ]
-                      }
+                      "name": "openai-docs",
+                      "description": "Use official OpenAI documentation.",
+                      "sourcePath": "~/.codex/skills/.system"
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "name": "android-regression",
+                      "description": "Run focused Android regression checks.",
+                      "sourcePath": "/repo/.codex/skills"
                     }
                   ]
                 }
@@ -2099,13 +2090,11 @@ class RealSlockRepositoriesTest {
         val api = FakeSlockApi(
             updateAgentJson = """
                 {
-                  "agent": {
-                    "id": "agent-9",
-                    "name": "Updated Agent",
-                    "description": "Updated description",
-                    "handle": "updated-agent",
-                    "status": "online"
-                  }
+                  "id": "agent-9",
+                  "name": "Updated Agent",
+                  "description": "Updated description",
+                  "handle": "updated-agent",
+                  "status": "online"
                 }
             """.trimIndent()
         )
@@ -2276,10 +2265,10 @@ class RealSlockRepositoriesTest {
     fun memberRepositoryUsesActivityLogEndpointAndMergesCachedActivity() {
         val api = FakeSlockApi(
             agentActivityLogJson = """
-                {"activityLog":[
+                [
                   {"timestamp":1715216400000,"entry":{"id":"activity-1","type":"thinking","message":"Old body"}},
                   {"id":"activity-2","type":"tool_start","body":"Tool started","timestamp":"2026-05-09T02:00:00Z"}
-                ]}
+                ]
             """.trimIndent()
         )
         val repository = RealMemberRepository(
@@ -2290,10 +2279,10 @@ class RealSlockRepositoriesTest {
 
         val first = runSuspend { repository.getAgentActivity(SlockRequestPriority.Visible, MemberId("agent-1")) }
         api.agentActivityLogJson = """
-            {"items":[
+            [
               {"id":"activity-2","type":"tool_start","body":"Tool updated","timestamp":"2026-05-09T02:00:00Z"},
               {"id":"activity-3","type":"text","body":"New text","timestamp":"2026-05-09T03:00:00Z"}
-            ]}
+            ]
         """.trimIndent()
         val second = runSuspend { repository.getAgentActivity(SlockRequestPriority.Visible, MemberId("agent-1")) }
 
@@ -2527,13 +2516,14 @@ class RealSlockRepositoriesTest {
         private val leaveChannelJson: String = """{"ok":true}""",
         private val serverMembersJson: String = """{"members":[]}""",
         private val memberProfileJson: String = """{}""",
-        private val updateAgentJson: String = """{"agent":{}}""",
+        private val updateAgentJson: String = """{}""",
         private val channelMembersJson: String = """{"members":[]}""",
         private val addChannelMemberJson: String = """{"ok":true}""",
         private val directMessagesJson: String = """[]""",
         private val directMessagesFailure: Exception? = null,
         private val openDirectMessageJson: String = """{"channel":{"id":"dm-1","name":"Direct message","type":"dm"}}""",
-        var agentActivityLogJson: String = """{"activityLog":[]}""",
+        var agentActivityLogJson: String = """[]""",
+        private val agentSkillsJson: String = """{"global":[],"workspace":[]}""",
         private val unreadCountsJson: String = """{}""",
         private val readReceiptJson: String = """{"ok":true}""",
         private val serverTasksJson: String = """{"tasks":[]}""",
@@ -2684,10 +2674,13 @@ class RealSlockRepositoriesTest {
             response("""{"files":[]}""")
 
         override suspend fun readAgentWorkspaceFile(priority: SlockRequestPriority, agentId: String, path: String): ApiResponse =
-            response("""{"file":{"path":"$path","content":""}}""")
+            response("""{"path":"$path","content":"","binary":false,"size":0}""")
+
+        override suspend fun agentSkills(priority: SlockRequestPriority, agentId: String): ApiResponse =
+            response(agentSkillsJson)
 
         override suspend fun agentDirectMessages(priority: SlockRequestPriority, agentId: String): ApiResponse =
-            response("""{"directMessages":[]}""")
+            response("""[]""")
 
         override suspend fun reminders(priority: SlockRequestPriority, ownerAgentId: String, status: String): ApiResponse =
             response("""{"reminders":[]}""")

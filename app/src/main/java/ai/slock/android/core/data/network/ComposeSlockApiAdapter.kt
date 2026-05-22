@@ -126,6 +126,8 @@ class ComposeSlockApiAdapter(
             request(priority) { client.agentWorkspaceFiles(priority, agentId, dirPath) }
     override suspend fun readAgentWorkspaceFile(priority: SlockRequestPriority, agentId: String, path: String): ApiResponse =
             request(priority) { client.readAgentWorkspaceFile(priority, agentId, path) }
+    override suspend fun agentSkills(priority: SlockRequestPriority, agentId: String): ApiResponse =
+            request(priority) { client.agentSkills(priority, agentId) }
     override suspend fun agentDirectMessages(priority: SlockRequestPriority, agentId: String): ApiResponse =
             request(priority) { client.agentDirectMessages(priority, agentId) }
     override suspend fun reminders(priority: SlockRequestPriority, ownerAgentId: String, status: String): ApiResponse =

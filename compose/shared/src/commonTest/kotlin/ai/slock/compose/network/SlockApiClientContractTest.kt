@@ -68,6 +68,56 @@ class SlockApiClientContractTest {
     }
 
     @Test
+    fun agentRoutesUseCanonicalUpstreamContracts() = runBlocking {
+        val requests = mutableListOf<HttpRequestData>()
+        val client = apiClient(requests)
+
+        client.settingsAgents(SlockRequestPriority.Visible)
+        client.agentDetail(SlockRequestPriority.Visible, "agent-1")
+        client.createAgent(SlockRequestPriority.Visible, """{"name":"Noel"}""")
+        client.updateAgent(SlockRequestPriority.Visible, "agent-1", """{"displayName":"Noel"}""")
+        client.startAgent(SlockRequestPriority.Visible, "agent-1")
+        client.stopAgent(SlockRequestPriority.Visible, "agent-1")
+        client.resetAgent(SlockRequestPriority.Visible, "agent-1", """{"mode":"session"}""")
+        client.deleteAgent(SlockRequestPriority.Visible, "agent-1")
+        client.assignAgentMachine(SlockRequestPriority.Visible, "agent-1", """{"machineId":"machine-1"}""")
+        client.agentDirectMessages(SlockRequestPriority.Visible, "agent-1")
+        client.agentActivityLog(SlockRequestPriority.Visible, "agent-1", limit = 25)
+        client.agentWorkspaceFiles(SlockRequestPriority.Visible, "agent-1", dirPath = "/repo")
+        client.readAgentWorkspaceFile(SlockRequestPriority.Visible, "agent-1", path = "/repo/README.md")
+        client.agentSkills(SlockRequestPriority.Visible, "agent-1")
+        client.agentScopes(SlockRequestPriority.Visible, "agent-1")
+        client.updateAgentScopes(SlockRequestPriority.Visible, "agent-1", """{"mode":"default"}""")
+        client.issueAgentBootstrapToken(SlockRequestPriority.Visible, "agent-1", """{"ttlMs":60000}""")
+
+        assertEquals("/api/agents", requests[0].url.encodedPath)
+        assertEquals("/api/agents/agent-1", requests[1].url.encodedPath)
+        assertEquals("POST", requests[2].method.value)
+        assertEquals("/api/agents", requests[2].url.encodedPath)
+        assertEquals("PATCH", requests[3].method.value)
+        assertEquals("/api/agents/agent-1", requests[3].url.encodedPath)
+        assertEquals("/api/agents/agent-1/start", requests[4].url.encodedPath)
+        assertEquals("/api/agents/agent-1/stop", requests[5].url.encodedPath)
+        assertEquals("/api/agents/agent-1/reset", requests[6].url.encodedPath)
+        assertEquals("DELETE", requests[7].method.value)
+        assertEquals("/api/agents/agent-1", requests[7].url.encodedPath)
+        assertEquals("/api/agents/agent-1/assign-machine", requests[8].url.encodedPath)
+        assertEquals("/api/agents/agent-1/agent-dms", requests[9].url.encodedPath)
+        assertEquals("/api/agents/agent-1/activity-log", requests[10].url.encodedPath)
+        assertEquals("25", requests[10].url.parameters["limit"])
+        assertEquals("/api/agents/agent-1/workspace-files", requests[11].url.encodedPath)
+        assertEquals("/repo", requests[11].url.parameters["dirPath"])
+        assertEquals("/api/agents/agent-1/workspace-files/read", requests[12].url.encodedPath)
+        assertEquals("/repo/README.md", requests[12].url.parameters["path"])
+        assertEquals("/api/agents/agent-1/skills", requests[13].url.encodedPath)
+        assertEquals("/api/agents/agent-1/scopes", requests[14].url.encodedPath)
+        assertEquals("PUT", requests[15].method.value)
+        assertEquals("/api/agents/agent-1/scopes", requests[15].url.encodedPath)
+        assertEquals("POST", requests[16].method.value)
+        assertEquals("/api/agents/agent-1/bootstrap-tokens", requests[16].url.encodedPath)
+    }
+
+    @Test
     fun messageReactionsUseCanonicalRouteAndMethod() = runBlocking {
         val requests = mutableListOf<HttpRequestData>()
         val client = apiClient(requests)

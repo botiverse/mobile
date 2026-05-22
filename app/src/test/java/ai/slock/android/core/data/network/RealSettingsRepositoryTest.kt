@@ -469,16 +469,19 @@ class RealSettingsRepositoryTest {
             response("""{"files":[]}""")
 
         override suspend fun readAgentWorkspaceFile(priority: SlockRequestPriority, agentId: String, path: String): ApiResponse =
-            response("""{"file":{"path":"$path","content":""}}""")
+            response("""{"path":"$path","content":"","binary":false,"size":0}""")
+
+        override suspend fun agentSkills(priority: SlockRequestPriority, agentId: String): ApiResponse =
+            response("""{"global":[],"workspace":[]}""")
 
         override suspend fun agentDirectMessages(priority: SlockRequestPriority, agentId: String): ApiResponse =
-            response("""{"directMessages":[]}""")
+            response("""[]""")
 
         override suspend fun reminders(priority: SlockRequestPriority, ownerAgentId: String, status: String): ApiResponse =
             response("""{"reminders":[]}""")
 
         override suspend fun agentActivityLog(priority: SlockRequestPriority, agentId: String, limit: Int): ApiResponse =
-            response("""{"trajectoryLogs":[]}""")
+            response("""[]""")
 
         override suspend fun channelMembers(priority: SlockRequestPriority, channelId: String): ApiResponse =
             response("""{"members":[]}""")

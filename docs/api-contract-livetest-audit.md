@@ -56,6 +56,7 @@ Android/KMP consumers:
 | Machines/workspaces | `GET servers/{serverId}/machines`, `.../workspaces` | `serverRouter` | Match | Machine detail/log history is still not confirmed as a product capability. |
 | Auth refresh | `POST auth/refresh` | `authRouter.post("/refresh")` | Match | Upstream rotates the refresh token and returns `{ accessToken, refreshToken }`; Android/KMP restore/token refresh should keep using this route. |
 | Settings active sessions | Removed: old guessed `GET auth/sessions`, `DELETE auth/sessions/{sessionId}` | No public route in current `auth.ts` | Removed from client contract | These were migration-era Settings/session-management guesses, not the token refresh chain. Client request methods and mock Settings surface were deleted until upstream/web exposes a real public sessions management route. |
+| Agents | `GET/POST agents`, `GET/PATCH/DELETE agents/{id}`, `POST start/stop/reset/assign-machine`, `GET agent-dms/activity-log/workspace-files/workspace-files/read/skills/scopes`, `PUT scopes`, `POST bootstrap-tokens` | `agentRouter` | Typed first slice | Shared `SlockAgentsApiClient` now covers the real JSON agent surfaces. Avatar upload remains multipart; avatar serving remains binary/image transport, not JSON facade. |
 
 ## Full Public API Coverage Matrix
 
@@ -85,7 +86,7 @@ responses are still acceptable only at the lowest network/bridge boundary.
 | Messages | search, context, channel page, post, reactions, sync | Partially typed | Partial | Shared Thread uses `SlockThreadApi` typed methods for channel page, sync, send, read-all, save, task status, and reply-thread create/open. Search/context/reaction add/remove now have a first typed facade and route tests; older Android UI consumers still need migration behind that facade. |
 | Attachments | upload, url, preview, raw, html-preview-url, html-preview | Partially typed | Partial | Attachment URL, preview, HTML preview URL, upload wrapper, and channel files now have a typed facade. Raw `GET attachments/:id` remains a streaming endpoint; mobile should consume either the URL/preview typed facade or an explicit binary transport, not raw JSON. |
 | Tasks | list server/channel, task by number, create, claim, convert-message, unclaim, status, delete | Typed first slice | Partial | Shared Tasks facade covers all public task routes listed here. Product UI currently consumes server list and status update; create/convert/claim/unclaim/delete/by-number are exposed at the typed API boundary for follow-up UI wiring. |
-| Agents | list/create/detail/activity/agent-dms/update/avatar/start/stop/reset/delete/assign-machine/workspace-files/skills/scopes/bootstrap-tokens | Partially wired | Partial | Wired list/update/activity/agent-dms/workspace files/read. Missing create/detail/avatar/start/stop/reset/delete/assign-machine/skills/scopes/bootstrap tokens unless handled by internal agent tooling outside Android product. |
+| Agents | list/create/detail/activity/agent-dms/update/avatar/start/stop/reset/delete/assign-machine/workspace-files/skills/scopes/bootstrap-tokens | Typed first slice | Partial | `SlockAgentsApiClient` covers the JSON public agent routes listed here, including scopes and bootstrap-token issue. Android legacy members/settings consumers still need migration behind the facade. Avatar upload/serve are multipart/binary surfaces and remain explicit transport capabilities. |
 | Announcements | `GET announcements/active`, `POST announcements/:id/dismiss` | Not wired | Missing | Product announcement surfaces cannot be considered closed. |
 | Actions | action card execute/event/mark-executed | Not wired | Missing | Android/KMP cannot execute action-card flows through the product API yet. |
 | Integrations/OAuth clients | overview, clients, approve/deny/revoke, agent grants | Not wired | Missing | No Android/KMP capability yet. |
@@ -162,6 +163,17 @@ responses are still acceptable only at the lowest network/bridge boundary.
 - Push, Integrations, Actions, Announcements, and Reminders still need the same
   typed API facade treatment. They should not keep expanding raw JSON aliases
   inside repositories or UI stores without a source-backed contract.
+- Agents first slice is now typed at the shared API boundary:
+  `SlockAgentsApiClient.agents/agent/createAgent/updateAgent/startAgent/stopAgent/resetAgent/deleteAgent/assignMachine/agentDirectMessages/agentActivityLog/agentWorkspaceFiles/readAgentWorkspaceFile/agentSkills/agentScopes/updateAgentScopes/issueBootstrapToken`.
+  Canonical shapes are root agent arrays/objects, command `{ ok: true }`,
+  root arrays for `agent-dms` and `activity-log`, workspace `{ files }`, file
+  read root `{ path, content, binary, size, mimeType, encoding, modifiedAt }`,
+  skills root `{ global, workspace }`, scope set `{ agentId, granted,
+  revision, updatedAt }`, and bootstrap `{ tokenId, bootstrapToken,
+  tokenPrefix, ttlExpiresAt, scopes, agentId, agentName, serverId }`. Guessed
+  wrappers such as `{ agents }`, `{ agent }`, `{ success }`, `{ dms }`,
+  `{ activityLog }`, `{ items }`, `{ file }`, `{ skills }`, `{ scopes }`, and
+  `{ token }` fail at this boundary.
 
 ### Confirmed Real Fields
 
@@ -227,6 +239,14 @@ broken upstream contract. High-risk examples:
   root `{ channelId, messages }`. The Android conversation repository no longer
   accepts guessed `files/items/data` wrappers for channel files, `downloadUrl`
   or `href` for attachment open targets, or non-`results` search wrappers.
+- Agent consumers should use the canonical upstream root shapes from
+  `agents.ts`: list/DM/activity are direct arrays; agent create/update/detail
+  are direct agent objects; lifecycle commands return `{ ok: true }`;
+  workspace tree returns `{ files }`; workspace file read is a root file object;
+  skills are `{ global, workspace }`; scopes use `{ agentId, granted,
+  revision }`; bootstrap tokens use `tokenId/bootstrapToken/tokenPrefix`. The
+  Android legacy member repository has started rejecting guessed wrappers for
+  agent update, agent DMs/activity, workspace files/read, and skills.
 
 ## Livetest Coverage
 

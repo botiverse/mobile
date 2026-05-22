@@ -6,6 +6,7 @@ import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.get
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.request.url
 import io.ktor.client.statement.HttpResponse
@@ -32,7 +33,20 @@ class SlockApiClient(
     suspend fun settingsMachineWorkspaces(priority: SlockRequestPriority, serverId: String, machineId: String): KmpHttpResponse =
         get(priority, "servers/$serverId/machines/$machineId/workspaces")
     suspend fun settingsAgents(priority: SlockRequestPriority): KmpHttpResponse = get(priority, "agents")
+    suspend fun agentDetail(priority: SlockRequestPriority, agentId: String): KmpHttpResponse = get(priority, "agents/$agentId")
+    suspend fun createAgent(priority: SlockRequestPriority, body: String): KmpHttpResponse = post(priority, "agents", body)
     suspend fun updateAgent(priority: SlockRequestPriority, agentId: String, body: String): KmpHttpResponse = patch(priority, "agents/$agentId", body)
+    suspend fun startAgent(priority: SlockRequestPriority, agentId: String): KmpHttpResponse = post(priority, "agents/$agentId/start")
+    suspend fun stopAgent(priority: SlockRequestPriority, agentId: String): KmpHttpResponse = post(priority, "agents/$agentId/stop")
+    suspend fun resetAgent(priority: SlockRequestPriority, agentId: String, body: String): KmpHttpResponse = post(priority, "agents/$agentId/reset", body)
+    suspend fun deleteAgent(priority: SlockRequestPriority, agentId: String): KmpHttpResponse = delete(priority, "agents/$agentId")
+    suspend fun assignAgentMachine(priority: SlockRequestPriority, agentId: String, body: String): KmpHttpResponse =
+        post(priority, "agents/$agentId/assign-machine", body)
+    suspend fun agentScopes(priority: SlockRequestPriority, agentId: String): KmpHttpResponse = get(priority, "agents/$agentId/scopes")
+    suspend fun updateAgentScopes(priority: SlockRequestPriority, agentId: String, body: String): KmpHttpResponse =
+        request(priority, HttpMethod.Put, "agents/$agentId/scopes", body = body)
+    suspend fun issueAgentBootstrapToken(priority: SlockRequestPriority, agentId: String, body: String): KmpHttpResponse =
+        post(priority, "agents/$agentId/bootstrap-tokens", body)
     suspend fun channels(priority: SlockRequestPriority, archived: String? = null): KmpHttpResponse =
         get(priority, "channels", listOfNotNull(archived?.let { "archived" to it }))
     suspend fun serverMembers(priority: SlockRequestPriority, serverId: String): KmpHttpResponse = get(priority, "servers/$serverId/members")
@@ -54,6 +68,7 @@ class SlockApiClient(
         get(priority, "agents/$agentId/workspace-files", listOfNotNull(dirPath?.let { "dirPath" to it }))
     suspend fun readAgentWorkspaceFile(priority: SlockRequestPriority, agentId: String, path: String): KmpHttpResponse =
         get(priority, "agents/$agentId/workspace-files/read", listOf("path" to path))
+    suspend fun agentSkills(priority: SlockRequestPriority, agentId: String): KmpHttpResponse = get(priority, "agents/$agentId/skills")
     suspend fun reminders(priority: SlockRequestPriority, ownerAgentId: String, status: String = "scheduled"): KmpHttpResponse =
         get(priority, "reminders", listOf("ownerAgentId" to ownerAgentId, "status" to status))
     suspend fun agentActivityLog(priority: SlockRequestPriority, agentId: String, limit: Int = 50): KmpHttpResponse =
@@ -234,6 +249,7 @@ class SlockApiClient(
                 HttpMethod.Get -> client.get { buildRequest(path, query, body, tokens) }
                 HttpMethod.Post -> client.post { buildRequest(path, query, body, tokens) }
                 HttpMethod.Patch -> client.patch { buildRequest(path, query, body, tokens) }
+                HttpMethod.Put -> client.put { buildRequest(path, query, body, tokens) }
                 HttpMethod.Delete -> client.delete { buildRequest(path, query, body, tokens) }
                 else -> error("Unsupported HTTP method ${method.value}")
             }
