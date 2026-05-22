@@ -63,9 +63,13 @@ This table answers the broader "all APIs closed loop" question. `Wired` means
 the Android/KMP client has a request method using the current upstream route
 shape. It does not automatically mean UI parity or livetest coverage is done.
 
+Typed API closure means the client API module parses the upstream response into
+explicit DTO/domain types before repositories or UI stores see it. Raw transport
+responses are still acceptable only at the lowest network/bridge boundary.
+
 | Upstream area | Representative public routes | Android/KMP wiring | Livetest status | Follow-up |
 | --- | --- | --- | --- | --- |
-| Auth core | `POST auth/login`, `register`, `forgot-password`, `refresh`, `logout`, `GET/PATCH auth/me` | Wired | Partial | Existing auth restore/session tests cover client behavior; live read/write contract only covers restored session indirectly. `POST auth/refresh` is real upstream/web behavior, not a guessed chain. Add guarded live `auth/me` read/update once a reversible profile fixture exists. |
+| Auth core | `POST auth/login`, `register`, `forgot-password`, `refresh`, `logout`, `GET/PATCH auth/me` | Partially typed | Partial | Login, current user, refresh, logout, server list, and create-server now pass through `SlockAuthApi` typed methods before shared repositories/stores consume them. Register, forgot/reset password, patch me, and avatar/profile mutations still need typed API methods and live closure. `POST auth/refresh` is real upstream/web behavior, not a guessed chain. Add guarded live `auth/me` read/update once a reversible profile fixture exists. |
 | Auth providers/invites/email | `auth/providers`, `identities`, provider start/link/callback/complete, `verify-email`, `resend-verification`, `reset-password`, `accept-invite`, `invite-info`, `me/avatar` | Not wired in Android/KMP product API | Missing | Required before social login, invite acceptance, email verification, reset-password completion, and profile avatar upload can be called native/shared. |
 | Settings active sessions | No upstream public route for listing/revoking active sessions | Not wired | Not applicable | Deleted guessed `auth/sessions` client route and Settings mock/session UI copy. Do not re-add without a source-backed server/web contract. |
 | Servers list/create | `GET servers`, `POST servers` | Wired through Android auth API, not `SlockApiClient` | Indirect | Shared app shell restore uses selected server; add a live contract test for list/create only if using a safe disposable server fixture. |
@@ -90,6 +94,23 @@ shape. It does not automatically mean UI parity or livetest coverage is done.
 | Internal agent/computer/OAuth protocol | `/internal/*`, `/oauth/*`, `/daemon/*` | Out of Android product scope | Not applicable | Should be tracked by agent/daemon CLI contracts, not Android app parity, unless the app starts owning those screens. |
 
 ## Response Field Cleanup Findings
+
+### Typed API Layer Status
+
+- Auth first slice is now typed at the shared boundary:
+  `SlockAuthApi.login/currentUser/refresh/logout/servers/createServer`
+  returns `AuthLoginResponse`, `AuthRefreshResponse`, `StoredAuthUser`,
+  `StoredAuthServer`, or `Unit`. The raw `AuthNetworkResponse` transport is
+  confined to `SlockAuthTransport` and platform bridge implementations.
+- The typed Auth parser accepts canonical upstream shapes only for token fields:
+  login requires root `user`, `accessToken`, `refreshToken`; refresh requires
+  `accessToken`, `refreshToken`; server list requires a root JSON array.
+  Legacy aliases such as `token` / `refresh_token` now fail with an explicit
+  contract mismatch instead of being silently accepted.
+- Home, Thread, Tasks, Settings, Billing, Machines, Push, Integrations, Actions,
+  Announcements, and Reminders still need the same typed API facade treatment.
+  They should not keep expanding raw JSON aliases inside repositories or UI
+  stores without a source-backed contract.
 
 ### Confirmed Real Fields
 

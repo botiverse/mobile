@@ -23,7 +23,7 @@ class AuthDataSourceTest {
     fun loginWritesStoredSessionAndFetchesServers() = runBlocking {
         val store = InMemorySlockAuthSessionStore()
         val api = FakeAuthApi()
-        val source = SharedAuthDataSource(api = api, sessionStore = store)
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
         val result = source.login(" user@slock.ai ", "password")
 
@@ -41,7 +41,7 @@ class AuthDataSourceTest {
         val store = InMemorySlockAuthSessionStore()
         val source =
             SharedAuthDataSource(
-                api = FakeAuthApi(loginResponse = AuthNetworkResponse(401, null, """{"error":"bad"}""")),
+                transport = FakeAuthApi(loginResponse = AuthNetworkResponse(401, null, """{"error":"bad"}""")),
                 sessionStore = store
             )
 
@@ -49,6 +49,30 @@ class AuthDataSourceTest {
 
         assertTrue(result is SharedAuthResult.Failure)
         assertEquals(SharedAuthErrorCode.InvalidCredentials, result.code)
+        assertEquals(null, store.readSession())
+    }
+
+    @Test
+    fun loginRejectsLegacyTokenAliasesAtTypedApiBoundary() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val source =
+            SharedAuthDataSource(
+                transport =
+                    FakeAuthApi(
+                        loginResponse =
+                            AuthNetworkResponse(
+                                200,
+                                """{"user":{"id":"user-1","email":"user@slock.ai"},"token":"legacy-access","refresh_token":"legacy-refresh"}"""
+                            )
+                    ),
+                sessionStore = store
+            )
+
+        val result = source.login("user@slock.ai", "password")
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals(SharedAuthErrorCode.Unknown, result.code)
+        assertEquals("auth_login_contract_mismatch", result.message)
         assertEquals(null, store.readSession())
     }
 
@@ -67,13 +91,13 @@ class AuthDataSourceTest {
             )
         val source =
             SharedAuthDataSource(
-                api =
+                transport =
                     FakeAuthApi(
                         currentUserResponses =
                             ArrayDeque(
                                 listOf(
                                     AuthNetworkResponse(401, null),
-                                    AuthNetworkResponse(200, """{"user":{"id":"user-1","email":"user@slock.ai","displayName":"Artin"}}""")
+                                    AuthNetworkResponse(200, """{"id":"user-1","email":"user@slock.ai","displayName":"Artin"}""")
                                 )
                             ),
                         refreshResponse = AuthNetworkResponse(200, """{"accessToken":"fresh-token","refreshToken":"fresh-refresh"}""")
@@ -103,7 +127,7 @@ class AuthDataSourceTest {
                         )
                 )
             )
-        val source = SharedAuthDataSource(api = FakeAuthApi(), sessionStore = store)
+        val source = SharedAuthDataSource(transport = FakeAuthApi(), sessionStore = store)
 
         val result = source.selectServer("server-2")
 
@@ -125,10 +149,10 @@ class AuthDataSourceTest {
             )
         val api =
             FakeAuthApi(
-                createServerResponse = AuthNetworkResponse(201, """{"server":{"id":"server-2","name":"Ops","slug":"ops"}}"""),
-                serversResponse = AuthNetworkResponse(200, """{"servers":[{"id":"server-1","name":"Slock","slug":"slock"},{"id":"server-2","name":"Ops","slug":"ops"}]}""")
+                createServerResponse = AuthNetworkResponse(201, """{"id":"server-2","name":"Ops","slug":"ops"}"""),
+                serversResponse = AuthNetworkResponse(200, """[{"id":"server-1","name":"Slock","slug":"slock"},{"id":"server-2","name":"Ops","slug":"ops"}]""")
             )
-        val source = SharedAuthDataSource(api = api, sessionStore = store)
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
         val result = source.createServer(" Ops ")
 
@@ -149,14 +173,14 @@ class AuthDataSourceTest {
         private val serversResponse: AuthNetworkResponse =
             AuthNetworkResponse(
                 200,
-                """{"data":{"servers":[{"id":"server-1","name":"Slock","slug":"slock","role":"owner"}]}}"""
+                """[{"id":"server-1","name":"Slock","slug":"slock","role":"owner"}]"""
             ),
         private val currentUserResponses: ArrayDeque<AuthNetworkResponse> =
             ArrayDeque(
                 listOf(
                     AuthNetworkResponse(
                         200,
-                        """{"user":{"id":"user-1","email":"user@slock.ai","displayName":"Artin"}}"""
+                        """{"id":"user-1","email":"user@slock.ai","displayName":"Artin"}"""
                     )
                 )
             ),
@@ -165,8 +189,8 @@ class AuthDataSourceTest {
         private val logoutResponse: AuthNetworkResponse =
             AuthNetworkResponse(200, """{"ok":true}"""),
         private val createServerResponse: AuthNetworkResponse =
-            AuthNetworkResponse(201, """{"server":{"id":"server-2","name":"Ops","slug":"ops"}}""")
-    ) : SlockAuthApi {
+            AuthNetworkResponse(201, """{"id":"server-2","name":"Ops","slug":"ops"}""")
+    ) : SlockAuthTransport {
         var loginBody: String? = null
             private set
         var serversAuthorization: String? = null

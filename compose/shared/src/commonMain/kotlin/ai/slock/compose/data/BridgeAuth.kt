@@ -20,7 +20,7 @@ private val bridgeAuthJson = Json {
 internal class BridgeAuthApi(
     private val bridge: BridgeModule,
     private val baseUrl: String = AUTH_BASE_URL
-) : SlockAuthApi {
+) : SlockAuthTransport {
     override suspend fun login(bodyText: String): AuthNetworkResponse =
         request(path = "auth/login", method = "POST", bodyText = bodyText)
 

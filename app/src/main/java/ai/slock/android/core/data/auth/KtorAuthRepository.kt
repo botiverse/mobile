@@ -21,7 +21,7 @@ class KtorAuthRepository(
     private val gson = Gson()
     private val sharedAuthDataSource =
         SharedAuthDataSource(
-            api = AndroidSlockAuthApi(api),
+            transport = AndroidSlockAuthApi(api),
             sessionStore = ComposeAuthSessionStoreAdapter(store)
         )
 

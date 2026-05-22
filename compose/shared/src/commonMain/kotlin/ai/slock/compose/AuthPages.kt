@@ -79,7 +79,7 @@ private fun LoginScreen() {
     val authDataSource =
         remember {
             SharedAuthDataSource(
-                api = BridgeAuthApi(bridge),
+                transport = BridgeAuthApi(bridge),
                 sessionStore = KuiklyAuthSessionStore(KuiklyRelationalStore(bridge))
             )
         }

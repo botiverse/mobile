@@ -20,6 +20,11 @@ class SharedAuthDataSource(
     private val api: SlockAuthApi,
     private val sessionStore: SlockAuthSessionStore
 ) {
+    constructor(
+        transport: SlockAuthTransport,
+        sessionStore: SlockAuthSessionStore
+    ) : this(api = SlockAuthApiClient(transport), sessionStore = sessionStore)
+
     suspend fun login(email: String, password: String): SharedAuthResult<StoredAuthSession> {
         if (email.isBlank() || password.isBlank()) {
             return SharedAuthResult.Failure(
@@ -28,22 +33,16 @@ class SharedAuthDataSource(
             )
         }
 
-        val loginResponse =
-            api.login(authJson.encodeToString(LoginRequestPayload(email = email.trim(), password = password)))
-        if (!loginResponse.isSuccessful) return loginResponse.toAuthFailure()
-
-        val login = loginResponse.bodyText?.parseJsonElementOrNull()?.toLoginPayload()
-            ?: return SharedAuthResult.Failure(
-                SharedAuthErrorCode.Unknown,
-                "Sign in failed. Try again."
-            )
+        val login =
+            when (val response = api.login(email = email.trim(), password = password)) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> return response.toSharedAuthFailure()
+            }
         val servers =
-            api.servers("Bearer ${login.accessToken}")
-                .takeIf { it.isSuccessful }
-                ?.bodyText
-                ?.parseJsonElementOrNull()
-                ?.toStoredServers()
-                .orEmpty()
+            when (val response = api.servers("Bearer ${login.accessToken}")) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> emptyList()
+            }
         val selectedServer = servers.firstOrNull()
         val session =
             StoredAuthSession(
@@ -96,18 +95,17 @@ class SharedAuthDataSource(
             return SharedAuthResult.Unauthenticated
         }
         val current = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
-        val response =
-            api.refresh(authJson.encodeToString(RefreshRequestPayload(refreshToken = refreshToken)))
-        if (response.code == 401) {
-            sessionStore.clearSession()
-            return SharedAuthResult.Unauthenticated
-        }
-        if (!response.isSuccessful) return response.toAuthFailure()
-        val tokens = response.bodyText?.parseJsonElementOrNull()?.toRefreshPayload()
-            ?: return SharedAuthResult.Failure(
-                SharedAuthErrorCode.Unknown,
-                "Could not refresh your session."
-            )
+        val tokens =
+            when (val response = api.refresh(refreshToken)) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> {
+                    if (response.code == 401) {
+                        sessionStore.clearSession()
+                        return SharedAuthResult.Unauthenticated
+                    }
+                    return response.toSharedAuthFailure()
+                }
+            }
         val session = current.copy(accessToken = tokens.accessToken, refreshToken = tokens.refreshToken)
         sessionStore.saveSession(session)
         return SharedAuthResult.Success(session)
@@ -115,13 +113,17 @@ class SharedAuthDataSource(
 
     suspend fun loadServers(): SharedAuthResult<StoredAuthSession> {
         val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
-        val response = api.servers(session.bearer())
-        if (response.code == 401) {
-            sessionStore.clearSession()
-            return SharedAuthResult.Unauthenticated
-        }
-        if (!response.isSuccessful) return response.toAuthFailure()
-        val servers = response.bodyText?.parseJsonElementOrNull()?.toStoredServers().orEmpty()
+        val servers =
+            when (val response = api.servers(session.bearer())) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> {
+                    if (response.code == 401) {
+                        sessionStore.clearSession()
+                        return SharedAuthResult.Unauthenticated
+                    }
+                    return response.toSharedAuthFailure()
+                }
+            }
         val selected = session.selectedServerId?.let { selectedId -> servers.firstOrNull { it.id == selectedId } }
         val updated =
             session.copy(
@@ -158,21 +160,22 @@ class SharedAuthDataSource(
                 slug?.trim()?.takeIf { it.isNotBlank() }?.let { put("slug", it) }
                 region?.trim()?.takeIf { it.isNotBlank() }?.let { put("region", it) }
             }.toString()
-        val response = api.createServer(session.bearer(), body)
-        if (response.code == 401) {
-            sessionStore.clearSession()
-            return SharedAuthResult.Unauthenticated
-        }
-        if (!response.isSuccessful) return response.toAuthFailure()
-        val created = response.bodyText?.parseJsonElementOrNull()?.toCreatedServer()
-            ?: return SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Could not create server.")
+        val created =
+            when (val response = api.createServer(session.bearer(), body)) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> {
+                    if (response.code == 401) {
+                        sessionStore.clearSession()
+                        return SharedAuthResult.Unauthenticated
+                    }
+                    return response.toSharedAuthFailure()
+                }
+            }
         val latestServers =
-            api.servers(session.bearer())
-                .takeIf { it.isSuccessful }
-                ?.bodyText
-                ?.parseJsonElementOrNull()
-                ?.toStoredServers()
-                .orEmpty()
+            when (val response = api.servers(session.bearer())) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> emptyList()
+            }
                 .upsert(created)
                 .ifEmpty { listOf(created) }
         val selected = latestServers.firstOrNull { it.id == created.id } ?: created
@@ -190,7 +193,7 @@ class SharedAuthDataSource(
         val session = sessionStore.readSession()
         if (session != null) {
             runCatching {
-                api.logout(authJson.encodeToString(LogoutRequestPayload(refreshToken = session.refreshToken)))
+                api.logout(session.refreshToken)
             }
         }
         sessionStore.clearSession()
@@ -201,21 +204,22 @@ class SharedAuthDataSource(
         session: StoredAuthSession,
         clearOnUnauthorized: Boolean
     ): SharedAuthResult<StoredAuthSession> {
-        val response = api.currentUser(session.bearer())
-        if (response.code == 401) {
-            if (clearOnUnauthorized) sessionStore.clearSession()
-            return SharedAuthResult.Unauthenticated
-        }
-        if (!response.isSuccessful) return response.toAuthFailure()
-        val user = response.bodyText?.parseJsonElementOrNull()?.toStoredUserFromRoot()
-            ?: return SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Could not restore your session.")
+        val user =
+            when (val response = api.currentUser(session.bearer())) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> {
+                    if (response.code == 401) {
+                        if (clearOnUnauthorized) sessionStore.clearSession()
+                        return SharedAuthResult.Unauthenticated
+                    }
+                    return response.toSharedAuthFailure()
+                }
+            }
         val servers =
-            api.servers(session.bearer())
-                .takeIf { it.isSuccessful }
-                ?.bodyText
-                ?.parseJsonElementOrNull()
-                ?.toStoredServers()
-                ?: session.servers
+            when (val response = api.servers(session.bearer())) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> session.servers
+            }
         val selected = session.selectedServerId?.let { selectedId -> servers.firstOrNull { it.id == selectedId } }
         val updated =
             session.copy(
@@ -230,6 +234,61 @@ class SharedAuthDataSource(
 }
 
 interface SlockAuthApi {
+    suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse>
+    suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser>
+    suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse>
+    suspend fun logout(refreshToken: String): AuthApiResult<Unit>
+    suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>>
+    suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer>
+}
+
+class SlockAuthApiClient(
+    private val transport: SlockAuthTransport
+) : SlockAuthApi {
+    override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> {
+        val response = transport.login(authJson.encodeToString(LoginRequestPayload(email = email, password = password)))
+        return response.mapAuthBody("auth_login_contract_mismatch") { element ->
+            val root = element.asObjectOrNull() ?: return@mapAuthBody null
+            val user = (root.objectOrNull("user") ?: return@mapAuthBody null).toStoredUser() ?: return@mapAuthBody null
+            val accessToken = root.string("accessToken") ?: return@mapAuthBody null
+            val refreshToken = root.string("refreshToken") ?: return@mapAuthBody null
+            AuthLoginResponse(user = user, accessToken = accessToken, refreshToken = refreshToken)
+        }
+    }
+
+    override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
+        transport.currentUser(authorization).mapAuthBody("auth_me_contract_mismatch") { element ->
+            element.asObjectOrNull()?.toStoredUser()
+        }
+
+    override suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse> {
+        val response = transport.refresh(authJson.encodeToString(RefreshRequestPayload(refreshToken = refreshToken)))
+        return response.mapAuthBody("auth_refresh_contract_mismatch") { element ->
+            val root = element.asObjectOrNull() ?: return@mapAuthBody null
+            val accessToken = root.string("accessToken") ?: return@mapAuthBody null
+            val nextRefreshToken = root.string("refreshToken") ?: return@mapAuthBody null
+            AuthRefreshResponse(accessToken = accessToken, refreshToken = nextRefreshToken)
+        }
+    }
+
+    override suspend fun logout(refreshToken: String): AuthApiResult<Unit> {
+        val response = transport.logout(authJson.encodeToString(LogoutRequestPayload(refreshToken = refreshToken)))
+        if (!response.isSuccessful) return response.toAuthApiFailure()
+        return AuthApiResult.Success(Unit)
+    }
+
+    override suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>> =
+        transport.servers(authorization).mapAuthBody("servers_list_contract_mismatch") { element ->
+            (element as? JsonArray)?.mapNotNull { it.asObjectOrNull()?.toStoredServer() }
+        }
+
+    override suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer> =
+        transport.createServer(authorization, bodyText).mapAuthBody("server_create_contract_mismatch") { element ->
+            element.asObjectOrNull()?.toStoredServer()
+        }
+}
+
+interface SlockAuthTransport {
     suspend fun login(bodyText: String): AuthNetworkResponse
     suspend fun currentUser(authorization: String): AuthNetworkResponse
     suspend fun refresh(bodyText: String): AuthNetworkResponse
@@ -237,6 +296,26 @@ interface SlockAuthApi {
     suspend fun servers(authorization: String): AuthNetworkResponse
     suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse
 }
+
+sealed interface AuthApiResult<out T> {
+    data class Success<T>(val data: T) : AuthApiResult<T>
+    data class Failure(
+        val code: Int,
+        val errorBodyText: String? = null,
+        val contractCode: String? = null
+    ) : AuthApiResult<Nothing>
+}
+
+data class AuthLoginResponse(
+    val user: StoredAuthUser,
+    val accessToken: String,
+    val refreshToken: String
+)
+
+data class AuthRefreshResponse(
+    val accessToken: String,
+    val refreshToken: String
+)
 
 data class AuthNetworkResponse(
     val code: Int,
@@ -270,17 +349,6 @@ private data class LoginRequestPayload(
     val password: String
 )
 
-private data class LoginPayload(
-    val user: StoredAuthUser,
-    val accessToken: String,
-    val refreshToken: String
-)
-
-private data class RefreshPayload(
-    val accessToken: String,
-    val refreshToken: String
-)
-
 @kotlinx.serialization.Serializable
 private data class RefreshRequestPayload(
     val refreshToken: String
@@ -291,25 +359,30 @@ private data class LogoutRequestPayload(
     val refreshToken: String
 )
 
-private fun AuthNetworkResponse.toAuthFailure(): SharedAuthResult.Failure {
+private fun AuthApiResult.Failure.toSharedAuthFailure(): SharedAuthResult.Failure {
     val message = errorBodyText?.parseJsonElementOrNull()?.asObjectOrNull()?.string("error", "message")
-    return when (code) {
-        0 ->
+    return when {
+        contractCode != null ->
+            SharedAuthResult.Failure(
+                SharedAuthErrorCode.Unknown,
+                contractCode
+            )
+        code == 0 ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.Network,
                 message ?: "Network unavailable. Check your connection."
             )
-        400 ->
+        code == 400 ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
                 message ?: "Check the fields and try again."
             )
-        401 ->
+        code == 401 ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.InvalidCredentials,
                 message ?: "Email or password is incorrect."
             )
-        in 500..599 ->
+        code in 500..599 ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.Server,
                 message ?: "Slock is unavailable. Try again soon."
@@ -322,77 +395,43 @@ private fun AuthNetworkResponse.toAuthFailure(): SharedAuthResult.Failure {
     }
 }
 
-private fun JsonElement.toLoginPayload(): LoginPayload? {
-    val root = asObjectOrNull() ?: return null
-    val userRoot = root.objectOrNull("user") ?: root.objectOrNull("account") ?: root.objectOrNull("profile") ?: root
-    val accessToken = root.string("accessToken", "access_token", "token") ?: return null
-    val refreshToken = root.string("refreshToken", "refresh_token") ?: return null
-    val user = userRoot.toStoredUser() ?: return null
-    return LoginPayload(user = user, accessToken = accessToken, refreshToken = refreshToken)
-}
+private fun AuthNetworkResponse.toAuthApiFailure(): AuthApiResult.Failure =
+    AuthApiResult.Failure(code = code, errorBodyText = errorBodyText)
 
-private fun JsonElement.toRefreshPayload(): RefreshPayload? {
-    val root = asObjectOrNull() ?: return null
-    val accessToken = root.string("accessToken", "access_token", "token") ?: return null
-    val refreshToken = root.string("refreshToken", "refresh_token") ?: return null
-    return RefreshPayload(accessToken = accessToken, refreshToken = refreshToken)
-}
-
-private fun JsonElement.toStoredUserFromRoot(): StoredAuthUser? {
-    val root = asObjectOrNull() ?: return null
-    val userRoot = root.objectOrNull("user")
-        ?: root.objectOrNull("account")
-        ?: root.objectOrNull("profile")
-        ?: root
-    return userRoot.toStoredUser()
-}
-
-private fun JsonElement.toStoredServers(): List<StoredAuthServer> {
-    val array =
-        when (this) {
-            is JsonArray -> this
-            is JsonObject ->
-                arrayOrNull("servers", "items", "data")
-                    ?: objectOrNull("data")?.arrayOrNull("servers", "items")
-                    ?: return emptyList()
-            else -> return emptyList()
-        }
-    return array.mapNotNull { it.asObjectOrNull()?.toStoredServer() }
-}
-
-private fun JsonElement.toCreatedServer(): StoredAuthServer? {
-    val root = asObjectOrNull() ?: return null
-    val serverRoot =
-        root.objectOrNull("server")
-            ?: root.objectOrNull("item")
-            ?: root.objectOrNull("data")
-            ?: root.objectOrNull("workspace")
-            ?: root
-    return serverRoot.toStoredServer()
+private inline fun <T> AuthNetworkResponse.mapAuthBody(
+    contractCode: String,
+    mapper: (JsonElement) -> T?
+): AuthApiResult<T> {
+    if (!isSuccessful) return toAuthApiFailure()
+    val element = bodyText?.parseJsonElementOrNull()
+        ?: return AuthApiResult.Failure(code = code, contractCode = contractCode)
+    val value = mapper(element)
+        ?: return AuthApiResult.Failure(code = code, contractCode = contractCode)
+    return AuthApiResult.Success(value)
 }
 
 private fun JsonObject.toStoredUser(): StoredAuthUser? {
-    val id = string("id", "userId", "_id") ?: return null
+    val id = string("id") ?: return null
     val email = string("email", "mail") ?: ""
     return StoredAuthUser(
         id = id,
         email = email,
         name = string("name"),
-        displayName = string("displayName", "display_name", "username"),
+        displayName = string("displayName"),
         description = string("description", "bio"),
-        avatarUrl = string("avatarUrl", "avatar", "avatar_url", "imageUrl", "profileImageUrl", "profileAvatar"),
-        gravatarHash = string("gravatarHash", "gravatar", "gravatar_hash", "gravatarMd5", "gravatar_md5"),
-        emailVerified = boolean("emailVerified", "email_verified")
+        avatarUrl = string("avatarUrl"),
+        gravatarHash = string("gravatarHash"),
+        emailVerified = boolean("emailVerified")
     )
 }
 
 private fun JsonObject.toStoredServer(): StoredAuthServer? {
-    val id = string("id", "serverId", "_id") ?: return null
-    val name = string("name", "serverName", "title") ?: id
+    val id = string("id") ?: return null
+    val name = string("name") ?: id
     return StoredAuthServer(
         id = id,
         name = name,
-        slug = string("slug", "serverSlug"),
+        slug = string("slug"),
         ownerId = string("ownerId", "owner_id"),
         onboardingAgentId = string("onboardingAgentId", "onboarding_agent_id"),
         plan = string("plan"),
@@ -408,14 +447,6 @@ private fun String.parseJsonElementOrNull(): JsonElement? =
 private fun JsonElement.asObjectOrNull(): JsonObject? = this as? JsonObject
 
 private fun JsonObject.objectOrNull(name: String): JsonObject? = this[name] as? JsonObject
-
-private fun JsonObject.arrayOrNull(vararg names: String): JsonArray? {
-    for (name in names) {
-        val value = this[name]
-        if (value is JsonArray) return value
-    }
-    return null
-}
 
 private fun JsonObject.string(vararg names: String): String? {
     for (name in names) {

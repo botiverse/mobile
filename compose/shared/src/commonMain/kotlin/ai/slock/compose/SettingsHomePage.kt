@@ -380,7 +380,7 @@ private fun SlockAppShellContent() {
     val authDataSource =
         remember {
             SharedAuthDataSource(
-                api = BridgeAuthApi(bridge),
+                transport = BridgeAuthApi(bridge),
                 sessionStore = authStore
             )
         }
