@@ -169,6 +169,7 @@ internal data class KuiklyThreadMessageItem(
     val id: String,
     val authorId: String,
     val authorName: String,
+    val authorKind: String = "",
     val isOwn: Boolean = false,
     val avatarLabel: String = "",
     val avatarWireValue: String? = null,
@@ -714,48 +715,40 @@ private data class ThreadAuthorProfile(
     val id: String,
     val displayName: String,
     val handle: String? = null,
+    val kind: String? = null,
     val avatarWireValue: String? = null,
     val gravatarHash: String? = null
 )
 
 private fun JsonElement.collectThreadAuthorProfiles(): Map<String, ThreadAuthorProfile> {
     val profiles = mutableMapOf<String, ThreadAuthorProfile>()
-    fun add(item: JsonObject) {
-        item.toThreadAuthorProfile()?.let { profile ->
+    fun add(item: JsonObject, impliedKind: String? = null) {
+        item.toThreadAuthorProfile(impliedKind)?.let { profile ->
             profiles[profile.id] = profile
         }
     }
-    fun collect(element: JsonElement?) {
+    fun collect(element: JsonElement?, impliedKind: String? = null) {
         when (element) {
-            is JsonArray -> element.forEach { collect(it) }
+            is JsonArray -> element.forEach { collect(it, impliedKind) }
             is JsonObject -> {
-                val directDirectory =
+                val directoryKeys =
                     listOf(
-                        "authors",
-                        "members",
-                        "users",
-                        "agents",
-                        "participants",
-                        "profiles",
-                        "memberProfiles",
-                        "member_profiles"
+                        "authors" to null,
+                        "members" to null,
+                        "users" to "human",
+                        "agents" to "agent",
+                        "participants" to null,
+                        "profiles" to null,
+                        "memberProfiles" to null,
+                        "member_profiles" to null
                     )
-                        .any { element[it] is JsonArray }
+                val directDirectory = directoryKeys.any { (key, _) -> element[key] is JsonArray }
                 if (directDirectory) {
-                    listOf(
-                        "authors",
-                        "members",
-                        "users",
-                        "agents",
-                        "participants",
-                        "profiles",
-                        "memberProfiles",
-                        "member_profiles"
-                    ).forEach { key -> collect(element[key]) }
+                    directoryKeys.forEach { (key, kind) -> collect(element[key], kind) }
                 } else {
-                    add(element)
+                    add(element, impliedKind)
                 }
-                collect(element["data"])
+                collect(element["data"], impliedKind)
             }
             else -> Unit
         }
@@ -764,8 +757,9 @@ private fun JsonElement.collectThreadAuthorProfiles(): Map<String, ThreadAuthorP
     return profiles
 }
 
-private fun JsonObject.toThreadAuthorProfile(): ThreadAuthorProfile? {
+private fun JsonObject.toThreadAuthorProfile(impliedKind: String? = null): ThreadAuthorProfile? {
     val nested = nestedThreadProfileObject()
+    val nestedProfile = nested?.toThreadAuthorProfile(impliedKind)
     val id =
         threadString(
             "id",
@@ -781,7 +775,7 @@ private fun JsonObject.toThreadAuthorProfile(): ThreadAuthorProfile? {
             "senderId",
             "sender_id"
         )
-            ?: nested?.toThreadAuthorProfile()?.id
+            ?: nestedProfile?.id
             ?: return null
     val name =
         threadString(
@@ -794,13 +788,13 @@ private fun JsonObject.toThreadAuthorProfile(): ThreadAuthorProfile? {
             "handle",
             "email"
         )
-            ?: nested?.toThreadAuthorProfile()?.displayName
+            ?: nestedProfile?.displayName
             ?: id
-    val nestedProfile = nested?.toThreadAuthorProfile()
     return ThreadAuthorProfile(
         id = id,
         displayName = name,
         handle = threadString("handle", "username", "email") ?: nestedProfile?.handle,
+        kind = threadString("kind", "memberKind", "member_kind", "profileKind", "profile_kind") ?: nestedProfile?.kind ?: impliedKind,
         avatarWireValue = threadAvatarWireValue() ?: nestedProfile?.avatarWireValue,
         gravatarHash =
             threadString("gravatarHash", "gravatar_hash", "gravatarMd5", "gravatar_md5", "gravatar")
@@ -931,6 +925,15 @@ private fun JsonObject.toSharedThreadMessageItem(
             ?: directoryAuthor?.displayName
             ?: flatAuthorName
             ?: "Unknown"
+    val authorKind =
+        author?.threadString("kind", "memberKind", "member_kind", "profileKind", "profile_kind")
+            ?: directoryAuthor?.kind
+            ?: threadString("authorKind", "author_kind", "memberKind", "member_kind", "profileKind", "profile_kind")
+            ?: when {
+                flatAgentId != null || authorId.isLikelyThreadAgentId() -> "agent"
+                flatUserId != null -> "human"
+                else -> ""
+            }
     val body = threadString("body", "content", "text", "markdown", "message").orEmpty()
     val messageType =
         threadString("messageType", "message_type", "type", "kind")
@@ -950,6 +953,7 @@ private fun JsonObject.toSharedThreadMessageItem(
         id = id,
         authorId = authorId,
         authorName = authorName,
+        authorKind = authorKind,
         isOwn = currentUserId != null && authorId == currentUserId,
         avatarLabel = authorName.take(1).uppercase(),
         avatarWireValue = avatarWireValue,
@@ -1868,7 +1872,7 @@ private fun ThreadMessageCard(
                 if (!alignOwnMessageRight) {
                     ThreadMessageAvatar(
                         avatarLabel = message.avatarLabel,
-                        avatarWireValue = message.avatarWireValue,
+                        avatarWireValue = message.resolvedThreadAvatarWireValue(),
                         gravatarHash = message.gravatarHash,
                         onClick = { onOpenMember(message.authorId) }
                     )
@@ -1946,7 +1950,7 @@ private fun ThreadMessageCard(
                 if (alignOwnMessageRight) {
                     ThreadMessageAvatar(
                         avatarLabel = message.avatarLabel,
-                        avatarWireValue = message.avatarWireValue,
+                        avatarWireValue = message.resolvedThreadAvatarWireValue(),
                         gravatarHash = message.gravatarHash,
                         onClick = { onOpenMember(message.authorId) }
                     )
@@ -1958,6 +1962,19 @@ private fun ThreadMessageCard(
 
 private fun Modifier.threadMessageContentWidth(maxWidthFraction: Float): Modifier =
     widthIn(max = 680.dp).fillMaxWidth(maxWidthFraction)
+
+internal fun KuiklyThreadMessageItem.resolvedThreadAvatarWireValue(): String? =
+    avatarWireValue ?: if (authorKind.equals("agent", ignoreCase = true) || authorId.isLikelyThreadAgentId()) {
+        "random:${authorId.ifBlank { authorName }}"
+    } else {
+        null
+    }
+
+private fun String.isLikelyThreadAgentId(): Boolean =
+    startsWith("agent", ignoreCase = true) ||
+        startsWith("ai-", ignoreCase = true) ||
+        contains("_agent", ignoreCase = true) ||
+        contains("-agent", ignoreCase = true)
 
 @Composable
 private fun ThreadMessageFooterMeta(
@@ -2497,29 +2514,15 @@ private fun ThreadMessageAvatar(
             avatarWireValue?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
                 ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
         }
-    val pixelSpec = remember(avatarWireValue) { avatarWireValue?.toThreadPixelAvatarSpec() }
     Box(
-        modifier = Modifier.size(40.dp).border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(SlockColor.BrandYellow)
-            .clickable(onClick = onClick),
+        modifier = Modifier.size(40.dp).clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        if (imageUrl != null) {
-            SlockCachedImage(
-                source = imageUrl,
-                contentDescription = null,
-                contentScale = ContentScale.FillBounds,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else if (pixelSpec != null) {
-            ThreadPixelAvatar(spec = pixelSpec)
-        } else {
-            SlockLucideIcon(
-                "user",
-                modifier = Modifier.size(22.dp),
-                color = "#FF000000"
-            )
-        }
+        SlockAvatar(
+            avatarWireValue = imageUrl ?: avatarWireValue,
+            label = avatarLabel,
+            avatarSize = 40.dp
+        )
     }
 }
 

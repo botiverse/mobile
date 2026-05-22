@@ -272,6 +272,55 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun resolvesAgentPixelAvatarFallbackForThreadRows() {
+        val base =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "design",
+                sourceThreadId = "channel-1",
+                status = "loading"
+            )
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u-artin", email = "artin@slock.ai"),
+                accessToken = "access",
+                refreshToken = "refresh"
+            )
+
+        val payload =
+            buildSharedThreadPayloadFromMessagesResponse(
+                basePayload = base,
+                session = session,
+                bodyText =
+                    """
+                    {
+                      "data": {
+                        "messages": [
+                          {
+                            "id": "m1",
+                            "body": "agent visual row",
+                            "authorId": "agent-android",
+                            "createdAt": "2026-05-19T16:00:00Z"
+                          }
+                        ],
+                        "agents": [
+                          {
+                            "id": "agent-android",
+                            "displayName": "Android Developer"
+                          }
+                        ]
+                      }
+                    }
+                    """.trimIndent()
+            )
+
+        val message = payload.messages.single()
+        assertEquals("agent", message.authorKind)
+        assertEquals("Android Developer", message.authorName)
+        assertEquals("random:agent-android", message.resolvedThreadAvatarWireValue())
+    }
+
+    @Test
     fun appendsSentMessageFromSendResponseWhenRefreshIsUnavailable() {
         val base =
             KuiklyThreadScreenPayload(

@@ -1024,11 +1024,11 @@ private fun ChannelAvatar(avatarWireValue: String?, label: String, presence: Slo
 }
 
 @Composable
-private fun SlockAvatar(avatarWireValue: String?, label: String, modifier: Modifier = Modifier) {
+internal fun SlockAvatar(avatarWireValue: String?, label: String, modifier: Modifier = Modifier, avatarSize: Dp = ChannelAvatarSize) {
     val pixelSpec = remember(avatarWireValue) { avatarWireValue?.toPixelAvatarSpec() }
     when {
-        pixelSpec != null -> PixelAvatar(pixelSpec, modifier)
-        avatarWireValue?.startsWith("http://") == true || avatarWireValue?.startsWith("https://") == true -> Box(modifier = modifier.size(ChannelAvatarSize).background(SlockColor.AccentLavender).border(SlockStroke.Thin, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
+        pixelSpec != null -> PixelAvatar(pixelSpec, modifier, avatarSize)
+        avatarWireValue?.startsWith("http://") == true || avatarWireValue?.startsWith("https://") == true -> Box(modifier = modifier.size(avatarSize).background(SlockColor.AccentLavender).border(SlockStroke.Thin, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
             SlockCachedImage(
                 source = avatarWireValue,
                 contentDescription = null,
@@ -1036,13 +1036,13 @@ private fun SlockAvatar(avatarWireValue: String?, label: String, modifier: Modif
                 modifier = Modifier.fillMaxSize()
             )
         }
-        else -> InitialsAvatar(label, modifier)
+        else -> InitialsAvatar(label, modifier, avatarSize)
     }
 }
 
 @Composable
-private fun InitialsAvatar(label: String, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.size(ChannelAvatarSize).background(SlockColor.AccentLavender).border(SlockStroke.Thin, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
+private fun InitialsAvatar(label: String, modifier: Modifier = Modifier, avatarSize: Dp = ChannelAvatarSize) {
+    Box(modifier = modifier.size(avatarSize).background(SlockColor.AccentLavender).border(SlockStroke.Thin, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
         Text(label.take(2).uppercase(), style = SlockType.Caption.copy(fontWeight = FontWeight.Medium, fontSize = ChannelAvatarFontSize), color = SlockColor.TextBlack, maxLines = 1)
     }
 }
@@ -1063,8 +1063,8 @@ private val SlockPresence.homeRowColor: Color
 internal fun homeDmStatusPresence(presence: SlockPresence?): SlockPresence = presence ?: SlockPresence.Offline
 
 @Composable
-private fun PixelAvatar(spec: PixelAvatarSpec, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier.size(ChannelAvatarSize).border(SlockStroke.Thin, SlockColor.BorderBlack)) {
+private fun PixelAvatar(spec: PixelAvatarSpec, modifier: Modifier = Modifier, avatarSize: Dp = ChannelAvatarSize) {
+    Canvas(modifier = modifier.size(avatarSize).border(SlockStroke.Thin, SlockColor.BorderBlack)) {
         val cellSize = size.width / PixelAvatarGridSize
         drawRect(spec.background)
         spec.grid.forEachIndexed { rowIndex, row ->
