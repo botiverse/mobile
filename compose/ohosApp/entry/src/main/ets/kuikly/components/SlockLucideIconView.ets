@@ -55,6 +55,7 @@ export struct SlockLucideIcon {
       .width('100%')
       .height('100%')
       .objectFit(ImageFit.Contain)
+      .interpolation(ImageInterpolation.High)
       .supportSvg2(true);
   }
 }

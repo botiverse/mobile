@@ -1,4 +1,5 @@
 import AbilityConstant from '@ohos.app.ability.AbilityConstant';
+import font from '@ohos.font';
 import hilog from '@ohos.hilog';
 import UIAbility from '@ohos.app.ability.UIAbility';
 import Want from '@ohos.app.ability.Want';
@@ -9,6 +10,15 @@ import { RouterAdapter } from '../kuikly/adapter/RouterAdapter';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
 const SAFE_AREA_BOTTOM_PX = 'slockSafeAreaBottomPx';
+const SLOCK_FONT_NAMES: string[] = [
+  'space_grotesk',
+  'space_grotesk_regular',
+  'space_grotesk_medium',
+  'space_grotesk_semibold',
+  'space_grotesk_bold',
+  'space_grotesk_light',
+  'space_grotesk_variable',
+];
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
@@ -34,6 +44,7 @@ export default class EntryAbility extends UIAbility {
 
     KuiklyRenderAdapterManager.krLogAdapter = new LogAdapter();
     KuiklyRenderAdapterManager.krRouterAdapter = new RouterAdapter();
+    this.registerSlockFonts();
 
     windowStage.loadContent('pages/Index', (err, data) => {
       if (err.code) {
@@ -41,6 +52,20 @@ export default class EntryAbility extends UIAbility {
         return;
       }
       hilog.info(0x0000, 'testTag', 'Succeeded in loading the content. Data: %{public}s', JSON.stringify(data) ?? '');
+    });
+  }
+
+  private registerSlockFonts(): void {
+    const resourceDir = this.context.resourceDir;
+    SLOCK_FONT_NAMES.forEach((fontName: string) => {
+      try {
+        font.registerFont({
+          familyName: fontName,
+          familySrc: `${resourceDir}/fonts/${fontName}.ttf`,
+        });
+      } catch (err) {
+        hilog.warn(0x0000, 'testTag', 'Failed to register font %{public}s. Cause: %{public}s', fontName, JSON.stringify(err) ?? '');
+      }
     });
   }
 
