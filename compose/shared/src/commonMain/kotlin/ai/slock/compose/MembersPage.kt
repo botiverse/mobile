@@ -273,6 +273,13 @@ internal fun MembersListContent(
     val humans = groupedMembers[payload.labels.humans].orEmpty()
     var agentsExpanded by remember(payload.instanceId, agents.size) { mutableStateOf(true) }
     var humansExpanded by remember(payload.instanceId, humans.size) { mutableStateOf(true) }
+    val lazyItemCount =
+        membersLazyItemCount(
+            agents = agents,
+            humansCount = humans.size,
+            agentsExpanded = agentsExpanded,
+            humansExpanded = humansExpanded
+        )
 
     Column(
         modifier = Modifier
@@ -282,7 +289,8 @@ internal fun MembersListContent(
         MembersPageHeader(title = payload.title)
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
             item { Spacer(Modifier.height(SlockSpacing.Md)) }
             item {
@@ -350,6 +358,26 @@ internal fun MembersListContent(
             item { Spacer(Modifier.height(180.dp)) }
         }
     }
+}
+
+internal fun membersLazyItemCount(
+    agents: List<MemberProfile>,
+    humansCount: Int,
+    agentsExpanded: Boolean,
+    humansExpanded: Boolean
+): Int {
+    val fixedItems =
+        1 + // top spacer
+            1 + // agents header
+            1 + // humans header
+            1 // bottom spacer
+    val agentItems =
+        if (agentsExpanded) {
+            groupedAgentMembers(agents).sumOf { group -> 1 + group.members.size }
+        } else {
+            0
+        }
+    return fixedItems + agentItems + (if (humansExpanded) humansCount else 0)
 }
 
 @Composable

@@ -187,6 +187,14 @@ private fun SharedTasksLoadedBody(
             presentationState = next
         }
     }
+    val lazyItemCount =
+        sharedTasksLazyItemCount(
+            mode = presentationState.selectedMode,
+            filteredTasksCount = visibleContent.filteredTasks.size,
+            boardColumnCount = visibleContent.filteredContent.boardColumns(renderLimit = 8).size,
+            hasNavigationError = state.navigationErrorCode != null,
+            hasStatusUpdateError = state.statusUpdateErrorCode != null
+        )
 
     LazyColumn(
         modifier =
@@ -194,7 +202,8 @@ private fun SharedTasksLoadedBody(
                 .fillMaxSize()
                 .background(SlockColor.SurfaceWhite)
                 .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+        beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
     ) {
         item(key = "summary") {
             SharedTasksSummary(
@@ -269,6 +278,26 @@ private fun SharedTasksLoadedBody(
             Spacer(modifier = Modifier.height(SlockSpacing.Md))
         }
     }
+}
+
+internal fun sharedTasksLazyItemCount(
+    mode: TasksViewMode,
+    filteredTasksCount: Int,
+    boardColumnCount: Int,
+    hasNavigationError: Boolean,
+    hasStatusUpdateError: Boolean
+): Int {
+    val fixedItems =
+        1 + // summary
+            1 + // filters
+            1 // bottom spacer
+    val errorItems = (if (hasNavigationError) 1 else 0) + (if (hasStatusUpdateError) 1 else 0)
+    val bodyItems =
+        when (mode) {
+            TasksViewMode.Board -> boardColumnCount
+            TasksViewMode.List -> filteredTasksCount.takeIf { it > 0 } ?: 1
+        }
+    return fixedItems + errorItems + bodyItems
 }
 
 @Composable

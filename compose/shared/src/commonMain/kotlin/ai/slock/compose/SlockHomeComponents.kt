@@ -88,6 +88,8 @@ private val HomeUnreadBadgeRadius = 4.dp
 private val ChannelUnreadTextOffsetY = (-1).dp
 private val HomeListHorizontalPadding = SlockSpacing.Md
 private val HomePanelShadowOffset = 4.dp
+private const val SharedListDefaultBeyondBoundsItemCount = 3
+private const val SharedListMaxBeyondBoundsItemCount = 96
 
 @Page(SLOCK_HOME_PAGE, supportInLocal = true)
 internal class ComposeSlockHomePage : ai.slock.compose.base.BasePager() {
@@ -444,6 +446,14 @@ fun SlockStructuralHomeShell(
     val indicatorRefreshing = contentRefreshing && !refreshIndicatorTimedOut
     val displayedChannels = if (channelsReversed) channels.asReversed() else channels
     val displayedDirectMessages = if (directMessagesReversed) directMessages.asReversed() else directMessages
+    val lazyItemCount =
+        homeLazyItemCount(
+            channelsCount = displayedChannels.size,
+            directMessagesCount = displayedDirectMessages.size,
+            channelsExpanded = channelsExpanded,
+            directMessagesExpanded = directMessagesExpanded,
+            contentRefreshEnabled = contentRefreshEnabled
+        )
     val listState = rememberLazyListState()
     val pullToRefreshState = rememberPullToRefreshState(indicatorRefreshing)
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
@@ -461,80 +471,83 @@ fun SlockStructuralHomeShell(
                     onView = onNotificationView,
                     onDismiss = onNotificationDismiss
                 )
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.weight(1f).fillMaxWidth().bouncesEnable(false),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    if (contentRefreshEnabled) {
-                        pullToRefreshItem(
-                            state = pullToRefreshState,
-                            onRefresh = {
-                                if (!contentRefreshing) {
-                                    onContentRefresh()
-                                }
-                            },
-                            scrollState = listState,
-                            refreshThreshold = 64.dp
-                        ) { pullProgress, isRefreshing, _ ->
-                            HomePullRefreshIndicator(
-                                pullProgress = pullProgress,
-                                refreshing = isRefreshing || indicatorRefreshing
-                            )
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize().bouncesEnable(false),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
+                    ) {
+                        if (contentRefreshEnabled) {
+                            pullToRefreshItem(
+                                state = pullToRefreshState,
+                                onRefresh = {
+                                    if (!contentRefreshing) {
+                                        onContentRefresh()
+                                    }
+                                },
+                                scrollState = listState,
+                                refreshThreshold = 64.dp
+                            ) { pullProgress, isRefreshing, _ ->
+                                HomePullRefreshIndicator(
+                                    pullProgress = pullProgress,
+                                    refreshing = isRefreshing || indicatorRefreshing
+                                )
+                            }
                         }
-                    }
-                    item { Spacer(Modifier.height(SlockSpacing.Md)) }
-                    item { SidebarActionRow("search", labels.search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = onSearchClick) }
-                    item {
-                        SidebarActivityRow(
-                            labels.inbox,
-                            inboxUnreadCount.takeIf { it > 0 }?.toString(),
-                            selected = activitySelected,
-                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                            onClick = onInboxClick
-                        )
-                    }
-                    item { SidebarActionRow("bookmark", labels.saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = onSavedClick) }
-                    item { Spacer(Modifier.height(SlockSpacing.Xs)) }
-                    item {
-                        SidebarSectionHeader(labels.channels, channels.size, channelsExpanded, { channelsExpanded = it }, { channelsReversed = !channelsReversed }, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)) {
-                            HeaderIconAction("plus", labels.addChannel, onCreateChannelClick)
-                        }
-                    }
-                    if (channelsExpanded) {
-                        items(displayedChannels.size, key = { index -> "channel-${displayedChannels[index].id}" }) { index ->
-                            val channel = displayedChannels[index]
-                            ChannelRow(
-                                name = channel.name,
-                                joined = channel.joined,
-                                hasDraft = channel.hasDraft,
-                                badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
+                        item { Spacer(Modifier.height(SlockSpacing.Md)) }
+                        item { SidebarActionRow("search", labels.search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = onSearchClick) }
+                        item {
+                            SidebarActivityRow(
+                                labels.inbox,
+                                inboxUnreadCount.takeIf { it > 0 }?.toString(),
+                                selected = activitySelected,
                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                interactionState = if (channel.id == selectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
-                                onClick = { onChannelClick(channel.id) }
+                                onClick = onInboxClick
                             )
                         }
-                    }
-                    item {
-                        SidebarSectionHeader(labels.directMessages, directMessages.size, directMessagesExpanded, { directMessagesExpanded = it }, { directMessagesReversed = !directMessagesReversed }, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), action = null)
-                    }
-                    if (directMessagesExpanded) {
-                        items(displayedDirectMessages.size, key = { index -> "dm-${displayedDirectMessages[index].id}" }) { index ->
-                            val dm = displayedDirectMessages[index]
-                            ChannelRow(
-                                name = dm.name,
-                                avatarLabel = dm.avatarLabel,
-                                avatarUrl = dm.avatarUrl,
-                                avatarWireValue = dm.avatarWireValue,
-                                trailingPresence = homeDmStatusPresence(dm.presence),
-                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                hasDraft = dm.hasDraft,
-                                badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
-                                onClick = { onChannelClick(dm.id) }
-                            )
+                        item { SidebarActionRow("bookmark", labels.saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = onSavedClick) }
+                        item { Spacer(Modifier.height(SlockSpacing.Xs)) }
+                        item {
+                            SidebarSectionHeader(labels.channels, channels.size, channelsExpanded, { channelsExpanded = it }, { channelsReversed = !channelsReversed }, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)) {
+                                HeaderIconAction("plus", labels.addChannel, onCreateChannelClick)
+                            }
                         }
+                        if (channelsExpanded) {
+                            items(displayedChannels.size, key = { index -> "channel-${displayedChannels[index].id}" }) { index ->
+                                val channel = displayedChannels[index]
+                                ChannelRow(
+                                    name = channel.name,
+                                    joined = channel.joined,
+                                    hasDraft = channel.hasDraft,
+                                    badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
+                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                    interactionState = if (channel.id == selectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
+                                    onClick = { onChannelClick(channel.id) }
+                                )
+                            }
+                        }
+                        item {
+                            SidebarSectionHeader(labels.directMessages, directMessages.size, directMessagesExpanded, { directMessagesExpanded = it }, { directMessagesReversed = !directMessagesReversed }, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), action = null)
+                        }
+                        if (directMessagesExpanded) {
+                            items(displayedDirectMessages.size, key = { index -> "dm-${displayedDirectMessages[index].id}" }) { index ->
+                                val dm = displayedDirectMessages[index]
+                                ChannelRow(
+                                    name = dm.name,
+                                    avatarLabel = dm.avatarLabel,
+                                    avatarUrl = dm.avatarUrl,
+                                    avatarWireValue = dm.avatarWireValue,
+                                    trailingPresence = homeDmStatusPresence(dm.presence),
+                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                    hasDraft = dm.hasDraft,
+                                    badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
+                                    onClick = { onChannelClick(dm.id) }
+                                )
+                            }
+                        }
+                        item { Spacer(Modifier.height(bottomContentPadding)) }
                     }
-                    item { Spacer(Modifier.height(bottomContentPadding)) }
                 }
             }
             if (serverSwitcherExpanded) {
@@ -555,6 +568,34 @@ fun SlockStructuralHomeShell(
             )
         }
     }
+}
+
+internal fun sharedListBeyondBoundsItemCount(itemCount: Int): Int =
+    itemCount.coerceIn(
+        minimumValue = SharedListDefaultBeyondBoundsItemCount,
+        maximumValue = SharedListMaxBeyondBoundsItemCount
+    )
+
+internal fun homeLazyItemCount(
+    channelsCount: Int,
+    directMessagesCount: Int,
+    channelsExpanded: Boolean,
+    directMessagesExpanded: Boolean,
+    contentRefreshEnabled: Boolean
+): Int {
+    val fixedItems =
+        1 + // top spacer
+            1 + // search
+            1 + // activity
+            1 + // saved
+            1 + // section spacer
+            1 + // channels header
+            1 + // direct messages header
+            1 // bottom spacer
+    return fixedItems +
+        (if (contentRefreshEnabled) 1 else 0) +
+        (if (channelsExpanded) channelsCount else 0) +
+        (if (directMessagesExpanded) directMessagesCount else 0)
 }
 
 @Composable
