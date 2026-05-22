@@ -54,6 +54,7 @@ import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.material3.navigation.NavHost
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.material3.navigation.composable
@@ -81,6 +82,7 @@ import kotlinx.serialization.json.Json
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
 const val SETTINGS_TAB_BAR_SMOKE_PAGE = "compose_settings_tabbar_smoke"
 const val BOTTOM_TAB_BAR_SMOKE_PAGE = "compose_bottom_tabbar_smoke"
+const val BOTTOM_TAB_BAR_VISUAL_PAGE = "compose_bottom_tabbar_visual"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 
 private const val AppShellRouteMain = "main"
@@ -121,6 +123,14 @@ internal class ComposeBottomTabBarSmokePage : ai.slock.compose.base.BasePager() 
     override fun willInit() {
         super.willInit()
         setContent { BottomTabBarSmokeContent() }
+    }
+}
+
+@Page(BOTTOM_TAB_BAR_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeBottomTabBarVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { BottomTabBarVisualContent() }
     }
 }
 
@@ -1884,6 +1894,18 @@ private fun BottomTabBarSmokeContent() {
             onSelect = {},
             modifier = Modifier.fillMaxWidth(),
             bottomSafeArea = bottomSafeArea
+        )
+    }
+}
+
+@Composable
+private fun BottomTabBarVisualContent() {
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Spacer(modifier = Modifier.height(72.dp))
+        SlockBottomTabBar(
+            items = appShellBottomTabs("home"),
+            onSelect = {},
+            modifier = Modifier.width(342.dp)
         )
     }
 }

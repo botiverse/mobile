@@ -21,6 +21,15 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpHomeCase("home.server-switcher.open", homeServerSwitcherPageData())
     }
 
+    @Test
+    fun captureNavigationTabbarStates() {
+        captureKmpComponentCase(
+            caseId = "navigation.tabbar.states",
+            pageName = "compose_bottom_tabbar_visual",
+            crop = VisualCrop(leftDp = 0, topDp = 72, widthDp = 342, heightDp = 53)
+        )
+    }
+
     private fun captureKmpHomeCase(caseId: String, pageData: JSONObject) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
@@ -56,6 +65,60 @@ class KmpVisualScreenshotCaptureTest {
                     "mode": "manual-rect",
                     "contract": "component-bounds",
                     "rect": { "x": 24, "y": 60, "width": 342, "height": 238 }
+                  },
+                  "capturedAt": "${System.currentTimeMillis()}"
+                }
+                """.trimIndent() + "\n"
+            )
+            mirrorFileForAdbPull(context, imageFile)
+            mirrorFileForAdbPull(context, metadataFile)
+            if (normalized !== cropped) {
+                normalized.recycle()
+            }
+            if (cropped !== screenshot) {
+                cropped.recycle()
+            }
+            screenshot.recycle()
+        }
+    }
+
+    private fun captureKmpComponentCase(caseId: String, pageName: String, crop: VisualCrop) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val intent =
+            Intent(context, SlockKuiklyActivity::class.java)
+                .putExtra("pageName", pageName)
+        ActivityScenario.launch<SlockKuiklyActivity>(intent).use {
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            Thread.sleep(1_500)
+            val screenshot =
+                requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()) {
+                    "Unable to capture KMP visual screenshot for $caseId"
+                }
+            val cropped = screenshot.cropDp(crop)
+            val normalized = cropped.normalizeToDpPixels(context)
+            val outputDir = visualOutputDir(context)
+            outputDir.mkdirs()
+            val imageFile = File(outputDir, "$caseId.png")
+            imageFile.outputStream().use { out ->
+                normalized.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+            val metadataFile = File(outputDir, "$caseId.metadata.json")
+            metadataFile.writeText(
+                """
+                {
+                  "provider": "android",
+                  "providerType": "android-kuikly-shared-page",
+                  "source": "kmp-shared",
+                  "caseId": "$caseId",
+                  "image": "${imageFile.absolutePath}",
+                  "viewport": { "width": ${normalized.width}, "height": ${normalized.height}, "density": 1 },
+                  "crop": {
+                    "mode": "manual-rect",
+                    "contract": "component-bounds",
+                    "rect": { "x": ${crop.leftDp}, "y": ${crop.topDp}, "width": ${crop.widthDp}, "height": ${crop.heightDp} }
+                  },
+                  "capture": {
+                    "method": "full-screen-takeScreenshot-manual-crop-density-resize"
                   },
                   "capturedAt": "${System.currentTimeMillis()}"
                 }
@@ -138,11 +201,15 @@ class KmpVisualScreenshotCaptureTest {
             }
 
     private fun Bitmap.cropHomeServerSwitcher(): Bitmap {
+        return cropDp(VisualCrop(leftDp = 24, topDp = 60, widthDp = 342, heightDp = 238))
+    }
+
+    private fun Bitmap.cropDp(crop: VisualCrop): Bitmap {
         val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-        val left = (24 * density).toInt().coerceIn(0, width - 1)
-        val top = (60 * density).toInt().coerceIn(0, height - 1)
-        val desiredWidth = (342 * density).toInt()
-        val desiredHeight = (238 * density).toInt()
+        val left = (crop.leftDp * density).toInt().coerceIn(0, width - 1)
+        val top = (crop.topDp * density).toInt().coerceIn(0, height - 1)
+        val desiredWidth = (crop.widthDp * density).toInt()
+        val desiredHeight = (crop.heightDp * density).toInt()
         val cropWidth = desiredWidth.coerceAtMost(width - left)
         val cropHeight = desiredHeight.coerceAtMost(height - top)
         return Bitmap.createBitmap(this, left, top, cropWidth, cropHeight)
@@ -205,4 +272,11 @@ class KmpVisualScreenshotCaptureTest {
             "json" -> "application/json"
             else -> "application/octet-stream"
         }
+
+    private data class VisualCrop(
+        val leftDp: Int,
+        val topDp: Int,
+        val widthDp: Int,
+        val heightDp: Int
+    )
 }
