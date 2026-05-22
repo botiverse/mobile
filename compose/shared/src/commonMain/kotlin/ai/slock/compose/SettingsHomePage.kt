@@ -4,6 +4,7 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.data.BridgeAuthApi
 import ai.slock.compose.data.BridgeHomeApi
 import ai.slock.compose.data.BridgeMembersApi
+import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
 import ai.slock.compose.data.BridgeTasksApi
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KuiklyAuthSessionStore
@@ -24,6 +25,16 @@ import ai.slock.compose.data.SharedHomeIntent
 import ai.slock.compose.data.SharedHomeState
 import ai.slock.compose.data.SharedHomeTopAction
 import ai.slock.compose.data.SharedHomeViewModel
+import ai.slock.compose.data.SharedSettingsAboutSnapshot
+import ai.slock.compose.data.SharedSettingsDataSource
+import ai.slock.compose.data.SharedSettingsDestination
+import ai.slock.compose.data.SharedSettingsDiagnosticsEntry
+import ai.slock.compose.data.SharedSettingsDiagnosticsSnapshot
+import ai.slock.compose.data.SharedSettingsEffect
+import ai.slock.compose.data.SharedSettingsIntent
+import ai.slock.compose.data.SharedSettingsState
+import ai.slock.compose.data.SharedSettingsViewModel
+import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.parseSlockHome
 import ai.slock.compose.data.BridgeThreadApi
@@ -121,6 +132,7 @@ private const val SettingsDestinationBilling = "billing"
 private const val SettingsDestinationMobile = "mobile"
 private const val SettingsDestinationStorage = "storage"
 private const val SettingsDestinationAbout = "about"
+private const val SettingsDestinationDiagnostics = "diagnostics"
 private const val SettingsDestinationRouter = "router"
 private const val AppShellRealtimeEvent = "slockRealtimeEvent"
 
@@ -417,6 +429,14 @@ private fun SlockAppShellContent() {
                 api = BridgeTasksApi(bridge, authStore)
             )
         }
+    val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
+    val settingsDataSource =
+        remember {
+            SharedSettingsDataSource(
+                sessionStore = authStore,
+                platformCapabilities = settingsCapabilities
+            )
+        }
     var activeThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
     var threadBackStack by remember { mutableStateOf<List<KuiklyThreadScreenPayload>>(emptyList()) }
     val authGateViewModel: SharedAuthGateViewModel =
@@ -440,6 +460,11 @@ private fun SlockAppShellContent() {
             )
         }
     val tasksState by tasksViewModel.state.collectAsState()
+    val settingsViewModel: SharedSettingsViewModel =
+        viewModel(key = "shared-settings") {
+            SharedSettingsViewModel(settingsDataSource)
+        }
+    val settingsState by settingsViewModel.state.collectAsState()
     val navController = rememberNavController()
     val bottomSafeArea = slockBottomSafeAreaPadding()
     val threadTimeContext = remember(pager.pageData.params.toString()) {
@@ -632,6 +657,9 @@ private fun SlockAppShellContent() {
                             SettingsAppShellContent(
                                 session = (authGateState as? SharedAuthGateState.Ready)?.session,
                                 authDataSource = authDataSource,
+                                settingsCapabilities = settingsCapabilities,
+                                settingsState = settingsState,
+                                onSettingsIntent = settingsViewModel::dispatch,
                                 membersApi = membersApi,
                                 selectedDestination = selectedSettingsDestination,
                                 onDestinationChange = { selectedSettingsDestination = it },
@@ -698,6 +726,9 @@ private fun SlockAppShellContent() {
 private fun SettingsAppShellContent(
     session: StoredAuthSession?,
     authDataSource: SharedAuthDataSource,
+    settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    settingsState: SharedSettingsState,
+    onSettingsIntent: (SharedSettingsIntent) -> Unit,
     membersApi: BridgeMembersApi,
     selectedDestination: String,
     onDestinationChange: (String) -> Unit,
@@ -707,11 +738,43 @@ private fun SettingsAppShellContent(
 ) {
     var pendingLogout by remember { mutableStateOf(false) }
 
+    LaunchedEffect(selectedDestination) {
+        selectedDestination.toSharedSettingsDestination()?.let { destination ->
+            onSettingsIntent(SharedSettingsIntent.OpenDestination(destination))
+        }
+    }
+
     LaunchedEffect(pendingLogout) {
         if (!pendingLogout) return@LaunchedEffect
         pendingLogout = false
         runCatching { authDataSource.logout() }
         onLogout()
+    }
+
+    LaunchedEffect(settingsState.effect) {
+        val effect = settingsState.effect ?: return@LaunchedEffect
+        when (effect) {
+            SharedSettingsEffect.CopyDiagnostics -> {
+                val ok = settingsCapabilities.copyDiagnostics()
+                if (ok) {
+                    onSettingsIntent(SharedSettingsIntent.Refresh)
+                }
+            }
+            SharedSettingsEffect.ShareDiagnostics -> {
+                settingsCapabilities.shareDiagnostics()
+            }
+            SharedSettingsEffect.ClearDiagnostics -> {
+                val ok = settingsCapabilities.clearDiagnostics()
+                if (ok) {
+                    onSettingsIntent(SharedSettingsIntent.Refresh)
+                }
+            }
+            SharedSettingsEffect.SendFeedback -> {
+                settingsCapabilities.sendFeedback()
+            }
+            else -> Unit
+        }
+        onSettingsIntent(SharedSettingsIntent.ConsumeEffect)
     }
 
     if (selectedDestination == SettingsDestinationHome) {
@@ -752,7 +815,24 @@ private fun SettingsAppShellContent(
             SettingsDestinationMobile ->
                 SharedSettingsSectionContent(appShellMobilePayload(), onSettingsAction)
             SettingsDestinationAbout ->
-                SharedSettingsSectionContent(appShellAboutPayload(session), onSettingsAction)
+                SharedSettingsAboutContent(
+                    state = settingsState.about,
+                    fallback = appShellAboutFallback(session),
+                    onOpenDiagnostics = { onDestinationChange(SettingsDestinationDiagnostics) },
+                    onCopyBuild = { summary ->
+                        settingsCapabilities.bridgeCopyToClipboard(summary)
+                    },
+                    onOpenSlock = { settingsCapabilities.openUrl("https://app.slock.ai") },
+                    onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
+                )
+            SettingsDestinationDiagnostics ->
+                SharedSettingsDiagnosticsContent(
+                    state = settingsState.diagnostics,
+                    onCopyLogs = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
+                    onShareLogs = { onSettingsIntent(SharedSettingsIntent.ShareDiagnostics) },
+                    onClearLogs = { onSettingsIntent(SharedSettingsIntent.ClearDiagnostics) },
+                    onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
+                )
             else ->
                 SettingsSharedPlaceholder(
                     title = "Settings",
@@ -905,6 +985,55 @@ private fun SharedSettingsRow(
             row.status.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1)
             }
+        }
+    }
+}
+
+@Composable
+private fun SharedSettingsAboutContent(
+    state: ScreenLoadState<SharedSettingsAboutSnapshot>,
+    fallback: SharedSettingsAboutSnapshot,
+    onOpenDiagnostics: () -> Unit,
+    onCopyBuild: (String) -> Unit,
+    onOpenSlock: () -> Unit,
+    onSendFeedback: () -> Unit
+) {
+    val snapshot =
+        when (state) {
+            is ScreenLoadState.Content -> state.data
+            else -> fallback
+        }
+    val payload = snapshot.toAboutPayload()
+    SharedSettingsSectionContent(payload) { action, value ->
+        when (action) {
+            "diagnostics" -> onOpenDiagnostics()
+            "copyBuild" -> onCopyBuild(value.orEmpty().ifBlank { snapshot.buildSummary() })
+            "openSlock" -> onOpenSlock()
+            "feedback" -> onSendFeedback()
+        }
+    }
+}
+
+@Composable
+private fun SharedSettingsDiagnosticsContent(
+    state: ScreenLoadState<SharedSettingsDiagnosticsSnapshot>,
+    onCopyLogs: () -> Unit,
+    onShareLogs: () -> Unit,
+    onClearLogs: () -> Unit,
+    onSendFeedback: () -> Unit
+) {
+    val entries =
+        when (state) {
+            is ScreenLoadState.Content -> state.data.entries
+            else -> emptyList()
+        }
+    val payload = entries.toDiagnosticsPayload(state)
+    SharedSettingsSectionContent(payload) { action, _ ->
+        when (action) {
+            "copyLogs" -> onCopyLogs()
+            "shareLogs" -> onShareLogs()
+            "clearLogs" -> onClearLogs()
+            "feedback" -> onSendFeedback()
         }
     }
 }
@@ -1213,34 +1342,122 @@ private fun appShellMobilePayload(): KuiklySharedSettingsPayload =
             )
     )
 
-private fun appShellAboutPayload(session: StoredAuthSession?): KuiklySharedSettingsPayload =
+private fun appShellAboutFallback(session: StoredAuthSession?): SharedSettingsAboutSnapshot =
+    SharedSettingsAboutSnapshot(
+        appName = "Slock",
+        versionLabel = "Loading",
+        signedInUserLabel = session?.user?.bestDisplayName ?: "Unknown",
+        selectedServerLabel = session?.currentServerSummary()?.name ?: "None",
+        sessionStatusLabel = if (session != null) "Signed in" else "Signed out",
+        socketStatusLabel = "Checking",
+        notificationStatusLabel = "Checking"
+    )
+
+private fun SharedSettingsAboutSnapshot.toAboutPayload(): KuiklySharedSettingsPayload =
     KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-about",
         title = "About",
         heroIconName = "bug",
-        heroLabel = "Slock diagnostics",
-        detail = "About and diagnostics are represented in shared now; runtime version/log buffers still need host data.",
+        heroLabel = appName.ifBlank { "Slock" },
+        detail = "Version, diagnostics, feedback",
         sections =
             listOf(
                 KuiklySharedSettingsSection(
-                    title = "App",
+                    title = "Application",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("appName", "sparkles", "Application", "Slock", status = "Shared shell"),
-                            KuiklySharedSettingsRow("signedInUser", "user", "Signed in as", session?.user?.bestDisplayName ?: "Unknown", status = session?.user?.email.orEmpty()),
-                            KuiklySharedSettingsRow("selectedServer", "server", "Selected server", session?.currentServerSummary()?.name ?: "None", status = session?.currentServerId ?: "")
+                            KuiklySharedSettingsRow("appName", "sparkles", "Application", appName.ifBlank { "Slock" }, status = "Shared shell"),
+                            KuiklySharedSettingsRow("version", "badge-info", "Version", versionLabel.ifBlank { "Unknown" }, status = buildLabel.ifBlank { "Build unknown" }),
+                            KuiklySharedSettingsRow("package", "package", "Package", packageName.ifBlank { "Unknown" }, status = "Read only"),
+                            KuiklySharedSettingsRow("device", "smartphone", "Device", deviceLabel.ifBlank { "Unknown" }, status = platformLabel.ifBlank { "Platform" })
                         )
                 ),
                 KuiklySharedSettingsSection(
-                    title = "Diagnostics",
+                    title = "Runtime",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("diagnostics", "clipboard-list", "Diagnostics log", "Needs host sanitized log buffer bridge before display/copy/share.", status = "Pending"),
-                            KuiklySharedSettingsRow("feedback", "message-square-plus", "Send feedback", "Feedback should route through the real shared thread composer.", status = "Pending")
+                            KuiklySharedSettingsRow("signedInUser", "user", "Signed in as", signedInUserLabel.ifBlank { "Unknown" }, status = sessionStatusLabel),
+                            KuiklySharedSettingsRow("selectedServer", "server", "Selected server", selectedServerLabel.ifBlank { "None" }, status = socketStatusLabel),
+                            KuiklySharedSettingsRow("notifications", "bell", "Notifications", notificationStatusLabel.ifBlank { "Unknown" }, status = "Host")
+                        )
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Actions",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow("diagnostics", "clipboard-list", "Diagnostics log", "Open sanitized runtime logs.", status = "Open", enabled = true),
+                            KuiklySharedSettingsRow("copyBuild", "copy", "Copy version/build", buildSummary(), status = "Copy", enabled = true),
+                            KuiklySharedSettingsRow("openSlock", "external-link", "Open Slock", "Open app.slock.ai in the system browser.", status = "Open", enabled = true),
+                            KuiklySharedSettingsRow("feedback", "message-square-plus", "Send feedback", "Open the host feedback/share flow with diagnostics.", status = "Send", enabled = true)
                         )
                 )
             )
     )
+
+private fun SharedSettingsAboutSnapshot.buildSummary(): String =
+    buildString {
+        append(appName.ifBlank { "Slock" })
+        versionLabel.takeIf { it.isNotBlank() }?.let { append(" $it") }
+        buildLabel.takeIf { it.isNotBlank() }?.let { append(" ($it)") }
+        packageName.takeIf { it.isNotBlank() }?.let { append(" ").append(it) }
+    }
+
+private fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
+    state: ScreenLoadState<SharedSettingsDiagnosticsSnapshot>
+): KuiklySharedSettingsPayload {
+    val logsAvailable = isNotEmpty()
+    val stateLabel =
+        when (state) {
+            is ScreenLoadState.Content -> if (logsAvailable) "${size} entries" else "Empty"
+            is ScreenLoadState.Error -> state.error.code
+            is ScreenLoadState.NoPermission -> state.blocker.code
+            is ScreenLoadState.Empty -> state.reason.name
+            ScreenLoadState.Loading -> "Loading"
+        }
+    val logRows =
+        if (logsAvailable) {
+            takeLast(20).mapIndexed { index, entry ->
+                KuiklySharedSettingsRow(
+                    key = "log-$index",
+                    iconName = "terminal",
+                    title = entry.tag.ifBlank { "Log" },
+                    detail = "${entry.timestampLabel} ${entry.message}".trim(),
+                    status = ""
+                )
+            }
+        } else {
+            listOf(
+                KuiklySharedSettingsRow(
+                    key = "emptyLogs",
+                    iconName = "circle-dashed",
+                    title = "No diagnostics yet",
+                    detail = "Runtime diagnostics will appear here after app activity.",
+                    status = stateLabel
+                )
+            )
+        }
+    return KuiklySharedSettingsPayload(
+        instanceId = "shared-shell-diagnostics",
+        title = "Diagnostics",
+        detail = "Sanitized app diagnostics",
+        heroIconName = "clipboard-list",
+        heroLabel = "Diagnostics",
+        sections =
+            listOf(
+                KuiklySharedSettingsSection(
+                    title = "Actions",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow("copyLogs", "copy", "Copy logs", "Copy sanitized diagnostics to the clipboard.", status = if (logsAvailable) "Copy" else "Disabled", enabled = logsAvailable),
+                            KuiklySharedSettingsRow("shareLogs", "share", "Share logs", "Open the native share sheet with sanitized diagnostics.", status = if (logsAvailable) "Share" else "Disabled", enabled = logsAvailable),
+                            KuiklySharedSettingsRow("feedback", "message-square-plus", "Send feedback", "Open the host feedback/share flow with diagnostics.", status = "Send", enabled = true),
+                            KuiklySharedSettingsRow("clearLogs", "trash-2", "Clear logs", "Clear the sanitized local diagnostics buffer.", status = if (logsAvailable) "Clear" else "Disabled", enabled = logsAvailable)
+                        )
+                ),
+                KuiklySharedSettingsSection(title = "Log", rows = logRows)
+            )
+    )
+}
 
 private fun settingsDestinationTitle(destination: String): String =
     when (destination) {
@@ -1251,6 +1468,7 @@ private fun settingsDestinationTitle(destination: String): String =
         SettingsDestinationMobile -> "Mobile"
         SettingsDestinationStorage -> "Storage"
         SettingsDestinationAbout -> "About"
+        SettingsDestinationDiagnostics -> "Diagnostics"
         else -> "Settings"
     }
 
@@ -1263,6 +1481,7 @@ private fun settingsDestinationSubtitle(destination: String): String =
         SettingsDestinationMobile -> "Phone and language"
         SettingsDestinationStorage -> "Local cache"
         SettingsDestinationAbout -> "Diagnostics"
+        SettingsDestinationDiagnostics -> "Sanitized runtime logs"
         else -> ""
     }
 
@@ -1275,7 +1494,22 @@ private fun settingsDestinationIcon(destination: String): String =
         SettingsDestinationMobile -> "smartphone"
         SettingsDestinationStorage -> "archive"
         SettingsDestinationAbout -> "bug"
+        SettingsDestinationDiagnostics -> "clipboard-list"
         else -> "settings"
+    }
+
+private fun String.toSharedSettingsDestination(): SharedSettingsDestination? =
+    when (this) {
+        SettingsDestinationAccount -> SharedSettingsDestination.Account
+        SettingsDestinationComputers -> SharedSettingsDestination.Computers
+        SettingsDestinationServer -> SharedSettingsDestination.Server
+        SettingsDestinationBilling -> SharedSettingsDestination.Billing
+        SettingsDestinationMobile -> SharedSettingsDestination.Mobile
+        SettingsDestinationStorage -> SharedSettingsDestination.Storage
+        SettingsDestinationAbout -> SharedSettingsDestination.About
+        SettingsDestinationDiagnostics -> SharedSettingsDestination.Diagnostics
+        SettingsDestinationHome -> SharedSettingsDestination.Home
+        else -> null
     }
 
 @Composable

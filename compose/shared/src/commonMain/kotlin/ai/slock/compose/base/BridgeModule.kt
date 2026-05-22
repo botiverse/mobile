@@ -140,6 +140,13 @@ internal class BridgeModule : Module() {
             }
         }
 
+    suspend fun settingsCapability(command: JSONObject): JSONObject? =
+        suspendCoroutine { continuation ->
+            callNativeMethod("settingsCapability", command) {
+                continuation.resume(it)
+            }
+        }
+
     suspend fun threadAttachmentUpload(channelId: String, imageOnly: Boolean): JSONObject? =
         suspendCoroutine { continuation ->
             val methodArgs = JSONObject()

@@ -226,6 +226,77 @@ internal class BridgeMembersApi(
     }
 }
 
+internal class BridgeSettingsPlatformCapabilities(
+    private val bridge: BridgeModule
+) : SharedSettingsPlatformCapabilities {
+    fun bridgeCopyToClipboard(content: String) {
+        bridge.copyToPasteboard(content)
+        bridge.toast("Copied")
+    }
+
+    fun openUrl(url: String) {
+        bridge.openUrl(url)
+    }
+
+    override suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> {
+        val response = bridge.settingsCapability(JSONObject().put("action", "loadAbout"))
+        if (response?.optString("status") != "ok") {
+            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_about_unavailable" }))
+        }
+        return DataResult.Content(
+            SharedSettingsAboutSnapshot(
+                appName = response.optString("appName").ifBlank { "Slock" },
+                versionLabel = response.optString("versionLabel"),
+                buildLabel = response.optString("buildLabel"),
+                packageName = response.optString("packageName"),
+                signedInUserLabel = response.optString("signedInUserLabel"),
+                selectedServerLabel = response.optString("selectedServerLabel"),
+                sessionStatusLabel = response.optString("sessionStatusLabel"),
+                socketStatusLabel = response.optString("socketStatusLabel"),
+                notificationStatusLabel = response.optString("notificationStatusLabel"),
+                deviceLabel = response.optString("deviceLabel"),
+                platformLabel = response.optString("platformLabel")
+            )
+        )
+    }
+
+    override suspend fun loadDiagnostics(): DataResult<SharedSettingsDiagnosticsSnapshot> {
+        val response = bridge.settingsCapability(JSONObject().put("action", "loadDiagnostics"))
+        if (response?.optString("status") != "ok") {
+            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_diagnostics_unavailable" }))
+        }
+        val entriesJson = response.optJSONArray("entries")
+        val entries =
+            buildList {
+                if (entriesJson != null) {
+                    for (index in 0 until entriesJson.length()) {
+                        val entry = entriesJson.optJSONObject(index) ?: continue
+                        add(
+                            SharedSettingsDiagnosticsEntry(
+                                timestampLabel = entry.optString("timestampLabel"),
+                                tag = entry.optString("tag"),
+                                message = entry.optString("message")
+                            )
+                        )
+                    }
+                }
+            }
+        return DataResult.Content(SharedSettingsDiagnosticsSnapshot(entries = entries))
+    }
+
+    suspend fun copyDiagnostics(): Boolean =
+        bridge.settingsCapability(JSONObject().put("action", "copyDiagnostics"))?.optString("status") == "ok"
+
+    suspend fun shareDiagnostics(): Boolean =
+        bridge.settingsCapability(JSONObject().put("action", "shareDiagnostics"))?.optString("status") == "ok"
+
+    suspend fun clearDiagnostics(): Boolean =
+        bridge.settingsCapability(JSONObject().put("action", "clearDiagnostics"))?.optString("status") == "ok"
+
+    suspend fun sendFeedback(): Boolean =
+        bridge.settingsCapability(JSONObject().put("action", "sendFeedback"))?.optString("status") == "ok"
+}
+
 internal class BridgeTasksApi(
     private val bridge: BridgeModule,
     private val sessionStore: SlockAuthSessionStore,

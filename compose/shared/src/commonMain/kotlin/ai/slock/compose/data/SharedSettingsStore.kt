@@ -82,9 +82,15 @@ data class SharedSettingsStorageRow(
 data class SharedSettingsAboutSnapshot(
     val appName: String = "Slock",
     val versionLabel: String = "",
+    val buildLabel: String = "",
     val packageName: String = "",
     val signedInUserLabel: String = "",
-    val selectedServerLabel: String = ""
+    val selectedServerLabel: String = "",
+    val sessionStatusLabel: String = "",
+    val socketStatusLabel: String = "",
+    val notificationStatusLabel: String = "",
+    val deviceLabel: String = "",
+    val platformLabel: String = ""
 )
 
 data class SharedSettingsDiagnosticsSnapshot(

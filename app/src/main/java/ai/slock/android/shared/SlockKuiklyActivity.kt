@@ -2,6 +2,8 @@ package ai.slock.android.shared
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.database.sqlite.SQLiteDatabase
@@ -13,6 +15,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.util.Base64
@@ -31,6 +34,7 @@ import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
 import ai.slock.android.core.data.auth.KtorAuthRepository
+import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.realtime.SessionRealtimeRepository
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
@@ -895,6 +899,14 @@ internal class SlockKuiklyBridgeModule(
                 SlockDiagnosticsLogger.d("SlockKuikly", content)
                 null
             }
+            "copyToPasteboard" -> {
+                copyToPasteboard(params)
+                null
+            }
+            "settingsCapability" -> {
+                settingsCapability(params, callback)
+                null
+            }
             "filesEvent" -> {
                 dispatchLegacyIslandEvent(method = method, params = params)
                 null
@@ -1063,6 +1075,138 @@ internal class SlockKuiklyBridgeModule(
         }
         return null
     }
+
+    private fun copyToPasteboard(params: String?) {
+        val content = JSONObject(params ?: "{}").optString("content")
+        if (content.isBlank()) return
+        val clipboard = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Slock", content))
+    }
+
+    private fun settingsCapability(params: String?, callback: KuiklyRenderCallback?) {
+        val request = JSONObject(params ?: "{}")
+        val result =
+                runCatching {
+                    when (request.optString("action")) {
+                        "loadAbout" -> loadSettingsAbout()
+                        "loadDiagnostics" -> loadSettingsDiagnostics()
+                        "copyDiagnostics" -> {
+                            copyText("Slock diagnostics", SanitizedDiagnosticsLogBuffer.exportText())
+                            SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_copy_logs")
+                            mapOf("status" to "ok")
+                        }
+                        "shareDiagnostics" -> {
+                            shareText(
+                                    subject = "Slock diagnostics",
+                                    text = SanitizedDiagnosticsLogBuffer.exportText()
+                            )
+                            SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_share_logs")
+                            mapOf("status" to "ok")
+                        }
+                        "clearDiagnostics" -> {
+                            SanitizedDiagnosticsLogBuffer.clear()
+                            SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_logs_cleared")
+                            mapOf("status" to "ok")
+                        }
+                        "sendFeedback" -> {
+                            shareText(
+                                    subject = "Slock feedback",
+                                    text = buildFeedbackText()
+                            )
+                            SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_send_feedback")
+                            mapOf("status" to "ok")
+                        }
+                        else -> mapOf("status" to "error", "code" to "settings_capability_unknown")
+                    }
+                }.getOrElse { throwable ->
+                    mapOf(
+                            "status" to "error",
+                            "code" to "settings_capability_failed",
+                            "message" to (throwable.message ?: "Settings capability failed")
+                    )
+                }
+        callback?.invoke(result)
+    }
+
+    private fun loadSettingsAbout(): Map<String, Any> {
+        val packageInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
+        val session = runBlocking { EncryptedAuthSessionStore(appContext).readSession() }
+        val selectedServer =
+                session?.currentServerId?.let { serverId -> session.servers.firstOrNull { it.id == serverId } }
+                        ?: session?.servers?.firstOrNull()
+        return mapOf(
+                "status" to "ok",
+                "appName" to "Slock",
+                "versionLabel" to (packageInfo.versionName ?: "unknown"),
+                "buildLabel" to packageInfo.versionCodeCompat(),
+                "packageName" to appContext.packageName,
+                "signedInUserLabel" to (session?.user?.bestDisplayName ?: "Signed out"),
+                "selectedServerLabel" to (selectedServer?.name ?: "No selected server"),
+                "sessionStatusLabel" to if (session != null) "Signed in" else "Signed out",
+                "socketStatusLabel" to "Host active",
+                "notificationStatusLabel" to "Managed by system settings",
+                "deviceLabel" to "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
+                "platformLabel" to "Android ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT}"
+        )
+    }
+
+    private fun loadSettingsDiagnostics(): Map<String, Any> {
+        val entries =
+                JSONArray().also { array ->
+                    SanitizedDiagnosticsLogBuffer.recent().takeLast(80).forEach { entry ->
+                        array.put(
+                                JSONObject()
+                                        .put("timestampLabel", entry.timestampMillis.toString())
+                                        .put("tag", entry.tag)
+                                        .put("message", entry.message)
+                        )
+                    }
+                }
+        return mapOf("status" to "ok", "entries" to entries)
+    }
+
+    private fun buildFeedbackText(): String =
+            buildString {
+                appendLine("## Slock feedback")
+                appendLine()
+                appendLine("<!-- Describe what happened here. -->")
+                appendLine()
+                appendLine("## Diagnostics")
+                appendLine()
+                append(SanitizedDiagnosticsLogBuffer.exportText())
+            }
+
+    private fun shareText(subject: String, text: String) {
+        val intent =
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_SUBJECT, subject)
+                    putExtra(Intent.EXTRA_TEXT, text)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+        runCatching {
+            appContext.startActivity(
+                    Intent.createChooser(intent, subject).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+            )
+        }.onFailure {
+            Toast.makeText(appContext, "Unable to open share sheet", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun copyText(label: String, content: String) {
+        val clipboard = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText(label, content))
+    }
+
+    @Suppress("DEPRECATION")
+    private fun android.content.pm.PackageInfo.versionCodeCompat(): String =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                longVersionCode.toString()
+            } else {
+                versionCode.toString()
+            }
 
     private fun openUrl(params: String?): Any? {
         val request = JSONObject(params ?: "{}")

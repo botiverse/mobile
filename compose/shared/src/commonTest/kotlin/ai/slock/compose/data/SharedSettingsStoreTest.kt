@@ -129,6 +129,32 @@ class SharedSettingsStoreTest {
         scope.cancel()
     }
 
+    @Test
+    fun aboutAndDiagnosticsLoadThroughPlatformCapabilities() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities = FakeSettingsCapabilities()
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        platformCapabilities = capabilities
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
+        val about = assertIs<ScreenLoadState.Content<SharedSettingsAboutSnapshot>>(store.state.value.about).data
+        assertEquals("1.2.3", about.versionLabel)
+        assertEquals("456", about.buildLabel)
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+        val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
+        assertEquals(listOf("SlockTest"), diagnostics.entries.map { it.tag })
+        assertEquals(listOf("about", "diagnostics"), capabilities.calls)
+        scope.cancel()
+    }
+
     private class FakeSettingsRepository(
         var accountResult: DataResult<AccountSettingsSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var computersResult: DataResult<SettingsComputersSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
@@ -179,6 +205,40 @@ class SharedSettingsStoreTest {
         override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> {
             calls += "mobile"
             return mobileResult
+        }
+    }
+
+    private class FakeSettingsCapabilities : SharedSettingsPlatformCapabilities {
+        val calls = mutableListOf<String>()
+
+        override suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> {
+            calls += "about"
+            return DataResult.Content(
+                SharedSettingsAboutSnapshot(
+                    appName = "Slock",
+                    versionLabel = "1.2.3",
+                    buildLabel = "456",
+                    packageName = "ai.slock.android",
+                    signedInUserLabel = "Artin",
+                    selectedServerLabel = "Slock Community"
+                )
+            )
+        }
+
+        override suspend fun loadDiagnostics(): DataResult<SharedSettingsDiagnosticsSnapshot> {
+            calls += "diagnostics"
+            return DataResult.Content(
+                SharedSettingsDiagnosticsSnapshot(
+                    entries =
+                        listOf(
+                            SharedSettingsDiagnosticsEntry(
+                                timestampLabel = "123",
+                                tag = "SlockTest",
+                                message = "diagnostic ready"
+                            )
+                        )
+                )
+            )
         }
     }
 
