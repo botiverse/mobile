@@ -49,6 +49,16 @@ internal enum class AuthButtonTone {
     Disabled
 }
 
+private val AuthInputTextStyle =
+    SlockType.Input.copy(
+        fontWeight = FontWeight.Normal,
+        fontSize = 16.sp,
+        lineHeight = 24.sp,
+        color = SlockColor.TextBlack
+    )
+
+private val AuthInputPlaceholderColor = SlockColor.TextBlack.copy(alpha = 0.4f)
+
 @Composable
 internal fun AuthScaffold(
     modifier: Modifier = Modifier,
@@ -197,20 +207,21 @@ internal fun AuthTextField(
         val focused = enabled && (isFocused || forceFocused)
         val shadowOffset = if (focused) 4.dp else 2.dp
         val borderColor = if (isError) SlockColor.AccentRed else SlockColor.BorderBlack
-        Box(modifier = Modifier.fillMaxWidth().height(40.dp).padding(end = shadowOffset, bottom = shadowOffset)) {
+        Box(modifier = Modifier.fillMaxWidth().height(44.dp + shadowOffset).padding(end = shadowOffset, bottom = shadowOffset)) {
             Box(Modifier.fillMaxSize().offset(x = shadowOffset, y = shadowOffset).background(SlockColor.ShadowBlack))
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.EmptyStateGray)
                     .border(SlockStroke.Default, borderColor)
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 if (value.isEmpty() && placeholder.isNotBlank()) {
                     Text(
                         text = placeholder,
-                        style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
+                        style = AuthInputTextStyle.copy(color = AuthInputPlaceholderColor),
+                        color = AuthInputPlaceholderColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -222,7 +233,7 @@ internal fun AuthTextField(
                     onFocus = { isFocused = true },
                     onBlur = { isFocused = false },
                     onValueChange = onValueChange,
-                    textStyle = SlockType.Input.copy(color = SlockColor.TextBlack),
+                    textStyle = AuthInputTextStyle,
                     cursorBrush = SolidColor(SlockColor.TextBlack),
                     maxLines = 1,
                     keyboardOptions = keyboardOptions,

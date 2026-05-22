@@ -78,19 +78,7 @@ internal class ComposeForgotPasswordPage : ai.slock.compose.base.BasePager() {
 internal class ComposeAuthLoginInputsVisualPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent {
-            LoginContent(
-                email = "artin@slock.ai",
-                password = "correct horse battery staple",
-                submitting = false,
-                errorMessage = null,
-                onEmailChange = {},
-                onPasswordChange = {},
-                onSubmit = {},
-                onForgotPassword = {},
-                onCreateAccount = {}
-            )
-        }
+        setContent { AuthLoginInputsVisualScreen() }
     }
 }
 
@@ -98,20 +86,7 @@ internal class ComposeAuthLoginInputsVisualPage : ai.slock.compose.base.BasePage
 internal class ComposeAuthRegisterInputsVisualPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent {
-            RegisterContent(
-                name = "Product UX Designer",
-                email = "new@slock.ai",
-                password = "correct horse battery staple",
-                submitting = false,
-                errorMessage = null,
-                onNameChange = {},
-                onEmailChange = {},
-                onPasswordChange = {},
-                onSubmit = {},
-                onBackToSignIn = {}
-            )
-        }
+        setContent { AuthRegisterInputsVisualScreen() }
     }
 }
 
@@ -241,6 +216,38 @@ private fun ForgotPasswordScreen() {
 }
 
 @Composable
+private fun AuthLoginInputsVisualScreen() {
+    LoginContent(
+        email = "artin@slock.test",
+        password = "password",
+        submitting = false,
+        errorMessage = null,
+        onEmailChange = {},
+        onPasswordChange = {},
+        onSubmit = {},
+        onForgotPassword = {},
+        onCreateAccount = {}
+    )
+}
+
+@Composable
+private fun AuthRegisterInputsVisualScreen() {
+    RegisterContent(
+        name = "",
+        email = "new@slock.test",
+        password = "",
+        submitting = false,
+        errorMessage = null,
+        onNameChange = {},
+        onEmailChange = {},
+        onPasswordChange = {},
+        onSubmit = {},
+        onBackToSignIn = {},
+        forceNameFocused = false
+    )
+}
+
+@Composable
 internal fun LoginContent(
     email: String,
     password: String,
@@ -322,7 +329,8 @@ internal fun RegisterContent(
     onEmailChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onSubmit: () -> Unit,
-    onBackToSignIn: () -> Unit
+    onBackToSignIn: () -> Unit,
+    forceNameFocused: Boolean = true
 ) {
     val formEnabled = !submitting
     var termsAccepted by remember { mutableStateOf(false) }
@@ -334,7 +342,7 @@ internal fun RegisterContent(
             color = SlockColor.TextBlack
         )
         AuthFormColumn {
-            AuthTextField(name, onNameChange, "Name", placeholder = "Letters, numbers, hyphens, underscores", required = true, enabled = formEnabled, forceFocused = true)
+            AuthTextField(name, onNameChange, "Name", placeholder = "Letters, numbers, hyphens, underscores", required = true, enabled = formEnabled, forceFocused = forceNameFocused)
             AuthTextField(email, onEmailChange, "Email", required = true, enabled = formEnabled, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next))
             AuthTextField(
                 password,

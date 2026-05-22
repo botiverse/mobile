@@ -118,7 +118,8 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "auth.login.inputs",
             pageName = "compose_auth_login_inputs",
-            crop = VisualCrop(leftDp = 24, topDp = 0, widthDp = 342, heightDp = 620)
+            crop = VisualCrop(leftDp = 24, topDp = 0, widthDp = 342, heightDp = 620),
+            settleMs = 4_500
         )
     }
 
@@ -127,7 +128,8 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "auth.register.inputs",
             pageName = "compose_auth_register_inputs",
-            crop = VisualCrop(leftDp = 24, topDp = 0, widthDp = 342, heightDp = 700)
+            crop = VisualCrop(leftDp = 24, topDp = 0, widthDp = 342, heightDp = 700),
+            settleMs = 4_500
         )
     }
 
@@ -184,7 +186,8 @@ class KmpVisualScreenshotCaptureTest {
         caseId: String,
         pageName: String,
         crop: VisualCrop,
-        pageData: JSONObject? = null
+        pageData: JSONObject? = null,
+        settleMs: Long = 1_500
     ) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
@@ -198,7 +201,7 @@ class KmpVisualScreenshotCaptureTest {
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             scenario.onActivity { applyVisualFullscreen(it) }
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            Thread.sleep(1_500)
+            Thread.sleep(settleMs)
             val screenshot =
                 requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()) {
                     "Unable to capture KMP visual screenshot for $caseId"
