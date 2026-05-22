@@ -40,9 +40,6 @@ import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.graphics.Path
-import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
-import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.TextStyle
@@ -60,9 +57,6 @@ import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlin.math.PI
-import kotlin.math.max
-import kotlin.math.sin
 
 const val SLOCK_HOME_PAGE = "compose_home"
 private const val HOME_CHANNEL_ROW_VISUAL_PAGE = "compose_home_channel_row_visual"
@@ -94,11 +88,8 @@ private val HomeUnreadBadgeRadius = 4.dp
 private val ChannelUnreadTextOffsetY = (-1).dp
 private val HomeListHorizontalPadding = SlockSpacing.Md
 private val HomePanelShadowOffset = 4.dp
-private val HomeTiltedBadgeSlant = 3.dp
 private const val SharedListDefaultBeyondBoundsItemCount = 3
 private const val SharedListMaxBeyondBoundsItemCount = 96
-private const val HomeRefreshFrameDelayMs = 16L
-private const val HomeRefreshWaveStep = 0.26f
 
 @Page(SLOCK_HOME_PAGE, supportInLocal = true)
 internal class ComposeSlockHomePage : ai.slock.compose.base.BasePager() {
@@ -622,21 +613,21 @@ private fun HomeServerSwitcherDismissLayer(onDismiss: () -> Unit) {
 
 @Composable
 private fun HomePullRefreshIndicator(pullProgress: Float, refreshing: Boolean) {
-    var wavePhase by remember { mutableStateOf(0f) }
+    var jumpStep by remember { mutableStateOf(0) }
     LaunchedEffect(refreshing) {
         if (!refreshing) {
-            wavePhase = 0f
+            jumpStep = 0
             return@LaunchedEffect
         }
         while (true) {
-            wavePhase = (wavePhase + HomeRefreshWaveStep) % (PI.toFloat() * 2f)
-            delay(HomeRefreshFrameDelayMs)
+            jumpStep = (jumpStep + 1) % SlockRefreshLetters.length
+            delay(120)
         }
     }
     val pullOffset = ((1f - pullProgress.coerceIn(0f, 1f)) * 8f).dp
     Box(modifier = Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
         SlockJumpingLogoBadge(
-            wavePhase = if (refreshing) wavePhase else null,
+            activeIndex = if (refreshing) jumpStep else -1,
             modifier = Modifier.offset(y = if (refreshing) 0.dp else pullOffset)
         )
     }
@@ -645,8 +636,8 @@ private fun HomePullRefreshIndicator(pullProgress: Float, refreshing: Boolean) {
 private const val SlockRefreshLetters = "SLOCK"
 
 @Composable
-private fun SlockJumpingLogoBadge(wavePhase: Float?, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.padding(end = 2.dp, bottom = 2.dp)) {
+private fun SlockJumpingLogoBadge(activeIndex: Int, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.padding(end = 2.dp, bottom = 2.dp).rotate(-2f)) {
         Box(Modifier.matchParentSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier = Modifier.background(SlockColor.TextBlack).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 14.dp, vertical = SlockSpacing.Sm),
@@ -655,13 +646,10 @@ private fun SlockJumpingLogoBadge(wavePhase: Float?, modifier: Modifier = Modifi
         ) {
             SlockRefreshLetters.forEachIndexed { index, letter ->
                 val letterOffset =
-                    if (wavePhase == null) {
-                        0.dp
-                    } else {
-                        val wave = sin((wavePhase - index * 0.72f).toDouble()).toFloat()
-                        val up = max(0f, wave) * 5f
-                        val down = max(0f, -wave) * 2f
-                        (down - up).dp
+                    when {
+                        activeIndex == index -> (-5).dp
+                        activeIndex >= 0 && (activeIndex + SlockRefreshLetters.length - 1) % SlockRefreshLetters.length == index -> 2.dp
+                        else -> 0.dp
                     }
                 Text(
                     letter.toString(),
@@ -747,20 +735,13 @@ private fun SlockTiltedLogoBadge(
     unread: Boolean = false,
     textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
 ) {
-    Box(modifier = modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
-        SlantedBadgeChrome(
-            color = SlockColor.ShadowBlack,
-            borderColor = Color.Transparent,
-            modifier = Modifier.matchParentSize().offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
-        )
-        SlantedBadgeChrome(
-            color = SlockColor.TextBlack,
-            borderColor = SlockColor.BorderBlack,
-            modifier = Modifier.matchParentSize()
-        )
+    Box(modifier = modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset).rotate(-2f)) {
+        Box(Modifier.matchParentSize().offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset).background(SlockColor.ShadowBlack))
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier =
-                Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                Modifier.background(SlockColor.TextBlack)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
@@ -770,30 +751,6 @@ private fun SlockTiltedLogoBadge(
             }
         }
         if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
-    }
-}
-
-@Composable
-private fun SlantedBadgeChrome(
-    color: Color,
-    borderColor: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val slant = HomeTiltedBadgeSlant.toPx()
-        val strokeWidth = SlockStroke.Default.toPx()
-        val path =
-            Path().apply {
-                moveTo(slant, 0f)
-                lineTo(size.width, 0f)
-                lineTo(size.width - slant, size.height)
-                lineTo(0f, size.height)
-                close()
-            }
-        drawPath(path = path, color = color, style = Fill)
-        if (borderColor != Color.Transparent) {
-            drawPath(path = path, color = borderColor, style = Stroke(width = strokeWidth))
-        }
     }
 }
 
