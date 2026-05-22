@@ -58,6 +58,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 const val SLOCK_HOME_PAGE = "compose_home"
+private const val HOME_CHANNEL_ROW_VISUAL_PAGE = "compose_home_channel_row_visual"
+private const val HOME_SERVER_BADGE_VISUAL_PAGE = "compose_home_server_badge_visual"
+private const val HOME_TOP_ACTIONS_VISUAL_PAGE = "compose_home_top_actions_visual"
 private const val HOME_PAGE_DATA_EVENT = "slockPageData"
 
 private val SidebarActionIconSize = 14.dp
@@ -87,6 +90,30 @@ internal class ComposeSlockHomePage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { SlockHomePageContent() }
+    }
+}
+
+@Page(HOME_CHANNEL_ROW_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeHomeChannelRowVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeChannelRowVisualScreen() }
+    }
+}
+
+@Page(HOME_SERVER_BADGE_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeHomeServerBadgeVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeServerBadgeVisualScreen() }
+    }
+}
+
+@Page(HOME_TOP_ACTIONS_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeHomeTopActionsVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeTopActionsVisualScreen() }
     }
 }
 
@@ -236,6 +263,76 @@ private fun SlockHomePageContent() {
         onNotificationDismiss = { bridge.settingsEvent(payload.instanceId, "dismissNotification", it.id) },
         onChannelClick = { bridge.settingsEvent(payload.instanceId, "openChannel", it) }
     )
+}
+
+@Composable
+private fun HomeServerBadgeVisualScreen() {
+    Column(modifier = Modifier.width(342.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {
+        HomeWorkspaceHeader(
+            serverName = "Slock Design",
+            serverUnreadCount = 24,
+            topSafeArea = 0.dp,
+            onServerBadgeClick = {}
+        )
+    }
+}
+
+@Composable
+private fun HomeTopActionsVisualScreen() {
+    Column(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(top = 48.dp)
+                .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        SidebarActionRow("search", "Search")
+        SidebarActivityRow("Activity", "7", selected = false)
+        SidebarActionRow("bookmark", "Saved", trailingText = "3")
+    }
+}
+
+@Composable
+private fun HomeChannelRowVisualScreen() {
+    Column(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(top = 48.dp)
+                .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        SidebarSectionHeader(
+            label = "Channels",
+            count = 2,
+            expanded = true,
+            onExpandedChange = {},
+            onSortClick = {},
+            action = {
+                HeaderIconAction("plus", "Add channel") {}
+            }
+        )
+        ChannelRow(
+            name = "design",
+            badge = "3",
+            joined = true,
+            interactionState = ChannelRowInteractionState.Selected
+        )
+        ChannelRow(
+            name = "android-artifacts",
+            joined = true,
+            interactionState = ChannelRowInteractionState.Default
+        )
+        ChannelRow(
+            name = "release-gate",
+            badge = "12",
+            joined = false,
+            interactionState = ChannelRowInteractionState.Default
+        )
+    }
 }
 
 @Composable

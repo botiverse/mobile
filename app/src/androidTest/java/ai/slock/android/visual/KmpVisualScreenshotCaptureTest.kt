@@ -56,6 +56,33 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    @Test
+    fun captureHomeChannelRowStates() {
+        captureKmpComponentCase(
+            caseId = "home.channel-row.states",
+            pageName = "compose_home_channel_row_visual",
+            crop = VisualCrop(leftDp = 0, topDp = 48, widthDp = 342, heightDp = 154)
+        )
+    }
+
+    @Test
+    fun captureHomeServerBadgeStates() {
+        captureKmpComponentCase(
+            caseId = "home.server-badge.states",
+            pageName = "compose_home_server_badge_visual",
+            crop = VisualCrop(leftDp = 0, topDp = 48, widthDp = 342, heightDp = 56)
+        )
+    }
+
+    @Test
+    fun captureHomeTopActionsStates() {
+        captureKmpComponentCase(
+            caseId = "home.top-actions.states",
+            pageName = "compose_home_top_actions_visual",
+            crop = VisualCrop(leftDp = 0, topDp = 48, widthDp = 342, heightDp = 128)
+        )
+    }
+
     private fun captureKmpHomeCase(caseId: String, pageData: JSONObject) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
