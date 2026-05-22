@@ -94,36 +94,51 @@ export struct SlockOhosHdsTabBar {
   @ObjectLink renderView: SlockOhosHdsTabBarView;
 
   build() {
-    HdsTabs({ index: this.renderView.selectedIndex(), controller: this.renderView.controller }) {
-      ForEach(this.renderView.items(), (item: SlockHdsTabItem, index: number) => {
-        TabContent() {
-          Column() {
-            Blank()
-              .width('100%')
-              .height(1)
+    Stack({ alignContent: Alignment.Bottom }) {
+      Column() {
+        Blank()
+          .width('100%')
+          .height(1)
+          .backgroundColor('#1A000000')
+      }
+      .width('100%')
+      .height(`${92 + this.renderView.bottomSafeArea}vp`)
+      .backgroundColor('#F2FFFFFF')
+      .backgroundBlurStyle(BlurStyle.Thin)
+
+      HdsTabs({ index: this.renderView.selectedIndex(), controller: this.renderView.controller }) {
+        ForEach(this.renderView.items(), (item: SlockHdsTabItem, index: number) => {
+          TabContent() {
+            Column() {
+              Blank()
+                .width('100%')
+                .height(1)
+            }
           }
-        }
-        .tabBar(this.tabBarItem(item, index))
-      }, (item: SlockHdsTabItem) => item.key)
+          .tabBar(this.tabBarItem(item, index))
+        }, (item: SlockHdsTabItem) => item.key)
+      }
+      .vertical(false)
+      .barPosition(BarPosition.End)
+      .barMode(BarMode.Fixed)
+      .scrollable(false)
+      .animationDuration(240)
+      .barHeight(60)
+      .barOverlap(true)
+      .barBackgroundColor('#F2FFFFFF')
+      .barBackgroundBlurStyle(BlurStyle.Thin)
+      .divider({ mode: DividerMode.NONE })
+      .width('100%')
+      .height(`${92 + this.renderView.bottomSafeArea}vp`)
+      .padding({
+        left: 18,
+        right: 18,
+        bottom: 28 + this.renderView.bottomSafeArea,
+      })
+      .backgroundColor('#00FFFFFF')
     }
-    .vertical(false)
-    .barPosition(BarPosition.End)
-    .barMode(BarMode.Fixed)
-    .scrollable(false)
-    .animationDuration(240)
-    .barHeight(60)
-    .barOverlap(true)
-    .barBackgroundColor('#CCFFFFFF')
-    .barBackgroundBlurStyle(BlurStyle.Thin)
-    .divider({ mode: DividerMode.NONE })
     .width('100%')
     .height(`${92 + this.renderView.bottomSafeArea}vp`)
-    .padding({
-      left: 18,
-      right: 18,
-      bottom: 28 + this.renderView.bottomSafeArea,
-    })
-    .backgroundColor('#33FFFFFF')
   }
 
   @Builder
