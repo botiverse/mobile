@@ -956,7 +956,7 @@ class RealMemberRepository(
                 warningLogger = warningLogger,
                 mapper = { json ->
                     val items =
-                            json.items("reminders", "items", "data").mapNotNull {
+                            json.items("reminders").mapNotNull {
                                 it.asObjectOrNull()?.toAgentReminderSummary()
                             }
                     AgentReminderSnapshot(agentId = agentId, reminders = items)

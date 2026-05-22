@@ -69,6 +69,9 @@ class SlockApiClient(
     suspend fun readAgentWorkspaceFile(priority: SlockRequestPriority, agentId: String, path: String): KmpHttpResponse =
         get(priority, "agents/$agentId/workspace-files/read", listOf("path" to path))
     suspend fun agentSkills(priority: SlockRequestPriority, agentId: String): KmpHttpResponse = get(priority, "agents/$agentId/skills")
+    suspend fun activeAnnouncements(priority: SlockRequestPriority): KmpHttpResponse = get(priority, "announcements/active")
+    suspend fun dismissAnnouncement(priority: SlockRequestPriority, announcementId: String): KmpHttpResponse =
+        post(priority, "announcements/$announcementId/dismiss")
     suspend fun reminders(priority: SlockRequestPriority, ownerAgentId: String, status: String = "scheduled"): KmpHttpResponse =
         get(priority, "reminders", listOf("ownerAgentId" to ownerAgentId, "status" to status))
     suspend fun agentActivityLog(priority: SlockRequestPriority, agentId: String, limit: Int = 50): KmpHttpResponse =

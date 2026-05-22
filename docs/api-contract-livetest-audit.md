@@ -87,11 +87,11 @@ responses are still acceptable only at the lowest network/bridge boundary.
 | Attachments | upload, url, preview, raw, html-preview-url, html-preview | Partially typed | Partial | Attachment URL, preview, HTML preview URL, upload wrapper, and channel files now have a typed facade. Raw `GET attachments/:id` remains a streaming endpoint; mobile should consume either the URL/preview typed facade or an explicit binary transport, not raw JSON. |
 | Tasks | list server/channel, task by number, create, claim, convert-message, unclaim, status, delete | Typed first slice | Partial | Shared Tasks facade covers all public task routes listed here. Product UI currently consumes server list and status update; create/convert/claim/unclaim/delete/by-number are exposed at the typed API boundary for follow-up UI wiring. |
 | Agents | list/create/detail/activity/agent-dms/update/avatar/start/stop/reset/delete/assign-machine/workspace-files/skills/scopes/bootstrap-tokens | Typed first slice | Partial | `SlockAgentsApiClient` covers the JSON public agent routes listed here, including scopes and bootstrap-token issue. Android legacy members/settings consumers still need migration behind the facade. Avatar upload/serve are multipart/binary surfaces and remain explicit transport capabilities. |
-| Announcements | `GET announcements/active`, `POST announcements/:id/dismiss` | Not wired | Missing | Product announcement surfaces cannot be considered closed. |
+| Announcements | `GET announcements/active`, `POST announcements/:id/dismiss` | Typed first slice | Missing | `SlockAnnouncementsRemindersApiClient` now covers the account-level active/dismiss routes. Active returns `{ announcements }`; dismiss returns `{ ok: true }`. There is no public publish/create route in v0. |
 | Actions | action card execute/event/mark-executed | Not wired | Missing | Android/KMP cannot execute action-card flows through the product API yet. |
 | Integrations/OAuth clients | overview, clients, approve/deny/revoke, agent grants | Not wired | Missing | No Android/KMP capability yet. |
 | Push | vapid key, prompt events, subscribe/unsubscribe | Not wired | Missing | Native notification work is not closed against upstream push routes. |
-| Reminders | `GET reminders` | Read-only wired | Missing | Only list is wired. Agent reminder mutations live under internal agent routes, not public Android/KMP product API. |
+| Reminders | `GET reminders` | Typed first slice | Missing | Human/product API remains read-only: `GET reminders?ownerAgentId=&status=` returns `{ reminders }`. Agent reminder create/cancel/snooze/update/log live under internal agent routes and must not be guessed as public Android/KMP routes. |
 | Internal agent/computer/OAuth protocol | `/internal/*`, `/oauth/*`, `/daemon/*` | Out of Android product scope | Not applicable | Should be tracked by agent/daemon CLI contracts, not Android app parity, unless the app starts owning those screens. |
 
 ## Response Field Cleanup Findings
@@ -160,9 +160,17 @@ responses are still acceptable only at the lowest network/bridge boundary.
   `{ channelId, messages, ... }`, and reaction responses as the updated root
   message object. Aliases such as `items`, `attachments`, `data`, `downloadUrl`,
   `href`, and nested `message` reaction wrappers fail at this boundary.
-- Push, Integrations, Actions, Announcements, and Reminders still need the same
-  typed API facade treatment. They should not keep expanding raw JSON aliases
-  inside repositories or UI stores without a source-backed contract.
+- Announcements/Reminders first slice is now typed at the shared API boundary:
+  `SlockAnnouncementsRemindersApiClient.activeAnnouncements/dismissAnnouncement/reminders`.
+  Canonical shapes are active announcements `{ announcements: [...] }`, dismiss
+  `{ ok: true }`, and read-only reminders `{ reminders: [...] }`. Guessed
+  aliases such as `{ items: [...] }`, `{ data: [...] }`, and `{ success: true }`
+  fail at this boundary. Public human reminder mutations are intentionally not
+  exposed by upstream; agent reminder create/cancel/snooze/update/log remain
+  internal agent routes and should not be wrapped as Android product API calls.
+- Push, Integrations, and Actions still need the same typed API facade
+  treatment. They should not keep expanding raw JSON aliases inside
+  repositories or UI stores without a source-backed contract.
 - Agents first slice is now typed at the shared API boundary:
   `SlockAgentsApiClient.agents/agent/createAgent/updateAgent/startAgent/stopAgent/resetAgent/deleteAgent/assignMachine/agentDirectMessages/agentActivityLog/agentWorkspaceFiles/readAgentWorkspaceFile/agentSkills/agentScopes/updateAgentScopes/issueBootstrapToken`.
   Canonical shapes are root agent arrays/objects, command `{ ok: true }`,

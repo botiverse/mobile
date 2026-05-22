@@ -118,6 +118,25 @@ class SlockApiClientContractTest {
     }
 
     @Test
+    fun announcementsAndRemindersUseCanonicalUpstreamContracts() = runBlocking {
+        val requests = mutableListOf<HttpRequestData>()
+        val client = apiClient(requests)
+
+        client.activeAnnouncements(SlockRequestPriority.Visible)
+        client.dismissAnnouncement(SlockRequestPriority.Visible, "announcement-1")
+        client.reminders(SlockRequestPriority.Visible, "agent-1", status = "scheduled,fired")
+
+        assertEquals("GET", requests[0].method.value)
+        assertEquals("/api/announcements/active", requests[0].url.encodedPath)
+        assertEquals("POST", requests[1].method.value)
+        assertEquals("/api/announcements/announcement-1/dismiss", requests[1].url.encodedPath)
+        assertEquals("GET", requests[2].method.value)
+        assertEquals("/api/reminders", requests[2].url.encodedPath)
+        assertEquals("agent-1", requests[2].url.parameters["ownerAgentId"])
+        assertEquals("scheduled,fired", requests[2].url.parameters["status"])
+    }
+
+    @Test
     fun messageReactionsUseCanonicalRouteAndMethod() = runBlocking {
         val requests = mutableListOf<HttpRequestData>()
         val client = apiClient(requests)
