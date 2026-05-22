@@ -22,6 +22,7 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -380,67 +381,55 @@ private fun SlockVerticalTabItem(
     drawTopBorder: Boolean,
     onSelect: (String) -> Unit
 ) {
-    val backgroundColor = when {
-        !item.enabled -> SlockColor.EmptyStateGray
-        selected -> SlockColor.AccentCyan
-        else -> SlockColor.SurfaceWhite
-    }
     val textColor = if (item.enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
-    Column(modifier = Modifier.fillMaxWidth()) {
-        if (drawTopBorder) {
-            Spacer(modifier = Modifier.fillMaxWidth().heightIn(min = SlockStroke.Default).background(SlockColor.BorderBlack))
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .padding(horizontal = 0.dp, vertical = 2.dp)
+    ) {
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .offset(x = SlockStroke.Default, y = SlockStroke.Default)
+                    .background(SlockColor.BorderBlack)
+            )
         }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 56.dp)
-                .background(backgroundColor)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .height(38.dp)
+                .background(if (selected) SlockColor.AccentPink else Color.Transparent)
+                .then(if (selected) Modifier.border(SlockStroke.Default, SlockColor.BorderBlack) else Modifier)
                 .clickable(enabled = item.enabled) { onSelect(item.key) }
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Box(modifier = Modifier.size(32.dp), contentAlignment = Alignment.Center) {
-                SlockLucideIcon(
-                    name = item.iconName.takeIf { it.isNotBlank() } ?: "settings",
-                    color = if (item.enabled) "#FF000000" else "#FF737373",
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    item.title,
-                    style = SlockType.Body.copy(color = textColor),
-                    color = textColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                item.subtitle.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        it,
-                        style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            item.value?.takeIf { it.isNotBlank() }?.let {
-                Text(
-                    it,
-                    style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.width(72.dp)
-                )
-            }
             SlockLucideIcon(
-                name = "chevron-right",
+                name = item.iconName.toVerticalTabIconName(),
                 color = if (item.enabled) "#FF000000" else "#FF737373",
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(14.dp)
+            )
+            Text(
+                item.title,
+                style = SlockType.ButtonBold.copy(color = textColor),
+                color = textColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
         }
     }
 }
+
+private fun String.toVerticalTabIconName(): String =
+    when (this) {
+        "building-2" -> "users"
+        "app-window" -> "square"
+        "languages" -> "globe"
+        "type" -> "file-text"
+        "" -> "settings"
+        else -> this
+    }
