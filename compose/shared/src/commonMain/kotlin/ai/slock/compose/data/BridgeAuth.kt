@@ -218,6 +218,9 @@ internal class BridgeMembersApi(
     suspend fun serverMembers(serverId: String): HomeNetworkResponse =
         request("servers/$serverId/members", serverId)
 
+    suspend fun agents(serverId: String): HomeNetworkResponse =
+        request("agents", serverId)
+
     private suspend fun request(path: String, serverId: String): HomeNetworkResponse {
         return executor.request(path = path, serverIdOverride = serverId)
     }

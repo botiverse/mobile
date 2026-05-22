@@ -88,6 +88,8 @@ import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -1534,11 +1536,22 @@ private fun SharedMembersScreen(bridge: ai.slock.compose.base.BridgeModule) {
                 state = SharedMembersUiState.Error("server_required")
                 return@LaunchedEffect
             }
-            val response = membersApi.serverMembers(serverId)
+            val (response, agentsResponse) =
+                coroutineScope {
+                    val membersDeferred = async { membersApi.serverMembers(serverId) }
+                    val agentsDeferred = async { membersApi.agents(serverId) }
+                    membersDeferred.await() to agentsDeferred.await()
+                }
             state =
                 if (response.isSuccessful) {
                     val members = response.bodyText?.let(::parseSharedMembers).orEmpty()
-                    SharedMembersUiState.Content(server, members)
+                    val agents =
+                        if (agentsResponse.isSuccessful) {
+                            agentsResponse.bodyText?.let(::parseSharedAgents).orEmpty()
+                        } else {
+                            emptyList()
+                        }
+                    SharedMembersUiState.Content(server, mergeSharedMembers(members, agents))
                 } else {
                     SharedMembersUiState.Error(response.errorBodyText?.takeIf { it.isNotBlank() } ?: "members_network")
                 }
@@ -1581,9 +1594,22 @@ private sealed interface SharedMembersUiState {
     data class Content(val server: ServerSummary, val members: List<MemberProfile>) : SharedMembersUiState
 }
 
-private fun parseSharedMembers(bodyText: String): List<MemberProfile> =
+internal fun parseSharedMembers(bodyText: String): List<MemberProfile> =
     runCatching { Json.parseToJsonElement(bodyText).collectMemberProfiles() }
         .getOrDefault(emptyList())
+        .distinctBy { "${it.kind.name}:${it.id.value}" }
+
+internal fun parseSharedAgents(bodyText: String): List<MemberProfile> =
+    runCatching { Json.parseToJsonElement(bodyText).collectMemberProfiles(MemberKind.Agent) }
+        .getOrDefault(emptyList())
+        .map { it.copy(kind = MemberKind.Agent) }
+        .distinctBy { "${it.kind.name}:${it.id.value}" }
+
+internal fun mergeSharedMembers(
+    members: List<MemberProfile>,
+    agents: List<MemberProfile>
+): List<MemberProfile> =
+    (members + agents.map { it.copy(kind = MemberKind.Agent) })
         .distinctBy { "${it.kind.name}:${it.id.value}" }
 
 private fun JsonElement.collectMemberProfiles(defaultKind: MemberKind? = null): List<MemberProfile> =
