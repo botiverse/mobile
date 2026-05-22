@@ -45,9 +45,9 @@ Android/KMP consumers:
 | Server unread summary | `GET servers/unread-summary` | `serverRouter.get("/unread-summary")` | Typed first slice | Shared Home requires a root array of `{ serverId, unreadCount }`. |
 | Messages page | `GET messages/channel/{channelId}?limit=&before=` | `messageRouter.get("/channel/:channelId")` | Match | Upstream also supports `after`; KMP currently uses `before` for older page and `sync` for newer page. |
 | Message sync | `GET messages/sync?since_seq=&limit=&channel_id=` | `messageRouter.get("/sync")` | Match | Query names are authoritative: `since_seq`, `channel_id`, `limit`. |
-| Message context | `GET messages/context/{messageId}` | `messageRouter.get("/context/:messageId")` | Match | Optional `channelId` query supports short-id context resolution; Android/KMP does not yet expose that optional query everywhere. |
+| Message context | `GET messages/context/{messageId}?channelId=` | `messageRouter.get("/context/:messageId")` | Typed first slice | Optional `channelId` query supports short-id context resolution and is now exposed on the shared API client. |
 | Send message | `POST messages` body `{ channelId, content, attachmentIds?, asTask? }` | `messageRouter.post("/")` | Match | Server rejects blank content and archived/read-only channels. |
-| Attachments | `POST attachments/upload`, `GET attachments/{id}/url` | `attachmentRouter.post("/upload")`, public `get("/:id/url")` | Match | Multipart field name is `channelId`; response wrapper is `{ attachments: [...] }`; open target is `{ url, expiresAt }`. |
+| Attachments/files | `POST attachments/upload`, `GET attachments/{id}/url`, `GET attachments/{id}/preview`, `GET attachments/{id}/html-preview-url`, `GET channels/{id}/files` | `attachmentRouter`, `channelRouter.get("/:id/files")` | Typed first slice | Multipart field name is `channelId`; upload response wrapper is `{ attachments: [...] }`; open target is `{ url, expiresAt }`; channel files response is `{ files, nextCursor }`. |
 | Tasks | `GET tasks/server`, `GET tasks/channel/{channelId}`, `GET tasks/channel/{channelId}/number/{taskNumber}`, `POST tasks/channel/{channelId}`, `POST tasks/convert-message`, `PATCH tasks/{taskId}/claim/unclaim/status`, `DELETE tasks/{taskId}` | `taskRouter` | Typed first slice | Shared Tasks now uses `SlockTasksApiClient` for list/create/convert/claim/unclaim/status/delete/by-number. List/create responses must be `{ tasks }`, action responses must be `{ task }`, delete must be `{ ok: true }`. |
 | Server members | `GET servers/{serverId}/members` | `serverRouter.get("/:id/members")` | Match | Upstream returns a direct array. Canonical member id field is `userId`, not generic `id`. |
 | Human member profile | `GET servers/{serverId}/members/{memberId}/profile` | `serverRouter.get("/:id/members/:memberId/profile")` | Fixed in this pass | Android/KMP had guessed `members/{memberId}/profile`; no matching upstream public route exists. |
@@ -82,8 +82,8 @@ responses are still acceptable only at the lowest network/bridge boundary.
 | Channel members/agents | `GET/POST/DELETE channels/:id/members`, `GET/POST/DELETE agents`, stop-all/resume-all | Partially wired | Partial | Wired: members list/add/remove. Missing channel agents list/add/remove and stop/resume-all agents. |
 | Channel inbox/followed/saved | inbox, inbox done/read-all, followed threads, saved list/save/delete/check | Partially wired | Partial | Wired: inbox list/read-all, followed/follow/unfollow/done/undone, saved list/save/delete. Missing inbox item done and saved check. Saved write paths fixed in this pass. |
 | Threads | `POST channels/:id/threads`, `GET channels/:id/threads`, `GET channels/:id/threads/:messageId` | Partially wired | Partial | Wired create/open/list. Missing thread detail endpoint, and task #197/#196 cover pagination/realtime but not all action parity. |
-| Messages | search, context, channel page, post, reactions, sync | Partially typed | Partial | Shared Thread now uses `SlockThreadApi` typed methods for channel page, sync, send, read-all, save, task status, and reply-thread create/open. Search/context still use older clients; missing reaction add/remove and `messageContext` `channelId` query exposure. |
-| Attachments | upload, url, preview, raw, html-preview-url, html-preview | Partially typed | Partial | Shared Thread attachment open now requires canonical `{ url, expiresAt }` through `SlockThreadApi.attachmentUrl`; upload is still platform/bridge capability; missing preview/raw/html preview endpoints. |
+| Messages | search, context, channel page, post, reactions, sync | Partially typed | Partial | Shared Thread uses `SlockThreadApi` typed methods for channel page, sync, send, read-all, save, task status, and reply-thread create/open. Search/context/reaction add/remove now have a first typed facade and route tests; older Android UI consumers still need migration behind that facade. |
+| Attachments | upload, url, preview, raw, html-preview-url, html-preview | Partially typed | Partial | Attachment URL, preview, HTML preview URL, upload wrapper, and channel files now have a typed facade. Raw `GET attachments/:id` remains a streaming endpoint; mobile should consume either the URL/preview typed facade or an explicit binary transport, not raw JSON. |
 | Tasks | list server/channel, task by number, create, claim, convert-message, unclaim, status, delete | Typed first slice | Partial | Shared Tasks facade covers all public task routes listed here. Product UI currently consumes server list and status update; create/convert/claim/unclaim/delete/by-number are exposed at the typed API boundary for follow-up UI wiring. |
 | Agents | list/create/detail/activity/agent-dms/update/avatar/start/stop/reset/delete/assign-machine/workspace-files/skills/scopes/bootstrap-tokens | Partially wired | Partial | Wired list/update/activity/agent-dms/workspace files/read. Missing create/detail/avatar/start/stop/reset/delete/assign-machine/skills/scopes/bootstrap tokens unless handled by internal agent tooling outside Android product. |
 | Announcements | `GET announcements/active`, `POST announcements/:id/dismiss` | Not wired | Missing | Product announcement surfaces cannot be considered closed. |
@@ -151,10 +151,17 @@ responses are still acceptable only at the lowest network/bridge boundary.
   `{ data: [...] }`, `{ data: { task... } }`, `{ result: ... }`, raw task
   objects, and `{ success: true }` delete acknowledgements now fail with
   explicit contract mismatch errors at the shared Tasks API boundary.
-- Files/attachments/search/reactions, Push, Integrations, Actions,
-  Announcements, and Reminders still need the same typed API facade treatment.
-  They should not keep expanding raw JSON aliases inside repositories or UI
-  stores without a source-backed contract.
+- Files/attachments/search/reactions first slice is now typed at the shared API
+  boundary: `SlockFilesMessagesApiClient.channelFiles/attachmentUrl/attachmentPreview/attachmentHtmlPreviewUrl/messageSearch/messageContext/addReaction/removeReaction`
+  wraps raw transport responses and rejects guessed wrappers. Canonical shapes
+  are `{ files, nextCursor }`, `{ url, expiresAt }`, `{ status, data?,
+  truncated? }`, `{ results, hasMore }`, message context root
+  `{ channelId, messages, ... }`, and reaction responses as the updated root
+  message object. Aliases such as `items`, `attachments`, `data`, `downloadUrl`,
+  `href`, and nested `message` reaction wrappers fail at this boundary.
+- Push, Integrations, Actions, Announcements, and Reminders still need the same
+  typed API facade treatment. They should not keep expanding raw JSON aliases
+  inside repositories or UI stores without a source-backed contract.
 
 ### Confirmed Real Fields
 
@@ -214,6 +221,12 @@ broken upstream contract. High-risk examples:
   not raw arrays, `data` wrappers, or `result` wrappers. Shared Tasks now
   enforces this; Android legacy `RealTaskRepository` remains a compatibility
   adapter until that route is removed or migrated behind the same facade.
+- Attachment/file/search consumers should use the canonical upstream wrappers:
+  upload `{ attachments }`, channel files `{ files, nextCursor }`, attachment
+  URL `{ url, expiresAt }`, search `{ results, hasMore }`, and message context
+  root `{ channelId, messages }`. The Android conversation repository no longer
+  accepts guessed `files/items/data` wrappers for channel files, `downloadUrl`
+  or `href` for attachment open targets, or non-`results` search wrappers.
 
 ## Livetest Coverage
 

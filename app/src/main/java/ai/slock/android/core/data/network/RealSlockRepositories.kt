@@ -1587,7 +1587,7 @@ class RealSearchRepository(private val store: AuthSessionStore, private val api:
                 emptyWhen = { it.items.isEmpty() },
                 mapper = { json ->
                     val items =
-                            json.items("items", "results", "messages")
+                            json.items("results")
                                     .mapNotNull {
                                         it.asObject()
                                                 .toInboxItem(defaultKind = InboxItemKind.Channel)
@@ -1597,7 +1597,7 @@ class RealSearchRepository(private val store: AuthSessionStore, private val api:
                             server = context.server,
                             query = query,
                             items = items,
-                            totalCount = json.int("totalCount") ?: items.size,
+                            totalCount = items.size,
                             hasMore = json.boolean("hasMore") ?: false,
                             nextOffset = offset + items.size
                     )
@@ -1787,7 +1787,7 @@ class RealConversationRepository(
                 mapper = { json ->
                     AttachmentUploadResult(
                             attachments =
-                                    json.items("attachments", "files", "items", "data").mapNotNull {
+                                    json.items("attachments").mapNotNull {
                                         it.asObjectOrNull()?.toAttachment()
                                     }
                     )
@@ -1808,8 +1808,8 @@ class RealConversationRepository(
                 mapper = { json ->
                     AttachmentOpenTarget(
                             attachmentId = attachmentId,
-                            url = json.string("url", "href", "downloadUrl") ?: "",
-                            expiresAt = json.string("expiresAt", "expires_at")
+                            url = json.string("url") ?: "",
+                            expiresAt = json.string("expiresAt")
                     )
                 },
                 emptyWhen = { it.url.isBlank() }
@@ -1829,21 +1829,16 @@ class RealConversationRepository(
                 warningLogger = warningLogger,
                 mapper = { json ->
                     val items =
-                            json.items("files", "items", "attachments", "data")
+                            json.items("files")
                                     .mapNotNull { element ->
                                         element.asObjectOrNull()?.toChannelFileItem()
                                     }
+                    val nextCursor = json.string("nextCursor")
                     ChannelFilesSnapshot(
                             channelId = channelId,
                             items = items,
-                            hasMore = json.boolean("hasMore") ?: false,
-                            nextCursor =
-                                    json.string(
-                                            "nextCursor",
-                                            "next_cursor",
-                                            "cursor",
-                                            "next"
-                                    )
+                            hasMore = nextCursor != null,
+                            nextCursor = nextCursor
                     )
                 },
                 emptyWhen = { it.items.isEmpty() }

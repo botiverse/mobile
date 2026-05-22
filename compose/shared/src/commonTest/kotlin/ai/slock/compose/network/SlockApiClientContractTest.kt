@@ -41,6 +41,46 @@ class SlockApiClientContractTest {
         assertEquals("/api/channels/saved/msg-1", requests[1].url.encodedPath)
     }
 
+    @Test
+    fun filesAndSearchRoutesUseCanonicalUpstreamContracts() = runBlocking {
+        val requests = mutableListOf<HttpRequestData>()
+        val client = apiClient(requests)
+
+        client.channelFiles(SlockRequestPriority.Visible, "channel-1", limit = 25, cursor = "cursor-1")
+        client.attachmentUrl(SlockRequestPriority.Visible, "attachment-1", disposition = "attachment")
+        client.attachmentPreview(SlockRequestPriority.Visible, "attachment-1")
+        client.attachmentHtmlPreviewUrl(SlockRequestPriority.Visible, "attachment-1")
+        client.messageContext(SlockRequestPriority.Visible, "short123", channelId = "channel-1")
+        client.searchMessages(SlockRequestPriority.Visible, query = "release", limit = 10, offset = 20, sort = "recent")
+
+        assertEquals("/api/channels/channel-1/files", requests[0].url.encodedPath)
+        assertEquals("25", requests[0].url.parameters["limit"])
+        assertEquals("cursor-1", requests[0].url.parameters["cursor"])
+        assertEquals("/api/attachments/attachment-1/url", requests[1].url.encodedPath)
+        assertEquals("attachment", requests[1].url.parameters["disposition"])
+        assertEquals("/api/attachments/attachment-1/preview", requests[2].url.encodedPath)
+        assertEquals("/api/attachments/attachment-1/html-preview-url", requests[3].url.encodedPath)
+        assertEquals("/api/messages/context/short123", requests[4].url.encodedPath)
+        assertEquals("channel-1", requests[4].url.parameters["channelId"])
+        assertEquals("/api/messages/search", requests[5].url.encodedPath)
+        assertEquals("release", requests[5].url.parameters["q"])
+        assertEquals("recent", requests[5].url.parameters["sort"])
+    }
+
+    @Test
+    fun messageReactionsUseCanonicalRouteAndMethod() = runBlocking {
+        val requests = mutableListOf<HttpRequestData>()
+        val client = apiClient(requests)
+
+        client.addMessageReaction(SlockRequestPriority.Visible, "message-1", "👀")
+        client.removeMessageReaction(SlockRequestPriority.Visible, "message-1", "👀")
+
+        assertEquals("POST", requests[0].method.value)
+        assertEquals("/api/messages/message-1/reactions", requests[0].url.encodedPath)
+        assertEquals("DELETE", requests[1].method.value)
+        assertEquals("/api/messages/message-1/reactions", requests[1].url.encodedPath)
+    }
+
     private fun apiClient(requests: MutableList<HttpRequestData>): SlockApiClient {
         val engine = MockEngine { request ->
             requests += request

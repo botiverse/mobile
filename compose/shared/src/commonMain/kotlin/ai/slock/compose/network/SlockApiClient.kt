@@ -118,7 +118,8 @@ class SlockApiClient(
             "messages/channel/$channelId",
             listOfNotNull("limit" to limit.toString(), beforeSeq?.let { "before" to it.toString() })
         )
-    suspend fun messageContext(priority: SlockRequestPriority, messageId: String): KmpHttpResponse = get(priority, "messages/context/$messageId")
+    suspend fun messageContext(priority: SlockRequestPriority, messageId: String, channelId: String? = null): KmpHttpResponse =
+        get(priority, "messages/context/$messageId", listOfNotNull(channelId?.let { "channelId" to it }))
     suspend fun messageSync(priority: SlockRequestPriority, sinceSeq: Long, limit: Int, channelId: String? = null): KmpHttpResponse =
         get(
             priority,
@@ -132,7 +133,24 @@ class SlockApiClient(
     suspend fun sendMessage(priority: SlockRequestPriority, body: String): KmpHttpResponse = post(priority, "messages", body)
     suspend fun uploadAttachments(priority: SlockRequestPriority, channelId: String, files: List<MultipartFile>): KmpHttpResponse =
         multipart(priority, "attachments/upload", MultipartFormData(fields = mapOf("channelId" to channelId), files = files))
-    suspend fun attachmentUrl(priority: SlockRequestPriority, attachmentId: String): KmpHttpResponse = get(priority, "attachments/$attachmentId/url")
+    suspend fun attachmentUrl(
+        priority: SlockRequestPriority,
+        attachmentId: String,
+        disposition: String? = null
+    ): KmpHttpResponse =
+        get(
+            priority,
+            "attachments/$attachmentId/url",
+            listOfNotNull(disposition?.let { "disposition" to it })
+        )
+    suspend fun attachmentPreview(priority: SlockRequestPriority, attachmentId: String): KmpHttpResponse =
+        get(priority, "attachments/$attachmentId/preview")
+    suspend fun attachmentHtmlPreviewUrl(priority: SlockRequestPriority, attachmentId: String): KmpHttpResponse =
+        get(priority, "attachments/$attachmentId/html-preview-url")
+    suspend fun addMessageReaction(priority: SlockRequestPriority, messageId: String, emoji: String): KmpHttpResponse =
+        post(priority, "messages/$messageId/reactions", "{\"emoji\":\"${emoji.escapeJsonString()}\"}")
+    suspend fun removeMessageReaction(priority: SlockRequestPriority, messageId: String, emoji: String): KmpHttpResponse =
+        request(priority, HttpMethod.Delete, "messages/$messageId/reactions", body = "{\"emoji\":\"${emoji.escapeJsonString()}\"}")
     suspend fun channelFiles(priority: SlockRequestPriority, channelId: String, limit: Int = 50, cursor: String? = null): KmpHttpResponse =
         get(
             priority,
