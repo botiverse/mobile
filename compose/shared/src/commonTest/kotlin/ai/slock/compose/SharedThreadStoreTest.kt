@@ -16,7 +16,14 @@ import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
+import ai.slock.compose.model.TaskId
+import ai.slock.compose.model.TaskStatus
+import ai.slock.compose.model.TaskSummary
+import ai.slock.compose.model.TaskUpdated
+import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.ThreadId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -136,11 +143,197 @@ class SharedThreadStoreTest {
         assertEquals("Artin", cached?.messages?.single()?.author?.displayName)
     }
 
+    @Test
+    fun realtimeMessageNewMergesIntoVisiblePayloadAndPersistentSnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                api = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    Message(
+                        id = MessageId("m2"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author = member("u2", "Stdrc"),
+                        timestampLabel = "2026-05-19T16:01:00Z",
+                        body = "realtime body"
+                    )
+                )
+            )
+        )
+
+        val payload = store.state.value.payload
+        assertEquals(listOf("cached body", "realtime body"), payload.messages.map { it.body })
+        assertEquals("realtime body", localStore.readThread(ThreadId("channel-1"))?.messages?.last()?.body)
+        scope.cancel()
+    }
+
+    @Test
+    fun irrelevantRealtimeMessageDoesNotChangeVisibleThread() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                api = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    Message(
+                        id = MessageId("other"),
+                        threadId = ThreadId("other-channel"),
+                        channelId = ChannelId("other-channel"),
+                        author = member("u2", "Stdrc"),
+                        timestampLabel = "2026-05-19T16:01:00Z",
+                        body = "irrelevant"
+                    )
+                )
+            )
+        )
+
+        assertEquals(listOf("cached body"), store.state.value.payload.messages.map { it.body })
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeMessageUpdatedPreservesExistingAuthorMetadata() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                api = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageUpdated(
+                    Message(
+                        id = MessageId("m1"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author = member("u1", "u1"),
+                        timestampLabel = "",
+                        body = "edited body"
+                    )
+                )
+            )
+        )
+
+        val message = store.state.value.payload.messages.single()
+        assertEquals("edited body", message.body)
+        assertEquals("Artin", message.authorName)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeThreadUpdatedAndTaskUpdatedMergeIntoPayload() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                api = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val initial =
+            contentPayload("task body").copy(
+                messages =
+                    listOf(
+                        contentPayload("task body").messages.single().copy(
+                            taskId = "task-1",
+                            taskNumber = 44,
+                            taskStatus = "Todo"
+                        )
+                    ),
+                tasks =
+                    listOf(
+                        KuiklyThreadTaskItem(
+                            id = "task-1",
+                            title = "Old task",
+                            status = "Todo",
+                            taskNumber = 44
+                        )
+                    )
+            )
+        dataSource.cachePayload(initial)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("m1"),
+                    threadChannelId = ChannelId("reply-thread"),
+                    replyCount = 3,
+                    lastReplyAt = "2026-05-19T16:10:00Z",
+                    participantIds = emptyList()
+                )
+            )
+        )
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                TaskUpdated(
+                    TaskSummary(
+                        id = TaskId("task-1"),
+                        title = "Updated task",
+                        status = TaskStatus.InReview,
+                        taskNumber = 44,
+                        messageId = MessageId("m1"),
+                        updatedAtLabel = "2026-05-19T16:11:00Z"
+                    )
+                )
+            )
+        )
+
+        val message = store.state.value.payload.messages.single()
+        assertEquals(3, message.replyCount)
+        assertEquals("InReview", message.taskStatus)
+        assertEquals("Updated task", store.state.value.payload.tasks.single().title)
+        scope.cancel()
+    }
+
+    @Test
+    fun visibleReadAllMarksChannel() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
+        val dataSource =
+            SharedThreadDataSource(
+                api = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(InMemoryComposeLocalDataStore())
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(SharedThreadIntent.MarkVisibleReadAll)
+
+        assertEquals(listOf("channel-1"), api.readAllChannels)
+        scope.cancel()
+    }
+
     private class FakeThreadApi(
         var bodyText: String = messagesResponse("network body"),
         var failChannelMessages: Boolean = false
     ) : SharedThreadNetworkApi {
         var channelMessageCalls: Int = 0
+        var failReadAll: Boolean = false
+        val readAllChannels: MutableList<String> = mutableListOf()
 
         override suspend fun channelMessages(threadId: String, limit: Int): HomeNetworkResponse {
             channelMessageCalls += 1
@@ -153,6 +346,15 @@ class SharedThreadStoreTest {
 
         override suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"url":"https://cdn.example/$attachmentId"}""")
+
+        override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse {
+            readAllChannels += channelId
+            return if (failReadAll) {
+                HomeNetworkResponse(code = 500, bodyText = null, errorBodyText = "read_failed")
+            } else {
+                HomeNetworkResponse(code = 200, bodyText = "{}")
+            }
+        }
     }
 
     private fun basePayload(): KuiklyThreadScreenPayload =

@@ -3,6 +3,7 @@ package ai.slock.compose
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.HomeNetworkResponse
 import ai.slock.compose.data.ComposeLocalWriteThrough
+import ai.slock.compose.data.ReadReceiptResult
 import ai.slock.compose.data.ScreenError
 import ai.slock.compose.data.SharedThreadNetworkApi
 import ai.slock.compose.data.SlockAuthSessionStore
@@ -22,11 +23,20 @@ import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageDeliveryState
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageType
+import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
+import ai.slock.compose.model.RealtimeEvent
+import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.TaskId
+import ai.slock.compose.model.TaskCreated
+import ai.slock.compose.model.TaskDeleted
+import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.ThreadId
+import ai.slock.compose.model.ThreadUpdated
+import ai.slock.compose.model.SyncResumeResponse
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -112,6 +122,38 @@ internal class SharedThreadDataSource(
 
     suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse =
         api.attachmentUrl(attachmentId)
+
+    suspend fun writeRealtimeEvent(event: RealtimeEvent) {
+        val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+            ?: return
+        localWriteThrough?.writeRealtimeEvent(serverId, event)
+    }
+
+    suspend fun markChannelReadAll(channelId: String): DataResult<ReadReceiptResult> {
+        if (channelId.isBlank()) {
+            return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+        }
+        val response =
+            try {
+                api.markChannelReadAll(channelId)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return DataResult.Error(ScreenError(code = "thread_read_receipt_network", retryable = true))
+            }
+        return if (response.isSuccessful) {
+            val id = ChannelId(channelId)
+            localWriteThrough?.clearConversationUnread(id, "shared_thread_read_all")
+            DataResult.Content(ReadReceiptResult(channelId = id, changed = true))
+        } else {
+            DataResult.Error(
+                ScreenError(
+                    code = response.errorBodyText?.takeIf { it.isNotBlank() } ?: "thread_read_receipt_network",
+                    retryable = true
+                )
+            )
+        }
+    }
 }
 
 internal data class SharedThreadState(
@@ -123,6 +165,9 @@ internal sealed interface SharedThreadIntent {
     data class Start(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
     data object Refresh : SharedThreadIntent
     data class SetPayload(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
+    data class ApplyRealtimeEvent(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
+        SharedThreadIntent
+    data object MarkVisibleReadAll : SharedThreadIntent
 }
 
 internal class SharedThreadStore(
@@ -150,6 +195,17 @@ internal class SharedThreadStore(
                     dataSource.writeCachedPayload(intent.payload)
                 }
             }
+            is SharedThreadIntent.ApplyRealtimeEvent -> {
+                scope.launch {
+                    applyRealtimeEvent(
+                        event = intent.event,
+                        activeReplyParentMessageId = intent.activeReplyParentMessageId
+                    )
+                }
+            }
+            SharedThreadIntent.MarkVisibleReadAll -> {
+                scope.launch { markVisibleReadAll() }
+            }
         }
     }
 
@@ -162,6 +218,12 @@ internal class SharedThreadStore(
                 dataSource.cachePayload(intent.payload)
                 dataSource.writeCachedPayload(intent.payload)
             }
+            is SharedThreadIntent.ApplyRealtimeEvent ->
+                applyRealtimeEvent(
+                    event = intent.event,
+                    activeReplyParentMessageId = intent.activeReplyParentMessageId
+                )
+            SharedThreadIntent.MarkVisibleReadAll -> markVisibleReadAll()
         }
     }
 
@@ -223,6 +285,30 @@ internal class SharedThreadStore(
                     _state.value.copy(payload = _state.value.payload.asRefreshFailed(result.blocker.code))
             }
     }
+
+    private suspend fun applyRealtimeEvent(
+        event: RealtimeEvent,
+        activeReplyParentMessageId: MessageId? = null
+    ) {
+        val existing = _state.value.payload
+        val merged =
+            existing.applyRealtimeEvent(
+                event = event,
+                currentUserId = dataSource.readSession()?.user?.id,
+                activeReplyParentMessageId = activeReplyParentMessageId
+            )
+        dataSource.writeRealtimeEvent(event)
+        if (merged != existing) {
+            _state.value = _state.value.copy(payload = merged)
+            dataSource.cachePayload(merged)
+            dataSource.writeCachedPayload(merged)
+        }
+    }
+
+    private suspend fun markVisibleReadAll() {
+        val channelId = _state.value.payload.cacheThreadId() ?: return
+        dataSource.markChannelReadAll(channelId)
+    }
 }
 
 internal class SharedThreadViewModel(
@@ -280,6 +366,203 @@ private fun KuiklyThreadScreenPayload.hasRenderableThreadContent(): Boolean =
 
 private fun KuiklyThreadScreenPayload.cacheThreadId(): String? =
     sourceThreadId?.takeIf { it.isNotBlank() }
+
+private fun KuiklyThreadScreenPayload.applyRealtimeEvent(
+    event: RealtimeEvent,
+    currentUserId: String?,
+    activeReplyParentMessageId: MessageId? = null
+): KuiklyThreadScreenPayload =
+    when (event) {
+        is MessageNew ->
+            applyRealtimeMessages(listOf(event.message), currentUserId, activeReplyParentMessageId)
+        is MessageUpdated ->
+            applyRealtimeMessageUpdate(event.message, currentUserId, activeReplyParentMessageId)
+        is SyncResumeResponse ->
+            applyRealtimeMessages(event.messages, currentUserId, activeReplyParentMessageId)
+        is ThreadUpdated ->
+            applyThreadUpdated(event)
+        is TaskCreated ->
+            mergeRealtimeTasks(event.tasks)
+        is TaskUpdated ->
+            mergeRealtimeTasks(listOf(event.task))
+        is TaskDeleted ->
+            removeRealtimeTask(event.taskId)
+        else -> this
+    }
+
+private fun KuiklyThreadScreenPayload.applyRealtimeMessages(
+    messages: List<Message>,
+    currentUserId: String?,
+    activeReplyParentMessageId: MessageId?
+): KuiklyThreadScreenPayload {
+    val relevant =
+        messages.filter { message ->
+            message.matchesSharedThread(this, activeReplyParentMessageId)
+        }
+    if (relevant.isEmpty()) return this
+    val incoming = relevant.map { message -> message.toKuiklyThreadMessageItem(currentUserId) }
+    val merged =
+        (this.messages + incoming)
+            .distinctBy { item -> item.id }
+    return copy(
+        status = "content",
+        errorCode = null,
+        messages = merged
+    )
+}
+
+private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
+    message: Message,
+    currentUserId: String?,
+    activeReplyParentMessageId: MessageId?
+): KuiklyThreadScreenPayload {
+    val matchesExisting = messages.any { it.id == message.id.value } || originMessage?.id == message.id.value
+    if (!matchesExisting && !message.matchesSharedThread(this, activeReplyParentMessageId)) return this
+    val incoming = message.toKuiklyThreadMessageItem(currentUserId)
+    val updatedMessages = messages.map { item -> if (item.id == incoming.id) item.mergeRealtimeUpdate(incoming) else item }
+    val mergedMessages =
+        if (updatedMessages.any { it.id == incoming.id }) {
+            updatedMessages
+        } else {
+            updatedMessages + incoming
+        }
+    val updatedOrigin =
+        if (originMessage?.id == incoming.id) {
+            originMessage.mergeRealtimeUpdate(incoming)
+        } else {
+            originMessage
+        }
+    return copy(
+        status = "content",
+        errorCode = null,
+        messages = mergedMessages.distinctBy { it.id },
+        originMessage = updatedOrigin
+    )
+}
+
+private fun KuiklyThreadScreenPayload.applyThreadUpdated(event: ThreadUpdated): KuiklyThreadScreenPayload {
+    fun KuiklyThreadMessageItem.updateIfMatches(): KuiklyThreadMessageItem =
+        if (id == event.parentMessageId.value) {
+            copy(replyCount = maxOf(replyCount, event.replyCount))
+        } else {
+            this
+        }
+    val updatedMessages = messages.map { it.updateIfMatches() }
+    val updatedOrigin = originMessage?.updateIfMatches()
+    if (updatedMessages == messages && updatedOrigin == originMessage) return this
+    return copy(messages = updatedMessages, originMessage = updatedOrigin)
+}
+
+private fun KuiklyThreadScreenPayload.mergeRealtimeTasks(tasks: List<TaskSummary>): KuiklyThreadScreenPayload {
+    if (tasks.isEmpty()) return this
+    val taskReferences =
+        messages.mapNotNull { it.toTaskItemOrNull() } +
+            listOfNotNull(originMessage?.toTaskItemOrNull()) +
+            this.tasks
+    val mergedTasks =
+        tasks.map { task ->
+            val incoming = task.toKuiklyThreadTaskItem()
+            taskReferences.firstOrNull { reference -> incoming.matchesTaskReference(reference) }
+                ?.mergeTaskReference(incoming)
+                ?: incoming
+        }
+    val updatedMessages = messages.map { message -> message.withRealtimeTask(mergedTasks) }
+    val updatedOrigin = originMessage?.withRealtimeTask(mergedTasks)
+    val updatedTaskIds = mergedTasks.map { it.id }.toSet()
+    val updatedTaskNumbers = mergedTasks.mapNotNull { it.taskNumber }.toSet()
+    val updatedTasks =
+        (this.tasks.filterNot { task ->
+            task.id in updatedTaskIds ||
+                (task.taskNumber != null && task.taskNumber in updatedTaskNumbers)
+        } + mergedTasks)
+            .sortedWith(compareBy(nullsLast<Int>()) { task -> task.taskNumber })
+    return copy(messages = updatedMessages, originMessage = updatedOrigin, tasks = updatedTasks)
+}
+
+private fun KuiklyThreadScreenPayload.removeRealtimeTask(taskId: TaskId): KuiklyThreadScreenPayload =
+    copy(
+        messages = messages.map { message -> if (message.taskId == taskId.value) message.withoutTask() else message },
+        originMessage = originMessage?.let { message -> if (message.taskId == taskId.value) message.withoutTask() else message },
+        tasks = tasks.filterNot { task -> task.id == taskId.value }
+    )
+
+private fun Message.matchesSharedThread(
+    payload: KuiklyThreadScreenPayload,
+    activeReplyParentMessageId: MessageId?
+): Boolean {
+    val selectedThreadId = payload.cacheThreadId()
+    val originParentMessageId = payload.originParentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId)
+    return selectedThreadId?.let { selectedId ->
+        threadId.value == selectedId ||
+            channelId?.value == selectedId ||
+            threadChannelId?.value == selectedId
+    } == true ||
+        originParentMessageId?.let { parentMessageId == it } == true ||
+        activeReplyParentMessageId?.let { parentMessageId == it } == true
+}
+
+private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(update: KuiklyThreadMessageItem): KuiklyThreadMessageItem =
+    copy(
+        authorId = update.authorId.ifBlank { authorId },
+        authorName = update.authorName.takeUnless { it.isBlank() || it == update.authorId } ?: authorName,
+        isOwn = update.isOwn,
+        avatarLabel = update.avatarLabel.ifBlank { avatarLabel },
+        avatarWireValue = update.avatarWireValue ?: avatarWireValue,
+        gravatarHash = update.gravatarHash ?: gravatarHash,
+        timestampLabel = update.timestampLabel.ifBlank { timestampLabel },
+        messageType = update.messageType.ifBlank { messageType },
+        systemEventType = update.systemEventType ?: systemEventType,
+        metadata = update.metadata.ifEmpty { metadata },
+        body = update.body.ifBlank { body },
+        replyCount = maxOf(replyCount, update.replyCount),
+        taskId = update.taskId ?: taskId,
+        taskNumber = update.taskNumber ?: taskNumber,
+        taskStatus = update.taskStatus ?: taskStatus,
+        taskAssigneeName = update.taskAssigneeName ?: taskAssigneeName,
+        attachments = update.attachments.ifEmpty { attachments }
+    )
+
+private fun KuiklyThreadMessageItem.toTaskItemOrNull(): KuiklyThreadTaskItem? {
+    if (taskId == null && taskNumber == null) return null
+    return KuiklyThreadTaskItem(
+        id = taskId ?: "task-${taskNumber ?: id}",
+        title = body.ifBlank { taskNumber?.let { "Task #$it" } ?: "Task" },
+        status = taskStatus ?: TaskStatus.Todo.name,
+        taskNumber = taskNumber,
+        assigneeName = taskAssigneeName,
+        updatedAtLabel = timestampLabel
+    )
+}
+
+private fun KuiklyThreadMessageItem.withRealtimeTask(tasks: List<KuiklyThreadTaskItem>): KuiklyThreadMessageItem {
+    val task = tasks.firstOrNull { it.matchesMessage(this) } ?: return this
+    return copy(
+        taskId = task.id,
+        taskNumber = task.taskNumber ?: taskNumber,
+        taskStatus = task.status,
+        taskAssigneeName = task.assigneeName ?: taskAssigneeName
+    )
+}
+
+private fun KuiklyThreadMessageItem.withoutTask(): KuiklyThreadMessageItem =
+    copy(taskId = null, taskNumber = null, taskStatus = null, taskAssigneeName = null)
+
+private fun KuiklyThreadTaskItem.matchesMessage(message: KuiklyThreadMessageItem): Boolean =
+    id == message.taskId ||
+        id == message.id ||
+        (taskNumber != null && taskNumber == message.taskNumber)
+
+private fun KuiklyThreadTaskItem.matchesTaskReference(referenceTask: KuiklyThreadTaskItem): Boolean =
+    id == referenceTask.id ||
+        (taskNumber != null && taskNumber == referenceTask.taskNumber)
+
+private fun KuiklyThreadTaskItem.mergeTaskReference(incomingTask: KuiklyThreadTaskItem): KuiklyThreadTaskItem =
+    incomingTask.copy(
+        title = incomingTask.title.ifBlank { title },
+        taskNumber = incomingTask.taskNumber ?: taskNumber,
+        assigneeName = incomingTask.assigneeName ?: assigneeName,
+        updatedAtLabel = incomingTask.updatedAtLabel.ifBlank { updatedAtLabel }
+    )
 
 private fun ThreadSnapshot.toKuiklyThreadPayload(
     base: KuiklyThreadScreenPayload,

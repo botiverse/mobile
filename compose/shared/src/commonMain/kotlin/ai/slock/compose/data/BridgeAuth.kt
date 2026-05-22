@@ -193,6 +193,7 @@ internal interface SharedThreadNetworkApi {
     suspend fun channelMessages(threadId: String, limit: Int = 50): HomeNetworkResponse
     suspend fun sendMessage(channelId: String, body: String, asTask: Boolean = false): HomeNetworkResponse
     suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse
+    suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse
 }
 
 internal class BridgeThreadApi(
@@ -221,6 +222,9 @@ internal class BridgeThreadApi(
 
     override suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse =
         request("attachments/${attachmentId.trim()}/url")
+
+    override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse =
+        request(path = "channels/${channelId.trim()}/read-all", method = "POST")
 
     private suspend fun request(
         path: String,

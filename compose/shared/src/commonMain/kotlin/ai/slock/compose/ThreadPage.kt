@@ -415,6 +415,11 @@ internal fun SharedThreadRouteContent(
             "thread_render instanceId=${renderedPayload.instanceId} status=${renderedPayload.status} tab=${renderedPayload.selectedTab} messages=${renderedPayload.messages.size} tasks=${renderedPayload.tasks.size}"
         )
     }
+    LaunchedEffect(renderedPayload.sourceThreadId, renderedPayload.status, renderedPayload.messages.size) {
+        if (renderedPayload.status == "content" && renderedPayload.messages.isNotEmpty()) {
+            threadViewModel.dispatch(SharedThreadIntent.MarkVisibleReadAll)
+        }
+    }
     ThreadPageContent(
         payload = renderedPayload,
         filesPayload = filesPayload,
