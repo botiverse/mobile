@@ -57,6 +57,9 @@ import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlin.math.PI
+import kotlin.math.max
+import kotlin.math.sin
 
 const val SLOCK_HOME_PAGE = "compose_home"
 private const val HOME_CHANNEL_ROW_VISUAL_PAGE = "compose_home_channel_row_visual"
@@ -90,6 +93,8 @@ private val HomeListHorizontalPadding = SlockSpacing.Md
 private val HomePanelShadowOffset = 4.dp
 private const val SharedListDefaultBeyondBoundsItemCount = 3
 private const val SharedListMaxBeyondBoundsItemCount = 96
+private const val HomeRefreshFrameDelayMs = 16L
+private const val HomeRefreshWaveStep = 0.26f
 
 @Page(SLOCK_HOME_PAGE, supportInLocal = true)
 internal class ComposeSlockHomePage : ai.slock.compose.base.BasePager() {
@@ -613,21 +618,21 @@ private fun HomeServerSwitcherDismissLayer(onDismiss: () -> Unit) {
 
 @Composable
 private fun HomePullRefreshIndicator(pullProgress: Float, refreshing: Boolean) {
-    var jumpStep by remember { mutableStateOf(0) }
+    var wavePhase by remember { mutableStateOf(0f) }
     LaunchedEffect(refreshing) {
         if (!refreshing) {
-            jumpStep = 0
+            wavePhase = 0f
             return@LaunchedEffect
         }
         while (true) {
-            jumpStep = (jumpStep + 1) % SlockRefreshLetters.length
-            delay(120)
+            wavePhase = (wavePhase + HomeRefreshWaveStep) % (PI.toFloat() * 2f)
+            delay(HomeRefreshFrameDelayMs)
         }
     }
     val pullOffset = ((1f - pullProgress.coerceIn(0f, 1f)) * 8f).dp
     Box(modifier = Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
         SlockJumpingLogoBadge(
-            activeIndex = if (refreshing) jumpStep else -1,
+            wavePhase = if (refreshing) wavePhase else null,
             modifier = Modifier.offset(y = if (refreshing) 0.dp else pullOffset)
         )
     }
@@ -636,8 +641,8 @@ private fun HomePullRefreshIndicator(pullProgress: Float, refreshing: Boolean) {
 private const val SlockRefreshLetters = "SLOCK"
 
 @Composable
-private fun SlockJumpingLogoBadge(activeIndex: Int, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.padding(end = 2.dp, bottom = 2.dp).rotate(-2f)) {
+private fun SlockJumpingLogoBadge(wavePhase: Float?, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.padding(end = 2.dp, bottom = 2.dp)) {
         Box(Modifier.matchParentSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier = Modifier.background(SlockColor.TextBlack).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 14.dp, vertical = SlockSpacing.Sm),
@@ -646,10 +651,13 @@ private fun SlockJumpingLogoBadge(activeIndex: Int, modifier: Modifier = Modifie
         ) {
             SlockRefreshLetters.forEachIndexed { index, letter ->
                 val letterOffset =
-                    when {
-                        activeIndex == index -> (-5).dp
-                        activeIndex >= 0 && (activeIndex + SlockRefreshLetters.length - 1) % SlockRefreshLetters.length == index -> 2.dp
-                        else -> 0.dp
+                    if (wavePhase == null) {
+                        0.dp
+                    } else {
+                        val wave = sin((wavePhase - index * 0.72f).toDouble()).toFloat()
+                        val up = max(0f, wave) * 5f
+                        val down = max(0f, -wave) * 2f
+                        (down - up).dp
                     }
                 Text(
                     letter.toString(),
@@ -687,7 +695,7 @@ private fun HomeTitlebar(
                 SlockLogoBadge(
                     text = serverName,
                     showDropdown = true,
-                    tilted = true,
+                    tilted = false,
                     unread = serverUnreadCount > 0,
                     textStyle = SlockType.Button.copy(fontSize = 16.sp, lineHeight = 20.sp)
                 )
