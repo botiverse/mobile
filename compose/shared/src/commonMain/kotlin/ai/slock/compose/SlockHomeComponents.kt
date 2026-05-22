@@ -42,6 +42,7 @@ import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -639,7 +640,13 @@ private fun HomeTitlebar(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(modifier = Modifier.clickable(onClick = onServerBadgeClick)) {
-                SlockLogoBadge(text = serverName, showDropdown = true, tilted = true, unread = serverUnreadCount > 0)
+                SlockLogoBadge(
+                    text = serverName,
+                    showDropdown = true,
+                    tilted = true,
+                    unread = serverUnreadCount > 0,
+                    textStyle = SlockType.Button.copy(fontSize = 16.sp, lineHeight = 20.sp)
+                )
             }
             Spacer(Modifier.weight(1f))
             HomeNotificationCenter(notifications, onView, onDismiss)
@@ -648,9 +655,16 @@ private fun HomeTitlebar(
 }
 
 @Composable
-private fun SlockLogoBadge(text: String, modifier: Modifier = Modifier, showDropdown: Boolean = false, tilted: Boolean = true, unread: Boolean = false) {
+private fun SlockLogoBadge(
+    text: String,
+    modifier: Modifier = Modifier,
+    showDropdown: Boolean = false,
+    tilted: Boolean = true,
+    unread: Boolean = false,
+    textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
+) {
     if (tilted) {
-        SlockTiltedLogoBadge(text = text, modifier = modifier, showDropdown = showDropdown, unread = unread)
+        SlockTiltedLogoBadge(text = text, modifier = modifier, showDropdown = showDropdown, unread = unread, textStyle = textStyle)
         return
     }
 
@@ -660,7 +674,7 @@ private fun SlockLogoBadge(text: String, modifier: Modifier = Modifier, showDrop
             modifier = Modifier.background(SlockColor.TextBlack).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 16.dp, vertical = SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text, color = SlockColor.BrandYellow, style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
+            Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
             if (showDropdown) {
                 Spacer(Modifier.width(SlockSpacing.Xs))
                 SlockLucideIcon("chevron-down", Modifier.size(18.dp), color = "#FFFFD440")
@@ -670,7 +684,13 @@ private fun SlockLogoBadge(text: String, modifier: Modifier = Modifier, showDrop
 }
 
 @Composable
-private fun SlockTiltedLogoBadge(text: String, modifier: Modifier = Modifier, showDropdown: Boolean = false, unread: Boolean = false) {
+private fun SlockTiltedLogoBadge(
+    text: String,
+    modifier: Modifier = Modifier,
+    showDropdown: Boolean = false,
+    unread: Boolean = false,
+    textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
+) {
     Box(modifier = modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset).rotate(-2f)) {
         Box(Modifier.matchParentSize().offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset).background(SlockColor.ShadowBlack))
         com.tencent.kuikly.compose.foundation.layout.Row(
@@ -680,7 +700,7 @@ private fun SlockTiltedLogoBadge(text: String, modifier: Modifier = Modifier, sh
                     .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text, color = SlockColor.BrandYellow, style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
+            Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
             if (showDropdown) {
                 Spacer(Modifier.width(SlockSpacing.Xs))
                 SlockLucideIcon("chevron-down", Modifier.size(16.dp).rotate(2f), color = "#FFFFD440")
@@ -844,7 +864,7 @@ private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean
             Text(server.name, style = SlockType.Button, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 "/${server.slug}",
-                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 14.sp),
+                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
                 color = SlockColor.TextBlack.copy(alpha = 0.4f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
