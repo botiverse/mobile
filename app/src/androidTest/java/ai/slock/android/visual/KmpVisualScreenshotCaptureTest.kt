@@ -113,6 +113,24 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    @Test
+    fun captureAuthLoginInputs() {
+        captureKmpComponentCase(
+            caseId = "auth.login.inputs",
+            pageName = "compose_auth_login_inputs",
+            crop = VisualCrop(leftDp = 24, topDp = 0, widthDp = 342, heightDp = 620)
+        )
+    }
+
+    @Test
+    fun captureAuthRegisterInputs() {
+        captureKmpComponentCase(
+            caseId = "auth.register.inputs",
+            pageName = "compose_auth_register_inputs",
+            crop = VisualCrop(leftDp = 24, topDp = 0, widthDp = 342, heightDp = 700)
+        )
+    }
+
     private fun captureKmpHomeCase(caseId: String, pageData: JSONObject) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =

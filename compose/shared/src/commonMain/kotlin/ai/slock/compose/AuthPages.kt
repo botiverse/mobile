@@ -46,6 +46,8 @@ import com.tencent.kuikly.core.pager.Pager
 const val LOGIN_PAGE = "compose_login"
 const val REGISTER_PAGE = "compose_register"
 const val FORGOT_PASSWORD_PAGE = "compose_forgot_password"
+private const val AUTH_LOGIN_INPUTS_VISUAL_PAGE = "compose_auth_login_inputs"
+private const val AUTH_REGISTER_INPUTS_VISUAL_PAGE = "compose_auth_register_inputs"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 
 @Page(LOGIN_PAGE, supportInLocal = true)
@@ -69,6 +71,47 @@ internal class ComposeForgotPasswordPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { ForgotPasswordScreen() }
+    }
+}
+
+@Page(AUTH_LOGIN_INPUTS_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeAuthLoginInputsVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent {
+            LoginContent(
+                email = "artin@slock.ai",
+                password = "correct horse battery staple",
+                submitting = false,
+                errorMessage = null,
+                onEmailChange = {},
+                onPasswordChange = {},
+                onSubmit = {},
+                onForgotPassword = {},
+                onCreateAccount = {}
+            )
+        }
+    }
+}
+
+@Page(AUTH_REGISTER_INPUTS_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeAuthRegisterInputsVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent {
+            RegisterContent(
+                name = "Product UX Designer",
+                email = "new@slock.ai",
+                password = "correct horse battery staple",
+                submitting = false,
+                errorMessage = null,
+                onNameChange = {},
+                onEmailChange = {},
+                onPasswordChange = {},
+                onSubmit = {},
+                onBackToSignIn = {}
+            )
+        }
     }
 }
 
