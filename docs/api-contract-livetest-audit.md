@@ -88,9 +88,9 @@ responses are still acceptable only at the lowest network/bridge boundary.
 | Tasks | list server/channel, task by number, create, claim, convert-message, unclaim, status, delete | Typed first slice | Partial | Shared Tasks facade covers all public task routes listed here. Product UI currently consumes server list and status update; create/convert/claim/unclaim/delete/by-number are exposed at the typed API boundary for follow-up UI wiring. |
 | Agents | list/create/detail/activity/agent-dms/update/avatar/start/stop/reset/delete/assign-machine/workspace-files/skills/scopes/bootstrap-tokens | Typed first slice | Partial | `SlockAgentsApiClient` covers the JSON public agent routes listed here, including scopes and bootstrap-token issue. Android legacy members/settings consumers still need migration behind the facade. Avatar upload/serve are multipart/binary surfaces and remain explicit transport capabilities. |
 | Announcements | `GET announcements/active`, `POST announcements/:id/dismiss` | Typed first slice | Missing | `SlockAnnouncementsRemindersApiClient` now covers the account-level active/dismiss routes. Active returns `{ announcements }`; dismiss returns `{ ok: true }`. There is no public publish/create route in v0. |
-| Actions | action card execute/event/mark-executed | Not wired | Missing | Android/KMP cannot execute action-card flows through the product API yet. |
-| Integrations/OAuth clients | overview, clients, approve/deny/revoke, agent grants | Not wired | Missing | No Android/KMP capability yet. |
-| Push | vapid key, prompt events, subscribe/unsubscribe | Not wired | Missing | Native notification work is not closed against upstream push routes. |
+| Actions | `POST actions/:messageId/execute`, `event`, `mark-executed` | Typed first slice | Missing | `SlockIntegrationsActionsPushApiClient` now covers the public action-card JSON routes. Event logging is a 204/no-body success contract; guessed `{ ok }` wrappers are rejected. |
+| Integrations/OAuth clients | overview, clients, approve/deny/revoke, agent grants | Typed first slice | Missing | Shared typed facade covers overview, OAuth client list/create, access request approve/deny, grant revoke, and agent grant overview using the root array/object shapes from `integrations.ts`. |
+| Push | vapid key, prompt events, subscribe/unsubscribe, test | Typed first slice | Missing | Shared typed facade covers web-push public key, prompt telemetry, subscription save/delete, and test push. Native permission/notification UX is still a separate product integration. |
 | Reminders | `GET reminders` | Typed first slice | Missing | Human/product API remains read-only: `GET reminders?ownerAgentId=&status=` returns `{ reminders }`. Agent reminder create/cancel/snooze/update/log live under internal agent routes and must not be guessed as public Android/KMP routes. |
 | Internal agent/computer/OAuth protocol | `/internal/*`, `/oauth/*`, `/daemon/*` | Out of Android product scope | Not applicable | Should be tracked by agent/daemon CLI contracts, not Android app parity, unless the app starts owning those screens. |
 
@@ -168,9 +168,17 @@ responses are still acceptable only at the lowest network/bridge boundary.
   fail at this boundary. Public human reminder mutations are intentionally not
   exposed by upstream; agent reminder create/cancel/snooze/update/log remain
   internal agent routes and should not be wrapped as Android product API calls.
-- Push, Integrations, and Actions still need the same typed API facade
-  treatment. They should not keep expanding raw JSON aliases inside
-  repositories or UI stores without a source-backed contract.
+- Integrations/Actions/Push first slice is now typed at the shared API
+  boundary:
+  `SlockIntegrationsActionsPushApiClient.integrationsOverview/integrationClients/createIntegrationClient/approveIntegrationRequest/denyIntegrationRequest/revokeIntegrationGrant/agentIntegrations/executeAction/emitActionEvent/markActionExecuted/pushVapidKey/recordPushPromptEvent/subscribePush/unsubscribePush/testPush`.
+  Canonical shapes are root arrays for integration overviews/client grant
+  summaries, root objects for create/approve/deny/revoke, root
+  `{ messageId, metadata }` for action execute/mark-executed, 204/no-body for
+  action event telemetry, root `{ publicKey }` for VAPID, root `{ ok: true }`
+  for push prompt/subscription commands, and root
+  `{ ok, attempted, delivered, failed, stale? }` for push test. Guessed
+  wrappers such as `{ items }`, `{ clients }`, `{ data }`, `{ request }`,
+  `{ grant }`, `{ success }`, `{ key }`, and `{ sent }` fail at this boundary.
 - Agents first slice is now typed at the shared API boundary:
   `SlockAgentsApiClient.agents/agent/createAgent/updateAgent/startAgent/stopAgent/resetAgent/deleteAgent/assignMachine/agentDirectMessages/agentActivityLog/agentWorkspaceFiles/readAgentWorkspaceFile/agentSkills/agentScopes/updateAgentScopes/issueBootstrapToken`.
   Canonical shapes are root agent arrays/objects, command `{ ok: true }`,

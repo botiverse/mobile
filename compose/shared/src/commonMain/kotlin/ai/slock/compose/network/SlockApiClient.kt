@@ -74,6 +74,31 @@ class SlockApiClient(
         post(priority, "announcements/$announcementId/dismiss")
     suspend fun reminders(priority: SlockRequestPriority, ownerAgentId: String, status: String = "scheduled"): KmpHttpResponse =
         get(priority, "reminders", listOf("ownerAgentId" to ownerAgentId, "status" to status))
+    suspend fun integrationsOverview(priority: SlockRequestPriority): KmpHttpResponse = get(priority, "integrations/overview")
+    suspend fun integrationClients(priority: SlockRequestPriority): KmpHttpResponse = get(priority, "integrations/clients")
+    suspend fun createIntegrationClient(priority: SlockRequestPriority, body: String): KmpHttpResponse =
+        post(priority, "integrations/clients", body)
+    suspend fun approveIntegrationRequest(priority: SlockRequestPriority, requestId: String, body: String): KmpHttpResponse =
+        post(priority, "integrations/requests/$requestId/approve", body)
+    suspend fun denyIntegrationRequest(priority: SlockRequestPriority, requestId: String): KmpHttpResponse =
+        post(priority, "integrations/requests/$requestId/deny")
+    suspend fun revokeIntegrationGrant(priority: SlockRequestPriority, grantId: String): KmpHttpResponse =
+        post(priority, "integrations/grants/$grantId/revoke")
+    suspend fun agentIntegrations(priority: SlockRequestPriority, agentId: String): KmpHttpResponse =
+        get(priority, "integrations/agents/$agentId")
+    suspend fun executeAction(priority: SlockRequestPriority, messageId: String, body: String): KmpHttpResponse =
+        post(priority, "actions/$messageId/execute", body)
+    suspend fun emitActionEvent(priority: SlockRequestPriority, messageId: String, body: String): KmpHttpResponse =
+        post(priority, "actions/$messageId/event", body)
+    suspend fun markActionExecuted(priority: SlockRequestPriority, messageId: String, body: String): KmpHttpResponse =
+        post(priority, "actions/$messageId/mark-executed", body)
+    suspend fun pushVapidKey(priority: SlockRequestPriority): KmpHttpResponse = get(priority, "push/vapid-key")
+    suspend fun recordPushPromptEvent(priority: SlockRequestPriority, body: String): KmpHttpResponse =
+        post(priority, "push/prompt-events", body)
+    suspend fun subscribePush(priority: SlockRequestPriority, body: String): KmpHttpResponse = post(priority, "push/subscribe", body)
+    suspend fun unsubscribePush(priority: SlockRequestPriority, body: String): KmpHttpResponse =
+        request(priority, HttpMethod.Delete, "push/subscribe", body = body)
+    suspend fun testPush(priority: SlockRequestPriority): KmpHttpResponse = post(priority, "push/test")
     suspend fun agentActivityLog(priority: SlockRequestPriority, agentId: String, limit: Int = 50): KmpHttpResponse =
         get(priority, "agents/$agentId/activity-log", listOf("limit" to limit.toString()))
     suspend fun channelMembers(priority: SlockRequestPriority, channelId: String): KmpHttpResponse = get(priority, "channels/$channelId/members")
