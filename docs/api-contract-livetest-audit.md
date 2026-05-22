@@ -48,7 +48,7 @@ Android/KMP consumers:
 | Message context | `GET messages/context/{messageId}` | `messageRouter.get("/context/:messageId")` | Match | Optional `channelId` query supports short-id context resolution; Android/KMP does not yet expose that optional query everywhere. |
 | Send message | `POST messages` body `{ channelId, content, attachmentIds?, asTask? }` | `messageRouter.post("/")` | Match | Server rejects blank content and archived/read-only channels. |
 | Attachments | `POST attachments/upload`, `GET attachments/{id}/url` | `attachmentRouter.post("/upload")`, public `get("/:id/url")` | Match | Multipart field name is `channelId`; response wrapper is `{ attachments: [...] }`; open target is `{ url, expiresAt }`. |
-| Tasks | `GET tasks/server`, `GET tasks/channel/{channelId}`, `PATCH tasks/{taskId}/claim/status` | `taskRouter` | Match | Task actions return `{ task }`; list endpoints return `{ tasks }`. |
+| Tasks | `GET tasks/server`, `GET tasks/channel/{channelId}`, `GET tasks/channel/{channelId}/number/{taskNumber}`, `POST tasks/channel/{channelId}`, `POST tasks/convert-message`, `PATCH tasks/{taskId}/claim/unclaim/status`, `DELETE tasks/{taskId}` | `taskRouter` | Typed first slice | Shared Tasks now uses `SlockTasksApiClient` for list/create/convert/claim/unclaim/status/delete/by-number. List/create responses must be `{ tasks }`, action responses must be `{ task }`, delete must be `{ ok: true }`. |
 | Server members | `GET servers/{serverId}/members` | `serverRouter.get("/:id/members")` | Match | Upstream returns a direct array. Canonical member id field is `userId`, not generic `id`. |
 | Human member profile | `GET servers/{serverId}/members/{memberId}/profile` | `serverRouter.get("/:id/members/:memberId/profile")` | Fixed in this pass | Android/KMP had guessed `members/{memberId}/profile`; no matching upstream public route exists. |
 | Saved messages | `GET channels/saved`, `POST channels/saved`, `DELETE channels/saved/{messageId}` | `channelRouter.get/post("/saved")`, `delete("/saved/:messageId")` | Fixed in this pass | Android/KMP had guessed `messages/{id}/save`; no matching upstream public route exists. |
@@ -84,7 +84,7 @@ responses are still acceptable only at the lowest network/bridge boundary.
 | Threads | `POST channels/:id/threads`, `GET channels/:id/threads`, `GET channels/:id/threads/:messageId` | Partially wired | Partial | Wired create/open/list. Missing thread detail endpoint, and task #197/#196 cover pagination/realtime but not all action parity. |
 | Messages | search, context, channel page, post, reactions, sync | Partially typed | Partial | Shared Thread now uses `SlockThreadApi` typed methods for channel page, sync, send, read-all, save, task status, and reply-thread create/open. Search/context still use older clients; missing reaction add/remove and `messageContext` `channelId` query exposure. |
 | Attachments | upload, url, preview, raw, html-preview-url, html-preview | Partially typed | Partial | Shared Thread attachment open now requires canonical `{ url, expiresAt }` through `SlockThreadApi.attachmentUrl`; upload is still platform/bridge capability; missing preview/raw/html preview endpoints. |
-| Tasks | list server/channel, task by number, create, claim, convert-message, unclaim, status, delete | Partially wired | Partial | Wired list/claim/status. Missing by-number, create, convert-message, unclaim, delete. |
+| Tasks | list server/channel, task by number, create, claim, convert-message, unclaim, status, delete | Typed first slice | Partial | Shared Tasks facade covers all public task routes listed here. Product UI currently consumes server list and status update; create/convert/claim/unclaim/delete/by-number are exposed at the typed API boundary for follow-up UI wiring. |
 | Agents | list/create/detail/activity/agent-dms/update/avatar/start/stop/reset/delete/assign-machine/workspace-files/skills/scopes/bootstrap-tokens | Partially wired | Partial | Wired list/update/activity/agent-dms/workspace files/read. Missing create/detail/avatar/start/stop/reset/delete/assign-machine/skills/scopes/bootstrap tokens unless handled by internal agent tooling outside Android product. |
 | Announcements | `GET announcements/active`, `POST announcements/:id/dismiss` | Not wired | Missing | Product announcement surfaces cannot be considered closed. |
 | Actions | action card execute/event/mark-executed | Not wired | Missing | Android/KMP cannot execute action-card flows through the product API yet. |
@@ -143,7 +143,15 @@ responses are still acceptable only at the lowest network/bridge boundary.
   `{ channels: [...] }`, `{ directMessages: [...] }`, unread arrays, and
   `{ unreadCount }` server-summary objects now fail with explicit contract
   mismatch errors on the shared Home product path.
-- Tasks, Files/attachments/search/reactions, Push, Integrations, Actions,
+- Tasks first slice is now typed at the shared boundary:
+  `SlockTasksApiClient.serverTasks/channelTasks/taskByNumber/createTasks/claimTask/convertMessage/unclaimTask/updateTaskStatus/deleteTask`
+  wraps the raw `SlockTasksApi` transport. Canonical list/create responses must
+  be root `{ tasks: [...] }`, action responses must be root `{ task: ... }`,
+  and delete must be root `{ ok: true }`. Guessed wrappers such as
+  `{ data: [...] }`, `{ data: { task... } }`, `{ result: ... }`, raw task
+  objects, and `{ success: true }` delete acknowledgements now fail with
+  explicit contract mismatch errors at the shared Tasks API boundary.
+- Files/attachments/search/reactions, Push, Integrations, Actions,
   Announcements, and Reminders still need the same typed API facade treatment.
   They should not keep expanding raw JSON aliases inside repositories or UI
   stores without a source-backed contract.
@@ -203,7 +211,9 @@ broken upstream contract. High-risk examples:
   `billing.plan`, or nested `settings/onboarding` wrappers. The first Settings
   typed slice now rejects those shapes with explicit contract mismatch errors.
 - Task list/action consumers should expect `{ tasks }` and `{ task }` wrappers,
-  not raw arrays for tasks.
+  not raw arrays, `data` wrappers, or `result` wrappers. Shared Tasks now
+  enforces this; Android legacy `RealTaskRepository` remains a compatibility
+  adapter until that route is removed or migrated behind the same facade.
 
 ## Livetest Coverage
 

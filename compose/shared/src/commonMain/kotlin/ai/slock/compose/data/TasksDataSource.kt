@@ -30,12 +30,14 @@ private val tasksJson = Json {
 class SharedTasksDataSource(
     private val api: SlockTasksApi
 ) {
+    private val typedApi = SlockTasksApiClient(api)
+
     suspend fun loadTasks(
         serverId: ServerId,
         filter: TaskFilter = TaskFilter()
     ): DataResult<TaskSnapshot> =
         try {
-            api.serverTasks(serverId, DataRequestPriority.Visible).toTasksResult(filter)
+            typedApi.serverTasks(serverId, DataRequestPriority.Visible, filter)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
@@ -47,7 +49,7 @@ class SharedTasksDataSource(
         status: TaskStatus
     ): DataResult<TaskActionResult> =
         try {
-            api.updateTaskStatus(taskId, status).toTaskActionResult()
+            typedApi.updateTaskStatus(taskId, status)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
@@ -55,15 +57,106 @@ class SharedTasksDataSource(
         }
 }
 
+data class TaskCreateDraft(
+    val title: String,
+    val description: String? = null
+)
+
 interface SlockTasksApi {
     suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse
+    suspend fun channelTasks(channelId: ChannelId, priority: DataRequestPriority): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun taskByNumber(channelId: ChannelId, taskNumber: Int, priority: DataRequestPriority): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun createTasks(channelId: ChannelId, drafts: List<TaskCreateDraft>, priority: DataRequestPriority): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun claimTask(taskId: TaskId): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun convertMessage(messageId: MessageId): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun unclaimTask(taskId: TaskId): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): HomeNetworkResponse
+    suspend fun deleteTask(taskId: TaskId): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
 }
 
 fun buildSharedTaskStatusBody(status: TaskStatus): String =
     tasksJson.encodeToString(mapOf("status" to status.toApiValue()))
 
-internal fun HomeNetworkResponse.toTasksResult(filter: TaskFilter = TaskFilter()): DataResult<TaskSnapshot> {
+fun buildSharedTasksCreateBody(drafts: List<TaskCreateDraft>): String =
+    tasksJson.encodeToString(
+        mapOf(
+            "tasks" to
+                drafts.map { draft ->
+                    buildMap {
+                        put("title", draft.title.trim())
+                        draft.description?.trim()?.takeIf { it.isNotBlank() }?.let { put("description", it) }
+                    }
+                }
+        )
+    )
+
+fun buildSharedTaskConvertBody(messageId: MessageId): String =
+    tasksJson.encodeToString(mapOf("messageId" to messageId.value))
+
+internal class SlockTasksApiClient(
+    private val transport: SlockTasksApi
+) {
+    suspend fun serverTasks(
+        serverId: ServerId,
+        priority: DataRequestPriority,
+        filter: TaskFilter = TaskFilter()
+    ): DataResult<TaskSnapshot> =
+        transport.serverTasks(serverId, priority).toTasksResult(
+            filter = filter,
+            source = "tasks_server"
+        )
+
+    suspend fun channelTasks(
+        channelId: ChannelId,
+        priority: DataRequestPriority,
+        filter: TaskFilter = TaskFilter()
+    ): DataResult<TaskSnapshot> =
+        transport.channelTasks(channelId, priority).toTasksResult(
+            filter = filter,
+            source = "tasks_channel"
+        )
+
+    suspend fun taskByNumber(
+        channelId: ChannelId,
+        taskNumber: Int,
+        priority: DataRequestPriority
+    ): DataResult<TaskActionResult> =
+        transport.taskByNumber(channelId, taskNumber, priority).toTaskActionResult(source = "tasks_by_number")
+
+    suspend fun createTasks(
+        channelId: ChannelId,
+        drafts: List<TaskCreateDraft>,
+        priority: DataRequestPriority
+    ): DataResult<TaskSnapshot> =
+        transport.createTasks(channelId, drafts, priority).toTasksResult(source = "tasks_create")
+
+    suspend fun claimTask(taskId: TaskId): DataResult<TaskActionResult> =
+        transport.claimTask(taskId).toTaskActionResult(source = "tasks_claim")
+
+    suspend fun convertMessage(messageId: MessageId): DataResult<TaskActionResult> =
+        transport.convertMessage(messageId).toTaskActionResult(source = "tasks_convert_message")
+
+    suspend fun unclaimTask(taskId: TaskId): DataResult<TaskActionResult> =
+        transport.unclaimTask(taskId).toTaskActionResult(source = "tasks_unclaim")
+
+    suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult> =
+        transport.updateTaskStatus(taskId, status).toTaskActionResult(source = "tasks_status")
+
+    suspend fun deleteTask(taskId: TaskId): DataResult<Unit> =
+        transport.deleteTask(taskId).toTaskDeleteResult()
+}
+
+internal fun HomeNetworkResponse.toTasksResult(
+    filter: TaskFilter = TaskFilter(),
+    source: String = "tasks"
+): DataResult<TaskSnapshot> {
     if (code == 401 || code == 403) {
         return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code"))
     }
@@ -71,16 +164,18 @@ internal fun HomeNetworkResponse.toTasksResult(filter: TaskFilter = TaskFilter()
         return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true))
     }
     val root = bodyText?.toTasksJsonObject()
-        ?: return DataResult.Empty(EmptyReason.NoTasks)
+        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
+    val items = root["tasks"] as? JsonArray
+        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
     val snapshot = root.toTaskSnapshot().filteredBy(filter)
-    return if (snapshot.tasks.isEmpty()) {
+    return if (items.isEmpty()) {
         DataResult.Empty(EmptyReason.NoTasks)
     } else {
         DataResult.Content(snapshot)
     }
 }
 
-internal fun HomeNetworkResponse.toTaskActionResult(): DataResult<TaskActionResult> {
+internal fun HomeNetworkResponse.toTaskActionResult(source: String = "tasks_action"): DataResult<TaskActionResult> {
     if (code == 401 || code == 403) {
         return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code"))
     }
@@ -88,17 +183,32 @@ internal fun HomeNetworkResponse.toTaskActionResult(): DataResult<TaskActionResu
         return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true))
     }
     val root = bodyText?.toTasksJsonObject()
-        ?: return DataResult.Empty(EmptyReason.NoTasks)
+        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
     val task =
-        root.firstObject("task", "data", "result")?.toTaskSummary()
-            ?: root.toTaskSummary()
-            ?: return DataResult.Empty(EmptyReason.NoTasks)
+        root.firstObject("task")?.toTaskSummary()
+            ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
     return DataResult.Content(TaskActionResult(task))
+}
+
+internal fun HomeNetworkResponse.toTaskDeleteResult(): DataResult<Unit> {
+    if (code == 401 || code == 403) {
+        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code"))
+    }
+    if (!isSuccessful) {
+        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true))
+    }
+    val root = bodyText?.toTasksJsonObject()
+        ?: return DataResult.Error(ScreenError(code = "tasks_delete_contract_mismatch", retryable = false))
+    return if (root.boolean("ok") == true) {
+        DataResult.Content(Unit)
+    } else {
+        DataResult.Error(ScreenError(code = "tasks_delete_contract_mismatch", retryable = false))
+    }
 }
 
 private fun JsonObject.toTaskSnapshot(): TaskSnapshot {
     val tasks =
-        items("tasks", "serverTasks", "items", "data")
+        items("tasks")
             .mapNotNull { (it as? JsonObject)?.toTaskSummary() }
     return TaskSnapshot(
         tasks = tasks,

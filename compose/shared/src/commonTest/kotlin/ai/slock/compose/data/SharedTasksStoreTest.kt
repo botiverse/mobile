@@ -234,7 +234,7 @@ class SharedTasksStoreTest {
                 bodyText =
                     """
                     {
-                      "data": [
+                      "tasks": [
                         {
                           "taskId": "task-65",
                           "number": 65,
@@ -261,6 +261,45 @@ class SharedTasksStoreTest {
         assertEquals("KMP", task.channelName)
         assertEquals("KMP-专家", task.tasksAssigneeDisplayName())
         assertEquals(1, content.data.summaryCounts[TaskStatus.InReview])
+    }
+
+    @Test
+    fun taskNetworkResponseRejectsGuessedListWrappers() {
+        val response =
+            HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """
+                    {
+                      "data": [
+                        {
+                          "taskId": "task-65",
+                          "number": 65,
+                          "messagePreview": "Task #65: migrate Android UI to shared MVI"
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+            )
+
+        val result = response.toTasksResult(source = "tasks_server")
+
+        val error = assertIs<DataResult.Error>(result)
+        assertEquals("tasks_server_contract_mismatch", error.error.code)
+    }
+
+    @Test
+    fun taskActionResponseRejectsGuessedActionWrappers() {
+        val response =
+            HomeNetworkResponse(
+                code = 200,
+                bodyText = """{"data":{"taskId":"task-65","messagePreview":"Task #65: migrate Android UI to shared MVI"}}"""
+            )
+
+        val result = response.toTaskActionResult(source = "tasks_status")
+
+        val error = assertIs<DataResult.Error>(result)
+        assertEquals("tasks_status_contract_mismatch", error.error.code)
     }
 
     private fun task(

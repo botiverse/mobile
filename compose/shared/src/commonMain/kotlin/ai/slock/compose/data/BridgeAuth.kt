@@ -1,6 +1,8 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.base.BridgeModule
+import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
@@ -151,12 +153,49 @@ internal class BridgeTasksApi(
     override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
         request(path = "tasks/server", serverId = serverId.value)
 
+    override suspend fun channelTasks(channelId: ChannelId, priority: DataRequestPriority): HomeNetworkResponse =
+        request(path = "tasks/channel/${channelId.value}")
+
+    override suspend fun taskByNumber(
+        channelId: ChannelId,
+        taskNumber: Int,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse =
+        request(path = "tasks/channel/${channelId.value}/number/$taskNumber")
+
+    override suspend fun createTasks(
+        channelId: ChannelId,
+        drafts: List<TaskCreateDraft>,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse =
+        request(
+            path = "tasks/channel/${channelId.value}",
+            method = "POST",
+            bodyText = buildSharedTasksCreateBody(drafts)
+        )
+
+    override suspend fun claimTask(taskId: TaskId): HomeNetworkResponse =
+        request(path = "tasks/${taskId.value}/claim", method = "PATCH")
+
+    override suspend fun convertMessage(messageId: MessageId): HomeNetworkResponse =
+        request(
+            path = "tasks/convert-message",
+            method = "POST",
+            bodyText = buildSharedTaskConvertBody(messageId)
+        )
+
+    override suspend fun unclaimTask(taskId: TaskId): HomeNetworkResponse =
+        request(path = "tasks/${taskId.value}/unclaim", method = "PATCH")
+
     override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): HomeNetworkResponse =
         request(
             path = "tasks/${taskId.value}/status",
             method = "PATCH",
             bodyText = buildSharedTaskStatusBody(status)
         )
+
+    override suspend fun deleteTask(taskId: TaskId): HomeNetworkResponse =
+        request(path = "tasks/${taskId.value}", method = "DELETE")
 
     private suspend fun request(
         path: String,
