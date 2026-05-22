@@ -4,9 +4,13 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.app.Activity
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import ai.slock.android.shared.SlockKuiklyActivity
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -66,11 +70,20 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureHomeServerBadgeStates() {
+    fun captureHomeTitlebarStates() {
         captureKmpComponentCase(
-            caseId = "home.server-badge.states",
-            pageName = "compose_home_server_badge_visual",
+            caseId = "home.titlebar.states",
+            pageName = "compose_home_titlebar_visual",
             crop = VisualCrop(leftDp = 0, topDp = 48, widthDp = 342, heightDp = 56)
+        )
+    }
+
+    @Test
+    fun captureHomeNotificationCenterStates() {
+        captureKmpComponentCase(
+            caseId = "home.notification-center.states",
+            pageName = "compose_home_notification_center_visual",
+            crop = VisualCrop(leftDp = 0, topDp = 48, widthDp = 342, heightDp = 276)
         )
     }
 
@@ -107,7 +120,8 @@ class KmpVisualScreenshotCaptureTest {
             Intent(context, SlockKuiklyActivity::class.java)
                 .putExtra("pageName", SlockKuiklyActivity.PAGE_HOME)
                 .putExtra("pageData", pageData.toString())
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use {
+        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+            scenario.onActivity { applyVisualFullscreen(it) }
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             Thread.sleep(2_500)
             val screenshot =
@@ -132,6 +146,7 @@ class KmpVisualScreenshotCaptureTest {
                   "caseId": "$caseId",
                   "image": "${imageFile.absolutePath}",
                   "viewport": { "width": ${normalized.width}, "height": ${normalized.height}, "density": 1 },
+                  "systemBars": "hidden",
                   "crop": {
                     "mode": "manual-rect",
                     "contract": "component-bounds",
@@ -168,7 +183,8 @@ class KmpVisualScreenshotCaptureTest {
                         putExtra("pageData", pageData.toString())
                     }
                 }
-        ActivityScenario.launch<SlockKuiklyActivity>(intent).use {
+        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+            scenario.onActivity { applyVisualFullscreen(it) }
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             Thread.sleep(1_500)
             val screenshot =
@@ -193,6 +209,7 @@ class KmpVisualScreenshotCaptureTest {
                   "caseId": "$caseId",
                   "image": "${imageFile.absolutePath}",
                   "viewport": { "width": ${normalized.width}, "height": ${normalized.height}, "density": 1 },
+                  "systemBars": "hidden",
                   "crop": {
                     "mode": "manual-rect",
                     "contract": "component-bounds",
@@ -214,6 +231,25 @@ class KmpVisualScreenshotCaptureTest {
                 cropped.recycle()
             }
             screenshot.recycle()
+        }
+    }
+
+    private fun applyVisualFullscreen(activity: Activity) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            activity.window.insetsController?.let { controller ->
+                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                controller.systemBarsBehavior =
+                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            activity.window.decorView.systemUiVisibility =
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         }
     }
 

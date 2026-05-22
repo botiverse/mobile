@@ -59,7 +59,8 @@ import kotlinx.serialization.json.Json
 
 const val SLOCK_HOME_PAGE = "compose_home"
 private const val HOME_CHANNEL_ROW_VISUAL_PAGE = "compose_home_channel_row_visual"
-private const val HOME_SERVER_BADGE_VISUAL_PAGE = "compose_home_server_badge_visual"
+private const val HOME_TITLEBAR_VISUAL_PAGE = "compose_home_titlebar_visual"
+private const val HOME_NOTIFICATION_CENTER_VISUAL_PAGE = "compose_home_notification_center_visual"
 private const val HOME_TOP_ACTIONS_VISUAL_PAGE = "compose_home_top_actions_visual"
 private const val HOME_PAGE_DATA_EVENT = "slockPageData"
 
@@ -102,11 +103,19 @@ internal class ComposeHomeChannelRowVisualPage : ai.slock.compose.base.BasePager
     }
 }
 
-@Page(HOME_SERVER_BADGE_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeHomeServerBadgeVisualPage : ai.slock.compose.base.BasePager() {
+@Page(HOME_TITLEBAR_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeHomeTitlebarVisualPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { HomeServerBadgeVisualScreen() }
+        setContent { HomeTitlebarVisualScreen() }
+    }
+}
+
+@Page(HOME_NOTIFICATION_CENTER_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeHomeNotificationCenterVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeNotificationCenterVisualScreen() }
     }
 }
 
@@ -267,13 +276,31 @@ private fun SlockHomePageContent() {
 }
 
 @Composable
-private fun HomeServerBadgeVisualScreen() {
-    Column(modifier = Modifier.width(342.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {
+private fun HomeTitlebarVisualScreen() {
+    Box(modifier = Modifier.width(342.dp).height(104.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {
         HomeWorkspaceHeader(
             serverName = "Slock Design",
             serverUnreadCount = 24,
             topSafeArea = 0.dp,
             onServerBadgeClick = {}
+        )
+        HomeNotificationCenter(
+            notifications = visualHomeNotifications(),
+            onView = {},
+            onDismiss = {},
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 48.dp).padding(top = SlockSpacing.Lg, end = SlockSpacing.Lg)
+        )
+    }
+}
+
+@Composable
+private fun HomeNotificationCenterVisualScreen() {
+    Box(modifier = Modifier.width(342.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp).padding(16.dp)) {
+        HomeNotificationPopover(
+            notifications = visualHomeNotifications(),
+            onView = {},
+            onDismiss = {},
+            modifier = Modifier.align(Alignment.TopStart)
         )
     }
 }
@@ -335,6 +362,24 @@ private fun HomeChannelRowVisualScreen() {
         )
     }
 }
+
+private fun visualHomeNotifications(): List<SlockHomeNotificationItem> =
+    listOf(
+        SlockHomeNotificationItem(
+            id = "visual-agent-offline",
+            title = "Android-Developer lost connection",
+            body = "Last heartbeat was 4 minutes ago.",
+            actionLabel = "View",
+            kind = SlockHomeNotificationKind.Warning
+        ),
+        SlockHomeNotificationItem(
+            id = "visual-release-blocker",
+            title = "Release gate needs review",
+            body = "Two visual cases changed in the latest run.",
+            actionLabel = "Open",
+            kind = SlockHomeNotificationKind.Info
+        )
+    )
 
 @Composable
 private fun rememberHomePayload(payload: String, instanceId: String): SlockHomePayload =
