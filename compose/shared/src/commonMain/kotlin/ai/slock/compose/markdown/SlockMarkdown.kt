@@ -5,8 +5,10 @@ import ai.slock.compose.SlockSpacing
 import ai.slock.compose.SlockStroke
 import ai.slock.compose.SlockType
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
@@ -28,6 +30,8 @@ import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuiklybase.markdown.annotator.LocalUriHandler
+import com.tencent.kuiklybase.markdown.annotator.UriHandler
 import com.tencent.kuiklybase.markdown.compose.Markdown
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownColors
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownTypography
@@ -376,7 +380,8 @@ private fun String.normalizeMarkdownInlineCodeText(): String =
 
 fun slockMarkdownAnnotator(
     content: String,
-    highlightedMentions: Set<String> = emptySet()
+    highlightedMentions: Set<String> = emptySet(),
+    onOpenTag: (ThreadMarkdownTag) -> Unit = {}
 ): MarkdownAnnotator {
     val highlightedMentionKeys = highlightedMentions.mapTo(mutableSetOf()) { threadMarkdownMentionKey(it) }
     val inlineTagMatches = content.threadInlineTagMatches()
@@ -418,37 +423,38 @@ fun slockMarkdownAnnotator(
                 if (match.range.first > cursor) {
                     append(nodeText.substring(cursor, match.range.first))
                 }
-                if (highlightedMentionById.containsKey(match.id)) {
-                    appendInlineContent(match.id, match.tag.label)
-                } else if (match.tag.kind == ThreadMarkdownTagKind.UserMention) {
-                    pushStyle(SlockMarkdownMentionSpanStyle)
-                    append(threadMarkdownTagDisplayLabel(match.tag.label))
-                    pop()
-                } else {
-                    appendInlineContent(match.id, match.tag.label)
-                }
+                appendInlineContent(match.id, match.tag.label)
                 cursor = match.range.last + 1
             }
             if (cursor < nodeText.length) append(nodeText.substring(cursor))
             true
         },
         inlineContent = {
-            (inlineTagById.filterValues { it.tag.kind != ThreadMarkdownTagKind.UserMention } + highlightedMentionById).mapValues { (_, match) ->
+            inlineTagById.mapValues { (_, match) ->
                 val label = threadMarkdownTagDisplayLabel(match.tag.label)
-                val chipColor =
-                    if (highlightedMentionById.containsKey(match.id)) {
-                        SlockColor.BrandYellow
-                    } else {
-                        slockMarkdownTagColor(match.tag.kind)
-                    }
                 InlineTextContent(
                     Placeholder(
                         width = slockMarkdownInlineChipWidthSp(label),
                         height = SlockMarkdownInlineChipHeight
                     )
                 ) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        SlockMarkdownInlineChip(label, chipColor)
+                    Box(
+                        modifier = Modifier.fillMaxSize().clickable { onOpenTag(match.tag) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (match.tag.kind == ThreadMarkdownTagKind.UserMention &&
+                            !highlightedMentionById.containsKey(match.id)
+                        ) {
+                            SlockMarkdownMentionText(label)
+                        } else {
+                            val chipColor =
+                                if (highlightedMentionById.containsKey(match.id)) {
+                                    SlockColor.BrandYellow
+                                } else {
+                                    slockMarkdownTagColor(match.tag.kind)
+                                }
+                            SlockMarkdownInlineChip(label, chipColor)
+                        }
                     }
                 }
             } + inlineCodeChipById.mapValues { (_, match) ->
@@ -472,21 +478,41 @@ fun SlockMarkdownBody(
     body: String,
     modifier: Modifier = Modifier,
     textStyle: TextStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
-    highlightedMentions: Set<String> = emptySet()
+    highlightedMentions: Set<String> = emptySet(),
+    onOpenTag: (ThreadMarkdownTag) -> Unit = {},
+    onOpenUrl: (String) -> Unit = {}
 ) {
     val content = body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
-    Markdown(
-        content = content,
-        colors = slockMarkdownColors(),
-        typography = slockMarkdownTypography(textStyle),
-        annotator = slockMarkdownAnnotator(content, highlightedMentions = highlightedMentions),
-        padding = markdownPadding(
-            block = 0.dp,
-            paragraphVerPadding = PaddingValues(vertical = 0.dp),
-            codeBlock = PaddingValues(SlockSpacing.Sm)
-        ),
-        modifier = modifier.fillMaxWidth()
-    )
+    CompositionLocalProvider(
+        LocalUriHandler provides
+            object : UriHandler {
+                override suspend fun openUri(uri: String) {
+                    onOpenUrl(uri)
+                }
+
+                override suspend fun openRef(ref: List<String>, x: Float, y: Float) {
+                    val reference = ref.joinToString("#")
+                    if (reference.isNotBlank()) onOpenUrl(reference)
+                }
+            }
+    ) {
+        Markdown(
+            content = content,
+            colors = slockMarkdownColors(),
+            typography = slockMarkdownTypography(textStyle),
+            annotator = slockMarkdownAnnotator(
+                content,
+                highlightedMentions = highlightedMentions,
+                onOpenTag = onOpenTag
+            ),
+            padding = markdownPadding(
+                block = 0.dp,
+                paragraphVerPadding = PaddingValues(vertical = 0.dp),
+                codeBlock = PaddingValues(SlockSpacing.Sm)
+            ),
+            modifier = modifier.fillMaxWidth()
+        )
+    }
 }
 
 @Composable
@@ -592,6 +618,23 @@ private fun SlockMarkdownInlineChip(label: String, color: Color) {
             overflow = TextOverflow.Visible
         )
     }
+}
+
+@Composable
+private fun SlockMarkdownMentionText(label: String) {
+    Text(
+        text = label,
+        style = SlockType.Body.copy(
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            color = SlockColor.TextBlack,
+            fontWeight = FontWeight.SemiBold,
+            textDecoration = TextDecoration.Underline
+        ),
+        color = SlockColor.TextBlack,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
 }
 
 @Composable

@@ -51,16 +51,16 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun userMentionsRenderAsTextStyleInsteadOfInlineChip() {
+    fun userMentionsRenderAsClickableInlineContent() {
         val inlineContent = slockMarkdownAnnotator("Ping @Android-App-Integrator in #markdown专修 for #15").inlineContent?.invoke().orEmpty()
 
-        assertFalse(inlineContent.containsKey("slock:5"))
+        assertTrue(inlineContent.containsKey("slock:5"))
         assertTrue(inlineContent.containsKey("slock:32"))
         assertTrue(inlineContent.containsKey("slock:48"))
     }
 
     @Test
-    fun highlightedUserMentionsRenderAsInlineChip() {
+    fun highlightedUserMentionsStillRenderAsInlineContent() {
         val inlineContent =
             slockMarkdownAnnotator(
                 "Ping @artin and @Android-App-Integrator in #markdown专修",
@@ -68,7 +68,7 @@ class SlockMarkdownTest {
             ).inlineContent?.invoke().orEmpty()
 
         assertTrue(inlineContent.containsKey("slock:5"))
-        assertFalse(inlineContent.containsKey("slock:16"))
+        assertTrue(inlineContent.containsKey("slock:16"))
         assertTrue(inlineContent.containsKey("slock:43"))
     }
 

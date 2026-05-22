@@ -11,6 +11,8 @@ import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.markdown.SlockMarkdownBody
+import ai.slock.compose.markdown.ThreadMarkdownTag
+import ai.slock.compose.markdown.ThreadMarkdownTagKind
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.toGravatarAvatarUrl
@@ -227,6 +229,33 @@ internal data class KuiklyThreadSettingsAction(
     val destructive: Boolean = false
 )
 
+private fun KuiklyThreadScreenPayload.findMarkdownMentionMember(tag: ThreadMarkdownTag): KuiklyThreadMemberItem? {
+    val key = tag.label.removePrefix("@").trim().lowercase()
+    if (key.isBlank()) return null
+    return members.firstOrNull { member ->
+        member.id.equals(key, ignoreCase = true) ||
+            member.handle.removePrefix("@").equals(key, ignoreCase = true) ||
+            member.displayName.equals(key, ignoreCase = true)
+    }
+}
+
+private fun KuiklyThreadScreenPayload.findMarkdownTaskId(tag: ThreadMarkdownTag): String? {
+    val key = tag.label.removePrefix("#").trim()
+    val taskNumber = key.toIntOrNull()
+    return tasks.firstOrNull { task ->
+        task.id.equals(key, ignoreCase = true) ||
+            task.taskNumber == taskNumber
+    }?.id
+        ?: messages.firstOrNull { message ->
+            message.taskId?.equals(key, ignoreCase = true) == true ||
+                message.taskNumber == taskNumber
+        }?.taskId
+        ?: originMessage?.takeIf { message ->
+            message.taskId?.equals(key, ignoreCase = true) == true ||
+                message.taskNumber == taskNumber
+        }?.taskId
+}
+
 private enum class KuiklyThreadTab(val wireValue: String, val label: String) {
     Chat("chat", "Chat"),
     Tasks("tasks", "Tasks"),
@@ -328,7 +357,9 @@ private fun ThreadMessageVisualScreen() {
                 onOpenThread = {},
                 onOpenTask = {},
                 onTaskStatusChange = { _, _ -> },
-                onOpenAttachment = {}
+                onOpenAttachment = {},
+                onOpenMarkdownTag = {},
+                onOpenMarkdownUrl = {}
             )
         }
     }
@@ -514,6 +545,18 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "openTask" && !itemId.isNullOrBlank() -> {
                     bridge.toast("Task #${itemId.takeLast(6)}")
+                }
+                action == "openMarkdownUrl" && !itemId.isNullOrBlank() -> {
+                    bridge.openUrl(itemId, null)
+                }
+                action == "openMarkdownTag" && !itemId.isNullOrBlank() -> {
+                    bridge.toast("Unable to open ${itemId.take(32)}")
+                }
+                action == "openMarkdownChannel" && !itemId.isNullOrBlank() -> {
+                    bridge.toast("Unable to open #${itemId.removePrefix("#").take(31)}")
+                }
+                action == "openMarkdownThreadRef" && !itemId.isNullOrBlank() -> {
+                    bridge.toast("Unable to open ${itemId.take(32)}")
                 }
                 action == "setTaskStatus" && !itemId.isNullOrBlank() && !tab.isNullOrBlank() -> {
                     val status = tab.toSharedThreadTaskStatus()
@@ -1401,6 +1444,36 @@ private fun ThreadPageContent(
     var activeModal by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var activeMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var composerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(0f) }
+    val openMarkdownTag: (ThreadMarkdownTag) -> Unit = { tag ->
+        when (tag.kind) {
+            ThreadMarkdownTagKind.UserMention -> {
+                val member = payload.findMarkdownMentionMember(tag)
+                if (member != null) {
+                    activeMemberId = member.id
+                    activeModal = "memberDetail"
+                } else {
+                    onThreadEvent("openMarkdownTag", tag.label, null, tag.kind.name)
+                }
+            }
+            ThreadMarkdownTagKind.Task -> {
+                val taskId = payload.findMarkdownTaskId(tag)
+                if (!taskId.isNullOrBlank()) {
+                    onThreadEvent("openTask", taskId, null, null)
+                } else {
+                    onThreadEvent("openMarkdownTag", tag.label, null, tag.kind.name)
+                }
+            }
+            ThreadMarkdownTagKind.Channel -> {
+                onThreadEvent("openMarkdownChannel", tag.channelName ?: tag.label, null, tag.kind.name)
+            }
+            ThreadMarkdownTagKind.ChannelThread -> {
+                onThreadEvent("openMarkdownThreadRef", tag.label, null, tag.threadShortId)
+            }
+        }
+    }
+    val openMarkdownUrl: (String) -> Unit = { url ->
+        onThreadEvent("openMarkdownUrl", url, null, null)
+    }
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(
             modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
@@ -1435,7 +1508,9 @@ private fun ThreadPageContent(
                         ThreadChatTab(
                             payload = payload,
                             highlightedMentions = highlightedMentions,
-                            onThreadEvent = onThreadEvent
+                            onThreadEvent = onThreadEvent,
+                            onOpenMarkdownTag = openMarkdownTag,
+                            onOpenMarkdownUrl = openMarkdownUrl
                         )
                     KuiklyThreadTab.Tasks ->
                         ThreadTasksTab(
@@ -1705,7 +1780,9 @@ private val ThreadTabHeight = 38.dp
 private fun ThreadChatTab(
     payload: KuiklyThreadScreenPayload,
     highlightedMentions: Set<String>,
-    onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit
+    onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
+    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
+    onOpenMarkdownUrl: (String) -> Unit
 ) {
     when (payload.status) {
         "loading" -> ThreadStateMessage("Loading thread…", null)
@@ -1722,7 +1799,9 @@ private fun ThreadChatTab(
             ThreadMessagesList(
                 payload = payload,
                 highlightedMentions = highlightedMentions,
-                onThreadEvent = onThreadEvent
+                onThreadEvent = onThreadEvent,
+                onOpenMarkdownTag = onOpenMarkdownTag,
+                onOpenMarkdownUrl = onOpenMarkdownUrl
             )
     }
 }
@@ -1731,7 +1810,9 @@ private fun ThreadChatTab(
 private fun ThreadMessagesList(
     payload: KuiklyThreadScreenPayload,
     highlightedMentions: Set<String>,
-    onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit
+    onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
+    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
+    onOpenMarkdownUrl: (String) -> Unit
 ) {
     if (payload.messages.isEmpty()) {
         ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
@@ -1821,7 +1902,9 @@ private fun ThreadMessagesList(
                         onOpenTask = { onThreadEvent("openTask", it, null, null) },
                         onTaskStatusChange = { taskId, status ->
                             onThreadEvent("setTaskStatus", taskId, null, status.key)
-                        }
+                        },
+                        onOpenMarkdownTag = onOpenMarkdownTag,
+                        onOpenMarkdownUrl = onOpenMarkdownUrl
                     )
                 } else {
                     ThreadMessageCard(
@@ -1842,7 +1925,9 @@ private fun ThreadMessagesList(
                             onThreadEvent("setTaskStatus", taskId, null, status.key)
                         },
                         timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
-                        onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) }
+                        onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
+                        onOpenMarkdownTag = onOpenMarkdownTag,
+                        onOpenMarkdownUrl = onOpenMarkdownUrl
                     )
                 }
             }
@@ -2019,7 +2104,9 @@ private fun ThreadSystemMessageRow(
     taskStatusActionsEnabled: Boolean,
     onOpenThread: () -> Unit,
     onOpenTask: (String) -> Unit,
-    onTaskStatusChange: (String, ThreadTaskStatusOption) -> Unit
+    onTaskStatusChange: (String, ThreadTaskStatusOption) -> Unit,
+    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
+    onOpenMarkdownUrl: (String) -> Unit
 ) {
     var expanded by remember(message.id) { mutableStateOf(false) }
     Column(
@@ -2039,7 +2126,12 @@ private fun ThreadSystemMessageRow(
             overflow = TextOverflow.Ellipsis
         )
         if (expanded) {
-            ThreadSystemMessageExpandedContent(message, highlightedMentions = highlightedMentions)
+            ThreadSystemMessageExpandedContent(
+                message = message,
+                highlightedMentions = highlightedMentions,
+                onOpenMarkdownTag = onOpenMarkdownTag,
+                onOpenMarkdownUrl = onOpenMarkdownUrl
+            )
         }
         ThreadMessageFooterMeta(
             message = message,
@@ -2057,7 +2149,9 @@ private fun ThreadSystemMessageRow(
 @Composable
 private fun ThreadSystemMessageExpandedContent(
     message: KuiklyThreadMessageItem,
-    highlightedMentions: Set<String>
+    highlightedMentions: Set<String>,
+    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
+    onOpenMarkdownUrl: (String) -> Unit
 ) {
     Column(
         modifier =
@@ -2075,7 +2169,9 @@ private fun ThreadSystemMessageExpandedContent(
         SlockMarkdownBody(
             body = message.body.sanitizeThreadSystemText(),
             textStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp, color = SlockColor.TextBlack),
-            highlightedMentions = highlightedMentions
+            highlightedMentions = highlightedMentions,
+            onOpenTag = onOpenMarkdownTag,
+            onOpenUrl = onOpenMarkdownUrl
         )
         val details = message.expandedSystemDetails()
         if (details.isNotBlank()) {
@@ -2118,7 +2214,9 @@ private fun ThreadMessageCard(
     onOpenThread: (String) -> Unit,
     onOpenTask: (String) -> Unit,
     onTaskStatusChange: (String, ThreadTaskStatusOption) -> Unit,
-    onOpenAttachment: (String) -> Unit
+    onOpenAttachment: (String) -> Unit,
+    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
+    onOpenMarkdownUrl: (String) -> Unit
 ) {
     val horizontalArrangement =
         if (alignOwnMessageRight) Arrangement.spacedBy(SlockSpacing.Md, Alignment.End) else Arrangement.spacedBy(SlockSpacing.Md)
@@ -2190,7 +2288,9 @@ private fun ThreadMessageCard(
                             SlockMarkdownBody(
                                 body = message.body,
                                 textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
-                                highlightedMentions = highlightedMentions
+                                highlightedMentions = highlightedMentions,
+                                onOpenTag = onOpenMarkdownTag,
+                                onOpenUrl = onOpenMarkdownUrl
                             )
                         }
                     }
@@ -2764,7 +2864,9 @@ private fun ThreadOriginCard(
                         onOpenTask = {},
                         onTaskStatusChange = { _, _ -> },
                         timestampLabel = payload.formatTimestampLabel(origin.timestampLabel),
-                        onOpenAttachment = {}
+                        onOpenAttachment = {},
+                        onOpenMarkdownTag = {},
+                        onOpenMarkdownUrl = {}
                     )
                 } ?: payload.originPreview?.takeIf { it.isNotBlank() }?.let {
                     Text(
