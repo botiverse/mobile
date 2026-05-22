@@ -84,6 +84,7 @@ private val MiniActionIconSize = 16.dp
 private val CountPillMinWidth = 18.dp
 private val CountPillHeight = 16.dp
 private val HomeUnreadBadgeRadius = 4.dp
+private val ChannelUnreadTextOffsetY = (-1).dp
 private val HomeListHorizontalPadding = SlockSpacing.Md
 private val HomePanelShadowOffset = 4.dp
 
@@ -943,8 +944,10 @@ private fun HeaderIconAction(icon: String, contentDescription: String, onClick: 
 @Composable
 private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, trailingPresence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null) {
     val selected = interactionState == ChannelRowInteractionState.Selected
+    val channelRow = avatarLabel == null
+    val displayName = if (channelRow) name.uppercase() else name
     val rowBackground = when (interactionState) {
-        ChannelRowInteractionState.Default -> if (joined) Color.Transparent else SlockColor.EmptyStateGray.copy(alpha = 0.36f)
+        ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Selected -> SlockColor.AccentPink
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
@@ -981,14 +984,14 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.width(ChannelSymbolWidth), contentAlignment = Alignment.Center) {
-                if (avatarLabel != null) ChannelAvatar(avatarWireValue, avatarLabel, presence) else Text(symbol, style = SlockType.Body.copy(fontWeight = FontWeight.Normal, fontSize = ChannelSymbolFontSize), color = SlockColor.TextBlack.copy(alpha = if (joined) 0.62f else 0.32f), textAlign = TextAlign.Center)
+                if (avatarLabel != null) ChannelAvatar(avatarWireValue, avatarLabel, presence) else Text(symbol, style = SlockType.ButtonBold.copy(fontSize = ChannelSymbolFontSize), color = SlockColor.TextBlack.copy(alpha = if (joined) 0.62f else 0.32f), textAlign = TextAlign.Center)
             }
-            Text(name, style = if (selected || (badge != null && joined)) SlockType.ButtonBold else SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f), modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(displayName, style = if (selected || (badge != null && joined)) SlockType.ButtonBold else SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f), modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (badge != null) Spacer(Modifier.width(SlockSpacing.Sm)) else if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
             if (hasDraft) SlockLucideIcon("pencil", Modifier.size(14.dp), color = "#FF737373")
             if (badge != null) {
                 if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
-                if (joined) CountPill(badge, SlockColor.AccentPink) else DimmedUnreadCount(badge)
+                if (joined) CountPill(badge, SlockColor.AccentPink, textOffsetY = ChannelUnreadTextOffsetY) else DimmedUnreadCount(badge)
             }
             if (trailingPresence != null) {
                 if (badge != null || hasDraft) Spacer(Modifier.width(SlockSpacing.Sm))
@@ -1000,13 +1003,16 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
 
 @Composable
 private fun DimmedUnreadCount(text: String) {
-    Text(
-        text,
-        style = SlockType.Caption.copy(fontWeight = FontWeight.Medium, fontSize = 10.sp, lineHeight = 10.sp, fontFamily = FontFamily.Monospace),
-        color = SlockColor.TextBlack.copy(alpha = 0.5f),
-        maxLines = 1,
-        textAlign = TextAlign.Center
-    )
+    Box(modifier = Modifier.height(CountPillHeight).padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
+        Text(
+            text,
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Medium, fontSize = 10.sp, lineHeight = 10.sp, fontFamily = FontFamily.Monospace),
+            color = SlockColor.TextBlack.copy(alpha = 0.5f),
+            maxLines = 1,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.offset(y = ChannelUnreadTextOffsetY)
+        )
+    }
 }
 
 @Composable
@@ -1120,12 +1126,12 @@ private fun pixelHash(value: String): Int { var hash = 0; value.forEach { hash =
 private class PixelAvatarRandom(seed: Int) { private var value = seed; fun next(): Double { value += 1831565813; var mixed = (value xor (value ushr 15)) * (1 or value); mixed = (mixed + ((mixed xor (mixed ushr 7)) * (61 or mixed))) xor mixed; val unsigned = (mixed xor (mixed ushr 14)).toLong() and 0xffffffffL; return unsigned.toDouble() / 4294967296.0 } }
 
 @Composable
-private fun CountPill(text: String, color: Color) {
-    HomeUnreadBadge(text = text, color = color)
+private fun CountPill(text: String, color: Color, textOffsetY: Dp = 0.dp) {
+    HomeUnreadBadge(text = text, color = color, textOffsetY = textOffsetY)
 }
 
 @Composable
-private fun HomeUnreadBadge(text: String, color: Color = SlockColor.AccentPink) {
+private fun HomeUnreadBadge(text: String, color: Color = SlockColor.AccentPink, textOffsetY: Dp = 0.dp) {
     Box(
         modifier =
             Modifier
@@ -1142,7 +1148,8 @@ private fun HomeUnreadBadge(text: String, color: Color = SlockColor.AccentPink) 
             style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp, lineHeight = 10.sp),
             color = SlockColor.SurfaceWhite,
             maxLines = 1,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            modifier = Modifier.offset(y = textOffsetY)
         )
     }
 }
