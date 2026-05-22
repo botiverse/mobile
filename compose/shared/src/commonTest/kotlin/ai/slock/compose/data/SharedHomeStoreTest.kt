@@ -189,7 +189,12 @@ class SharedHomeStoreTest {
 
         private fun ok(name: String, serverId: ServerId): HomeNetworkResponse {
             calls += "$name:${serverId.value}"
-            return HomeNetworkResponse(code = 200, bodyText = "{}")
+            val body =
+                when (name) {
+                    "channels", "dms", "summary" -> "[]"
+                    else -> "{}"
+                }
+            return HomeNetworkResponse(code = 200, bodyText = body)
         }
     }
 

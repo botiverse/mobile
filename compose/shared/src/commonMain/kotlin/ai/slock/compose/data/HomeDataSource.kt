@@ -3,6 +3,11 @@ package ai.slock.compose.data
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.RealtimeEvent
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+
+private val homeApiJson = Json { ignoreUnknownKeys = true }
 
 class SharedHomeDataSource(
     private val sessionStore: SlockAuthSessionStore,
@@ -10,6 +15,8 @@ class SharedHomeDataSource(
     private val localWriteThrough: ComposeLocalWriteThrough? = null,
     private val parseHome: (HomeNetworkPayload, StoredAuthSession) -> DataResult<HomeSnapshot>
 ) {
+    private val typedApi = SlockHomeApiClient(api)
+
     suspend fun currentSessionSnapshot(): DataResult<ai.slock.compose.model.SessionSnapshot> {
         val session = sessionStore.readSession()
             ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
@@ -34,13 +41,12 @@ class SharedHomeDataSource(
 
         val payload =
             try {
-                HomeNetworkPayload(
-                    serverId = resolvedServerId,
-                    channels = api.channels(resolvedServerId, priority),
-                    directMessages = api.directMessages(resolvedServerId, priority),
-                    unreadCounts = api.channelUnreadCounts(resolvedServerId, priority),
-                    serverUnreadSummary = api.serverUnreadSummary(resolvedServerId, priority)
-                )
+                when (val payloadResult = typedApi.homePayload(resolvedServerId, priority)) {
+                    is DataResult.Content -> payloadResult.data
+                    is DataResult.Empty -> return DataResult.Empty(payloadResult.reason)
+                    is DataResult.Error -> return DataResult.Error(payloadResult.error)
+                    is DataResult.NoPermission -> return DataResult.NoPermission(payloadResult.blocker)
+                }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
@@ -110,3 +116,48 @@ data class HomeNetworkResponse(
     val isSuccessful: Boolean
         get() = code in 200..299
 }
+
+internal class SlockHomeApiClient(
+    private val transport: SlockHomeApi
+) {
+    suspend fun homePayload(
+        serverId: ServerId,
+        priority: DataRequestPriority
+    ): DataResult<HomeNetworkPayload> {
+        val channels = transport.channels(serverId, priority)
+        channels.validateHomeBody("home_channels_contract_mismatch", ::isJsonArray)?.let { return it }
+        val directMessages = transport.directMessages(serverId, priority)
+        directMessages.validateHomeBody("home_direct_messages_contract_mismatch", ::isJsonArray)?.let { return it }
+        val unreadCounts = transport.channelUnreadCounts(serverId, priority)
+        unreadCounts.validateHomeBody("home_unread_counts_contract_mismatch", ::isJsonObject)?.let { return it }
+        val serverUnreadSummary = transport.serverUnreadSummary(serverId, priority)
+        serverUnreadSummary.validateHomeBody("home_server_unread_summary_contract_mismatch", ::isJsonArray)?.let { return it }
+        return DataResult.Content(
+            HomeNetworkPayload(
+                serverId = serverId,
+                channels = channels,
+                directMessages = directMessages,
+                unreadCounts = unreadCounts,
+                serverUnreadSummary = serverUnreadSummary
+            )
+        )
+    }
+}
+
+private fun HomeNetworkResponse.validateHomeBody(
+    contractCode: String,
+    predicate: (String) -> Boolean
+): DataResult<HomeNetworkPayload>? {
+    if (!isSuccessful) return null
+    val body = bodyText?.trim().orEmpty()
+    if (body.isBlank() || !predicate(body)) {
+        return DataResult.Error(ScreenError(code = contractCode, retryable = false))
+    }
+    return null
+}
+
+private fun isJsonArray(body: String): Boolean =
+    runCatching { homeApiJson.parseToJsonElement(body) is JsonArray }.getOrDefault(false)
+
+private fun isJsonObject(body: String): Boolean =
+    runCatching { homeApiJson.parseToJsonElement(body) is JsonObject }.getOrDefault(false)

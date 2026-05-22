@@ -93,6 +93,66 @@ class HomeDataSourceTest {
     }
 
     @Test
+    fun loadHomeRejectsGuessedHomeWrappersBeforeParser() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = FakeHomeApi(channelsBody = """{"channels":[]}"""),
+                parseHome = { _, _ -> error("typed home api should reject wrapper before parser") }
+            )
+
+        val result = source.loadHome(priority = DataRequestPriority.Visible)
+
+        assertTrue(result is DataResult.Error)
+        assertEquals("home_channels_contract_mismatch", (result as DataResult.Error).error.code)
+    }
+
+    @Test
+    fun loadHomeRejectsGuessedDirectMessageWrappersBeforeParser() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = FakeHomeApi(directMessagesBody = """{"directMessages":[]}"""),
+                parseHome = { _, _ -> error("typed home api should reject wrapper before parser") }
+            )
+
+        val result = source.loadHome(priority = DataRequestPriority.Visible)
+
+        assertTrue(result is DataResult.Error)
+        assertEquals("home_direct_messages_contract_mismatch", (result as DataResult.Error).error.code)
+    }
+
+    @Test
+    fun loadHomeRejectsGuessedUnreadCountWrappersBeforeParser() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = FakeHomeApi(unreadCountsBody = """[{"channelId":"channel-1","unreadCount":1}]"""),
+                parseHome = { _, _ -> error("typed home api should reject unread array before parser") }
+            )
+
+        val result = source.loadHome(priority = DataRequestPriority.Visible)
+
+        assertTrue(result is DataResult.Error)
+        assertEquals("home_unread_counts_contract_mismatch", (result as DataResult.Error).error.code)
+    }
+
+    @Test
+    fun loadHomeRejectsGuessedServerUnreadSummaryWrapperBeforeParser() = runBlocking {
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = FakeHomeApi(serverUnreadSummaryBody = """{"unreadCount":24}"""),
+                parseHome = { _, _ -> error("typed home api should reject summary object before parser") }
+            )
+
+        val result = source.loadHome(priority = DataRequestPriority.Visible)
+
+        assertTrue(result is DataResult.Error)
+        assertEquals("home_server_unread_summary_contract_mismatch", (result as DataResult.Error).error.code)
+    }
+
+    @Test
     fun loadHomeUsesRequestedServerForEveryApiCallAndSessionSelection() = runBlocking {
         val sessionStore =
             InMemorySlockAuthSessionStore(
@@ -136,15 +196,20 @@ class HomeDataSourceTest {
         assertEquals(null, latest.complete(latestGeneration, ServerId("server-b")).pendingServerId)
     }
 
-    private class FakeHomeApi : SlockHomeApi {
+    private class FakeHomeApi(
+        private val channelsBody: String = "[]",
+        private val directMessagesBody: String = "[]",
+        private val unreadCountsBody: String = "{}",
+        private val serverUnreadSummaryBody: String = "[]"
+    ) : SlockHomeApi {
         var calls: Int = 0
 
-        override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse = ok().also { calls++ }
-        override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse = ok().also { calls++ }
-        override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse = ok().also { calls++ }
-        override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse = ok().also { calls++ }
+        override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse = ok(channelsBody).also { calls++ }
+        override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse = ok(directMessagesBody).also { calls++ }
+        override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse = ok(unreadCountsBody).also { calls++ }
+        override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse = ok(serverUnreadSummaryBody).also { calls++ }
 
-        private fun ok(): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = "{}")
+        private fun ok(body: String): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = body)
     }
 
     private class ThrowingHomeApi : SlockHomeApi {
@@ -190,7 +255,12 @@ class HomeDataSourceTest {
 
         private fun ok(name: String, serverId: ServerId): HomeNetworkResponse {
             calls += "$name:${serverId.value}"
-            return HomeNetworkResponse(code = 200, bodyText = "{}")
+            val body =
+                when (name) {
+                    "channels", "dms", "summary" -> "[]"
+                    else -> "{}"
+                }
+            return HomeNetworkResponse(code = 200, bodyText = body)
         }
     }
 

@@ -39,10 +39,10 @@ Android/KMP consumers:
 
 | Area | Android/KMP endpoint | Upstream endpoint | Status | Notes |
 | --- | --- | --- | --- | --- |
-| Home channels | `GET channels?archived=exclude/include/only` | `channelRouter.get("/")` | Match | Upstream returns an array and validates `archived`. |
-| Home DMs | `GET channels/dm` / `POST channels/dm` | `channelRouter.get/post("/dm")` | Match | Canonical display fields are `peerName`, `peerDisplayName`, `peerAvatarUrl`, `peerType`. Root `name` is not the peer display source. |
-| Unread counts | `GET channels/unread`, `POST channels/{id}/read`, `read-all`, `unread` | `channelRouter.get("/unread")`, `post("/:id/read")`, etc. | Match | `read` requires body `{ seq }`; `read-all` returns `{ ok, seq }`; `unread` returns `{ ok, unreadCount }`. |
-| Server unread summary | `GET servers/unread-summary` | `serverRouter.get("/unread-summary")` | Match | Upstream returns an array of `{ serverId, unreadCount }`. |
+| Home channels | `GET channels?archived=exclude/include/only` | `channelRouter.get("/")` | Typed first slice | Shared Home now passes list calls through `SlockHomeApiClient`; upstream returns a root array and validates `archived`. |
+| Home DMs | `GET channels/dm` / `POST channels/dm` | `channelRouter.get/post("/dm")` | Typed first slice | Shared Home now rejects guessed wrapper objects before the parser. Canonical display fields are `peerName`, `peerDisplayName`, `peerAvatarUrl`, `peerType`; root `name` is not the peer display source. |
+| Unread counts | `GET channels/unread`, `POST channels/{id}/read`, `read-all`, `unread` | `channelRouter.get("/unread")`, `post("/:id/read")`, etc. | Typed first slice | Shared Home requires the root unread-count response to be an object. `read` requires body `{ seq }`; `read-all` returns `{ ok, seq }`; `unread` returns `{ ok, unreadCount }`. |
+| Server unread summary | `GET servers/unread-summary` | `serverRouter.get("/unread-summary")` | Typed first slice | Shared Home requires a root array of `{ serverId, unreadCount }`. |
 | Messages page | `GET messages/channel/{channelId}?limit=&before=` | `messageRouter.get("/channel/:channelId")` | Match | Upstream also supports `after`; KMP currently uses `before` for older page and `sync` for newer page. |
 | Message sync | `GET messages/sync?since_seq=&limit=&channel_id=` | `messageRouter.get("/sync")` | Match | Query names are authoritative: `since_seq`, `channel_id`, `limit`. |
 | Message context | `GET messages/context/{messageId}` | `messageRouter.get("/context/:messageId")` | Match | Optional `channelId` query supports short-id context resolution; Android/KMP does not yet expose that optional query everywhere. |
@@ -78,7 +78,7 @@ responses are still acceptable only at the lowest network/bridge boundary.
 | Server invites/join links | `POST/GET/DELETE servers/:id/invites`, `POST/GET/DELETE join-links`, `join-community` | Partially typed | Missing | Typed Settings facade wires create invite only. Invite list/delete and join-link create/list/delete are real upstream routes but still disabled/not exposed in Android/KMP Settings. |
 | Machines/runtime | `GET/POST/PATCH/DELETE machines`, rotate-key, workspaces, runtime-models | Partially typed | Missing | Typed Settings facade wires list machines and direct-array workspaces. Missing create/update/delete/rotate-key/runtime models. |
 | Billing | `GET billing/subscription`, `POST checkout`, `POST portal` | Partially typed | Missing | Typed Settings facade wires subscription only. Checkout/portal are real upstream routes but not wired, so Billing actions cannot be called from Android/KMP yet. |
-| Channels core | `GET/POST/PATCH channels`, detail, join/leave, archive/unarchive/delete, files | Partially wired | Partial | Wired: list/create/join/leave/archive/delete/files. Missing PATCH, detail, unarchive. |
+| Channels core | `GET/POST/PATCH channels`, detail, join/leave, archive/unarchive/delete, files | Partially typed | Partial | Shared Home list/DM/unread-summary reads are typed. Legacy channel create/join/leave/archive/delete/files still need typed API facades. Missing PATCH, detail, unarchive. |
 | Channel members/agents | `GET/POST/DELETE channels/:id/members`, `GET/POST/DELETE agents`, stop-all/resume-all | Partially wired | Partial | Wired: members list/add/remove. Missing channel agents list/add/remove and stop/resume-all agents. |
 | Channel inbox/followed/saved | inbox, inbox done/read-all, followed threads, saved list/save/delete/check | Partially wired | Partial | Wired: inbox list/read-all, followed/follow/unfollow/done/undone, saved list/save/delete. Missing inbox item done and saved check. Saved write paths fixed in this pass. |
 | Threads | `POST channels/:id/threads`, `GET channels/:id/threads`, `GET channels/:id/threads/:messageId` | Partially wired | Partial | Wired create/open/list. Missing thread detail endpoint, and task #197/#196 cover pagination/realtime but not all action parity. |
@@ -134,7 +134,16 @@ responses are still acceptable only at the lowest network/bridge boundary.
   Migration-era wrappers such as `data.nodes`, `members`, `usage.rows`,
   `billing.plan`, and generic `ok/success/sent` invite responses now fail at the
   typed API boundary for these paths.
-- Home, Tasks, Files/attachments/search/reactions, Push, Integrations, Actions,
+- Home first slice is now typed at the shared product boundary:
+  `SlockHomeApiClient.homePayload` wraps `SlockHomeApi.channels/directMessages/channelUnreadCounts/serverUnreadSummary`
+  before `SharedHomeDataSource` calls the Home parser. The upstream shapes are
+  enforced before parser aliases run: `GET channels` and `GET channels/dm` must
+  be root arrays, `GET channels/unread` must be a root object, and
+  `GET servers/unread-summary` must be a root array. Guessed wrappers such as
+  `{ channels: [...] }`, `{ directMessages: [...] }`, unread arrays, and
+  `{ unreadCount }` server-summary objects now fail with explicit contract
+  mismatch errors on the shared Home product path.
+- Tasks, Files/attachments/search/reactions, Push, Integrations, Actions,
   Announcements, and Reminders still need the same typed API facade treatment.
   They should not keep expanding raw JSON aliases inside repositories or UI
   stores without a source-backed contract.
@@ -162,6 +171,9 @@ The Android repository still contains broad migration-era alias parsing. Some
 aliases are useful for backwards compatibility, but they should not hide a
 broken upstream contract. High-risk examples:
 
+- Home parser direct unit tests still cover historical wrapper shapes, but the
+  shared Home data source no longer accepts those shapes from network responses.
+  Keep any future aliases out of product paths unless backed by upstream source.
 - Home/DM display fallback to root `name`/`channelName`/`title` can recreate the
   old DM bug where current user name is shown for the peer. Peer display should
   use `peerDisplayName ?: peerName` and treat missing peer fields as an API
