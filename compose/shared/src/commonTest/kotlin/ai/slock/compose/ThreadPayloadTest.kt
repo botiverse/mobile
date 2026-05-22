@@ -8,6 +8,7 @@ import ai.slock.compose.model.ThreadId
 import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -609,7 +610,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun sharedShellHidesUnsupportedThreadEventAffordances() {
+    fun sharedShellKeepsSupportedThreadEventAffordances() {
         val payload =
             KuiklyThreadScreenPayload(
                 instanceId = "thread-channel-1",
@@ -625,14 +626,45 @@ class ThreadPayloadTest {
                 showSettingsAction = true
             ).withSharedShellEventCapabilities()
 
-        assertEquals(false, payload.showReplyActions)
-        assertEquals(false, payload.showOpenInChannelAction)
-        assertEquals(false, payload.showMessageSaveAction)
-        assertEquals(false, payload.showTaskOpenActions)
-        assertEquals(false, payload.showTaskStatusActions)
-        assertEquals(false, payload.canLoadMoreBefore)
-        assertEquals(false, payload.canLoadMoreAfter)
+        assertEquals(true, payload.showReplyActions)
+        assertEquals(true, payload.showOpenInChannelAction)
+        assertEquals(true, payload.showMessageSaveAction)
+        assertEquals(true, payload.showTaskOpenActions)
+        assertEquals(true, payload.showTaskStatusActions)
+        assertEquals(true, payload.canLoadMoreBefore)
+        assertEquals(true, payload.canLoadMoreAfter)
         assertEquals(false, payload.canAddMembers)
         assertEquals(false, payload.showSettingsAction)
+    }
+
+    @Test
+    fun parsesUploadedAttachmentsForSharedComposer() {
+        val attachments =
+            parseSharedThreadUploadedAttachments(
+                JSONObject().apply {
+                    put(
+                        "bodyText",
+                        """
+                        {
+                          "data": {
+                            "attachments": [
+                              {
+                                "id": "att-1",
+                                "fileName": "report.pdf",
+                                "mimeType": "application/pdf",
+                                "sizeLabel": "12 KB"
+                              }
+                            ]
+                          }
+                        }
+                        """.trimIndent()
+                    )
+                }
+            )
+
+        assertEquals(1, attachments.size)
+        assertEquals("att-1", attachments.first().id)
+        assertEquals("report.pdf", attachments.first().fileName)
+        assertEquals("application/pdf", attachments.first().mimeType)
     }
 }

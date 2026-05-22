@@ -14,12 +14,15 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.util.Base64
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.lifecycleScope
@@ -27,6 +30,7 @@ import ai.slock.android.R
 import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
+import ai.slock.android.core.data.auth.KtorAuthRepository
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.realtime.SessionRealtimeRepository
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
@@ -61,6 +65,8 @@ import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import com.caverock.androidsvg.SVG
 import com.google.gson.Gson
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
@@ -83,6 +89,15 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private var realtimeConnectJob: Job? = null
     private var realtimeServerId: ServerId? = null
     private var realtimeLastSeq: Long = 0L
+    private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
+    private val threadImageAttachmentPickerLauncher: ActivityResultLauncher<String> =
+            registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+                handleThreadAttachmentPickerResult(uris)
+            }
+    private val threadFileAttachmentPickerLauncher: ActivityResultLauncher<String> =
+            registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+                handleThreadAttachmentPickerResult(uris)
+            }
 
     private val pageName: String
         get() = intent.getStringExtra(KEY_PAGE_NAME).takeUnless { it.isNullOrBlank() } ?: PAGE_ROUTER
@@ -130,6 +145,151 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             SlockKuiklyBridgeModule(applicationContext)
         }
     }
+
+    internal fun requestThreadAttachmentUpload(
+            channelId: String,
+            imageOnly: Boolean,
+            callback: KuiklyRenderCallback?
+    ) {
+        if (pendingThreadAttachmentUpload != null) {
+            callback?.invoke(
+                    mapOf(
+                            "code" to 409,
+                            "bodyText" to "",
+                            "errorCode" to "attachment_picker_busy",
+                            "errorBodyText" to "Attachment picker already open"
+                    )
+            )
+            return
+        }
+        pendingThreadAttachmentUpload =
+                PendingThreadAttachmentUpload(channelId = channelId, callback = callback)
+        runCatching {
+                    if (imageOnly) {
+                        threadImageAttachmentPickerLauncher.launch("image/*")
+                    } else {
+                        threadFileAttachmentPickerLauncher.launch("*/*")
+                    }
+                }
+                .onFailure { throwable ->
+                    pendingThreadAttachmentUpload = null
+                    callback?.invoke(
+                            mapOf(
+                                    "code" to 0,
+                                    "bodyText" to "",
+                                    "errorCode" to "attachment_picker_unavailable",
+                                    "errorBodyText" to (throwable.message ?: "Attachment picker unavailable")
+                            )
+                    )
+                }
+    }
+
+    private fun handleThreadAttachmentPickerResult(uris: List<Uri>) {
+        val pending = pendingThreadAttachmentUpload ?: return
+        pendingThreadAttachmentUpload = null
+        if (uris.isEmpty()) {
+            pending.callback?.invoke(mapOf("code" to 204, "bodyText" to ""))
+            return
+        }
+        Thread {
+                    val result =
+                            runCatching {
+                                        uploadThreadAttachments(
+                                                channelId = pending.channelId,
+                                                uris = uris
+                                        )
+                                    }
+                                    .getOrElse { throwable ->
+                                        mapOf(
+                                                "code" to 0,
+                                                "bodyText" to "",
+                                                "errorCode" to "attachment_upload_failed",
+                                                "errorBodyText" to (throwable.message ?: "Attachment upload failed")
+                                        )
+                                    }
+                    pending.callback?.invoke(result)
+                }
+                .start()
+    }
+
+    private fun uploadThreadAttachments(channelId: String, uris: List<Uri>): Map<String, Any> {
+        val session = runBlocking { EncryptedAuthSessionStore(applicationContext).readSession() }
+        val token = session?.accessToken.orEmpty()
+        val serverId = session?.currentServerId.orEmpty()
+        if (token.isBlank() || serverId.isBlank()) {
+            return mapOf(
+                    "code" to 401,
+                    "bodyText" to "",
+                    "errorCode" to "auth_required",
+                    "errorBodyText" to "Auth required"
+            )
+        }
+        val files = uris.mapNotNull(::readPickedThreadAttachment)
+        if (files.isEmpty()) {
+            return mapOf(
+                    "code" to 400,
+                    "bodyText" to "",
+                    "errorCode" to "attachment_read_failed",
+                    "errorBodyText" to "No readable attachments"
+            )
+        }
+        val boundary = "SlockBoundary${System.currentTimeMillis()}"
+        val url = URL("${KtorAuthRepository.BASE_URL.trimEnd('/')}/attachments/upload")
+        val connection =
+                (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 30_000
+                    readTimeout = 60_000
+                    doOutput = true
+                    setRequestProperty("Accept", "application/json")
+                    setRequestProperty("Authorization", "Bearer $token")
+                    setRequestProperty("X-Server-Id", serverId)
+                    setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+                }
+        DataOutputStream(connection.outputStream).use { output ->
+            output.writeMultipartField(boundary, "channelId", channelId)
+            files.forEach { file ->
+                output.writeMultipartFile(boundary, file)
+            }
+            output.writeBytes("--$boundary--\r\n")
+            output.flush()
+        }
+        val code = connection.responseCode
+        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+        val body = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
+        return mapOf(
+                "code" to code,
+                "bodyText" to if (code in 200..299) body else "",
+                "errorCode" to if (code in 200..299) "" else "attachment_upload_failed",
+                "errorBodyText" to if (code in 200..299) "" else body
+        )
+    }
+
+    private fun readPickedThreadAttachment(uri: Uri): PickedThreadAttachment? {
+        val fileName = queryPickedFileName(uri) ?: uri.lastPathSegment ?: "attachment"
+        val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
+        val bytes = contentResolver.openInputStream(uri)?.use { input ->
+            ByteArrayOutputStream().use { output ->
+                input.copyTo(output)
+                output.toByteArray()
+            }
+        } ?: return null
+        return PickedThreadAttachment(
+                fileName = fileName,
+                mimeType = mimeType,
+                bytes = bytes
+        )
+    }
+
+    private fun queryPickedFileName(uri: Uri): String? =
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            cursor.getString(0)
+                        } else {
+                            null
+                        }
+                    }
 
     override fun registerExternalRenderView(kuiklyRenderExport: IKuiklyRenderExport) {
         super.registerExternalRenderView(kuiklyRenderExport)
@@ -390,6 +550,37 @@ internal object SlockKuiklyAdapters {
         }
     }
 }
+
+private data class PendingThreadAttachmentUpload(
+        val channelId: String,
+        val callback: KuiklyRenderCallback?
+)
+
+private data class PickedThreadAttachment(
+        val fileName: String,
+        val mimeType: String,
+        val bytes: ByteArray
+)
+
+private fun DataOutputStream.writeMultipartField(boundary: String, name: String, value: String) {
+    writeBytes("--$boundary\r\n")
+    writeBytes("Content-Disposition: form-data; name=\"$name\"\r\n\r\n")
+    write(value.toByteArray(StandardCharsets.UTF_8))
+    writeBytes("\r\n")
+}
+
+private fun DataOutputStream.writeMultipartFile(boundary: String, file: PickedThreadAttachment) {
+    writeBytes("--$boundary\r\n")
+    writeBytes(
+            "Content-Disposition: form-data; name=\"files\"; filename=\"${file.fileName.sanitizeMultipartFileName()}\"\r\n"
+    )
+    writeBytes("Content-Type: ${file.mimeType}\r\n\r\n")
+    write(file.bytes)
+    writeBytes("\r\n")
+}
+
+private fun String.sanitizeMultipartFileName(): String =
+        replace("\"", "_").replace("\r", "_").replace("\n", "_")
 
 private object SlockKuiklyRouterAdapter : IKRRouterAdapter {
     override fun openPage(context: Context, pageName: String, pageData: JSONObject) {
@@ -718,6 +909,22 @@ internal class SlockKuiklyBridgeModule(
             }
             "threadEvent" -> {
                 dispatchLegacyIslandEvent(method = method, params = params)
+                null
+            }
+            "threadAttachmentUpload" -> {
+                val request = JSONObject(params ?: "{}")
+                (activity as? SlockKuiklyActivity)?.requestThreadAttachmentUpload(
+                        channelId = request.optString("channelId"),
+                        imageOnly = request.optBoolean("imageOnly", false),
+                        callback = callback
+                ) ?: callback?.invoke(
+                        mapOf(
+                                "code" to 0,
+                                "bodyText" to "",
+                                "errorCode" to "attachment_picker_unavailable",
+                                "errorBodyText" to "Attachment picker unavailable"
+                        )
+                )
                 null
             }
             "authRequest" -> {

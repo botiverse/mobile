@@ -46,6 +46,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+
+private val sharedThreadStoreJson = Json { ignoreUnknownKeys = true }
 
 internal class SharedThreadDataSource(
     private val api: SharedThreadNetworkApi,
@@ -137,11 +145,133 @@ internal class SharedThreadDataSource(
             call = { threadId -> api.messageSync(threadId, sinceSeq = afterSeq, limit = SharedThreadPageSize) }
         )
 
-    suspend fun sendMessage(channelId: String, body: String, asTask: Boolean): HomeNetworkResponse =
-        api.sendMessage(channelId = channelId, body = body, asTask = asTask)
+    suspend fun sendMessage(
+        channelId: String,
+        body: String,
+        asTask: Boolean,
+        attachmentIds: List<String> = emptyList()
+    ): HomeNetworkResponse =
+        api.sendMessage(channelId = channelId, body = body, asTask = asTask, attachmentIds = attachmentIds)
 
     suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse =
         api.attachmentUrl(attachmentId)
+
+    suspend fun saveMessage(messageId: String): DataResult<Unit> {
+        if (messageId.isBlank()) {
+            return DataResult.Error(ScreenError(code = "message_id_missing", retryable = false))
+        }
+        val response =
+            try {
+                api.saveMessage(messageId)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return DataResult.Error(ScreenError(code = "thread_save_network", retryable = true))
+            }
+        return if (response.isSuccessful) {
+            DataResult.Content(Unit)
+        } else {
+            DataResult.Error(
+                ScreenError(
+                    code = response.errorBodyText?.takeIf { it.isNotBlank() } ?: "thread_save_network",
+                    retryable = true
+                )
+            )
+        }
+    }
+
+    suspend fun updateTaskStatus(taskId: String, status: TaskStatus): DataResult<KuiklyThreadScreenPayload> {
+        if (taskId.isBlank()) {
+            return DataResult.Error(ScreenError(code = "task_id_missing", retryable = false))
+        }
+        val response =
+            try {
+                api.updateTaskStatus(taskId, status)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return DataResult.Error(ScreenError(code = "thread_task_status_network", retryable = true))
+            }
+        return if (response.isSuccessful) {
+            val currentPayload = payloadCache.values.firstOrNull { payload ->
+                payload.messages.any { it.taskId == taskId } ||
+                    payload.originMessage?.taskId == taskId ||
+                    payload.tasks.any { it.id == taskId }
+            }
+            val updatedPayload = currentPayload?.withTaskStatus(taskId, status)
+            if (updatedPayload != null) {
+                cachePayload(updatedPayload)
+                writeCachedPayload(updatedPayload)
+            }
+            DataResult.Content(updatedPayload ?: KuiklyThreadScreenPayload())
+        } else {
+            DataResult.Error(
+                ScreenError(
+                    code = response.errorBodyText?.takeIf { it.isNotBlank() } ?: "thread_task_status_network",
+                    retryable = true
+                )
+            )
+        }
+    }
+
+    suspend fun createOrOpenReplyThread(
+        basePayload: KuiklyThreadScreenPayload,
+        parentMessage: KuiklyThreadMessageItem
+    ): DataResult<KuiklyThreadScreenPayload> {
+        val parentChannelId =
+            basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
+                ?: return DataResult.Error(ScreenError(code = "thread_parent_channel_missing", retryable = false))
+        val response =
+            try {
+                api.createOrOpenThread(parentChannelId, parentMessage.id)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true))
+            }
+        if (!response.isSuccessful) {
+            return DataResult.Error(
+                ScreenError(
+                    code = response.errorBodyText?.takeIf { it.isNotBlank() } ?: "thread_reply_network",
+                    retryable = true
+                )
+            )
+        }
+        val threadChannelId =
+            parseSharedThreadActionChannelId(response.bodyText)
+                ?: parentMessage.id
+        val replyBase =
+            basePayload.copy(
+                instanceId = "shared-shell-thread-$threadChannelId",
+                title = "Message Threads",
+                subtitle = basePayload.title,
+                status = "loading",
+                sourceThreadId = threadChannelId,
+                navigationLabel = "Close",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                showOpenInChannelAction = true,
+                originMessage = parentMessage,
+                originParentMessageId = parentMessage.id,
+                originStatus = "loaded",
+                messages = emptyList(),
+                canLoadMoreBefore = false,
+                canLoadMoreAfter = false
+            )
+        return when (val loaded = fetchThreadPayload(replyBase)) {
+            is DataResult.Content -> DataResult.Content(
+                loaded.data.copy(
+                    originMessage = loaded.data.originMessage ?: parentMessage,
+                    originParentMessageId = loaded.data.originParentMessageId ?: parentMessage.id,
+                    originStatus = if (loaded.data.originMessage != null) loaded.data.originStatus else "loaded"
+                )
+            )
+            is DataResult.Empty -> loaded
+            is DataResult.Error -> loaded
+            is DataResult.NoPermission -> loaded
+        }
+    }
 
     suspend fun writeRealtimeEvent(event: RealtimeEvent) {
         val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
@@ -214,6 +344,36 @@ internal class SharedThreadDataSource(
 }
 
 private const val SharedThreadPageSize = 50
+
+internal fun parseSharedThreadActionChannelId(bodyText: String?): String? {
+    val root =
+        bodyText
+            ?.takeIf { it.isNotBlank() }
+            ?.let { source -> runCatching { sharedThreadStoreJson.parseToJsonElement(source) }.getOrNull() }
+            ?: return null
+    fun JsonElement.findThreadChannelId(): String? =
+        when (this) {
+            is JsonPrimitive -> null
+            is JsonArray -> firstNotNullOfOrNull { it.findThreadChannelId() }
+            is JsonObject -> {
+                listOf(
+                    "threadChannelId",
+                    "thread_channel_id",
+                    "threadId",
+                    "thread_id",
+                    "streamChannelId",
+                    "stream_channel_id",
+                    "channelId",
+                    "channel_id",
+                    "id"
+                ).firstNotNullOfOrNull { key ->
+                    (this[key] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
+                } ?: listOf("data", "thread", "channel", "conversation", "result")
+                    .firstNotNullOfOrNull { key -> this[key]?.findThreadChannelId() }
+            }
+        }
+    return root.findThreadChannelId()
+}
 
 internal data class SharedThreadState(
     val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
@@ -641,6 +801,19 @@ private fun KuiklyThreadScreenPayload.removeRealtimeTask(taskId: TaskId): Kuikly
         messages = messages.map { message -> if (message.taskId == taskId.value) message.withoutTask() else message },
         originMessage = originMessage?.let { message -> if (message.taskId == taskId.value) message.withoutTask() else message },
         tasks = tasks.filterNot { task -> task.id == taskId.value }
+    )
+
+internal fun KuiklyThreadScreenPayload.withTaskStatus(taskId: String, status: TaskStatus): KuiklyThreadScreenPayload =
+    copy(
+        messages = messages.map { message ->
+            if (message.taskId == taskId) message.copy(taskStatus = status.name) else message
+        },
+        originMessage = originMessage?.let { message ->
+            if (message.taskId == taskId) message.copy(taskStatus = status.name) else message
+        },
+        tasks = tasks.map { task ->
+            if (task.id == taskId) task.copy(status = status.name) else task
+        }
     )
 
 private fun Message.matchesSharedThread(

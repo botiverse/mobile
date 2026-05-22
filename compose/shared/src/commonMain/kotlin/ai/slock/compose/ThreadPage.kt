@@ -8,7 +8,9 @@ import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklyRelationalStore
 import ai.slock.compose.data.RelationalComposeLocalDataStore
 import ai.slock.compose.data.StoredAuthSession
+import ai.slock.compose.data.DataResult
 import ai.slock.compose.markdown.SlockMarkdownBody
+import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
@@ -156,13 +158,7 @@ internal data class KuiklyThreadScreenPayload(
 
 internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): KuiklyThreadScreenPayload =
     copy(
-        showReplyActions = false,
-        showOpenInChannelAction = false,
-        showMessageSaveAction = false,
-        showTaskOpenActions = false,
-        showTaskStatusActions = false,
-        canLoadMoreBefore = false,
-        canLoadMoreAfter = false,
+        showOpenInChannelAction = showOpenInChannelAction || originParentMessageId?.isNotBlank() == true,
         canAddMembers = false,
         showSettingsAction = false
     )
@@ -342,7 +338,9 @@ internal fun SharedThreadRouteContent(
     initialPayload: KuiklyThreadScreenPayload,
     bridge: ai.slock.compose.base.BridgeModule,
     dataSource: SharedThreadDataSource,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
+    onOpenParentThread: () -> Boolean = { false }
 ) {
     val threadViewModel: SharedThreadViewModel =
         viewModel(key = "shared-thread-${initialPayload.sourceThreadId ?: initialPayload.instanceId}") {
@@ -355,6 +353,10 @@ internal fun SharedThreadRouteContent(
     var composerSyncNonce by remember(initialPayload.instanceId) { mutableStateOf(0) }
     var composerSending by remember(initialPayload.instanceId) { mutableStateOf(false) }
     var composerFailureLabel by remember(initialPayload.instanceId) { mutableStateOf<String?>(null) }
+    var removedAttachmentIds by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
+    var uploadedAttachments by remember(initialPayload.instanceId) {
+        mutableStateOf<List<SharedThreadComposerAttachment>>(emptyList())
+    }
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(initialPayload) {
@@ -364,6 +366,8 @@ internal fun SharedThreadRouteContent(
         composerSyncNonce = composer.syncNonce
         composerSending = false
         composerFailureLabel = null
+        removedAttachmentIds = emptySet()
+        uploadedAttachments = emptyList()
         threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
     }
 
@@ -381,10 +385,36 @@ internal fun SharedThreadRouteContent(
             composerSyncNonce,
             composerSending,
             composerFailureLabel,
+            removedAttachmentIds,
+            uploadedAttachments,
             payload.canSend
         ) {
+            val pendingAttachments =
+                (renderedComposerPayload.pendingAttachments.map { attachment ->
+                    SharedThreadComposerAttachment(
+                        id = attachment.id,
+                        fileName = attachment.fileName,
+                        sizeLabel = attachment.sizeLabel,
+                        mimeType = attachment.mimeType,
+                        status = attachment.status
+                    )
+                } + uploadedAttachments)
+                    .distinctBy { attachment -> attachment.id }
+                    .filterNot { attachment -> attachment.id in removedAttachmentIds }
             payload.appShellComposerPayload(
-                baseComposer = renderedComposerPayload,
+                baseComposer =
+                    renderedComposerPayload.copy(
+                        pendingAttachments =
+                            pendingAttachments.map { attachment ->
+                                KuiklyPendingAttachmentItem(
+                                    id = attachment.id,
+                                    fileName = attachment.fileName,
+                                    sizeLabel = attachment.sizeLabel,
+                                    mimeType = attachment.mimeType,
+                                    status = attachment.status
+                                )
+                            }
+                    ),
                 seedText = composerDraftText,
                 seedAsTask = composerDraftAsTask,
                 syncNonce = composerSyncNonce,
@@ -449,6 +479,94 @@ internal fun SharedThreadRouteContent(
                         bridge.toast("Copied")
                     }
                 }
+                action == "openMessageThread" && !itemId.isNullOrBlank() -> {
+                    val parentMessage =
+                        renderedPayload.messages.firstOrNull { it.id == itemId }
+                            ?: renderedPayload.originMessage?.takeIf { it.id == itemId }
+                    if (parentMessage == null) {
+                        bridge.toast("Unable to open replies")
+                        return@ThreadPageContent
+                    }
+                    coroutineScope.launch {
+                        when (val result = dataSource.createOrOpenReplyThread(renderedPayload, parentMessage)) {
+                            is DataResult.Content -> onOpenThreadPayload(result.data)
+                            is DataResult.Empty -> bridge.toast("Unable to open replies")
+                            is DataResult.Error -> bridge.toast("Unable to open replies")
+                            is DataResult.NoPermission -> bridge.toast("Unable to open replies")
+                        }
+                    }
+                }
+                action == "openParentMessage" -> {
+                    if (!onOpenParentThread()) {
+                        onBack()
+                    }
+                }
+                action == "saveMessage" && !itemId.isNullOrBlank() -> {
+                    coroutineScope.launch {
+                        when (dataSource.saveMessage(itemId)) {
+                            is DataResult.Content -> bridge.toast("Saved")
+                            is DataResult.Empty -> bridge.toast("Unable to save message")
+                            is DataResult.Error -> bridge.toast("Unable to save message")
+                            is DataResult.NoPermission -> bridge.toast("Unable to save message")
+                        }
+                    }
+                }
+                action == "openTask" && !itemId.isNullOrBlank() -> {
+                    bridge.toast("Task #${itemId.takeLast(6)}")
+                }
+                action == "setTaskStatus" && !itemId.isNullOrBlank() && !tab.isNullOrBlank() -> {
+                    val status = tab.toSharedThreadTaskStatus()
+                    if (status == null) {
+                        bridge.toast("Unsupported task status")
+                        return@ThreadPageContent
+                    }
+                    coroutineScope.launch {
+                        when (val result = dataSource.updateTaskStatus(itemId, status)) {
+                            is DataResult.Content -> {
+                                val nextPayload =
+                                    result.data.takeIf { it.instanceId.isNotBlank() }
+                                        ?: renderedPayload.withTaskStatus(itemId, status)
+                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(nextPayload))
+                                bridge.toast("Task updated")
+                            }
+                            is DataResult.Empty -> bridge.toast("Unable to update task")
+                            is DataResult.Error -> bridge.toast("Unable to update task")
+                            is DataResult.NoPermission -> bridge.toast("Unable to update task")
+                        }
+                    }
+                }
+                action == "markTaskDone" && !itemId.isNullOrBlank() -> {
+                    coroutineScope.launch {
+                        when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Done)) {
+                            is DataResult.Content -> {
+                                val nextPayload =
+                                    result.data.takeIf { it.instanceId.isNotBlank() }
+                                        ?: renderedPayload.withTaskStatus(itemId, TaskStatus.Done)
+                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(nextPayload))
+                                bridge.toast("Task updated")
+                            }
+                            is DataResult.Empty -> bridge.toast("Unable to update task")
+                            is DataResult.Error -> bridge.toast("Unable to update task")
+                            is DataResult.NoPermission -> bridge.toast("Unable to update task")
+                        }
+                    }
+                }
+                action == "reopenTask" && !itemId.isNullOrBlank() -> {
+                    coroutineScope.launch {
+                        when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Todo)) {
+                            is DataResult.Content -> {
+                                val nextPayload =
+                                    result.data.takeIf { it.instanceId.isNotBlank() }
+                                        ?: renderedPayload.withTaskStatus(itemId, TaskStatus.Todo)
+                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(nextPayload))
+                                bridge.toast("Task updated")
+                            }
+                            is DataResult.Empty -> bridge.toast("Unable to update task")
+                            is DataResult.Error -> bridge.toast("Unable to update task")
+                            is DataResult.NoPermission -> bridge.toast("Unable to update task")
+                        }
+                    }
+                }
                 action == "selectTab" -> {
                     // The shared shell owns tab state locally. There is no fullscreen host event to forward.
                 }
@@ -479,7 +597,10 @@ internal fun SharedThreadRouteContent(
                 "send" -> {
                     val threadId = payload.sourceThreadId?.takeIf { it.isNotBlank() }
                     val draftText = composerDraftText.trim()
-                    if (!payload.canSend || composerSending || threadId == null || draftText.isBlank()) {
+                    val attachmentIds = composerPayload.pendingAttachments.map { it.id }.filter { it.isNotBlank() }
+                    if (!payload.canSend || composerSending || threadId == null ||
+                        (draftText.isBlank() && attachmentIds.isEmpty())
+                    ) {
                         return@ThreadPageContent
                     }
                     val draftAsTask = composerDraftAsTask
@@ -494,7 +615,8 @@ internal fun SharedThreadRouteContent(
                                 dataSource.sendMessage(
                                     channelId = threadId,
                                     body = draftText,
-                                    asTask = draftAsTask
+                                    asTask = draftAsTask,
+                                    attachmentIds = attachmentIds
                                 )
                             }.getOrElse {
                                 composerSending = false
@@ -541,6 +663,41 @@ internal fun SharedThreadRouteContent(
                 "retryThreadLoad" -> {
                     threadViewModel.dispatch(SharedThreadIntent.Refresh)
                 }
+                "attachImage", "attachFile" -> {
+                    coroutineScope.launch {
+                        val channelId = renderedPayload.sourceThreadId ?: renderedPayload.instanceId
+                        val response =
+                            bridge.threadAttachmentUpload(
+                                channelId = channelId,
+                                imageOnly = action == "attachImage"
+                            )
+                        val uploaded = parseSharedThreadUploadedAttachments(response)
+                        if (uploaded.isEmpty()) {
+                            response?.optString("errorCode")?.takeIf { it.isNotBlank() }?.let { error ->
+                                bridge.toast("Attachment upload failed: $error")
+                            }
+                        } else {
+                            uploadedAttachments =
+                                (uploadedAttachments + uploaded).distinctBy { attachment -> attachment.id }
+                            removedAttachmentIds =
+                                removedAttachmentIds - uploaded.map { attachment -> attachment.id }.toSet()
+                            composerFailureLabel = null
+                            composerSyncNonce += 1
+                        }
+                    }
+                }
+                "removeAttachment" -> {
+                    attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
+                        removedAttachmentIds = removedAttachmentIds + id
+                        composerSyncNonce += 1
+                    }
+                }
+                "retryAttachments" -> {
+                    attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
+                        removedAttachmentIds = removedAttachmentIds - id
+                        composerSyncNonce += 1
+                    }
+                }
                 else -> {
                     bridge.composerEvent(
                         instanceId = composerPayload.instanceId.ifBlank { payload.instanceId },
@@ -577,6 +734,47 @@ internal fun parseSharedThreadAttachmentOpenUrl(bodyText: String?): String? =
         }.getOrNull()
     }
 
+internal fun parseSharedThreadUploadedAttachments(response: JSONObject?): List<SharedThreadComposerAttachment> {
+    val bodyText = response?.optString("bodyText").orEmpty()
+    if (bodyText.isBlank()) return emptyList()
+    return runCatching {
+        threadPageJson.parseToJsonElement(bodyText)
+            .collectThreadAttachmentObjects()
+            .mapIndexedNotNull { index, item ->
+                val id = item.threadString("id", "attachmentId", "attachment_id", "_id")
+                    ?: return@mapIndexedNotNull null
+                SharedThreadComposerAttachment(
+                    id = id,
+                    fileName = item.threadString("name", "filename", "fileName", "title") ?: "Attachment ${index + 1}",
+                    sizeLabel = item.threadString("sizeLabel", "size_label", "size").orEmpty(),
+                    mimeType = item.threadString("mimeType", "mime_type", "contentType", "content_type"),
+                    status = "ready"
+                )
+            }
+            .distinctBy { attachment -> attachment.id }
+    }.getOrElse {
+        emptyList()
+    }
+}
+
+private fun JsonElement.collectThreadAttachmentObjects(): List<JsonObject> =
+    when (this) {
+        is JsonArray -> flatMap { it.collectThreadAttachmentObjects() }
+        is JsonObject -> {
+            val direct =
+                if (threadString("id", "attachmentId", "attachment_id", "_id") != null) {
+                    listOf(this)
+                } else {
+                    emptyList()
+                }
+            val nested =
+                listOf("attachments", "attachment", "files", "file", "data", "result", "uploaded")
+                    .flatMap { key -> this[key]?.collectThreadAttachmentObjects().orEmpty() }
+            direct + nested
+        }
+        else -> emptyList()
+    }
+
 private fun KuiklyThreadScreenPayload.appShellComposerPayload(
     seedText: String,
     seedAsTask: Boolean,
@@ -598,7 +796,16 @@ private fun KuiklyThreadScreenPayload.appShellComposerPayload(
             showAsTaskToggle = baseComposer.showAsTaskToggle,
             composerMode = composerMode,
             statusLabel = statusLabel,
-            pendingAttachments = emptyList(),
+            pendingAttachments =
+                baseComposer.pendingAttachments.map { attachment ->
+                    SharedThreadComposerAttachment(
+                        id = attachment.id,
+                        fileName = attachment.fileName,
+                        sizeLabel = attachment.sizeLabel,
+                        mimeType = attachment.mimeType,
+                        status = attachment.status
+                    )
+                },
             memberSuggestions =
                 baseComposer.memberSuggestions.map { member ->
                     SharedThreadComposerMemberSuggestion(
@@ -615,6 +822,16 @@ private fun KuiklyThreadScreenPayload.appShellComposerPayload(
                 }
         )
     )
+
+private fun String.toSharedThreadTaskStatus(): TaskStatus? =
+    when (trim().lowercase().replace("-", "").replace("_", "").replace(" ", "")) {
+        "todo" -> TaskStatus.Todo
+        "inprogress" -> TaskStatus.InProgress
+        "inreview" -> TaskStatus.InReview
+        "done", "complete", "completed" -> TaskStatus.Done
+        "closed" -> TaskStatus.Closed
+        else -> null
+    }
 
 internal fun parseThreadScreenPayload(
     payload: String,

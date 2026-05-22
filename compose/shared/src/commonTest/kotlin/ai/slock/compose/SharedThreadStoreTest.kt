@@ -1,7 +1,8 @@
 package ai.slock.compose
 
-import ai.slock.compose.data.HomeNetworkResponse
 import ai.slock.compose.data.ComposeLocalWriteThrough
+import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.HomeNetworkResponse
 import ai.slock.compose.data.InMemoryComposeLocalDataStore
 import ai.slock.compose.data.InMemorySlockAuthSessionStore
 import ai.slock.compose.data.SharedThreadNetworkApi
@@ -328,6 +329,109 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun sendMessageForwardsAttachmentIds() = runBlocking {
+        val api = FakeThreadApi()
+        val dataSource =
+            SharedThreadDataSource(
+                api = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+
+        dataSource.sendMessage(
+            channelId = "channel-1",
+            body = "with files",
+            asTask = false,
+            attachmentIds = listOf("att-1", "att-2")
+        )
+
+        assertEquals(listOf("att-1", "att-2"), api.lastAttachmentIds)
+    }
+
+    @Test
+    fun saveMessageCallsThreadApi() = runBlocking {
+        val api = FakeThreadApi()
+        val dataSource =
+            SharedThreadDataSource(
+                api = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+
+        dataSource.saveMessage("m1")
+
+        assertEquals(listOf("m1"), api.savedMessageIds)
+    }
+
+    @Test
+    fun updateTaskStatusUpdatesCachedPayloadAndPersistentSnapshot() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        val api = FakeThreadApi()
+        val dataSource =
+            SharedThreadDataSource(
+                api = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val payload =
+            contentPayload("task body").copy(
+                messages =
+                    listOf(
+                        contentPayload("task body").messages.single().copy(
+                            taskId = "task-1",
+                            taskStatus = "Todo"
+                        )
+                    ),
+                tasks =
+                    listOf(
+                        KuiklyThreadTaskItem(
+                            id = "task-1",
+                            title = "#44 Task",
+                            status = "Todo",
+                            taskNumber = 44
+                        )
+                    )
+            )
+        dataSource.cachePayload(payload)
+
+        val result = dataSource.updateTaskStatus("task-1", TaskStatus.Done)
+
+        val updated = (result as DataResult.Content).data
+        assertEquals("Done", updated.messages.single().taskStatus)
+        assertEquals("Done", updated.tasks.single().status)
+        assertEquals("Done", localStore.readThread(ThreadId("channel-1"))?.tasks?.single()?.status?.name)
+        assertEquals(listOf("task-1" to TaskStatus.Done), api.updatedTaskStatuses)
+    }
+
+    @Test
+    fun createOrOpenReplyThreadFetchesReplyChannelAndPreservesOrigin() = runBlocking {
+        val api = FakeThreadApi(bodyText = messagesResponse("reply body", id = "reply-1", seq = 11))
+        val dataSource =
+            SharedThreadDataSource(
+                api = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val base = contentPayload("parent body")
+        val parent = base.messages.single()
+
+        val result = dataSource.createOrOpenReplyThread(base, parent)
+
+        val payload = (result as DataResult.Content).data
+        assertEquals("thread-m1", payload.sourceThreadId)
+        assertEquals("parent body", payload.originMessage?.body)
+        assertEquals("m1", payload.originParentMessageId)
+        assertEquals("reply body", payload.messages.single().body)
+        assertEquals(listOf("channel-1" to "m1"), api.createdThreads)
+        assertEquals(listOf("thread-m1"), api.channelIds.takeLast(1))
+    }
+
+    @Test
+    fun parsesThreadActionChannelIdFromNestedResponse() {
+        assertEquals(
+            "reply-channel-1",
+            parseSharedThreadActionChannelId("""{"data":{"thread":{"threadChannelId":"reply-channel-1"}}}""")
+        )
+    }
+
+    @Test
     fun loadOlderMessagesMergesBeforeVisiblePayloadAndWritesCache() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -393,9 +497,15 @@ class SharedThreadStoreTest {
         val readAllChannels: MutableList<String> = mutableListOf()
         val beforeSeqs: MutableList<Long> = mutableListOf()
         val syncSinceSeqs: MutableList<Long> = mutableListOf()
+        val channelIds: MutableList<String> = mutableListOf()
+        var lastAttachmentIds: List<String> = emptyList()
+        val savedMessageIds: MutableList<String> = mutableListOf()
+        val updatedTaskStatuses: MutableList<Pair<String, TaskStatus>> = mutableListOf()
+        val createdThreads: MutableList<Pair<String, String>> = mutableListOf()
 
         override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): HomeNetworkResponse {
             channelMessageCalls += 1
+            channelIds += threadId
             if (failChannelMessages) throw IllegalStateException("offline")
             return if (beforeSeq != null) {
                 beforeSeqs += beforeSeq
@@ -410,8 +520,15 @@ class SharedThreadStoreTest {
             return HomeNetworkResponse(code = 200, bodyText = newerBodyText)
         }
 
-        override suspend fun sendMessage(channelId: String, body: String, asTask: Boolean): HomeNetworkResponse =
-            HomeNetworkResponse(code = 200, bodyText = messagesResponse(body))
+        override suspend fun sendMessage(
+            channelId: String,
+            body: String,
+            asTask: Boolean,
+            attachmentIds: List<String>
+        ): HomeNetworkResponse {
+            lastAttachmentIds = attachmentIds
+            return HomeNetworkResponse(code = 200, bodyText = messagesResponse(body))
+        }
 
         override suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"url":"https://cdn.example/$attachmentId"}""")
@@ -423,6 +540,21 @@ class SharedThreadStoreTest {
             } else {
                 HomeNetworkResponse(code = 200, bodyText = "{}")
             }
+        }
+
+        override suspend fun saveMessage(messageId: String): HomeNetworkResponse {
+            savedMessageIds += messageId
+            return HomeNetworkResponse(code = 200, bodyText = """{"id":"$messageId","saved":true}""")
+        }
+
+        override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse {
+            updatedTaskStatuses += taskId to status
+            return HomeNetworkResponse(code = 200, bodyText = """{"id":"$taskId","status":"${status.name}"}""")
+        }
+
+        override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse {
+            createdThreads += channelId to parentMessageId
+            return HomeNetworkResponse(code = 200, bodyText = """{"data":{"threadChannelId":"thread-$parentMessageId"}}""")
         }
     }
 

@@ -192,9 +192,17 @@ internal class BridgeTasksApi(
 internal interface SharedThreadNetworkApi {
     suspend fun channelMessages(threadId: String, limit: Int = 50, beforeSeq: Long? = null): HomeNetworkResponse
     suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int = 50): HomeNetworkResponse
-    suspend fun sendMessage(channelId: String, body: String, asTask: Boolean = false): HomeNetworkResponse
+    suspend fun sendMessage(
+        channelId: String,
+        body: String,
+        asTask: Boolean = false,
+        attachmentIds: List<String> = emptyList()
+    ): HomeNetworkResponse
     suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse
     suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse
+    suspend fun saveMessage(messageId: String): HomeNetworkResponse
+    suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse
+    suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse
 }
 
 internal class BridgeThreadApi(
@@ -221,7 +229,8 @@ internal class BridgeThreadApi(
     override suspend fun sendMessage(
         channelId: String,
         body: String,
-        asTask: Boolean
+        asTask: Boolean,
+        attachmentIds: List<String>
     ): HomeNetworkResponse =
         request(
             path = "messages",
@@ -229,7 +238,7 @@ internal class BridgeThreadApi(
             bodyText = buildSharedThreadSendMessageBody(
                 channelId = channelId,
                 body = body,
-                attachmentIds = emptyList(),
+                attachmentIds = attachmentIds,
                 asTask = asTask
             )
         )
@@ -239,6 +248,25 @@ internal class BridgeThreadApi(
 
     override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse =
         request(path = "channels/${channelId.trim()}/read-all", method = "POST")
+
+    override suspend fun saveMessage(messageId: String): HomeNetworkResponse =
+        request(path = "messages/${messageId.trim()}/save", method = "POST")
+
+    override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse =
+        request(
+            path = "tasks/${taskId.trim()}/status",
+            method = "PATCH",
+            bodyText = buildSharedTaskStatusBody(status)
+        )
+
+    override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse =
+        request(
+            path = "channels/${channelId.trim()}/threads",
+            method = "POST",
+            bodyText = bridgeAuthJson.encodeToString(
+                mapOf("parentMessageId" to parentMessageId.trim())
+            )
+        )
 
     private suspend fun request(
         path: String,

@@ -140,6 +140,16 @@ internal class BridgeModule : Module() {
             }
         }
 
+    suspend fun threadAttachmentUpload(channelId: String, imageOnly: Boolean): JSONObject? =
+        suspendCoroutine { continuation ->
+            val methodArgs = JSONObject()
+            methodArgs.put("channelId", channelId)
+            methodArgs.put("imageOnly", imageOnly)
+            callNativeMethod("threadAttachmentUpload", methodArgs) {
+                continuation.resume(it)
+            }
+        }
+
     fun openPage(
         url: String,
         closeCurPage: Boolean = false,

@@ -411,6 +411,7 @@ private fun SlockAppShellContent() {
             )
         }
     var activeThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
+    var threadBackStack by remember { mutableStateOf<List<KuiklyThreadScreenPayload>>(emptyList()) }
     val authGateViewModel: SharedAuthGateViewModel =
         viewModel(key = "shared-auth-gate") {
             SharedAuthGateViewModel(authDataSource)
@@ -464,11 +465,13 @@ private fun SlockAppShellContent() {
                     authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session))
                     selectedTab = "home"
                     activeThreadPayload = null
+                    threadBackStack = emptyList()
                 },
                 onSignOut = {
                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
                     selectedTab = "home"
                     activeThreadPayload = null
+                    threadBackStack = emptyList()
                 }
             )
             return
@@ -485,14 +488,30 @@ private fun SlockAppShellContent() {
     }
 
     fun popThreadRoute(): Boolean {
+        if (threadBackStack.isNotEmpty()) {
+            activeThreadPayload = threadBackStack.last()
+            threadBackStack = threadBackStack.dropLast(1)
+            return true
+        }
         if (navController.currentRoute != AppShellRouteThread && !navController.canNavigateBack) {
             return false
         }
         val popped = navController.popBackStack()
         if (popped) {
             activeThreadPayload = null
+            threadBackStack = emptyList()
         }
         return popped
+    }
+
+    fun openThreadPayload(payload: KuiklyThreadScreenPayload) {
+        activeThreadPayload?.let { currentPayload ->
+            threadBackStack = threadBackStack + currentPayload
+        }
+        activeThreadPayload = payload
+        if (navController.currentRoute != AppShellRouteThread) {
+            navController.navigate(AppShellRouteThread)
+        }
     }
 
     fun popMainRoute(): Boolean {
@@ -568,7 +587,17 @@ private fun SlockAppShellContent() {
                     initialPayload = payload,
                     bridge = bridge,
                     dataSource = threadDataSource,
-                    onBack = { popThreadRoute() }
+                    onBack = { popThreadRoute() },
+                    onOpenThreadPayload = { payload -> openThreadPayload(payload) },
+                    onOpenParentThread = {
+                        if (threadBackStack.isNotEmpty()) {
+                            activeThreadPayload = threadBackStack.last()
+                            threadBackStack = threadBackStack.dropLast(1)
+                            true
+                        } else {
+                            false
+                        }
+                    }
                 )
             }
         }
@@ -592,6 +621,7 @@ private fun SlockAppShellContent() {
                                     selectedTab = "home"
                                     selectedSettingsDestination = SettingsDestinationHome
                                     activeThreadPayload = null
+                                    threadBackStack = emptyList()
                                 }
                             )
                         }
@@ -607,6 +637,7 @@ private fun SlockAppShellContent() {
                                 onIntent = homeViewModel::dispatch,
                                 onOpenConversation = { conversation ->
                                     activeThreadPayload = buildAppShellThreadPayload(conversation, threadTimeContext)
+                                    threadBackStack = emptyList()
                                     navController.navigate(AppShellRouteThread)
                                 }
                             )
