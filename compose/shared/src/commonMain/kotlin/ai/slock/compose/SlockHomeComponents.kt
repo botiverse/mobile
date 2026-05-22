@@ -71,8 +71,8 @@ private val HomeSmallShadowOffset = 2.dp
 private val SidebarActivityBottomGap = 4.dp
 private val SidebarRowHorizontalPadding = 8.dp
 private val SidebarActionLabelGap = 10.dp
-private val ChannelSymbolWidth = 22.dp
-private val ChannelSymbolFontSize = 16.sp
+private val ChannelSymbolWidth = 18.dp
+private val ChannelSymbolIconSize = 14.dp
 private val ChannelAvatarSize = 20.dp
 private val ChannelAvatarFontSize = 11.sp
 private val ChannelRowHeight = 32.dp
@@ -982,7 +982,17 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.width(ChannelSymbolWidth), contentAlignment = Alignment.Center) {
-                if (avatarLabel != null) ChannelAvatar(avatarWireValue, avatarLabel, presence) else Text(symbol, style = SlockType.ButtonBold.copy(fontSize = ChannelSymbolFontSize), color = SlockColor.TextBlack.copy(alpha = if (joined) 0.62f else 0.32f), textAlign = TextAlign.Center)
+                if (avatarLabel != null) {
+                    ChannelAvatar(avatarWireValue, avatarLabel, presence)
+                } else if (symbol == "#") {
+                    SlockLucideIcon(
+                        "hash",
+                        Modifier.size(ChannelSymbolIconSize),
+                        color = if (joined) "#FF000000" else "#75000000"
+                    )
+                } else {
+                    Text(symbol, style = SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f), textAlign = TextAlign.Center)
+                }
             }
             Text(name, style = SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f), modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (badge != null) Spacer(Modifier.width(SlockSpacing.Sm)) else if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
