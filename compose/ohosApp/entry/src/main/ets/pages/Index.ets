@@ -1,4 +1,4 @@
-import { ErrorReason, KRRecord, Kuikly, KuiklyRenderBaseView } from '@kuikly-open/render';
+import { ErrorReason, KRNativeRenderController, KRRecord, Kuikly, KuiklyRenderBaseView } from '@kuikly-open/render';
 import deviceInfo from '@ohos.deviceInfo';
 import router from '@ohos.router';
 import { KuiklyViewDelegate } from '../kuikly/KuiklyViewDelegate';
@@ -14,6 +14,7 @@ const HDS_TAB_BAR_SYSCAP = 'SystemCapability.UIDesign.HDSComponent.Core';
 @Component
 struct Index {
   kuiklyViewDelegate = new KuiklyViewDelegate();
+  controller?: KRNativeRenderController;
   pageName?: string;
   pageData?: KRRecord;
   @StorageLink(SAFE_AREA_TOP_PX) safeAreaTopPx: number = 0;
@@ -35,6 +36,9 @@ struct Index {
         pagerData: this.pageDataWithSafeArea(),
         delegate: this.kuiklyViewDelegate,
         nativeManager: globalNativeManager,
+        onControllerReadyCallback: (controller: KRNativeRenderController) => {
+          this.controller = controller;
+        },
         onRenderException: (exception: Error, reason: ErrorReason) => {
           this.exception = `${exception.name}:\n${exception.message}`;
         },
@@ -54,6 +58,10 @@ struct Index {
 
   onPageHide(): void {
     this.kuiklyViewDelegate.pageDidDisappear();
+  }
+
+  onBackPress(): boolean {
+    return this.controller?.onBackPress() ?? false;
   }
 
   private pageDataWithSafeArea(): KRRecord {
