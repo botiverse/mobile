@@ -597,19 +597,6 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun parsesAttachmentOpenTargetUrlAliases() {
-        assertEquals(
-            "https://cdn.slock.ai/attachment.png",
-            parseSharedThreadAttachmentOpenUrl("""{"url":"https://cdn.slock.ai/attachment.png"}""")
-        )
-        assertEquals(
-            "https://cdn.slock.ai/download.png",
-            parseSharedThreadAttachmentOpenUrl("""{"downloadUrl":"https://cdn.slock.ai/download.png"}""")
-        )
-        assertEquals(null, parseSharedThreadAttachmentOpenUrl("""{"url":""}"""))
-    }
-
-    @Test
     fun sharedShellKeepsSupportedThreadEventAffordances() {
         val payload =
             KuiklyThreadScreenPayload(

@@ -1,14 +1,18 @@
 package ai.slock.compose
 
 import ai.slock.compose.data.DataResult
-import ai.slock.compose.data.HomeNetworkResponse
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.ReadReceiptResult
 import ai.slock.compose.data.ScreenError
-import ai.slock.compose.data.SharedThreadNetworkApi
 import ai.slock.compose.data.SlockAuthSessionStore
+import ai.slock.compose.data.SlockThreadApi
+import ai.slock.compose.data.SlockThreadApiClient
 import ai.slock.compose.data.StoredAuthSession
+import ai.slock.compose.data.SharedThreadNetworkApi
 import ai.slock.compose.data.ThreadSnapshot
+import ai.slock.compose.data.ThreadApiResult
+import ai.slock.compose.data.ThreadAttachmentOpenTarget
+import ai.slock.compose.data.ThreadMessagesPage
 import ai.slock.compose.model.Attachment
 import ai.slock.compose.model.AttachmentId
 import ai.slock.compose.model.AvatarReference
@@ -46,20 +50,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
-
-private val sharedThreadStoreJson = Json { ignoreUnknownKeys = true }
 
 internal class SharedThreadDataSource(
-    private val api: SharedThreadNetworkApi,
+    private val api: SlockThreadApi,
     private val sessionStore: SlockAuthSessionStore,
     private val localWriteThrough: ComposeLocalWriteThrough? = null
 ) {
+    constructor(
+        networkApi: SharedThreadNetworkApi,
+        sessionStore: SlockAuthSessionStore,
+        localWriteThrough: ComposeLocalWriteThrough? = null
+    ) : this(
+        api = SlockThreadApiClient(networkApi),
+        sessionStore = sessionStore,
+        localWriteThrough = localWriteThrough
+    )
+
     private val payloadCache = mutableMapOf<String, KuiklyThreadScreenPayload>()
 
     suspend fun readSession(): StoredAuthSession? = sessionStore.readSession()
@@ -106,18 +112,16 @@ internal class SharedThreadDataSource(
             } catch (_: Throwable) {
                 return DataResult.Error(ScreenError(code = "thread_network", retryable = true))
             }
-        if (!response.isSuccessful || response.bodyText.isNullOrBlank()) {
-            return DataResult.Error(
-                ScreenError(
-                    code = response.errorBodyText?.takeIf { it.isNotBlank() } ?: "thread_network",
-                    retryable = true
-                )
-            )
-        }
+        val page =
+            when (response) {
+                is ThreadApiResult.Success -> response.data
+                is ThreadApiResult.Failure ->
+                    return response.toThreadDataError("thread_network")
+            }
         val payload =
             buildSharedThreadPayloadFromMessagesResponse(
                 basePayload = basePayload,
-                bodyText = response.bodyText,
+                bodyText = page.rawBodyText,
                 session = session
             )
         cachePayload(payload)
@@ -150,10 +154,10 @@ internal class SharedThreadDataSource(
         body: String,
         asTask: Boolean,
         attachmentIds: List<String> = emptyList()
-    ): HomeNetworkResponse =
+    ): ThreadApiResult<ThreadMessagesPage> =
         api.sendMessage(channelId = channelId, body = body, asTask = asTask, attachmentIds = attachmentIds)
 
-    suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse =
+    suspend fun attachmentUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget> =
         api.attachmentUrl(attachmentId)
 
     suspend fun saveMessage(messageId: String): DataResult<Unit> {
@@ -168,16 +172,7 @@ internal class SharedThreadDataSource(
             } catch (_: Throwable) {
                 return DataResult.Error(ScreenError(code = "thread_save_network", retryable = true))
             }
-        return if (response.isSuccessful) {
-            DataResult.Content(Unit)
-        } else {
-            DataResult.Error(
-                ScreenError(
-                    code = response.errorBodyText?.takeIf { it.isNotBlank() } ?: "thread_save_network",
-                    retryable = true
-                )
-            )
-        }
+        return response.toUnitDataResult("thread_save_network")
     }
 
     suspend fun updateTaskStatus(taskId: String, status: TaskStatus): DataResult<KuiklyThreadScreenPayload> {
@@ -192,25 +187,21 @@ internal class SharedThreadDataSource(
             } catch (_: Throwable) {
                 return DataResult.Error(ScreenError(code = "thread_task_status_network", retryable = true))
             }
-        return if (response.isSuccessful) {
-            val currentPayload = payloadCache.values.firstOrNull { payload ->
-                payload.messages.any { it.taskId == taskId } ||
-                    payload.originMessage?.taskId == taskId ||
-                    payload.tasks.any { it.id == taskId }
+        return when (response) {
+            is ThreadApiResult.Success -> {
+                val currentPayload = payloadCache.values.firstOrNull { payload ->
+                    payload.messages.any { it.taskId == taskId } ||
+                        payload.originMessage?.taskId == taskId ||
+                        payload.tasks.any { it.id == taskId }
+                }
+                val updatedPayload = currentPayload?.withTaskStatus(taskId, status)
+                if (updatedPayload != null) {
+                    cachePayload(updatedPayload)
+                    writeCachedPayload(updatedPayload)
+                }
+                DataResult.Content(updatedPayload ?: KuiklyThreadScreenPayload())
             }
-            val updatedPayload = currentPayload?.withTaskStatus(taskId, status)
-            if (updatedPayload != null) {
-                cachePayload(updatedPayload)
-                writeCachedPayload(updatedPayload)
-            }
-            DataResult.Content(updatedPayload ?: KuiklyThreadScreenPayload())
-        } else {
-            DataResult.Error(
-                ScreenError(
-                    code = response.errorBodyText?.takeIf { it.isNotBlank() } ?: "thread_task_status_network",
-                    retryable = true
-                )
-            )
+            is ThreadApiResult.Failure -> response.toThreadDataError("thread_task_status_network")
         }
     }
 
@@ -229,17 +220,14 @@ internal class SharedThreadDataSource(
             } catch (_: Throwable) {
                 return DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true))
             }
-        if (!response.isSuccessful) {
-            return DataResult.Error(
-                ScreenError(
-                    code = response.errorBodyText?.takeIf { it.isNotBlank() } ?: "thread_reply_network",
-                    retryable = true
-                )
-            )
-        }
+        val action =
+            when (response) {
+                is ThreadApiResult.Success -> response.data
+                is ThreadApiResult.Failure ->
+                    return response.toThreadDataError("thread_reply_network")
+            }
         val threadChannelId =
-            parseSharedThreadActionChannelId(response.bodyText)
-                ?: parentMessage.id
+            action.threadChannelId.value
         val replyBase =
             basePayload.copy(
                 instanceId = "shared-shell-thread-$threadChannelId",
@@ -291,25 +279,20 @@ internal class SharedThreadDataSource(
             } catch (_: Throwable) {
                 return DataResult.Error(ScreenError(code = "thread_read_receipt_network", retryable = true))
             }
-        return if (response.isSuccessful) {
+        return if (response is ThreadApiResult.Success) {
             val id = ChannelId(channelId)
             val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
             localWriteThrough?.clearConversationUnread(id, "shared_thread_read_all", serverId)
             DataResult.Content(ReadReceiptResult(channelId = id, changed = true))
         } else {
-            DataResult.Error(
-                ScreenError(
-                    code = response.errorBodyText?.takeIf { it.isNotBlank() } ?: "thread_read_receipt_network",
-                    retryable = true
-                )
-            )
+            (response as ThreadApiResult.Failure).toThreadDataError("thread_read_receipt_network")
         }
     }
 
     private suspend fun fetchThreadPage(
         basePayload: KuiklyThreadScreenPayload,
         source: String,
-        call: suspend (threadId: String) -> HomeNetworkResponse
+        call: suspend (threadId: String) -> ThreadApiResult<ThreadMessagesPage>
     ): DataResult<KuiklyThreadScreenPayload> {
         val threadId =
             basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
@@ -325,55 +308,37 @@ internal class SharedThreadDataSource(
             } catch (_: Throwable) {
                 return DataResult.Error(ScreenError(code = "thread_${source}_network", retryable = true))
             }
-        if (!response.isSuccessful || response.bodyText.isNullOrBlank()) {
-            return DataResult.Error(
-                ScreenError(
-                    code = response.errorBodyText?.takeIf { it.isNotBlank() } ?: "thread_${source}_network",
-                    retryable = true
-                )
-            )
-        }
+        val page =
+            when (response) {
+                is ThreadApiResult.Success -> response.data
+                is ThreadApiResult.Failure ->
+                    return response.toThreadDataError("thread_${source}_network")
+            }
         return DataResult.Content(
             buildSharedThreadPayloadFromMessagesResponse(
                 basePayload = basePayload,
-                bodyText = response.bodyText,
+                bodyText = page.rawBodyText,
                 session = session
             )
         )
     }
 }
 
-private const val SharedThreadPageSize = 50
+private fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): DataResult.Error =
+    DataResult.Error(
+        ScreenError(
+            code = contractCode ?: errorBodyText?.takeIf { it.isNotBlank() } ?: fallbackCode,
+            retryable = contractCode == null
+        )
+    )
 
-internal fun parseSharedThreadActionChannelId(bodyText: String?): String? {
-    val root =
-        bodyText
-            ?.takeIf { it.isNotBlank() }
-            ?.let { source -> runCatching { sharedThreadStoreJson.parseToJsonElement(source) }.getOrNull() }
-            ?: return null
-    fun JsonElement.findThreadChannelId(): String? =
-        when (this) {
-            is JsonPrimitive -> null
-            is JsonArray -> firstNotNullOfOrNull { it.findThreadChannelId() }
-            is JsonObject -> {
-                listOf(
-                    "threadChannelId",
-                    "thread_channel_id",
-                    "threadId",
-                    "thread_id",
-                    "streamChannelId",
-                    "stream_channel_id",
-                    "channelId",
-                    "channel_id",
-                    "id"
-                ).firstNotNullOfOrNull { key ->
-                    (this[key] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
-                } ?: listOf("data", "thread", "channel", "conversation", "result")
-                    .firstNotNullOfOrNull { key -> this[key]?.findThreadChannelId() }
-            }
-        }
-    return root.findThreadChannelId()
-}
+private fun ThreadApiResult<Unit>.toUnitDataResult(fallbackCode: String): DataResult<Unit> =
+    when (this) {
+        is ThreadApiResult.Success -> DataResult.Content(Unit)
+        is ThreadApiResult.Failure -> toThreadDataError(fallbackCode)
+    }
+
+private const val SharedThreadPageSize = 50
 
 internal data class SharedThreadState(
     val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),

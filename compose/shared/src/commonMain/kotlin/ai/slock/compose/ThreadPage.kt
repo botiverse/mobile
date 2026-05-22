@@ -9,6 +9,7 @@ import ai.slock.compose.data.KuiklyRelationalStore
 import ai.slock.compose.data.RelationalComposeLocalDataStore
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.formatSlockTimestampLabel
@@ -283,7 +284,7 @@ private fun ThreadPageScreen() {
     val dataSource =
         remember {
             SharedThreadDataSource(
-                api = BridgeThreadApi(bridge, authStore),
+                networkApi = BridgeThreadApi(bridge, authStore),
                 sessionStore = authStore,
                 localWriteThrough = localWriteThrough
             )
@@ -626,13 +627,26 @@ internal fun SharedThreadRouteContent(
                                 composerSyncNonce += 1
                                 return@launch
                             }
-                        if (!sendResponse.isSuccessful) {
+                        val sentPage =
+                            when (sendResponse) {
+                                is ThreadApiResult.Success -> sendResponse.data
+                                is ThreadApiResult.Failure -> {
+                                    composerSending = false
+                                    composerDraftText = draftText
+                                    composerDraftAsTask = draftAsTask
+                                    composerFailureLabel =
+                                        sendResponse.contractCode
+                                            ?: sendResponse.errorBodyText?.takeIf { it.isNotBlank() }
+                                            ?: "Send failed. Try again."
+                                    composerSyncNonce += 1
+                                    return@launch
+                                }
+                            }
+                        if (sentPage.rawBodyText.isBlank()) {
                             composerSending = false
                             composerDraftText = draftText
                             composerDraftAsTask = draftAsTask
-                            composerFailureLabel =
-                                sendResponse.errorBodyText?.takeIf { it.isNotBlank() }
-                                    ?: "Send failed. Try again."
+                            composerFailureLabel = "Send failed. Try again."
                             composerSyncNonce += 1
                             return@launch
                         }
@@ -642,13 +656,13 @@ internal fun SharedThreadRouteContent(
                             }.getOrNull()
                         if (refreshed is ai.slock.compose.data.DataResult.Content) {
                             threadViewModel.dispatch(SharedThreadIntent.SetPayload(refreshed.data))
-                        } else if (!sendResponse.bodyText.isNullOrBlank()) {
+                        } else if (sentPage.rawBodyText.isNotBlank()) {
                             val session = dataSource.readSession()
                             threadViewModel.dispatch(
                                 SharedThreadIntent.SetPayload(
                                     appendSharedThreadSentMessageFromResponse(
                                         basePayload = payload,
-                                        bodyText = sendResponse.bodyText,
+                                        bodyText = sentPage.rawBodyText,
                                         session = session
                                     )
                                 )
@@ -717,22 +731,11 @@ private suspend fun openSharedThreadAttachment(
     dataSource: SharedThreadDataSource,
     attachmentId: String
 ) {
-    val response = dataSource.attachmentUrl(attachmentId)
-    val url = parseSharedThreadAttachmentOpenUrl(response.bodyText)
-    if (response.isSuccessful && !url.isNullOrBlank()) {
-        bridge.openUrl(url)
-    } else {
-        bridge.toast("Unable to open attachment")
+    when (val response = dataSource.attachmentUrl(attachmentId)) {
+        is ThreadApiResult.Success -> bridge.openUrl(response.data.url)
+        is ThreadApiResult.Failure -> bridge.toast("Unable to open attachment")
     }
 }
-
-internal fun parseSharedThreadAttachmentOpenUrl(bodyText: String?): String? =
-    bodyText?.takeIf { it.isNotBlank() }?.let { source ->
-        runCatching {
-            (threadPageJson.parseToJsonElement(source) as? JsonObject)
-                ?.threadString("url", "href", "downloadUrl", "download_url")
-        }.getOrNull()
-    }
 
 internal fun parseSharedThreadUploadedAttachments(response: JSONObject?): List<SharedThreadComposerAttachment> {
     val bodyText = response?.optString("bodyText").orEmpty()

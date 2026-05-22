@@ -41,7 +41,7 @@ class SharedThreadStoreTest {
         val api = FakeThreadApi(failChannelMessages = true)
         val dataSource =
             SharedThreadDataSource(
-                api = api,
+                networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
         dataSource.cachePayload(contentPayload("cached body"))
@@ -62,7 +62,7 @@ class SharedThreadStoreTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
             SharedThreadDataSource(
-                api = api,
+                networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -109,7 +109,7 @@ class SharedThreadStoreTest {
         val api = FakeThreadApi(failChannelMessages = true)
         val dataSource =
             SharedThreadDataSource(
-                api = api,
+                networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
@@ -131,7 +131,7 @@ class SharedThreadStoreTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
             SharedThreadDataSource(
-                api = api,
+                networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
@@ -150,7 +150,7 @@ class SharedThreadStoreTest {
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             SharedThreadDataSource(
-                api = FakeThreadApi(failChannelMessages = true),
+                networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
@@ -184,7 +184,7 @@ class SharedThreadStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource =
             SharedThreadDataSource(
-                api = FakeThreadApi(failChannelMessages = true),
+                networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
         dataSource.cachePayload(contentPayload("cached body"))
@@ -215,7 +215,7 @@ class SharedThreadStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource =
             SharedThreadDataSource(
-                api = FakeThreadApi(failChannelMessages = true),
+                networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
         dataSource.cachePayload(contentPayload("cached body"))
@@ -248,7 +248,7 @@ class SharedThreadStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource =
             SharedThreadDataSource(
-                api = FakeThreadApi(failChannelMessages = true),
+                networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
         val initial =
@@ -314,7 +314,7 @@ class SharedThreadStoreTest {
         val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
         val dataSource =
             SharedThreadDataSource(
-                api = api,
+                networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 localWriteThrough = ComposeLocalWriteThrough(InMemoryComposeLocalDataStore())
             )
@@ -333,7 +333,7 @@ class SharedThreadStoreTest {
         val api = FakeThreadApi()
         val dataSource =
             SharedThreadDataSource(
-                api = api,
+                networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
 
@@ -352,7 +352,7 @@ class SharedThreadStoreTest {
         val api = FakeThreadApi()
         val dataSource =
             SharedThreadDataSource(
-                api = api,
+                networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
 
@@ -367,7 +367,7 @@ class SharedThreadStoreTest {
         val api = FakeThreadApi()
         val dataSource =
             SharedThreadDataSource(
-                api = api,
+                networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
@@ -406,7 +406,7 @@ class SharedThreadStoreTest {
         val api = FakeThreadApi(bodyText = messagesResponse("reply body", id = "reply-1", seq = 11))
         val dataSource =
             SharedThreadDataSource(
-                api = api,
+                networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
         val base = contentPayload("parent body")
@@ -424,14 +424,6 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun parsesThreadActionChannelIdFromNestedResponse() {
-        assertEquals(
-            "reply-channel-1",
-            parseSharedThreadActionChannelId("""{"data":{"thread":{"threadChannelId":"reply-channel-1"}}}""")
-        )
-    }
-
-    @Test
     fun loadOlderMessagesMergesBeforeVisiblePayloadAndWritesCache() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -442,7 +434,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             SharedThreadDataSource(
-                api = api,
+                networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
@@ -466,11 +458,11 @@ class SharedThreadStoreTest {
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, hasMore = false, hasNextPage = true),
-                newerBodyText = messagesResponse("newer body", id = "m12", seq = 12, hasNextPage = false)
+                newerBodyText = syncResponse("newer body", id = "m12", seq = 12)
             )
         val dataSource =
             SharedThreadDataSource(
-                api = api,
+                networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -554,7 +546,7 @@ class SharedThreadStoreTest {
 
         override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse {
             createdThreads += channelId to parentMessageId
-            return HomeNetworkResponse(code = 200, bodyText = """{"data":{"threadChannelId":"thread-$parentMessageId"}}""")
+            return HomeNetworkResponse(code = 200, bodyText = """{"threadChannelId":"thread-$parentMessageId","parentMessageId":"$parentMessageId","created":true}""")
         }
     }
 
@@ -600,20 +592,40 @@ class SharedThreadStoreTest {
         ): String =
             """
             {
-              "data": {
-                "hasMore": $hasMore,
-                "hasNextPage": $hasNextPage,
-                "messages": [
-                  {
-                    "id": "$id",
-                    "seq": $seq,
-                    "body": "$body",
-                    "createdAt": "2026-05-19T16:00:00Z",
-                    "author": {"id": "u1", "displayName": "Artin"}
-                  }
-                ]
-              }
+              "hasMore": $hasMore,
+              "hasNextPage": $hasNextPage,
+              "historyLimited": false,
+              "messages": [
+                {
+                  "id": "$id",
+                  "seq": $seq,
+                  "content": "$body",
+                  "createdAt": "2026-05-19T16:00:00Z",
+                  "senderId": "u1",
+                  "senderName": "Artin",
+                  "senderType": "user"
+                }
+              ]
             }
+            """.trimIndent()
+
+        private fun syncResponse(
+            body: String,
+            id: String = "m1",
+            seq: Long = 10
+        ): String =
+            """
+            [
+              {
+                "id": "$id",
+                "seq": $seq,
+                "content": "$body",
+                "createdAt": "2026-05-19T16:00:00Z",
+                "senderId": "u1",
+                "senderName": "Artin",
+                "senderType": "user"
+              }
+            ]
             """.trimIndent()
     }
 }

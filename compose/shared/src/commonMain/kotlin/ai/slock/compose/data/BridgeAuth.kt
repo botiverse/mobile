@@ -5,7 +5,6 @@ import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -250,7 +249,11 @@ internal class BridgeThreadApi(
         request(path = "channels/${channelId.trim()}/read-all", method = "POST")
 
     override suspend fun saveMessage(messageId: String): HomeNetworkResponse =
-        request(path = "messages/${messageId.trim()}/save", method = "POST")
+        request(
+            path = "channels/saved",
+            method = "POST",
+            bodyText = bridgeAuthJson.encodeToString(mapOf("messageId" to messageId.trim()))
+        )
 
     override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse =
         request(
@@ -307,29 +310,6 @@ internal class BridgeThreadApi(
         )
     }
 }
-
-@Serializable
-private data class SharedThreadSendMessageBody(
-    val channelId: String,
-    val content: String,
-    val attachmentIds: List<String> = emptyList(),
-    val asTask: Boolean = false
-)
-
-internal fun buildSharedThreadSendMessageBody(
-    channelId: String,
-    body: String,
-    attachmentIds: List<String> = emptyList(),
-    asTask: Boolean = false
-): String =
-    bridgeAuthJson.encodeToString(
-        SharedThreadSendMessageBody(
-            channelId = channelId,
-            content = body,
-            attachmentIds = attachmentIds,
-            asTask = asTask
-        )
-    )
 
 internal class KuiklyAuthSessionStore(
     private val store: SlockRelationalStore

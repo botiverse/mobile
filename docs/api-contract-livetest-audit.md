@@ -82,8 +82,8 @@ responses are still acceptable only at the lowest network/bridge boundary.
 | Channel members/agents | `GET/POST/DELETE channels/:id/members`, `GET/POST/DELETE agents`, stop-all/resume-all | Partially wired | Partial | Wired: members list/add/remove. Missing channel agents list/add/remove and stop/resume-all agents. |
 | Channel inbox/followed/saved | inbox, inbox done/read-all, followed threads, saved list/save/delete/check | Partially wired | Partial | Wired: inbox list/read-all, followed/follow/unfollow/done/undone, saved list/save/delete. Missing inbox item done and saved check. Saved write paths fixed in this pass. |
 | Threads | `POST channels/:id/threads`, `GET channels/:id/threads`, `GET channels/:id/threads/:messageId` | Partially wired | Partial | Wired create/open/list. Missing thread detail endpoint, and task #197/#196 cover pagination/realtime but not all action parity. |
-| Messages | search, context, channel page, post, reactions, sync | Partially wired | Partial | Wired search/context/page/post/sync. Missing reaction add/remove and `messageContext` `channelId` query exposure. |
-| Attachments | upload, url, preview, raw, html-preview-url, html-preview | Partially wired | Partial | Wired upload and URL. Missing preview/raw/html preview endpoints; attachment opening therefore is not fully native parity. |
+| Messages | search, context, channel page, post, reactions, sync | Partially typed | Partial | Shared Thread now uses `SlockThreadApi` typed methods for channel page, sync, send, read-all, save, task status, and reply-thread create/open. Search/context still use older clients; missing reaction add/remove and `messageContext` `channelId` query exposure. |
+| Attachments | upload, url, preview, raw, html-preview-url, html-preview | Partially typed | Partial | Shared Thread attachment open now requires canonical `{ url, expiresAt }` through `SlockThreadApi.attachmentUrl`; upload is still platform/bridge capability; missing preview/raw/html preview endpoints. |
 | Tasks | list server/channel, task by number, create, claim, convert-message, unclaim, status, delete | Partially wired | Partial | Wired list/claim/status. Missing by-number, create, convert-message, unclaim, delete. |
 | Agents | list/create/detail/activity/agent-dms/update/avatar/start/stop/reset/delete/assign-machine/workspace-files/skills/scopes/bootstrap-tokens | Partially wired | Partial | Wired list/update/activity/agent-dms/workspace files/read. Missing create/detail/avatar/start/stop/reset/delete/assign-machine/skills/scopes/bootstrap tokens unless handled by internal agent tooling outside Android product. |
 | Announcements | `GET announcements/active`, `POST announcements/:id/dismiss` | Not wired | Missing | Product announcement surfaces cannot be considered closed. |
@@ -107,7 +107,19 @@ responses are still acceptable only at the lowest network/bridge boundary.
   `accessToken`, `refreshToken`; server list requires a root JSON array.
   Legacy aliases such as `token` / `refresh_token` now fail with an explicit
   contract mismatch instead of being silently accepted.
-- Home, Thread, Tasks, Settings, Billing, Machines, Push, Integrations, Actions,
+- Thread first slice is now typed at the shared boundary:
+  `SlockThreadApi.channelMessages/messageSync/sendMessage/attachmentUrl/markChannelReadAll/saveMessage/updateTaskStatus/createOrOpenThread`
+  returns `ThreadMessagesPage`, `ThreadAttachmentOpenTarget`,
+  `ThreadActionResult`, or `Unit`. Raw `HomeNetworkResponse` is confined to the
+  lowest `SharedThreadNetworkApi` transport implemented by `BridgeThreadApi`.
+- The typed Thread parser accepts canonical upstream shapes only for the covered
+  Thread routes: `messages/channel/:channelId` must be a root object with
+  `messages`, `messages/sync` must be a root array, attachment URL must use
+  root `url`, and `channels/:id/threads` must return root `threadChannelId`.
+  Guessed nested wrappers such as `data.messages`, `data.thread.threadChannelId`,
+  and attachment aliases such as `downloadUrl` / `href` now fail with explicit
+  contract mismatch codes at the API boundary.
+- Home, Tasks, Settings, Billing, Machines, Push, Integrations, Actions,
   Announcements, and Reminders still need the same typed API facade treatment.
   They should not keep expanding raw JSON aliases inside repositories or UI
   stores without a source-backed contract.
@@ -154,6 +166,9 @@ broken upstream contract. High-risk examples:
   `messages/sync?since_seq=&channel_id=` for newer/gap sync. Any `afterSeq`,
   `cursor`, or `since` alias should be treated as legacy/internal unless
   upstream exposes it on the public route.
+- Shared Thread save-message now uses upstream `POST channels/saved` with body
+  `{ messageId }`. The guessed `messages/{id}/save` route has no matching
+  upstream route and must not be reintroduced.
 - Task list/action consumers should expect `{ tasks }` and `{ task }` wrappers,
   not raw arrays for tasks.
 
