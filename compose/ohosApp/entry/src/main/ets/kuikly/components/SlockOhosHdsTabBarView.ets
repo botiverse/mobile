@@ -113,7 +113,8 @@ export struct SlockOhosHdsTabBar {
     .animationDuration(240)
     .barHeight(60)
     .barOverlap(true)
-    .barBackgroundColor('#FFFFFFFF')
+    .barBackgroundColor('#CCFFFFFF')
+    .barBackgroundBlurStyle(BlurStyle.Thin)
     .divider({ mode: DividerMode.NONE })
     .width('100%')
     .height(`${92 + this.renderView.bottomSafeArea}vp`)
@@ -122,7 +123,7 @@ export struct SlockOhosHdsTabBar {
       right: 18,
       bottom: 28 + this.renderView.bottomSafeArea,
     })
-    .backgroundColor('#FFFFFFFF')
+    .backgroundColor('#33FFFFFF')
   }
 
   @Builder
