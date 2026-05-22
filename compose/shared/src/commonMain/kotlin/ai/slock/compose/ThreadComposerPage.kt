@@ -21,6 +21,7 @@ import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
@@ -387,162 +388,170 @@ internal fun ThreadComposerContent(
         emitChange(nextText = next.text)
     }
 
-    Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).padding(horizontal = 4.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+    Box(
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite),
+        contentAlignment = Alignment.TopCenter
     ) {
-        payload.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
-            Text(
-                text = status,
-                style = SlockType.Caption.copy(
-                    color = if (payload.composerMode == "failed") SlockColor.AccentRed else SlockColor.TextMutedGray
-                ),
-                color = if (payload.composerMode == "failed") SlockColor.AccentRed else SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        if (payload.pendingAttachments.isNotEmpty()) {
-            ComposerAttachmentTray(
-                attachments = payload.pendingAttachments,
-                enabled = payload.enabled
-            ) { action, attachmentId ->
-                onEvent(action, null, null, attachmentId)
-            }
-        }
-        if (showMemberSuggestions) {
-            ComposerSuggestionPanel(title = "IN THIS CHANNEL") {
-                filteredMemberSuggestions.forEach { member ->
-                    ComposerSuggestionRow(
-                        leading = {
-                            Box(
-                                modifier = Modifier.size(28.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = member.displayName.take(1).uppercase(),
-                                    style = SlockType.Button.copy(fontSize = 12.sp),
-                                    color = SlockColor.TextBlack
-                                )
-                            }
-                        },
-                        title = member.displayName,
-                        subtitle = "@${member.handle}",
-                        onClick = { applyMemberSuggestion(member) }
-                    )
-                }
-            }
-        } else if (showChannelSuggestions) {
-            ComposerSuggestionPanel(title = "CHANNELS") {
-                filteredChannelSuggestions.forEach { channel ->
-                    ComposerSuggestionRow(
-                        leading = {
-                            Box(
-                                modifier = Modifier.size(28.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("#", style = SlockType.Button.copy(fontSize = 14.sp), color = SlockColor.TextBlack)
-                            }
-                        },
-                        title = channel.name,
-                        subtitle = channel.subtitle.orEmpty(),
-                        onClick = { applyChannelSuggestion(channel) }
-                    )
-                }
-            }
-        }
-        Box(
-            modifier = Modifier.fillMaxWidth().padding(end = 2.dp, bottom = 2.dp)
+        Column(
+            modifier = Modifier
+                .width(342.dp)
+                .padding(start = 12.dp, top = 14.dp, end = 12.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Box(
-                modifier = Modifier.matchParentSize().offset(x = 2f, y = 2f).background(SlockColor.ShadowBlack)
-            )
-            Column(
-                modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                TextField(
-                    value = fieldValue,
-                    placeholder = payload.placeholder,
-                    autoFocus = shouldAutoFocus,
-                    onValueChange = { next ->
-                        fieldValue = next
-                        emitChange(nextText = next.text)
-                    },
-                    onFocus = {
-                        focused = true
-                        if (shouldAutoFocus) {
-                            handledFocusRequestNonce = payload.focusRequestNonce
-                        }
-                    },
-                    onBlur = {
-                        focused = false
-                        onEvent("blur", null, null, null)
-                    },
-                    maxLines = 4,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(
-                        onSend = {
-                            if (canSend) {
-                                onEvent("send", null, null, null)
-                                fieldValue = "".toComposerFieldValueAtEnd()
-                                asTask = false
-                            }
-                        }
+            payload.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
+                Text(
+                    text = status,
+                    style = SlockType.Caption.copy(
+                        color = if (payload.composerMode == "failed") SlockColor.AccentRed else SlockColor.TextMutedGray
                     ),
-                    textStyle = SlockType.Input.copy(
-                        color = if (payload.enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                        lineHeight = 20.sp
-                    ),
-                    keyboardHeightChange = { params ->
-                        onKeyboardHeightChange(params.height.coerceAtLeast(0f))
-                    },
-                    placeholderColor = SlockColor.TextMutedGray,
-                    cursorBrush = SolidColor(SlockColor.TextBlack),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
+                    color = if (payload.composerMode == "failed") SlockColor.AccentRed else SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                if (payload.hookLabels.isNotEmpty()) {
-                    Text(
-                        text = payload.hookLabels.joinToString(" / "),
-                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
+            }
+            if (payload.pendingAttachments.isNotEmpty()) {
+                ComposerAttachmentTray(
+                    attachments = payload.pendingAttachments,
+                    enabled = payload.enabled
+                ) { action, attachmentId ->
+                    onEvent(action, null, null, attachmentId)
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 30.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+            }
+            if (showMemberSuggestions) {
+                ComposerSuggestionPanel(title = "IN THIS CHANNEL") {
+                    filteredMemberSuggestions.forEach { member ->
+                        ComposerSuggestionRow(
+                            leading = {
+                                Box(
+                                    modifier = Modifier.size(28.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = member.displayName.take(1).uppercase(),
+                                        style = SlockType.Button.copy(fontSize = 12.sp),
+                                        color = SlockColor.TextBlack
+                                    )
+                                }
+                            },
+                            title = member.displayName,
+                            subtitle = "@${member.handle}",
+                            onClick = { applyMemberSuggestion(member) }
+                        )
+                    }
+                }
+            } else if (showChannelSuggestions) {
+                ComposerSuggestionPanel(title = "CHANNELS") {
+                    filteredChannelSuggestions.forEach { channel ->
+                        ComposerSuggestionRow(
+                            leading = {
+                                Box(
+                                    modifier = Modifier.size(28.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("#", style = SlockType.Button.copy(fontSize = 14.sp), color = SlockColor.TextBlack)
+                                }
+                            },
+                            title = channel.name,
+                            subtitle = channel.subtitle.orEmpty(),
+                            onClick = { applyChannelSuggestion(channel) }
+                        )
+                    }
+                }
+            }
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(end = 2.dp, bottom = 2.dp)
+            ) {
+                Box(
+                    modifier = Modifier.matchParentSize().offset(x = 2f, y = 2f).background(SlockColor.ShadowBlack)
+                )
+                Column(
+                    modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    TextField(
+                        value = fieldValue,
+                        placeholder = payload.placeholder,
+                        autoFocus = shouldAutoFocus,
+                        onValueChange = { next ->
+                            fieldValue = next
+                            emitChange(nextText = next.text)
+                        },
+                        onFocus = {
+                            focused = true
+                            if (shouldAutoFocus) {
+                                handledFocusRequestNonce = payload.focusRequestNonce
+                            }
+                        },
+                        onBlur = {
+                            focused = false
+                            onEvent("blur", null, null, null)
+                        },
+                        maxLines = 4,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(
+                            onSend = {
+                                if (canSend) {
+                                    onEvent("send", null, null, null)
+                                    fieldValue = "".toComposerFieldValueAtEnd()
+                                    asTask = false
+                                }
+                            }
+                        ),
+                        textStyle = SlockType.Input.copy(
+                            color = if (payload.enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp
+                        ),
+                        keyboardHeightChange = { params ->
+                            onKeyboardHeightChange(params.height.coerceAtLeast(0f))
+                        },
+                        placeholderColor = SlockColor.TextMutedGray,
+                        cursorBrush = SolidColor(SlockColor.TextBlack),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 20.dp)
+                    )
+                    if (payload.hookLabels.isNotEmpty()) {
+                        Text(
+                            text = payload.hookLabels.joinToString(" / "),
+                            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                            color = SlockColor.TextMutedGray,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     Row(
-                        modifier = Modifier.weight(1f).heightIn(min = 30.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 30.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        ComposerIconButton("image-plus", payload.enabled) {
-                            onEvent("attachImage", null, null, null)
+                        Row(
+                            modifier = Modifier.weight(1f).heightIn(min = 30.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            ComposerIconButton("image-plus", payload.enabled) {
+                                onEvent("attachImage", null, null, null)
+                            }
+                            ComposerIconButton("paperclip", payload.enabled) {
+                                onEvent("attachFile", null, null, null)
+                            }
                         }
-                        ComposerIconButton("paperclip", payload.enabled) {
-                            onEvent("attachFile", null, null, null)
+                        if (payload.showAsTaskToggle) {
+                            ComposerAsTaskToggle(
+                                checked = asTask,
+                                enabled = payload.enabled
+                            ) { checked ->
+                                asTask = checked
+                                onEvent("toggleAsTask", null, checked, null)
+                            }
                         }
-                    }
-                    if (payload.showAsTaskToggle) {
-                        ComposerAsTaskToggle(
-                            checked = asTask,
-                            enabled = payload.enabled
-                        ) { checked ->
-                            asTask = checked
-                            onEvent("toggleAsTask", null, checked, null)
+                        ComposerSendButton(
+                            enabled = canSend,
+                            sending = payload.composerMode == "sending" || payload.composerMode == "uploading"
+                        ) {
+                            onEvent("send", null, null, null)
+                            fieldValue = "".toComposerFieldValueAtEnd()
+                            asTask = false
                         }
-                    }
-                    ComposerSendButton(
-                        enabled = canSend,
-                        sending = payload.composerMode == "sending" || payload.composerMode == "uploading"
-                    ) {
-                        onEvent("send", null, null, null)
-                        fieldValue = "".toComposerFieldValueAtEnd()
-                        asTask = false
                     }
                 }
             }

@@ -42,7 +42,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer")
                     .put("payload", threadComposerPayload().toString()),
-            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 390, heightDp = 156)
+            crop = VisualCrop(leftDp = 24, topDp = 0, widthDp = 342, heightDp = 100)
         )
     }
 
