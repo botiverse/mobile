@@ -66,6 +66,7 @@ interface SlockApi {
     ): ApiResponse
     suspend fun memberProfile(
         priority: SlockRequestPriority,
+        serverId: String,
         memberId: String
     ): ApiResponse
     suspend fun agentWorkspaceFiles(
@@ -168,7 +169,7 @@ interface SlockApi {
     ): ApiResponse
     suspend fun saveMessage(
         priority: SlockRequestPriority,
-        messageId: String
+        body: RequestBody
     ): ApiResponse
     suspend fun unsaveMessage(
         priority: SlockRequestPriority,

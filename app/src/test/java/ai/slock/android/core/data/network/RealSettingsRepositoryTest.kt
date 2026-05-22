@@ -481,7 +481,7 @@ class RealSettingsRepositoryTest {
         override suspend fun deleteSettingsServer(priority: SlockRequestPriority, serverId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun memberProfile(priority: SlockRequestPriority, memberId: String): ApiResponse =
+        override suspend fun memberProfile(priority: SlockRequestPriority, serverId: String, memberId: String): ApiResponse =
             response("""{"profile":{"id":"$memberId","displayName":"Member","presence":"offline"}}""")
 
         override suspend fun agentWorkspaceFiles(priority: SlockRequestPriority, agentId: String, dirPath: String?): ApiResponse =
@@ -551,7 +551,7 @@ class RealSettingsRepositoryTest {
 
         override suspend fun saved(priority: SlockRequestPriority, limit: Int, offset: Int): ApiResponse = response("""{"items":[]}""")
 
-        override suspend fun saveMessage(priority: SlockRequestPriority, messageId: String): ApiResponse =
+        override suspend fun saveMessage(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
             response("""{"ok":true}""")
 
         override suspend fun unsaveMessage(priority: SlockRequestPriority, messageId: String): ApiResponse =

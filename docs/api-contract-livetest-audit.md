@@ -16,6 +16,14 @@ Upstream server routes:
 - `packages/server/src/routes/attachments.ts`
 - `packages/server/src/routes/tasks.ts`
 - `packages/server/src/routes/servers.ts`
+- `packages/server/src/routes/auth.ts`
+- `packages/server/src/routes/agents.ts`
+- `packages/server/src/routes/announcements.ts`
+- `packages/server/src/routes/actions.ts`
+- `packages/server/src/routes/billing.ts`
+- `packages/server/src/routes/integrations.ts`
+- `packages/server/src/routes/push.ts`
+- `packages/server/src/routes/reminders.ts`
 - `packages/server/src/services/messageService.ts`
 - `packages/server/src/services/channelService.ts`
 - `packages/server/src/services/serverService.ts`
@@ -42,8 +50,43 @@ Android/KMP consumers:
 | Attachments | `POST attachments/upload`, `GET attachments/{id}/url` | `attachmentRouter.post("/upload")`, public `get("/:id/url")` | Match | Multipart field name is `channelId`; response wrapper is `{ attachments: [...] }`; open target is `{ url, expiresAt }`. |
 | Tasks | `GET tasks/server`, `GET tasks/channel/{channelId}`, `PATCH tasks/{taskId}/claim/status` | `taskRouter` | Match | Task actions return `{ task }`; list endpoints return `{ tasks }`. |
 | Server members | `GET servers/{serverId}/members` | `serverRouter.get("/:id/members")` | Match | Upstream returns a direct array. Canonical member id field is `userId`, not generic `id`. |
+| Human member profile | `GET servers/{serverId}/members/{memberId}/profile` | `serverRouter.get("/:id/members/:memberId/profile")` | Fixed in this pass | Android/KMP had guessed `members/{memberId}/profile`; no matching upstream public route exists. |
+| Saved messages | `GET channels/saved`, `POST channels/saved`, `DELETE channels/saved/{messageId}` | `channelRouter.get/post("/saved")`, `delete("/saved/:messageId")` | Fixed in this pass | Android/KMP had guessed `messages/{id}/save`; no matching upstream public route exists. |
 | Server settings | `PATCH servers/{serverId}`, usage, invites, onboarding | `serverRouter` | Mostly match | Some Settings UI is still pending by capability task, but route paths are confirmed. |
 | Machines/workspaces | `GET servers/{serverId}/machines`, `.../workspaces` | `serverRouter` | Match | Machine detail/log history is still not confirmed as a product capability. |
+| Account sessions | `GET auth/sessions`, `DELETE auth/sessions/{sessionId}` | No public route in current `auth.ts` | Blocked | Android/KMP still has a client method and Settings UI contract from older notes, but current upstream source has no route. This must be either restored server-side or disabled client-side with a clear capability state. |
+
+## Full Public API Coverage Matrix
+
+This table answers the broader "all APIs closed loop" question. `Wired` means
+the Android/KMP client has a request method using the current upstream route
+shape. It does not automatically mean UI parity or livetest coverage is done.
+
+| Upstream area | Representative public routes | Android/KMP wiring | Livetest status | Follow-up |
+| --- | --- | --- | --- | --- |
+| Auth core | `POST auth/login`, `register`, `forgot-password`, `refresh`, `logout`, `GET/PATCH auth/me` | Wired | Partial | Existing auth restore/session tests cover client behavior; live read/write contract only covers restored session indirectly. Add guarded live `auth/me` read/update once a reversible profile fixture exists. |
+| Auth providers/invites/email | `auth/providers`, `identities`, provider start/link/callback/complete, `verify-email`, `resend-verification`, `reset-password`, `accept-invite`, `invite-info`, `me/avatar` | Not wired in Android/KMP product API | Missing | Required before social login, invite acceptance, email verification, reset-password completion, and profile avatar upload can be called native/shared. |
+| Account sessions | `auth/sessions` expected by Android, but absent upstream | Wrong/blocked | Missing | Contract must be settled with server/web. Do not keep treating session management as closed. |
+| Servers list/create | `GET servers`, `POST servers` | Wired through Android auth API, not `SlockApiClient` | Indirect | Shared app shell restore uses selected server; add a live contract test for list/create only if using a safe disposable server fixture. |
+| Server profile/settings | `GET/PATCH/DELETE servers/:id`, `leave`, agreement, onboarding, translation, notification, usage, sidebar-order, scope-attestation | Partially wired | Partial | Wired: profile patch, delete, usage, onboarding. Missing: GET detail, leave, agreement, translation, notification, sidebar order, scope attestation. |
+| Server members/admin | `GET/POST servers/:id/members`, `PATCH/DELETE members/:memberId`, `GET member-graph`, `GET members/:memberId/profile` | Partially wired | Partial | Wired: list, profile. Missing: add/update/remove server members and member graph. Profile path fixed in this pass. |
+| Server invites/join links | `POST/GET/DELETE servers/:id/invites`, `POST/GET/DELETE join-links`, `join-community` | Partially wired | Missing | Wired only create invite and join-community through auth API. Missing invite list/delete and join-link flows. |
+| Machines/runtime | `GET/POST/PATCH/DELETE machines`, rotate-key, workspaces, runtime-models | Partially wired | Missing | Wired: list machines and workspaces. Missing create/update/delete/rotate-key/runtime models. |
+| Billing | `GET billing/subscription`, `POST checkout`, `POST portal` | Partially wired | Missing | Wired only subscription. Checkout/portal are not wired, so Billing actions cannot be called from Android/KMP yet. |
+| Channels core | `GET/POST/PATCH channels`, detail, join/leave, archive/unarchive/delete, files | Partially wired | Partial | Wired: list/create/join/leave/archive/delete/files. Missing PATCH, detail, unarchive. |
+| Channel members/agents | `GET/POST/DELETE channels/:id/members`, `GET/POST/DELETE agents`, stop-all/resume-all | Partially wired | Partial | Wired: members list/add/remove. Missing channel agents list/add/remove and stop/resume-all agents. |
+| Channel inbox/followed/saved | inbox, inbox done/read-all, followed threads, saved list/save/delete/check | Partially wired | Partial | Wired: inbox list/read-all, followed/follow/unfollow/done/undone, saved list/save/delete. Missing inbox item done and saved check. Saved write paths fixed in this pass. |
+| Threads | `POST channels/:id/threads`, `GET channels/:id/threads`, `GET channels/:id/threads/:messageId` | Partially wired | Partial | Wired create/open/list. Missing thread detail endpoint, and task #197/#196 cover pagination/realtime but not all action parity. |
+| Messages | search, context, channel page, post, reactions, sync | Partially wired | Partial | Wired search/context/page/post/sync. Missing reaction add/remove and `messageContext` `channelId` query exposure. |
+| Attachments | upload, url, preview, raw, html-preview-url, html-preview | Partially wired | Partial | Wired upload and URL. Missing preview/raw/html preview endpoints; attachment opening therefore is not fully native parity. |
+| Tasks | list server/channel, task by number, create, claim, convert-message, unclaim, status, delete | Partially wired | Partial | Wired list/claim/status. Missing by-number, create, convert-message, unclaim, delete. |
+| Agents | list/create/detail/activity/agent-dms/update/avatar/start/stop/reset/delete/assign-machine/workspace-files/skills/scopes/bootstrap-tokens | Partially wired | Partial | Wired list/update/activity/agent-dms/workspace files/read. Missing create/detail/avatar/start/stop/reset/delete/assign-machine/skills/scopes/bootstrap tokens unless handled by internal agent tooling outside Android product. |
+| Announcements | `GET announcements/active`, `POST announcements/:id/dismiss` | Not wired | Missing | Product announcement surfaces cannot be considered closed. |
+| Actions | action card execute/event/mark-executed | Not wired | Missing | Android/KMP cannot execute action-card flows through the product API yet. |
+| Integrations/OAuth clients | overview, clients, approve/deny/revoke, agent grants | Not wired | Missing | No Android/KMP capability yet. |
+| Push | vapid key, prompt events, subscribe/unsubscribe | Not wired | Missing | Native notification work is not closed against upstream push routes. |
+| Reminders | `GET reminders` | Read-only wired | Missing | Only list is wired. Agent reminder mutations live under internal agent routes, not public Android/KMP product API. |
+| Internal agent/computer/OAuth protocol | `/internal/*`, `/oauth/*`, `/daemon/*` | Out of Android product scope | Not applicable | Should be tracked by agent/daemon CLI contracts, not Android app parity, unless the app starts owning those screens. |
 
 ## Response Field Cleanup Findings
 

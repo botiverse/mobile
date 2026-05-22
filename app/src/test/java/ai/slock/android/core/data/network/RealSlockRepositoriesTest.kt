@@ -2683,7 +2683,7 @@ class RealSlockRepositoriesTest {
         override suspend fun deleteSettingsServer(priority: SlockRequestPriority, serverId: String): ApiResponse =
             response("""{"ok":true}""")
 
-        override suspend fun memberProfile(priority: SlockRequestPriority, memberId: String): ApiResponse {
+        override suspend fun memberProfile(priority: SlockRequestPriority, serverId: String, memberId: String): ApiResponse {
             memberProfileCalls += memberId
             return response(memberProfileJson)
         }
@@ -2776,7 +2776,7 @@ class RealSlockRepositoriesTest {
         override suspend fun saved(priority: SlockRequestPriority, limit: Int, offset: Int): ApiResponse =
             response(savedJson)
 
-        override suspend fun saveMessage(priority: SlockRequestPriority, messageId: String): ApiResponse =
+        override suspend fun saveMessage(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
             response("""{"ok":true}""")
 
         override suspend fun unsaveMessage(priority: SlockRequestPriority, messageId: String): ApiResponse =

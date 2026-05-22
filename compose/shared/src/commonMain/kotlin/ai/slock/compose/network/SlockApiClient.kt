@@ -49,7 +49,8 @@ class SlockApiClient(
     suspend fun updateSettingsServerOnboardingSettings(priority: SlockRequestPriority, serverId: String, body: String): KmpHttpResponse =
         patch(priority, "servers/$serverId/onboarding-settings", body)
     suspend fun deleteSettingsServer(priority: SlockRequestPriority, serverId: String): KmpHttpResponse = delete(priority, "servers/$serverId")
-    suspend fun memberProfile(priority: SlockRequestPriority, memberId: String): KmpHttpResponse = get(priority, "members/$memberId/profile")
+    suspend fun memberProfile(priority: SlockRequestPriority, serverId: String, memberId: String): KmpHttpResponse =
+        get(priority, "servers/$serverId/members/$memberId/profile")
     suspend fun agentDirectMessages(priority: SlockRequestPriority, agentId: String): KmpHttpResponse = get(priority, "agents/$agentId/agent-dms")
     suspend fun agentWorkspaceFiles(priority: SlockRequestPriority, agentId: String, dirPath: String? = null): KmpHttpResponse =
         get(priority, "agents/$agentId/workspace-files", listOfNotNull(dirPath?.let { "dirPath" to it }))
@@ -85,8 +86,9 @@ class SlockApiClient(
     suspend fun updateTaskStatus(priority: SlockRequestPriority, taskId: String, body: String): KmpHttpResponse = patch(priority, "tasks/$taskId/status", body)
     suspend fun saved(priority: SlockRequestPriority, limit: Int, offset: Int): KmpHttpResponse =
         get(priority, "channels/saved", listOf("limit" to limit.toString(), "offset" to offset.toString()))
-    suspend fun saveMessage(priority: SlockRequestPriority, messageId: String): KmpHttpResponse = post(priority, "messages/$messageId/save")
-    suspend fun unsaveMessage(priority: SlockRequestPriority, messageId: String): KmpHttpResponse = delete(priority, "messages/$messageId/save")
+    suspend fun saveMessage(priority: SlockRequestPriority, messageId: String): KmpHttpResponse =
+        post(priority, "channels/saved", "{\"messageId\":\"${messageId.escapeJsonString()}\"}")
+    suspend fun unsaveMessage(priority: SlockRequestPriority, messageId: String): KmpHttpResponse = delete(priority, "channels/saved/$messageId")
     suspend fun searchMessages(
         priority: SlockRequestPriority,
         query: String,
@@ -298,3 +300,19 @@ class SlockApiClient(
     private fun Char.isUrlSafe(): Boolean =
         this in 'A'..'Z' || this in 'a'..'z' || this in '0'..'9' || this == '-' || this == '_' || this == '.' || this == '~'
 }
+
+private fun String.escapeJsonString(): String =
+    buildString(length) {
+        for (char in this@escapeJsonString) {
+            when (char) {
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                '\b' -> append("\\b")
+                '\u000C' -> append("\\f")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> append(char)
+            }
+        }
+    }

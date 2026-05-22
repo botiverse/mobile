@@ -1395,22 +1395,24 @@ class RealMemberRepository(
             memberId: MemberId,
             source: String
     ): DataResult<MemberProfile> =
-            execute(
-                    emptyReason = EmptyReason.NoMembers,
-                    block = { api.memberProfile(priority, memberId.value) },
-                    source = source,
-                    warningLogger = warningLogger,
-                    mapper = { json ->
-                        val profile =
-                                json.firstObject("profile", "member", "user", "data")
-                                        ?.toMemberProfile()
-                                        ?: json.toMemberProfile()
-                                                ?: throw IllegalStateException(
-                                                "Member profile response missing member"
-                                        )
-                        profile.copy(kind = MemberKind.Human)
-                    }
-            )
+            currentContext()?.let { context ->
+                execute(
+                        emptyReason = EmptyReason.NoMembers,
+                        block = { api.memberProfile(priority, context.server.id.value, memberId.value) },
+                        source = source,
+                        warningLogger = warningLogger,
+                        mapper = { json ->
+                            val profile =
+                                    json.firstObject("profile", "member", "user", "data")
+                                            ?.toMemberProfile()
+                                            ?: json.toMemberProfile()
+                                                    ?: throw IllegalStateException(
+                                                    "Member profile response missing member"
+                                            )
+                            profile.copy(kind = MemberKind.Human)
+                        }
+                )
+            } ?: authRequired()
 }
 
 private data class AgentWorkspaceLookup(
@@ -1517,7 +1519,7 @@ class RealSavedRepository(private val store: AuthSessionStore, private val api: 
                 emptyReason = EmptyReason.NoInboxItems,
                 block = {
                     if (save) {
-                        api.saveMessage(currentSlockApiPriority(), messageId.value)
+                        api.saveMessage(currentSlockApiPriority(), mapOf("messageId" to messageId.value).toJsonBody())
                     } else {
                         api.unsaveMessage(currentSlockApiPriority(), messageId.value)
                     }

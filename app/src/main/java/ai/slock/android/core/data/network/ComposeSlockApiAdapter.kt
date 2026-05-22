@@ -123,7 +123,8 @@ class ComposeSlockApiAdapter(
             request(priority) { client.updateSettingsServerOnboardingSettings(priority, serverId, body.bodyAsString()) }
     override suspend fun deleteSettingsServer(priority: SlockRequestPriority, serverId: String): ApiResponse =
             request(priority) { client.deleteSettingsServer(priority, serverId) }
-    override suspend fun memberProfile(priority: SlockRequestPriority, memberId: String): ApiResponse = request(priority) { client.memberProfile(priority, memberId) }
+    override suspend fun memberProfile(priority: SlockRequestPriority, serverId: String, memberId: String): ApiResponse =
+            request(priority) { client.memberProfile(priority, serverId, memberId) }
     override suspend fun agentWorkspaceFiles(priority: SlockRequestPriority, agentId: String, dirPath: String?): ApiResponse =
             request(priority) { client.agentWorkspaceFiles(priority, agentId, dirPath) }
     override suspend fun readAgentWorkspaceFile(priority: SlockRequestPriority, agentId: String, path: String): ApiResponse =
@@ -176,7 +177,8 @@ class ComposeSlockApiAdapter(
     override suspend fun updateTaskStatus(priority: SlockRequestPriority, taskId: String, body: RequestBody): ApiResponse =
             request(priority) { client.updateTaskStatus(priority, taskId, body.bodyAsString()) }
     override suspend fun saved(priority: SlockRequestPriority, limit: Int, offset: Int): ApiResponse = request(priority) { client.saved(priority, limit, offset) }
-    override suspend fun saveMessage(priority: SlockRequestPriority, messageId: String): ApiResponse = request(priority) { client.saveMessage(priority, messageId) }
+    override suspend fun saveMessage(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
+            request(priority) { client.saveMessage(priority, body.bodyAsString()) }
     override suspend fun unsaveMessage(priority: SlockRequestPriority, messageId: String): ApiResponse = request(priority) { client.unsaveMessage(priority, messageId) }
     override suspend fun searchMessages(
         priority: SlockRequestPriority,
