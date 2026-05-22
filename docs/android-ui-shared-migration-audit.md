@@ -51,6 +51,14 @@ became the auth/server gate owner:
 Android `MainActivity` should only show the short restore splash while it hands off to the
 shared shell; login, reset-password, and create-account state belong in shared auth/MVI.
 
+These unused native component primitives had no product callers after Thread/Tasks/Composer moved
+to shared routes and should not be revived as Android-only UI. The few native controls still used
+by legacy Thread/Settings fallback were split into smaller temporary files:
+
+- `ui/components/SlockComposer.kt`
+- `ui/components/SlockMessageItem.kt`
+- `ui/components/SlockCheckbox.kt`
+
 ### Migrated To Shared MVI
 
 The Android legacy Tasks route still renders native UI, but its load/update reducer no longer
@@ -71,7 +79,7 @@ the shared store/reducer first.
 
 These are reusable product UI concepts and should be moved to shared variants instead of remaining Android-only:
 
-- Buttons/text fields/check controls: `SlockButton`, `SlockTextField`, `SlockCheckbox`, `SlockToggle`, `SlockRadio`, `SlockSegmentOption`.
+- Buttons/text fields/check controls: `SlockButton`, `SlockTextField`, plus temporary `SlockLabeledCheckbox` and `SlockSegmentOption` used by remaining native Thread/Settings fallbacks. Toggle/radio variants should be reintroduced only as shared components when a real shared route needs them.
 - Feedback states: `SlockEmptyState`, `SlockLoadingState`, `SlockInlineLoading`, `SlockErrorState`.
 - Modal/menu/key-surface primitives: `SlockModal`, `SlockMenuOverlay`, `SlockKeySurface`.
 - Avatar/member/task/file-tree primitives if their product routes remain in KMP.
