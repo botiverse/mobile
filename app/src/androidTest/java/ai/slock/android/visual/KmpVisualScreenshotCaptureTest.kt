@@ -43,6 +43,19 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    @Test
+    fun captureThreadMessageRow() {
+        captureKmpComponentCase(
+            caseId = "thread.message.row",
+            pageName = "compose_thread_message_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row")
+                    .put("payload", threadMessageRowPayload().toString()),
+            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 390, heightDp = 180)
+        )
+    }
+
     private fun captureKmpHomeCase(caseId: String, pageData: JSONObject) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
@@ -226,6 +239,40 @@ class KmpVisualScreenshotCaptureTest {
                     .put(JSONObject().put("name", "design").put("subtitle", "Product and UI decisions"))
                     .put(JSONObject().put("name", "android-artifacts").put("subtitle", "Builds and screenshots"))
             )
+
+    private fun threadMessageRowPayload(): JSONObject =
+        JSONObject()
+            .put("instanceId", "visual-thread-message-row")
+            .put("title", "#design")
+            .put("subtitle", "Thread visual fixture")
+            .put("status", "content")
+            .put("selectedTab", "chat")
+            .put("showModeTabs", false)
+            .put("showComposer", false)
+            .put("joined", true)
+            .put("showReplyActions", true)
+            .put("showMessageSaveAction", false)
+            .put("showTaskOpenActions", true)
+            .put("showTaskStatusActions", false)
+            .put("messages", JSONArray().put(threadMessageRow()))
+
+    private fun threadMessageRow(): JSONObject =
+        JSONObject()
+            .put("id", "msg_agent_reply")
+            .put("authorId", "agent_android")
+            .put("authorName", "Android Developer")
+            .put("isOwn", false)
+            .put("avatarLabel", "AD")
+            .put("timestampLabel", "10:48")
+            .put("messageType", "Chat")
+            .put(
+                "body",
+                "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。关联 #design 和 @Product-UX-Designer。"
+            )
+            .put("replyCount", 5)
+            .put("taskId", "task_msg_10")
+            .put("taskNumber", 10)
+            .put("taskStatus", "in_review")
 
     private fun conversation(
         id: String,

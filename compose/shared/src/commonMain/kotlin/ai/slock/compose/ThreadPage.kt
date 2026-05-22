@@ -79,6 +79,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 
 internal const val THREAD_PAGE = "compose_thread"
+private const val THREAD_MESSAGE_VISUAL_PAGE = "compose_thread_message_visual"
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 
@@ -87,6 +88,14 @@ internal class ComposeThreadPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { ThreadPageScreen() }
+    }
+}
+
+@Page(THREAD_MESSAGE_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeThreadMessageVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadMessageVisualScreen() }
     }
 }
 
@@ -286,6 +295,41 @@ private fun ThreadPageScreen() {
             pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
         }
     )
+}
+
+@Composable
+private fun ThreadMessageVisualScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val params = pager.pageData.params
+    val payloadText = params.optString("payload")
+    val instanceId = params.optString("instanceId")
+    val payload =
+        remember(payloadText, instanceId) {
+            parseThreadScreenPayload(
+                payload = payloadText,
+                fallbackPageData = params.toString(),
+                instanceId = instanceId
+            )
+        }
+    val message = payload.messages.firstOrNull()
+    Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
+        if (message != null) {
+            ThreadMessageCard(
+                message = message,
+                highlightedMentions = setOf("Product-UX-Designer"),
+                showReplyAction = payload.showReplyActions,
+                taskOpenEnabled = payload.showTaskOpenActions,
+                taskStatusActionsEnabled = payload.showTaskStatusActions,
+                timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
+                onShowActions = {},
+                onOpenMember = {},
+                onOpenThread = {},
+                onOpenTask = {},
+                onTaskStatusChange = { _, _ -> },
+                onOpenAttachment = {}
+            )
+        }
+    }
 }
 
 @Composable
