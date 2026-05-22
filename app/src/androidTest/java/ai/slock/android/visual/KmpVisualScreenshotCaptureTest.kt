@@ -30,6 +30,19 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    @Test
+    fun captureThreadComposerStates() {
+        captureKmpComponentCase(
+            caseId = "thread.composer.states",
+            pageName = "compose_thread_composer",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-composer")
+                    .put("payload", threadComposerPayload().toString()),
+            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 390, heightDp = 156)
+        )
+    }
+
     private fun captureKmpHomeCase(caseId: String, pageData: JSONObject) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
@@ -82,11 +95,21 @@ class KmpVisualScreenshotCaptureTest {
         }
     }
 
-    private fun captureKmpComponentCase(caseId: String, pageName: String, crop: VisualCrop) {
+    private fun captureKmpComponentCase(
+        caseId: String,
+        pageName: String,
+        crop: VisualCrop,
+        pageData: JSONObject? = null
+    ) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
             Intent(context, SlockKuiklyActivity::class.java)
                 .putExtra("pageName", pageName)
+                .apply {
+                    if (pageData != null) {
+                        putExtra("pageData", pageData.toString())
+                    }
+                }
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use {
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             Thread.sleep(1_500)
@@ -179,6 +202,30 @@ class KmpVisualScreenshotCaptureTest {
             .put("name", name)
             .put("slug", slug)
             .put("unreadCount", unreadCount)
+
+    private fun threadComposerPayload(): JSONObject =
+        JSONObject()
+            .put("instanceId", "visual-thread-composer")
+            .put("seedText", "Review the Android composer crop before release.")
+            .put("seedAsTask", false)
+            .put("syncNonce", 1)
+            .put("focusRequestNonce", 0)
+            .put("placeholder", "Message design")
+            .put("enabled", true)
+            .put("showAsTaskToggle", true)
+            .put("composerMode", "idle")
+            .put(
+                "memberSuggestions",
+                JSONArray()
+                    .put(JSONObject().put("displayName", "Artin").put("handle", "artin"))
+                    .put(JSONObject().put("displayName", "Android Developer").put("handle", "Android-Developer"))
+            )
+            .put(
+                "channelSuggestions",
+                JSONArray()
+                    .put(JSONObject().put("name", "design").put("subtitle", "Product and UI decisions"))
+                    .put(JSONObject().put("name", "android-artifacts").put("subtitle", "Builds and screenshots"))
+            )
 
     private fun conversation(
         id: String,
