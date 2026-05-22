@@ -76,6 +76,7 @@ private val ChannelAvatarSize = 20.dp
 private val ChannelAvatarFontSize = 11.sp
 private val ChannelRowHeight = 32.dp
 private val ChannelRowHorizontalPadding = 8.dp
+private val ChannelRowShadowOffset = 2.dp
 private val SectionChevronSize = 12.dp
 private val MiniActionSize = 30.dp
 private val MiniActionIconSize = 16.dp
@@ -896,9 +897,10 @@ private fun HeaderIconAction(icon: String, contentDescription: String, onClick: 
 
 @Composable
 private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, trailingPresence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null) {
+    val selected = interactionState == ChannelRowInteractionState.Selected
     val rowBackground = when (interactionState) {
         ChannelRowInteractionState.Default -> if (joined) Color.Transparent else SlockColor.EmptyStateGray.copy(alpha = 0.36f)
-        ChannelRowInteractionState.Selected -> SlockColor.BrandYellow
+        ChannelRowInteractionState.Selected -> SlockColor.AccentPink
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
     }
@@ -906,17 +908,42 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
         ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered -> Color.Transparent
         ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
-    com.tencent.kuikly.compose.foundation.layout.Row(modifier = modifier.fillMaxWidth().heightIn(min = ChannelRowHeight).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier), verticalAlignment = Alignment.CenterVertically) {
-        com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().heightIn(min = ChannelRowHeight).background(rowBackground).border(SlockStroke.Default, borderColor).padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+    ) {
+        if (selected) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(ChannelRowHeight)
+                        .offset(x = ChannelRowShadowOffset, y = ChannelRowShadowOffset)
+                        .background(SlockColor.ShadowBlack)
+            )
+        }
+        com.tencent.kuikly.compose.foundation.layout.Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(ChannelRowHeight)
+                    .background(rowBackground)
+                    .border(SlockStroke.Default, borderColor)
+                    .padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Box(modifier = Modifier.width(ChannelSymbolWidth), contentAlignment = Alignment.Center) {
                 if (avatarLabel != null) ChannelAvatar(avatarWireValue, avatarLabel, presence) else Text(symbol, style = SlockType.Body.copy(fontWeight = FontWeight.Normal, fontSize = ChannelSymbolFontSize), color = SlockColor.TextBlack.copy(alpha = if (joined) 0.62f else 0.32f), textAlign = TextAlign.Center)
             }
-            Text(name, style = SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f), modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(name, style = if (selected || (badge != null && joined)) SlockType.ButtonBold else SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f), modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (badge != null) Spacer(Modifier.width(SlockSpacing.Sm)) else if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
             if (hasDraft) SlockLucideIcon("pencil", Modifier.size(14.dp), color = "#FF737373")
             if (badge != null) {
                 if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
-                CountPill(badge, SlockColor.AccentPink)
+                if (joined) CountPill(badge, SlockColor.AccentPink) else DimmedUnreadCount(badge)
             }
             if (trailingPresence != null) {
                 if (badge != null || hasDraft) Spacer(Modifier.width(SlockSpacing.Sm))
@@ -924,6 +951,17 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             }
         }
     }
+}
+
+@Composable
+private fun DimmedUnreadCount(text: String) {
+    Text(
+        text,
+        style = SlockType.Caption.copy(fontWeight = FontWeight.Medium, fontSize = 10.sp, lineHeight = 10.sp, fontFamily = FontFamily.Monospace),
+        color = SlockColor.TextBlack.copy(alpha = 0.5f),
+        maxLines = 1,
+        textAlign = TextAlign.Center
+    )
 }
 
 @Composable
