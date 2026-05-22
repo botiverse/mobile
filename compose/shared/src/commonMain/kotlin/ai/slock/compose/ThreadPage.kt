@@ -2562,11 +2562,11 @@ private fun ThreadMessageActionMenu(
     val menuHeight = menuSize.height.takeIf { it > 0f } ?: ThreadMessageMenuFallbackHeight
     val menuX =
         if (overlaySize.width > 0f) {
-            (anchor.x - ThreadMessageMenuHorizontalNudge)
-                .coerceIn(
-                    ThreadMessageMenuAnchorGap,
-                    (overlaySize.width - menuWidth - ThreadMessageMenuAnchorGap).coerceAtLeast(ThreadMessageMenuAnchorGap)
-                )
+            coerceThreadMessageMenuOffset(
+                value = anchor.x - ThreadMessageMenuHorizontalNudge,
+                min = ThreadMessageMenuAnchorGap,
+                max = overlaySize.width - menuWidth - ThreadMessageMenuAnchorGap
+            )
         } else {
             anchor.x.coerceAtLeast(ThreadMessageMenuAnchorGap)
         }
@@ -2574,7 +2574,7 @@ private fun ThreadMessageActionMenu(
     val preferredAboveY = anchor.y - menuHeight - ThreadMessageMenuAnchorGap
     val maxY =
         if (overlaySize.height > 0f) {
-            (overlaySize.height - menuHeight - ThreadMessageMenuAnchorGap).coerceAtLeast(ThreadMessageMenuAnchorGap)
+            overlaySize.height - menuHeight - ThreadMessageMenuAnchorGap
         } else {
             preferredBelowY
         }
@@ -2586,7 +2586,11 @@ private fun ThreadMessageActionMenu(
                 maxY
             }
         } else {
-            preferredBelowY.coerceIn(ThreadMessageMenuAnchorGap, maxY)
+            coerceThreadMessageMenuOffset(
+                value = preferredBelowY,
+                min = ThreadMessageMenuAnchorGap,
+                max = maxY
+            )
         }
     Box(
         modifier = Modifier
@@ -2636,6 +2640,11 @@ private fun IntSize.toDpSize(density: Density): Size =
     with(density) {
         Size(width.toDp().value, height.toDp().value)
     }
+
+internal fun coerceThreadMessageMenuOffset(value: Float, min: Float, max: Float): Float {
+    if (max < min) return min
+    return value.coerceIn(min, max)
+}
 
 @Composable
 private fun ThreadMessageReactionRow() {

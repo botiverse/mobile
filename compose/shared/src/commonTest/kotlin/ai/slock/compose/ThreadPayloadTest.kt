@@ -14,6 +14,13 @@ import kotlin.test.assertEquals
 
 class ThreadPayloadTest {
     @Test
+    fun messageMenuOffsetHandlesEmptyRange() {
+        assertEquals(8f, coerceThreadMessageMenuOffset(value = 120f, min = 8f, max = -142.4f))
+        assertEquals(24f, coerceThreadMessageMenuOffset(value = 24f, min = 8f, max = 48f))
+        assertEquals(48f, coerceThreadMessageMenuOffset(value = 120f, min = 8f, max = 48f))
+    }
+
+    @Test
     fun parsesMembersAndSettingsActions() {
         val payload =
             parseThreadScreenPayload(
