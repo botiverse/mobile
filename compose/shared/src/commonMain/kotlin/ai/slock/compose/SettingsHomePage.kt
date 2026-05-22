@@ -22,6 +22,7 @@ import ai.slock.compose.data.SharedHomeContentState
 import ai.slock.compose.data.SharedHomeDataSource
 import ai.slock.compose.data.SharedHomeIntent
 import ai.slock.compose.data.SharedHomeState
+import ai.slock.compose.data.SharedHomeTopAction
 import ai.slock.compose.data.SharedHomeViewModel
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.parseSlockHome
@@ -109,6 +110,9 @@ const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 
 private const val AppShellRouteMain = "main"
 private const val AppShellRouteThread = "thread"
+private const val HomeDestinationSearch = "search"
+private const val HomeDestinationActivity = "activity"
+private const val HomeDestinationSaved = "saved"
 private const val SettingsDestinationHome = "home"
 private const val SettingsDestinationAccount = "account"
 private const val SettingsDestinationComputers = "computers"
@@ -368,6 +372,7 @@ private fun appShellBottomTabs(selectedKey: String): List<SlockBottomTabItemPayl
 private fun SlockAppShellContent() {
     var selectedTab by remember { mutableStateOf("home") }
     var selectedSettingsDestination by remember { mutableStateOf(SettingsDestinationHome) }
+    var selectedHomeDestination by remember { mutableStateOf<String?>(null) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val relationalStore = remember { KuiklyRelationalStore(bridge) }
@@ -475,12 +480,14 @@ private fun SlockAppShellContent() {
                 onReady = { session ->
                     authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session))
                     selectedTab = "home"
+                    selectedHomeDestination = null
                     activeThreadPayload = null
                     threadBackStack = emptyList()
                 },
                 onSignOut = {
                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
                     selectedTab = "home"
+                    selectedHomeDestination = null
                     activeThreadPayload = null
                     threadBackStack = emptyList()
                 }
@@ -534,9 +541,14 @@ private fun SlockAppShellContent() {
             selectedSettingsDestination = SettingsDestinationHome
             return true
         }
+        if (selectedTab == "home" && selectedHomeDestination != null) {
+            selectedHomeDestination = null
+            return true
+        }
         if (selectedTab != "home") {
             selectedTab = "home"
             selectedSettingsDestination = SettingsDestinationHome
+            selectedHomeDestination = null
             return true
         }
         return false
@@ -631,6 +643,7 @@ private fun SlockAppShellContent() {
                                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
                                     selectedTab = "home"
                                     selectedSettingsDestination = SettingsDestinationHome
+                                    selectedHomeDestination = null
                                     activeThreadPayload = null
                                     threadBackStack = emptyList()
                                 }
@@ -642,22 +655,33 @@ private fun SlockAppShellContent() {
                         )
                         "members" -> SharedMembersScreen(bridge)
                         else ->
-                            SharedHomeScreen(
-                                bridge = bridge,
-                                state = homeState,
-                                onIntent = homeViewModel::dispatch,
-                                onOpenConversation = { conversation ->
-                                    activeThreadPayload = buildAppShellThreadPayload(conversation, threadTimeContext)
-                                    threadBackStack = emptyList()
-                                    navController.navigate(AppShellRouteThread)
-                                }
-                            )
+                            if (selectedHomeDestination == null) {
+                                SharedHomeScreen(
+                                    bridge = bridge,
+                                    state = homeState,
+                                    onIntent = homeViewModel::dispatch,
+                                    onOpenSearch = { selectedHomeDestination = HomeDestinationSearch },
+                                    onOpenActivity = { selectedHomeDestination = HomeDestinationActivity },
+                                    onOpenSaved = { selectedHomeDestination = HomeDestinationSaved },
+                                    onOpenConversation = { conversation ->
+                                        selectedHomeDestination = null
+                                        activeThreadPayload = buildAppShellThreadPayload(conversation, threadTimeContext)
+                                        threadBackStack = emptyList()
+                                        navController.navigate(AppShellRouteThread)
+                                    }
+                                )
+                            } else {
+                                SharedHomeDestinationPlaceholder(selectedHomeDestination ?: HomeDestinationActivity)
+                            }
                     }
                 }
                 SlockAppBottomTabBarHost(
                     items = appShellBottomTabs(selectedTab),
                     onSelect = {
                         selectedTab = it
+                        if (it == "home") {
+                            selectedHomeDestination = null
+                        }
                         if (it != "settings") {
                             selectedSettingsDestination = SettingsDestinationHome
                         }
@@ -1725,6 +1749,9 @@ private fun SharedHomeScreen(
     bridge: ai.slock.compose.base.BridgeModule,
     state: SharedHomeState,
     onIntent: (SharedHomeIntent) -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenActivity: () -> Unit,
+    onOpenSaved: () -> Unit,
     onOpenConversation: (ConversationSummary) -> Unit
 ) {
     LaunchedEffect(Unit) {
@@ -1791,12 +1818,14 @@ private fun SharedHomeScreen(
                 servers = servers,
                 channels = snapshot.channels.map { it.toSharedHomeConversationItem() },
                 directMessages = snapshot.directMessages.map { it.toSharedHomeConversationItem() },
-                selectedChannelId = snapshot.channels.firstOrNull()?.threadId?.value
-                    ?: snapshot.directMessages.firstOrNull()?.threadId?.value,
+                selectedChannelId = state.selectedConversationId,
                 serverUnreadCount = snapshot.server.unreadCount,
                 inboxUnreadCount = snapshot.unreadTotal,
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 pendingServerId = serverSwitchState.pendingServerId,
+                activitySelected = state.selectedTopAction == SharedHomeTopAction.Activity,
+                searchSelected = state.selectedTopAction == SharedHomeTopAction.Search,
+                savedSelected = state.selectedTopAction == SharedHomeTopAction.Saved,
                 showBottomBar = false,
                 outerPadding = 0.dp,
                 contentRefreshing = current.contentRefreshing,
@@ -1807,6 +1836,18 @@ private fun SharedHomeScreen(
                 onCreateServerClick = {
                     bridge.toast("Create server is not available yet")
                 },
+                onSearchClick = {
+                    onIntent(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Search))
+                    onOpenSearch()
+                },
+                onInboxClick = {
+                    onIntent(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Activity))
+                    onOpenActivity()
+                },
+                onSavedClick = {
+                    onIntent(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Saved))
+                    onOpenSaved()
+                },
                 onChannelClick = { threadId ->
                     val conversation =
                         (snapshot.channels + snapshot.directMessages)
@@ -1814,6 +1855,7 @@ private fun SharedHomeScreen(
                     if (conversation == null) {
                         bridge.toast("Conversation is no longer available")
                     } else {
+                        onIntent(SharedHomeIntent.SelectConversation(threadId))
                         onOpenConversation(conversation)
                     }
                 }
@@ -1849,6 +1891,35 @@ private fun SharedHomeSessionShell(
         onServerSwitcherDismiss = onServerSwitcherDismiss,
         onServerSelected = onServerSelected,
         onCreateServerClick = onCreateServerClick
+    )
+}
+
+@Composable
+private fun SharedHomeDestinationPlaceholder(destination: String) {
+    val title: String
+    val subtitle: String
+    val iconName: String
+    when (destination) {
+        HomeDestinationSearch -> {
+            title = "Search"
+            subtitle = "Search is opening from the shared Home shell."
+            iconName = "search"
+        }
+        HomeDestinationSaved -> {
+            title = "Saved"
+            subtitle = "Saved messages are opening from the shared Home shell."
+            iconName = "bookmark"
+        }
+        else -> {
+            title = "Activity"
+            subtitle = "Activity is opening from the shared Home shell."
+            iconName = "bell"
+        }
+    }
+    AppShellPlaceholderContent(
+        title = title,
+        subtitle = subtitle,
+        iconName = iconName
     )
 }
 

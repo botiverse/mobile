@@ -153,6 +153,40 @@ class SharedHomeStoreTest {
         scope.cancel()
     }
 
+    @Test
+    fun selectConversationTracksSelectedRowAndClearsTopAction() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = RecordingHomeApi()),
+            scope = scope
+        )
+
+        store.accept(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Activity))
+        store.accept(SharedHomeIntent.SelectConversation("channel-1"))
+
+        assertEquals("channel-1", store.state.value.selectedConversationId)
+        assertEquals(null, store.state.value.selectedTopAction)
+        scope.cancel()
+    }
+
+    @Test
+    fun selectTopActionTracksActionAndClearsSelectedConversation() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = RecordingHomeApi()),
+            scope = scope
+        )
+
+        store.accept(SharedHomeIntent.SelectConversation("dm-1"))
+        store.accept(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Saved))
+
+        assertEquals(null, store.state.value.selectedConversationId)
+        assertEquals(SharedHomeTopAction.Saved, store.state.value.selectedTopAction)
+        scope.cancel()
+    }
+
     private fun source(api: SlockHomeApi): SharedHomeDataSource =
         SharedHomeDataSource(
             sessionStore = InMemorySlockAuthSessionStore(sampleSession()),

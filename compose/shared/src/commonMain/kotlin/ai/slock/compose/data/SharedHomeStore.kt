@@ -54,6 +54,18 @@ class SharedHomeStore(
                 _state.value = _state.value.copy(serverSwitcherExpanded = !_state.value.serverSwitcherExpanded)
             SharedHomeIntent.DismissServerSwitcher ->
                 _state.value = _state.value.copy(serverSwitcherExpanded = false)
+            is SharedHomeIntent.SelectConversation ->
+                _state.value =
+                    _state.value.copy(
+                        selectedConversationId = intent.threadId,
+                        selectedTopAction = null
+                    )
+            is SharedHomeIntent.SelectTopAction ->
+                _state.value =
+                    _state.value.copy(
+                        selectedConversationId = null,
+                        selectedTopAction = intent.action
+                    )
             is SharedHomeIntent.ApplyRealtimeEvent ->
                 applyRealtimeEvent(ServerId(intent.serverId), intent.event)
             is SharedHomeIntent.SelectServer -> {
@@ -198,14 +210,24 @@ class SharedHomeViewModel(
 data class SharedHomeState(
     val content: SharedHomeContentState = SharedHomeContentState.Loading(),
     val serverSwitchState: HomeServerSwitchState = HomeServerSwitchState(),
-    val serverSwitcherExpanded: Boolean = false
+    val serverSwitcherExpanded: Boolean = false,
+    val selectedConversationId: String? = null,
+    val selectedTopAction: SharedHomeTopAction? = null
 )
+
+enum class SharedHomeTopAction {
+    Search,
+    Activity,
+    Saved
+}
 
 sealed interface SharedHomeIntent {
     data object Start : SharedHomeIntent
     data object Refresh : SharedHomeIntent
     data object ToggleServerSwitcher : SharedHomeIntent
     data object DismissServerSwitcher : SharedHomeIntent
+    data class SelectConversation(val threadId: String) : SharedHomeIntent
+    data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeIntent
     data class SelectServer(val serverId: String) : SharedHomeIntent
     data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
 }
@@ -218,6 +240,8 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.SelectServer -> true
             SharedHomeIntent.ToggleServerSwitcher,
             SharedHomeIntent.DismissServerSwitcher,
+            is SharedHomeIntent.SelectConversation,
+            is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent -> false
         }
 

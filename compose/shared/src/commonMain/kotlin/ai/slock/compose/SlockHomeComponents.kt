@@ -411,6 +411,8 @@ fun SlockStructuralHomeShell(
     contentRefreshEnabled: Boolean = true,
     applyTopSafeArea: Boolean = true,
     activitySelected: Boolean = false,
+    searchSelected: Boolean = false,
+    savedSelected: Boolean = false,
     selectedTabKey: String = "home",
     showBottomBar: Boolean = true,
     bottomContentPadding: Dp = if (showBottomBar) SlockSize.BottomBarHeight + SlockSpacing.Md else SlockSpacing.Lg,
@@ -496,7 +498,7 @@ fun SlockStructuralHomeShell(
                             }
                         }
                         item { Spacer(Modifier.height(SlockSpacing.Md)) }
-                        item { SidebarActionRow("search", labels.search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = onSearchClick) }
+                        item { SidebarActionRow("search", labels.search, selected = searchSelected, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = onSearchClick) }
                         item {
                             SidebarActivityRow(
                                 labels.inbox,
@@ -506,7 +508,7 @@ fun SlockStructuralHomeShell(
                                 onClick = onInboxClick
                             )
                         }
-                        item { SidebarActionRow("bookmark", labels.saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = onSavedClick) }
+                        item { SidebarActionRow("bookmark", labels.saved, selected = savedSelected, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = onSavedClick) }
                         item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                         item {
                             SidebarSectionHeader(labels.channels, channels.size, channelsExpanded, { channelsExpanded = it }, { channelsReversed = !channelsReversed }, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)) {
@@ -542,6 +544,7 @@ fun SlockStructuralHomeShell(
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     hasDraft = dm.hasDraft,
                                     badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
+                                    interactionState = if (dm.id == selectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
                                     onClick = { onChannelClick(dm.id) }
                                 )
                             }
@@ -988,11 +991,32 @@ private fun SidebarActivityRow(label: String, count: String?, selected: Boolean 
 }
 
 @Composable
-private fun SidebarActionRow(icon: String, label: String, modifier: Modifier = Modifier, badge: String? = null, trailingText: String? = null, onClick: (() -> Unit)? = null) {
-    com.tencent.kuikly.compose.foundation.layout.Row(modifier = modifier.fillMaxWidth().heightIn(min = SidebarActionRowHeight).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = SidebarRowHorizontalPadding), verticalAlignment = Alignment.CenterVertically) {
-        Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { SlockLucideIcon(icon, Modifier.size(SidebarActionIconSize)) }
-        Text(label, style = SlockType.Button, color = SlockColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (badge != null) CountPill(badge, SlockColor.AccentPink) else if (trailingText != null) SidebarTrailingNumberText(trailingText, color = SlockColor.TextBlack)
+private fun SidebarActionRow(icon: String, label: String, modifier: Modifier = Modifier, selected: Boolean = false, badge: String? = null, trailingText: String? = null, onClick: (() -> Unit)? = null) {
+    Box(modifier = modifier.fillMaxWidth()) {
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = SidebarActionRowHeight)
+                    .offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
+                    .background(SlockColor.ShadowBlack)
+            )
+        }
+        com.tencent.kuikly.compose.foundation.layout.Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = SidebarActionRowHeight)
+                    .background(if (selected) SlockColor.AccentPink else Color.Transparent)
+                    .then(if (selected) Modifier.border(SlockStroke.Default, SlockColor.BorderBlack) else Modifier)
+                    .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                    .padding(horizontal = SidebarRowHorizontalPadding),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { SlockLucideIcon(icon, Modifier.size(SidebarActionIconSize)) }
+            Text(label, style = if (selected) SlockType.ButtonBold else SlockType.Button, color = SlockColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (badge != null) CountPill(badge, SlockColor.AccentPink) else if (trailingText != null) SidebarTrailingNumberText(trailingText, color = SlockColor.TextBlack)
+        }
     }
 }
 
