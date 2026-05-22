@@ -92,7 +92,7 @@ internal class SharedThreadDataSource(
                 ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
         val response =
             try {
-                api.channelMessages(threadId)
+                api.channelMessages(threadId, limit = SharedThreadPageSize)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
@@ -116,6 +116,26 @@ internal class SharedThreadDataSource(
         writeCachedPayload(payload)
         return DataResult.Content(payload)
     }
+
+    suspend fun fetchOlderThreadPayload(
+        basePayload: KuiklyThreadScreenPayload,
+        beforeSeq: Long
+    ): DataResult<KuiklyThreadScreenPayload> =
+        fetchThreadPage(
+            basePayload = basePayload,
+            source = "older",
+            call = { threadId -> api.channelMessages(threadId, limit = SharedThreadPageSize, beforeSeq = beforeSeq) }
+        )
+
+    suspend fun fetchNewerThreadPayload(
+        basePayload: KuiklyThreadScreenPayload,
+        afterSeq: Long
+    ): DataResult<KuiklyThreadScreenPayload> =
+        fetchThreadPage(
+            basePayload = basePayload,
+            source = "newer",
+            call = { threadId -> api.messageSync(threadId, sinceSeq = afterSeq, limit = SharedThreadPageSize) }
+        )
 
     suspend fun sendMessage(channelId: String, body: String, asTask: Boolean): HomeNetworkResponse =
         api.sendMessage(channelId = channelId, body = body, asTask = asTask)
@@ -154,7 +174,45 @@ internal class SharedThreadDataSource(
             )
         }
     }
+
+    private suspend fun fetchThreadPage(
+        basePayload: KuiklyThreadScreenPayload,
+        source: String,
+        call: suspend (threadId: String) -> HomeNetworkResponse
+    ): DataResult<KuiklyThreadScreenPayload> {
+        val threadId =
+            basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
+                ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+        val session =
+            readSession()
+                ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
+        val response =
+            try {
+                call(threadId)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return DataResult.Error(ScreenError(code = "thread_${source}_network", retryable = true))
+            }
+        if (!response.isSuccessful || response.bodyText.isNullOrBlank()) {
+            return DataResult.Error(
+                ScreenError(
+                    code = response.errorBodyText?.takeIf { it.isNotBlank() } ?: "thread_${source}_network",
+                    retryable = true
+                )
+            )
+        }
+        return DataResult.Content(
+            buildSharedThreadPayloadFromMessagesResponse(
+                basePayload = basePayload,
+                bodyText = response.bodyText,
+                session = session
+            )
+        )
+    }
 }
+
+private const val SharedThreadPageSize = 50
 
 internal data class SharedThreadState(
     val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
@@ -168,6 +226,8 @@ internal sealed interface SharedThreadIntent {
     data class ApplyRealtimeEvent(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
         SharedThreadIntent
     data object MarkVisibleReadAll : SharedThreadIntent
+    data object LoadOlder : SharedThreadIntent
+    data object LoadNewer : SharedThreadIntent
 }
 
 internal class SharedThreadStore(
@@ -206,6 +266,12 @@ internal class SharedThreadStore(
             SharedThreadIntent.MarkVisibleReadAll -> {
                 scope.launch { markVisibleReadAll() }
             }
+            SharedThreadIntent.LoadOlder -> {
+                scope.launch { loadOlder() }
+            }
+            SharedThreadIntent.LoadNewer -> {
+                scope.launch { loadNewer() }
+            }
         }
     }
 
@@ -224,6 +290,8 @@ internal class SharedThreadStore(
                     activeReplyParentMessageId = intent.activeReplyParentMessageId
                 )
             SharedThreadIntent.MarkVisibleReadAll -> markVisibleReadAll()
+            SharedThreadIntent.LoadOlder -> loadOlder()
+            SharedThreadIntent.LoadNewer -> loadNewer()
         }
     }
 
@@ -308,6 +376,60 @@ internal class SharedThreadStore(
     private suspend fun markVisibleReadAll() {
         val channelId = _state.value.payload.cacheThreadId() ?: return
         dataSource.markChannelReadAll(channelId)
+    }
+
+    private suspend fun loadOlder() {
+        val existing = _state.value.payload
+        if (!existing.canLoadMoreBefore || existing.olderMessagesStatus == "loading") return
+        val beforeSeq = existing.messages.mapNotNull { it.seq }.minOrNull()
+        if (beforeSeq == null) {
+            _state.value = _state.value.copy(payload = existing.copy(olderMessagesStatus = "error", errorCode = "missing_before_seq"))
+            return
+        }
+        _state.value = _state.value.copy(payload = existing.copy(olderMessagesStatus = "loading", errorCode = null))
+        val result = dataSource.fetchOlderThreadPayload(existing, beforeSeq)
+        _state.value =
+            when (result) {
+                is DataResult.Content -> {
+                    val merged = _state.value.payload.mergePagedMessages(result.data.messages, before = true)
+                    _state.value.copy(payload = merged)
+                }
+                is DataResult.Empty ->
+                    _state.value.copy(payload = _state.value.payload.copy(canLoadMoreBefore = false, olderMessagesStatus = "idle"))
+                is DataResult.Error ->
+                    _state.value.copy(payload = _state.value.payload.copy(olderMessagesStatus = "error", errorCode = result.error.code))
+                is DataResult.NoPermission ->
+                    _state.value.copy(payload = _state.value.payload.copy(olderMessagesStatus = "error", errorCode = result.blocker.code))
+            }
+        dataSource.cachePayload(_state.value.payload)
+        dataSource.writeCachedPayload(_state.value.payload)
+    }
+
+    private suspend fun loadNewer() {
+        val existing = _state.value.payload
+        if (!existing.canLoadMoreAfter || existing.newerMessagesStatus == "loading") return
+        val afterSeq = existing.messages.mapNotNull { it.seq }.maxOrNull()
+        if (afterSeq == null) {
+            _state.value = _state.value.copy(payload = existing.copy(newerMessagesStatus = "error", errorCode = "missing_after_seq"))
+            return
+        }
+        _state.value = _state.value.copy(payload = existing.copy(newerMessagesStatus = "loading", errorCode = null))
+        val result = dataSource.fetchNewerThreadPayload(existing, afterSeq)
+        _state.value =
+            when (result) {
+                is DataResult.Content -> {
+                    val merged = _state.value.payload.mergePagedMessages(result.data.messages, before = false)
+                    _state.value.copy(payload = merged)
+                }
+                is DataResult.Empty ->
+                    _state.value.copy(payload = _state.value.payload.copy(canLoadMoreAfter = false, newerMessagesStatus = "idle"))
+                is DataResult.Error ->
+                    _state.value.copy(payload = _state.value.payload.copy(newerMessagesStatus = "error", errorCode = result.error.code))
+                is DataResult.NoPermission ->
+                    _state.value.copy(payload = _state.value.payload.copy(newerMessagesStatus = "error", errorCode = result.blocker.code))
+            }
+        dataSource.cachePayload(_state.value.payload)
+        dataSource.writeCachedPayload(_state.value.payload)
     }
 }
 
@@ -407,9 +529,43 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessages(
     return copy(
         status = "content",
         errorCode = null,
-        messages = merged
+        messages = merged.sortedByThreadTimeline()
     )
 }
+
+private fun KuiklyThreadScreenPayload.mergePagedMessages(
+    pageMessages: List<KuiklyThreadMessageItem>,
+    before: Boolean
+): KuiklyThreadScreenPayload {
+    val incoming = pageMessages.filterNot { pageMessage -> messages.any { it.id == pageMessage.id } }
+    val mergedMessages =
+        if (before) {
+            (incoming + messages).distinctBy { it.id }
+        } else {
+            (messages + incoming).distinctBy { it.id }
+        }.sortedByThreadTimeline()
+    val hasMore = incoming.size >= SharedThreadPageSize
+    return copy(
+        status = "content",
+        errorCode = null,
+        messages = mergedMessages,
+        canLoadMoreBefore = if (before) hasMore else canLoadMoreBefore,
+        canLoadMoreAfter = if (before) canLoadMoreAfter else hasMore,
+        olderMessagesStatus = if (before) "idle" else olderMessagesStatus,
+        newerMessagesStatus = if (before) newerMessagesStatus else "idle"
+    )
+}
+
+private fun List<KuiklyThreadMessageItem>.sortedByThreadTimeline(): List<KuiklyThreadMessageItem> =
+    sortedWith(
+        Comparator { left, right ->
+            if (left.seq != null && right.seq != null) {
+                compareValues(left.seq, right.seq).takeIf { it != 0 }?.let { return@Comparator it }
+            }
+            left.timestampLabel.compareTo(right.timestampLabel).takeIf { it != 0 }
+                ?: left.id.compareTo(right.id)
+        }
+    )
 
 private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
     message: Message,
@@ -510,6 +666,7 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(update: KuiklyThreadMess
         avatarWireValue = update.avatarWireValue ?: avatarWireValue,
         gravatarHash = update.gravatarHash ?: gravatarHash,
         timestampLabel = update.timestampLabel.ifBlank { timestampLabel },
+        seq = update.seq ?: seq,
         messageType = update.messageType.ifBlank { messageType },
         systemEventType = update.systemEventType ?: systemEventType,
         metadata = update.metadata.ifEmpty { metadata },
@@ -658,6 +815,7 @@ private fun KuiklyThreadMessageItem.toMessage(
         threadId = threadId,
         channelId = channelId,
         author = toMemberProfile(),
+        seq = seq,
         timestampLabel = timestampLabel,
         body = body,
         messageType = if (messageType.equals("System", ignoreCase = true)) MessageType.System else MessageType.Chat,
@@ -702,6 +860,7 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
         avatarLabel = author.avatarLabel,
         avatarWireValue = author.avatar?.wireValue ?: author.avatarUrl,
         gravatarHash = author.gravatarHash,
+        seq = seq,
         timestampLabel = timestampLabel,
         messageType = if (messageType == MessageType.System) "System" else "Chat",
         systemEventType = systemEventType,

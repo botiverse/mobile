@@ -327,18 +327,87 @@ class SharedThreadStoreTest {
         scope.cancel()
     }
 
+    @Test
+    fun loadOlderMessagesMergesBeforeVisiblePayloadAndWritesCache() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10),
+                olderBodyText = messagesResponse("older body", id = "m5", seq = 5, hasMore = false)
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                api = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(SharedThreadIntent.LoadOlder)
+
+        val payload = store.state.value.payload
+        assertEquals(listOf("older body", "current body"), payload.messages.map { it.body })
+        assertEquals(listOf(10L), api.beforeSeqs)
+        assertEquals(false, payload.canLoadMoreBefore)
+        assertEquals("idle", payload.olderMessagesStatus)
+        assertEquals("older body", localStore.readThread(ThreadId("channel-1"))?.messages?.first()?.body)
+        scope.cancel()
+    }
+
+    @Test
+    fun loadNewerMessagesMergesAfterVisiblePayload() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, hasMore = false, hasNextPage = true),
+                newerBodyText = messagesResponse("newer body", id = "m12", seq = 12, hasNextPage = false)
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                api = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = true)))
+
+        store.accept(SharedThreadIntent.LoadNewer)
+
+        val payload = store.state.value.payload
+        assertEquals(listOf("current body", "newer body"), payload.messages.map { it.body })
+        assertEquals(listOf(10L), api.syncSinceSeqs)
+        assertEquals(false, payload.canLoadMoreAfter)
+        assertEquals("idle", payload.newerMessagesStatus)
+        scope.cancel()
+    }
+
     private class FakeThreadApi(
         var bodyText: String = messagesResponse("network body"),
+        var olderBodyText: String = messagesResponse("older body", id = "older", seq = 1, hasMore = false),
+        var newerBodyText: String = messagesResponse("newer body", id = "newer", seq = 100, hasNextPage = false),
         var failChannelMessages: Boolean = false
     ) : SharedThreadNetworkApi {
         var channelMessageCalls: Int = 0
         var failReadAll: Boolean = false
         val readAllChannels: MutableList<String> = mutableListOf()
+        val beforeSeqs: MutableList<Long> = mutableListOf()
+        val syncSinceSeqs: MutableList<Long> = mutableListOf()
 
-        override suspend fun channelMessages(threadId: String, limit: Int): HomeNetworkResponse {
+        override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): HomeNetworkResponse {
             channelMessageCalls += 1
             if (failChannelMessages) throw IllegalStateException("offline")
-            return HomeNetworkResponse(code = 200, bodyText = bodyText)
+            return if (beforeSeq != null) {
+                beforeSeqs += beforeSeq
+                HomeNetworkResponse(code = 200, bodyText = olderBodyText)
+            } else {
+                HomeNetworkResponse(code = 200, bodyText = bodyText)
+            }
+        }
+
+        override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): HomeNetworkResponse {
+            syncSinceSeqs += sinceSeq
+            return HomeNetworkResponse(code = 200, bodyText = newerBodyText)
         }
 
         override suspend fun sendMessage(channelId: String, body: String, asTask: Boolean): HomeNetworkResponse =
@@ -390,13 +459,22 @@ class SharedThreadStoreTest {
         )
 
     companion object {
-        private fun messagesResponse(body: String): String =
+        private fun messagesResponse(
+            body: String,
+            id: String = "m1",
+            seq: Long = 10,
+            hasMore: Boolean = true,
+            hasNextPage: Boolean = false
+        ): String =
             """
             {
               "data": {
+                "hasMore": $hasMore,
+                "hasNextPage": $hasNextPage,
                 "messages": [
                   {
-                    "id": "m1",
+                    "id": "$id",
+                    "seq": $seq,
                     "body": "$body",
                     "createdAt": "2026-05-19T16:00:00Z",
                     "author": {"id": "u1", "displayName": "Artin"}

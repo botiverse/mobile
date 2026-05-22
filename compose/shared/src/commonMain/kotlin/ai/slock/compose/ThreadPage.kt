@@ -75,12 +75,15 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 
 internal const val THREAD_PAGE = "compose_thread"
 private const val THREAD_MESSAGE_VISUAL_PAGE = "compose_thread_message_visual"
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
+private const val ThreadMessagesPageSize = 50
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 
 @Page(THREAD_PAGE, supportInLocal = true)
@@ -175,6 +178,7 @@ internal data class KuiklyThreadMessageItem(
     val avatarWireValue: String? = null,
     val gravatarHash: String? = null,
     val timestampLabel: String = "",
+    val seq: Long? = null,
     val messageType: String = "Chat",
     val systemEventType: String? = null,
     val metadata: Map<String, String> = emptyMap(),
@@ -448,6 +452,12 @@ internal fun SharedThreadRouteContent(
                 action == "selectTab" -> {
                     // The shared shell owns tab state locally. There is no fullscreen host event to forward.
                 }
+                action == "loadOlder" || action == "retryLoadOlder" -> {
+                    threadViewModel.dispatch(SharedThreadIntent.LoadOlder)
+                }
+                action == "loadNewer" || action == "retryLoadNewer" -> {
+                    threadViewModel.dispatch(SharedThreadIntent.LoadNewer)
+                }
                 else -> {
                     bridge.log(
                         "thread_event_unsupported instanceId=${payload.instanceId} action=$action itemId=${itemId.orEmpty()} attachmentId=${attachmentId.orEmpty()} tab=${tab.orEmpty()}"
@@ -657,6 +667,14 @@ internal fun buildSharedThreadPayloadFromMessagesResponse(
         basePayload.copy(
             status = if (messages.isEmpty()) "empty" else "content",
             messages = messages,
+            canLoadMoreBefore =
+                root.threadBoolean("canLoadMoreBefore", "can_load_more_before", "hasMoreBefore", "has_more_before")
+                    ?: root.threadBoolean("hasMore", "has_more", "hasPreviousPage", "has_previous_page")
+                    ?: (basePayload.canLoadMoreBefore || messages.size >= ThreadMessagesPageSize),
+            canLoadMoreAfter =
+                root.threadBoolean("canLoadMoreAfter", "can_load_more_after", "hasMoreAfter", "has_more_after")
+                    ?: root.threadBoolean("hasNextPage", "has_next_page")
+                    ?: basePayload.canLoadMoreAfter,
             errorCode = null
         )
     }.getOrElse {
@@ -970,6 +988,21 @@ private fun JsonObject.toSharedThreadMessageItem(
                 "updatedAt",
                 "updated_at"
             ).orEmpty(),
+        seq =
+            threadLong(
+                "seq",
+                "sequence",
+                "sequenceNumber",
+                "sequence_number",
+                "messageSeq",
+                "message_seq",
+                "serverSeq",
+                "server_seq",
+                "createdSeq",
+                "created_seq",
+                "logSeq",
+                "log_seq"
+            ),
         messageType = messageType,
         systemEventType = threadString("systemEventType", "system_event_type", "eventType", "event_type"),
         metadata = (this["metadata"] as? JsonObject).threadStringMap(),
@@ -1117,6 +1150,17 @@ private fun JsonObject.threadString(vararg names: String): String? =
 
 private fun JsonObject.threadInt(vararg names: String): Int? =
     names.firstNotNullOfOrNull { name -> (this[name] as? JsonPrimitive)?.intOrNull }
+
+private fun JsonObject.threadLong(vararg names: String): Long? =
+    names.firstNotNullOfOrNull { name -> (this[name] as? JsonPrimitive)?.longOrNull }
+
+private fun JsonElement.threadBoolean(vararg names: String): Boolean? =
+    (this as? JsonObject)?.let { obj ->
+        names.firstNotNullOfOrNull { name -> (obj[name] as? JsonPrimitive)?.booleanOrNull }
+            ?: (obj["data"] as? JsonObject)?.let { data ->
+                names.firstNotNullOfOrNull { name -> (data[name] as? JsonPrimitive)?.booleanOrNull }
+            }
+    }
 
 @Composable
 private fun ThreadPageContent(

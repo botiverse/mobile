@@ -190,7 +190,8 @@ internal class BridgeTasksApi(
 }
 
 internal interface SharedThreadNetworkApi {
-    suspend fun channelMessages(threadId: String, limit: Int = 50): HomeNetworkResponse
+    suspend fun channelMessages(threadId: String, limit: Int = 50, beforeSeq: Long? = null): HomeNetworkResponse
+    suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int = 50): HomeNetworkResponse
     suspend fun sendMessage(channelId: String, body: String, asTask: Boolean = false): HomeNetworkResponse
     suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse
     suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse
@@ -201,8 +202,21 @@ internal class BridgeThreadApi(
     private val sessionStore: SlockAuthSessionStore,
     private val baseUrl: String = AUTH_BASE_URL
 ) : SharedThreadNetworkApi {
-    override suspend fun channelMessages(threadId: String, limit: Int): HomeNetworkResponse =
-        request("messages/channel/${threadId.trim()}", "limit=$limit")
+    override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): HomeNetworkResponse =
+        request(
+            "messages/channel/${threadId.trim()}",
+            listOfNotNull("limit=$limit", beforeSeq?.let { "before=$it" }).joinToString("&")
+        )
+
+    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): HomeNetworkResponse =
+        request(
+            "messages/sync",
+            listOf(
+                "since_seq=$sinceSeq",
+                "limit=$limit",
+                "channel_id=${channelId.trim()}"
+            ).joinToString("&")
+        )
 
     override suspend fun sendMessage(
         channelId: String,
