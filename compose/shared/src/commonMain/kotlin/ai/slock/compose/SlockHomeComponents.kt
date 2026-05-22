@@ -944,8 +944,6 @@ private fun HeaderIconAction(icon: String, contentDescription: String, onClick: 
 @Composable
 private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, trailingPresence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null) {
     val selected = interactionState == ChannelRowInteractionState.Selected
-    val channelRow = avatarLabel == null
-    val displayName = if (channelRow) name.uppercase() else name
     val rowBackground = when (interactionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Selected -> SlockColor.AccentPink
@@ -986,7 +984,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             Box(modifier = Modifier.width(ChannelSymbolWidth), contentAlignment = Alignment.Center) {
                 if (avatarLabel != null) ChannelAvatar(avatarWireValue, avatarLabel, presence) else Text(symbol, style = SlockType.ButtonBold.copy(fontSize = ChannelSymbolFontSize), color = SlockColor.TextBlack.copy(alpha = if (joined) 0.62f else 0.32f), textAlign = TextAlign.Center)
             }
-            Text(displayName, style = if (selected || (badge != null && joined)) SlockType.ButtonBold else SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f), modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(name, style = SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f), modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (badge != null) Spacer(Modifier.width(SlockSpacing.Sm)) else if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
             if (hasDraft) SlockLucideIcon("pencil", Modifier.size(14.dp), color = "#FF737373")
             if (badge != null) {
