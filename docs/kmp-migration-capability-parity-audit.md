@@ -6,6 +6,7 @@ Scope: global product-capability parity after moving Android product paths to th
 
 - `docs/kmp-home-capability-parity-audit.md`
 - `docs/kmp-thread-capability-parity-audit.md`
+- `docs/kmp-settings-capability-parity-audit.md`
 - `docs/android-ui-shared-migration-audit.md`
 
 This audit is intentionally capability-focused. Visual parity and component screenshot parity are necessary, but they do not prove that native Android behavior was migrated.
@@ -41,7 +42,7 @@ The migration gate is now:
 | Thread | Message menu/actions | Partial | Menu UI exists, but shared shell disables reply/open-in-channel/save/task/status/settings/add-member effects. | Re-enable each action only after shared intent/effect and repository capability exist. |
 | Thread | Reply-thread/back stack | Missing/partial | Shared shell has simple Thread -> Home pop, not native reply stack/parent/open-in-channel behavior. | Model reply stack, parent context, overlays, and route back handling in shared state. |
 | Tasks | Route MVI | Mostly migrated | Tasks reducer/store/display models and shared Tasks route are in commonMain; Android native Tasks top route/UI removed. | Continue long-tail route parity and visual/function regression, but this is not the current P0 gap. |
-| Settings | Detail route/data | Partial | Settings detail routes and some server members hydration are in shared, but full Settings MVI/data/actions are still incremental. | Audit Settings capability parity separately before deleting more native fallback behavior. |
+| Settings | Detail route/data | Partial | Settings detail routes and some server members hydration are in shared, but there is no `SharedSettingsStore`; Computers/Mobile/Storage/Diagnostics are static or pending compared with native Android. | Use `docs/kmp-settings-capability-parity-audit.md`; start with shared Settings MVI boundary, then restore Computers, Mobile prefs/notifications, Storage, Diagnostics, Server/Billing/Account data/actions. |
 
 ## Immediate Work Split
 
@@ -49,6 +50,7 @@ The migration gate is now:
 | --- | --- | --- | --- |
 | Home cache/warm loading parity audit | `#首页专修` task #128 | @Android-App-Integrator | Done/In Review; produced `docs/kmp-home-capability-parity-audit.md`. |
 | Thread native capability parity audit | `#对话流专修` task #193 | @Android-Developer-1 | Done/In Review; produced `docs/kmp-thread-capability-parity-audit.md`. |
+| Settings native capability parity audit | `#设置项专修` task #32/#33 | @Android-Settings-Integrator | Done/In Review; produced `docs/kmp-settings-capability-parity-audit.md`. |
 | Global migration gate and tracking | `#KMP` task #67 | @Cindy | This document and follow-up task routing. |
 | Kuikly ViewModel lifecycle rule | `#KMP` task #68 | @Cindy | Done/In Review; updated local skill and migration docs. |
 
@@ -81,7 +83,7 @@ The migration gate is now:
 
 ### Phase 4: Continue Non-P0 Route Audits
 
-10. Settings full MVI/data/action parity.
+10. Settings full MVI/data/action parity, starting with Computers, Mobile preferences/notifications, Storage, and Diagnostics because native Android already had real product capability there.
 11. Tasks remaining long-tail parity and visual/function regressions.
 12. Members/files/search/saved parity before deleting their Android native fallback paths.
 
