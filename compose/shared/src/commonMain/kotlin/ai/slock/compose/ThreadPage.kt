@@ -318,7 +318,7 @@ private fun ThreadMessageVisualScreen() {
         if (message != null) {
             ThreadMessageCard(
                 message = message,
-                highlightedMentions = setOf("Product-UX-Designer"),
+                highlightedMentions = emptySet(),
                 showReplyAction = payload.showReplyActions,
                 taskOpenEnabled = payload.showTaskOpenActions,
                 taskStatusActionsEnabled = payload.showTaskStatusActions,
@@ -2186,7 +2186,7 @@ private fun ThreadMessageCard(
                         ) {
                             SlockMarkdownBody(
                                 body = message.body,
-                                textStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp, color = SlockColor.TextBlack),
+                                textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
                                 highlightedMentions = highlightedMentions
                             )
                         }
