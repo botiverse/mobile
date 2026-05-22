@@ -47,6 +47,7 @@ data class ServerListSnapshot(
     val selectedServer: ServerSummary?
 )
 
+@Serializable
 data class ThreadSnapshot(
     val conversation: ConversationSummary,
     val messages: List<Message>,

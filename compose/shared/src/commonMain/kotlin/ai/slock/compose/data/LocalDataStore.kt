@@ -145,11 +145,12 @@ class RelationalComposeLocalDataStore(
         flow { emit(readThread(threadId)) }
 
     override suspend fun readThread(threadId: ThreadId): ThreadSnapshot? =
-        null
+        readSnapshot(THREAD_SCOPE, threadId.value)?.let { encoded ->
+            runCatching { json.decodeFromString<ThreadSnapshot>(encoded) }.getOrNull()
+        }
 
     override suspend fun writeThread(snapshot: ThreadSnapshot) {
-        // Thread cached-first is tracked separately; keep this Home cache adapter from silently
-        // persisting an incomplete thread schema.
+        writeSnapshot(THREAD_SCOPE, snapshot.conversation.threadId.value, json.encodeToString(snapshot))
     }
 
     override fun observeUnread(serverId: ServerId): Flow<ChannelUnreadSnapshot?> =
@@ -239,6 +240,7 @@ class RelationalComposeLocalDataStore(
         const val SESSION_SCOPE = "session"
         const val SESSION_ID = "current"
         const val HOME_SCOPE = "home"
+        const val THREAD_SCOPE = "thread"
         const val UNREAD_SCOPE = "unread"
     }
 }

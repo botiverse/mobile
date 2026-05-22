@@ -3,8 +3,10 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
 import ai.slock.compose.data.BridgeThreadApi
+import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklyRelationalStore
+import ai.slock.compose.data.RelationalComposeLocalDataStore
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.formatSlockTimestampLabel
@@ -259,12 +261,21 @@ private fun ThreadPageScreen() {
             instanceId = instanceId
         )
     }
-    val authStore = remember { KuiklyAuthSessionStore(KuiklyRelationalStore(bridge)) }
+    val relationalStore = remember { KuiklyRelationalStore(bridge) }
+    val authStore = remember { KuiklyAuthSessionStore(relationalStore) }
+    val localWriteThrough =
+        remember {
+            ComposeLocalWriteThrough(
+                RelationalComposeLocalDataStore(relationalStore),
+                logger = { message -> bridge.log("shared_thread_cache $message") }
+            )
+        }
     val dataSource =
         remember {
             SharedThreadDataSource(
                 api = BridgeThreadApi(bridge, authStore),
-                sessionStore = authStore
+                sessionStore = authStore,
+                localWriteThrough = localWriteThrough
             )
         }
     SharedThreadRouteContent(

@@ -290,7 +290,8 @@ private fun SlockAppShellContent() {
         remember {
             SharedThreadDataSource(
                 api = BridgeThreadApi(bridge, authStore),
-                sessionStore = authStore
+                sessionStore = authStore,
+                localWriteThrough = localWriteThrough
             )
         }
     val tasksDataSource =
