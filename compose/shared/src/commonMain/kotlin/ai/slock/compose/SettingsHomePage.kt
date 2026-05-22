@@ -11,6 +11,9 @@ import ai.slock.compose.data.KuiklyRelationalStore
 import ai.slock.compose.data.RelationalComposeLocalDataStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthErrorCode
+import ai.slock.compose.data.SharedAuthGateIntent
+import ai.slock.compose.data.SharedAuthGateState
+import ai.slock.compose.data.SharedAuthGateViewModel
 import ai.slock.compose.data.SharedAuthResult
 import ai.slock.compose.data.SharedTasksDataSource
 import ai.slock.compose.data.SharedTasksRouteIntent
@@ -300,9 +303,12 @@ private fun SlockAppShellContent() {
                 api = BridgeTasksApi(bridge, authStore)
             )
         }
-    var authGateState by remember { mutableStateOf<AppShellAuthGateState>(AppShellAuthGateState.Restoring) }
-    var authGateNonce by remember { mutableStateOf(0) }
     var activeThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
+    val authGateViewModel: SharedAuthGateViewModel =
+        viewModel(key = "shared-auth-gate") {
+            SharedAuthGateViewModel(authDataSource)
+        }
+    val authGateState by authGateViewModel.state.collectAsState()
     val homeViewModel: SharedHomeViewModel =
         viewModel(key = "shared-home") {
             SharedHomeViewModel(
@@ -325,70 +331,50 @@ private fun SlockAppShellContent() {
         pager.pageData.params.threadTimeContext()
     }
 
-    LaunchedEffect(authGateNonce) {
-        authGateState = AppShellAuthGateState.Restoring
-        authGateState =
-            when (val result = runCatching { authDataSource.restoreSession() }.getOrElse { SharedAuthResult.Failure(SharedAuthErrorCode.Network, "Network unavailable. Check your connection.") }) {
-                is SharedAuthResult.Success ->
-                    if (result.data.selectedServerId.isNullOrBlank()) {
-                        AppShellAuthGateState.ServerRequired(result.data)
-                    } else {
-                        AppShellAuthGateState.Ready(result.data)
-                    }
-                SharedAuthResult.Unauthenticated -> AppShellAuthGateState.AuthRequired
-                is SharedAuthResult.Failure -> AppShellAuthGateState.Error(result.message)
-            }
+    LaunchedEffect(Unit) {
+        authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
     }
 
     when (val gate = authGateState) {
-        AppShellAuthGateState.Restoring -> {
-            AppShellPlaceholderContent(
-                title = "Slock",
-                subtitle = "Restoring session...",
-                iconName = "sparkles"
-            )
+        SharedAuthGateState.Restoring -> {
+            AppShellRestoreSplashContent()
             return
         }
-        AppShellAuthGateState.AuthRequired -> {
+        SharedAuthGateState.AuthRequired -> {
             AppShellAuthGateContent(
                 authDataSource = authDataSource,
                 onSignedIn = { session ->
-                    authGateState =
-                        if (session.selectedServerId.isNullOrBlank()) {
-                            AppShellAuthGateState.ServerRequired(session)
-                        } else {
-                            AppShellAuthGateState.Ready(session)
-                        }
+                    authGateViewModel.dispatch(SharedAuthGateIntent.SignedIn(session))
                 }
             )
             return
         }
-        is AppShellAuthGateState.ServerRequired -> {
+        is SharedAuthGateState.ServerRequired -> {
             AppShellServerGateContent(
                 session = gate.session,
                 authDataSource = authDataSource,
                 onReady = { session ->
-                    authGateState = AppShellAuthGateState.Ready(session)
+                    authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session))
                     selectedTab = "home"
                     activeThreadPayload = null
                 },
                 onSignOut = {
-                    authGateState = AppShellAuthGateState.AuthRequired
+                    authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
                     selectedTab = "home"
                     activeThreadPayload = null
                 }
             )
             return
         }
-        is AppShellAuthGateState.Error -> {
+        is SharedAuthGateState.Error -> {
             AppShellAuthErrorContent(
                 message = gate.message,
-                onRetry = { authGateNonce += 1 },
-                onSignIn = { authGateState = AppShellAuthGateState.AuthRequired }
+                onRetry = { authGateViewModel.dispatch(SharedAuthGateIntent.Retry) },
+                onSignIn = { authGateViewModel.dispatch(SharedAuthGateIntent.ShowSignIn) }
             )
             return
         }
-        is AppShellAuthGateState.Ready -> Unit
+        is SharedAuthGateState.Ready -> Unit
     }
 
     fun popThreadRoute(): Boolean {
@@ -466,7 +452,7 @@ private fun SlockAppShellContent() {
                     when (selectedTab) {
                         "settings" -> {
                             SettingsAppShellContent(
-                                session = (authGateState as? AppShellAuthGateState.Ready)?.session,
+                                session = (authGateState as? SharedAuthGateState.Ready)?.session,
                                 authDataSource = authDataSource,
                                 membersApi = membersApi,
                                 selectedDestination = selectedSettingsDestination,
@@ -476,7 +462,7 @@ private fun SlockAppShellContent() {
                                     bridge.settingsEvent("shared-shell-settings", action, itemId)
                                 },
                                 onLogout = {
-                                    authGateState = AppShellAuthGateState.AuthRequired
+                                    authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
                                     selectedTab = "home"
                                     selectedSettingsDestination = SettingsDestinationHome
                                     activeThreadPayload = null
@@ -514,14 +500,6 @@ private fun SlockAppShellContent() {
             }
         }
     }
-}
-
-private sealed interface AppShellAuthGateState {
-    data object Restoring : AppShellAuthGateState
-    data object AuthRequired : AppShellAuthGateState
-    data class ServerRequired(val session: StoredAuthSession) : AppShellAuthGateState
-    data class Ready(val session: StoredAuthSession) : AppShellAuthGateState
-    data class Error(val message: String) : AppShellAuthGateState
 }
 
 @Composable
@@ -1776,6 +1754,33 @@ internal fun buildAppShellThreadPayload(
                 )
             )
     )
+
+@Composable
+private fun AppShellRestoreSplashContent() {
+    Column(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = com.tencent.kuikly.compose.ui.Alignment.CenterHorizontally
+    ) {
+        AuthLogoBadge("SLOCK")
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "Starting Slock",
+            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "Restoring your workspace...",
+            style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
 
 @Composable
 private fun AppShellPlaceholderContent(
