@@ -54,7 +54,8 @@ Android/KMP consumers:
 | Saved messages | `GET channels/saved`, `POST channels/saved`, `DELETE channels/saved/{messageId}` | `channelRouter.get/post("/saved")`, `delete("/saved/:messageId")` | Fixed in this pass | Android/KMP had guessed `messages/{id}/save`; no matching upstream public route exists. |
 | Server settings | `PATCH servers/{serverId}`, usage, invites, onboarding | `serverRouter` | Mostly match | Some Settings UI is still pending by capability task, but route paths are confirmed. |
 | Machines/workspaces | `GET servers/{serverId}/machines`, `.../workspaces` | `serverRouter` | Match | Machine detail/log history is still not confirmed as a product capability. |
-| Account sessions | `GET auth/sessions`, `DELETE auth/sessions/{sessionId}` | No public route in current `auth.ts` | Blocked | Android/KMP still has a client method and Settings UI contract from older notes, but current upstream source has no route. This must be either restored server-side or disabled client-side with a clear capability state. |
+| Auth refresh | `POST auth/refresh` | `authRouter.post("/refresh")` | Match | Upstream rotates the refresh token and returns `{ accessToken, refreshToken }`; Android/KMP restore/token refresh should keep using this route. |
+| Settings active sessions | Removed: old guessed `GET auth/sessions`, `DELETE auth/sessions/{sessionId}` | No public route in current `auth.ts` | Removed from client contract | These were migration-era Settings/session-management guesses, not the token refresh chain. Client request methods and mock Settings surface were deleted until upstream/web exposes a real public sessions management route. |
 
 ## Full Public API Coverage Matrix
 
@@ -64,9 +65,9 @@ shape. It does not automatically mean UI parity or livetest coverage is done.
 
 | Upstream area | Representative public routes | Android/KMP wiring | Livetest status | Follow-up |
 | --- | --- | --- | --- | --- |
-| Auth core | `POST auth/login`, `register`, `forgot-password`, `refresh`, `logout`, `GET/PATCH auth/me` | Wired | Partial | Existing auth restore/session tests cover client behavior; live read/write contract only covers restored session indirectly. Add guarded live `auth/me` read/update once a reversible profile fixture exists. |
+| Auth core | `POST auth/login`, `register`, `forgot-password`, `refresh`, `logout`, `GET/PATCH auth/me` | Wired | Partial | Existing auth restore/session tests cover client behavior; live read/write contract only covers restored session indirectly. `POST auth/refresh` is real upstream/web behavior, not a guessed chain. Add guarded live `auth/me` read/update once a reversible profile fixture exists. |
 | Auth providers/invites/email | `auth/providers`, `identities`, provider start/link/callback/complete, `verify-email`, `resend-verification`, `reset-password`, `accept-invite`, `invite-info`, `me/avatar` | Not wired in Android/KMP product API | Missing | Required before social login, invite acceptance, email verification, reset-password completion, and profile avatar upload can be called native/shared. |
-| Account sessions | `auth/sessions` expected by Android, but absent upstream | Wrong/blocked | Missing | Contract must be settled with server/web. Do not keep treating session management as closed. |
+| Settings active sessions | No upstream public route for listing/revoking active sessions | Not wired | Not applicable | Deleted guessed `auth/sessions` client route and Settings mock/session UI copy. Do not re-add without a source-backed server/web contract. |
 | Servers list/create | `GET servers`, `POST servers` | Wired through Android auth API, not `SlockApiClient` | Indirect | Shared app shell restore uses selected server; add a live contract test for list/create only if using a safe disposable server fixture. |
 | Server profile/settings | `GET/PATCH/DELETE servers/:id`, `leave`, agreement, onboarding, translation, notification, usage, sidebar-order, scope-attestation | Partially wired | Partial | Wired: profile patch, delete, usage, onboarding. Missing: GET detail, leave, agreement, translation, notification, sidebar order, scope attestation. |
 | Server members/admin | `GET/POST servers/:id/members`, `PATCH/DELETE members/:memberId`, `GET member-graph`, `GET members/:memberId/profile` | Partially wired | Partial | Wired: list, profile. Missing: add/update/remove server members and member graph. Profile path fixed in this pass. |
@@ -124,6 +125,10 @@ broken upstream contract. High-risk examples:
   more aliases without pointing to upstream source.
 - Server members should use `userId` as the canonical id. Generic `id` fallback
   can stay as a defensive parser path but should not be required by livetest.
+- Settings active-session management must not use the old guessed
+  `auth/sessions` route. Upstream auth refresh/session rotation is
+  `POST auth/refresh`; listing/revoking other sessions has no current public
+  route in `auth.ts`.
 - Thread pagination must use `before` for older channel page and
   `messages/sync?since_seq=&channel_id=` for newer/gap sync. Any `afterSeq`,
   `cursor`, or `since` alias should be treated as legacy/internal unless

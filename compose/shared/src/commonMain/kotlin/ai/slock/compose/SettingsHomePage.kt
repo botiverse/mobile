@@ -231,7 +231,7 @@ private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
         SlockTabItemPayload(
             key = "computers",
             title = "Computers",
-            subtitle = "Connected machines and active sessions",
+            subtitle = "Connected machines and workspaces",
             iconName = "monitor"
         ),
         SlockTabItemPayload(
@@ -311,7 +311,7 @@ private val settingsVisualItems = listOf(
     SlockTabItemPayload(
         key = "computers",
         title = "Computers",
-        subtitle = "Connected machines and sessions",
+        subtitle = "Connected machines and workspaces",
         iconName = "monitor"
     ),
     SlockTabItemPayload(
@@ -959,7 +959,7 @@ private fun appShellSettingsHomePayload(
                 SlockTabItemPayload(
                     key = SettingsDestinationComputers,
                     title = "Computers",
-                    subtitle = "Connected machines and active sessions",
+                    subtitle = "Connected machines and workspaces",
                     iconName = "monitor",
                     selected = selectedDestination == SettingsDestinationComputers
                 ),

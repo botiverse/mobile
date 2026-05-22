@@ -373,26 +373,6 @@ enum class ConnectedAccountStatus {
     Failed
 }
 
-data class SessionSettingsSnapshot(
-    val sessions: List<SettingsSessionSnapshot>,
-    val canRevokeOtherSessions: Boolean = true
-)
-
-data class SettingsSessionSnapshot(
-    val id: String,
-    val deviceName: String,
-    val browserLabel: String,
-    val locationLabel: String,
-    val lastActiveLabel: String,
-    val current: Boolean = false,
-    val revokeEnabled: Boolean = true
-)
-
-data class SessionActionResult(
-    val sessionId: String,
-    val revoked: Boolean
-)
-
 data class SettingsBillingSnapshot(
     val currentPlan: SettingsBillingCurrentPlanSnapshot,
     val plans: List<SettingsBillingPlanSnapshot>

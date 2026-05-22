@@ -464,7 +464,7 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(
         items =
             listOf(
                 nav(SharedSettingsDestination.Account, "Account", "Profile, email, password, connected accounts", "user", this?.user?.bestDisplayName, selectedDestination),
-                nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and active sessions", "monitor", null, selectedDestination),
+                nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", "monitor", null, selectedDestination),
                 nav(SharedSettingsDestination.Server, "Server", "Workspace profile, admins, invites, onboarding", "users", server?.role?.titleLabel(), selectedDestination),
                 nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", "shield-check", server?.plan?.titleLabel(), selectedDestination),
                 nav(SharedSettingsDestination.Mobile, "Mobile", "Push notifications, language, layout", "smartphone", null, selectedDestination),

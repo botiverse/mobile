@@ -51,8 +51,6 @@ import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
 import ai.slock.android.core.data.repository.SendMessageResult
 import ai.slock.android.core.data.repository.ServerListSnapshot
 import ai.slock.android.core.data.repository.ServerRepository
-import ai.slock.android.core.data.repository.SessionActionResult
-import ai.slock.android.core.data.repository.SessionSettingsSnapshot
 import ai.slock.android.core.data.repository.SettingsComputerDetailSnapshot
 import ai.slock.android.core.data.repository.SettingsComputersSnapshot
 import ai.slock.android.core.data.repository.SettingsBillingCurrentPlanSnapshot
@@ -151,14 +149,6 @@ class MockSettingsRepository(
                     email = request.email
                 )
             )
-        }
-
-    override suspend fun getSessions(): DataResult<SessionSettingsSnapshot> =
-        resultFor(scenario, EmptyReason.NoSettingsAvailable) { MockSeedData.sessionSettingsSnapshot }
-
-    override suspend fun revokeSession(sessionId: String): DataResult<SessionActionResult> =
-        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
-            SessionActionResult(sessionId = sessionId, revoked = true)
         }
 
     override suspend fun getComputers(): DataResult<SettingsComputersSnapshot> =

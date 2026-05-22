@@ -147,12 +147,6 @@ class SharedSettingsStoreTest {
         override suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot> =
             accountResult
 
-        override suspend fun getSessions(): DataResult<SessionSettingsSnapshot> =
-            DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-        override suspend fun revokeSession(sessionId: String): DataResult<SessionActionResult> =
-            DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
         override suspend fun getComputers(): DataResult<SettingsComputersSnapshot> {
             calls += "computers"
             return computersResult

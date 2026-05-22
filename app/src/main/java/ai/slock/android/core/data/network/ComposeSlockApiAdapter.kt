@@ -97,9 +97,6 @@ class ComposeSlockApiAdapter(
     override suspend fun settingsAccount(priority: SlockRequestPriority): ApiResponse = request(priority) { client.settingsAccount(priority) }
     override suspend fun updateSettingsAccount(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
             request(priority) { client.updateSettingsAccount(priority, body.bodyAsString()) }
-    override suspend fun settingsSessions(priority: SlockRequestPriority): ApiResponse = request(priority) { client.settingsSessions(priority) }
-    override suspend fun revokeSettingsSession(priority: SlockRequestPriority, sessionId: String): ApiResponse =
-            request(priority) { client.revokeSettingsSession(priority, sessionId) }
     override suspend fun settingsMachines(priority: SlockRequestPriority, serverId: String): ApiResponse =
             request(priority) { client.settingsMachines(priority, serverId) }
     override suspend fun settingsMachineWorkspaces(priority: SlockRequestPriority, serverId: String, machineId: String): ApiResponse =

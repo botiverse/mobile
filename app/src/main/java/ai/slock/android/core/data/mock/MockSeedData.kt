@@ -10,7 +10,6 @@ import ai.slock.android.core.data.repository.HomeSnapshot
 import ai.slock.android.core.data.repository.InboxSnapshot
 import ai.slock.android.core.data.repository.MemberSnapshot
 import ai.slock.android.core.data.repository.ServerListSnapshot
-import ai.slock.android.core.data.repository.SessionSettingsSnapshot
 import ai.slock.android.core.data.repository.SettingsBillingCurrentPlanSnapshot
 import ai.slock.android.core.data.repository.SettingsBillingPlanSnapshot
 import ai.slock.android.core.data.repository.SettingsBillingSnapshot
@@ -29,7 +28,6 @@ import ai.slock.android.core.data.repository.SettingsServerOnboardingSnapshot
 import ai.slock.android.core.data.repository.SettingsServerProfileSnapshot
 import ai.slock.android.core.data.repository.SettingsServerSectionSnapshot
 import ai.slock.android.core.data.repository.SettingsServerSnapshot
-import ai.slock.android.core.data.repository.SettingsSessionSnapshot
 import ai.slock.android.core.data.repository.TaskSnapshot
 import ai.slock.android.core.data.repository.ThreadSnapshot
 import ai.slock.android.core.data.sample.AgentSampleData
@@ -380,27 +378,6 @@ object MockSeedData {
                 provider = "GitHub",
                 identifier = "github.com/artin",
                 status = ConnectedAccountStatus.Connected
-            )
-        )
-    )
-
-    val sessionSettingsSnapshot = SessionSettingsSnapshot(
-        sessions = listOf(
-            SettingsSessionSnapshot(
-                id = "session-current",
-                deviceName = "Android emulator",
-                browserLabel = "Slock Android",
-                locationLabel = "Current device",
-                lastActiveLabel = "Active now",
-                current = true,
-                revokeEnabled = false
-            ),
-            SettingsSessionSnapshot(
-                id = "session-web",
-                deviceName = "MacBook Pro",
-                browserLabel = "Chrome",
-                locationLabel = "Recent login",
-                lastActiveLabel = "14 minutes ago"
             )
         )
     )

@@ -12,7 +12,6 @@ import ai.slock.android.core.data.repository.SettingsPlanUsageSnapshot
 import ai.slock.android.core.data.repository.ConnectedAccountSnapshot
 import ai.slock.android.core.data.repository.ConnectedAccountStatus
 import ai.slock.compose.data.DataResult
-import ai.slock.android.core.data.repository.SessionActionResult
 import ai.slock.android.core.data.repository.SettingsComputerAgentSnapshot
 import ai.slock.android.core.data.repository.SettingsComputerDetailSnapshot
 import ai.slock.android.core.data.repository.SettingsComputerSnapshot
@@ -20,7 +19,6 @@ import ai.slock.android.core.data.repository.SettingsComputerWorkspaceSnapshot
 import ai.slock.android.core.data.repository.SettingsComputersSnapshot
 import ai.slock.android.core.data.repository.SettingsMobileSnapshot
 import ai.slock.android.core.data.repository.SettingsMobileToggleSnapshot
-import ai.slock.android.core.data.repository.SessionSettingsSnapshot
 import ai.slock.android.core.data.repository.SettingsRepository
 import ai.slock.android.core.data.repository.SettingsSectionErrorSnapshot
 import ai.slock.android.core.data.repository.SettingsSectionAvailability
@@ -35,7 +33,6 @@ import ai.slock.android.core.data.repository.SettingsServerProfileSnapshot
 import ai.slock.android.core.data.repository.SettingsServerProfileUpdateRequest
 import ai.slock.android.core.data.repository.SettingsServerSectionSnapshot
 import ai.slock.android.core.data.repository.SettingsServerSnapshot
-import ai.slock.android.core.data.repository.SettingsSessionSnapshot
 import ai.slock.android.core.model.AgentStatus
 import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberKind
@@ -71,31 +68,6 @@ class RealSettingsRepository(
             block = { api.updateSettingsAccount(currentSlockApiPriority(), request.toJsonBody()) },
             mapper = { json -> json.toAccountSettingsSnapshot(session) }
         )
-    }
-
-    override suspend fun getSessions(): DataResult<SessionSettingsSnapshot> {
-        store.readSession() ?: return authRequired()
-        return execute(
-            emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.settingsSessions(currentSlockApiPriority()) },
-            emptyWhen = { it.sessions.isEmpty() },
-            mapper = { json -> json.toSessionSettingsSnapshot() }
-        ).mapSettingsContractMismatch("settings_sessions_contract_mismatch")
-    }
-
-    override suspend fun revokeSession(sessionId: String): DataResult<SessionActionResult> {
-        if (sessionId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
-        store.readSession() ?: return authRequired()
-        return execute(
-            emptyReason = EmptyReason.NoSettingsAvailable,
-            block = { api.revokeSettingsSession(currentSlockApiPriority(), sessionId) },
-            mapper = { json ->
-                SessionActionResult(
-                    sessionId = json.string("sessionId", "id") ?: sessionId,
-                    revoked = json.boolean("revoked", "ok", "success") ?: true
-                )
-            }
-        ).mapSettingsContractMismatch("settings_session_revoke_contract_mismatch")
     }
 
     override suspend fun getComputers(): DataResult<SettingsComputersSnapshot> {
@@ -698,27 +670,6 @@ private fun JsonObject.toConnectedAccount(): ConnectedAccountSnapshot {
             } else {
                 ConnectedAccountStatus.Connected
             }
-    )
-}
-
-private fun JsonObject.toSessionSettingsSnapshot(): SessionSettingsSnapshot {
-    val sessions = items("sessions", "items").map { it.asObject().toSessionSnapshot() }
-    return SessionSettingsSnapshot(
-        sessions = sessions,
-        canRevokeOtherSessions = boolean("canRevokeOtherSessions", "canRevokeOthers") ?: true
-    )
-}
-
-private fun JsonObject.toSessionSnapshot(): SettingsSessionSnapshot {
-    val current = boolean("current", "isCurrent") ?: false
-    return SettingsSessionSnapshot(
-        id = string("id", "sessionId") ?: "unknown-session",
-        deviceName = string("deviceName", "device", "name") ?: "Unknown device",
-        browserLabel = string("browserLabel", "browser", "client", "userAgent") ?: "Unknown client",
-        locationLabel = string("locationLabel", "location", "ipLabel") ?: "Unknown location",
-        lastActiveLabel = string("lastActiveLabel", "lastActiveAt", "updatedAt", "createdAt") ?: "Unknown activity",
-        current = current,
-        revokeEnabled = boolean("revokeEnabled", "canRevoke") ?: !current
     )
 }
 

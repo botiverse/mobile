@@ -58,53 +58,20 @@ class RealSettingsRepositoryTest {
     }
 
     @Test
-    fun sessionsMapRowsAndCurrentSessionCannotBeRevoked() {
+    fun updateProfileReturnsAccountSnapshot() {
         val repository = RealSettingsRepository(
             store = InMemoryAuthSessionStore(sampleSession),
             api = FakeSlockApi(
-                sessionsJson = """
-                    {
-                      "sessions": [
-                        {"id":"current","deviceName":"Android","browserLabel":"Slock Android","locationLabel":"Current device","lastActiveLabel":"Active now","current":true},
-                        {"id":"web","device":"MacBook","browser":"Chrome","location":"Shanghai","lastActiveAt":"2026-05-06T12:00:00Z"}
-                      ],
-                      "canRevokeOtherSessions": true
-                    }
-                """.trimIndent()
-            )
-        )
-
-        val result = runSuspend { repository.getSessions() }
-
-        assertTrue(result is DataResult.Content)
-        val sessions = (result as DataResult.Content).data.sessions
-        assertEquals(2, sessions.size)
-        assertEquals(false, sessions[0].revokeEnabled)
-        assertEquals(true, sessions[1].revokeEnabled)
-        assertEquals("MacBook", sessions[1].deviceName)
-    }
-
-    @Test
-    fun updateProfileAndRevokeSessionReturnActionResults() {
-        val repository = RealSettingsRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(
-                accountJson = """{"user":{"id":"user-1","email":"new@slock.ai","displayName":"New Name","handle":"@new","emailVerified":true}}""",
-                revokeJson = """{"sessionId":"web","revoked":true}"""
+                accountJson = """{"user":{"id":"user-1","email":"new@slock.ai","displayName":"New Name","handle":"@new","emailVerified":true}}"""
             )
         )
 
         val account = runSuspend {
             repository.updateProfile(AccountProfileUpdateRequest("New Name", "@new", "new@slock.ai"))
         }
-        val revoked = runSuspend { repository.revokeSession("web") }
 
         assertTrue(account is DataResult.Content)
         assertEquals("New Name", (account as DataResult.Content).data.profile.displayName)
-        assertTrue(revoked is DataResult.Content)
-        val revokedResult = (revoked as DataResult.Content).data
-        assertEquals("web", revokedResult.sessionId)
-        assertEquals(true, revokedResult.revoked)
     }
 
     @Test
@@ -143,7 +110,7 @@ class RealSettingsRepositoryTest {
             RealSettingsRepository(InMemoryAuthSessionStore(null), FakeSlockApi()).getAccount()
         }
         val forbidden = runSuspend {
-            RealSettingsRepository(InMemoryAuthSessionStore(sampleSession), FakeSlockApi(responseCode = 403)).getSessions()
+            RealSettingsRepository(InMemoryAuthSessionStore(sampleSession), FakeSlockApi(responseCode = 403)).getAccount()
         }
         val unavailable = runSuspend {
             RealSettingsRepository(InMemoryAuthSessionStore(sampleSession), FakeSlockApi(responseCode = 503)).getAccount()
@@ -163,24 +130,6 @@ class RealSettingsRepositoryTest {
         assertEquals("server_unavailable", (unavailable as DataResult.Error).error.code)
         assertTrue(parse is DataResult.Error)
         assertEquals("network_parse_failed", (parse as DataResult.Error).error.code)
-    }
-
-    @Test
-    fun sessionsAndRevokeMapMissingEndpointsToContractMismatch() {
-        val repository = RealSettingsRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(responseCode = 404)
-        )
-
-        val sessions = runSuspend { repository.getSessions() }
-        val revoke = runSuspend { repository.revokeSession("web") }
-
-        assertTrue(sessions is DataResult.Error)
-        assertEquals("settings_sessions_contract_mismatch", (sessions as DataResult.Error).error.code)
-        assertEquals(false, sessions.error.retryable)
-        assertTrue(revoke is DataResult.Error)
-        assertEquals("settings_session_revoke_contract_mismatch", (revoke as DataResult.Error).error.code)
-        assertEquals(false, revoke.error.retryable)
     }
 
     @Test
@@ -381,8 +330,6 @@ class RealSettingsRepositoryTest {
 
     private class FakeSlockApi(
         private val accountJson: String = """{"user":{"id":"user-1","email":"user@slock.ai","displayName":"Slock User"}}""",
-        private val sessionsJson: String = """{"sessions":[]}""",
-        private val revokeJson: String = """{"ok":true}""",
         private val membersJson: String = """{"members":[]}""",
         private val usageJson: String = """{"usage":{}}""",
         private val billingSubscriptionJson: String = """{"subscription":{}}""",
@@ -403,10 +350,6 @@ class RealSettingsRepositoryTest {
         override suspend fun settingsAccount(priority: SlockRequestPriority): ApiResponse = response(accountJson)
 
         override suspend fun updateSettingsAccount(priority: SlockRequestPriority, body: RequestBody): ApiResponse = response(accountJson)
-
-        override suspend fun settingsSessions(priority: SlockRequestPriority): ApiResponse = response(sessionsJson)
-
-        override suspend fun revokeSettingsSession(priority: SlockRequestPriority, sessionId: String): ApiResponse = response(revokeJson)
 
         override suspend fun settingsMachines(priority: SlockRequestPriority, serverId: String): ApiResponse {
             machinesServerId = serverId

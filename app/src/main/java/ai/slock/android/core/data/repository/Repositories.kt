@@ -28,8 +28,6 @@ interface ServerRepository {
 interface SettingsRepository {
     suspend fun getAccount(): DataResult<AccountSettingsSnapshot>
     suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot>
-    suspend fun getSessions(): DataResult<SessionSettingsSnapshot>
-    suspend fun revokeSession(sessionId: String): DataResult<SessionActionResult>
     suspend fun getComputers(): DataResult<SettingsComputersSnapshot>
     suspend fun getComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot>
     suspend fun getBilling(): DataResult<SettingsBillingSnapshot>

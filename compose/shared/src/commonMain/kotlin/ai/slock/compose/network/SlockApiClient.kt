@@ -28,8 +28,6 @@ class SlockApiClient(
 ) {
     suspend fun settingsAccount(priority: SlockRequestPriority): KmpHttpResponse = get(priority, "auth/me")
     suspend fun updateSettingsAccount(priority: SlockRequestPriority, body: String): KmpHttpResponse = patch(priority, "auth/me", body)
-    suspend fun settingsSessions(priority: SlockRequestPriority): KmpHttpResponse = get(priority, "auth/sessions")
-    suspend fun revokeSettingsSession(priority: SlockRequestPriority, sessionId: String): KmpHttpResponse = delete(priority, "auth/sessions/$sessionId")
     suspend fun settingsMachines(priority: SlockRequestPriority, serverId: String): KmpHttpResponse = get(priority, "servers/$serverId/machines")
     suspend fun settingsMachineWorkspaces(priority: SlockRequestPriority, serverId: String, machineId: String): KmpHttpResponse =
         get(priority, "servers/$serverId/machines/$machineId/workspaces")

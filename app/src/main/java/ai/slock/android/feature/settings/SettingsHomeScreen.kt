@@ -210,7 +210,7 @@ private val settingsHomeSampleItems = listOf(
     SettingsHomeItem(
         key = "computers",
         title = "Computers",
-        subtitle = "Connected machines and active sessions",
+        subtitle = "Connected machines and workspaces",
         icon = LucideIcons.Square
     ),
     SettingsHomeItem(

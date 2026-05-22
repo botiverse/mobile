@@ -2518,8 +2518,6 @@ class RealSlockRepositoriesTest {
 
     private class FakeSlockApi(
         private val settingsAccountJson: String = """{}""",
-        private val settingsSessionsJson: String = """{"sessions":[]}""",
-        private val revokeSessionJson: String = """{"ok":true}""",
         private val settingsAgentsJson: String = """{"agents":[]}""",
         private val settingsMachinesJson: String = """{"machines":[]}""",
         private val settingsMachineWorkspacesJson: String = """{"workspaces":[]}""",
@@ -2591,12 +2589,6 @@ class RealSlockRepositoriesTest {
 
         override suspend fun updateSettingsAccount(priority: SlockRequestPriority, body: RequestBody): ApiResponse =
             response(settingsAccountJson)
-
-        override suspend fun settingsSessions(priority: SlockRequestPriority): ApiResponse =
-            response(settingsSessionsJson)
-
-        override suspend fun revokeSettingsSession(priority: SlockRequestPriority, sessionId: String): ApiResponse =
-            response(revokeSessionJson)
 
         override suspend fun settingsMachines(priority: SlockRequestPriority, serverId: String): ApiResponse =
             response(settingsMachinesJson)

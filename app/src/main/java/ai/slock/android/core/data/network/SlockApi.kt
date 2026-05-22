@@ -8,11 +8,6 @@ import okhttp3.RequestBody
 interface SlockApi {
     suspend fun settingsAccount(priority: SlockRequestPriority): ApiResponse
     suspend fun updateSettingsAccount(priority: SlockRequestPriority, body: RequestBody): ApiResponse
-    suspend fun settingsSessions(priority: SlockRequestPriority): ApiResponse
-    suspend fun revokeSettingsSession(
-        priority: SlockRequestPriority,
-        sessionId: String
-    ): ApiResponse
     suspend fun settingsMachines(
         priority: SlockRequestPriority,
         serverId: String
