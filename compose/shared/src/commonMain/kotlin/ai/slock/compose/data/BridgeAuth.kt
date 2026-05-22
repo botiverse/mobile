@@ -7,6 +7,7 @@ import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -65,11 +66,119 @@ internal class BridgeAuthApi(
     }
 }
 
+internal class BridgeAuthenticatedRequestExecutor(
+    private val sessionStore: SlockAuthSessionStore,
+    private val authApi: SlockAuthApi,
+    private val request: suspend (BridgeAuthenticatedRequest) -> HomeNetworkResponse,
+    private val baseUrl: String = AUTH_BASE_URL
+) {
+    constructor(
+        bridge: BridgeModule,
+        sessionStore: SlockAuthSessionStore,
+        baseUrl: String = AUTH_BASE_URL
+    ) : this(
+        sessionStore = sessionStore,
+        authApi = SlockAuthApiClient(BridgeAuthApi(bridge, baseUrl)),
+        request = { command ->
+            bridge.authRequest(command.toBridgeCommand()).toHomeNetworkResponse()
+        },
+        baseUrl = baseUrl
+    )
+
+    suspend fun request(
+        path: String,
+        query: String? = null,
+        serverIdOverride: String? = null,
+        method: String = "GET",
+        bodyText: String? = null
+    ): HomeNetworkResponse {
+        val session = sessionStore.readSession()
+            ?: return HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = SESSION_EXPIRED_ERROR)
+        val serverId = serverIdOverride ?: session.currentServerId.orEmpty()
+        if (session.accessToken.isBlank() || serverId.isBlank()) {
+            return HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = SESSION_EXPIRED_ERROR)
+        }
+        val first = request(buildRequest(path, query, serverId, session.accessToken, method, bodyText))
+        if (!first.requiresTokenRefresh()) return first
+
+        val refreshed = refreshSession(session)
+        if (refreshed == null) {
+            sessionStore.clearSession()
+            return first.asSessionExpired()
+        }
+        val retry = request(buildRequest(path, query, serverId, refreshed.accessToken, method, bodyText))
+        if (retry.requiresTokenRefresh()) {
+            sessionStore.clearSession()
+            return retry.asSessionExpired()
+        }
+        return retry
+    }
+
+    private suspend fun refreshSession(session: StoredAuthSession): StoredAuthSession? {
+        val refreshToken = session.refreshToken.takeIf { it.isNotBlank() } ?: return null
+        return when (val refreshed = authApi.refresh(refreshToken)) {
+            is AuthApiResult.Success -> {
+                val next =
+                    session.copy(
+                        accessToken = refreshed.data.accessToken,
+                        refreshToken = refreshed.data.refreshToken
+                    )
+                sessionStore.saveSession(next)
+                next
+            }
+            is AuthApiResult.Failure -> null
+        }
+    }
+
+    private fun buildRequest(
+        path: String,
+        query: String?,
+        serverId: String,
+        accessToken: String,
+        method: String,
+        bodyText: String?
+    ): BridgeAuthenticatedRequest =
+        BridgeAuthenticatedRequest(
+            url =
+                buildString {
+                    append(baseUrl.trimEnd('/'))
+                    append('/')
+                    append(path.trimStart('/'))
+                    query?.takeIf { it.isNotBlank() }?.let {
+                        append('?')
+                        append(it)
+                    }
+                },
+            method = method,
+            authorization = "Bearer $accessToken",
+            serverId = serverId,
+            bodyText = bodyText
+        )
+}
+
+internal data class BridgeAuthenticatedRequest(
+    val url: String,
+    val method: String,
+    val authorization: String,
+    val serverId: String,
+    val bodyText: String? = null
+) {
+    fun toBridgeCommand(): JSONObject =
+        JSONObject()
+            .put("url", url)
+            .put("method", method)
+            .put("authorization", authorization)
+            .put("serverId", serverId)
+            .also { command -> bodyText?.let { command.put("bodyText", it) } }
+}
+
 internal class BridgeHomeApi(
     private val bridge: BridgeModule,
     private val sessionStore: SlockAuthSessionStore,
     private val baseUrl: String = AUTH_BASE_URL
 ) : SlockHomeApi {
+    private val executor = BridgeAuthenticatedRequestExecutor(bridge, sessionStore, baseUrl)
+
     override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
         request("channels")
 
@@ -95,24 +204,7 @@ internal class BridgeHomeApi(
         request("servers/unread-summary", serverId.value)
 
     private suspend fun request(path: String, serverIdOverride: String? = null): HomeNetworkResponse {
-        val session = sessionStore.readSession()
-        val token = session?.accessToken.orEmpty()
-        val serverId = serverIdOverride ?: session?.currentServerId.orEmpty()
-        if (token.isBlank() || serverId.isBlank()) return HomeNetworkResponse(code = 401, bodyText = null)
-        val response =
-            bridge.authRequest(
-                JSONObject()
-                    .put("url", "${baseUrl.trimEnd('/')}/${path.trimStart('/')}")
-                    .put("method", "GET")
-                    .put("authorization", "Bearer $token")
-                    .put("serverId", serverId)
-            )
-        return HomeNetworkResponse(
-            code = response?.optString("code").orEmpty().toIntOrNull() ?: 0,
-            bodyText = response?.optString("bodyText").takeUnless { it.isNullOrBlank() },
-            errorBodyText = response?.optString("errorBodyText").takeUnless { it.isNullOrBlank() }
-                ?: response?.optString("message").takeUnless { it.isNullOrBlank() }
-        )
+        return executor.request(path = path, serverIdOverride = serverIdOverride)
     }
 }
 
@@ -121,27 +213,13 @@ internal class BridgeMembersApi(
     private val sessionStore: SlockAuthSessionStore,
     private val baseUrl: String = AUTH_BASE_URL
 ) {
+    private val executor = BridgeAuthenticatedRequestExecutor(bridge, sessionStore, baseUrl)
+
     suspend fun serverMembers(serverId: String): HomeNetworkResponse =
         request("servers/$serverId/members", serverId)
 
     private suspend fun request(path: String, serverId: String): HomeNetworkResponse {
-        val session = sessionStore.readSession()
-        val token = session?.accessToken.orEmpty()
-        if (token.isBlank() || serverId.isBlank()) return HomeNetworkResponse(code = 401, bodyText = null)
-        val response =
-            bridge.authRequest(
-                JSONObject()
-                    .put("url", "${baseUrl.trimEnd('/')}/${path.trimStart('/')}")
-                    .put("method", "GET")
-                    .put("authorization", "Bearer $token")
-                    .put("serverId", serverId)
-            )
-        return HomeNetworkResponse(
-            code = response?.optString("code").orEmpty().toIntOrNull() ?: 0,
-            bodyText = response?.optString("bodyText").takeUnless { it.isNullOrBlank() },
-            errorBodyText = response?.optString("errorBodyText").takeUnless { it.isNullOrBlank() }
-                ?: response?.optString("message").takeUnless { it.isNullOrBlank() }
-        )
+        return executor.request(path = path, serverIdOverride = serverId)
     }
 }
 
@@ -150,6 +228,8 @@ internal class BridgeTasksApi(
     private val sessionStore: SlockAuthSessionStore,
     private val baseUrl: String = AUTH_BASE_URL
 ) : SlockTasksApi {
+    private val executor = BridgeAuthenticatedRequestExecutor(bridge, sessionStore, baseUrl)
+
     override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
         request(path = "tasks/server", serverId = serverId.value)
 
@@ -203,27 +283,7 @@ internal class BridgeTasksApi(
         method: String = "GET",
         bodyText: String? = null
     ): HomeNetworkResponse {
-        val session = sessionStore.readSession()
-        val token = session?.accessToken.orEmpty()
-        val resolvedServerId = serverId ?: session?.currentServerId.orEmpty()
-        if (token.isBlank() || resolvedServerId.isBlank()) return HomeNetworkResponse(code = 401, bodyText = null)
-        val response =
-            bridge.authRequest(
-                JSONObject()
-                    .put("url", "${baseUrl.trimEnd('/')}/${path.trimStart('/')}")
-                    .put("method", method)
-                    .put("authorization", "Bearer $token")
-                    .put("serverId", resolvedServerId)
-                    .also { command ->
-                        bodyText?.let { command.put("bodyText", it) }
-                    }
-            )
-        return HomeNetworkResponse(
-            code = response?.optString("code").orEmpty().toIntOrNull() ?: 0,
-            bodyText = response?.optString("bodyText").takeUnless { it.isNullOrBlank() },
-            errorBodyText = response?.optString("errorBodyText").takeUnless { it.isNullOrBlank() }
-                ?: response?.optString("message").takeUnless { it.isNullOrBlank() }
-        )
+        return executor.request(path = path, serverIdOverride = serverId, method = method, bodyText = bodyText)
     }
 }
 
@@ -248,6 +308,8 @@ internal class BridgeThreadApi(
     private val sessionStore: SlockAuthSessionStore,
     private val baseUrl: String = AUTH_BASE_URL
 ) : SharedThreadNetworkApi {
+    private val executor = BridgeAuthenticatedRequestExecutor(bridge, sessionStore, baseUrl)
+
     override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): HomeNetworkResponse =
         request(
             "messages/channel/${threadId.trim()}",
@@ -316,43 +378,18 @@ internal class BridgeThreadApi(
         method: String = "GET",
         bodyText: String? = null
     ): HomeNetworkResponse {
-        val session = sessionStore.readSession()
-        val token = session?.accessToken.orEmpty()
-        val serverId = session?.currentServerId.orEmpty()
-        if (token.isBlank() || serverId.isBlank()) return HomeNetworkResponse(code = 401, bodyText = null)
-        val url =
-            buildString {
-                append(baseUrl.trimEnd('/'))
-                append('/')
-                append(path.trimStart('/'))
-                query?.takeIf { it.isNotBlank() }?.let {
-                    append('?')
-                    append(it)
-                }
-            }
-        val response =
-            bridge.authRequest(
-                JSONObject()
-                    .put("url", url)
-                    .put("method", method)
-                    .put("authorization", "Bearer $token")
-                    .put("serverId", serverId)
-                    .also { command ->
-                        bodyText?.let { command.put("bodyText", it) }
-                    }
-            )
-        return HomeNetworkResponse(
-            code = response?.optString("code").orEmpty().toIntOrNull() ?: 0,
-            bodyText = response?.optString("bodyText").takeUnless { it.isNullOrBlank() },
-            errorBodyText = response?.optString("errorBodyText").takeUnless { it.isNullOrBlank() }
-                ?: response?.optString("message").takeUnless { it.isNullOrBlank() }
-        )
+        return executor.request(path = path, query = query, method = method, bodyText = bodyText)
     }
 }
 
 internal class KuiklyAuthSessionStore(
     private val store: SlockRelationalStore
-) : SlockAuthSessionStore {
+) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource {
+    private val invalidations = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    override val sessionInvalidations: kotlinx.coroutines.flow.SharedFlow<Unit> =
+        invalidations.asSharedFlow()
+
     override suspend fun readSession(): StoredAuthSession? {
         ensureTable()
         val rows = store.query("SELECT value FROM slock_kv WHERE key = ?", listOf(RelationalValue.Text(SESSION_KEY)))
@@ -384,6 +421,7 @@ internal class KuiklyAuthSessionStore(
     override suspend fun clearSession() {
         ensureTable()
         store.execute("DELETE FROM slock_kv WHERE key = ?", listOf(RelationalValue.Text(SESSION_KEY)))
+        invalidations.emit(Unit)
     }
 
     private suspend fun ensureTable() {
@@ -404,3 +442,32 @@ private fun RelationalValue.asText(): String? =
         is RelationalValue.BooleanValue -> value.toString()
         RelationalValue.Null -> null
     }
+
+private const val SESSION_EXPIRED_ERROR = """{"error":"session_expired"}"""
+
+private fun JSONObject?.toHomeNetworkResponse(): HomeNetworkResponse =
+    HomeNetworkResponse(
+        code = this?.optString("code").orEmpty().toIntOrNull() ?: 0,
+        bodyText = this?.optString("bodyText").takeUnless { it.isNullOrBlank() },
+        errorBodyText =
+            this?.optString("errorBodyText").takeUnless { it.isNullOrBlank() }
+                ?: this?.optString("message").takeUnless { it.isNullOrBlank() }
+    )
+
+private fun HomeNetworkResponse.requiresTokenRefresh(): Boolean =
+    code == 401 || errorBodyText.isExpiredTokenText()
+
+private fun String?.isExpiredTokenText(): Boolean {
+    val normalized = this?.lowercase().orEmpty()
+    return normalized.contains("expiredtoken") ||
+        normalized.contains("expired_token") ||
+        normalized.contains("token_expired") ||
+        normalized.contains("jwt expired")
+}
+
+private fun HomeNetworkResponse.asSessionExpired(): HomeNetworkResponse =
+    HomeNetworkResponse(
+        code = 401,
+        bodyText = null,
+        errorBodyText = errorBodyText.takeUnless { it.isNullOrBlank() } ?: SESSION_EXPIRED_ERROR
+    )

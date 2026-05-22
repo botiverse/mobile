@@ -442,6 +442,15 @@ private fun SlockAppShellContent() {
     LaunchedEffect(Unit) {
         authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
     }
+    LaunchedEffect(authStore) {
+        authStore.sessionInvalidations.collect {
+            authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
+            selectedTab = "home"
+            selectedSettingsDestination = SettingsDestinationHome
+            activeThreadPayload = null
+            threadBackStack = emptyList()
+        }
+    }
 
     when (val gate = authGateState) {
         SharedAuthGateState.Restoring -> {

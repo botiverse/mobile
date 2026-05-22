@@ -12,6 +12,9 @@ import ai.slock.compose.model.SessionSnapshot
 import ai.slock.compose.model.toGravatarAvatarReference
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.Serializable
 
 interface SlockAuthSessionStore {
@@ -20,6 +23,10 @@ interface SlockAuthSessionStore {
     suspend fun updateTokens(accessToken: String, refreshToken: String)
     suspend fun updateSelectedServer(serverId: String?, serverSlug: String?)
     suspend fun clearSession()
+}
+
+interface SlockAuthSessionInvalidationSource {
+    val sessionInvalidations: SharedFlow<Unit>
 }
 
 @Serializable
@@ -124,9 +131,12 @@ data class StoredAuthServer(
 
 class InMemorySlockAuthSessionStore(
     initialSession: StoredAuthSession? = null
-) : SlockAuthSessionStore {
+) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource {
     private val mutex = Mutex()
+    private val invalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     private var session: StoredAuthSession? = initialSession
+
+    override val sessionInvalidations: SharedFlow<Unit> = invalidations.asSharedFlow()
 
     override suspend fun readSession(): StoredAuthSession? =
         mutex.withLock { session }
@@ -149,5 +159,6 @@ class InMemorySlockAuthSessionStore(
 
     override suspend fun clearSession() {
         mutex.withLock { session = null }
+        invalidations.emit(Unit)
     }
 }
