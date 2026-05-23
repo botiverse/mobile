@@ -5,6 +5,7 @@ import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
+import com.tencent.kuikly.compose.extension.setEvent
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -32,6 +33,7 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.base.Attr
 import com.tencent.kuikly.core.base.DeclarativeBaseView
 import com.tencent.kuikly.core.base.event.Event
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.serialization.Serializable
 
@@ -192,26 +194,10 @@ private fun SlockOhosHdsBottomTabBarHost(
     ) {
         SlockOhosHdsTabBar(
             items = items,
+            onSelect = onSelect,
             bottomSafeArea = bottomSafeArea,
             modifier = Modifier.matchParentSize()
         )
-        Row(
-            modifier = Modifier
-                .matchParentSize()
-                .padding(horizontal = 18.dp)
-                .padding(bottom = bottomSafeArea + 28.dp)
-                .height(60.dp)
-                .align(Alignment.BottomCenter)
-        ) {
-            items.forEach { item ->
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable(enabled = item.enabled) { onSelect(item.key) }
-                )
-            }
-        }
     }
 }
 
@@ -227,12 +213,21 @@ private fun slockAppTabBarRenderer(): SlockAppTabBarRenderer {
 @Composable
 private fun SlockOhosHdsTabBar(
     items: List<SlockBottomTabItemPayload>,
+    onSelect: (String) -> Unit,
     bottomSafeArea: Dp,
     modifier: Modifier = Modifier
 ) {
     MakeKuiklyComposeNode<SlockOhosHdsTabBarView>(
         factory = { SlockOhosHdsTabBarView() },
-        modifier = modifier,
+        modifier = modifier.setEvent("select") { payload ->
+            val key =
+                (payload as? JSONObject)?.optString("key")
+                    ?: (payload as? Map<*, *>)?.get("key")?.toString()
+                    ?: ""
+            if (key.isNotBlank()) {
+                onSelect(key)
+            }
+        },
         viewInit = {
             getViewAttr().run {
                 keys(items.tabJoin { it.key })
@@ -259,10 +254,10 @@ private fun SlockOhosHdsTabBar(
 private fun List<SlockBottomTabItemPayload>.tabJoin(value: (SlockBottomTabItemPayload) -> String): String =
     joinToString("\u001F") { value(it).replace("\u001F", " ") }
 
-private class SlockOhosHdsTabBarView : DeclarativeBaseView<SlockOhosHdsTabBarAttr, Event>() {
+private class SlockOhosHdsTabBarView : DeclarativeBaseView<SlockOhosHdsTabBarAttr, SlockOhosHdsTabBarEvent>() {
     override fun createAttr(): SlockOhosHdsTabBarAttr = SlockOhosHdsTabBarAttr()
 
-    override fun createEvent(): Event = Event()
+    override fun createEvent(): SlockOhosHdsTabBarEvent = SlockOhosHdsTabBarEvent()
 
     override fun viewName(): String = VIEW_NAME
 
@@ -270,6 +265,8 @@ private class SlockOhosHdsTabBarView : DeclarativeBaseView<SlockOhosHdsTabBarAtt
         const val VIEW_NAME = "SlockOhosHdsTabBarView"
     }
 }
+
+private class SlockOhosHdsTabBarEvent : Event()
 
 private class SlockOhosHdsTabBarAttr : Attr() {
     fun keys(value: String): SlockOhosHdsTabBarAttr {

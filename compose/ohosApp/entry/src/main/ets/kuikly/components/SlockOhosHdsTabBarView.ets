@@ -1,5 +1,6 @@
 import { KRAny, KuiklyRenderBaseView, KuiklyRenderCallback } from '@kuikly-open/render';
 import { ComponentContent } from '@kit.ArkUI';
+import { fileUri } from '@kit.CoreFileKit';
 import { DividerMode, HdsTabs, HdsTabsController } from '@kit.UIDesignKit';
 import { hdsMaterial } from '@hms.hds.hdsMaterial';
 
@@ -9,7 +10,14 @@ const kIconsText = 'iconsText';
 const kEnabledText = 'enabledText';
 const kSelectedKey = 'selectedKey';
 const kBottomSafeArea = 'bottomSafeArea';
+const kSelect = 'select';
 const kSeparator = '\u001F';
+
+const kDockHeight = 50;
+const kDockBottomMargin = 18;
+const kItemHeight = 44;
+const kIconSize = 18;
+const kHostExtraHeight = 24;
 
 interface SlockHdsTabItem {
   key: string;
@@ -28,6 +36,7 @@ export class SlockOhosHdsTabBarView extends KuiklyRenderBaseView {
   enabledText: string = '';
   selectedKey: string = '';
   bottomSafeArea: number = 0;
+  selectCallback: KuiklyRenderCallback | null = null;
 
   createArkUIView(): ComponentContent<KuiklyRenderBaseView> {
     const uiContext = this.getUIContext() as UIContext;
@@ -59,6 +68,9 @@ export class SlockOhosHdsTabBarView extends KuiklyRenderBaseView {
       case kBottomSafeArea:
         this.bottomSafeArea = normalizeNumber(propValue);
         return true;
+      case kSelect:
+        this.selectCallback = propValue as KuiklyRenderCallback;
+        return true;
       default:
         return super.setProp(propKey, propValue);
     }
@@ -88,11 +100,48 @@ export class SlockOhosHdsTabBarView extends KuiklyRenderBaseView {
     const index = items.findIndex((item: SlockHdsTabItem) => item.key === this.selectedKey);
     return index >= 0 ? index : 0;
   }
+
+  selectIndex(index: number) {
+    const items = this.items();
+    if (index < 0 || index >= items.length) {
+      return;
+    }
+    const item = items[index];
+    if (!item.enabled) {
+      this.controller.changeIndex(this.selectedIndex());
+      return;
+    }
+    this.selectedKey = item.key;
+    this.controller.changeIndex(index);
+    this.selectCallback?.({
+      key: item.key,
+      index: index,
+    });
+  }
+
+  iconResource(name: string): ResourceStr | null {
+    const iconName = normalizeIconName(name);
+    if (iconName.length === 0) {
+      return null;
+    }
+    return fileUri.getUriFromPath(getContext().resourceDir + '/lucide/' + iconName + '.svg');
+  }
 }
 
 @Component
 export struct SlockOhosHdsTabBar {
   @ObjectLink renderView: SlockOhosHdsTabBarView;
+
+  private itemColor(item: SlockHdsTabItem, index: number): ResourceColor {
+    if (!item.enabled) {
+      return '#66000000';
+    }
+    return this.renderView.selectedIndex() === index ? '#FF000000' : '#FF737373';
+  }
+
+  private itemFontWeight(index: number): FontWeight {
+    return this.renderView.selectedIndex() === index ? FontWeight.Bold : FontWeight.Medium;
+  }
 
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
@@ -112,49 +161,57 @@ export struct SlockOhosHdsTabBar {
       .barPosition(BarPosition.End)
       .barMode(BarMode.Fixed)
       .scrollable(false)
-      .animationDuration(240)
-      .barHeight(60)
+      .animationDuration(0)
+      .barHeight(kDockHeight)
       .barOverlap(true)
       .barFloatingStyle({
-        barSideMargin: 18,
-        barBottomMargin: 28 + this.renderView.bottomSafeArea,
+        barSideMargin: 20,
+        barBottomMargin: kDockBottomMargin + this.renderView.bottomSafeArea,
         thermoCtrl: true,
         systemMaterialEffect: {
           materialType: hdsMaterial.MaterialType.ADAPTIVE,
           materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE,
         },
       })
+      .onChange((index: number) => {
+        this.renderView.selectIndex(index);
+      })
+      .onTabBarClick((index: number) => {
+        this.renderView.selectIndex(index);
+      })
       .divider({ mode: DividerMode.NONE })
       .width('100%')
-      .height(`${92 + this.renderView.bottomSafeArea}vp`)
+      .height(`${kDockHeight + kDockBottomMargin + kHostExtraHeight + this.renderView.bottomSafeArea}vp`)
       .backgroundColor('#00FFFFFF')
     }
     .width('100%')
-    .height(`${92 + this.renderView.bottomSafeArea}vp`)
+    .height(`${kDockHeight + kDockBottomMargin + kHostExtraHeight + this.renderView.bottomSafeArea}vp`)
   }
 
   @Builder
   tabBarItem(item: SlockHdsTabItem, index: number) {
     Column() {
-      Text(tabIcon(item.icon))
-        .fontSize(18)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(item.enabled ? '#FF000000' : '#66000000')
-        .lineHeight(20)
+      Image(this.renderView.iconResource(item.icon))
+        .width(kIconSize)
+        .height(kIconSize)
+        .objectFit(ImageFit.Contain)
+        .interpolation(ImageInterpolation.High)
+        .supportSvg2(true)
+        .fillColor(this.itemColor(item, index))
       Text(item.label.toUpperCase())
         .fontSize(9)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(item.enabled ? '#FF000000' : '#66000000')
+        .fontWeight(this.itemFontWeight(index))
+        .fontColor(this.itemColor(item, index))
         .lineHeight(12)
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
     }
     .width('100%')
-    .height(54)
+    .height(kItemHeight)
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
-    .borderRadius(18)
-    .backgroundColor(this.renderView.selectedIndex() === index ? '#FFFFE352' : '#00FFFFFF')
+    .borderRadius(16)
+    .backgroundColor('#00FFFFFF')
   }
 }
 
@@ -177,19 +234,15 @@ function normalizeNumber(value: KRAny | KuiklyRenderCallback): number {
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
 }
 
-function tabIcon(name: string): string {
-  switch (name) {
-    case 'house':
-      return '⌂';
-    case 'square-check-big':
-      return '✓';
-    case 'users':
-      return '♟';
-    case 'settings':
-      return '⚙';
-    default:
-      return '•';
+function normalizeIconName(value: string): string {
+  if (value === null || value === undefined) {
+    return '';
   }
+  return value
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/_/g, '-')
+    .toLowerCase();
 }
 
 @Builder

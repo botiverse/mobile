@@ -2401,6 +2401,8 @@ private fun AppShellPlaceholderContent(
 @Composable
 private fun BottomTabBarSmokeContent() {
     val bottomSafeArea = slockBottomSafeAreaPadding()
+    var selectedTab by remember { mutableStateOf("tasks") }
+    val smokeItems = bottomTabBarSmokeItems.map { item -> item.copy(selected = item.key == selectedTab) }
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -2422,7 +2424,7 @@ private fun BottomTabBarSmokeContent() {
             )
             Spacer(modifier = Modifier.height(8.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                bottomTabBarSmokeItems.forEach { item ->
+                smokeItems.forEach { item ->
                     Text(
                         text = item.label,
                         style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
@@ -2442,7 +2444,7 @@ private fun BottomTabBarSmokeContent() {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        SlockBottomTabBar(items = bottomTabBarSmokeItems, onSelect = {}, modifier = Modifier.fillMaxWidth())
+        SlockBottomTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth())
         Spacer(modifier = Modifier.height(16.dp))
         Text(
             "Floating Dock",
@@ -2451,7 +2453,7 @@ private fun BottomTabBarSmokeContent() {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        SlockFloatingDockTabBar(items = bottomTabBarSmokeItems, onSelect = {}, modifier = Modifier.fillMaxWidth())
+        SlockFloatingDockTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth())
         Spacer(modifier = Modifier.height(16.dp))
         Text(
             "Navigation Rail",
@@ -2461,7 +2463,7 @@ private fun BottomTabBarSmokeContent() {
             overflow = TextOverflow.Ellipsis
         )
         Row(modifier = Modifier.fillMaxWidth().height(140.dp)) {
-            SlockNavigationRailTabBar(items = bottomTabBarSmokeItems, onSelect = {})
+            SlockNavigationRailTabBar(items = smokeItems, onSelect = { selectedTab = it })
             Column(
                 modifier = Modifier.weight(1f).fillMaxSize().background(SlockColor.AppBgLightBlue).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -2484,8 +2486,8 @@ private fun BottomTabBarSmokeContent() {
         }
         Spacer(modifier = Modifier.weight(1f))
         SlockAppBottomTabBarHost(
-            items = bottomTabBarSmokeItems,
-            onSelect = {},
+            items = smokeItems,
+            onSelect = { selectedTab = it },
             modifier = Modifier.fillMaxWidth(),
             bottomSafeArea = bottomSafeArea
         )
