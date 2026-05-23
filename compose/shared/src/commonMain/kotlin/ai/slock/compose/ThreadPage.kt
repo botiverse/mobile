@@ -10,10 +10,17 @@ import ai.slock.compose.data.RelationalComposeLocalDataStore
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.ThreadApiResult
+import ai.slock.compose.data.SharedTasksRouteIntent
+import ai.slock.compose.data.toTasksUiStateForThreadTasks
+import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.markdown.ThreadMarkdownTag
 import ai.slock.compose.markdown.ThreadMarkdownTagKind
+import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
+import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
@@ -1561,7 +1568,8 @@ private fun ThreadPageContent(
                         ThreadTasksTab(
                             tasks = payload.tasks,
                             openTaskEnabled = payload.showTaskOpenActions,
-                            onOpenTask = { onThreadEvent("openTask", it, null, null) }
+                            onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                            onStatusChange = { taskId, status -> onThreadEvent("setTaskStatus", taskId, null, status.name) }
                         )
                     KuiklyThreadTab.Files ->
                         ThreadFilesContent(payload = filesPayload) { action, attachmentId ->
@@ -3223,68 +3231,55 @@ private fun ThreadAttachmentChip(
 private fun ThreadTasksTab(
     tasks: List<KuiklyThreadTaskItem>,
     openTaskEnabled: Boolean,
-    onOpenTask: (String) -> Unit
+    onOpenTask: (String) -> Unit,
+    onStatusChange: (String, TaskStatus) -> Unit
 ) {
-    if (tasks.isEmpty()) {
-        ThreadStateMessage("No tasks yet", "Tasks created from this conversation will show up here.")
-        return
-    }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(tasks.size, key = { tasks[it].id }) { index ->
-            val task = tasks[index]
-            val clickableModifier =
-                if (openTaskEnabled) {
-                    Modifier.clickable { onOpenTask(task.id) }
-                } else {
-                    Modifier
-                }
-            Row(
-                modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .background(SlockColor.SurfaceWhite)
-                    .then(clickableModifier)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = buildString {
-                            task.taskNumber?.let {
-                                append("#")
-                                append(it)
-                                append(" ")
-                            }
-                            append(task.title)
-                        },
-                        style = SlockType.Body.copy(fontWeight = FontWeight.W600, color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    val meta =
-                        listOfNotNull(
-                            task.status.takeIf { it.isNotBlank() },
-                            task.assigneeName?.takeIf { it.isNotBlank() },
-                            task.updatedAtLabel.takeIf { it.isNotBlank() }
-                        )
-                    if (meta.isNotEmpty()) {
-                        Text(
-                            text = meta.joinToString(" · "),
-                            style = SlockType.Input.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray),
-                            color = SlockColor.TextMutedGray,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-                ThreadHeaderAction(label = "Open", onClick = { onOpenTask(task.id) })
+    var selectedFilter by remember(tasks) { mutableStateOf<TaskStatus?>(null) }
+    val taskSummaries = remember(tasks) { tasks.map { it.toTaskSummary() } }
+    val state =
+        remember(taskSummaries, selectedFilter) {
+            taskSummaries.toTasksUiStateForThreadTasks().copy(selectedFilter = selectedFilter)
+        }
+    SharedTasksPanel(
+        state = state,
+        showHeader = false,
+        showChannelFilter = false,
+        onOpenTask = if (openTaskEnabled) {
+            { task -> onOpenTask(task.id.value) }
+        } else {
+            null
+        },
+        onIntent = { intent ->
+            when (intent) {
+                SharedTasksRouteIntent.Start,
+                SharedTasksRouteIntent.Refresh,
+                SharedTasksRouteIntent.ClearNavigationError -> Unit
+                is SharedTasksRouteIntent.SelectFilter ->
+                    selectedFilter = intent.status
+                is SharedTasksRouteIntent.UpdateStatus ->
+                    onStatusChange(intent.task.id.value, intent.status)
             }
         }
-    }
+    )
 }
+
+private fun KuiklyThreadTaskItem.toTaskSummary(): TaskSummary =
+    TaskSummary(
+        id = TaskId(id),
+        title = title,
+        status = status.toSharedThreadTaskStatus() ?: TaskStatus.Todo,
+        taskNumber = taskNumber,
+        assignee =
+            assigneeName?.trim()?.takeIf { it.isNotBlank() }?.let { displayName ->
+                MemberProfile(
+                    id = MemberId("thread-task-assignee-${id}"),
+                    displayName = displayName,
+                    handle = displayName,
+                    kind = MemberKind.Human
+                )
+            },
+        updatedAtLabel = updatedAtLabel
+    )
 
 @Composable
 private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {

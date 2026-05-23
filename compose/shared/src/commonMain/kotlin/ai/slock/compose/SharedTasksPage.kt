@@ -57,6 +57,24 @@ internal fun SharedTasksScreen(
     onIntent: (SharedTasksRouteIntent) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    SharedTasksPanel(
+        state = state,
+        onIntent = onIntent,
+        modifier = modifier,
+        showHeader = true,
+        showChannelFilter = true
+    )
+}
+
+@Composable
+internal fun SharedTasksPanel(
+    state: TasksUiState,
+    onIntent: (SharedTasksRouteIntent) -> Unit,
+    modifier: Modifier = Modifier,
+    showHeader: Boolean = true,
+    showChannelFilter: Boolean = true,
+    onOpenTask: ((TaskSummary) -> Unit)? = null
+) {
     var lastContent by remember { mutableStateOf<TasksContent?>(null) }
     val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
     if (currentContent != null) {
@@ -74,10 +92,12 @@ internal fun SharedTasksScreen(
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        SharedTasksHeader(
-            refreshing = state.refreshing,
-            onRefresh = { onIntent(SharedTasksRouteIntent.Refresh) }
-        )
+        if (showHeader) {
+            SharedTasksHeader(
+                refreshing = state.refreshing,
+                onRefresh = { onIntent(SharedTasksRouteIntent.Refresh) }
+            )
+        }
         when (val loadState = displayState) {
             ScreenLoadState.Loading ->
                 SharedTasksStateBody(
@@ -89,6 +109,8 @@ internal fun SharedTasksScreen(
                 SharedTasksLoadedBody(
                     state = state,
                     content = loadState.data,
+                    showChannelFilter = showChannelFilter,
+                    onOpenTask = onOpenTask,
                     onIntent = onIntent
                 )
             is ScreenLoadState.Empty ->
@@ -158,6 +180,8 @@ private fun SharedTasksHeader(
 private fun SharedTasksLoadedBody(
     state: TasksUiState,
     content: TasksContent,
+    showChannelFilter: Boolean,
+    onOpenTask: ((TaskSummary) -> Unit)?,
     onIntent: (SharedTasksRouteIntent) -> Unit
 ) {
     var presentationState by remember { mutableStateOf(TasksPresentationState()) }
@@ -168,7 +192,7 @@ private fun SharedTasksLoadedBody(
         sortedContent.visibleContent(
             selectedFilter = state.selectedFilter,
             presentationState = presentationState,
-            showChannelFilter = true
+            showChannelFilter = showChannelFilter
         )
     }
     LaunchedEffect(visibleContent.channelOptions) {
@@ -218,6 +242,7 @@ private fun SharedTasksLoadedBody(
                 channels = visibleContent.channelOptions,
                 selectedChannels = visibleContent.selectedChannelNames,
                 selectedMode = presentationState.selectedMode,
+                showChannelFilter = showChannelFilter,
                 onFilterSelected = { status -> onIntent(SharedTasksRouteIntent.SelectFilter(status)) },
                 onChannelToggled = { channel ->
                     presentationState = presentationState.reduce(TasksPresentationIntent.ToggleChannel(channel))
@@ -240,6 +265,7 @@ private fun SharedTasksLoadedBody(
                         tasks = column.tasks,
                         updatingTaskId = state.statusUpdatingTaskId,
                         onStatusChange = { task, status -> onIntent(SharedTasksRouteIntent.UpdateStatus(task, status)) },
+                        onOpenTask = onOpenTask,
                         modifier = Modifier.padding(horizontal = SlockSpacing.Md, vertical = if (index == 0) SlockSpacing.Md else 0.dp).padding(bottom = SlockSpacing.Md)
                     )
                 }
@@ -260,6 +286,7 @@ private fun SharedTasksLoadedBody(
                             tasks = column.tasks,
                             updatingTaskId = state.statusUpdatingTaskId,
                             onStatusChange = { task, status -> onIntent(SharedTasksRouteIntent.UpdateStatus(task, status)) },
+                            onOpenTask = onOpenTask,
                             modifier = Modifier.padding(horizontal = SlockSpacing.Md, vertical = if (index == 0) SlockSpacing.Md else 0.dp).padding(bottom = SlockSpacing.Md)
                         )
                     }
@@ -300,6 +327,7 @@ private fun SharedTasksToolbar(
     channels: List<String>,
     selectedChannels: Set<String>,
     selectedMode: TasksViewMode,
+    showChannelFilter: Boolean,
     onFilterSelected: (TaskStatus?) -> Unit,
     onChannelToggled: (String) -> Unit,
     onClearChannels: () -> Unit,
@@ -355,7 +383,7 @@ private fun SharedTasksToolbar(
                 }
             }
         }
-        if (channels.isNotEmpty()) {
+        if (showChannelFilter && channels.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
                 SharedTasksFilterChip(
                     label = "Channel",
@@ -421,6 +449,7 @@ private fun SharedTasksBoardColumn(
     tasks: List<TaskSummary>,
     updatingTaskId: String?,
     onStatusChange: (TaskSummary, TaskStatus) -> Unit,
+    onOpenTask: ((TaskSummary) -> Unit)?,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -454,6 +483,7 @@ private fun SharedTasksBoardColumn(
                 SharedTaskRow(
                     task = task,
                     updating = updatingTaskId == task.id.value,
+                    onOpenTask = onOpenTask?.let { opener -> { opener(task) } },
                     onStatusChange = { nextStatus -> onStatusChange(task, nextStatus) }
                 )
             }
@@ -467,6 +497,7 @@ private fun SharedTasksListSection(
     tasks: List<TaskSummary>,
     updatingTaskId: String?,
     onStatusChange: (TaskSummary, TaskStatus) -> Unit,
+    onOpenTask: ((TaskSummary) -> Unit)?,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -484,6 +515,7 @@ private fun SharedTasksListSection(
             SharedTaskRow(
                 task = task,
                 updating = updatingTaskId == task.id.value,
+                onOpenTask = onOpenTask?.let { opener -> { opener(task) } },
                 onStatusChange = { nextStatus -> onStatusChange(task, nextStatus) }
             )
         }
@@ -494,6 +526,7 @@ private fun SharedTasksListSection(
 private fun SharedTaskRow(
     task: TaskSummary,
     updating: Boolean,
+    onOpenTask: (() -> Unit)? = null,
     onStatusChange: (TaskStatus) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -518,7 +551,7 @@ private fun SharedTaskRow(
                     .fillMaxWidth()
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .clickable { onStatusChange(task.status.nextStatus()) }
+                    .clickable { onOpenTask?.invoke() ?: onStatusChange(task.status.nextStatus()) }
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
