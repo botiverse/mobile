@@ -2,6 +2,7 @@ package ai.slock.compose
 
 import ai.slock.compose.base.Utils
 import ai.slock.compose.model.AvatarReference
+import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -148,6 +149,8 @@ data class SlockHomeConversationItem(
     val id: String = "",
     val name: String = "",
     val unreadCount: Int = 0,
+    val lastMessageAt: String? = null,
+    val createdAt: String? = null,
     val avatarLabel: String = name.take(2).uppercase(),
     val avatarUrl: String? = null,
     val avatarWireValue: String? = avatarUrl,
@@ -171,6 +174,18 @@ enum class SlockHomeNotificationKind { Warning, Info, Error }
 
 @Serializable
 enum class SlockPresence { Online, Offline, Unknown }
+
+@Serializable
+enum class SlockSidebarSortMode(val wireValue: String, val label: String) {
+    Manual("manual", "Manual"),
+    Recent("recent", "Recent"),
+    Az("az", "A-Z");
+
+    companion object {
+        fun fromWireValue(value: String?): SlockSidebarSortMode =
+            entries.firstOrNull { it.wireValue == value?.trim()?.lowercase() } ?: Manual
+    }
+}
 
 @Serializable
 data class SlockHomeShellLabels(
@@ -209,6 +224,8 @@ internal data class SlockHomePayload(
     val contentRefreshEnabled: Boolean = true,
     val applyTopSafeArea: Boolean = true,
     val activitySelected: Boolean = false,
+    val channelSortMode: String = "manual",
+    val dmSortMode: String = "manual",
     val bottomContentPaddingDp: Float = 24f,
     val labels: SlockHomeShellLabels = SlockHomeShellLabels()
 )
@@ -260,6 +277,8 @@ private fun SlockHomePageContent() {
         contentRefreshEnabled = payload.contentRefreshEnabled,
         applyTopSafeArea = payload.applyTopSafeArea,
         activitySelected = payload.activitySelected,
+        channelSortMode = payload.channelSortMode,
+        dmSortMode = payload.dmSortMode,
         showBottomBar = false,
         bottomContentPadding = payload.bottomContentPaddingDp.dp,
         outerPadding = 0.dp,
@@ -279,6 +298,8 @@ private fun SlockHomePageContent() {
         },
         onNotificationView = { bridge.settingsEvent(payload.instanceId, "viewNotification", it.id) },
         onNotificationDismiss = { bridge.settingsEvent(payload.instanceId, "dismissNotification", it.id) },
+        onChannelSortModeChange = { bridge.settingsEvent(payload.instanceId, "setChannelSortMode", it.wireValue) },
+        onDmSortModeChange = { bridge.settingsEvent(payload.instanceId, "setDmSortMode", it.wireValue) },
         onChannelClick = { bridge.settingsEvent(payload.instanceId, "openChannel", it) }
     )
 }
@@ -417,6 +438,8 @@ fun SlockStructuralHomeShell(
     activitySelected: Boolean = false,
     searchSelected: Boolean = false,
     savedSelected: Boolean = false,
+    channelSortMode: String = "manual",
+    dmSortMode: String = "manual",
     selectedTabKey: String = "home",
     showBottomBar: Boolean = true,
     bottomContentPadding: Dp = if (showBottomBar) SlockSize.BottomBarHeight + SlockSpacing.Md else SlockSpacing.Lg,
@@ -435,13 +458,22 @@ fun SlockStructuralHomeShell(
     onSearchClick: () -> Unit = {},
     onNotificationView: (SlockHomeNotificationItem) -> Unit = {},
     onNotificationDismiss: (SlockHomeNotificationItem) -> Unit = {},
+    onChannelSortModeChange: (SlockSidebarSortMode) -> Unit = {},
+    onDmSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onChannelClick: (String) -> Unit = {}
 ) {
     var channelsExpanded by remember { mutableStateOf(true) }
     var directMessagesExpanded by remember { mutableStateOf(true) }
-    var channelsReversed by remember { mutableStateOf(false) }
-    var directMessagesReversed by remember { mutableStateOf(false) }
+    var channelSortModeState by remember(currentServerId) { mutableStateOf(SlockSidebarSortMode.fromWireValue(channelSortMode)) }
+    var directMessageSortMode by remember(currentServerId) { mutableStateOf(SlockSidebarSortMode.fromWireValue(dmSortMode)) }
+    var activeSortMenu by remember(currentServerId) { mutableStateOf<SlockHomeSortSection?>(null) }
+    var sortMenuAnchor by remember(currentServerId) { mutableStateOf(Offset.Zero) }
     var refreshIndicatorTimedOut by remember { mutableStateOf(false) }
+    LaunchedEffect(currentServerId, channelSortMode, dmSortMode) {
+        channelSortModeState = SlockSidebarSortMode.fromWireValue(channelSortMode)
+        directMessageSortMode = SlockSidebarSortMode.fromWireValue(dmSortMode)
+        activeSortMenu = null
+    }
     LaunchedEffect(contentRefreshing) {
         refreshIndicatorTimedOut = false
         if (contentRefreshing) {
@@ -450,8 +482,8 @@ fun SlockStructuralHomeShell(
         }
     }
     val indicatorRefreshing = contentRefreshing && !refreshIndicatorTimedOut
-    val displayedChannels = if (channelsReversed) channels.asReversed() else channels
-    val displayedDirectMessages = if (directMessagesReversed) directMessages.asReversed() else directMessages
+    val displayedChannels = remember(channels, channelSortModeState) { channels.sortedForSidebar(channelSortModeState) { it.name } }
+    val displayedDirectMessages = remember(directMessages, directMessageSortMode) { directMessages.sortedForSidebar(directMessageSortMode) { it.name } }
     val lazyItemCount =
         homeLazyItemCount(
             channelsCount = displayedChannels.size,
@@ -515,7 +547,17 @@ fun SlockStructuralHomeShell(
                         item { SidebarActionRow("bookmark", labels.saved, selected = savedSelected, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = onSavedClick) }
                         item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                         item {
-                            SidebarSectionHeader(labels.channels, channels.size, channelsExpanded, { channelsExpanded = it }, { channelsReversed = !channelsReversed }, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)) {
+                            SidebarSectionHeader(
+                                labels.channels,
+                                channels.size,
+                                channelsExpanded,
+                                { channelsExpanded = it },
+                                { anchor ->
+                                    activeSortMenu = if (activeSortMenu == SlockHomeSortSection.Channels) null else SlockHomeSortSection.Channels
+                                    sortMenuAnchor = anchor
+                                },
+                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                            ) {
                                 HeaderIconAction("plus", labels.addChannel, onCreateChannelClick)
                             }
                         }
@@ -534,7 +576,18 @@ fun SlockStructuralHomeShell(
                             }
                         }
                         item {
-                            SidebarSectionHeader(labels.directMessages, directMessages.size, directMessagesExpanded, { directMessagesExpanded = it }, { directMessagesReversed = !directMessagesReversed }, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), action = null)
+                            SidebarSectionHeader(
+                                labels.directMessages,
+                                directMessages.size,
+                                directMessagesExpanded,
+                                { directMessagesExpanded = it },
+                                { anchor ->
+                                    activeSortMenu = if (activeSortMenu == SlockHomeSortSection.DirectMessages) null else SlockHomeSortSection.DirectMessages
+                                    sortMenuAnchor = anchor
+                                },
+                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                action = null
+                            )
                         }
                         if (directMessagesExpanded) {
                             items(displayedDirectMessages.size, key = { index -> "dm-${displayedDirectMessages[index].id}" }) { index ->
@@ -544,7 +597,7 @@ fun SlockStructuralHomeShell(
                                     avatarLabel = dm.avatarLabel,
                                     avatarUrl = dm.avatarUrl,
                                     avatarWireValue = dm.avatarWireValue,
-                                    presence = dm.presence,
+                                    presence = homeDmStatusPresence(dm.presence),
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     hasDraft = dm.hasDraft,
                                     badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
@@ -560,6 +613,31 @@ fun SlockStructuralHomeShell(
             if (serverSwitcherExpanded) {
                 HomeServerSwitcherDismissLayer(onServerSwitcherDismiss)
                 ServerSwitcherPanel(servers, currentServerId, pendingServerId, labels, onServerSelected, onCreateServerClick, Modifier.padding(top = topSafeArea + SlockSize.PageHeaderHeight, start = SlockSpacing.Lg))
+            }
+            activeSortMenu?.let { section ->
+                SlockBaseMenuOverlay(
+                    anchor = sortMenuAnchor,
+                    items = SlockHomeSortMenuItems,
+                    selectedId = when (section) {
+                        SlockHomeSortSection.Channels -> channelSortModeState.wireValue
+                        SlockHomeSortSection.DirectMessages -> directMessageSortMode.wireValue
+                    },
+                    onDismiss = { activeSortMenu = null },
+                    onSelect = { selected ->
+                        val nextMode = SlockSidebarSortMode.fromWireValue(selected)
+                        when (section) {
+                            SlockHomeSortSection.Channels -> {
+                                channelSortModeState = nextMode
+                                onChannelSortModeChange(nextMode)
+                            }
+                            SlockHomeSortSection.DirectMessages -> {
+                                directMessageSortMode = nextMode
+                                onDmSortModeChange(nextMode)
+                            }
+                        }
+                        activeSortMenu = null
+                    }
+                )
             }
         }
         if (showBottomBar) {
@@ -605,9 +683,31 @@ internal fun homeLazyItemCount(
         (if (directMessagesExpanded) directMessagesCount else 0)
 }
 
+private enum class SlockHomeSortSection { Channels, DirectMessages }
+
+private val SlockHomeSortMenuItems =
+    SlockSidebarSortMode.entries.map { mode ->
+        SlockBaseMenuItem(id = mode.wireValue, label = mode.label)
+    }
+
 internal fun homeDmStatusPresence(presence: SlockPresence?): SlockPresence =
     presence ?: SlockPresence.Offline
 
+internal fun List<SlockHomeConversationItem>.sortedForSidebar(
+    mode: SlockSidebarSortMode,
+    label: (SlockHomeConversationItem) -> String
+): List<SlockHomeConversationItem> =
+    when (mode) {
+        SlockSidebarSortMode.Manual -> this
+        SlockSidebarSortMode.Recent ->
+            sortedWith(
+                compareByDescending<SlockHomeConversationItem> {
+                    parseSlockTimestampEpochMillisOrNull(it.lastMessageAt ?: it.createdAt) ?: Long.MIN_VALUE
+                }.thenBy { label(it).trim().lowercase() }.thenBy { it.id }
+            )
+        SlockSidebarSortMode.Az ->
+            sortedWith(compareBy<SlockHomeConversationItem> { label(it).trim().lowercase() }.thenBy { it.id })
+    }
 @Composable
 private fun HomeServerSwitcherDismissLayer(onDismiss: () -> Unit) {
     Box(
@@ -1120,20 +1220,26 @@ private fun SidebarTrailingNumberText(text: String, color: Color) {
 }
 
 @Composable
-private fun SidebarSectionHeader(label: String, count: Int, expanded: Boolean, onExpandedChange: (Boolean) -> Unit, onSortClick: () -> Unit, modifier: Modifier = Modifier, action: (@Composable BoxScope.() -> Unit)?) {
+private fun SidebarSectionHeader(label: String, count: Int, expanded: Boolean, onExpandedChange: (Boolean) -> Unit, onSortClick: (Offset) -> Unit, modifier: Modifier = Modifier, action: (@Composable BoxScope.() -> Unit)?) {
     com.tencent.kuikly.compose.foundation.layout.Row(modifier = modifier.fillMaxWidth().heightIn(min = 30.dp).clickable { onExpandedChange(!expanded) }, verticalAlignment = Alignment.CenterVertically) {
         SlockLucideIcon(if (expanded) "chevron-down" else "chevron-right", Modifier.size(SectionChevronSize))
         Text(label, style = SlockType.SectionLabel, color = SlockColor.TextBlack, modifier = Modifier.padding(start = SlockSpacing.Xs))
         Text(count.toString(), style = SlockType.Caption, color = SlockColor.TextMutedGray, modifier = Modifier.padding(start = SlockSpacing.Xs))
         Spacer(Modifier.weight(1f))
-        HeaderIconAction("arrow-up-down", "Sort $label", onSortClick)
+        HeaderIconAction("arrow-up-down", "Sort $label", onClick2 = onSortClick)
         if (action != null) Box(content = action)
     }
 }
 
 @Composable
-private fun HeaderIconAction(icon: String, contentDescription: String, onClick: () -> Unit) {
-    Box(modifier = Modifier.size(MiniActionSize).clickable(onClick = onClick), contentAlignment = Alignment.Center) { SlockLucideIcon(icon, Modifier.size(MiniActionIconSize)) }
+private fun HeaderIconAction(icon: String, contentDescription: String, onClick: () -> Unit = {}, onClick2: (Offset) -> Unit = {}) {
+    Button(
+        onClick = onClick,
+        onClick2 = onClick2,
+        modifier = Modifier.size(MiniActionSize)
+    ) {
+        SlockLucideIcon(icon, Modifier.size(MiniActionIconSize))
+    }
 }
 
 @Composable

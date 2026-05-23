@@ -1,0 +1,140 @@
+package ai.slock.compose
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.offset
+import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.ui.Alignment
+import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
+
+internal data class SlockBaseMenuItem(
+    val id: String,
+    val label: String,
+    val icon: String? = null
+)
+
+private val SlockBaseMenuWidth = 136.dp
+private val SlockBaseMenuRowHeight = 34.dp
+private val SlockBaseMenuShadowOffset = 4.dp
+private const val SlockBaseMenuFallbackWidth = 136f
+private const val SlockBaseMenuAnchorGap = 8f
+private const val SlockBaseMenuTriggerNudge = 14f
+
+@Composable
+internal fun SlockBaseMenuOverlay(
+    anchor: Offset,
+    items: List<SlockBaseMenuItem>,
+    selectedId: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (items.isEmpty()) return
+    var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
+    val localAnchor = Offset(anchor.x - overlayOrigin.x, anchor.y - overlayOrigin.y)
+    val menuX = (localAnchor.x - SlockBaseMenuFallbackWidth + SlockBaseMenuTriggerNudge).coerceAtLeast(SlockBaseMenuAnchorGap)
+    val menuY = (localAnchor.y + SlockBaseMenuTriggerNudge).coerceAtLeast(SlockBaseMenuAnchorGap)
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .onGloballyPositioned { overlayOrigin = it.positionInRoot() }
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.TopStart
+    ) {
+        Box(
+            modifier = Modifier
+                .offset(x = menuX, y = menuY)
+                .padding(end = SlockBaseMenuShadowOffset, bottom = SlockBaseMenuShadowOffset)
+        ) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .offset(x = SlockBaseMenuShadowOffset, y = SlockBaseMenuShadowOffset)
+                    .background(SlockColor.ShadowBlack)
+            )
+            Column(
+                modifier = Modifier
+                    .width(SlockBaseMenuWidth)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+            ) {
+                items.forEach { item ->
+                    val selected = item.id == selectedId
+                    SlockBaseMenuRow(
+                        item = item,
+                        selected = selected,
+                        onClick = { onSelect(item.id) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SlockBaseMenuRow(
+    item: SlockBaseMenuItem,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(SlockBaseMenuRowHeight)
+            .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+            .padding(horizontal = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            Box(modifier = Modifier.size(14.dp), contentAlignment = Alignment.Center) {
+                if (selected) {
+                    SlockLucideIcon("check", modifier = Modifier.size(14.dp), color = "#FF000000")
+                }
+            }
+            Text(
+                text = item.label.uppercase(),
+                style = SlockType.Caption.copy(
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp
+                ),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.weight(1f))
+            item.icon?.takeIf { it.isNotBlank() }?.let { icon ->
+                SlockLucideIcon(icon, modifier = Modifier.size(12.dp), color = "#FF000000")
+            }
+        }
+    }
+}

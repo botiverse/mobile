@@ -2216,6 +2216,7 @@ private fun ConversationSummary.toSharedHomeConversationItem(): SlockHomeConvers
         id = threadId.value,
         name = name,
         unreadCount = unreadCount,
+        lastMessageAt = lastMessageAt,
         avatarUrl = avatarUrl,
         avatarWireValue = avatar?.wireValue ?: avatarUrl,
         presence = presence.toSharedPresence(),

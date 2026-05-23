@@ -52,6 +52,20 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun sidebarSortModesMatchReactOrdering() {
+        val manual =
+            listOf(
+                SlockHomeConversationItem(id = "b", name = "Beta", lastMessageAt = "2026-05-19T10:00:00Z"),
+                SlockHomeConversationItem(id = "a", name = "Alpha", lastMessageAt = "2026-05-20T10:00:00Z"),
+                SlockHomeConversationItem(id = "c", name = "gamma", lastMessageAt = "2026-05-18T10:00:00Z")
+            )
+
+        assertEquals(listOf("b", "a", "c"), manual.sortedForSidebar(SlockSidebarSortMode.Manual) { it.name }.map { it.id })
+        assertEquals(listOf("a", "b", "c"), manual.sortedForSidebar(SlockSidebarSortMode.Recent) { it.name }.map { it.id })
+        assertEquals(listOf("a", "b", "c"), manual.sortedForSidebar(SlockSidebarSortMode.Az) { it.name }.map { it.id })
+    }
+
+    @Test
     fun membersLazyItemCountIncludesAgentGroupsAndVisibleHumans() {
         val agents =
             listOf(
