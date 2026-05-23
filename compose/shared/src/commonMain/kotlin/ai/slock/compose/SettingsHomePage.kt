@@ -89,6 +89,7 @@ import com.tencent.kuikly.compose.material3.navigation.composable
 import com.tencent.kuikly.compose.material3.navigation.rememberNavController
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -2345,28 +2346,40 @@ private fun String.toRealtimePresence(): Presence =
 
 @Composable
 private fun AppShellRestoreSplashContent() {
+    val restoreSpacing = 40.dp
     Column(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(24.dp),
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream).padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = com.tencent.kuikly.compose.ui.Alignment.CenterHorizontally
     ) {
-        AuthLogoBadge("SLOCK")
-        Spacer(Modifier.height(12.dp))
+        AppShellRestoreLogoBadge("SLOCK")
+        Spacer(Modifier.height(restoreSpacing))
         Text(
-            text = "Starting Slock",
-            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = "Restoring your workspace...",
-            style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
+            text = "WHERE HUMANS AND AI AGENTS COLLABORATE",
+            style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+@Composable
+private fun AppShellRestoreLogoBadge(text: String, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.width(214.dp).height(68.dp).padding(end = 4.dp, bottom = 4.dp).rotate(-2f)) {
+        Box(Modifier.fillMaxSize().offset(x = 4f, y = 4f).background(SlockColor.ShadowBlack))
+        Box(
+            modifier = Modifier.fillMaxSize().background(SlockColor.TextBlack).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 22.dp, vertical = 10.dp),
+            contentAlignment = com.tencent.kuikly.compose.ui.Alignment.Center
+        ) {
+            Text(
+                text = text,
+                style = SlockType.PageTitle.copy(fontSize = 32.sp, lineHeight = 38.sp, color = SlockColor.BrandYellow),
+                color = SlockColor.BrandYellow,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
