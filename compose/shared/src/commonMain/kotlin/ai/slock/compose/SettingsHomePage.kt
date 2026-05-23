@@ -394,6 +394,7 @@ private fun SlockAppShellContent() {
     var selectedTab by remember { mutableStateOf("home") }
     var selectedSettingsDestination by remember { mutableStateOf(SettingsDestinationHome) }
     var selectedHomeDestination by remember { mutableStateOf<String?>(null) }
+    var selectedHomeConversationId by remember { mutableStateOf<String?>(null) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val relationalStore = remember { KuiklyRelationalStore(bridge) }
@@ -511,6 +512,7 @@ private fun SlockAppShellContent() {
             authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
             selectedTab = "home"
             selectedSettingsDestination = SettingsDestinationHome
+            selectedHomeConversationId = null
             activeThreadPayload = null
             threadBackStack = emptyList()
         }
@@ -538,6 +540,7 @@ private fun SlockAppShellContent() {
                     authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session))
                     selectedTab = "home"
                     selectedHomeDestination = null
+                    selectedHomeConversationId = null
                     activeThreadPayload = null
                     threadBackStack = emptyList()
                 },
@@ -545,6 +548,7 @@ private fun SlockAppShellContent() {
                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
                     selectedTab = "home"
                     selectedHomeDestination = null
+                    selectedHomeConversationId = null
                     activeThreadPayload = null
                     threadBackStack = emptyList()
                 }
@@ -711,6 +715,7 @@ private fun SlockAppShellContent() {
                                     selectedTab = "home"
                                     selectedSettingsDestination = SettingsDestinationHome
                                     selectedHomeDestination = null
+                                    selectedHomeConversationId = null
                                     activeThreadPayload = null
                                     threadBackStack = emptyList()
                                 }
@@ -727,11 +732,25 @@ private fun SlockAppShellContent() {
                                     bridge = bridge,
                                     state = homeState,
                                     onIntent = homeViewModel::dispatch,
-                                    onOpenSearch = { selectedHomeDestination = HomeDestinationSearch },
-                                    onOpenActivity = { selectedHomeDestination = HomeDestinationActivity },
-                                    onOpenSaved = { selectedHomeDestination = HomeDestinationSaved },
+                                    selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId,
+                                    onSelectedConversationCleared = {
+                                        selectedHomeConversationId = null
+                                    },
+                                    onOpenSearch = {
+                                        selectedHomeConversationId = null
+                                        selectedHomeDestination = HomeDestinationSearch
+                                    },
+                                    onOpenActivity = {
+                                        selectedHomeConversationId = null
+                                        selectedHomeDestination = HomeDestinationActivity
+                                    },
+                                    onOpenSaved = {
+                                        selectedHomeConversationId = null
+                                        selectedHomeDestination = HomeDestinationSaved
+                                    },
                                     onOpenConversation = { conversation ->
                                         selectedHomeDestination = null
+                                        selectedHomeConversationId = conversation.threadId.value
                                         activeThreadPayload = buildAppShellThreadPayload(conversation, threadTimeContext)
                                         threadBackStack = emptyList()
                                         navController.navigate(AppShellRouteThread)
@@ -2045,6 +2064,8 @@ private fun SharedHomeScreen(
     bridge: ai.slock.compose.base.BridgeModule,
     state: SharedHomeState,
     onIntent: (SharedHomeIntent) -> Unit,
+    selectedConversationId: String? = null,
+    onSelectedConversationCleared: () -> Unit = {},
     onOpenSearch: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenSaved: () -> Unit,
@@ -2072,7 +2093,10 @@ private fun SharedHomeScreen(
                     onRefresh = { onIntent(SharedHomeIntent.Refresh) },
                     onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                     onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
-                    onServerSelected = { serverId -> onIntent(SharedHomeIntent.SelectServer(serverId)) },
+                    onServerSelected = { serverId ->
+                        onSelectedConversationCleared()
+                        onIntent(SharedHomeIntent.SelectServer(serverId))
+                    },
                     onCreateServerClick = {
                         bridge.toast("Create server is not available yet")
                     }
@@ -2086,7 +2110,10 @@ private fun SharedHomeScreen(
                 onRefresh = { onIntent(SharedHomeIntent.Refresh) },
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                 onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
-                onServerSelected = { serverId -> onIntent(SharedHomeIntent.SelectServer(serverId)) },
+                onServerSelected = { serverId ->
+                    onSelectedConversationCleared()
+                    onIntent(SharedHomeIntent.SelectServer(serverId))
+                },
                 onCreateServerClick = {
                     bridge.toast("Create server is not available yet")
                 }
@@ -2114,7 +2141,7 @@ private fun SharedHomeScreen(
                 servers = servers,
                 channels = snapshot.channels.map { it.toSharedHomeConversationItem() },
                 directMessages = snapshot.directMessages.map { it.toSharedHomeConversationItem() },
-                selectedChannelId = state.selectedConversationId,
+                selectedChannelId = selectedConversationId,
                 serverUnreadCount = snapshot.server.unreadCount,
                 inboxUnreadCount = snapshot.unreadTotal,
                 serverSwitcherExpanded = serverSwitcherExpanded,
@@ -2129,7 +2156,10 @@ private fun SharedHomeScreen(
                 onContentRefresh = { onIntent(SharedHomeIntent.Refresh) },
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                 onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
-                onServerSelected = { serverId -> onIntent(SharedHomeIntent.SelectServer(serverId)) },
+                onServerSelected = { serverId ->
+                    onSelectedConversationCleared()
+                    onIntent(SharedHomeIntent.SelectServer(serverId))
+                },
                 onCreateServerClick = {
                     bridge.toast("Create server is not available yet")
                 },

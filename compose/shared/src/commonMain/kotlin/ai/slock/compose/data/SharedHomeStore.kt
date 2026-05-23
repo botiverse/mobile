@@ -81,7 +81,9 @@ class SharedHomeStore(
                 _state.value =
                     _state.value.copy(
                         serverSwitcherExpanded = false,
-                        serverSwitchState = nextSwitch
+                        serverSwitchState = nextSwitch,
+                        selectedConversationId = null,
+                        selectedTopAction = null
                     )
                 load(nextSwitch)
             }

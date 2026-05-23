@@ -52,6 +52,7 @@ class SharedHomeStoreTest {
             scope = scope
         )
 
+        store.accept(SharedHomeIntent.SelectConversation("channel-1"))
         store.accept(SharedHomeIntent.SelectServer("server-2"))
 
         val state = store.state.value
@@ -61,6 +62,8 @@ class SharedHomeStoreTest {
         assertEquals("server-2", sessionStore.readSession()?.selectedServerId)
         assertEquals(null, state.serverSwitchState.pendingServerId)
         assertEquals(false, state.serverSwitcherExpanded)
+        assertEquals(null, state.selectedConversationId)
+        assertEquals(null, state.selectedTopAction)
         assertEquals(listOf("channels:server-2", "dms:server-2", "unread:server-2", "summary:server-2"), api.calls)
         scope.cancel()
     }
@@ -184,6 +187,24 @@ class SharedHomeStoreTest {
 
         assertEquals(null, store.state.value.selectedConversationId)
         assertEquals(SharedHomeTopAction.Saved, store.state.value.selectedTopAction)
+        scope.cancel()
+    }
+
+    @Test
+    fun refreshKeepsSelectedConversationAfterReturningFromThread() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = RecordingHomeApi()),
+            scope = scope
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.SelectConversation("channel-2"))
+        store.accept(SharedHomeIntent.Refresh)
+
+        assertEquals("channel-2", store.state.value.selectedConversationId)
+        assertEquals(null, store.state.value.selectedTopAction)
         scope.cancel()
     }
 
