@@ -1,6 +1,5 @@
 import {
   IKuiklyViewDelegate,
-  KRMonitorType,
   KRRecord,
   KRRenderModuleExportCreator,
   KRRenderViewExportCreator
@@ -8,6 +7,12 @@ import {
 import { SlockLucideIconView } from './components/SlockLucideIconView';
 import { SlockOhosHdsTabBarView } from './components/SlockOhosHdsTabBarView';
 import { KRBridgeModule } from './modules/KRBridgeModule';
+
+export enum KRMonitorType {
+  LAUNCH = 1 << 0,
+  FRAME = 1 << 1,
+  MEMORY = 1 << 2,
+}
 
 export class KuiklyViewDelegate extends IKuiklyViewDelegate {
   private static readonly PERFORMANCE_LOG_TAG: string = 'SlockKuiklyPerf';
@@ -27,7 +32,7 @@ export class KuiklyViewDelegate extends IKuiklyViewDelegate {
   }
 
   performanceMonitorTypes(): Array<KRMonitorType> {
-    return [KRMonitorType.LAUNCH, KRMonitorType.FRAME, KRMonitorType.MEMORY];
+    return [];
   }
 
   onGetLaunchData(data: KRRecord): void {
