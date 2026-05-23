@@ -163,7 +163,7 @@ internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): Kuikl
     copy(
         showOpenInChannelAction = showOpenInChannelAction || originParentMessageId?.isNotBlank() == true,
         canAddMembers = false,
-        showSettingsAction = false
+        showSettingsAction = showSettingsAction && showModeTabs
     )
 
 @Serializable

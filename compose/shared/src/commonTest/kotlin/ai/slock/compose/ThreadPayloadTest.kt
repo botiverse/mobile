@@ -110,6 +110,7 @@ class ThreadPayloadTest {
         assertEquals(480, payload.localOffsetMinutes)
         assertEquals(20593, payload.todayEpochDay)
         assertEquals(false, payload.showReplyActions)
+        assertEquals(true, payload.showSettingsAction)
         assertEquals("Message #general", parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId).placeholder)
     }
 
@@ -597,6 +598,7 @@ class ThreadPayloadTest {
         assertEquals("Close", payload.navigationLabel)
         assertEquals(false, payload.showModeTabs)
         assertEquals(false, payload.showReplyActions)
+        assertEquals(true, payload.showSettingsAction)
         assertEquals(true, payload.showOpenInChannelAction)
         assertEquals("message", payload.originStatus)
         assertEquals("m-parent", payload.originParentMessageId)
@@ -628,7 +630,23 @@ class ThreadPayloadTest {
         assertEquals(true, payload.canLoadMoreBefore)
         assertEquals(true, payload.canLoadMoreAfter)
         assertEquals(false, payload.canAddMembers)
+        assertEquals(true, payload.showSettingsAction)
+    }
+
+    @Test
+    fun sharedShellHidesSettingsForReplyThreadChrome() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-reply-1",
+                title = "Message Threads",
+                showModeTabs = false,
+                showSettingsAction = true,
+                showOpenInChannelAction = true,
+                originParentMessageId = "message-1"
+            ).withSharedShellEventCapabilities()
+
         assertEquals(false, payload.showSettingsAction)
+        assertEquals(true, payload.showOpenInChannelAction)
     }
 
     @Test
