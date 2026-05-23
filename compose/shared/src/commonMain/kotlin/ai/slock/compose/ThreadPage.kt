@@ -183,6 +183,8 @@ internal data class KuiklyThreadMessageItem(
     val metadata: Map<String, String> = emptyMap(),
     val body: String = "",
     val replyCount: Int = 0,
+    val unreadReplyCount: Int = 0,
+    val firstUnreadReplyMessageId: String? = null,
     val taskId: String? = null,
     val taskNumber: Int? = null,
     val taskStatus: String? = null,
@@ -1274,6 +1276,8 @@ private fun JsonObject.toSharedThreadMessageItem(
         metadata = (this["metadata"] as? JsonObject).threadStringMap(),
         body = body,
         replyCount = threadReplyCount(),
+        unreadReplyCount = threadUnreadReplyCount(),
+        firstUnreadReplyMessageId = threadFirstUnreadReplyMessageId(),
         taskId =
             threadString("taskId", "task_id")
                 ?: task?.threadString("id", "_id", "taskId", "task_id"),
@@ -1389,6 +1393,47 @@ private fun JsonObject.threadReplyCount(): Int =
                 "total"
             )
         ?: 0
+
+private fun JsonObject.threadUnreadReplyCount(): Int =
+    threadInt(
+        "unreadReplyCount",
+        "unread_reply_count",
+        "unreadReplies",
+        "unread_replies",
+        "unreadRepliesCount",
+        "unread_replies_count",
+        "threadUnreadCount",
+        "thread_unread_count",
+        "threadUnreadReplyCount",
+        "thread_unread_reply_count"
+    )
+        ?: firstThreadObject("thread", "replyThread", "reply_thread", "repliesSummary", "replies_summary")
+            ?.threadInt(
+                "unreadCount",
+                "unread_count",
+                "unreadReplyCount",
+                "unread_reply_count",
+                "unreadReplies",
+                "unread_replies",
+                "unreadRepliesCount",
+                "unread_replies_count"
+            )
+        ?: 0
+
+private fun JsonObject.threadFirstUnreadReplyMessageId(): String? =
+    threadString(
+        "firstUnreadReplyMessageId",
+        "first_unread_reply_message_id",
+        "firstUnreadThreadMessageId",
+        "first_unread_thread_message_id"
+    )
+        ?: firstThreadObject("thread", "replyThread", "reply_thread", "repliesSummary", "replies_summary")
+            ?.threadString(
+                "firstUnreadMessageId",
+                "first_unread_message_id",
+                "firstUnreadReplyMessageId",
+                "first_unread_reply_message_id"
+            )
 
 private fun JsonObject.threadTaskAssigneeName(): String? =
     threadString(
@@ -1824,7 +1869,7 @@ private fun ThreadMessagesList(
     var actionMenuAnchor by remember(payload.instanceId) { mutableStateOf(Offset(16f, 16f)) }
     var allowBottomAutoAnchor by remember(payload.instanceId) { mutableStateOf(true) }
     val latestItemIndex = payload.latestMessageListItemIndex()
-    val latestMessageLayoutKey = payload.messages.joinToString("|") { "${it.id}:${it.body.length}:${it.attachments.size}:${it.taskId.orEmpty()}:${it.replyCount}" }
+    val latestMessageLayoutKey = payload.messages.joinToString("|") { "${it.id}:${it.body.length}:${it.attachments.size}:${it.taskId.orEmpty()}:${it.replyCount}:${it.unreadReplyCount}" }
     LaunchedEffect(payload.instanceId, latestItemIndex) {
         snapshotFlow {
             listState.isScrollInProgress to listState.isLatestItemAtRenderedBottom(latestItemIndex)
@@ -2411,8 +2456,18 @@ private fun ThreadMessageFooterMeta(
             }
         }
         if (hasReplies) {
+            val replyLabel =
+                buildString {
+                    append(message.replyCount)
+                    append(if (message.replyCount == 1) " reply" else " replies")
+                    if (message.unreadReplyCount > 0) {
+                        append(" · ")
+                        append(message.unreadReplyCount)
+                        append(" new")
+                    }
+                }
             ThreadMetaChip(
-                label = "${message.replyCount} replies",
+                label = replyLabel,
                 icon = "message-square",
                 color = SlockColor.AppBgLightBlue,
                 onClick = onOpenThread,

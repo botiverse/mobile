@@ -235,6 +235,8 @@ data class Message(
     val deliveryState: MessageDeliveryState = MessageDeliveryState.Sent,
     val task: TaskSummary? = null,
     val replyCount: Int = 0,
+    val unreadReplyCount: Int = 0,
+    val firstUnreadReplyMessageId: MessageId? = null,
     val parentMessageId: MessageId? = null,
     val updatedAtLabel: String? = null
 )
@@ -358,7 +360,9 @@ data class ThreadUpdated(
     val threadChannelId: ChannelId,
     val replyCount: Int,
     val lastReplyAt: String?,
-    val participantIds: List<MemberId>
+    val participantIds: List<MemberId>,
+    val unreadCount: Int? = null,
+    val firstUnreadMessageId: MessageId? = null
 ) : RealtimeEvent
 
 @Serializable

@@ -725,7 +725,16 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
 private fun KuiklyThreadScreenPayload.applyThreadUpdated(event: ThreadUpdated): KuiklyThreadScreenPayload {
     fun KuiklyThreadMessageItem.updateIfMatches(): KuiklyThreadMessageItem =
         if (id == event.parentMessageId.value) {
-            copy(replyCount = maxOf(replyCount, event.replyCount))
+            copy(
+                replyCount = maxOf(replyCount, event.replyCount),
+                unreadReplyCount = event.unreadCount ?: unreadReplyCount,
+                firstUnreadReplyMessageId =
+                    when {
+                        event.unreadCount == 0 -> null
+                        event.firstUnreadMessageId != null -> event.firstUnreadMessageId.value
+                        else -> firstUnreadReplyMessageId
+                    }
+            )
         } else {
             this
         }
@@ -811,6 +820,8 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(update: KuiklyThreadMess
         metadata = update.metadata.ifEmpty { metadata },
         body = update.body.ifBlank { body },
         replyCount = maxOf(replyCount, update.replyCount),
+        unreadReplyCount = maxOf(unreadReplyCount, update.unreadReplyCount),
+        firstUnreadReplyMessageId = update.firstUnreadReplyMessageId ?: firstUnreadReplyMessageId,
         taskId = update.taskId ?: taskId,
         taskNumber = update.taskNumber ?: taskNumber,
         taskStatus = update.taskStatus ?: taskStatus,
@@ -963,7 +974,9 @@ private fun KuiklyThreadMessageItem.toMessage(
         attachments = attachments.map { attachment -> attachment.toAttachment() },
         deliveryState = MessageDeliveryState.Sent,
         task = taskSummary,
-        replyCount = replyCount
+        replyCount = replyCount,
+        unreadReplyCount = unreadReplyCount,
+        firstUnreadReplyMessageId = firstUnreadReplyMessageId?.let(::MessageId)
     )
 }
 
@@ -1006,6 +1019,8 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
         metadata = metadata,
         body = body,
         replyCount = replyCount,
+        unreadReplyCount = unreadReplyCount,
+        firstUnreadReplyMessageId = firstUnreadReplyMessageId?.value,
         taskId = task?.id?.value,
         taskNumber = task?.taskNumber,
         taskStatus = task?.status?.name,

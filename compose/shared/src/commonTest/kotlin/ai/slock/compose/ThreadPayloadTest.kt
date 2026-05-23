@@ -456,9 +456,11 @@ class ThreadPayloadTest {
                             "id": "m1",
                             "authorId": "u1",
                             "authorName": "Artin",
-                            "body": "please check this",
-                            "replies": 4,
-                            "task": {
+                          "body": "please check this",
+                          "replies": 4,
+                          "unreadReplyCount": 2,
+                          "firstUnreadReplyMessageId": "reply-unread-1",
+                          "task": {
                               "id": "task-193",
                               "number": 193,
                               "status": "Todo",
@@ -473,7 +475,9 @@ class ThreadPayloadTest {
                             "authorName": "Cindy",
                             "body": "nested replies",
                             "replyThread": {
-                              "count": 3
+                              "count": 3,
+                              "unreadCount": 1,
+                              "firstUnreadMessageId": "reply-unread-2"
                             }
                           }
                         ]
@@ -488,7 +492,11 @@ class ThreadPayloadTest {
         assertEquals("Todo", message.taskStatus)
         assertEquals("Android-Developer-2", message.taskAssigneeName)
         assertEquals(4, message.replyCount)
+        assertEquals(2, message.unreadReplyCount)
+        assertEquals("reply-unread-1", message.firstUnreadReplyMessageId)
         assertEquals(3, payload.messages[1].replyCount)
+        assertEquals(1, payload.messages[1].unreadReplyCount)
+        assertEquals("reply-unread-2", payload.messages[1].firstUnreadReplyMessageId)
     }
 
     @Test

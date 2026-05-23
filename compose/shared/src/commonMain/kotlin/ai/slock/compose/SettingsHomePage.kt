@@ -2269,7 +2269,10 @@ private fun parseSharedShellRealtimeEvent(payload: String): Result<RealtimeEvent
                                     ids.optString(index)?.takeIf { it.isNotBlank() }?.let { add(MemberId(it)) }
                                 }
                             }
-                        }
+                        },
+                    unreadCount = if (json.has("unreadCount")) json.optInt("unreadCount", 0) else null,
+                    firstUnreadMessageId =
+                        json.optString("firstUnreadMessageId").takeIf { it.isNotBlank() }?.let(::MessageId)
                 )
             "member_presence" ->
                 MemberPresenceUpdated(
@@ -2303,6 +2306,13 @@ private fun JSONObject?.toSharedMessage(): Message {
             },
         systemEventType = json.optString("systemEventType").takeIf { it.isNotBlank() },
         replyCount = json.optInt("replyCount", 0),
+        unreadReplyCount =
+            json.optInt("unreadReplyCount", json.optInt("unreadCount", 0)),
+        firstUnreadReplyMessageId =
+            json.optString("firstUnreadReplyMessageId")
+                .ifBlank { json.optString("firstUnreadMessageId") }
+                .takeIf { it.isNotBlank() }
+                ?.let(::MessageId),
         parentMessageId = json.optString("parentMessageId").takeIf { it.isNotBlank() }?.let(::MessageId)
     )
 }

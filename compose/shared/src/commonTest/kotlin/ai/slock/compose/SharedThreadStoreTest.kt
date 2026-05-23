@@ -282,7 +282,9 @@ class SharedThreadStoreTest {
                     threadChannelId = ChannelId("reply-thread"),
                     replyCount = 3,
                     lastReplyAt = "2026-05-19T16:10:00Z",
-                    participantIds = emptyList()
+                    participantIds = emptyList(),
+                    unreadCount = 2,
+                    firstUnreadMessageId = MessageId("reply-2")
                 )
             )
         )
@@ -303,6 +305,8 @@ class SharedThreadStoreTest {
 
         val message = store.state.value.payload.messages.single()
         assertEquals(3, message.replyCount)
+        assertEquals(2, message.unreadReplyCount)
+        assertEquals("reply-2", message.firstUnreadReplyMessageId)
         assertEquals("InReview", message.taskStatus)
         assertEquals("Updated task", store.state.value.payload.tasks.single().title)
         scope.cancel()
