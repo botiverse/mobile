@@ -40,6 +40,9 @@ import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.Path
+import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
+import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.TextStyle
@@ -88,6 +91,7 @@ private val HomeUnreadBadgeRadius = 4.dp
 private val ChannelUnreadTextOffsetY = (-1).dp
 private val HomeListHorizontalPadding = SlockSpacing.Md
 private val HomePanelShadowOffset = 4.dp
+private val HomeTiltedBadgeSlant = 3.dp
 private const val SharedListDefaultBeyondBoundsItemCount = 3
 private const val SharedListMaxBeyondBoundsItemCount = 96
 
@@ -735,6 +739,50 @@ private fun SlockTiltedLogoBadge(
     unread: Boolean = false,
     textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
 ) {
+    if (slockUseLegacyRotatedHomeChrome()) {
+        SlockRotatedLogoBadge(
+            text = text,
+            modifier = modifier,
+            showDropdown = showDropdown,
+            unread = unread,
+            textStyle = textStyle
+        )
+        return
+    }
+
+    Box(modifier = modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
+        SlantedBadgeChrome(
+            color = SlockColor.ShadowBlack,
+            borderColor = Color.Transparent,
+            modifier = Modifier.matchParentSize().offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
+        )
+        SlantedBadgeChrome(
+            color = SlockColor.TextBlack,
+            borderColor = SlockColor.BorderBlack,
+            modifier = Modifier.matchParentSize()
+        )
+        com.tencent.kuikly.compose.foundation.layout.Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
+            if (showDropdown) {
+                Spacer(Modifier.width(SlockSpacing.Xs))
+                SlockLucideIcon("chevron-down", Modifier.size(16.dp).rotate(2f), color = "#FFFFD440")
+            }
+        }
+        if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
+    }
+}
+
+@Composable
+private fun SlockRotatedLogoBadge(
+    text: String,
+    modifier: Modifier = Modifier,
+    showDropdown: Boolean = false,
+    unread: Boolean = false,
+    textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
+) {
     Box(modifier = modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset).rotate(-2f)) {
         Box(Modifier.matchParentSize().offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset).background(SlockColor.ShadowBlack))
         com.tencent.kuikly.compose.foundation.layout.Row(
@@ -751,6 +799,37 @@ private fun SlockTiltedLogoBadge(
             }
         }
         if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
+    }
+}
+
+@Composable
+private fun slockUseLegacyRotatedHomeChrome(): Boolean {
+    val params = (LocalActivity.current.getPager() as Pager).pageData.params
+    val nativeRenderer = params.optString("slockNativeTabBarRenderer").ifBlank { params.optString("nativeTabBarRenderer") }
+    return nativeRenderer == "ohosHdsImmersive" || nativeRenderer == "hdsImmersive"
+}
+
+@Composable
+private fun SlantedBadgeChrome(
+    color: Color,
+    borderColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val slant = HomeTiltedBadgeSlant.toPx()
+        val strokeWidth = SlockStroke.Default.toPx()
+        val path =
+            Path().apply {
+                moveTo(slant, 0f)
+                lineTo(size.width, 0f)
+                lineTo(size.width - slant, size.height)
+                lineTo(0f, size.height)
+                close()
+            }
+        drawPath(path = path, color = color, style = Fill)
+        if (borderColor != Color.Transparent) {
+            drawPath(path = path, color = borderColor, style = Stroke(width = strokeWidth))
+        }
     }
 }
 
