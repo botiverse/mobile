@@ -14,6 +14,70 @@ import kotlin.test.assertEquals
 
 class ThreadPayloadTest {
     @Test
+    fun threadMessagesLazyItemCountTracksDecoratedRows() {
+        assertEquals(
+            3,
+            threadMessagesLazyItemCount(
+                originStatus = "none",
+                canLoadMoreBefore = false,
+                messagesCount = 3,
+                canLoadMoreAfter = false
+            )
+        )
+        assertEquals(
+            6,
+            threadMessagesLazyItemCount(
+                originStatus = "content",
+                canLoadMoreBefore = true,
+                messagesCount = 3,
+                canLoadMoreAfter = true
+            )
+        )
+        assertEquals(
+            3,
+            sharedListBeyondBoundsItemCount(
+                threadMessagesLazyItemCount(
+                    originStatus = "none",
+                    canLoadMoreBefore = false,
+                    messagesCount = 1,
+                    canLoadMoreAfter = false
+                )
+            )
+        )
+    }
+
+    @Test
+    fun threadBottomAnchorOffsetDoesNotOverscrollFullyMeasuredShortLists() {
+        assertEquals(
+            0,
+            threadLatestItemBottomAnchorScrollOffset(
+                itemSize = 120,
+                viewportHeight = 640,
+                visibleItemCount = 3,
+                totalItemCount = 3
+            )
+        )
+        assertEquals(
+            -520,
+            threadLatestItemBottomAnchorScrollOffset(
+                itemSize = 120,
+                viewportHeight = 640,
+                visibleItemCount = 3,
+                totalItemCount = 12
+            )
+        )
+        assertEquals(
+            160,
+            threadLatestItemBottomAnchorScrollOffset(
+                itemSize = 800,
+                viewportHeight = 640,
+                visibleItemCount = 1,
+                totalItemCount = 3
+            )
+        )
+    }
+
+    @Test
     fun messageMenuOffsetHandlesEmptyRange() {
         assertEquals(8f, coerceThreadMessageMenuOffset(value = 120f, min = 8f, max = -142.4f))
         assertEquals(24f, coerceThreadMessageMenuOffset(value = 24f, min = 8f, max = 48f))

@@ -55,6 +55,7 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
+import com.tencent.kuikly.compose.extension.bouncesEnable
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
@@ -1907,6 +1908,13 @@ private fun ThreadMessagesList(
     var allowBottomAutoAnchor by remember(payload.instanceId) { mutableStateOf(true) }
     val latestItemIndex = payload.latestMessageListItemIndex()
     val latestMessageLayoutKey = payload.messages.joinToString("|") { "${it.id}:${it.body.length}:${it.attachments.size}:${it.taskId.orEmpty()}:${it.replyCount}:${it.unreadReplyCount}" }
+    val lazyItemCount =
+        threadMessagesLazyItemCount(
+            originStatus = payload.originStatus,
+            canLoadMoreBefore = payload.canLoadMoreBefore,
+            messagesCount = payload.messages.size,
+            canLoadMoreAfter = payload.canLoadMoreAfter
+        )
     LaunchedEffect(payload.instanceId, latestItemIndex) {
         snapshotFlow {
             listState.isScrollInProgress to listState.isLatestItemAtRenderedBottom(latestItemIndex)
@@ -1936,8 +1944,9 @@ private fun ThreadMessagesList(
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().padding(vertical = 2.dp),
-            verticalArrangement = Arrangement.Bottom
+            modifier = Modifier.fillMaxSize().padding(vertical = 2.dp).bouncesEnable(false),
+            verticalArrangement = Arrangement.Bottom,
+            beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
             if (payload.originStatus != "none") {
                 item(key = payload.originListItemKey()) {
@@ -2086,6 +2095,17 @@ private fun ThreadMessagesList(
 private const val ThreadOlderMessagesListItemKey = "thread-page:older-messages"
 private const val ThreadNewerMessagesListItemKey = "thread-page:newer-messages"
 
+internal fun threadMessagesLazyItemCount(
+    originStatus: String,
+    canLoadMoreBefore: Boolean,
+    messagesCount: Int,
+    canLoadMoreAfter: Boolean
+): Int =
+    (if (originStatus != "none") 1 else 0) +
+        (if (canLoadMoreBefore) 1 else 0) +
+        messagesCount.coerceAtLeast(0) +
+        (if (canLoadMoreAfter) 1 else 0)
+
 private fun KuiklyThreadScreenPayload.originListItemKey(): String =
     "thread-page:origin:${originParentMessageId ?: originMessage?.id ?: instanceId}"
 
@@ -2114,9 +2134,28 @@ private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemInd
     val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
     val offset =
         latestItem
-            ?.let { it.size - viewportHeight }
+            ?.let {
+                threadLatestItemBottomAnchorScrollOffset(
+                    itemSize = it.size,
+                    viewportHeight = viewportHeight,
+                    visibleItemCount = layoutInfo.visibleItemsInfo.size,
+                    totalItemCount = layoutInfo.totalItemsCount
+                )
+            }
             ?: 0
     scrollToItem(latestItemIndex, offset)
+}
+
+internal fun threadLatestItemBottomAnchorScrollOffset(
+    itemSize: Int,
+    viewportHeight: Int,
+    visibleItemCount: Int,
+    totalItemCount: Int
+): Int {
+    if (itemSize <= 0 || viewportHeight <= 0) return 0
+    val rawOffset = itemSize - viewportHeight
+    if (rawOffset >= 0) return rawOffset
+    return if (visibleItemCount >= totalItemCount) 0 else rawOffset
 }
 
 private fun LazyListState.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
