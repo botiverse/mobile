@@ -1,5 +1,7 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.ServerId
@@ -33,15 +35,36 @@ enum class TasksViewMode {
     List
 }
 
+/**
+ * UI-only state for the Tasks screen. Lives next to [TasksUiState] but holds purely
+ * presentational concerns that don't survive process death and don't round-trip to the
+ * API: which chip popover is open, what's typed into a popover search box, what columns
+ * the user collapsed, which assignee chips are checked.
+ *
+ * The collapsed-by-default for `done` / `closed` mirrors the React panel — visual focus
+ * stays on active work; users can expand the terminal states explicitly. Initialized via
+ * [TasksPresentationState.Default] (companion factory) so the defaults are tested once.
+ */
 data class TasksPresentationState(
     val selectedChannelNames: Set<String> = emptySet(),
     val channelSelectorExpanded: Boolean = false,
-    val selectedMode: TasksViewMode = TasksViewMode.Board
-)
+    val selectedMode: TasksViewMode = TasksViewMode.Board,
+    val collapsedStatuses: Set<TaskStatus> = setOf(TaskStatus.Done, TaskStatus.Closed),
+    val selectedAssigneeIds: Set<String> = emptySet(),
+    val openFilterId: String? = null,
+    val channelSearch: String = "",
+    val assigneeSearch: String = ""
+) {
+    companion object {
+        val Default = TasksPresentationState()
+    }
+}
 
 data class TasksVisibleContent(
     val channelOptions: List<String>,
     val selectedChannelNames: Set<String>,
+    val assigneeOptions: List<MemberProfile>,
+    val selectedAssigneeIds: Set<String>,
     val channelScopedContent: TasksContent,
     val filteredContent: TasksContent,
     val filteredTasks: List<TaskSummary>
@@ -64,6 +87,9 @@ sealed interface SharedTasksIntent {
     data class TaskStatusUpdateSucceeded(val task: TaskSummary) : SharedTasksIntent
     data class TaskStatusUpdateFailed(val previousTask: TaskSummary, val errorCode: String) : SharedTasksIntent
     data class NavigationFailed(val errorCode: String?) : SharedTasksIntent
+    data class CreateTasksStarted(val channelId: ChannelId) : SharedTasksIntent
+    data class CreateTasksSucceeded(val snapshot: TaskSnapshot) : SharedTasksIntent
+    data class CreateTasksFailed(val errorCode: String) : SharedTasksIntent
 }
 
 sealed interface SharedTasksRouteIntent {
@@ -72,6 +98,14 @@ sealed interface SharedTasksRouteIntent {
     data class SelectFilter(val status: TaskStatus?) : SharedTasksRouteIntent
     data class UpdateStatus(val task: TaskSummary, val status: TaskStatus) : SharedTasksRouteIntent
     data object ClearNavigationError : SharedTasksRouteIntent
+
+    /**
+     * Channel-scoped task creation. The host is responsible for providing the
+     * [ChannelId] context — the server-wide tasks screen has no implicit channel and
+     * does not expose a create CTA, so this intent is only ever dispatched from a
+     * channel-mode panel.
+     */
+    data class CreateTasks(val channelId: ChannelId, val titles: List<String>) : SharedTasksRouteIntent
 }
 
 sealed interface TasksPresentationIntent {
@@ -80,6 +114,14 @@ sealed interface TasksPresentationIntent {
     data object ClearChannels : TasksPresentationIntent
     data class SelectMode(val mode: TasksViewMode) : TasksPresentationIntent
     data class PruneUnavailableChannels(val availableChannels: Set<String>) : TasksPresentationIntent
+    data class ToggleStatusCollapsed(val status: TaskStatus) : TasksPresentationIntent
+    data class ToggleAssignee(val memberId: String) : TasksPresentationIntent
+    data object ClearAssignees : TasksPresentationIntent
+    data class PruneUnavailableAssignees(val availableMemberIds: Set<String>) : TasksPresentationIntent
+    data class SetOpenFilter(val filterId: String?) : TasksPresentationIntent
+    data class SetChannelSearch(val text: String) : TasksPresentationIntent
+    data class SetAssigneeSearch(val text: String) : TasksPresentationIntent
+    data object ClearAllFilters : TasksPresentationIntent
 }
 
 class SharedTasksViewModel(
@@ -94,6 +136,8 @@ class SharedTasksViewModel(
 
     private var loadJob: Job? = null
     private var statusJob: Job? = null
+
+    private var createJob: Job? = null
 
     fun dispatch(intent: SharedTasksRouteIntent) {
         when (intent) {
@@ -111,6 +155,13 @@ class SharedTasksViewModel(
                 statusJob =
                     viewModelScope.launch {
                         updateStatus(intent.task, intent.status)
+                    }
+            }
+            is SharedTasksRouteIntent.CreateTasks -> {
+                createJob?.cancel()
+                createJob =
+                    viewModelScope.launch {
+                        createTasks(intent.channelId, intent.titles)
                     }
             }
             SharedTasksRouteIntent.ClearNavigationError ->
@@ -163,9 +214,35 @@ class SharedTasksViewModel(
         }
     }
 
+    private suspend fun createTasks(channelId: ChannelId, titles: List<String>) {
+        val cleaned = titles.map { it.trim() }.filter { it.isNotBlank() }
+        if (cleaned.isEmpty()) return
+        store.accept(SharedTasksIntent.CreateTasksStarted(channelId))
+        try {
+            when (val result = dataSource.createTasks(channelId, cleaned)) {
+                is DataResult.Content -> {
+                    store.accept(SharedTasksIntent.CreateTasksSucceeded(result.data))
+                    // Re-fetch the server-wide list so the new tasks show up in board/list
+                    // without waiting for the next manual refresh. We don't merge the create
+                    // snapshot directly because the channel-scoped response from the create
+                    // endpoint does not include other channels' tasks.
+                    load(SharedTasksRouteIntent.Refresh)
+                }
+                is DataResult.Empty -> store.accept(SharedTasksIntent.CreateTasksFailed(result.reason.name))
+                is DataResult.Error -> store.accept(SharedTasksIntent.CreateTasksFailed(result.error.code))
+                is DataResult.NoPermission -> store.accept(SharedTasksIntent.CreateTasksFailed(result.blocker.code))
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            store.accept(SharedTasksIntent.CreateTasksFailed("tasks_create_network"))
+        }
+    }
+
     override fun onCleared() {
         loadJob?.cancel()
         statusJob?.cancel()
+        createJob?.cancel()
         super.onCleared()
     }
 }
@@ -209,6 +286,9 @@ fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
                 errorCode = intent.errorCode
             )
         is SharedTasksIntent.NavigationFailed -> copy(navigationErrorCode = intent.errorCode)
+        is SharedTasksIntent.CreateTasksStarted -> copy(navigationErrorCode = null, refreshing = true)
+        is SharedTasksIntent.CreateTasksSucceeded -> copy(refreshing = false, navigationErrorCode = null)
+        is SharedTasksIntent.CreateTasksFailed -> copy(refreshing = false, navigationErrorCode = intent.errorCode)
     }
 
 fun TasksPresentationState.reduce(intent: TasksPresentationIntent): TasksPresentationState =
@@ -227,6 +307,39 @@ fun TasksPresentationState.reduce(intent: TasksPresentationIntent): TasksPresent
         is TasksPresentationIntent.SelectMode -> copy(selectedMode = intent.mode)
         is TasksPresentationIntent.PruneUnavailableChannels ->
             copy(selectedChannelNames = selectedChannelNames.filter { it in intent.availableChannels }.toSet())
+        is TasksPresentationIntent.ToggleStatusCollapsed ->
+            copy(
+                collapsedStatuses =
+                    if (intent.status in collapsedStatuses) {
+                        collapsedStatuses - intent.status
+                    } else {
+                        collapsedStatuses + intent.status
+                    }
+            )
+        is TasksPresentationIntent.ToggleAssignee ->
+            copy(
+                selectedAssigneeIds =
+                    if (intent.memberId in selectedAssigneeIds) {
+                        selectedAssigneeIds - intent.memberId
+                    } else {
+                        selectedAssigneeIds + intent.memberId
+                    }
+            )
+        TasksPresentationIntent.ClearAssignees -> copy(selectedAssigneeIds = emptySet())
+        is TasksPresentationIntent.PruneUnavailableAssignees ->
+            copy(selectedAssigneeIds = selectedAssigneeIds.filter { it in intent.availableMemberIds }.toSet())
+        is TasksPresentationIntent.SetOpenFilter ->
+            copy(
+                openFilterId = intent.filterId,
+                // Reset the relevant search box when the popover is being closed or swapped
+                // so the next open does not reopen with stale text.
+                channelSearch = if (intent.filterId == "channel") channelSearch else "",
+                assigneeSearch = if (intent.filterId == "assignee") assigneeSearch else ""
+            )
+        is TasksPresentationIntent.SetChannelSearch -> copy(channelSearch = intent.text)
+        is TasksPresentationIntent.SetAssigneeSearch -> copy(assigneeSearch = intent.text)
+        TasksPresentationIntent.ClearAllFilters ->
+            copy(selectedChannelNames = emptySet(), selectedAssigneeIds = emptySet())
     }
 
 fun TasksContent.visibleContent(
@@ -239,12 +352,24 @@ fun TasksContent.visibleContent(
             .mapNotNull { it.channelName }
             .distinct()
             .sorted()
+    // Derive the assignee option pool from the loaded tasks so we don't need a separate
+    // members fetch. Each MemberProfile that ever appears as a claimer becomes a chip
+    // option; identical IDs collapse so the popover doesn't show duplicates. Sorted by
+    // display name for stable ordering across refreshes.
+    val assigneeOptions =
+        tasks
+            .mapNotNull { it.assignee }
+            .distinctBy { it.id.value }
+            .sortedBy { it.displayName.lowercase() }
     val selectedChannels =
         if (showChannelFilter) {
             presentationState.selectedChannelNames.filter { it in channelOptions }.toSet()
         } else {
             emptySet()
         }
+    val availableAssigneeIds = assigneeOptions.map { it.id.value }.toSet()
+    val selectedAssigneeIds =
+        presentationState.selectedAssigneeIds.filter { it in availableAssigneeIds }.toSet()
     val channelScopedTasks =
         tasks.filter { task ->
             selectedChannels.isEmpty() || task.channelName in selectedChannels
@@ -254,14 +379,20 @@ fun TasksContent.visibleContent(
             summaryCounts = channelScopedTasks.summaryCounts(),
             tasks = channelScopedTasks
         )
-    val filteredTasks =
+    val assigneeScopedTasks =
         channelScopedTasks.filter { task ->
+            selectedAssigneeIds.isEmpty() || (task.assignee?.id?.value in selectedAssigneeIds)
+        }
+    val filteredTasks =
+        assigneeScopedTasks.filter { task ->
             selectedFilter == null || task.status == selectedFilter
         }
     val filteredContent = channelScopedContent.copy(tasks = filteredTasks)
     return TasksVisibleContent(
         channelOptions = channelOptions,
         selectedChannelNames = selectedChannels,
+        assigneeOptions = assigneeOptions,
+        selectedAssigneeIds = selectedAssigneeIds,
         channelScopedContent = channelScopedContent,
         filteredContent = filteredContent,
         filteredTasks = filteredTasks

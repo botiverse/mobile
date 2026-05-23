@@ -12,15 +12,9 @@ import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.ThreadId
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
 
 private val tasksJson = Json {
     ignoreUnknownKeys = true
@@ -54,6 +48,29 @@ class SharedTasksDataSource(
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_status_network", retryable = true))
+        }
+
+    /**
+     * Batch-create channel tasks. Titles are passed through as-is here — the typed
+     * client trims them when serializing — so an empty/blank title list will surface
+     * upstream as a server-side validation error rather than getting silently dropped.
+     * Callers should pre-filter (see [SharedTasksViewModel] which discards blanks
+     * before dispatching).
+     */
+    suspend fun createTasks(
+        channelId: ChannelId,
+        titles: List<String>
+    ): DataResult<TaskSnapshot> =
+        try {
+            typedApi.createTasks(
+                channelId = channelId,
+                drafts = titles.map { TaskCreateDraft(title = it) },
+                priority = DataRequestPriority.Foreground
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            DataResult.Error(ScreenError(code = "tasks_create_network", retryable = true))
         }
 }
 
@@ -171,12 +188,13 @@ internal fun HomeNetworkResponse.toTasksResult(
     if (!isSuccessful) {
         return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true))
     }
-    val root = bodyText?.toTasksJsonObject()
+    val body = bodyText
         ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
-    val items = root["tasks"] as? JsonArray
+    val envelope = runCatching { tasksJson.decodeFromString<TasksListEnvelope>(body) }.getOrNull()
         ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
-    val snapshot = root.toTaskSnapshot().filteredBy(filter)
-    return if (items.isEmpty()) {
+    val tasks = envelope.tasks.map { it.toTaskSummary() }
+    val snapshot = TaskSnapshot(tasks = tasks, summaryCounts = tasks.summaryCounts()).filteredBy(filter)
+    return if (snapshot.tasks.isEmpty()) {
         DataResult.Empty(EmptyReason.NoTasks)
     } else {
         DataResult.Content(snapshot)
@@ -190,12 +208,13 @@ internal fun HomeNetworkResponse.toTaskActionResult(source: String = "tasks_acti
     if (!isSuccessful) {
         return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true))
     }
-    val root = bodyText?.toTasksJsonObject()
+    val body = bodyText
         ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
-    val task =
-        root.firstObject("task")?.toTaskSummary()
-            ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
-    return DataResult.Content(TaskActionResult(task))
+    val envelope = runCatching { tasksJson.decodeFromString<TaskEnvelope>(body) }.getOrNull()
+        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
+    val task = envelope.task
+        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
+    return DataResult.Content(TaskActionResult(task.toTaskSummary()))
 }
 
 internal fun HomeNetworkResponse.toTaskDeleteResult(): DataResult<Unit> {
@@ -205,23 +224,14 @@ internal fun HomeNetworkResponse.toTaskDeleteResult(): DataResult<Unit> {
     if (!isSuccessful) {
         return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true))
     }
-    val root = bodyText?.toTasksJsonObject()
+    val body = bodyText
         ?: return DataResult.Error(ScreenError(code = "tasks_delete_contract_mismatch", retryable = false))
-    return if (root.boolean("ok") == true) {
+    val envelope = runCatching { tasksJson.decodeFromString<OkEnvelope>(body) }.getOrNull()
+    return if (envelope?.ok == true) {
         DataResult.Content(Unit)
     } else {
         DataResult.Error(ScreenError(code = "tasks_delete_contract_mismatch", retryable = false))
     }
-}
-
-private fun JsonObject.toTaskSnapshot(): TaskSnapshot {
-    val tasks =
-        items("tasks")
-            .mapNotNull { (it as? JsonObject)?.toTaskSummary() }
-    return TaskSnapshot(
-        tasks = tasks,
-        summaryCounts = tasks.summaryCounts()
-    )
 }
 
 private fun TaskSnapshot.filteredBy(filter: TaskFilter): TaskSnapshot {
@@ -232,290 +242,87 @@ private fun TaskSnapshot.filteredBy(filter: TaskFilter): TaskSnapshot {
     return copy(tasks = filtered, summaryCounts = filtered.summaryCounts())
 }
 
-private fun JsonObject.toTaskSummary(): TaskSummary? {
-    val id = string("id", "taskId") ?: return null
-    val taskNumber = int("taskNumber", "number")
-    val title = taskDisplayTitle(taskNumber) ?: return null
-    val assignee =
-        firstObject(
-            "assignee",
-            "claimedBy",
-            "assignedTo",
-            "assigneeUser",
-            "claimedByUser",
-            "claimedByAgent"
-        )?.toMemberProfile()
-            ?: claimedByFallback()
-    val messageId = string("messageId")?.let(::MessageId)
-    val explicitThreadId =
-        string(
-            "threadChannelId",
-            "replyThreadChannelId",
-            "replyThreadId",
-            "repliesThreadChannelId",
-            "childThreadChannelId",
-            "commentsThreadChannelId"
-        )
-    val nestedThreadId =
-        firstObject("thread", "replyThread", "messageThread", "repliesThread")
-            ?.string("threadChannelId", "replyThreadChannelId", "replyThreadId", "id", "channelId")
-    val fallbackThreadId = string("threadId") ?: nestedThreadId
-    val channelType = string("channelType", "type", "kind")?.lowercase()
-    val channelId =
-        string("channelId", "parentChannelId")
-            ?: firstObject("channel", "parentChannel", "conversation")
-                ?.string("id", "channelId", "parentChannelId")
-            ?: if (channelType == "channel") fallbackThreadId else null
-    val taskThreadId = explicitThreadId ?: fallbackThreadId
-    val parentMessageId =
-        string("parentMessageId", "parentId", "rootMessageId", "threadParentMessageId")
-            ?.let(::MessageId) ?: if (taskThreadId != null) messageId else null
+/**
+ * Wire-format envelopes for Tasks API responses.
+ *
+ * Server hands every tasks endpoint the canonical `TaskInfo` shape defined in
+ * `packages/shared/src/index.ts` and enriched by `taskService.enrichWithNames` /
+ * `enrichLegacyTasks`. Field names below mirror that shape exactly; do not add
+ * fallback aliases here — if the server changes, fix the server (or the
+ * Serializable name).
+ *
+ * Endpoints:
+ *   GET  /api/.../tasks      -> { tasks: TaskInfo[] }     (TasksListEnvelope)
+ *   POST /api/.../tasks      -> { tasks: TaskInfo[] }     (TasksListEnvelope)
+ *   POST /api/tasks/:id/...  -> { task:  TaskInfo }       (TaskEnvelope)
+ *   DELETE /api/tasks/:id    -> { ok: true }              (OkEnvelope)
+ */
+@Serializable
+internal data class TasksListEnvelope(val tasks: List<TaskWireDto> = emptyList())
+
+@Serializable
+internal data class TaskEnvelope(val task: TaskWireDto? = null)
+
+@Serializable
+internal data class OkEnvelope(val ok: Boolean = false)
+
+/** Mirror of React `TaskInfo` (packages/shared/src/index.ts). */
+@Serializable
+internal data class TaskWireDto(
+    val id: String,
+    val messageId: String? = null,
+    val channelId: String,
+    val channelName: String? = null,
+    val channelType: String? = null,
+    val taskNumber: Int,
+    val title: String,
+    val description: String? = null,
+    val status: String,
+    val createdByType: String,
+    val createdById: String,
+    val createdByName: String? = null,
+    val claimedByType: String? = null,
+    val claimedById: String? = null,
+    val claimedByName: String? = null,
+    val claimedAt: String? = null,
+    val completedAt: String? = null,
+    val createdAt: String? = null,
+    val updatedAt: String? = null
+)
+
+internal fun TaskWireDto.toTaskSummary(): TaskSummary {
+    val displayTitle = title.trim().ifBlank { "#$taskNumber" }
     return TaskSummary(
         id = TaskId(id),
-        title = title,
-        status = string("status", "taskStatus")?.toTaskStatus() ?: TaskStatus.Todo,
+        title = displayTitle,
+        status = status.toTaskStatus() ?: TaskStatus.Todo,
         taskNumber = taskNumber,
-        messageId = messageId,
-        parentMessageId = parentMessageId,
-        channelId = channelId?.let(::ChannelId),
-        threadId = taskThreadId?.let(::ThreadId),
-        isThreadTask =
-            parentMessageId != null ||
-                explicitThreadId != null ||
-                (channelType == "thread" && fallbackThreadId != null),
-        assignee = assignee,
-        channelName =
-            string("channelName")
-                ?: firstObject("channel", "parentChannel", "conversation")
-                    ?.string("name", "channelName", "slug", "channelSlug"),
-        updatedAtLabel =
-            string(
-                "updatedAt",
-                "updated_at",
-                "latestActivityAt",
-                "latest_activity_at",
-                "lastActivityAt",
-                "last_activity_at",
-                "createdAt",
-                "created_at",
-                "timestamp",
-                "time"
-            ).orEmpty(),
-        canClaim = boolean("canClaim") ?: true
+        messageId = (messageId ?: id).let(::MessageId),
+        parentMessageId = null,
+        channelId = ChannelId(channelId),
+        threadId = null,
+        isThreadTask = channelType == "thread",
+        assignee = memberFrom(claimedByType, claimedById, claimedByName),
+        creator = memberFrom(createdByType, createdById, createdByName),
+        channelName = channelName,
+        updatedAtLabel = (updatedAt ?: createdAt ?: claimedAt ?: completedAt).orEmpty(),
+        canClaim = true
     )
 }
 
-private fun JsonObject.taskDisplayTitle(taskNumber: Int?): String? {
-    val candidates =
-        listOfNotNull(
-            string("taskTitle", "task_title", "displayTitle", "display_title"),
-            string("title"),
-            string("content"),
-            string("description"),
-            string("body"),
-            string("text"),
-            string(
-                "messageBody",
-                "messageContent",
-                "messageText",
-                "parentMessageBody",
-                "parentMessageContent",
-                "parentMessagePreview",
-                "rootMessagePreview",
-                "originalMessagePreview",
-                "sourceMessageBody",
-                "sourceMessageContent",
-                "sourceMessagePreview",
-                "messagePreview",
-                "lastMessagePreview",
-                "latestActivityPreview",
-                "preview"
-            ),
-            firstObject(
-                "message",
-                "parentMessage",
-                "sourceMessage",
-                "originMessage",
-                "rootMessage",
-                "latestActivity",
-                "lastMessage"
-            )?.taskTextValue()
-        )
-    return candidates.firstNotNullOfOrNull { candidate ->
-        candidate.takeMeaningfulTaskTitle(taskNumber)
-    }
-}
-
-private fun JsonElement.taskTextValue(): String? =
-    when (this) {
-        is JsonPrimitive -> contentOrNull?.trim()?.takeIf { it.isNotBlank() }
-        is JsonArray -> firstNotNullOfOrNull { it.taskTextValue() }
-        is JsonObject ->
-            string(
-                "body",
-                "content",
-                "text",
-                "plainText",
-                "plain_text",
-                "markdown",
-                "messageBody",
-                "messageContent",
-                "messageText",
-                "preview",
-                "messagePreview",
-                "parentMessagePreview",
-                "rootMessagePreview",
-                "originalMessagePreview",
-                "sourceMessagePreview",
-                "lastMessagePreview",
-                "latestActivityPreview",
-                "summary",
-                "description",
-                "detail",
-                "details",
-                "title"
-            )
-                ?: listOf(
-                    "content",
-                    "body",
-                    "message",
-                    "parentMessage",
-                    "sourceMessage",
-                    "originMessage",
-                    "rootMessage",
-                    "latestActivity",
-                    "lastMessage",
-                    "children",
-                    "data",
-                    "payload"
-                ).firstNotNullOfOrNull { key -> this[key]?.taskTextValue() }
-        else -> null
-    }
-
-private fun JsonObject.toMemberProfile(): MemberProfile? {
-    val id =
-        string("id", "memberId", "userId", "agentId", "claimedById", "assigneeId", "assignedToId")
-            ?: return null
-    val label =
-        string("displayName", "name", "username", "handle", "claimedByName", "assigneeName", "assignedToName")
-            ?: id
-    val kindWire = string("kind", "type", "memberKind", "claimedByType", "assigneeType", "assignedToType")
+private fun memberFrom(type: String?, id: String?, name: String?): MemberProfile? {
+    if (id.isNullOrBlank()) return null
+    val label = name?.trim().orEmpty().ifBlank { id }
     return MemberProfile(
         id = MemberId(id),
         displayName = label,
-        handle = string("handle", "username", "claimedByHandle", "assigneeHandle", "assignedToHandle") ?: label,
-        kind = if (kindWire == "agent") MemberKind.Agent else MemberKind.Human,
+        handle = label,
+        kind = if (type == "agent") MemberKind.Agent else MemberKind.Human,
         avatarLabel = label.take(1).uppercase(),
         presence = Presence.Offline
     )
 }
 
-private fun JsonObject.claimedByFallback(): MemberProfile? {
-    val claimedById =
-        string("claimedById", "assigneeId", "assignedToId", "taskAssigneeId") ?: return null
-    val claimedByType =
-        string("claimedByType", "assigneeType", "assignedToType", "taskAssigneeType")
-    val label =
-        string("claimedByName", "assigneeName", "assignedToName", "claimedByHandle")
-            ?: claimedById
-    return MemberProfile(
-        id = MemberId(claimedById),
-        displayName = label,
-        handle = string("claimedByHandle", "assigneeHandle", "assignedToHandle") ?: label,
-        kind = if (claimedByType == "agent") MemberKind.Agent else MemberKind.Human,
-        avatarLabel = label.take(1).uppercase(),
-        presence = Presence.Offline
-    )
-}
-
-private fun String.toTasksJsonObject(): JsonObject? =
-    runCatching { tasksJson.parseToJsonElement(this) as? JsonObject }.getOrNull()
-
-private fun JsonObject.items(vararg names: String): List<JsonElement> {
-    for (name in names) {
-        when (val value = this[name]) {
-            is JsonArray -> return value.toList()
-            is JsonObject -> value.items(*names).takeIf { it.isNotEmpty() }?.let { return it }
-            else -> Unit
-        }
-    }
-    return emptyList()
-}
-
-private fun JsonObject.firstObject(vararg names: String): JsonObject? =
-    names.firstNotNullOfOrNull { this[it] as? JsonObject }
-
-private fun JsonObject.string(vararg names: String): String? {
-    for (name in names) {
-        val value = this[name]
-        if (value is JsonPrimitive) {
-            value.contentOrNull?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
-        }
-    }
-    return null
-}
-
-private fun JsonObject.int(vararg names: String): Int? {
-    for (name in names) {
-        val value = this[name]
-        if (value is JsonPrimitive) {
-            value.intOrNull?.let { return it }
-            value.contentOrNull?.trim()?.toIntOrNull()?.let { return it }
-        }
-    }
-    return null
-}
-
-private fun JsonObject.boolean(vararg names: String): Boolean? {
-    for (name in names) {
-        val value = this[name]
-        if (value is JsonPrimitive) {
-            value.booleanOrNull?.let { return it }
-            value.contentOrNull?.lowercase()?.let {
-                when (it) {
-                    "true", "1", "yes" -> return true
-                    "false", "0", "no" -> return false
-                }
-            }
-        }
-    }
-    return null
-}
-
-private fun String.takeMeaningfulTaskTitle(taskNumber: Int?): String? {
-    val trimmed = trim()
-    if (trimmed.isBlank()) return null
-    val number = taskNumber ?: return trimmed
-    val withoutNumberPrefix = trimmed.withoutTaskNumberPrefix(number)
-    if (withoutNumberPrefix.isNotBlank() && withoutNumberPrefix != trimmed) return withoutNumberPrefix
-    val placeholders = setOf("#$number", number.toString(), "task #$number", "task $number")
-    return trimmed.takeUnless { it.lowercase() in placeholders }
-}
-
-private fun String.withoutTaskNumberPrefix(number: Int): String {
-    var index = 0
-    index = skipWhitespace(index)
-    val lower = lowercase()
-    if (lower.startsWith("task", index)) {
-        index += "task".length
-        index = skipWhitespace(index)
-    }
-    if (getOrNull(index) == '#') index += 1
-    val numberStart = index
-    while (index < length && this[index].isDigit()) index += 1
-    if (numberStart == index) return trim()
-    if (substring(numberStart, index).toIntOrNull() != number) return trim()
-    index = skipWhitespace(index)
-    if (getOrNull(index) in setOf('-', ':', '：', ',', '，')) index += 1
-    index = skipWhitespace(index)
-    return substring(index).trim()
-}
-
-private fun String.skipWhitespace(start: Int): Int {
-    var index = start
-    while (index < length && this[index].isWhitespace()) index += 1
-    return index
-}
 
 private fun String.toTaskStatus(): TaskStatus? =
     when (lowercase()) {

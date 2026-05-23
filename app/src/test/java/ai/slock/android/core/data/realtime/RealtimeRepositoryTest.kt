@@ -142,8 +142,10 @@ class RealtimeRepositoryTest {
                     "threadId" to "thread-1",
                     "channelId" to "channel-1",
                     "seq" to 13,
-                    "body" to "Hello",
-                    "author" to mapOf("id" to "user-1", "displayName" to "Artin", "email" to "artin@slock.ai")
+                    "content" to "Hello",
+                    "senderType" to "user",
+                    "senderId" to "user-1",
+                    "senderName" to "Artin"
                 )
             )
         )
@@ -159,8 +161,9 @@ class RealtimeRepositoryTest {
                         "channelId" to "channel-1",
                         "seq" to 14,
                         "content" to "Resumed",
-                        "authorId" to "user-2",
-                        "authorName" to "Cindy"
+                        "senderType" to "user",
+                        "senderId" to "user-2",
+                        "senderName" to "Cindy"
                     )
                 )
             )
@@ -325,8 +328,10 @@ class RealtimeRepositoryTest {
                     "id" to "message-1",
                     "threadId" to "thread-1",
                     "channelId" to "channel-1",
-                    "body" to "Wrong server",
-                    "author" to mapOf("id" to "user-1", "displayName" to "Artin")
+                    "content" to "Wrong server",
+                    "senderType" to "user",
+                    "senderId" to "user-1",
+                    "senderName" to "Artin"
                 )
             )
         )
@@ -341,9 +346,9 @@ class RealtimeRepositoryTest {
         val thread = mapper.map(
             RealtimeSocketEvents.ThreadUpdated,
             mapOf(
-                "message_id" to "message-1",
-                "thread_id" to "thread-channel-1",
-                "child_count" to 3,
+                "parentMessageId" to "message-1",
+                "threadChannelId" to "thread-channel-1",
+                "replyCount" to 3,
                 "participantIds" to listOf("user-1", "agent-1")
             )
         )
@@ -368,29 +373,6 @@ class RealtimeRepositoryTest {
     }
 
     @Test
-    fun mapperPreservesMessageSequenceAliases() {
-        val mapper = RealtimeEventMapper()
-
-        val event =
-            mapper.map(
-                RealtimeSocketEvents.MessageNew,
-                mapOf(
-                    "message" to
-                        mapOf(
-                            "id" to "message-1",
-                            "channelId" to "channel-1",
-                            "threadId" to "channel-1",
-                            "logSeq" to 42,
-                            "content" to "Hello"
-                        )
-                )
-            )
-
-        assertTrue(event is MessageNew)
-        assertEquals(42L, (event as MessageNew).message.seq)
-    }
-
-    @Test
     fun mapperHandlesRealServerTaskShapeInRealtimeTaskEvents() {
         val mapper = RealtimeEventMapper()
 
@@ -404,7 +386,9 @@ class RealtimeRepositoryTest {
                     "channelType" to "channel",
                     "channelId" to "parent-channel-1",
                     "messageId" to "parent-message-1",
-                    "threadId" to "reply-thread-1",
+                    "createdById" to "user-1",
+                    "createdByName" to "Author",
+                    "createdByType" to "user",
                     "claimedById" to "agent-1",
                     "claimedByName" to "Android-App-Integrator",
                     "claimedByType" to "agent"
@@ -412,45 +396,18 @@ class RealtimeRepositoryTest {
             )
         )
 
+        // Canonical TaskInfo shape (see packages/server/src/services/taskService.ts).
+        // Realtime payload carries channel + assignee + creator identity only — no
+        // thread linkage; thread navigation goes through /api/tasks/:id.
         assertTrue(task is TaskUpdated)
         val summary = (task as TaskUpdated).task
         assertEquals(TaskStatus.Closed, summary.status)
         assertEquals("parent-channel-1", summary.channelId?.value)
         assertEquals("parent-message-1", summary.messageId?.value)
-        assertEquals("parent-message-1", summary.parentMessageId?.value)
-        assertEquals("reply-thread-1", summary.threadId?.value)
-        assertTrue(summary.isThreadTask)
         assertEquals(MemberKind.Agent, summary.assignee?.kind)
-    }
-
-    @Test
-    fun mapperUsesNestedRichTaskMessageTextWhenTitleIsOnlyNumber() {
-        val mapper = RealtimeEventMapper()
-
-        val task = mapper.map(
-            RealtimeSocketEvents.TaskUpdated,
-            mapOf(
-                "task" to mapOf(
-                    "id" to "message-task-2",
-                    "title" to "#24",
-                    "taskNumber" to 24,
-                    "status" to "todo",
-                    "sourceMessage" to mapOf(
-                        "content" to listOf(
-                            mapOf(
-                                "type" to "paragraph",
-                                "children" to listOf(
-                                    mapOf("text" to "Restore realtime task message details")
-                                )
-                            )
-                        )
-                    )
-                )
-            )
-        )
-
-        assertTrue(task is TaskUpdated)
-        assertEquals("Restore realtime task message details", (task as TaskUpdated).task.title)
+        assertEquals("agent-1", summary.assignee?.id?.value)
+        assertEquals(MemberKind.Human, summary.creator?.kind)
+        assertEquals("user-1", summary.creator?.id?.value)
     }
 
     @Test
@@ -465,14 +422,15 @@ class RealtimeRepositoryTest {
                 "detail" to "Running tests"
             )
         )
+        // server:member-* events carry only `{ serverId, userId }` (see
+        // packages/server/src/routes/servers.ts). They are membership-change
+        // notifications, not presence updates — mapper must drop them so
+        // consumers refetch membership rather than fabricate presence state.
         val memberUpdated = mapper.map(
             RealtimeSocketEvents.ServerMemberUpdated,
             mapOf(
-                "member" to mapOf(
-                    "id" to "user-2",
-                    "displayName" to "Cindy",
-                    "presence" to "away"
-                )
+                "serverId" to "server-1",
+                "userId" to "user-2"
             )
         )
 
@@ -483,8 +441,7 @@ class RealtimeRepositoryTest {
         assertEquals(AgentStatus.Working, agent.agentStatus)
         assertEquals(Presence.Active, agent.presence)
         assertEquals("Running tests", agent.statusLabel)
-        assertTrue(memberUpdated is MemberPresenceUpdated)
-        assertEquals(Presence.Away, (memberUpdated as MemberPresenceUpdated).presence)
+        assertEquals(null, memberUpdated)
 
         val disconnected = mapper.map(
             RealtimeSocketEvents.AgentActivity,
@@ -511,11 +468,9 @@ class RealtimeRepositoryTest {
                     "channelId": "channel-json",
                     "seq": 77,
                     "content": "Socket payload",
-                    "createdByUser": {
-                      "id": "user-json",
-                      "displayName": "Socket User",
-                      "email": "socket@slock.ai"
-                    }
+                    "senderType": "user",
+                    "senderId": "user-json",
+                    "senderName": "Socket User"
                   }
                 }
                 """.trimIndent()
@@ -547,19 +502,17 @@ class RealtimeRepositoryTest {
                     "content": "Images from socket",
                     "attachments": [
                       {
-                        "attachment_id": "image-1",
+                        "id": "image-1",
                         "filename": "preview.png",
-                        "mime_type": "image/png",
-                        "sizeLabel": "42 KB",
+                        "mimeType": "image/png",
+                        "sizeBytes": 43008,
                         "thumbnailUrl": "https://cdn.example/thumbs/image-1.png"
                       },
                       {
-                        "file": {
-                          "id": "file-1",
-                          "name": "report.pdf",
-                          "contentType": "application/pdf",
-                          "size_bytes": 2048
-                        }
+                        "id": "file-1",
+                        "filename": "report.pdf",
+                        "mimeType": "application/pdf",
+                        "sizeBytes": 2048
                       }
                     ]
                   }
@@ -574,70 +527,12 @@ class RealtimeRepositoryTest {
         assertEquals("image-1", message.attachments[0].id.value)
         assertEquals("preview.png", message.attachments[0].name)
         assertEquals("image/png", message.attachments[0].mimeType)
-        assertEquals("42 KB", message.attachments[0].sizeLabel)
+        assertEquals("43008 B", message.attachments[0].sizeLabel)
         assertEquals("https://cdn.example/thumbs/image-1.png", message.attachments[0].thumbnailUrl)
         assertEquals("file-1", message.attachments[1].id.value)
         assertEquals("report.pdf", message.attachments[1].name)
         assertEquals("application/pdf", message.attachments[1].mimeType)
         assertEquals("2048 B", message.attachments[1].sizeLabel)
-    }
-
-    @Test
-    fun mapperPreservesTopLevelReplyThreadFromRawThreadId() {
-        val mapper = RealtimeEventMapper()
-        val event = mapper.map(
-            RealtimeSocketEvents.MessageNew,
-            mapOf(
-                "id" to "c41039c4-1111-4222-8333-0123456789ab",
-                "channelId" to "android-dev-channel",
-                "threadId" to "a98ec1f2-1111-4222-8333-fedcba987654",
-                "content" to "Android notifications",
-                "replyCount" to 7
-            )
-        )
-
-        assertTrue(event is MessageNew)
-        val message = (event as MessageNew).message
-        assertEquals("android-dev-channel", message.threadId.value)
-        assertEquals("a98ec1f2-1111-4222-8333-fedcba987654", message.threadChannelId?.value)
-        assertEquals(7, message.replyCount)
-    }
-
-    @Test
-    fun mapperHandlesNestedAgentAuthorNames() {
-        val mapper = RealtimeEventMapper()
-        val event = mapper.map(
-            RealtimeSocketEvents.MessageNew,
-            JSONObject(
-                """
-                {
-                  "message": {
-                    "id": "message-agent",
-                    "threadId": "thread-agent",
-                    "channelId": "channel-agent",
-                    "content": "Agent payload",
-                    "agent": {
-                      "agentId": "agent-1",
-                      "profile": {
-                        "displayName": "API Integration",
-                        "username": "api-integration",
-                        "avatar": {"type": "pixel", "key": "robot"}
-                      },
-                      "presence": "working"
-                    }
-                  }
-                }
-                """.trimIndent()
-            )
-        )
-
-        assertTrue(event is MessageNew)
-        val message = (event as MessageNew).message
-        assertEquals("API Integration", message.author.displayName)
-        assertEquals("api-integration", message.author.handle)
-        assertEquals(MemberKind.Agent, message.author.kind)
-        assertEquals("pixel:robot", message.author.avatar?.wireValue)
-        assertEquals(Presence.Active, message.author.presence)
     }
 
     @Test
@@ -686,25 +581,20 @@ class RealtimeRepositoryTest {
                     "channelId": "channel-json",
                     "seq": 78,
                     "messageType": "system",
-                    "systemEventType": "task_moved",
-                    "content": "Task moved to Review",
-                    "metadata": {
-                      "taskId": "task-267",
-                      "from": "in_progress",
-                      "to": "in_review"
-                    }
+                    "content": "Task moved to Review"
                   }
                 }
                 """.trimIndent()
             )
         )
 
+        // Canonical message row carries `messageType: "system"`. The server
+        // does not emit a separate `systemEventType` or `metadata` map on the
+        // wire — those are derived later by feature code from the message body
+        // / task state, not from the realtime envelope.
         assertTrue(event is MessageNew)
         val message = (event as MessageNew).message
         assertEquals(MessageType.System, message.messageType)
-        assertEquals("task_moved", message.systemEventType)
-        assertEquals("task-267", message.metadata["taskId"])
-        assertEquals("in_review", message.metadata["to"])
     }
 
     private class FakeRealtimeSocketTransport : RealtimeSocketTransport {

@@ -297,6 +297,10 @@ data class TaskSummary(
     val threadId: ThreadId? = null,
     val isThreadTask: Boolean = false,
     val assignee: MemberProfile? = null,
+    /** Task creator (sender of the original task message). Mirrors React `createdBy*`
+     *  fields so the Tasks panel can show a Creator filter chip. Nullable for
+     *  backward-compat with cached snapshots that pre-date this field. */
+    val creator: MemberProfile? = null,
     val channelName: String? = null,
     val updatedAtLabel: String,
     val canClaim: Boolean = true

@@ -1312,8 +1312,7 @@ private fun DimmedUnreadCount(text: String) {
             style = SlockType.Caption.copy(fontWeight = FontWeight.Medium, fontSize = 10.sp, lineHeight = 10.sp, fontFamily = FontFamily.Monospace),
             color = SlockColor.TextBlack.copy(alpha = 0.5f),
             maxLines = 1,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.offset(y = ChannelUnreadTextOffsetY)
+            textAlign = TextAlign.Center
         )
     }
 }

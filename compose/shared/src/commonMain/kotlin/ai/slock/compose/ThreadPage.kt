@@ -3398,6 +3398,7 @@ private fun ThreadTasksTab(
                     selectedFilter = intent.status
                 is SharedTasksRouteIntent.UpdateStatus ->
                     onStatusChange(intent.task.id.value, intent.status)
+                is SharedTasksRouteIntent.CreateTasks -> Unit
             }
         }
     )

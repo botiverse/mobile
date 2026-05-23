@@ -48,28 +48,28 @@ sealed interface RealtimeConnectionState {
 }
 
 object RealtimeSocketEvents {
-    const val Connect = "connect"
-    const val ConnectError = "connect_error"
-    const val Disconnect = "disconnect"
-    const val Reconnect = "reconnect"
-    const val ReconnectAttempt = "reconnect_attempt"
-    const val ReconnectError = "reconnect_error"
-    const val ReconnectFailed = "reconnect_failed"
-    const val RoomsJoined = "rooms:joined"
-    const val SyncResume = "sync:resume"
-    const val SyncResumeResponse = "sync:resume:response"
-    const val JoinChannel = "join:channel"
-    const val Heartbeat = "heartbeat"
-    const val MessageNew = "message:new"
-    const val MessageUpdated = "message:updated"
-    const val DirectMessageNew = "dm:new"
-    const val ThreadUpdated = "thread:updated"
-    const val TaskCreated = "task:created"
-    const val TaskUpdated = "task:updated"
-    const val TaskDeleted = "task:deleted"
-    const val AgentActivity = "agent:activity"
-    const val ServerMemberAdded = "server:member-added"
-    const val ServerMemberUpdated = "server:member-updated"
-    const val ServerMemberLeft = "server:member:left"
-    const val ServerMemberRemoved = "server:member-removed"
+    const val Connect = ai.slock.compose.data.realtime.RealtimeSocketEvents.Connect
+    const val ConnectError = ai.slock.compose.data.realtime.RealtimeSocketEvents.ConnectError
+    const val Disconnect = ai.slock.compose.data.realtime.RealtimeSocketEvents.Disconnect
+    const val Reconnect = ai.slock.compose.data.realtime.RealtimeSocketEvents.Reconnect
+    const val ReconnectAttempt = ai.slock.compose.data.realtime.RealtimeSocketEvents.ReconnectAttempt
+    const val ReconnectError = ai.slock.compose.data.realtime.RealtimeSocketEvents.ReconnectError
+    const val ReconnectFailed = ai.slock.compose.data.realtime.RealtimeSocketEvents.ReconnectFailed
+    const val RoomsJoined = ai.slock.compose.data.realtime.RealtimeSocketEvents.RoomsJoined
+    const val SyncResume = ai.slock.compose.data.realtime.RealtimeSocketEvents.SyncResume
+    const val SyncResumeResponse = ai.slock.compose.data.realtime.RealtimeSocketEvents.SyncResumeResponse
+    const val JoinChannel = ai.slock.compose.data.realtime.RealtimeSocketEvents.JoinChannel
+    const val Heartbeat = ai.slock.compose.data.realtime.RealtimeSocketEvents.Heartbeat
+    const val MessageNew = ai.slock.compose.data.realtime.RealtimeSocketEvents.MessageNew
+    const val MessageUpdated = ai.slock.compose.data.realtime.RealtimeSocketEvents.MessageUpdated
+    const val DirectMessageNew = ai.slock.compose.data.realtime.RealtimeSocketEvents.DirectMessageNew
+    const val ThreadUpdated = ai.slock.compose.data.realtime.RealtimeSocketEvents.ThreadUpdated
+    const val TaskCreated = ai.slock.compose.data.realtime.RealtimeSocketEvents.TaskCreated
+    const val TaskUpdated = ai.slock.compose.data.realtime.RealtimeSocketEvents.TaskUpdated
+    const val TaskDeleted = ai.slock.compose.data.realtime.RealtimeSocketEvents.TaskDeleted
+    const val AgentActivity = ai.slock.compose.data.realtime.RealtimeSocketEvents.AgentActivity
+    const val ServerMemberAdded = ai.slock.compose.data.realtime.RealtimeSocketEvents.ServerMemberAdded
+    const val ServerMemberUpdated = ai.slock.compose.data.realtime.RealtimeSocketEvents.ServerMemberUpdated
+    const val ServerMemberLeft = ai.slock.compose.data.realtime.RealtimeSocketEvents.ServerMemberLeft
+    const val ServerMemberRemoved = ai.slock.compose.data.realtime.RealtimeSocketEvents.ServerMemberRemoved
 }
