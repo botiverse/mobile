@@ -1,6 +1,7 @@
 import { KRAny, KuiklyRenderBaseView, KuiklyRenderCallback } from '@kuikly-open/render';
 import { ComponentContent } from '@kit.ArkUI';
 import { DividerMode, HdsTabs, HdsTabsController } from '@kit.UIDesignKit';
+import { hdsMaterial } from '@hms.hds.hdsMaterial';
 
 const kKeysText = 'keysText';
 const kLabelsText = 'labelsText';
@@ -95,17 +96,6 @@ export struct SlockOhosHdsTabBar {
 
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
-      Column() {
-        Blank()
-          .width('100%')
-          .height(1)
-          .backgroundColor('#1A000000')
-      }
-      .width('100%')
-      .height(`${92 + this.renderView.bottomSafeArea}vp`)
-      .backgroundColor('#F2FFFFFF')
-      .backgroundBlurStyle(BlurStyle.Thin)
-
       HdsTabs({ index: this.renderView.selectedIndex(), controller: this.renderView.controller }) {
         ForEach(this.renderView.items(), (item: SlockHdsTabItem, index: number) => {
           TabContent() {
@@ -125,16 +115,18 @@ export struct SlockOhosHdsTabBar {
       .animationDuration(240)
       .barHeight(60)
       .barOverlap(true)
-      .barBackgroundColor('#F2FFFFFF')
-      .barBackgroundBlurStyle(BlurStyle.Thin)
+      .barFloatingStyle({
+        barSideMargin: 18,
+        barBottomMargin: 28 + this.renderView.bottomSafeArea,
+        thermoCtrl: true,
+        systemMaterialEffect: {
+          materialType: hdsMaterial.MaterialType.ADAPTIVE,
+          materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE,
+        },
+      })
       .divider({ mode: DividerMode.NONE })
       .width('100%')
       .height(`${92 + this.renderView.bottomSafeArea}vp`)
-      .padding({
-        left: 18,
-        right: 18,
-        bottom: 28 + this.renderView.bottomSafeArea,
-      })
       .backgroundColor('#00FFFFFF')
     }
     .width('100%')
