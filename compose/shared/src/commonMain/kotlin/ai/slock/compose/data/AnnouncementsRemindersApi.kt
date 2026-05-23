@@ -12,13 +12,13 @@ private val announcementsRemindersJson = Json {
     encodeDefaults = true
 }
 
-internal interface SlockAnnouncementsRemindersApi {
+interface SlockAnnouncementsRemindersApi {
     suspend fun activeAnnouncements(): HomeNetworkResponse
     suspend fun dismissAnnouncement(announcementId: String): HomeNetworkResponse
     suspend fun reminders(ownerAgentId: MemberId, status: String = "scheduled"): HomeNetworkResponse
 }
 
-internal class SlockAnnouncementsRemindersApiClient(
+class SlockAnnouncementsRemindersApiClient(
     private val transport: SlockAnnouncementsRemindersApi
 ) {
     suspend fun activeAnnouncements(): DataResult<AnnouncementsPage> =
@@ -29,7 +29,8 @@ internal class SlockAnnouncementsRemindersApiClient(
                 firstTitle = announcements.firstOrNullObject()?.string("title"),
                 firstPageCount = announcements.firstOrNullObject()?.let { announcement ->
                     (announcement["pages"] as? JsonArray)?.size
-                }
+                },
+                items = announcements.mapNotNull { (it as? JsonObject)?.toAnnouncementItem() }
             )
         }
 
@@ -49,15 +50,31 @@ internal class SlockAnnouncementsRemindersApiClient(
         }
 }
 
-internal data class AnnouncementsPage(
+data class AnnouncementsPage(
     val announcementCount: Int,
     val firstTitle: String?,
-    val firstPageCount: Int?
+    val firstPageCount: Int?,
+    val items: List<AnnouncementItem> = emptyList()
 )
 
-internal data class AnnouncementCommandResult(val ok: Boolean)
+data class AnnouncementItem(
+    val id: String,
+    val title: String,
+    val body: String,
+    val actionLabel: String = "View",
+    val targetId: String? = null,
+    val kind: AnnouncementKind = AnnouncementKind.Info
+)
 
-internal data class RemindersPage(
+enum class AnnouncementKind {
+    Warning,
+    Info,
+    Error
+}
+
+data class AnnouncementCommandResult(val ok: Boolean)
+
+data class RemindersPage(
     val reminderCount: Int,
     val firstTitle: String?,
     val firstStatus: String?
@@ -81,8 +98,49 @@ private inline fun <T> HomeNetworkResponse.mapAnnouncementsBody(
 
 private fun JsonArray.firstOrNullObject(): JsonObject? = firstOrNull() as? JsonObject
 
+private fun JsonObject.toAnnouncementItem(): AnnouncementItem? {
+    val id = string("id", "_id", "announcementId", "announcement_id") ?: return null
+    val firstPage = (this["pages"] as? JsonArray)?.firstOrNullObject()
+    val title = string("title", "name")
+        ?: firstPage?.string("title", "name")
+        ?: return null
+    val body = string("body", "message", "description", "content", "subtitle")
+        ?: firstPage?.string("body", "message", "description", "content", "subtitle")
+        ?: title
+    val actionLabel = string("actionLabel", "action_label", "primaryActionLabel", "ctaLabel")
+        ?: actionObject()?.string("label", "title")
+        ?: "View"
+    val targetId = string("targetId", "target_id", "url", "href", "link")
+        ?: actionObject()?.string("targetId", "target_id", "url", "href", "link")
+    return AnnouncementItem(
+        id = id,
+        title = title,
+        body = body,
+        actionLabel = actionLabel,
+        targetId = targetId,
+        kind = announcementKind()
+    )
+}
+
+private fun JsonObject.actionObject(): JsonObject? =
+    (this["action"] as? JsonObject)
+        ?: (this["primaryAction"] as? JsonObject)
+        ?: ((this["actions"] as? JsonArray)?.firstOrNull() as? JsonObject)
+
+private fun JsonObject.announcementKind(): AnnouncementKind {
+    val raw = string("kind", "type", "severity", "level", "variant").orEmpty().lowercase()
+    return when {
+        raw.contains("error") || raw.contains("danger") || raw.contains("critical") -> AnnouncementKind.Error
+        raw.contains("warn") || raw.contains("outdated") || raw.contains("upgrade") || raw.contains("update") -> AnnouncementKind.Warning
+        else -> AnnouncementKind.Info
+    }
+}
+
+private fun JsonObject.string(vararg keys: String): String? =
+    keys.firstNotNullOfOrNull { key -> (this[key] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotBlank() } }
+
 private fun JsonObject.string(key: String): String? =
-    (this[key] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
+    string(*arrayOf(key))
 
 private fun JsonObject.boolean(key: String): Boolean? =
     when (val primitive = this[key] as? JsonPrimitive) {

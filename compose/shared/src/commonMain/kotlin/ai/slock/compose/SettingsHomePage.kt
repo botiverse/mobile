@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.data.BridgeAnnouncementsRemindersApi
 import ai.slock.compose.data.BridgeAuthApi
 import ai.slock.compose.data.BridgeHomeApi
 import ai.slock.compose.data.BridgeMembersApi
@@ -25,6 +26,8 @@ import ai.slock.compose.data.SharedHomeIntent
 import ai.slock.compose.data.SharedHomeState
 import ai.slock.compose.data.SharedHomeTopAction
 import ai.slock.compose.data.SharedHomeViewModel
+import ai.slock.compose.data.SharedHomeNotification
+import ai.slock.compose.data.SharedHomeNotificationKind
 import ai.slock.compose.data.SharedSettingsAboutSnapshot
 import ai.slock.compose.data.SharedSettingsDataSource
 import ai.slock.compose.data.SharedSettingsDestination
@@ -409,6 +412,7 @@ private fun SlockAppShellContent() {
             SharedHomeDataSource(
                 sessionStore = authStore,
                 api = BridgeHomeApi(bridge, authStore),
+                announcementsApi = BridgeAnnouncementsRemindersApi(bridge, authStore),
                 localWriteThrough = localWriteThrough,
                 parseHome = { payload, session ->
                     parseSlockHome(payload, session) { message -> bridge.log(message) }
@@ -2054,6 +2058,7 @@ private fun SharedHomeScreen(
                 activitySelected = state.selectedTopAction == SharedHomeTopAction.Activity,
                 searchSelected = state.selectedTopAction == SharedHomeTopAction.Search,
                 savedSelected = state.selectedTopAction == SharedHomeTopAction.Saved,
+                notifications = state.notifications.map { it.toHomeNotificationItem() },
                 showBottomBar = false,
                 outerPadding = 0.dp,
                 contentRefreshing = current.contentRefreshing,
@@ -2076,6 +2081,14 @@ private fun SharedHomeScreen(
                     onIntent(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Saved))
                     onOpenSaved()
                 },
+                onNotificationView = { notification ->
+                    notification.targetId?.takeIf { it.startsWith("http://") || it.startsWith("https://") }?.let { url ->
+                        bridge.openUrl(url)
+                    } ?: bridge.toast("Notification opened")
+                },
+                onNotificationDismiss = { notification ->
+                    onIntent(SharedHomeIntent.DismissNotification(notification.id))
+                },
                 onChannelClick = { threadId ->
                     val conversation =
                         (snapshot.channels + snapshot.directMessages)
@@ -2091,6 +2104,21 @@ private fun SharedHomeScreen(
         }
     }
 }
+
+private fun SharedHomeNotification.toHomeNotificationItem(): SlockHomeNotificationItem =
+    SlockHomeNotificationItem(
+        id = id,
+        title = title,
+        body = body,
+        actionLabel = actionLabel,
+        targetId = targetId,
+        kind =
+            when (kind) {
+                SharedHomeNotificationKind.Warning -> SlockHomeNotificationKind.Warning
+                SharedHomeNotificationKind.Info -> SlockHomeNotificationKind.Info
+                SharedHomeNotificationKind.Error -> SlockHomeNotificationKind.Error
+            }
+    )
 
 @Composable
 private fun SharedHomeSessionShell(

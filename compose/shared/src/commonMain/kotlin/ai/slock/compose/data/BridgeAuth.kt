@@ -2,6 +2,7 @@ package ai.slock.compose.data
 
 import ai.slock.compose.base.BridgeModule
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.TaskId
@@ -206,6 +207,29 @@ internal class BridgeHomeApi(
     private suspend fun request(path: String, serverIdOverride: String? = null): HomeNetworkResponse {
         return executor.request(path = path, serverIdOverride = serverIdOverride)
     }
+}
+
+internal class BridgeAnnouncementsRemindersApi(
+    bridge: BridgeModule,
+    sessionStore: SlockAuthSessionStore,
+    baseUrl: String = AUTH_BASE_URL
+) : SlockAnnouncementsRemindersApi {
+    private val executor = BridgeAuthenticatedRequestExecutor(bridge, sessionStore, baseUrl)
+
+    override suspend fun activeAnnouncements(): HomeNetworkResponse =
+        executor.request(path = "announcements/active")
+
+    override suspend fun dismissAnnouncement(announcementId: String): HomeNetworkResponse =
+        executor.request(
+            path = "announcements/${announcementId.trim()}/dismiss",
+            method = "POST"
+        )
+
+    override suspend fun reminders(ownerAgentId: MemberId, status: String): HomeNetworkResponse =
+        executor.request(
+            path = "reminders",
+            query = "ownerAgentId=${ownerAgentId.value}&status=$status"
+        )
 }
 
 internal class BridgeMembersApi(

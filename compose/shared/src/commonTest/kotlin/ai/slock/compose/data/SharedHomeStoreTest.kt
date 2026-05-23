@@ -187,10 +187,56 @@ class SharedHomeStoreTest {
         scope.cancel()
     }
 
-    private fun source(api: SlockHomeApi): SharedHomeDataSource =
+    @Test
+    fun startLoadsActiveAnnouncementsIntoHomeNotifications() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val announcementsApi = RecordingAnnouncementsApi()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = RecordingHomeApi(), announcementsApi = announcementsApi),
+            scope = scope
+        )
+
+        store.accept(SharedHomeIntent.Start)
+
+        val notification = store.state.value.notifications.single()
+        assertEquals("announcement-1", notification.id)
+        assertEquals("Upgrade available", notification.title)
+        assertEquals("Install the newest desktop daemon.", notification.body)
+        assertEquals(SharedHomeNotificationKind.Warning, notification.kind)
+        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun dismissNotificationRemovesFromStateAndCallsSharedApi() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val announcementsApi = RecordingAnnouncementsApi()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = RecordingHomeApi(), announcementsApi = announcementsApi),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+
+        store.accept(SharedHomeIntent.DismissNotification("announcement-1"))
+
+        assertEquals(emptyList(), store.state.value.notifications)
+        assertEquals(
+            listOf("GET announcements/active", "POST announcements/announcement-1/dismiss"),
+            announcementsApi.calls
+        )
+        scope.cancel()
+    }
+
+    private fun source(
+        api: SlockHomeApi,
+        announcementsApi: SlockAnnouncementsRemindersApi? = null
+    ): SharedHomeDataSource =
         SharedHomeDataSource(
             sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             api = api,
+            announcementsApi = announcementsApi,
             parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
         )
 
@@ -243,6 +289,39 @@ class SharedHomeStoreTest {
             error("not reached")
 
         override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
+            error("not reached")
+    }
+
+    private class RecordingAnnouncementsApi : SlockAnnouncementsRemindersApi {
+        val calls = mutableListOf<String>()
+
+        override suspend fun activeAnnouncements(): HomeNetworkResponse {
+            calls += "GET announcements/active"
+            return HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """
+                    {
+                      "announcements": [
+                        {
+                          "id": "announcement-1",
+                          "title": "Upgrade available",
+                          "body": "Install the newest desktop daemon.",
+                          "severity": "warning",
+                          "actionLabel": "Review"
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+            )
+        }
+
+        override suspend fun dismissAnnouncement(announcementId: String): HomeNetworkResponse {
+            calls += "POST announcements/$announcementId/dismiss"
+            return HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
+        }
+
+        override suspend fun reminders(ownerAgentId: MemberId, status: String): HomeNetworkResponse =
             error("not reached")
     }
 

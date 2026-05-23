@@ -68,6 +68,8 @@ class SharedHomeStore(
                     )
             is SharedHomeIntent.ApplyRealtimeEvent ->
                 applyRealtimeEvent(ServerId(intent.serverId), intent.event)
+            is SharedHomeIntent.DismissNotification ->
+                dismissNotification(intent.id)
             is SharedHomeIntent.SelectServer -> {
                 val currentServerId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
                 val nextSwitch =
@@ -174,11 +176,37 @@ class SharedHomeStore(
                                 latestSwitch
                             }
                     )
+                loadNotifications()
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             _state.value = _state.value.copy(content = _state.value.content.asRefreshFailed("home_network"))
+        }
+    }
+
+    private suspend fun loadNotifications() {
+        when (val result = dataSource.loadNotifications()) {
+            is DataResult.Content ->
+                _state.value = _state.value.copy(notifications = result.data)
+            is DataResult.Empty ->
+                _state.value = _state.value.copy(notifications = emptyList())
+            is DataResult.Error,
+            is DataResult.NoPermission -> Unit
+        }
+    }
+
+    private suspend fun dismissNotification(id: String) {
+        val previous = _state.value.notifications
+        val next = previous.filterNot { it.id == id }
+        if (next == previous) return
+        _state.value = _state.value.copy(notifications = next)
+        when (dataSource.dismissNotification(id)) {
+            is DataResult.Content,
+            is DataResult.Empty -> Unit
+            is DataResult.Error,
+            is DataResult.NoPermission ->
+                _state.value = _state.value.copy(notifications = previous)
         }
     }
 }
@@ -212,7 +240,8 @@ data class SharedHomeState(
     val serverSwitchState: HomeServerSwitchState = HomeServerSwitchState(),
     val serverSwitcherExpanded: Boolean = false,
     val selectedConversationId: String? = null,
-    val selectedTopAction: SharedHomeTopAction? = null
+    val selectedTopAction: SharedHomeTopAction? = null,
+    val notifications: List<SharedHomeNotification> = emptyList()
 )
 
 enum class SharedHomeTopAction {
@@ -230,6 +259,7 @@ sealed interface SharedHomeIntent {
     data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeIntent
     data class SelectServer(val serverId: String) : SharedHomeIntent
     data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
+    data class DismissNotification(val id: String) : SharedHomeIntent
 }
 
 private val SharedHomeIntent.loadsHome: Boolean
@@ -242,7 +272,8 @@ private val SharedHomeIntent.loadsHome: Boolean
             SharedHomeIntent.DismissServerSwitcher,
             is SharedHomeIntent.SelectConversation,
             is SharedHomeIntent.SelectTopAction,
-            is SharedHomeIntent.ApplyRealtimeEvent -> false
+            is SharedHomeIntent.ApplyRealtimeEvent,
+            is SharedHomeIntent.DismissNotification -> false
         }
 
 sealed interface SharedHomeContentState {

@@ -12,10 +12,12 @@ private val homeApiJson = Json { ignoreUnknownKeys = true }
 class SharedHomeDataSource(
     private val sessionStore: SlockAuthSessionStore,
     private val api: SlockHomeApi,
+    announcementsApi: SlockAnnouncementsRemindersApi? = null,
     private val localWriteThrough: ComposeLocalWriteThrough? = null,
     private val parseHome: (HomeNetworkPayload, StoredAuthSession) -> DataResult<HomeSnapshot>
 ) {
     private val typedApi = SlockHomeApiClient(api)
+    private val typedAnnouncementsApi = announcementsApi?.let(::SlockAnnouncementsRemindersApiClient)
 
     suspend fun currentSessionSnapshot(): DataResult<ai.slock.compose.model.SessionSnapshot> {
         val session = sessionStore.readSession()
@@ -72,7 +74,54 @@ class SharedHomeDataSource(
             ?: return DataResult.Empty(EmptyReason.NoChannels)
         return readCachedHome(serverId)
     }
+
+    suspend fun loadNotifications(): DataResult<List<SharedHomeNotification>> {
+        val client = typedAnnouncementsApi
+            ?: return DataResult.Content(emptyList())
+        return when (val result = client.activeAnnouncements()) {
+            is DataResult.Content -> DataResult.Content(result.data.items.map { it.toSharedHomeNotification() })
+            is DataResult.Empty -> DataResult.Content(emptyList())
+            is DataResult.Error -> DataResult.Error(result.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+        }
+    }
+
+    suspend fun dismissNotification(id: String): DataResult<AnnouncementCommandResult> {
+        val client = typedAnnouncementsApi
+            ?: return DataResult.Empty(EmptyReason.NoChannels)
+        return client.dismissAnnouncement(id)
+    }
 }
+
+data class SharedHomeNotification(
+    val id: String,
+    val title: String,
+    val body: String,
+    val actionLabel: String = "View",
+    val targetId: String? = null,
+    val kind: SharedHomeNotificationKind = SharedHomeNotificationKind.Info
+)
+
+enum class SharedHomeNotificationKind {
+    Warning,
+    Info,
+    Error
+}
+
+private fun AnnouncementItem.toSharedHomeNotification(): SharedHomeNotification =
+    SharedHomeNotification(
+        id = id,
+        title = title,
+        body = body,
+        actionLabel = actionLabel,
+        targetId = targetId,
+        kind =
+            when (kind) {
+                AnnouncementKind.Warning -> SharedHomeNotificationKind.Warning
+                AnnouncementKind.Info -> SharedHomeNotificationKind.Info
+                AnnouncementKind.Error -> SharedHomeNotificationKind.Error
+            }
+    )
 
 interface SlockHomeApi {
     suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse
