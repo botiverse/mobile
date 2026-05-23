@@ -322,14 +322,19 @@ internal fun ThreadComposerContent(
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onKeyboardHeightChange: (Float) -> Unit = {}
 ) {
-    var fieldValue by remember(payload.seedText, payload.syncNonce) {
+    var fieldValue by remember(payload.instanceId) {
         mutableStateOf(payload.seedText.toComposerFieldValueAtEnd())
     }
     val text = fieldValue.text
-    var asTask by remember(payload.seedAsTask, payload.syncNonce) { mutableStateOf(payload.seedAsTask) }
-    var focused by remember(payload.focusRequestNonce, payload.syncNonce) { mutableStateOf(false) }
+    var asTask by remember(payload.instanceId) { mutableStateOf(payload.seedAsTask) }
+    var focused by remember(payload.instanceId) { mutableStateOf(false) }
     var handledFocusRequestNonce by remember(payload.instanceId) { mutableStateOf(payload.focusRequestNonce) }
     val shouldAutoFocus = payload.focusRequestNonce > handledFocusRequestNonce
+    LaunchedEffect(payload.instanceId, payload.syncNonce) {
+        fieldValue = payload.seedText.toComposerFieldValueAtEnd()
+        asTask = payload.seedAsTask
+        focused = false
+    }
     val suggestionTrigger = remember(text) { detectKuiklyComposerSuggestionTrigger(text) }
     val filteredMemberSuggestions =
         remember(suggestionTrigger, payload.memberSuggestions) {
@@ -507,7 +512,7 @@ internal fun ThreadComposerContent(
                         },
                         placeholderColor = SlockColor.TextMutedGray,
                         cursorBrush = SolidColor(SlockColor.TextBlack),
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 20.dp)
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
                     )
                     if (payload.hookLabels.isNotEmpty()) {
                         Text(

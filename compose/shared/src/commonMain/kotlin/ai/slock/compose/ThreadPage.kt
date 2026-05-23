@@ -670,6 +670,9 @@ internal fun SharedThreadRouteContent(
                         } else {
                             threadViewModel.dispatch(SharedThreadIntent.Refresh)
                         }
+                        uploadedAttachments = emptyList()
+                        removedAttachmentIds = emptySet()
+                        composerSyncNonce += 1
                         composerFailureLabel = null
                         composerSending = false
                     }
