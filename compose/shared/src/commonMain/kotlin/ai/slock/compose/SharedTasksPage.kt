@@ -44,10 +44,12 @@ import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
 
 @Composable
 internal fun SharedTasksScreen(
@@ -119,42 +121,33 @@ private fun SharedTasksHeader(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = SlockSize.PageHeaderHeight)
-                .background(SlockColor.SurfaceWhite)
+                .height(SlockSize.PageHeaderHeight)
+                .background(SlockColor.BrandYellow)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+                .padding(horizontal = 20.dp, vertical = SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(36.dp)
-                    .background(SlockColor.BrandYellow)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            SlockLucideIcon("square-check-big", modifier = Modifier.size(20.dp))
-        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Tasks",
-                style = SlockType.PageTitle,
+                style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = "Shared KMP task state",
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray,
+                text = if (refreshing) "Syncing channel tasks" else "Channel tasks",
+                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack.copy(alpha = 0.5f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
-        SharedTasksPillButton(
+        SharedTasksFilterChip(
             label = if (refreshing) "Syncing" else "Refresh",
-            selected = refreshing,
+            iconName = "refresh-cw",
+            active = refreshing,
             enabled = !refreshing,
             onClick = onRefresh
         )
@@ -187,11 +180,13 @@ private fun SharedTasksLoadedBody(
             presentationState = next
         }
     }
+    val boardColumns = visibleContent.filteredContent.boardColumns(renderLimit = 8)
+    val listColumns = visibleContent.filteredContent.boardColumns(renderLimit = 0).filter { it.totalCount > 0 }
     val lazyItemCount =
         sharedTasksLazyItemCount(
             mode = presentationState.selectedMode,
             filteredTasksCount = visibleContent.filteredTasks.size,
-            boardColumnCount = visibleContent.filteredContent.boardColumns(renderLimit = 8).size,
+            boardColumnCount = boardColumns.size,
             hasNavigationError = state.navigationErrorCode != null,
             hasStatusUpdateError = state.statusUpdateErrorCode != null
         )
@@ -200,29 +195,26 @@ private fun SharedTasksLoadedBody(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
-                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+                .background(SlockColor.SurfaceWhite),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
         beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
     ) {
-        item(key = "summary") {
-            SharedTasksSummary(
-                content = visibleContent.channelScopedContent
-            )
-        }
         state.navigationErrorCode?.let { code ->
             item(key = "nav-error") {
-                SharedTasksNotice("Action unavailable", code)
+                SharedTasksNotice("Action unavailable", code, modifier = Modifier.padding(SlockSpacing.Md))
             }
         }
         state.statusUpdateErrorCode?.let { code ->
             item(key = "status-error") {
-                SharedTasksNotice("Could not update status", code)
+                SharedTasksNotice("Could not update status", code, modifier = Modifier.padding(SlockSpacing.Md))
             }
         }
         item(key = "filters") {
             SharedTasksToolbar(
                 state = state,
+                summaryCounts = visibleContent.channelScopedContent.summaryCounts,
+                totalTasks = content.tasks.size,
+                visibleTasks = visibleContent.filteredTasks.size,
                 channels = visibleContent.channelOptions,
                 selectedChannels = visibleContent.selectedChannelNames,
                 selectedMode = presentationState.selectedMode,
@@ -240,16 +232,15 @@ private fun SharedTasksLoadedBody(
         }
         when (presentationState.selectedMode) {
             TasksViewMode.Board -> {
-                val columns = visibleContent.filteredContent.boardColumns(renderLimit = 8)
-                items(columns.size, key = { index -> "board-${columns[index].status}" }) { index ->
-                    val column = columns[index]
+                items(boardColumns.size, key = { index -> "board-${boardColumns[index].status}" }) { index ->
+                    val column = boardColumns[index]
                     SharedTasksBoardColumn(
                         status = column.status,
                         totalCount = column.totalCount,
                         tasks = column.tasks,
                         updatingTaskId = state.statusUpdatingTaskId,
                         onStatusChange = { task, status -> onIntent(SharedTasksRouteIntent.UpdateStatus(task, status)) },
-                        modifier = Modifier
+                        modifier = Modifier.padding(horizontal = SlockSpacing.Md, vertical = if (index == 0) SlockSpacing.Md else 0.dp).padding(bottom = SlockSpacing.Md)
                     )
                 }
             }
@@ -262,13 +253,14 @@ private fun SharedTasksLoadedBody(
                         )
                     }
                 } else {
-                    items(visibleContent.filteredTasks.size, key = { index -> visibleContent.filteredTasks[index].id.value }) { index ->
-                        val task = visibleContent.filteredTasks[index]
-                        SharedTaskRow(
-                            task = task,
-                            updating = state.statusUpdatingTaskId == task.id.value,
-                            onStatusChange = { status -> onIntent(SharedTasksRouteIntent.UpdateStatus(task, status)) },
-                            modifier = Modifier
+                    items(listColumns.size, key = { index -> "list-section-${listColumns[index].status}" }) { index ->
+                        val column = listColumns[index]
+                        SharedTasksListSection(
+                            status = column.status,
+                            tasks = column.tasks,
+                            updatingTaskId = state.statusUpdatingTaskId,
+                            onStatusChange = { task, status -> onIntent(SharedTasksRouteIntent.UpdateStatus(task, status)) },
+                            modifier = Modifier.padding(horizontal = SlockSpacing.Md, vertical = if (index == 0) SlockSpacing.Md else 0.dp).padding(bottom = SlockSpacing.Md)
                         )
                     }
                 }
@@ -288,8 +280,7 @@ internal fun sharedTasksLazyItemCount(
     hasStatusUpdateError: Boolean
 ): Int {
     val fixedItems =
-        1 + // summary
-            1 + // filters
+        1 + // filters
             1 // bottom spacer
     val errorItems = (if (hasNavigationError) 1 else 0) + (if (hasStatusUpdateError) 1 else 0)
     val bodyItems =
@@ -301,39 +292,11 @@ internal fun sharedTasksLazyItemCount(
 }
 
 @Composable
-private fun SharedTasksSummary(
-    content: TasksContent,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Thin, SlockColor.EmptyStateGray)
-                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-    ) {
-        Text(
-            text = "${content.tasks.size} TASKS",
-            style = SlockType.SectionLabel,
-            color = SlockColor.TextBlack
-        )
-        Text(
-            text = TaskStatus.entries.joinToString(" · ") { "${it.label}: ${content.summaryCounts[it] ?: 0}" },
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
-
-@Composable
 private fun SharedTasksToolbar(
     state: TasksUiState,
+    summaryCounts: Map<TaskStatus, Int>,
+    totalTasks: Int,
+    visibleTasks: Int,
     channels: List<String>,
     selectedChannels: Set<String>,
     selectedMode: TasksViewMode,
@@ -346,7 +309,9 @@ private fun SharedTasksToolbar(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite),
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         Row(
@@ -354,48 +319,66 @@ private fun SharedTasksToolbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            SharedTasksPillButton(
-                label = "Board",
-                selected = selectedMode == TasksViewMode.Board,
-                onClick = { onModeSelected(TasksViewMode.Board) }
+            Text(
+                text = "$visibleTasks${if (visibleTasks != totalTasks) " of $totalTasks" else ""} channel tasks",
+                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack.copy(alpha = 0.5f),
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-            SharedTasksPillButton(
-                label = "List",
-                selected = selectedMode == TasksViewMode.List,
-                onClick = { onModeSelected(TasksViewMode.List) }
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            SharedTasksPillButton(
-                label = "Clear",
-                selected = false,
-                enabled = selectedChannels.isNotEmpty(),
-                onClick = onClearChannels
+            SharedTasksSegmentedControl(
+                selectedMode = selectedMode,
+                onModeSelected = onModeSelected
             )
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-        Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-            SharedTasksPillButton("All", selected = state.selectedFilter == null, onClick = { onFilterSelected(null) })
-            state.availableFilters.forEach { status ->
-                SharedTasksPillButton(
-                    label = status.label,
-                    selected = state.selectedFilter == status,
-                    onClick = { onFilterSelected(status) }
+        Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
+            SharedTasksFilterChip("All", iconName = "list-filter", active = state.selectedFilter == null, onClick = { onFilterSelected(null) })
+            state.availableFilters.take(3).forEach { status ->
+                SharedTasksFilterChip(
+                    label = status.shortLabel,
+                    active = state.selectedFilter == status,
+                    onClick = { onFilterSelected(status) },
+                    count = summaryCounts[status]
                 )
             }
         }
+        state.availableFilters.drop(3).takeIf { it.isNotEmpty() }?.let { remainingFilters ->
+            Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
+                remainingFilters.forEach { status ->
+                    SharedTasksFilterChip(
+                        label = status.shortLabel,
+                        active = state.selectedFilter == status,
+                        onClick = { onFilterSelected(status) },
+                        count = summaryCounts[status]
+                    )
+                }
+            }
+        }
         if (channels.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                Text(
-                    text = "CHANNELS",
-                    style = SlockType.SectionLabel,
-                    color = SlockColor.TextMutedGray
+            Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
+                SharedTasksFilterChip(
+                    label = "Channel",
+                    iconName = "hash",
+                    active = selectedChannels.isNotEmpty(),
+                    count = selectedChannels.size.takeIf { it > 0 },
+                    onClick = {
+                        if (selectedChannels.isEmpty()) {
+                            channels.firstOrNull()?.let(onChannelToggled)
+                        } else {
+                            onClearChannels()
+                        }
+                    }
                 )
-                channels.take(12).forEach { channel ->
+                channels.take(3).forEach { channel ->
                     SharedTasksChannelFilterRow(
                         channel = channel,
                         selected = channel in selectedChannels,
                         onClick = { onChannelToggled(channel) }
                     )
+                }
+                if (selectedChannels.isNotEmpty()) {
+                    SharedTasksFilterChip("Clear all", active = false, onClick = onClearChannels)
                 }
             }
         }
@@ -412,30 +395,19 @@ private fun SharedTasksChannelFilterRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 34.dp)
-                .background(if (selected) SlockColor.AppBgLightBlue else SlockColor.SurfaceWhite)
-                .border(SlockStroke.Thin, if (selected) SlockColor.BorderBlack else SlockColor.EmptyStateGray)
+                .heightIn(min = 30.dp)
+                .background(if (selected) SlockColor.AccentCyan else SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, if (selected) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.3f))
                 .clickable(onClick = onClick)
-                .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(16.dp)
-                    .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            if (selected) {
-                Text(text = "✓", style = SlockType.Caption.copy(fontWeight = FontWeight.Bold), color = SlockColor.TextBlack)
-            }
-        }
+        SlockLucideIcon("hash", modifier = Modifier.size(14.dp), color = "#FF000000")
         Text(
-            text = "#$channel",
-            style = SlockType.Button,
-            color = SlockColor.TextBlack,
+            text = channel,
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+            color = if (selected) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.7f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -456,11 +428,11 @@ private fun SharedTasksBoardColumn(
             modifier
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Thin, SlockColor.EmptyStateGray)
-                .padding(SlockSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.2f))
+                .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm), modifier = Modifier.fillMaxWidth()) {
             SlockLucideIcon("chevron-down", modifier = Modifier.size(14.dp))
             SharedTasksStatusLabel(status)
             Text(
@@ -485,6 +457,35 @@ private fun SharedTasksBoardColumn(
                     onStatusChange = { nextStatus -> onStatusChange(task, nextStatus) }
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun SharedTasksListSection(
+    status: TaskStatus,
+    tasks: List<TaskSummary>,
+    updatingTaskId: String?,
+    onStatusChange: (TaskSummary, TaskStatus) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+            SharedTasksStatusLabel(status)
+            Text(
+                text = tasks.size.toString(),
+                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace),
+                color = SlockColor.TextBlack.copy(alpha = 0.5f),
+                modifier = Modifier.weight(1f)
+            )
+            SlockLucideIcon("chevron-down", modifier = Modifier.size(14.dp), color = "#80000000")
+        }
+        tasks.forEach { task ->
+            SharedTaskRow(
+                task = task,
+                updating = updatingTaskId == task.id.value,
+                onStatusChange = { nextStatus -> onStatusChange(task, nextStatus) }
+            )
         }
     }
 }
@@ -515,32 +516,47 @@ private fun SharedTaskRow(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
-                    .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Xs))
-                    .padding(SlockSpacing.Md),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .clickable { onStatusChange(task.status.nextStatus()) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                ) {
+                    task.tasksSourceLabel()?.takeIf { it.isNotBlank() }?.let { source ->
+                        Text(
+                            text = source,
+                            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                            color = SlockColor.TextBlack.copy(alpha = 0.6f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    task.taskNumber?.let { taskNumber ->
+                        Text(
+                            text = "#$taskNumber",
+                            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 14.sp),
+                            color = SlockColor.TextBlack.copy(alpha = 0.35f),
+                            maxLines = 1
+                        )
+                    }
+                }
                 Text(
-                    text = task.tasksDisplayTitle(),
-                    style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                    text = task.tasksMeaningfulDisplayTitle(),
+                    style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
-                task.tasksSourceLabel()?.takeIf { it.isNotBlank() }?.let { source ->
-                    Text(
-                        text = source,
-                        style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
                 Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = task.tasksAssigneeDisplayName() ?: "Unassigned",
                         style = SlockType.Caption,
-                        color = SlockColor.TextBlack,
+                        color = SlockColor.TextBlack.copy(alpha = 0.7f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
@@ -558,19 +574,10 @@ private fun SharedTaskRow(
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomEnd) {
                     SharedTasksStatusLabel(
                         status = task.status,
-                        label = if (updating) "Updating" else task.status.label
+                        label = if (updating) "Updating" else task.status.label,
+                        modifier = Modifier.clickable(enabled = !updating) { onStatusChange(task.status.nextStatus()) }
                     )
                 }
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-            TaskStatus.entries.forEach { status ->
-                SharedTasksPillButton(
-                    label = status.shortLabel,
-                    selected = task.status == status,
-                    enabled = !updating && task.status != status,
-                    onClick = { onStatusChange(status) }
-                )
             }
         }
     }
@@ -579,19 +586,27 @@ private fun SharedTaskRow(
 @Composable
 private fun SharedTasksStatusLabel(
     status: TaskStatus,
-    label: String = status.label
+    label: String = status.label,
+    modifier: Modifier = Modifier
 ) {
-    Text(
-        text = label.uppercase(),
-        style = SlockType.SectionLabel,
-        color = SlockColor.TextBlack,
+    Row(
         modifier = Modifier
+            .then(modifier)
             .background(status.color)
             .border(SlockStroke.Thin, SlockColor.BorderBlack)
             .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis
-    )
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        SlockLucideIcon(status.iconName, modifier = Modifier.size(10.dp), color = "#FF000000")
+        Text(
+            text = label.uppercase(),
+            style = SlockType.SectionLabel.copy(fontSize = 10.sp, lineHeight = 12.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable
@@ -629,6 +644,104 @@ private fun SharedTasksPillButton(
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+@Composable
+private fun SharedTasksFilterChip(
+    label: String,
+    iconName: String? = null,
+    active: Boolean,
+    enabled: Boolean = true,
+    count: Int? = null,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier =
+            Modifier
+                .heightIn(min = 30.dp)
+                .background(if (active) SlockColor.AccentCyan else SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, if (enabled) SlockColor.BorderBlack else SlockColor.EmptyStateGray)
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        iconName?.let {
+            SlockLucideIcon(it, modifier = Modifier.size(14.dp), color = "#FF000000")
+        }
+        Text(
+            text = label.uppercase(),
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp, lineHeight = 14.sp),
+            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        count?.let {
+            Text(
+                text = it.toString(),
+                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 10.sp),
+                color = SlockColor.TextBlack,
+                modifier =
+                    Modifier
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                        .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+private fun SharedTasksSegmentedControl(
+    selectedMode: TasksViewMode,
+    onModeSelected: (TasksViewMode) -> Unit
+) {
+    Row(
+        modifier = Modifier.border(SlockStroke.Default, SlockColor.BorderBlack),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SharedTasksSegmentButton(
+            label = "Board",
+            iconName = "columns-3",
+            selected = selectedMode == TasksViewMode.Board,
+            onClick = { onModeSelected(TasksViewMode.Board) }
+        )
+        Box(Modifier.width(SlockStroke.Default).height(30.dp).background(SlockColor.BorderBlack))
+        SharedTasksSegmentButton(
+            label = "List",
+            iconName = "list",
+            selected = selectedMode == TasksViewMode.List,
+            onClick = { onModeSelected(TasksViewMode.List) }
+        )
+    }
+}
+
+@Composable
+private fun SharedTasksSegmentButton(
+    label: String,
+    iconName: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier =
+            Modifier
+                .heightIn(min = 30.dp)
+                .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                .clickable(onClick = onClick)
+                .padding(horizontal = SlockSpacing.Sm, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        SlockLucideIcon(iconName, modifier = Modifier.size(12.dp), color = "#FF000000")
+        Text(
+            text = label.uppercase(),
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp, lineHeight = 14.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1
+        )
     }
 }
 
@@ -715,6 +828,31 @@ private val TaskStatus.color: com.tencent.kuikly.compose.ui.graphics.Color
             TaskStatus.Done -> SlockColor.AccentLime
             TaskStatus.Closed -> SlockColor.EmptyStateGray
         }
+
+private val TaskStatus.iconName: String
+    get() =
+        when (this) {
+            TaskStatus.Todo -> "circle"
+            TaskStatus.InProgress -> "play"
+            TaskStatus.InReview -> "eye"
+            TaskStatus.Done -> "circle-check"
+            TaskStatus.Closed -> "ban"
+        }
+
+private fun TaskStatus.nextStatus(): TaskStatus =
+    when (this) {
+        TaskStatus.Todo -> TaskStatus.InProgress
+        TaskStatus.InProgress -> TaskStatus.InReview
+        TaskStatus.InReview -> TaskStatus.Done
+        TaskStatus.Done -> TaskStatus.Closed
+        TaskStatus.Closed -> TaskStatus.Todo
+    }
+
+private fun TaskSummary.tasksMeaningfulDisplayTitle(): String {
+    val raw = tasksDisplayTitle()
+    val numberLabel = taskNumber?.let { "#$it" } ?: return raw
+    return raw.removePrefix(numberLabel).trim().takeIf { it.isNotBlank() } ?: raw
+}
 
 private fun List<TaskSummary>.sortedByTaskDisplayOrder(): List<TaskSummary> =
     sortedWith(
