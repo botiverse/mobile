@@ -1,23 +1,33 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.MemberId
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 
 private val announcementsRemindersJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
+    explicitNulls = false
+    coerceInputValues = true
 }
 
 /**
  * Typed Announcements/Reminders boundary.
  *
- * Active announcements parse `{ announcements: [...] }`, dismiss requires an
- * `{ ok: true }` body, and reminders parse `{ reminders: [...] }`. There is no
- * Android-product-only guessed reminder write route in this shared boundary.
+ * Server contracts (`packages/server/src/routes/announcements.ts`,
+ * `packages/server/src/routes/reminders.ts`):
+ *  - GET  /announcements/active     → `{ announcements: Announcement[] }`
+ *  - POST /announcements/:id/dismiss → `{ ok: true }`
+ *  - GET  /reminders                → `{ reminders: ReminderSummary[] }`
+ *
+ * Domain shapes are defined in `packages/shared/src/index.ts`:
+ *  - `Announcement { id, title, pages: AnnouncementPage[], publishedAt }`
+ *  - `AnnouncementPage { title?, body }`
+ *  - `ReminderSummary { reminderId, title, status, fireAt, createdAt, ... }`
+ *
+ * Field names are canonical camelCase. Do not add snake_case fallbacks here.
  */
 interface SlockAnnouncementsRemindersApi {
     suspend fun activeAnnouncements(): HomeNetworkResponse
@@ -29,32 +39,33 @@ class SlockAnnouncementsRemindersApiClient(
     private val transport: SlockAnnouncementsRemindersApi
 ) {
     suspend fun activeAnnouncements(): DataResult<AnnouncementsPage> =
-        transport.activeAnnouncements().mapAnnouncementsBody("announcements_active_contract_mismatch") { root ->
-            val announcements = root["announcements"] as? JsonArray ?: return@mapAnnouncementsBody null
-            AnnouncementsPage(
-                announcementCount = announcements.size,
-                firstTitle = announcements.firstOrNullObject()?.string("title"),
-                firstPageCount = announcements.firstOrNullObject()?.let { announcement ->
-                    (announcement["pages"] as? JsonArray)?.size
-                },
-                items = announcements.mapNotNull { (it as? JsonObject)?.toAnnouncementItem() }
-            )
-        }
+        transport.activeAnnouncements()
+            .mapAnnouncementsBody("announcements_active_contract_mismatch", AnnouncementsListResponseDto.serializer()) { dto ->
+                val items = dto.announcements.mapNotNull { it.toDomain() }
+                AnnouncementsPage(
+                    announcementCount = dto.announcements.size,
+                    firstTitle = dto.announcements.firstOrNull()?.title,
+                    firstPageCount = dto.announcements.firstOrNull()?.pages?.size,
+                    items = items
+                )
+            }
 
     suspend fun dismissAnnouncement(announcementId: String): DataResult<AnnouncementCommandResult> =
-        transport.dismissAnnouncement(announcementId).mapAnnouncementsBody("announcement_dismiss_contract_mismatch") { root ->
-            AnnouncementCommandResult(ok = root.boolean("ok")?.takeIf { it } ?: return@mapAnnouncementsBody null)
-        }
+        transport.dismissAnnouncement(announcementId)
+            .mapAnnouncementsBody("announcement_dismiss_contract_mismatch", DismissResponseDto.serializer()) { dto ->
+                if (!dto.ok) return@mapAnnouncementsBody null
+                AnnouncementCommandResult(ok = true)
+            }
 
     suspend fun reminders(ownerAgentId: MemberId, status: String = "scheduled"): DataResult<RemindersPage> =
-        transport.reminders(ownerAgentId, status).mapAnnouncementsBody("reminders_list_contract_mismatch") { root ->
-            val reminders = root["reminders"] as? JsonArray ?: return@mapAnnouncementsBody null
-            RemindersPage(
-                reminderCount = reminders.size,
-                firstTitle = reminders.firstOrNullObject()?.string("title"),
-                firstStatus = reminders.firstOrNullObject()?.string("status")
-            )
-        }
+        transport.reminders(ownerAgentId, status)
+            .mapAnnouncementsBody("reminders_list_contract_mismatch", RemindersListResponseDto.serializer()) { dto ->
+                RemindersPage(
+                    reminderCount = dto.reminders.size,
+                    firstTitle = dto.reminders.firstOrNull()?.title,
+                    firstStatus = dto.reminders.firstOrNull()?.status
+                )
+            }
 }
 
 data class AnnouncementsPage(
@@ -87,76 +98,84 @@ data class RemindersPage(
     val firstStatus: String?
 )
 
-private inline fun <T> HomeNetworkResponse.mapAnnouncementsBody(
+/**
+ * Single-shot, typed decode of the response body. See the realtime mapper for
+ * the same pattern; a contract mismatch on any required field collapses to
+ * [DataResult.Error] with the supplied code.
+ */
+private inline fun <Wire, T> HomeNetworkResponse.mapAnnouncementsBody(
     contractCode: String,
-    mapper: (JsonObject) -> T?
+    serializer: KSerializer<Wire>,
+    crossinline transform: (Wire) -> T?,
 ): DataResult<T> {
     if (!isSuccessful) {
         return DataResult.Error(ScreenError(code = contractCode, retryable = code >= 500))
     }
     val body = bodyText?.takeIf { it.isNotBlank() }
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    val root = runCatching { announcementsRemindersJson.parseToJsonElement(body) as? JsonObject }.getOrNull()
-        ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    val value = mapper(root)
+    val wire = try {
+        announcementsRemindersJson.decodeFromString(serializer, body)
+    } catch (_: SerializationException) {
+        return DataResult.Error(ScreenError(code = contractCode, retryable = false))
+    }
+    val value = transform(wire)
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
     return DataResult.Content(value)
 }
 
-private fun JsonArray.firstOrNullObject(): JsonObject? = firstOrNull() as? JsonObject
+// ── Wire DTOs ──
+// Source of truth: packages/shared/src/index.ts and the route files above.
+// Field names are exact matches; no snake_case fallbacks.
 
-private fun JsonObject.toAnnouncementItem(): AnnouncementItem? {
-    val id = string("id", "_id", "announcementId", "announcement_id") ?: return null
-    val firstPage = (this["pages"] as? JsonArray)?.firstOrNullObject()
-    val title = string("title", "name")
-        ?: firstPage?.string("title", "name")
-        ?: return null
-    val body = string("body", "message", "description", "content", "subtitle")
-        ?: firstPage?.string("body", "message", "description", "content", "subtitle")
-        ?: title
-    val actionLabel = string("actionLabel", "action_label", "primaryActionLabel", "ctaLabel")
-        ?: actionObject()?.string("label", "title")
-        ?: "View"
-    val targetId = string("targetId", "target_id", "url", "href", "link")
-        ?: actionObject()?.string("targetId", "target_id", "url", "href", "link")
+@Serializable
+private data class AnnouncementsListResponseDto(
+    val announcements: List<AnnouncementWireDto>,
+)
+
+@Serializable
+private data class AnnouncementWireDto(
+    val id: String,
+    val title: String,
+    val pages: List<AnnouncementPageWireDto> = emptyList(),
+    val publishedAt: String? = null,
+)
+
+@Serializable
+private data class AnnouncementPageWireDto(
+    val title: String? = null,
+    val body: String,
+)
+
+@Serializable
+private data class DismissResponseDto(
+    val ok: Boolean,
+)
+
+@Serializable
+private data class RemindersListResponseDto(
+    val reminders: List<ReminderWireDto>,
+)
+
+@Serializable
+private data class ReminderWireDto(
+    val reminderId: String,
+    val ownerAgentId: String? = null,
+    val title: String,
+    val status: String,
+    val fireAt: String? = null,
+    val firedAt: String? = null,
+    val createdAt: String? = null,
+)
+
+private fun AnnouncementWireDto.toDomain(): AnnouncementItem? {
+    // Server contract: pages[0].body is the inline body shown by the popup.
+    val body = pages.firstOrNull()?.body ?: return null
     return AnnouncementItem(
         id = id,
         title = title,
         body = body,
-        actionLabel = actionLabel,
-        targetId = targetId,
-        kind = announcementKind()
+        // actionLabel / targetId / kind are not part of the server Announcement
+        // contract. Keep the data-class defaults; never sniff `kind`/`type`
+        // strings to fabricate severity.
     )
 }
-
-private fun JsonObject.actionObject(): JsonObject? =
-    (this["action"] as? JsonObject)
-        ?: (this["primaryAction"] as? JsonObject)
-        ?: ((this["actions"] as? JsonArray)?.firstOrNull() as? JsonObject)
-
-private fun JsonObject.announcementKind(): AnnouncementKind {
-    val raw = string("kind", "type", "severity", "level", "variant").orEmpty().lowercase()
-    return when {
-        raw.contains("error") || raw.contains("danger") || raw.contains("critical") -> AnnouncementKind.Error
-        raw.contains("warn") || raw.contains("outdated") || raw.contains("upgrade") || raw.contains("update") -> AnnouncementKind.Warning
-        else -> AnnouncementKind.Info
-    }
-}
-
-private fun JsonObject.string(vararg keys: String): String? =
-    keys.firstNotNullOfOrNull { key -> (this[key] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotBlank() } }
-
-private fun JsonObject.string(key: String): String? =
-    string(*arrayOf(key))
-
-private fun JsonObject.boolean(key: String): Boolean? =
-    when (val primitive = this[key] as? JsonPrimitive) {
-        null -> null
-        else -> primitive.contentOrNull?.trim()?.lowercase()?.let { value ->
-            when (value) {
-                "true" -> true
-                "false" -> false
-                else -> null
-            }
-        }
-    }

@@ -20,9 +20,13 @@ class AnnouncementsRemindersApiTest {
         assertEquals("announcement-1", announcements.items.single().id)
         assertEquals("Release notes", announcements.items.single().title)
         assertEquals("One", announcements.items.single().body)
-        assertEquals("Open", announcements.items.single().actionLabel)
-        assertEquals("https://slock.ai/releases", announcements.items.single().targetId)
-        assertEquals(AnnouncementKind.Warning, announcements.items.single().kind)
+        // The server `Announcement` contract (packages/shared/src/index.ts) is
+        // strictly { id, title, pages, publishedAt }. There is no severity or
+        // action; the parser must use the data-class defaults instead of
+        // sniffing speculative fields.
+        assertEquals("View", announcements.items.single().actionLabel)
+        assertEquals(null, announcements.items.single().targetId)
+        assertEquals(AnnouncementKind.Info, announcements.items.single().kind)
 
         assertEquals(
             true,
@@ -72,7 +76,7 @@ class AnnouncementsRemindersApiTest {
 
     private class RecordingAnnouncementsRemindersApi(
         private val activeBody: String =
-            """{"announcements":[{"id":"announcement-1","title":"Release notes","severity":"warning","action":{"label":"Open","url":"https://slock.ai/releases"},"pages":[{"body":"One"},{"body":"Two"}],"publishedAt":"2026-05-22T00:00:00.000Z"}]}""",
+            """{"announcements":[{"id":"announcement-1","title":"Release notes","pages":[{"body":"One"},{"body":"Two"}],"publishedAt":"2026-05-22T00:00:00.000Z"}]}""",
         private val dismissBody: String = """{"ok":true}""",
         private val remindersBody: String =
             """{"reminders":[{"reminderId":"reminder-1","title":"standup","fireAt":"2026-05-22T00:00:00.000Z","status":"scheduled"}]}"""

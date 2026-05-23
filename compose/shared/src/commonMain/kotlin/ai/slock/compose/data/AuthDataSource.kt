@@ -1,19 +1,19 @@
 package ai.slock.compose.data
 
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 
 private val authJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
+    explicitNulls = false
+    coerceInputValues = true
 }
 
 class SharedAuthDataSource(
@@ -253,31 +253,17 @@ interface SlockAuthApi {
 class SlockAuthApiClient(
     private val transport: SlockAuthTransport
 ) : SlockAuthApi {
-    override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> {
-        val response = transport.login(authJson.encodeToString(LoginRequestPayload(email = email, password = password)))
-        return response.mapAuthBody("auth_login_contract_mismatch") { element ->
-            val root = element.asObjectOrNull() ?: return@mapAuthBody null
-            val user = (root.objectOrNull("user") ?: return@mapAuthBody null).toStoredUser() ?: return@mapAuthBody null
-            val accessToken = root.string("accessToken") ?: return@mapAuthBody null
-            val refreshToken = root.string("refreshToken") ?: return@mapAuthBody null
-            AuthLoginResponse(user = user, accessToken = accessToken, refreshToken = refreshToken)
-        }
-    }
+    override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
+        transport.login(authJson.encodeToString(LoginRequestPayload(email = email, password = password)))
+            .mapAuthBody("auth_login_contract_mismatch", AuthLoginResponseDto.serializer()) { it.toDomain() }
 
     override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
-        transport.currentUser(authorization).mapAuthBody("auth_me_contract_mismatch") { element ->
-            element.asObjectOrNull()?.toStoredUser()
-        }
+        transport.currentUser(authorization)
+            .mapAuthBody("auth_me_contract_mismatch", StoredAuthUser.serializer()) { it }
 
-    override suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse> {
-        val response = transport.refresh(authJson.encodeToString(RefreshRequestPayload(refreshToken = refreshToken)))
-        return response.mapAuthBody("auth_refresh_contract_mismatch") { element ->
-            val root = element.asObjectOrNull() ?: return@mapAuthBody null
-            val accessToken = root.string("accessToken") ?: return@mapAuthBody null
-            val nextRefreshToken = root.string("refreshToken") ?: return@mapAuthBody null
-            AuthRefreshResponse(accessToken = accessToken, refreshToken = nextRefreshToken)
-        }
-    }
+    override suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse> =
+        transport.refresh(authJson.encodeToString(RefreshRequestPayload(refreshToken = refreshToken)))
+            .mapAuthBody("auth_refresh_contract_mismatch", AuthRefreshResponseDto.serializer()) { it.toDomain() }
 
     override suspend fun logout(refreshToken: String): AuthApiResult<Unit> {
         val response = transport.logout(authJson.encodeToString(LogoutRequestPayload(refreshToken = refreshToken)))
@@ -286,14 +272,12 @@ class SlockAuthApiClient(
     }
 
     override suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>> =
-        transport.servers(authorization).mapAuthBody("servers_list_contract_mismatch") { element ->
-            (element as? JsonArray)?.mapNotNull { it.asObjectOrNull()?.toStoredServer() }
-        }
+        transport.servers(authorization)
+            .mapAuthBody("servers_list_contract_mismatch", ListSerializer(StoredAuthServer.serializer())) { it }
 
     override suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer> =
-        transport.createServer(authorization, bodyText).mapAuthBody("server_create_contract_mismatch") { element ->
-            element.asObjectOrNull()?.toStoredServer()
-        }
+        transport.createServer(authorization, bodyText)
+            .mapAuthBody("server_create_contract_mismatch", StoredAuthServer.serializer()) { it }
 }
 
 interface SlockAuthTransport {
@@ -368,7 +352,11 @@ private data class LogoutRequestPayload(
 )
 
 private fun AuthApiResult.Failure.toSharedAuthFailure(): SharedAuthResult.Failure {
-    val message = errorBodyText?.parseJsonElementOrNull()?.asObjectOrNull()?.string("error", "message")
+    val errorDto = errorBodyText?.let { body ->
+        runCatching { authJson.decodeFromString(AuthErrorBodyDto.serializer(), body) }.getOrNull()
+    }
+    val message = errorDto?.error?.takeIf { it.isNotBlank() }
+        ?: errorDto?.message?.takeIf { it.isNotBlank() }
     return when {
         contractCode != null ->
             SharedAuthResult.Failure(
@@ -406,77 +394,62 @@ private fun AuthApiResult.Failure.toSharedAuthFailure(): SharedAuthResult.Failur
 private fun AuthNetworkResponse.toAuthApiFailure(): AuthApiResult.Failure =
     AuthApiResult.Failure(code = code, errorBodyText = errorBodyText)
 
-private inline fun <T> AuthNetworkResponse.mapAuthBody(
+/**
+ * Single-shot, typed decode of the response body.
+ *
+ * Mirrors the shared realtime mapper: success path decodes the whole body via
+ * an explicit [KSerializer]; any deviation from the canonical server shape
+ * (missing required field, wrong type, malformed JSON, non-2xx status) becomes
+ * a [AuthApiResult.Failure] with the supplied contract code.
+ *
+ * Field names in the wire DTOs (see below) must match the server emit shape
+ * exactly. No snake_case fallbacks, no alias chains.
+ */
+private inline fun <Wire, T> AuthNetworkResponse.mapAuthBody(
     contractCode: String,
-    mapper: (JsonElement) -> T?
+    serializer: KSerializer<Wire>,
+    crossinline transform: (Wire) -> T,
 ): AuthApiResult<T> {
     if (!isSuccessful) return toAuthApiFailure()
-    val element = bodyText?.parseJsonElementOrNull()
+    val body = bodyText?.takeIf { it.isNotBlank() }
         ?: return AuthApiResult.Failure(code = code, contractCode = contractCode)
-    val value = mapper(element)
-        ?: return AuthApiResult.Failure(code = code, contractCode = contractCode)
-    return AuthApiResult.Success(value)
-}
-
-private fun JsonObject.toStoredUser(): StoredAuthUser? {
-    val id = string("id") ?: return null
-    val email = string("email", "mail") ?: ""
-    return StoredAuthUser(
-        id = id,
-        email = email,
-        name = string("name"),
-        displayName = string("displayName"),
-        description = string("description", "bio"),
-        avatarUrl = string("avatarUrl"),
-        gravatarHash = string("gravatarHash"),
-        emailVerified = boolean("emailVerified")
-    )
-}
-
-private fun JsonObject.toStoredServer(): StoredAuthServer? {
-    val id = string("id") ?: return null
-    val name = string("name") ?: id
-    return StoredAuthServer(
-        id = id,
-        name = name,
-        slug = string("slug"),
-        ownerId = string("ownerId", "owner_id"),
-        onboardingAgentId = string("onboardingAgentId", "onboarding_agent_id"),
-        plan = string("plan"),
-        planDowngradedAt = string("planDowngradedAt", "plan_downgraded_at"),
-        role = string("role"),
-        createdAt = string("createdAt", "created_at")
-    )
-}
-
-private fun String.parseJsonElementOrNull(): JsonElement? =
-    runCatching { authJson.parseToJsonElement(this) }.getOrNull()
-
-private fun JsonElement.asObjectOrNull(): JsonObject? = this as? JsonObject
-
-private fun JsonObject.objectOrNull(name: String): JsonObject? = this[name] as? JsonObject
-
-private fun JsonObject.string(vararg names: String): String? {
-    for (name in names) {
-        val primitive = this[name] as? JsonPrimitive ?: continue
-        primitive.contentOrNull?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+    val wire = try {
+        authJson.decodeFromString(serializer, body)
+    } catch (_: SerializationException) {
+        return AuthApiResult.Failure(code = code, contractCode = contractCode)
     }
-    return null
+    return AuthApiResult.Success(transform(wire))
 }
 
-private fun JsonObject.boolean(vararg names: String): Boolean? {
-    for (name in names) {
-        val primitive = this[name] as? JsonPrimitive ?: continue
-        primitive.booleanOrNull?.let { return it }
-        primitive.contentOrNull?.lowercase()?.let { value ->
-            when (value) {
-                "true", "1", "yes" -> return true
-                "false", "0", "no" -> return false
-            }
-        }
-    }
-    return null
-}
+// ── Wire DTOs ──
+// Source of truth: packages/server/src/routes/auth.ts and
+// packages/server/src/services/userService.ts. Field names mirror the server's
+// JSON emit shape exactly.
+
+@Serializable
+private data class AuthLoginResponseDto(
+    val user: StoredAuthUser,
+    val accessToken: String,
+    val refreshToken: String,
+)
+
+private fun AuthLoginResponseDto.toDomain(): AuthLoginResponse =
+    AuthLoginResponse(user = user, accessToken = accessToken, refreshToken = refreshToken)
+
+@Serializable
+private data class AuthRefreshResponseDto(
+    val accessToken: String,
+    val refreshToken: String,
+)
+
+private fun AuthRefreshResponseDto.toDomain(): AuthRefreshResponse =
+    AuthRefreshResponse(accessToken = accessToken, refreshToken = refreshToken)
+
+@Serializable
+private data class AuthErrorBodyDto(
+    val error: String? = null,
+    val message: String? = null,
+)
 
 private fun StoredAuthSession.bearer(): String = "Bearer $accessToken"
 
