@@ -9,7 +9,9 @@ import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
 import ai.slock.compose.data.BridgeTasksApi
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KuiklyAuthSessionStore
+import ai.slock.compose.data.KuiklyNotificationPreferenceEvents
 import ai.slock.compose.data.KuiklyRelationalStore
+import ai.slock.compose.data.NotificationPreferenceSnapshot
 import ai.slock.compose.data.RelationalComposeLocalDataStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthErrorCode
@@ -41,6 +43,7 @@ import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.parseSlockHome
 import ai.slock.compose.data.BridgeThreadApi
+import ai.slock.compose.data.kuiklyNotificationPreferenceRepository
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ConversationSummary
@@ -70,6 +73,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -106,6 +110,7 @@ import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -435,6 +440,15 @@ private fun SlockAppShellContent() {
             )
         }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
+    val notificationPreferenceEvents = remember(pager) { KuiklyNotificationPreferenceEvents(pager) }
+    val notificationPreferenceRepository =
+        remember(pager, notificationPreferenceEvents) {
+            kuiklyNotificationPreferenceRepository(pager, notificationPreferenceEvents)
+        }
+    val notificationPreferenceScope = rememberCoroutineScope()
+    var notificationPreferenceSnapshot by remember {
+        mutableStateOf(NotificationPreferenceSnapshot(enabled = false))
+    }
     val settingsDataSource =
         remember {
             SharedSettingsDataSource(
@@ -478,6 +492,19 @@ private fun SlockAppShellContent() {
 
     LaunchedEffect(Unit) {
         authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+    }
+    LaunchedEffect(notificationPreferenceRepository) {
+        notificationPreferenceSnapshot =
+            notificationPreferenceRepository.getNotificationPreference()
+    }
+    DisposableEffect(notificationPreferenceEvents) {
+        val callbackRef =
+            notificationPreferenceEvents.addPreferenceListener { snapshot ->
+                notificationPreferenceSnapshot = snapshot
+            }
+        onDispose {
+            notificationPreferenceEvents.removePreferenceListener(callbackRef)
+        }
     }
     LaunchedEffect(authStore) {
         authStore.sessionInvalidations.collect {
@@ -664,6 +691,13 @@ private fun SlockAppShellContent() {
                                 authDataSource = authDataSource,
                                 settingsCapabilities = settingsCapabilities,
                                 settingsState = settingsState,
+                                notificationPreferenceSnapshot = notificationPreferenceSnapshot,
+                                onToggleNotificationPreference = {
+                                    notificationPreferenceScope.launch {
+                                        notificationPreferenceSnapshot =
+                                            notificationPreferenceRepository.setNotificationEnabled(!notificationPreferenceSnapshot.enabled)
+                                    }
+                                },
                                 onSettingsIntent = settingsViewModel::dispatch,
                                 membersApi = membersApi,
                                 selectedDestination = selectedSettingsDestination,
@@ -733,6 +767,8 @@ private fun SettingsAppShellContent(
     authDataSource: SharedAuthDataSource,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
     settingsState: SharedSettingsState,
+    notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
+    onToggleNotificationPreference: () -> Unit,
     onSettingsIntent: (SharedSettingsIntent) -> Unit,
     membersApi: BridgeMembersApi,
     selectedDestination: String,
@@ -825,8 +861,10 @@ private fun SettingsAppShellContent(
             SettingsDestinationServer ->
                 SharedServerSettingsContent(session, membersApi, onSettingsAction)
             SettingsDestinationMobile ->
-                SharedSettingsSectionContent(appShellMobilePayload()) { action, itemId ->
+                SharedSettingsSectionContent(appShellMobilePayload(notificationPreferenceSnapshot.enabled)) { action, itemId ->
                     when (action) {
+                        "notificationPreference" ->
+                            onToggleNotificationPreference()
                         "notificationPermission" ->
                             onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission)
                         "openNotificationSettings" ->
@@ -1328,7 +1366,7 @@ private fun MemberProfile.isWorkspaceAdmin(): Boolean {
         }
 }
 
-private fun appShellMobilePayload(): KuiklySharedSettingsPayload =
+private fun appShellMobilePayload(notificationsEnabledByUser: Boolean): KuiklySharedSettingsPayload =
     KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-mobile",
         title = "Mobile",
@@ -1341,6 +1379,14 @@ private fun appShellMobilePayload(): KuiklySharedSettingsPayload =
                     title = "Notifications",
                     rows =
                         listOf(
+                            KuiklySharedSettingsRow(
+                                "notificationPreference",
+                                "bell-ring",
+                                "Notification preference",
+                                "Stored in Kuikly SharedPreferences and broadcast through Kuikly Notify.",
+                                status = if (notificationsEnabledByUser) "Enabled" else "Off",
+                                enabled = true
+                            ),
                             KuiklySharedSettingsRow("notificationPermission", "bell", "Push permission", "Request or refresh the platform notification permission through the shared host capability.", status = "Request", enabled = true),
                             KuiklySharedSettingsRow("openNotificationSettings", "settings", "System notification settings", "Open the platform notification settings page from the shared KMP action.", status = "Open", enabled = true),
                             KuiklySharedSettingsRow("sendTestNotification", "send", "Send test notification", "Post a local system notification through the platform host capability.", status = "Send", enabled = true),
