@@ -66,6 +66,7 @@ import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Density
@@ -196,7 +197,15 @@ internal data class KuiklyThreadMessageItem(
     val taskNumber: Int? = null,
     val taskStatus: String? = null,
     val taskAssigneeName: String? = null,
+    val reactions: List<KuiklyThreadReactionItem> = emptyList(),
     val attachments: List<KuiklyThreadAttachmentItem> = emptyList()
+)
+
+@Serializable
+internal data class KuiklyThreadReactionItem(
+    val emoji: String,
+    val count: Int = 0,
+    val selected: Boolean = false
 )
 
 @Serializable
@@ -352,7 +361,7 @@ private fun ThreadMessageVisualScreen() {
             )
         }
     val message = payload.messages.firstOrNull()
-    Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
+    Column(modifier = Modifier.width(342.dp).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
         if (message != null) {
             ThreadMessageCard(
                 message = message,
@@ -368,7 +377,8 @@ private fun ThreadMessageVisualScreen() {
                 onTaskStatusChange = { _, _ -> },
                 onOpenAttachment = {},
                 onOpenMarkdownTag = {},
-                onOpenMarkdownUrl = {}
+                onOpenMarkdownUrl = {},
+                outerPadding = 0.dp
             )
         }
     }
@@ -1297,6 +1307,7 @@ private fun JsonObject.toSharedThreadMessageItem(
         taskAssigneeName =
             threadString("taskAssigneeName", "task_assignee_name", "assigneeName", "assignee_name")
                 ?: task?.threadTaskAssigneeName(),
+        reactions = threadReactionItems(),
         attachments = (this["attachments"] as? JsonArray)?.mapIndexedNotNull { attachmentIndex, item ->
             (item as? JsonObject)?.toSharedThreadAttachmentItem(attachmentIndex)
         }.orEmpty()
@@ -1460,6 +1471,24 @@ private fun JsonObject.threadTaskAssigneeName(): String? =
                 "username",
                 "email"
             )
+
+private fun JsonObject.threadReactionItems(): List<KuiklyThreadReactionItem> {
+    val raw = (this["reactions"] as? JsonArray)
+        ?: (this["reactionSummary"] as? JsonArray)
+        ?: (this["reaction_summary"] as? JsonArray)
+        ?: return emptyList()
+    return raw.mapNotNull { item ->
+        val obj = item as? JsonObject ?: return@mapNotNull null
+        val emoji =
+            obj.threadString("emoji", "reaction", "value", "name", "key")
+                ?: return@mapNotNull null
+        KuiklyThreadReactionItem(
+            emoji = emoji,
+            count = obj.threadInt("count", "total") ?: 0,
+            selected = obj.threadBoolean("selected", "reacted", "isSelected") ?: false
+        )
+    }
+}
 
 private fun JsonObject.threadString(vararg names: String): String? =
     names.firstNotNullOfOrNull { name ->
@@ -2269,17 +2298,23 @@ private fun ThreadMessageCard(
     onTaskStatusChange: (String, ThreadTaskStatusOption) -> Unit,
     onOpenAttachment: (String) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
-    onOpenMarkdownUrl: (String) -> Unit
+    onOpenMarkdownUrl: (String) -> Unit,
+    outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Md
 ) {
     val horizontalArrangement =
-        if (alignOwnMessageRight) Arrangement.spacedBy(SlockSpacing.Md, Alignment.End) else Arrangement.spacedBy(SlockSpacing.Md)
+        if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
     val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start
     val messageMaxWidthFraction = if (alignOwnMessageRight) 0.82f else 1f
     Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).padding(horizontal = outerPadding, vertical = SlockSpacing.Sm)
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = 6.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceCream)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(SlockSpacing.Sm),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             Row(
@@ -2318,7 +2353,7 @@ private fun ThreadMessageCard(
                         ) {
                             Text(
                                 text = message.authorName,
-                                style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                                style = SlockType.Button.copy(fontWeight = FontWeight.Bold, color = SlockColor.TextBlack),
                                 color = SlockColor.TextBlack,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -2326,8 +2361,12 @@ private fun ThreadMessageCard(
                             )
                             Text(
                                 text = timestampLabel,
-                                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                                color = SlockColor.TextMutedGray,
+                                style =
+                                    SlockType.Caption.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        color = SlockColor.TextBlack.copy(alpha = 0.4f)
+                                    ),
+                                color = SlockColor.TextBlack.copy(alpha = 0.4f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -2382,6 +2421,49 @@ private fun ThreadMessageCard(
     }
 }
 
+@Composable
+private fun ThreadReactionChip(reaction: KuiklyThreadReactionItem) {
+    val background = if (reaction.selected) SlockColor.AccentPink else SlockColor.SurfaceWhite
+    Box(
+        modifier = Modifier
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .background(background)
+            .padding(horizontal = 6.dp, vertical = 3.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = buildString {
+                append(reaction.emoji)
+                if (reaction.count > 0) {
+                    append(" ")
+                    append(reaction.count)
+                }
+            },
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, lineHeight = 14.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun ThreadReactionAddChip() {
+    Box(
+        modifier = Modifier
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .background(SlockColor.EmptyStateGray)
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "+",
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, lineHeight = 14.sp),
+            color = SlockColor.TextBlack
+        )
+    }
+}
+
 private fun Modifier.threadMessageContentWidth(maxWidthFraction: Float): Modifier =
     widthIn(max = 680.dp).fillMaxWidth(maxWidthFraction)
 
@@ -2415,14 +2497,15 @@ private fun ThreadMessageFooterMeta(
             !message.taskStatus.isNullOrBlank() ||
             !message.taskAssigneeName.isNullOrBlank()
     val hasReplies = showReplyAction && message.replyCount > 0
-    if (!hasTask && !hasReplies) return
+    val hasReactions = message.reactions.isNotEmpty()
+    if (!hasTask && !hasReplies && !hasReactions) return
     var statusSheetOpen by remember(message.id, message.taskStatus) { mutableStateOf(false) }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement =
-            if (alignEnd) Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End) else Arrangement.spacedBy(SlockSpacing.Sm)
+            if (alignEnd) Arrangement.spacedBy(6.dp, Alignment.End) else Arrangement.spacedBy(6.dp)
     ) {
         if (hasTask) {
             val label =
@@ -2436,14 +2519,13 @@ private fun ThreadMessageFooterMeta(
             val selectedStatus = message.taskStatus.threadTaskStatusOption()
             ThreadMetaChip(
                 label = label,
-                icon = selectedStatus.icon,
+                icon = null,
                 color = selectedStatus.color,
                 onClick = if (taskOpenEnabled || taskStatusActionsEnabled) {
                     { statusSheetOpen = true }
                 } else {
                     null
-                },
-                modifier = Modifier.weight(1f, fill = false)
+                }
             )
             if (statusSheetOpen && (taskOpenEnabled || taskStatusActionsEnabled)) {
                 ThreadTaskStatusSheet(
@@ -2480,9 +2562,14 @@ private fun ThreadMessageFooterMeta(
                 label = replyLabel,
                 icon = "message-square",
                 color = SlockColor.AppBgLightBlue,
-                onClick = onOpenThread,
-                modifier = Modifier.weight(1f, fill = false)
+                onClick = onOpenThread
             )
+        }
+        if (hasReactions) {
+            message.reactions.forEach { reaction ->
+                ThreadReactionChip(reaction)
+            }
+            ThreadReactionAddChip()
         }
     }
 }
@@ -2647,7 +2734,7 @@ private fun ThreadTaskStatusSheetRow(
 @Composable
 private fun ThreadMetaChip(
     label: String,
-    icon: String,
+    icon: String?,
     color: Color,
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier
@@ -2658,14 +2745,16 @@ private fun ThreadMetaChip(
             .border(SlockStroke.Thin, SlockColor.BorderBlack)
             .background(color)
             .then(clickableModifier)
-            .padding(horizontal = 8.dp, vertical = 3.dp),
+            .padding(horizontal = 6.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-        ) {
-            SlockLucideIcon(icon, modifier = Modifier.size(12.dp), color = "#FF000000")
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+            icon?.takeIf { it.isNotBlank() }?.let {
+                SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
+            }
             Text(
                 text = label,
                 style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, lineHeight = 14.sp),
@@ -2963,7 +3052,7 @@ private fun ThreadMessageAvatar(
         contentAlignment = Alignment.Center
     ) {
         SlockAvatarWithStatus(
-            statusColor = if (showStatus) SlockColor.BrandYellow else null,
+            statusColor = if (showStatus) SlockColor.AccentLime else null,
             avatarSize = 40.dp,
             statusSize = 10.dp
         ) {

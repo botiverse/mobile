@@ -55,7 +55,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row")
                     .put("payload", threadMessageRowPayload().toString()),
-            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 390, heightDp = 180)
+            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 342, heightDp = 205)
         )
     }
 
@@ -350,16 +350,23 @@ class KmpVisualScreenshotCaptureTest {
             .put("authorName", "Android Developer")
             .put("isOwn", false)
             .put("avatarLabel", "AD")
-            .put("timestampLabel", "10:48")
+            .put("timestampLabel", "05/20 12:48")
             .put("messageType", "Chat")
             .put(
                 "body",
                 "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。关联 #design 和 @Product-UX-Designer。"
             )
             .put("replyCount", 5)
+            .put("unreadReplyCount", 2)
+            .put("firstUnreadReplyMessageId", "reply_2")
             .put("taskId", "task_msg_10")
             .put("taskNumber", 10)
             .put("taskStatus", "in_review")
+            .put(
+                "reactions",
+                JSONArray()
+                    .put(JSONObject().put("emoji", "👍").put("count", 1).put("selected", true))
+            )
 
     private fun conversation(
         id: String,

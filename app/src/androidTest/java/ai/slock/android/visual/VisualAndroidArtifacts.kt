@@ -4,6 +4,7 @@ import android.os.Environment
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.io.FileInputStream
+import java.io.IOException
 
 internal object VisualAndroidArtifacts {
     private const val PublicOutputPath = "/sdcard/Download/slock-visual-testing/android"
@@ -26,10 +27,16 @@ internal object VisualAndroidArtifacts {
         val outputDir = publicOutputDir()
         outputDir.mkdirs()
         val destination = File(outputDir, file.name)
-        file.inputStream().use { input ->
-            destination.outputStream().use { output ->
-                input.copyTo(output)
+        try {
+            file.inputStream().use { input ->
+                destination.outputStream().use { output ->
+                    input.copyTo(output)
+                }
             }
+        } catch (_: IOException) {
+            // Android 15+/16 scoped storage can deny direct Download writes for the
+            // test package. The authoritative artifact remains in app-internal
+            // storage and can be pulled with run-as; mirroring is best-effort.
         }
     }
 

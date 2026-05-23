@@ -152,6 +152,9 @@ class ThreadPayloadTest {
                             "attachments": [
                               {"id": "a1", "name": "log.txt", "mimeType": "text/plain"},
                               {"id": "a2", "name": "screen.png", "mimeType": "image/png", "imageUrl": "https://cdn.example/screen.png"}
+                            ],
+                            "reactions": [
+                              {"emoji": "👍", "count": 2, "selected": true}
                             ]
                           }
                         ]
@@ -167,6 +170,9 @@ class ThreadPayloadTest {
         assertEquals(true, payload.messages.first().isOwn)
         assertEquals("pixel:robot", payload.messages.first().avatarWireValue)
         assertEquals(3, payload.messages.first().replyCount)
+        assertEquals("👍", payload.messages.first().reactions.first().emoji)
+        assertEquals(2, payload.messages.first().reactions.first().count)
+        assertEquals(true, payload.messages.first().reactions.first().selected)
         assertEquals("log.txt", payload.messages.first().attachments.first().name)
         assertEquals("https://cdn.example/screen.png", payload.messages.first().attachments[1].thumbnailUrl)
     }
