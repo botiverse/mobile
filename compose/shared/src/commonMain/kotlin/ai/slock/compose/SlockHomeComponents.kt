@@ -73,7 +73,6 @@ private val SidebarActionIconSize = 14.dp
 private val SidebarActionIconBoxSize = 14.dp
 private val SidebarActionRowHeight = 32.dp
 private val HomeSmallShadowOffset = 2.dp
-private val SidebarActivityBottomGap = 4.dp
 private val SidebarRowHorizontalPadding = 8.dp
 private val SidebarActionLabelGap = 6.dp
 private val ChannelSymbolWidth = 18.dp
@@ -89,7 +88,7 @@ private val MiniActionIconSize = 16.dp
 private val CountPillMinWidth = 18.dp
 private val CountPillHeight = 16.dp
 private val HomeUnreadBadgeRadius = 4.dp
-private val ChannelUnreadTextOffsetY = (-1).dp
+private val HomeUnreadBadgeTextOffsetY = (-1).dp
 private val HomeListHorizontalPadding = SlockSpacing.Md
 private val HomePanelShadowOffset = 4.dp
 private val HomeTiltedBadgeSlant = 3.dp
@@ -1128,7 +1127,7 @@ private fun SidebarActivityRow(label: String, count: String?, selected: Boolean 
         SidebarActionRow(
             icon = "activity",
             label = label,
-            modifier = modifier.padding(bottom = SidebarActivityBottomGap),
+            modifier = modifier,
             badge = count,
             onClick = onClick
         )
@@ -1137,7 +1136,6 @@ private fun SidebarActivityRow(label: String, count: String?, selected: Boolean 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = SidebarActivityBottomGap)
     ) {
         Box(modifier = Modifier.fillMaxWidth().padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
             Box(
@@ -1300,7 +1298,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             if (hasDraft) SlockLucideIcon("pencil", Modifier.size(14.dp), color = "#FF737373")
             if (badge != null) {
                 if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
-                if (joined) CountPill(badge, SlockColor.AccentPink, textOffsetY = ChannelUnreadTextOffsetY) else DimmedUnreadCount(badge)
+                if (joined) CountPill(badge, SlockColor.AccentPink) else DimmedUnreadCount(badge)
             }
         }
     }
@@ -1422,12 +1420,12 @@ private fun pixelHash(value: String): Int { var hash = 0; value.forEach { hash =
 private class PixelAvatarRandom(seed: Int) { private var value = seed; fun next(): Double { value += 1831565813; var mixed = (value xor (value ushr 15)) * (1 or value); mixed = (mixed + ((mixed xor (mixed ushr 7)) * (61 or mixed))) xor mixed; val unsigned = (mixed xor (mixed ushr 14)).toLong() and 0xffffffffL; return unsigned.toDouble() / 4294967296.0 } }
 
 @Composable
-private fun CountPill(text: String, color: Color, textOffsetY: Dp = 0.dp) {
-    HomeUnreadBadge(text = text, color = color, textOffsetY = textOffsetY)
+private fun CountPill(text: String, color: Color) {
+    HomeUnreadBadge(text = text, color = color)
 }
 
 @Composable
-private fun HomeUnreadBadge(text: String, color: Color = SlockColor.AccentPink, textOffsetY: Dp = 0.dp) {
+private fun HomeUnreadBadge(text: String, color: Color = SlockColor.AccentPink) {
     Box(
         modifier =
             Modifier
@@ -1445,7 +1443,7 @@ private fun HomeUnreadBadge(text: String, color: Color = SlockColor.AccentPink, 
             color = SlockColor.SurfaceWhite,
             maxLines = 1,
             textAlign = TextAlign.Center,
-            modifier = Modifier.offset(y = textOffsetY)
+            modifier = Modifier.offset(y = HomeUnreadBadgeTextOffsetY)
         )
     }
 }
