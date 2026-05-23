@@ -16,6 +16,15 @@ private val filesMessagesApiJson = Json {
     encodeDefaults = true
 }
 
+/**
+ * Typed files/search/message-adjacent boundary.
+ *
+ * Canonical response roots: channel files use `{ files, nextCursor? }`,
+ * attachment URL/HTML URL use `{ url, expiresAt? }`, previews use
+ * `{ status, data?, truncated? }`, search uses `{ results, hasMore? }`,
+ * context uses `{ channelId, messages, targetMessageId?, historyLimited? }`,
+ * and reaction mutations return the updated message object.
+ */
 internal interface SlockFilesMessagesApi {
     suspend fun channelFiles(channelId: ChannelId, limit: Int = 50, cursor: String? = null): HomeNetworkResponse
     suspend fun attachmentUrl(attachmentId: AttachmentId, disposition: String? = null): HomeNetworkResponse

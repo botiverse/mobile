@@ -22,6 +22,14 @@ interface ServerRepository {
     suspend fun getSettings(serverId: ServerId): DataResult<SettingsSnapshot>
 }
 
+/**
+ * Typed Settings data boundary used by shared Settings pages.
+ *
+ * Settings sections should flow through these typed snapshots/results or
+ * platform capabilities. Do not add UI-local raw JSON readers or standalone API
+ * docs for Billing/Server/Account fields; put non-obvious field mappings on
+ * the request/snapshot type that owns them.
+ */
 interface SettingsRepository {
     suspend fun getAccount(): DataResult<AccountSettingsSnapshot>
     suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot>

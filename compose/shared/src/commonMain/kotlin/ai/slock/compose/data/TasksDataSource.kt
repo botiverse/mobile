@@ -62,6 +62,14 @@ data class TaskCreateDraft(
     val description: String? = null
 )
 
+/**
+ * Typed Tasks boundary.
+ *
+ * Server/channel task lists parse the upstream `tasks` wrapper, create uses a
+ * `{ tasks: [...] }` body, message conversion uses `{ messageId }`, and status
+ * mutation sends the canonical API status value. Unsupported platform routes
+ * return 501 instead of exposing guessed wrappers to shared UI.
+ */
 interface SlockTasksApi {
     suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse
     suspend fun channelTasks(channelId: ChannelId, priority: DataRequestPriority): HomeNetworkResponse =

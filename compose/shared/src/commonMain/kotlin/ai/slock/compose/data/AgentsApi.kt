@@ -14,6 +14,14 @@ private val agentsApiJson = Json {
     encodeDefaults = true
 }
 
+/**
+ * Typed Agents boundary.
+ *
+ * Keep shape notes beside parsers: list-like endpoints that are arrays are
+ * parsed as root arrays, workspace files require a `files` array, workspace
+ * file reads require `path` and expose optional `binary`/`size`, and bootstrap
+ * token responses require a non-empty token field.
+ */
 internal interface SlockAgentsApi {
     suspend fun agents(): HomeNetworkResponse
     suspend fun agent(agentId: MemberId): HomeNetworkResponse

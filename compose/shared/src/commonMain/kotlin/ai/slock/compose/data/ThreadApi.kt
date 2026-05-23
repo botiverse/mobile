@@ -16,6 +16,15 @@ private val threadApiJson = Json {
     encodeDefaults = true
 }
 
+/**
+ * Typed Thread/Message boundary.
+ *
+ * Canonical response roots live next to the parser: channel pages are
+ * `{ messages: [...] }`, sync returns a root array, send returns the created
+ * message object, attachment open returns `{ url, expiresAt? }`, and
+ * create/open reply thread returns `{ threadChannelId }`. New route or field
+ * mappings should be added here with a focused contract test.
+ */
 internal interface SlockThreadApi {
     suspend fun channelMessages(threadId: String, limit: Int = 50, beforeSeq: Long? = null): ThreadApiResult<ThreadMessagesPage>
     suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int = 50): ThreadApiResult<ThreadMessagesPage>

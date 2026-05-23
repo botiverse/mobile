@@ -14,6 +14,14 @@ private val integrationsActionsPushJson = Json {
     encodeDefaults = true
 }
 
+/**
+ * Typed Integrations/Actions/Push boundary.
+ *
+ * Overview/clients/grants stay on the upstream roots parsed below; action
+ * event telemetry treats empty 204 responses as success, while action execute
+ * and mark-executed require a typed action-card body. Push VAPID requires
+ * `publicKey`; push command routes require canonical success bodies.
+ */
 internal interface SlockIntegrationsActionsPushApi {
     suspend fun integrationsOverview(): HomeNetworkResponse
     suspend fun integrationClients(): HomeNetworkResponse

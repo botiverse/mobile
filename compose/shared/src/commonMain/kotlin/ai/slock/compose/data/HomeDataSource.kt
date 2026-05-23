@@ -123,6 +123,14 @@ private fun AnnouncementItem.toSharedHomeNotification(): SharedHomeNotification 
             }
     )
 
+/**
+ * Typed Home/Channels/DM boundary.
+ *
+ * Transport implementations may be platform-specific, but the typed client
+ * below documents the canonical response roots: channels and DMs are root
+ * arrays, unread counts are a root object, and server unread summary is a root
+ * array. Guessed wrappers such as `items` or `data` are contract mismatches.
+ */
 interface SlockHomeApi {
     suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse
     suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse

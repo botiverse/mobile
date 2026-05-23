@@ -233,6 +233,14 @@ class SharedAuthDataSource(
     }
 }
 
+/**
+ * Typed auth/server boundary.
+ *
+ * Keep backend field-shape notes here rather than in separate API docs:
+ * login/refresh require canonical `accessToken` and `refreshToken` fields,
+ * current user is a user object at the response root, and server list is a
+ * root JSON array. Legacy token aliases are intentionally rejected by tests.
+ */
 interface SlockAuthApi {
     suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse>
     suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser>

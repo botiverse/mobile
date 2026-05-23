@@ -13,9 +13,9 @@ Referenced by: #383
 ## Source Of Truth
 
 - The realtime boundary was analyzed under task #118.
-- This doc is the canonical repo artifact for the already analyzed Socket.IO / realtime contract.
-- Chat threads may summarize decisions, but they are not the source of truth.
-- The repo-wide contract index is `artifacts/api-contract-index.md` and references this file from task #383.
+- Typed realtime models and mappers are the canonical source of truth for field
+  handling. This note only records the historical Socket.IO boundary analysis
+  from task #118/#383.
 
 ## Client Boundary
 

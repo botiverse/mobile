@@ -12,6 +12,13 @@ private val announcementsRemindersJson = Json {
     encodeDefaults = true
 }
 
+/**
+ * Typed Announcements/Reminders boundary.
+ *
+ * Active announcements parse `{ announcements: [...] }`, dismiss requires an
+ * `{ ok: true }` body, and reminders parse `{ reminders: [...] }`. There is no
+ * Android-product-only guessed reminder write route in this shared boundary.
+ */
 interface SlockAnnouncementsRemindersApi {
     suspend fun activeAnnouncements(): HomeNetworkResponse
     suspend fun dismissAnnouncement(announcementId: String): HomeNetworkResponse
