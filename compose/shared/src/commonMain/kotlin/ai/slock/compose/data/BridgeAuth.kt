@@ -319,6 +319,39 @@ internal class BridgeSettingsPlatformCapabilities(
 
     suspend fun sendFeedback(): Boolean =
         bridge.settingsCapability(JSONObject().put("action", "sendFeedback"))?.optString("status") == "ok"
+
+    suspend fun requestNotificationPermission(): SystemNotificationActionResult =
+        systemNotificationAction("requestNotificationPermission")
+
+    suspend fun openNotificationSettings(): SystemNotificationActionResult =
+        systemNotificationAction("openNotificationSettings")
+
+    suspend fun sendTestNotification(): SystemNotificationActionResult =
+        systemNotificationAction("sendTestNotification")
+
+    private suspend fun systemNotificationAction(action: String): SystemNotificationActionResult {
+        val response = bridge.settingsCapability(JSONObject().put("action", action))
+            ?: return SystemNotificationActionResult(SystemNotificationActionStatus.Unsupported, code = "settings_capability_missing")
+        return response.toSystemNotificationActionResult()
+    }
+
+    private fun JSONObject.toSystemNotificationActionResult(): SystemNotificationActionResult {
+        val status = optString("status")
+        val code = optString("code").ifBlank { status.ifBlank { "unknown" } }
+        return SystemNotificationActionResult(
+            status =
+                when {
+                    status == "ok" -> SystemNotificationActionStatus.Ok
+                    code == "permission_denied" -> SystemNotificationActionStatus.PermissionDenied
+                    code == "notifications_disabled" -> SystemNotificationActionStatus.NotificationsDisabled
+                    code == "channel_blocked" -> SystemNotificationActionStatus.ChannelBlocked
+                    code == "unsupported" || code == "notification_unsupported" -> SystemNotificationActionStatus.Unsupported
+                    else -> SystemNotificationActionStatus.Error
+                },
+            code = code,
+            message = optString("message")
+        )
+    }
 }
 
 internal class BridgeTasksApi(

@@ -103,6 +103,14 @@ class SharedSettingsStoreTest {
 
         store.accept(SharedSettingsIntent.ConsumeEffect)
         assertNull(store.state.value.effect)
+
+        store.accept(SharedSettingsIntent.RequestNotificationPermission)
+        assertEquals(SharedSettingsEffect.RequestNotificationPermission, store.state.value.effect)
+        assertEquals(SharedSettingsRoute(), store.state.value.route)
+
+        store.accept(SharedSettingsIntent.ConsumeEffect)
+        store.accept(SharedSettingsIntent.SendTestNotification)
+        assertEquals(SharedSettingsEffect.SendTestNotification, store.state.value.effect)
         scope.cancel()
     }
 

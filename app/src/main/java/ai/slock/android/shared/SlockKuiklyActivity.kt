@@ -1,11 +1,16 @@
 package ai.slock.android.shared
 
+import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.pm.PackageManager
 import android.database.sqlite.SQLiteDatabase
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -18,6 +23,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.util.Base64
 import android.util.Log
 import android.view.View
@@ -27,6 +33,9 @@ import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.lifecycleScope
 import ai.slock.android.R
@@ -1116,6 +1125,12 @@ internal class SlockKuiklyBridgeModule(
                             SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_send_feedback")
                             mapOf("status" to "ok")
                         }
+                        "requestNotificationPermission" -> requestNotificationPermissionCapability()
+                        "openNotificationSettings" -> {
+                            openNotificationSettingsCapability()
+                            mapOf("status" to "ok")
+                        }
+                        "sendTestNotification" -> sendTestNotificationCapability()
                         else -> mapOf("status" to "error", "code" to "settings_capability_unknown")
                     }
                 }.getOrElse { throwable ->
@@ -1126,6 +1141,132 @@ internal class SlockKuiklyBridgeModule(
                     )
                 }
         callback?.invoke(result)
+    }
+
+    private fun requestNotificationPermissionCapability(): Map<String, Any> {
+        if (hasNotificationPermission()) {
+            ensureSharedNotificationChannel()
+            return mapOf("status" to "ok", "code" to "permission_granted")
+        }
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val activity = appContext as? Activity
+            if (activity != null) {
+                activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS_CODE)
+                mapOf("status" to "ok", "code" to "permission_requested")
+            } else {
+                mapOf("status" to "error", "code" to "permission_denied")
+            }
+        } else {
+            mapOf("status" to "error", "code" to "permission_denied")
+        }
+    }
+
+    private fun sendTestNotificationCapability(): Map<String, Any> {
+        if (!hasNotificationPermission()) {
+            return mapOf("status" to "error", "code" to "permission_denied")
+        }
+        ensureSharedNotificationChannel()
+        if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
+            return mapOf("status" to "error", "code" to "notifications_disabled")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel =
+                    (appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                            .getNotificationChannel(SHARED_NOTIFICATION_CHANNEL_ID)
+            if (channel?.importance == NotificationManager.IMPORTANCE_NONE) {
+                return mapOf("status" to "error", "code" to "channel_blocked")
+            }
+        }
+        val notificationId = ((System.currentTimeMillis() % Int.MAX_VALUE).toInt()).coerceAtLeast(1)
+        val contentIntent =
+                appContext.packageManager
+                        .getLaunchIntentForPackage(appContext.packageName)
+                        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        ?.let { intent ->
+                            PendingIntent.getActivity(
+                                    appContext,
+                                    notificationId,
+                                    intent,
+                                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                            )
+                        }
+        return runCatching {
+                    NotificationManagerCompat.from(appContext)
+                            .notify(
+                                    notificationId,
+                                    NotificationCompat.Builder(appContext, SHARED_NOTIFICATION_CHANNEL_ID)
+                                            .setSmallIcon(android.R.drawable.ic_dialog_info)
+                                            .setContentTitle(appContext.getString(R.string.settings_notification_test_title))
+                                            .setContentText(appContext.getString(R.string.settings_notification_test_text))
+                                            .setStyle(
+                                                    NotificationCompat.BigTextStyle()
+                                                            .bigText(appContext.getString(R.string.settings_notification_test_text))
+                                            )
+                                            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                                            .setCategory(NotificationCompat.CATEGORY_STATUS)
+                                            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                                            .setWhen(System.currentTimeMillis())
+                                            .setShowWhen(true)
+                                            .setContentIntent(contentIntent)
+                                            .setAutoCancel(true)
+                                            .build()
+                            )
+                    mapOf("status" to "ok", "code" to "posted", "notificationId" to notificationId)
+                }
+                .getOrElse { error ->
+                    mapOf(
+                            "status" to "error",
+                            "code" to "post_failed",
+                            "message" to (error.message ?: error.javaClass.simpleName)
+                    )
+                }
+    }
+
+    private fun hasNotificationPermission(): Boolean =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    ContextCompat.checkSelfPermission(appContext, Manifest.permission.POST_NOTIFICATIONS) ==
+                            PackageManager.PERMISSION_GRANTED
+
+    private fun ensureSharedNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(
+                NotificationChannel(
+                        SHARED_NOTIFICATION_CHANNEL_ID,
+                        appContext.getString(R.string.settings_notification_channel_name),
+                        NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = appContext.getString(R.string.settings_notification_channel_description)
+                    enableVibration(false)
+                }
+        )
+    }
+
+    private fun openNotificationSettingsCapability() {
+        val notificationSettingsIntent =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                        putExtra(Settings.EXTRA_APP_PACKAGE, appContext.packageName)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                } else {
+                    null
+                }
+        runCatching {
+                    if (notificationSettingsIntent != null) {
+                        appContext.startActivity(notificationSettingsIntent)
+                    } else {
+                        throw ActivityNotFoundException("Notification settings unavailable")
+                    }
+                }
+                .onFailure {
+                    appContext.startActivity(
+                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.fromParts("package", appContext.packageName, null)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                    )
+                }
     }
 
     private fun loadSettingsAbout(): Map<String, Any> {
@@ -1283,6 +1424,8 @@ internal class SlockKuiklyBridgeModule(
     companion object {
         const val MODULE_NAME = "HRBridgeModule"
         private const val AUTH_SESSION_KEY = "auth_session"
+        private const val SHARED_NOTIFICATION_CHANNEL_ID = "shared-system-notifications-v1"
+        private const val REQUEST_NOTIFICATIONS_CODE = 4207
     }
 }
 

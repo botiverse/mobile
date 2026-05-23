@@ -34,8 +34,6 @@ import ai.slock.android.core.data.network.RealTaskRepository
 import ai.slock.android.core.data.preferences.ChatLayoutPreferenceSnapshot
 import ai.slock.android.core.data.preferences.LargeScreenNavigationPreference
 import ai.slock.android.core.data.preferences.MyMessageAlignmentPreference
-import ai.slock.android.core.data.preferences.NotificationPreferenceRepository
-import ai.slock.android.core.data.preferences.PersistentNotificationPreferenceRepository
 import ai.slock.android.core.data.preferences.PersistentChatLayoutPreferenceRepository
 import ai.slock.android.core.data.preferences.SharedPreferencesChatLayoutPreferenceStore
 import ai.slock.android.core.data.preferences.SharedPreferencesNotificationPreferenceStore
@@ -141,11 +139,13 @@ import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadConversation
 import ai.slock.compose.model.messageStreamChannelId
 import ai.slock.compose.model.parentChannelIdOrNull
-import ai.slock.android.core.notification.shouldShowInboxNotification
 import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.model.toGravatarAvatarReference
 import ai.slock.compose.model.withPreviewMembershipFallback
 import ai.slock.compose.model.withTitleFallback
+import ai.slock.compose.data.NotificationPreferenceRepository
+import ai.slock.compose.data.PersistentNotificationPreferenceRepository
+import ai.slock.compose.data.shouldShowSystemInboxNotification
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.ScreenError
 import ai.slock.android.core.state.ScreenLoadState
@@ -6155,13 +6155,9 @@ private fun SlockAppContent(
                         if (event is MessageNew &&
                                         notificationsEnabledByUser &&
                                         lastInboxNotificationMessageId != event.message.id.value &&
-                                        shouldShowInboxNotification(
-                                                message = event.message,
-                                                currentMemberId =
-                                                        currentAuthSession
-                                                                ?.user
-                                                                ?.id
-                                                                ?.let(::MemberId),
+                                        shouldShowSystemInboxNotification(
+                                                messageAuthorId = event.message.author.id.value,
+                                                currentMemberId = currentAuthSession?.user?.id,
                                                 isAppInForeground = appInForeground,
                                                 isVisibleThread =
                                                         selectedThreadContent()?.let { content ->

@@ -777,6 +777,18 @@ private fun SettingsAppShellContent(
             SharedSettingsEffect.SendFeedback -> {
                 settingsCapabilities.sendFeedback()
             }
+            SharedSettingsEffect.RequestNotificationPermission -> {
+                val result = settingsCapabilities.requestNotificationPermission()
+                if (result.ok) {
+                    onSettingsIntent(SharedSettingsIntent.Refresh)
+                }
+            }
+            SharedSettingsEffect.OpenNotificationSettings -> {
+                settingsCapabilities.openNotificationSettings()
+            }
+            SharedSettingsEffect.SendTestNotification -> {
+                settingsCapabilities.sendTestNotification()
+            }
             else -> Unit
         }
         onSettingsIntent(SharedSettingsIntent.ConsumeEffect)
@@ -818,7 +830,17 @@ private fun SettingsAppShellContent(
             SettingsDestinationServer ->
                 SharedServerSettingsContent(session, membersApi, onSettingsAction)
             SettingsDestinationMobile ->
-                SharedSettingsSectionContent(appShellMobilePayload(), onSettingsAction)
+                SharedSettingsSectionContent(appShellMobilePayload()) { action, itemId ->
+                    when (action) {
+                        "notificationPermission" ->
+                            onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission)
+                        "openNotificationSettings" ->
+                            onSettingsIntent(SharedSettingsIntent.OpenNotificationSettings)
+                        "sendTestNotification" ->
+                            onSettingsIntent(SharedSettingsIntent.SendTestNotification)
+                        else -> onSettingsAction(action, itemId)
+                    }
+                }
             SettingsDestinationAbout ->
                 SharedSettingsAboutContent(
                     state = settingsState.about,
@@ -1324,8 +1346,9 @@ private fun appShellMobilePayload(): KuiklySharedSettingsPayload =
                     title = "Notifications",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("notificationPermission", "bell", "Push permission", "Android/OHOS permission state must be supplied by host.", status = "Host pending"),
-                            KuiklySharedSettingsRow("sendTestNotification", "send", "Send test notification", "Requires host notification adapter before it can run.", status = "Disabled"),
+                            KuiklySharedSettingsRow("notificationPermission", "bell", "Push permission", "Request or refresh the platform notification permission through the shared host capability.", status = "Request", enabled = true),
+                            KuiklySharedSettingsRow("openNotificationSettings", "settings", "System notification settings", "Open the platform notification settings page from the shared KMP action.", status = "Open", enabled = true),
+                            KuiklySharedSettingsRow("sendTestNotification", "send", "Send test notification", "Post a local system notification through the platform host capability.", status = "Send", enabled = true),
                             KuiklySharedSettingsRow("muteServer", "volume-x", "Mute workspace", "Server mute state/action is not in shared yet.", status = "Pending")
                         )
                 ),
