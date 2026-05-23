@@ -75,6 +75,9 @@ import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegat
 import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegatorDelegate
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
+import com.tencent.kuikly.core.render.android.performace.KRMonitorType
+import com.tencent.kuikly.core.render.android.performace.KRPerformanceData
+import com.tencent.kuikly.core.render.android.performace.launch.KRLaunchData
 import com.caverock.androidsvg.SVG
 import com.google.gson.Gson
 import java.io.ByteArrayInputStream
@@ -157,6 +160,17 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         kuiklyRenderExport.moduleExport(SlockKuiklyBridgeModule.MODULE_NAME) {
             SlockKuiklyBridgeModule(applicationContext)
         }
+    }
+
+    override fun performanceMonitorTypes(): List<KRMonitorType> =
+            SlockKuiklyPerformanceDiagnostics.monitorTypes
+
+    override fun onGetLaunchData(data: KRLaunchData) {
+        SlockKuiklyPerformanceDiagnostics.recordLaunch("activity", pageName, data)
+    }
+
+    override fun onGetPerformanceData(data: KRPerformanceData) {
+        SlockKuiklyPerformanceDiagnostics.recordPerformance("activity", pageName, data)
     }
 
     internal fun requestThreadAttachmentUpload(

@@ -18,6 +18,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegator
 import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegatorDelegate
+import com.tencent.kuikly.core.render.android.performace.KRMonitorType
+import com.tencent.kuikly.core.render.android.performace.KRPerformanceData
+import com.tencent.kuikly.core.render.android.performace.launch.KRLaunchData
 import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONObject
 import java.util.UUID
@@ -188,6 +191,17 @@ internal class SlockKuiklyIslandHost(
                 SlockLucideIconRenderView.VIEW_NAME,
                 renderViewExportCreator = { context -> SlockLucideIconRenderView(context) }
         )
+    }
+
+    override fun performanceMonitorTypes(): List<KRMonitorType> =
+            SlockKuiklyPerformanceDiagnostics.monitorTypes
+
+    override fun onGetLaunchData(data: KRLaunchData) {
+        SlockKuiklyPerformanceDiagnostics.recordLaunch("island", pageName, data)
+    }
+
+    override fun onGetPerformanceData(data: KRPerformanceData) {
+        SlockKuiklyPerformanceDiagnostics.recordPerformance("island", pageName, data)
     }
 
     override fun onAttachedToWindow() {
