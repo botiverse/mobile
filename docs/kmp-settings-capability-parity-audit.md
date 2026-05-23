@@ -111,7 +111,8 @@ About or a smoke route.
 1. task #44: perform a route/action wiring audit against the product Settings
    IA above. Every visible row/action must be either wired to a shared
    intent/effect/repository capability or rendered disabled with an explicit
-   state.
+   state. The current audit output lives in
+   `docs/kmp-settings-action-wiring-audit.md`.
 2. task #35: restore Computers list/detail through shared MVI and repository or
    capability wiring.
 3. task #36: restore Mobile notification and local preference controls through

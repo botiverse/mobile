@@ -741,24 +741,19 @@ private fun SettingsAppShellContent(
     onSettingsAction: (String, String?) -> Unit,
     onLogout: () -> Unit
 ) {
-    var pendingLogout by remember { mutableStateOf(false) }
-
     LaunchedEffect(selectedDestination) {
         selectedDestination.toSharedSettingsDestination()?.let { destination ->
             onSettingsIntent(SharedSettingsIntent.OpenDestination(destination))
         }
     }
 
-    LaunchedEffect(pendingLogout) {
-        if (!pendingLogout) return@LaunchedEffect
-        pendingLogout = false
-        runCatching { authDataSource.logout() }
-        onLogout()
-    }
-
     LaunchedEffect(settingsState.effect) {
         val effect = settingsState.effect ?: return@LaunchedEffect
         when (effect) {
+            SharedSettingsEffect.Logout -> {
+                runCatching { authDataSource.logout() }
+                onLogout()
+            }
             SharedSettingsEffect.CopyDiagnostics -> {
                 val ok = settingsCapabilities.copyDiagnostics()
                 if (ok) {
@@ -818,7 +813,7 @@ private fun SettingsAppShellContent(
             SettingsDestinationAccount ->
                 SettingsAccountContent(appShellAccountPayload(session), applyTopSafeArea = false) { action ->
                     if (action == "logout") {
-                        pendingLogout = true
+                        onSettingsIntent(SharedSettingsIntent.Logout)
                     }
                 }
             SettingsDestinationComputers ->
