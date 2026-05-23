@@ -605,6 +605,9 @@ internal fun homeLazyItemCount(
         (if (directMessagesExpanded) directMessagesCount else 0)
 }
 
+internal fun homeDmStatusPresence(presence: SlockPresence?): SlockPresence =
+    presence ?: SlockPresence.Offline
+
 @Composable
 private fun HomeServerSwitcherDismissLayer(onDismiss: () -> Unit) {
     Box(

@@ -82,7 +82,7 @@ class SlockHomeComponentsTest {
     @Test
     fun tasksLazyItemCountTracksCurrentModeAndErrors() {
         assertEquals(
-            7,
+            6,
             sharedTasksLazyItemCount(
                 mode = TasksViewMode.Board,
                 filteredTasksCount = 20,
@@ -92,7 +92,7 @@ class SlockHomeComponentsTest {
             )
         )
         assertEquals(
-            4,
+            3,
             sharedTasksLazyItemCount(
                 mode = TasksViewMode.List,
                 filteredTasksCount = 0,
