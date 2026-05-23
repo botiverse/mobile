@@ -1164,13 +1164,6 @@ private fun appShellSettingsHomePayload(
                     subtitle = "Version, diagnostics, feedback",
                     iconName = "bug",
                     selected = selectedDestination == SettingsDestinationAbout
-                ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationRouter,
-                    title = "Smoke previews",
-                    subtitle = "Open Kuikly router and shared test pages",
-                    iconName = "route",
-                    selected = false
                 )
             )
     )
