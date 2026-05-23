@@ -2292,6 +2292,7 @@ private fun ThreadMessageCard(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = message.resolvedThreadAvatarWireValue(),
                         gravatarHash = message.gravatarHash,
+                        showStatus = message.showsAgentStatusIndicator(),
                         onClick = { onOpenMember(message.authorId) }
                     )
                 }
@@ -2372,6 +2373,7 @@ private fun ThreadMessageCard(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = message.resolvedThreadAvatarWireValue(),
                         gravatarHash = message.gravatarHash,
+                        showStatus = message.showsAgentStatusIndicator(),
                         onClick = { onOpenMember(message.authorId) }
                     )
                 }
@@ -2948,6 +2950,7 @@ private fun ThreadMessageAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
     gravatarHash: String?,
+    showStatus: Boolean,
     onClick: () -> Unit
 ) {
     val imageUrl =
@@ -2959,13 +2962,22 @@ private fun ThreadMessageAvatar(
         modifier = Modifier.size(40.dp).clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        SlockAvatar(
-            avatarWireValue = imageUrl ?: avatarWireValue,
-            label = avatarLabel,
-            avatarSize = 40.dp
-        )
+        SlockAvatarWithStatus(
+            statusColor = if (showStatus) SlockColor.BrandYellow else null,
+            avatarSize = 40.dp,
+            statusSize = 10.dp
+        ) {
+            SlockAvatar(
+                avatarWireValue = imageUrl ?: avatarWireValue,
+                label = avatarLabel,
+                avatarSize = 40.dp
+            )
+        }
     }
 }
+
+private fun KuiklyThreadMessageItem.showsAgentStatusIndicator(): Boolean =
+    authorKind.equals("agent", ignoreCase = true) || authorId.isLikelyThreadAgentId()
 
 @Composable
 private fun ThreadPixelAvatar(spec: ThreadPixelAvatarSpec) {
@@ -3643,26 +3655,34 @@ private fun ThreadMemberDetailModal(
 
 @Composable
 private fun ThreadMemberAvatar(member: KuiklyThreadMemberItem, sizeDp: Int) {
-    Box(
-        modifier = Modifier.size(sizeDp.dp)
-            .background(if (member.kind.equals("agent", ignoreCase = true)) SlockColor.AccentLavender else SlockColor.BrandYellow)
-            .border(SlockStroke.Default, SlockColor.BorderBlack),
-        contentAlignment = Alignment.Center
+    val avatarSize = sizeDp.dp
+    val isAgent = member.kind.equals("agent", ignoreCase = true)
+    SlockAvatarWithStatus(
+        statusColor = if (isAgent) SlockColor.BrandYellow else null,
+        avatarSize = avatarSize,
+        statusSize = if (sizeDp >= 40) 10.dp else 8.dp
     ) {
-        val avatarUrl = member.avatarUrl?.takeIf { it.isNotBlank() }
-        if (avatarUrl != null) {
-            SlockCachedImage(
-                source = avatarUrl,
-                contentDescription = null,
-                contentScale = ContentScale.FillBounds,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Text(
-                text = member.avatarLabel.ifBlank { member.displayName }.take(2).uppercase(),
-                style = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp),
-                color = SlockColor.TextBlack
-            )
+        Box(
+            modifier = Modifier.size(avatarSize)
+                .background(if (isAgent) SlockColor.AccentLavender else SlockColor.BrandYellow)
+                .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            val avatarUrl = member.avatarUrl?.takeIf { it.isNotBlank() }
+            if (avatarUrl != null) {
+                SlockCachedImage(
+                    source = avatarUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.FillBounds,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Text(
+                    text = member.avatarLabel.ifBlank { member.displayName }.take(2).uppercase(),
+                    style = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp),
+                    color = SlockColor.TextBlack
+                )
+            }
         }
     }
 }

@@ -544,7 +544,7 @@ fun SlockStructuralHomeShell(
                                     avatarLabel = dm.avatarLabel,
                                     avatarUrl = dm.avatarUrl,
                                     avatarWireValue = dm.avatarWireValue,
-                                    trailingPresence = homeDmStatusPresence(dm.presence),
+                                    presence = dm.presence,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     hasDraft = dm.hasDraft,
                                     badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
@@ -835,7 +835,11 @@ private fun SlantedBadgeChrome(
 
 @Composable
 private fun ServerUnreadMarker(modifier: Modifier = Modifier) {
-    Box(modifier = modifier.offset(x = 4.dp, y = (-4).dp).size(10.dp).background(SlockColor.AccentPink).border(SlockStroke.Thin, SlockColor.BorderBlack))
+    SlockStatusIndicator(
+        color = SlockColor.AccentPink,
+        size = SlockStatusIndicatorTokens.ServerUnreadSize,
+        modifier = modifier.offset(x = 4.dp, y = (-4).dp)
+    )
 }
 
 @Composable
@@ -1130,7 +1134,7 @@ private fun HeaderIconAction(icon: String, contentDescription: String, onClick: 
 }
 
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, trailingPresence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null) {
+private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null) {
     val selected = interactionState == ChannelRowInteractionState.Selected
     val rowBackground = when (interactionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
@@ -1189,10 +1193,6 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                 if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
                 if (joined) CountPill(badge, SlockColor.AccentPink, textOffsetY = ChannelUnreadTextOffsetY) else DimmedUnreadCount(badge)
             }
-            if (trailingPresence != null) {
-                if (badge != null || hasDraft) Spacer(Modifier.width(SlockSpacing.Sm))
-                HomeDmStatusDot(trailingPresence)
-            }
         }
     }
 }
@@ -1213,9 +1213,12 @@ private fun DimmedUnreadCount(text: String) {
 
 @Composable
 private fun ChannelAvatar(avatarWireValue: String?, label: String, presence: SlockPresence? = null) {
-    Box(modifier = Modifier.size(ChannelAvatarSize)) {
-        SlockAvatar(avatarWireValue, label, Modifier.align(Alignment.Center))
-        if (presence != null) PresenceDot(presence, Modifier.align(Alignment.BottomEnd))
+    SlockAvatarWithStatus(
+        statusColor = presence?.homeRowColor,
+        avatarSize = ChannelAvatarSize,
+        statusSize = 8.dp
+    ) {
+        SlockAvatar(avatarWireValue, label)
     }
 }
 
@@ -1243,20 +1246,8 @@ private fun InitialsAvatar(label: String, modifier: Modifier = Modifier, avatarS
     }
 }
 
-@Composable
-private fun PresenceDot(presence: SlockPresence, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.size(8.dp).background(presence.homeRowColor).border(SlockStroke.Thin, SlockColor.BorderBlack))
-}
-
-@Composable
-private fun HomeDmStatusDot(presence: SlockPresence) {
-    Box(modifier = Modifier.size(10.dp).background(presence.homeRowColor).border(SlockStroke.Thin, SlockColor.BorderBlack))
-}
-
 private val SlockPresence.homeRowColor: Color
     get() = when (this) { SlockPresence.Online -> SlockColor.AccentLime; SlockPresence.Offline -> SlockColor.EmptyStateGray; SlockPresence.Unknown -> SlockColor.BrandYellow }
-
-internal fun homeDmStatusPresence(presence: SlockPresence?): SlockPresence = presence ?: SlockPresence.Offline
 
 @Composable
 private fun PixelAvatar(spec: PixelAvatarSpec, modifier: Modifier = Modifier, avatarSize: Dp = ChannelAvatarSize) {

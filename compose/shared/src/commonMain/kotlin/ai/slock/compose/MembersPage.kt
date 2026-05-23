@@ -522,13 +522,11 @@ private fun String.staggerDelayMillis(): Long =
 
 @Composable
 private fun MembersStatusDot(member: MemberProfile, modifier: Modifier = Modifier) {
-    Canvas(
-        modifier = modifier
-            .size(MemberStatusDotSize)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-    ) {
-        drawCircle(color = member.agentStatus.membersStatusColor(member.presence))
-    }
+    SlockStatusIndicator(
+        color = member.agentStatus.membersStatusColor(member.presence),
+        modifier = modifier,
+        size = MemberStatusDotSize
+    )
 }
 
 @Composable

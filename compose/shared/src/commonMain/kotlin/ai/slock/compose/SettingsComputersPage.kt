@@ -281,7 +281,7 @@ private fun SettingsAgentCard(item: KuiklySettingsAgentItem, onClick: () -> Unit
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        IconBox("bot", SlockColor.AccentCyan)
+        SettingsAgentAvatar(item)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(item.displayName?.takeIf { it.isNotBlank() } ?: item.name, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -373,8 +373,28 @@ private fun IconBox(iconName: String, color: Color) {
 
 @Composable
 private fun OnlineDot(online: Boolean) {
-    Box(modifier = Modifier.size(10.dp).background(if (online) SlockColor.AccentCyan else SlockColor.EmptyStateGray).border(1.dp, SlockColor.BorderBlack))
+    SlockStatusIndicator(color = if (online) SlockColor.AccentCyan else SlockColor.EmptyStateGray)
 }
+
+@Composable
+private fun SettingsAgentAvatar(item: KuiklySettingsAgentItem) {
+    SlockAvatarWithStatus(
+        statusColor = item.settingsAgentStatusColor(),
+        avatarSize = 42.dp,
+        statusSize = 10.dp
+    ) {
+        IconBox("bot", SlockColor.AccentCyan)
+    }
+}
+
+private fun KuiklySettingsAgentItem.settingsAgentStatusColor(): Color =
+    when ((statusLabel ?: presenceLabel).orEmpty().trim().lowercase()) {
+        "online", "active", "connected", "working", "running", "thinking" -> SlockColor.AccentLime
+        "idle", "away", "busy" -> SlockColor.BrandYellow
+        "error", "failed", "failure" -> SlockColor.AccentRed
+        "offline", "disconnected", "not connected", "inactive" -> SlockColor.EmptyStateGray
+        else -> SlockColor.BrandYellow
+    }
 
 @Composable
 private fun SmallPill(text: String) {
