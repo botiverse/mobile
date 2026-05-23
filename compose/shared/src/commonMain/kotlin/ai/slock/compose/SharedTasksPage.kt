@@ -139,14 +139,20 @@ private fun SharedTasksHeader(
     refreshing: Boolean,
     onRefresh: () -> Unit
 ) {
+    val topSafeArea = slockTopSafeAreaPadding()
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(SlockSize.PageHeaderHeight)
+                .heightIn(min = topSafeArea + SlockSize.PageHeaderHeight)
                 .background(SlockColor.BrandYellow)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 20.dp, vertical = SlockSpacing.Sm),
+                .padding(
+                    start = 20.dp,
+                    top = topSafeArea + SlockSpacing.Sm,
+                    end = 20.dp,
+                    bottom = SlockSpacing.Sm
+                ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {

@@ -2439,8 +2439,17 @@ private fun AppShellPlaceholderContent(
     subtitle: String,
     iconName: String
 ) {
+    val topSafeArea = slockTopSafeAreaPadding()
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(
+                    start = 24.dp,
+                    top = topSafeArea + 24.dp,
+                    end = 24.dp,
+                    bottom = 24.dp
+                ),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         SlockLucideIcon(name = iconName, color = "#FF000000", modifier = Modifier.size(36.dp))
