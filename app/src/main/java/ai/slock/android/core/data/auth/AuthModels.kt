@@ -15,26 +15,9 @@ data class AuthUser(
     val name: String?,
     val displayName: String?,
     val description: String?,
-    @SerializedName(
-        value = "avatarUrl",
-        alternate = [
-            "avatar",
-            "avatar_url",
-            "imageUrl",
-            "profileImageUrl",
-            "profileAvatar"
-        ]
-    )
+    @SerializedName(value = "avatarUrl")
     val avatarUrl: String?,
-    @SerializedName(
-        value = "gravatarHash",
-        alternate = [
-            "gravatar",
-            "gravatar_hash",
-            "gravatarMd5",
-            "gravatar_md5"
-        ]
-    )
+    @SerializedName(value = "gravatarHash")
     val gravatarHash: String? = null,
     val emailVerified: Boolean?
 ) {

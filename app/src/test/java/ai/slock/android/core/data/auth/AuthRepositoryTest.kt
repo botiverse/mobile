@@ -70,8 +70,8 @@ class AuthRepositoryTest {
                         "name":"artin",
                         "displayName":"artin",
                         "description":null,
-                        "profileAvatar":"pixel:diamond",
-                        "gravatar":"abc123",
+                        "avatarUrl":"pixel:diamond",
+                        "gravatarHash":"abc123",
                         "emailVerified":true
                       },
                       "accessToken":"access-token",
