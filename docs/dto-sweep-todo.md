@@ -5,11 +5,11 @@ camelCase DTO living in `compose/shared/.../data/`. App-side helpers in
 `RealSlockRepositories.kt` / `RealSettingsRepository.kt` should disappear, and
 `NetworkResponseMapper` should ultimately be deleted.
 
-Canonical contract is **camelCase only** — verified against the React bundle at
-`artifacts/web-current/index-D7TCB7di.js` (e.g. `channelId 162` vs
-`channel_id 1`, `displayName 82`, `messageId 46`, `taskNumber 17`, `serverId 14`).
-No snake_case aliases, no `firstObject(... metadata, meta, payload ...)` style
-field guessing.
+Canonical contract is **camelCase only** — verified against the upstream
+TypeScript source at `third_party/slock-source/` (submodule of
+`github.com/botiverse/slock`). Use `packages/server/` for HTTP/Socket payload
+shapes and `packages/shared/` for shared types. No snake_case aliases, no
+`firstObject(... metadata, meta, payload ...)` style field guessing.
 
 ## Status
 

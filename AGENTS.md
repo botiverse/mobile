@@ -1,5 +1,24 @@
 # Slock Android Agent Notes
 
+## Upstream Slock Source
+
+- The upstream TypeScript Slock source is checked out as a git submodule at
+  `third_party/slock-source/` (`github.com/botiverse/slock`).
+- For any wire-contract / API question (HTTP routes, Socket.IO events, payload
+  shapes, field names), read the source directly under
+  `third_party/slock-source/packages/server/` (HTTP + Socket handlers) and
+  `third_party/slock-source/packages/shared/` (shared TypeScript types) rather
+  than guessing field aliases or inferring shapes from Android call sites.
+- Do not re-introduce bundled web JS artifacts. There used to be a
+  `artifacts/web-current/` directory with a minified bundle; it has been
+  removed in favor of reading the source.
+- To fetch the submodule for the first time:
+
+```bash
+cd /Users/artin/AndroidStudioProjects/Slock
+git submodule update --init --recursive third_party/slock-source
+```
+
 ## Kuikly AI Skills
 
 - Workspace-level Kuikly guidance lives under `.agents/`:

@@ -296,13 +296,13 @@ class RealSettingsRepository(
             SettingsServerSectionSnapshot(
                 key = "pending_invites",
                 title = "Pending Invites",
-                detail = "Invite creation is confirmed; pending invite listing is not exposed by the Web bundle.",
+                detail = "Invite creation is confirmed; no pending-invite listing endpoint in upstream source.",
                 state = if (canManageServer) SettingsSectionAvailability.Empty else SettingsSectionAvailability.NoPermission
             ),
             SettingsServerSectionSnapshot(
                 key = "join_links",
                 title = "Join Links",
-                detail = "Web accepts join-link tokens, but no Settings join-link management endpoint is confirmed.",
+                detail = "Upstream source accepts join-link tokens, but no Settings join-link management endpoint is confirmed.",
                 state = SettingsSectionAvailability.Empty
             ),
             SettingsServerSectionSnapshot(
