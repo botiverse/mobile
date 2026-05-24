@@ -1051,7 +1051,7 @@ class RealSlockRepositoriesTest {
                       }
                     ],
                     "pagination": {
-                      "has_more_before": true
+                      "hasMoreBefore": true
                     }
                   }
                 }

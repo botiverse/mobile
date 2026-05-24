@@ -2927,8 +2927,8 @@ private fun logThreadSnapshotShape(source: String, fallbackThreadId: ThreadId, r
                     "conversationKeys=${root.firstObject("conversation", "channel", "thread")?.safeNetworkKeyList() ?: "none"} " +
                     "messageCount=${messages.size} " +
                     "firstMessageKeys=${firstMessage?.safeNetworkKeyList() ?: "none"} " +
-                    "firstMessageThreadId=${firstMessage?.string("threadId", "thread_id").orEmpty()} " +
-                    "firstMessageChannelId=${firstMessage?.string("channelId", "channel_id").orEmpty()}"
+                    "firstMessageThreadId=${firstMessage?.string("threadId").orEmpty()} " +
+                    "firstMessageChannelId=${firstMessage?.string("channelId").orEmpty()}"
     )
 }
 
@@ -2938,15 +2938,10 @@ private fun JsonObject.canLoadMoreBefore(): Boolean {
         val direct =
                 candidate.boolean(
                         "hasMoreBefore",
-                        "has_more_before",
                         "hasMore",
-                        "has_more",
                         "canLoadMoreBefore",
-                        "can_load_more_before",
                         "hasPrevious",
-                        "has_previous",
-                        "hasPrev",
-                        "has_prev"
+                        "hasPrev"
                 )
         if (direct != null) return direct
         for (objectName in listOf("pagination", "pageInfo", "paging", "meta")) {
@@ -2955,15 +2950,10 @@ private fun JsonObject.canLoadMoreBefore(): Boolean {
                             .firstObject(objectName)
                             ?.boolean(
                                     "hasMoreBefore",
-                                    "has_more_before",
                                     "hasMore",
-                                    "has_more",
                                     "canLoadMoreBefore",
-                                    "can_load_more_before",
                                     "hasPrevious",
-                                    "has_previous",
-                                    "hasPrev",
-                                    "has_prev"
+                                    "hasPrev"
                             )
             if (nested != null) return nested
         }
@@ -2971,22 +2961,16 @@ private fun JsonObject.canLoadMoreBefore(): Boolean {
     return candidates.any { candidate ->
         candidate.hasNonBlankString(
                 "previousCursor",
-                "previous_cursor",
                 "prevCursor",
-                "prev_cursor",
-                "beforeCursor",
-                "before_cursor"
+                "beforeCursor"
         ) ||
                 listOf("pagination", "pageInfo", "paging", "meta").any { objectName ->
                     candidate
                             .firstObject(objectName)
                             ?.hasNonBlankString(
                                     "previousCursor",
-                                    "previous_cursor",
                                     "prevCursor",
-                                    "prev_cursor",
-                                    "beforeCursor",
-                                    "before_cursor"
+                                    "beforeCursor"
                             ) == true
                 }
     }
@@ -2998,9 +2982,7 @@ private fun JsonObject.canLoadMoreAfter(): Boolean {
         val direct =
                 candidate.boolean(
                         "hasMoreAfter",
-                        "has_more_after",
-                        "canLoadMoreAfter",
-                        "can_load_more_after"
+                        "canLoadMoreAfter"
                 )
         if (direct != null) return direct
         for (objectName in listOf("pagination", "pageInfo", "paging", "meta")) {
@@ -3009,23 +2991,19 @@ private fun JsonObject.canLoadMoreAfter(): Boolean {
                             .firstObject(objectName)
                             ?.boolean(
                                     "hasMoreAfter",
-                                    "has_more_after",
-                                    "canLoadMoreAfter",
-                                    "can_load_more_after"
+                                    "canLoadMoreAfter"
                             )
             if (nested != null) return nested
         }
     }
     return candidates.any { candidate ->
-        candidate.hasNonBlankString("nextCursor", "next_cursor", "afterCursor", "after_cursor") ||
+        candidate.hasNonBlankString("nextCursor", "afterCursor") ||
                 listOf("pagination", "pageInfo", "paging", "meta").any { objectName ->
                     candidate
                             .firstObject(objectName)
                             ?.hasNonBlankString(
                                     "nextCursor",
-                                    "next_cursor",
-                                    "afterCursor",
-                                    "after_cursor"
+                                    "afterCursor"
                             ) == true
                 }
     }
@@ -4452,13 +4430,9 @@ private fun JsonObject.toTaskSummary(): TaskSummary? {
             updatedAtLabel =
                     timestampString(
                             "updatedAt",
-                            "updated_at",
                             "latestActivityAt",
-                            "latest_activity_at",
                             "lastActivityAt",
-                            "last_activity_at",
                             "createdAt",
-                            "created_at",
                             "timestamp",
                             "time"
                     ) ?: "",
@@ -4469,7 +4443,7 @@ private fun JsonObject.toTaskSummary(): TaskSummary? {
 private fun JsonObject.taskDisplayTitle(taskNumber: Int?): String? {
     val candidates =
             listOfNotNull(
-                    string("taskTitle", "task_title", "displayTitle", "display_title"),
+                    string("taskTitle", "displayTitle"),
                     string("title"),
                     string("content"),
                     string("description"),
@@ -4519,7 +4493,6 @@ private fun JsonElement.taskTextValue(): String? =
                                 "content",
                                 "text",
                                 "plainText",
-                                "plain_text",
                                 "markdown",
                                 "messageBody",
                                 "messageContent",
@@ -4615,7 +4588,7 @@ private fun JsonObject.claimedByFallback(): MemberProfile? {
 
 private fun JsonObject.toAttachment(): Attachment? {
     val id =
-            string("id", "attachmentId", "attachment_id", "fileId", "file_id", "_id")
+            string("id", "attachmentId", "fileId")
                     ?: firstObject("attachment", "file", "image", "media")
                             ?.string(
                                     "id",
