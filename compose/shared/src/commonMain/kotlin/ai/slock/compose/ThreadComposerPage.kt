@@ -586,7 +586,7 @@ private fun ComposerAttachmentTray(
                 ) {
                     Text(
                         text = if (attachment.mimeType?.startsWith("image/") == true) "IMG" else "FILE",
-                        style = SlockType.Caption.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp),
                         color = SlockColor.TextBlack
                     )
                 }
@@ -633,7 +633,7 @@ private fun ComposerSuggestionPanel(
     ) {
         Text(
             text = title,
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, color = SlockColor.TextMutedGray),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
         )
@@ -724,13 +724,13 @@ private fun ComposerAsTaskToggle(
             contentAlignment = Alignment.Center
         ) {
             if (checked) {
-                Text("✓", style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, fontWeight = FontWeight.Bold), color = SlockColor.TextBlack)
+                Text("✓", style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp), color = SlockColor.TextBlack)
             }
         }
         val labelColor = if (enabled) SlockColor.TextBlack.copy(alpha = 0.6f) else SlockColor.TextMutedGray
         Text(
             text = "As Task",
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, lineHeight = 18.sp, color = labelColor),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(lineHeight = 18.sp, color = labelColor),
             color = labelColor
         )
     }

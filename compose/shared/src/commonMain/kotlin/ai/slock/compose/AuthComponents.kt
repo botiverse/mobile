@@ -413,7 +413,7 @@ internal fun AuthSuccessNotice(title: String, detail: String) {
     ) {
         Text(
             text = title,
-            style = SlockType.Button.copy(fontWeight = FontWeight.Bold, color = SlockColor.TextBlack),
+            style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
         Text(

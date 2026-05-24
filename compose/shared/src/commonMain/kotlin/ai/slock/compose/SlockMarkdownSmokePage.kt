@@ -179,7 +179,7 @@ private fun slockMarkdownSmokeTypography(): DefaultMarkdownTypography {
     return DefaultMarkdownTypography(
         h1 = SlockType.PageTitle.copy(fontSize = 22.sp, lineHeight = 28.sp),
         h2 = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 24.sp),
-        h3 = SlockType.Button.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 22.sp),
+        h3 = SlockType.Button.withSlockFontWeight(FontWeight.SemiBold).copy(fontSize = 16.sp, lineHeight = 22.sp),
         h4 = SlockType.Button,
         h5 = SlockType.Button,
         h6 = SlockType.Button,

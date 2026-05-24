@@ -243,7 +243,7 @@ private fun CurrentPlanCard(payload: KuiklySettingsBillingPayload) {
                 )
                 Text(
                     row.value,
-                    style = SlockType.Body.copy(color = SlockColor.TextBlack, fontWeight = FontWeight.Bold),
+                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -288,7 +288,7 @@ private fun PlanCard(
                     )
                     Text(
                         plan.price,
-                        style = SlockType.Body.copy(color = SlockColor.TextMutedGray, fontWeight = FontWeight.Bold),
+                        style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
                         color = SlockColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -405,7 +405,7 @@ private fun SettingsStatusBadge(text: String, color: Color) {
 private fun SettingsBillingStatusPanel(title: String) {
     Text(
         title,
-        style = SlockType.Body.copy(color = SlockColor.TextBlack, fontWeight = FontWeight.Bold),
+        style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
         color = SlockColor.TextBlack,
         modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp)
     )

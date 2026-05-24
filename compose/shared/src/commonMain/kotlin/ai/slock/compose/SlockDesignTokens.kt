@@ -6,6 +6,7 @@ import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.font.KuiklyFont
+import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -61,13 +62,38 @@ private val SpaceGroteskMedium = FontFamily(KuiklyFont("space_grotesk_medium", F
 private val SpaceGroteskSemiBold = FontFamily(KuiklyFont("space_grotesk_semibold", FontWeight.SemiBold, FontStyle.Normal))
 private val SpaceGroteskBold = FontFamily(KuiklyFont("space_grotesk_bold", FontWeight.Bold, FontStyle.Normal))
 
+private fun spaceGroteskFamily(fontWeight: FontWeight): FontFamily =
+    when {
+        fontWeight >= FontWeight.Bold -> SpaceGroteskBold
+        fontWeight >= FontWeight.SemiBold -> SpaceGroteskSemiBold
+        fontWeight >= FontWeight.Medium -> SpaceGroteskMedium
+        else -> SpaceGroteskRegular
+    }
+
+private fun slockTextStyle(
+    fontWeight: FontWeight,
+    fontSize: TextUnit,
+    lineHeight: TextUnit,
+    letterSpacing: TextUnit
+): TextStyle =
+    TextStyle(
+        fontFamily = spaceGroteskFamily(fontWeight),
+        fontWeight = fontWeight,
+        fontSize = fontSize,
+        lineHeight = lineHeight,
+        letterSpacing = letterSpacing
+    )
+
+internal fun TextStyle.withSlockFontWeight(fontWeight: FontWeight): TextStyle =
+    copy(fontFamily = spaceGroteskFamily(fontWeight), fontWeight = fontWeight)
+
 internal object SlockType {
-    val PageTitle = TextStyle(fontFamily = SpaceGroteskSemiBold, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, lineHeight = 24.sp, letterSpacing = 0.sp)
-    val SectionLabel = TextStyle(fontFamily = SpaceGroteskSemiBold, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 1.2.sp)
-    val Body = TextStyle(fontFamily = SpaceGroteskRegular, fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 22.sp, letterSpacing = 0.sp)
-    val Caption = TextStyle(fontFamily = SpaceGroteskRegular, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.sp)
-    val Button = TextStyle(fontFamily = SpaceGroteskMedium, fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 18.sp, letterSpacing = 0.sp)
-    val ButtonBold = TextStyle(fontFamily = SpaceGroteskBold, fontWeight = FontWeight.Bold, fontSize = 14.sp, lineHeight = 18.sp, letterSpacing = 0.sp)
-    val TabLabel = TextStyle(fontFamily = SpaceGroteskBold, fontWeight = FontWeight.Bold, fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp)
-    val Input = TextStyle(fontFamily = SpaceGroteskRegular, fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 20.sp, letterSpacing = 0.sp)
+    val PageTitle = slockTextStyle(FontWeight.SemiBold, 20.sp, 24.sp, 0.sp)
+    val SectionLabel = slockTextStyle(FontWeight.SemiBold, 12.sp, 16.sp, 1.2.sp)
+    val Body = slockTextStyle(FontWeight.Normal, 16.sp, 22.sp, 0.sp)
+    val Caption = slockTextStyle(FontWeight.Normal, 12.sp, 16.sp, 0.sp)
+    val Button = slockTextStyle(FontWeight.Medium, 14.sp, 18.sp, 0.sp)
+    val ButtonBold = slockTextStyle(FontWeight.Bold, 14.sp, 18.sp, 0.sp)
+    val TabLabel = slockTextStyle(FontWeight.Bold, 10.sp, 12.sp, 0.sp)
+    val Input = slockTextStyle(FontWeight.Normal, 16.sp, 20.sp, 0.sp)
 }

@@ -1014,7 +1014,7 @@ private fun HomeNotificationActionButton(text: String, color: Color, onClick: ()
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .padding(horizontal = SlockSpacing.Sm)
     ) {
-        Text(text, style = SlockType.Caption.copy(fontWeight = FontWeight.Medium), color = SlockColor.TextBlack, maxLines = 1, textAlign = TextAlign.Center)
+        Text(text, style = SlockType.Caption.withSlockFontWeight(FontWeight.Medium), color = SlockColor.TextBlack, maxLines = 1, textAlign = TextAlign.Center)
     }
 }
 
@@ -1084,7 +1084,7 @@ private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean
     ) {
         Box(modifier = Modifier.width(14.dp), contentAlignment = Alignment.Center) {
             when {
-                pending -> Text("...", style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, lineHeight = 14.sp), color = SlockColor.TextBlack, maxLines = 1, textAlign = TextAlign.Center)
+                pending -> Text("...", style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(lineHeight = 14.sp), color = SlockColor.TextBlack, maxLines = 1, textAlign = TextAlign.Center)
                 selected -> SlockLucideIcon("check", Modifier.size(14.dp))
                 else -> Spacer(Modifier.size(14.dp))
             }
@@ -1348,7 +1348,7 @@ internal fun SlockAvatar(avatarWireValue: String?, label: String, modifier: Modi
 @Composable
 private fun InitialsAvatar(label: String, modifier: Modifier = Modifier, avatarSize: Dp = ChannelAvatarSize) {
     Box(modifier = modifier.size(avatarSize).background(SlockColor.AccentLavender).border(SlockStroke.Thin, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
-        Text(label.take(2).uppercase(), style = SlockType.Caption.copy(fontWeight = FontWeight.Medium, fontSize = ChannelAvatarFontSize), color = SlockColor.TextBlack, maxLines = 1)
+        Text(label.take(2).uppercase(), style = SlockType.Caption.withSlockFontWeight(FontWeight.Medium).copy(fontSize = ChannelAvatarFontSize), color = SlockColor.TextBlack, maxLines = 1)
     }
 }
 
@@ -1438,7 +1438,7 @@ private fun HomeUnreadBadge(text: String, color: Color = SlockColor.AccentPink) 
     ) {
         Text(
             text,
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp, lineHeight = 10.sp),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 10.sp),
             color = SlockColor.SurfaceWhite,
             maxLines = 1,
             textAlign = TextAlign.Center,

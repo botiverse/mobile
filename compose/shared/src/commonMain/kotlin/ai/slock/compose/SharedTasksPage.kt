@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.data.ScreenLoadState
+import ai.slock.compose.data.KuiklySharedPreferencesKeyValueStore
 import ai.slock.compose.data.SharedTasksRouteIntent
 import ai.slock.compose.data.TasksContent
 import ai.slock.compose.data.TasksPresentationIntent
@@ -29,6 +30,7 @@ import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
@@ -56,12 +58,14 @@ import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.core.pager.Pager
 
 @Composable
 internal fun SharedTasksScreen(
@@ -200,7 +204,38 @@ private fun SharedTasksLoadedBody(
     onOpenTask: ((TaskSummary) -> Unit)?,
     onIntent: (SharedTasksRouteIntent) -> Unit
 ) {
-    var presentationState by remember { mutableStateOf(TasksPresentationState.Default) }
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        SharedTasksLoadedBodyContent(
+            state = state,
+            content = content,
+            showChannelFilter = showChannelFilter,
+            createTasksChannelId = createTasksChannelId,
+            onOpenTask = onOpenTask,
+            onIntent = onIntent,
+            defaultViewMode = defaultTasksViewMode(maxWidth)
+        )
+    }
+}
+
+@Composable
+private fun SharedTasksLoadedBodyContent(
+    state: TasksUiState,
+    content: TasksContent,
+    showChannelFilter: Boolean,
+    createTasksChannelId: ChannelId?,
+    onOpenTask: ((TaskSummary) -> Unit)?,
+    onIntent: (SharedTasksRouteIntent) -> Unit,
+    defaultViewMode: TasksViewMode
+) {
+    val pager = LocalActivity.current.getPager() as Pager
+    val viewModeStore = remember(pager) { KuiklySharedPreferencesKeyValueStore(pager, TasksViewModePreferenceNamespace) }
+    val initialPresentationState =
+        remember(viewModeStore, defaultViewMode) {
+            TasksPresentationState.Default.copy(
+                selectedMode = viewModeStore.readTasksViewMode() ?: defaultViewMode
+            )
+        }
+    var presentationState by remember(viewModeStore) { mutableStateOf(initialPresentationState) }
     val sortedContent = remember(content) {
         content.copy(tasks = content.tasks.sortedByTaskDisplayOrder())
     }
@@ -238,6 +273,18 @@ private fun SharedTasksLoadedBody(
     // like a wall of "No X tasks" headers.
     val listColumns = boardColumns.filter { it.totalCount > 0 }
     val collapsedStatuses = presentationState.collapsedStatuses
+    val listRows = remember(listColumns, collapsedStatuses) {
+        listColumns.flatMap { column ->
+            buildList {
+                add(SharedTasksListRow.Header(column.status, column.totalCount, column.status in collapsedStatuses))
+                if (column.status !in collapsedStatuses) {
+                    column.tasks.forEach { task ->
+                        add(SharedTasksListRow.Card(column.status, task))
+                    }
+                }
+            }
+        }
+    }
 
     // Per-card status menu coordinates. We open the single-select menu when the user
     // long-presses a card; storing the anchor in screen-root space lets the overlay
@@ -272,6 +319,7 @@ private fun SharedTasksLoadedBody(
                 openFilterId = presentationState.openFilterId,
                 showCreateButton = createTasksChannelId != null,
                 onModeSelected = { mode ->
+                    viewModeStore.writeTasksViewMode(mode)
                     presentationState = presentationState.reduce(TasksPresentationIntent.SelectMode(mode))
                 },
                 onChannelChipClick = { anchor ->
@@ -345,29 +393,35 @@ private fun SharedTasksLoadedBody(
                             contentPadding = PaddingValues(SlockSpacing.Md),
                             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
                         ) {
-                            items(listColumns.size, key = { i -> "list-section-${listColumns[i].status}" }) { index ->
-                                val column = listColumns[index]
-                                SharedTasksListSection(
-                                    status = column.status,
-                                    tasks = column.tasks,
-                                    collapsed = column.status in collapsedStatuses,
-                                    updatingTaskId = state.statusUpdatingTaskId,
-                                    onToggleCollapsed = {
-                                        presentationState =
-                                            presentationState.reduce(
-                                                TasksPresentationIntent.ToggleStatusCollapsed(column.status)
-                                            )
-                                    },
-                                    onOpenTask = onOpenTask,
-                                    onStatusBadgeClick = { task, anchor ->
-                                        statusMenuTask = task
-                                        statusMenuAnchor = anchor
-                                    },
-                                    onLongPressTask = { task, anchor ->
-                                        statusMenuTask = task
-                                        statusMenuAnchor = anchor
-                                    }
-                                )
+                            items(listRows.size, key = { i -> listRows[i].key }) { index ->
+                                when (val row = listRows[index]) {
+                                    is SharedTasksListRow.Header ->
+                                        BoardSectionHeader(
+                                            status = row.status,
+                                            count = row.count,
+                                            collapsed = row.collapsed,
+                                            onClick = {
+                                                presentationState =
+                                                    presentationState.reduce(
+                                                        TasksPresentationIntent.ToggleStatusCollapsed(row.status)
+                                                    )
+                                            }
+                                        )
+                                    is SharedTasksListRow.Card ->
+                                        SharedTaskCard(
+                                            task = row.task,
+                                            updating = state.statusUpdatingTaskId == row.task.id.value,
+                                            onClick = { onOpenTask?.invoke(row.task) },
+                                            onStatusBadgeClick = { anchor ->
+                                                statusMenuTask = row.task
+                                                statusMenuAnchor = anchor
+                                            },
+                                            onLongPress = { anchor ->
+                                                statusMenuTask = row.task
+                                                statusMenuAnchor = anchor
+                                            }
+                                        )
+                                }
                             }
                         }
                     }
@@ -460,6 +514,48 @@ internal fun sharedTasksLazyItemCount(
             TasksViewMode.List -> filteredTasksCount.takeIf { it > 0 } ?: 1
         }
     return fixedItems + errorItems + bodyItems
+}
+
+private const val TasksViewModePreferenceNamespace = "tasks"
+private const val TasksViewModePreferenceKey = "viewMode"
+
+private fun defaultTasksViewMode(maxWidth: Dp): TasksViewMode =
+    if (maxWidth < 768.dp) TasksViewMode.List else TasksViewMode.Board
+
+private fun KuiklySharedPreferencesKeyValueStore.readTasksViewMode(): TasksViewMode? =
+    when (getString(TasksViewModePreferenceKey)) {
+        "board" -> TasksViewMode.Board
+        "list" -> TasksViewMode.List
+        else -> null
+    }
+
+private fun KuiklySharedPreferencesKeyValueStore.writeTasksViewMode(mode: TasksViewMode) {
+    putString(
+        TasksViewModePreferenceKey,
+        when (mode) {
+            TasksViewMode.Board -> "board"
+            TasksViewMode.List -> "list"
+        }
+    )
+}
+
+private sealed interface SharedTasksListRow {
+    val key: String
+
+    data class Header(
+        val status: TaskStatus,
+        val count: Int,
+        val collapsed: Boolean
+    ) : SharedTasksListRow {
+        override val key: String = "list-header-${status.name}"
+    }
+
+    data class Card(
+        val status: TaskStatus,
+        val task: TaskSummary
+    ) : SharedTasksListRow {
+        override val key: String = "list-card-${status.name}-${task.id.value}"
+    }
 }
 
 @Composable
@@ -640,38 +736,6 @@ private fun SharedTasksBoardColumn(
 }
 
 @Composable
-private fun SharedTasksListSection(
-    status: TaskStatus,
-    tasks: List<TaskSummary>,
-    collapsed: Boolean,
-    updatingTaskId: String?,
-    onToggleCollapsed: () -> Unit,
-    onOpenTask: ((TaskSummary) -> Unit)?,
-    onStatusBadgeClick: (TaskSummary, Offset) -> Unit,
-    onLongPressTask: (TaskSummary, Offset) -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        BoardSectionHeader(
-            status = status,
-            count = tasks.size,
-            collapsed = collapsed,
-            onClick = onToggleCollapsed
-        )
-        if (!collapsed) {
-            tasks.forEach { task ->
-                SharedTaskCard(
-                    task = task,
-                    updating = updatingTaskId == task.id.value,
-                    onClick = { onOpenTask?.invoke(task) },
-                    onStatusBadgeClick = { anchor -> onStatusBadgeClick(task, anchor) },
-                    onLongPress = { anchor -> onLongPressTask(task, anchor) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun BoardSectionHeader(
     status: TaskStatus,
     count: Int,
@@ -752,7 +816,7 @@ private fun SharedTaskCard(
                 task.tasksSourceLabel()?.takeIf { it.isNotBlank() }?.let { source ->
                     Text(
                         text = source,
-                        style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                        style = SlockType.TabLabel.copy(fontSize = 12.sp, lineHeight = 16.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.65f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -837,7 +901,7 @@ private fun SharedTasksStatusLabel(
         SlockLucideIcon(status.iconName, modifier = Modifier.size(10.dp), color = "#FF000000")
         Text(
             text = label.uppercase(),
-            style = SlockType.SectionLabel.copy(fontSize = 10.sp, lineHeight = 12.sp),
+            style = SlockType.TabLabel,
             color = SlockColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -908,7 +972,7 @@ private fun SharedTasksFilterChip(
         }
         Text(
             text = label.uppercase(),
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp, lineHeight = 14.sp),
+            style = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
             color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -976,7 +1040,7 @@ private fun SharedTasksSegmentButton(
         SlockLucideIcon(iconName, modifier = Modifier.size(12.dp), color = "#FF000000")
         Text(
             text = label.uppercase(),
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp, lineHeight = 14.sp),
+            style = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
             color = SlockColor.TextBlack,
             maxLines = 1
         )

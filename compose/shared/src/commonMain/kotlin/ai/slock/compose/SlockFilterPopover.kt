@@ -163,7 +163,7 @@ internal fun SlockFilterPopover(
                                     option.icon?.let { SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000") }
                                     Text(
                                         text = option.label,
-                                        style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
                                         color = SlockColor.TextBlack,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -188,7 +188,7 @@ internal fun SlockFilterPopover(
                         SlockLucideIcon("x", modifier = Modifier.size(12.dp), color = "#FF000000")
                         Text(
                             text = "Clear".uppercase(),
-                            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
                             color = SlockColor.TextBlack,
                             maxLines = 1
                         )

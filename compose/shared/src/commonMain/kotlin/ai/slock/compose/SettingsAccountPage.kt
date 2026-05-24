@@ -191,7 +191,7 @@ private fun SettingsAccountProfileCard(
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     profile.displayName.ifBlank { "Account" },
-                    style = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = SlockColor.TextBlack),
+                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 15.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

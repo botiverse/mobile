@@ -37,6 +37,7 @@ class InMemorySlockKeyValueStore(
 
 class KuiklySharedPreferencesKeyValueStore(
     private val pager: Pager,
+    /** Key prefix only. Do not treat this as a platform Preference fileName. */
     private val namespace: String
 ) : SlockKeyValueStore {
     private val module: SharedPreferencesModule

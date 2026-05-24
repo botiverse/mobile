@@ -70,6 +70,21 @@ cd /Users/artin/AndroidStudioProjects/Slock
 scripts/sync_kuikly_ai_skills.sh
 ```
 
+## OHOS Kuikly SharedPreferences
+
+- Kuikly OHOS has two SharedPreferences implementations:
+  `KRSharedPreferencesModule` uses XML files and is compatible with all API
+  versions; `KROhSharedPreferencesModule` uses the native OpenHarmony
+  `oh_preferences` C API / GSKV format and requires OpenHarmony API >= 13.
+- Prefer `KROhSharedPreferencesModule` on API 13+ by enabling it through the
+  Kuikly entry config, for example `Kuikly({ useOhSharedPreferences: true, ... })`.
+- When business code builds a platform Preference instance on OHOS, never set
+  `fileName` to `KROhSharedPreferencesModule`; that name is reserved by the
+  module implementation and will conflict with its cache path.
+- In shared code, `KuiklySharedPreferencesKeyValueStore` namespaces are only
+  key prefixes such as `tasks:viewMode`; do not reinterpret those namespaces as
+  platform Preference file names.
+
 ## Compose Shared Workflow
 
 - The Android app consumes Kuikly Compose shared code as the Maven artifact

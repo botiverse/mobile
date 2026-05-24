@@ -1172,7 +1172,7 @@ private fun ThreadHashTile() {
     ) {
         Text(
             text = "#",
-            style = SlockType.PageTitle.copy(fontWeight = FontWeight.W700, color = SlockColor.TextBlack),
+            style = SlockType.PageTitle.withSlockFontWeight(FontWeight.W700).copy(color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
     }
@@ -1585,7 +1585,7 @@ private fun ThreadBackToBottomButton(
             ) {
                 Text(
                     text = "Back to bottom",
-                    style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, color = SlockColor.TextBlack),
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack
                 )
                 SlockLucideIcon(
@@ -1629,7 +1629,7 @@ private fun ThreadSystemMessageRow(
     ) {
         Text(
             text = message.collapsedSystemSummary(timestampLabel),
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Medium, color = SlockColor.TextMutedGray),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Medium).copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -1672,7 +1672,7 @@ private fun ThreadSystemMessageExpandedContent(
     ) {
         Text(
             text = "Body",
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, color = SlockColor.TextMutedGray),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
         SlockMarkdownBody(
@@ -1780,7 +1780,7 @@ private fun ThreadMessageCard(
                         ) {
                             Text(
                                 text = message.authorName,
-                                style = SlockType.Button.copy(fontWeight = FontWeight.Bold, color = SlockColor.TextBlack),
+                                style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
                                 color = SlockColor.TextBlack,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -1866,7 +1866,7 @@ private fun ThreadReactionChip(reaction: KuiklyThreadReactionItem) {
                     append(reaction.count)
                 }
             },
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, lineHeight = 14.sp),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
             color = SlockColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -1885,7 +1885,7 @@ private fun ThreadReactionAddChip() {
     ) {
         Text(
             text = "+",
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, lineHeight = 14.sp),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
             color = SlockColor.TextBlack
         )
     }
@@ -2184,7 +2184,7 @@ private fun ThreadMetaChip(
             }
             Text(
                 text = label,
-                style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, lineHeight = 14.sp),
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -2367,7 +2367,7 @@ private fun ThreadMessageMenuItem(action: ThreadMessageMenuAction) {
             SlockLucideIcon(action.icon, modifier = Modifier.size(16.dp), color = "#FF000000")
             Text(
                 text = action.label,
-                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal),
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 14.sp, lineHeight = 18.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -2399,7 +2399,7 @@ private fun ThreadOriginCard(
         ) {
             Text(
                 text = "Origin",
-                style = SlockType.Caption.copy(fontWeight = FontWeight.W700, color = SlockColor.TextMutedGray),
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.W700).copy(color = SlockColor.TextMutedGray),
                 color = SlockColor.TextMutedGray,
                 modifier = Modifier.weight(1f)
             )
@@ -2688,7 +2688,7 @@ private fun ThreadImageAttachmentTile(
         }
         Text(
             text = attachment.name,
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold, color = SlockColor.TextBlack),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
             color = SlockColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -2822,7 +2822,7 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = "You need to join before sending.",
-                style = SlockType.Body.copy(fontWeight = FontWeight.W600, color = SlockColor.TextBlack),
+                style = SlockType.Body.withSlockFontWeight(FontWeight.W600).copy(color = SlockColor.TextBlack),
                 color = SlockColor.TextBlack
             )
             Text(
@@ -3055,7 +3055,7 @@ private fun ThreadMemberSectionHeader(label: String, count: Int) {
         )
         Text(
             text = count.toString(),
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
             color = SlockColor.TextMutedGray
         )
     }
@@ -3140,7 +3140,7 @@ private fun ThreadMemberDetailModal(
                     )
                     Text(
                         text = member.handle.takeIf { it.isNotBlank() }?.let { "@$it" } ?: member.id,
-                        style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                        style = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
                         color = SlockColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -3253,7 +3253,7 @@ private fun ThreadMemberCandidateRow(
                 selected -> "Selected"
                 else -> "Add"
             },
-            style = SlockType.Caption.copy(fontWeight = FontWeight.W600),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.W600),
             color = SlockColor.TextBlack
         )
     }
@@ -3386,7 +3386,7 @@ private fun ThreadSettingsModal(
                         )
                         Text(
                             text = "You can rejoin later if your permissions still allow it.",
-                            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
                             color = SlockColor.TextMutedGray
                         )
                     }
@@ -3404,7 +3404,7 @@ private fun ThreadSettingsModal(
                         )
                         Text(
                             text = "Type $channelName to confirm.",
-                            style = SlockType.Caption.copy(fontWeight = FontWeight.Bold),
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
                             color = SlockColor.TextMutedGray
                         )
                         ThreadSettingsTextField(
@@ -3473,7 +3473,7 @@ private fun ThreadSettingsTextField(
         if (isError) {
             Text(
                 text = if (value.isBlank()) "$label is required." else "Channel name does not match.",
-                style = SlockType.Caption.copy(color = SlockColor.AccentRed, fontWeight = FontWeight.Bold),
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
                 color = SlockColor.AccentRed
             )
         }
@@ -3512,7 +3512,7 @@ private fun ThreadModalEmptyState(title: String, detail: String) {
     ) {
         Text(
             text = title,
-            style = SlockType.Body.copy(fontWeight = FontWeight.W600, color = SlockColor.TextBlack),
+            style = SlockType.Body.withSlockFontWeight(FontWeight.W600).copy(color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
         Text(
@@ -3535,7 +3535,7 @@ private fun ThreadStateMessage(title: String, detail: String?) {
         ) {
             Text(
                 text = title,
-                style = SlockType.Body.copy(fontWeight = FontWeight.W600, color = SlockColor.TextBlack),
+                style = SlockType.Body.withSlockFontWeight(FontWeight.W600).copy(color = SlockColor.TextBlack),
                 color = SlockColor.TextBlack
             )
             detail?.takeIf { it.isNotBlank() }?.let {
@@ -3566,7 +3566,7 @@ private fun ThreadStateActionMessage(
         ) {
             Text(
                 text = title,
-                style = SlockType.Body.copy(fontWeight = FontWeight.W600, color = SlockColor.TextBlack),
+                style = SlockType.Body.withSlockFontWeight(FontWeight.W600).copy(color = SlockColor.TextBlack),
                 color = SlockColor.TextBlack
             )
             detail?.takeIf { it.isNotBlank() }?.let {

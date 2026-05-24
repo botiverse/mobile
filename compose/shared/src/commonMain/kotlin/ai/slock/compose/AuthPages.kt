@@ -455,7 +455,7 @@ private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> U
 }
 
 private val AuthTermsTextStyle = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray)
-private val AuthTermsLinkStyle = SlockType.Body.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack, textDecoration = TextDecoration.Underline)
+private val AuthTermsLinkStyle = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack, textDecoration = TextDecoration.Underline)
 
 @Composable
 private fun LoginContentPreview() {

@@ -438,7 +438,7 @@ private fun MembersListRow(
         ) {
             Text(
                 text = member.displayName,
-                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 19.sp, fontWeight = FontWeight.Bold),
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 19.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -446,7 +446,7 @@ private fun MembersListRow(
             )
             Text(
                 text = member.description ?: member.handle,
-                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 19.sp, fontWeight = FontWeight.Normal),
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 14.sp, lineHeight = 19.sp),
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
