@@ -95,7 +95,7 @@ import ai.slock.compose.model.SlockWorkspaceFileKind
 import ai.slock.compose.model.SlockWorkspaceFilePreview
 import ai.slock.compose.model.SlockWorkspaceNode
 import ai.slock.compose.model.topLevelThreadId
-import ai.slock.compose.network.SlockRequestPriority
+import ai.slock.compose.data.DataRequestPriority
 
 class MockAuthSessionRepository(
     private val scenario: MockScenario = MockScenario.Content
@@ -481,13 +481,13 @@ class MockMemberRepository(
     private val scenario: MockScenario = MockScenario.Content
 ) : MemberRepository {
     override suspend fun getMembers(
-        priority: SlockRequestPriority,
+        priority: DataRequestPriority,
         serverId: ServerId
     ): DataResult<MemberSnapshot> =
         resultFor(scenario, EmptyReason.NoMembers) { MockSeedData.memberSnapshot }
 
     override suspend fun getMemberProfile(
-        priority: SlockRequestPriority,
+        priority: DataRequestPriority,
         memberId: MemberId
     ): DataResult<MemberProfile> =
         resultFor(scenario, EmptyReason.NoMembers) {
@@ -496,7 +496,7 @@ class MockMemberRepository(
         }
 
     override suspend fun updateAgentProfile(
-        priority: SlockRequestPriority,
+        priority: DataRequestPriority,
         request: AgentProfileUpdateRequest
     ): DataResult<MemberProfile> =
         resultFor(scenario, EmptyReason.NoMembers) {
@@ -510,7 +510,7 @@ class MockMemberRepository(
         }
 
     override suspend fun getAgentDetail(
-        priority: SlockRequestPriority,
+        priority: DataRequestPriority,
         agentId: MemberId
     ): DataResult<AgentDetailSnapshot> =
         resultFor(scenario, EmptyReason.NoMembers) {
@@ -524,7 +524,7 @@ class MockMemberRepository(
         }
 
     override suspend fun getAgentDirectMessages(
-        priority: SlockRequestPriority,
+        priority: DataRequestPriority,
         agentId: MemberId
     ): DataResult<AgentDmSnapshot> =
         resultFor(scenario, EmptyReason.NoMembers) {
@@ -532,7 +532,7 @@ class MockMemberRepository(
         }
 
     override suspend fun getAgentReminders(
-        priority: SlockRequestPriority,
+        priority: DataRequestPriority,
         agentId: MemberId
     ): DataResult<AgentReminderSnapshot> =
         resultFor(scenario, EmptyReason.NoMembers) {
@@ -540,7 +540,7 @@ class MockMemberRepository(
         }
 
     override suspend fun getAgentActivity(
-        priority: SlockRequestPriority,
+        priority: DataRequestPriority,
         agentId: MemberId
     ): DataResult<AgentActivitySnapshot> =
         resultFor(scenario, EmptyReason.NoMembers) {
@@ -548,7 +548,7 @@ class MockMemberRepository(
         }
 
     override suspend fun getAgentWorkspaces(
-        priority: SlockRequestPriority,
+        priority: DataRequestPriority,
         agentId: MemberId
     ): DataResult<AgentWorkspaceSnapshot> =
         resultFor(scenario, EmptyReason.NoMembers) {
@@ -569,7 +569,7 @@ class MockMemberRepository(
         }
 
     override suspend fun getAgentWorkspaceTree(
-        priority: SlockRequestPriority,
+        priority: DataRequestPriority,
         agentId: MemberId
     ): DataResult<AgentWorkspaceTreeSnapshot> =
         resultFor(scenario, EmptyReason.NoMembers) {
@@ -581,7 +581,7 @@ class MockMemberRepository(
         }
 
     override suspend fun getAgentWorkspaceChildren(
-        priority: SlockRequestPriority,
+        priority: DataRequestPriority,
         agentId: MemberId,
         dirPath: String
     ): DataResult<AgentWorkspaceChildrenSnapshot> =
@@ -594,7 +594,7 @@ class MockMemberRepository(
         }
 
     override suspend fun readAgentWorkspaceFile(
-        priority: SlockRequestPriority,
+        priority: DataRequestPriority,
         agentId: MemberId,
         path: String
     ): DataResult<AgentWorkspaceFilePreviewSnapshot> =
@@ -611,13 +611,13 @@ class MockMemberRepository(
         }
 
     override suspend fun getAgentSkills(
-        priority: SlockRequestPriority,
+        priority: DataRequestPriority,
         agentId: MemberId
     ): DataResult<AgentSkillsSnapshot> =
         resultFor(scenario, EmptyReason.NoMembers) { mockAgentSkills(agentId) }
 
     override suspend fun getChannelMembers(
-        priority: SlockRequestPriority,
+        priority: DataRequestPriority,
         channelId: ChannelId
     ): DataResult<ChannelMemberSnapshot> =
         resultFor(scenario, EmptyReason.NoMembers) {
@@ -629,7 +629,7 @@ class MockMemberRepository(
         }
 
     override suspend fun addChannelMember(
-        priority: SlockRequestPriority,
+        priority: DataRequestPriority,
         request: AddChannelMemberRequest
     ): DataResult<ChannelMemberActionResult> =
         resultFor(scenario, EmptyReason.NoMembers) {
@@ -644,7 +644,7 @@ class MockMemberRepository(
         }
 
     override suspend fun removeChannelMember(
-        priority: SlockRequestPriority,
+        priority: DataRequestPriority,
         request: RemoveChannelMemberRequest
     ): DataResult<ChannelMemberActionResult> =
         resultFor(scenario, EmptyReason.NoMembers) {

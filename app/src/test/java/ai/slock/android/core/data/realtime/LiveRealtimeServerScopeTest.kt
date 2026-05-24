@@ -4,13 +4,14 @@ import ai.slock.android.core.data.auth.AuthRepository
 import ai.slock.android.core.data.auth.AuthResult
 import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthSessionStore
+import ai.slock.android.core.data.auth.ComposeAuthSessionStoreAdapter
 import ai.slock.android.core.data.auth.KtorAuthRepository
-import ai.slock.android.core.data.network.RealChannelRepository
 import ai.slock.android.core.data.network.RealConversationRepository
 import ai.slock.android.core.data.network.RealSlockApiFactory
 import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
 import ai.slock.android.core.data.repository.CreateChannelRequest
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.RealChannelRepository
 import ai.slock.android.core.model.MessageNew
 import ai.slock.android.core.model.ServerId
 import ai.slock.compose.network.SlockRequestPriority
@@ -32,8 +33,8 @@ class LiveRealtimeServerScopeTest {
         val api = RealSlockApiFactory.create(fixture.authStore, baseUrl = fixture.baseUrl)
         val channelRepository =
             RealChannelRepository(
-                fixture.authStore,
-                RealSlockNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl),
+                sessionStore = ComposeAuthSessionStoreAdapter(fixture.authStore),
+                networkClient = RealSlockNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl),
                 warningLogger = {}
             )
         val conversationRepository = RealConversationRepository(fixture.authStore, api, warningLogger = {})
@@ -114,8 +115,8 @@ class LiveRealtimeServerScopeTest {
         val api = RealSlockApiFactory.create(fixture.authStore, baseUrl = fixture.baseUrl)
         val channelRepository =
             RealChannelRepository(
-                fixture.authStore,
-                RealSlockNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl),
+                sessionStore = ComposeAuthSessionStoreAdapter(fixture.authStore),
+                networkClient = RealSlockNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl),
                 warningLogger = {}
             )
         val conversationRepository = RealConversationRepository(fixture.authStore, api, warningLogger = {})

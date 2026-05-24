@@ -6,6 +6,7 @@ import ai.slock.android.core.data.auth.AuthResult
 import ai.slock.android.core.data.auth.AuthServerRepository
 import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthTokenRefresher
+import ai.slock.android.core.data.auth.ComposeAuthSessionStoreAdapter
 import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
 import ai.slock.android.core.data.auth.KtorAuthRepository
 import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
@@ -20,14 +21,7 @@ import ai.slock.android.core.data.local.createSlockLocalStore
 import ai.slock.android.core.data.local.toThreadUiState
 import ai.slock.android.core.data.locale.PersistentLocaleRepository
 import ai.slock.android.core.data.locale.SharedPreferencesLocalePreferenceStore
-import ai.slock.android.core.data.network.RealChannelRepository
 import ai.slock.android.core.data.network.RealConversationRepository
-import ai.slock.android.core.data.network.RealInboxRepository
-import ai.slock.android.core.data.network.RealMemberRepository
-import ai.slock.android.core.data.network.RealReadReceiptRepository
-import ai.slock.android.core.data.network.RealSavedRepository
-import ai.slock.android.core.data.network.RealSearchRepository
-import ai.slock.android.core.data.network.RealServerUnreadRepository
 import ai.slock.android.core.data.network.RealSettingsRepository
 import ai.slock.android.core.data.network.RealSlockApiFactory
 import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
@@ -61,7 +55,15 @@ import ai.slock.android.core.data.repository.ChannelFilesSnapshot
 import ai.slock.android.core.data.repository.ConnectedAccountSnapshot
 import ai.slock.android.core.data.repository.ConnectedAccountStatus as RepositoryConnectedAccountStatus
 import ai.slock.android.core.data.repository.ConversationRepository
+import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.RealChannelRepository
+import ai.slock.compose.data.RealInboxRepository
+import ai.slock.compose.data.RealMemberRepository
+import ai.slock.compose.data.RealReadReceiptRepository
+import ai.slock.compose.data.RealSavedRepository
+import ai.slock.compose.data.RealSearchRepository
+import ai.slock.compose.data.RealServerUnreadRepository
 import ai.slock.android.core.data.repository.HomeSnapshot
 import ai.slock.android.core.data.repository.InboxSnapshot
 import ai.slock.android.core.data.repository.InboxRepository
@@ -722,16 +724,58 @@ private fun SlockAppContent(
         RealSlockNetworkClientFactory.create(store = authSessionStore, tokenRefresher = authTokenRefresher)
     }
     val channelRepository: ChannelRepository = remember {
-        RealChannelRepository(authSessionStore, slockNetworkClient)
+        RealChannelRepository(
+                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                networkClient = slockNetworkClient,
+                warningLogger = { message ->
+                    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
+                            "SlockHomeData",
+                            message
+                    )
+                }
+        )
     }
     val inboxRepository: InboxRepository = remember {
-        RealInboxRepository(authSessionStore, slockApi)
+        RealInboxRepository(
+                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                networkClient = slockNetworkClient,
+                logger = { message ->
+                    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                            "SlockInboxScope",
+                            message
+                    )
+                },
+                warningLogger = { message ->
+                    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
+                            "SlockInboxScope",
+                            message
+                    )
+                }
+        )
     }
     val savedRepository: SavedRepository = remember {
-        RealSavedRepository(authSessionStore, slockApi)
+        RealSavedRepository(
+                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                networkClient = slockNetworkClient,
+                warningLogger = { message ->
+                    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
+                            "SlockSaved",
+                            message
+                    )
+                }
+        )
     }
     val searchRepository: SearchRepository = remember {
-        RealSearchRepository(authSessionStore, slockApi)
+        RealSearchRepository(
+                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                networkClient = slockNetworkClient,
+                warningLogger = { message ->
+                    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
+                            "SlockSearch",
+                            message
+                    )
+                }
+        )
     }
     val conversationRepository: ConversationRepository = remember {
         RealConversationRepository(authSessionStore, slockApi)
@@ -937,12 +981,15 @@ private fun SlockAppContent(
         )
     }
     val readReceiptRepository: ReadReceiptRepository = remember {
-        RealReadReceiptRepository(authSessionStore, slockApi)
+        RealReadReceiptRepository(
+                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                networkClient = slockNetworkClient
+        )
     }
     val taskRepository: TaskRepository = remember { RealTaskRepository(authSessionStore, slockApi) }
     val memberRepository: MemberRepository = remember {
         RealMemberRepository(
-                store = authSessionStore,
+                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
                 networkClient = slockNetworkClient,
                 warningLogger = { message ->
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
@@ -959,7 +1006,23 @@ private fun SlockAppContent(
         )
     }
     val serverUnreadRepository: ServerUnreadRepository = remember {
-        RealServerUnreadRepository(authSessionStore, slockApi)
+        RealServerUnreadRepository(
+                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                networkClient = slockNetworkClient,
+                clockMillis = { System.currentTimeMillis() },
+                logger = { message ->
+                    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
+                            "SlockUnread",
+                            message
+                    )
+                },
+                warningLogger = { message ->
+                    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
+                            "SlockUnread",
+                            message
+                    )
+                }
+        )
     }
     val settingsRepository: SettingsRepository = remember {
         RealSettingsRepository(
@@ -3054,7 +3117,7 @@ private fun SlockAppContent(
                                 key = "member:${member.id.value}",
                                 reason = "open_member_profile"
                         ) {
-                            memberRepository.getMemberProfile(SlockRequestPriority.Foreground, member.id)
+                            memberRepository.getMemberProfile(DataRequestPriority.Foreground, member.id)
                         }) {
                     is DataResult.Content -> {
                         if (!uiResultOwner(
@@ -3090,7 +3153,7 @@ private fun SlockAppContent(
                                         key = "agent:${member.id.value}:dms",
                                         reason = "open_agent_profile"
                                 ) {
-                                    memberRepository.getAgentDirectMessages(SlockRequestPriority.Foreground, member.id)
+                                    memberRepository.getAgentDirectMessages(DataRequestPriority.Foreground, member.id)
                                 }
                             }
                             val remindersD = async {
@@ -3099,7 +3162,7 @@ private fun SlockAppContent(
                                         key = "agent:${member.id.value}:reminders",
                                         reason = "open_agent_profile"
                                 ) {
-                                    memberRepository.getAgentReminders(SlockRequestPriority.Foreground, member.id)
+                                    memberRepository.getAgentReminders(DataRequestPriority.Foreground, member.id)
                                 }
                             }
                             val activityD = async {
@@ -3108,7 +3171,7 @@ private fun SlockAppContent(
                                         key = "agent:${member.id.value}:activity",
                                         reason = "open_agent_profile"
                                 ) {
-                                    memberRepository.getAgentActivity(SlockRequestPriority.Foreground, member.id)
+                                    memberRepository.getAgentActivity(DataRequestPriority.Foreground, member.id)
                                 }
                             }
                             val workspacesD = async {
@@ -3117,7 +3180,7 @@ private fun SlockAppContent(
                                         key = "agent:${member.id.value}:workspaces",
                                         reason = "open_agent_profile"
                                 ) {
-                                    memberRepository.getAgentWorkspaces(SlockRequestPriority.Foreground, member.id)
+                                    memberRepository.getAgentWorkspaces(DataRequestPriority.Foreground, member.id)
                                 }
                             }
                             val workspaceTreeD = async {
@@ -3126,7 +3189,7 @@ private fun SlockAppContent(
                                         key = "agent:${member.id.value}:workspace-tree",
                                         reason = "open_agent_profile"
                                 ) {
-                                    memberRepository.getAgentWorkspaceTree(SlockRequestPriority.Foreground, member.id)
+                                    memberRepository.getAgentWorkspaceTree(DataRequestPriority.Foreground, member.id)
                                 }
                             }
                             val skillsD = async {
@@ -3135,7 +3198,7 @@ private fun SlockAppContent(
                                         key = "agent:${member.id.value}:skills",
                                         reason = "open_agent_profile"
                                 ) {
-                                    memberRepository.getAgentSkills(SlockRequestPriority.Foreground, member.id)
+                                    memberRepository.getAgentSkills(DataRequestPriority.Foreground, member.id)
                                 }
                             }
                             AgentDetailParts(
@@ -3183,7 +3246,7 @@ private fun SlockAppContent(
                             key = "agent:${agentId.value}:workspace-tree",
                             reason = "refresh_agent_workspace_tree"
                     ) {
-                        memberRepository.getAgentWorkspaceTree(SlockRequestPriority.Foreground, agentId)
+                        memberRepository.getAgentWorkspaceTree(DataRequestPriority.Foreground, agentId)
                     }
             if (membersDetailSelectedMemberId == agentId.value) {
                 membersState =
@@ -3220,7 +3283,7 @@ private fun SlockAppContent(
                             key = "agent:${agentId.value}:workspace:${node.path}",
                             reason = "open_agent_workspace_folder"
                     ) {
-                        memberRepository.getAgentWorkspaceChildren(SlockRequestPriority.Foreground, agentId, node.path)
+                        memberRepository.getAgentWorkspaceChildren(DataRequestPriority.Foreground, agentId, node.path)
                     }
             if (!uiResultOwner(
                             source = "workspace_tree",
@@ -3261,7 +3324,7 @@ private fun SlockAppContent(
                             key = "agent:${agentId.value}:file:${node.path}",
                             reason = "open_agent_workspace_file"
                     ) {
-                        memberRepository.readAgentWorkspaceFile(SlockRequestPriority.Foreground, agentId, node.path)
+                        memberRepository.readAgentWorkspaceFile(DataRequestPriority.Foreground, agentId, node.path)
                     }
             if (!uiResultOwner(
                             source = "workspace_children",
@@ -3346,7 +3409,7 @@ private fun SlockAppContent(
             when (
                     val result =
                             memberRepository.updateAgentProfile(
-                                    priority = SlockRequestPriority.Foreground,
+                                    priority = DataRequestPriority.Foreground,
                                     AgentProfileUpdateRequest(
                                             agentId = member.id,
                                             displayName = displayName,
@@ -4148,7 +4211,7 @@ private fun SlockAppContent(
                             reason = "add_channel_member"
                     ) {
                         memberRepository.addChannelMember(
-                                priority = SlockRequestPriority.Foreground,
+                                priority = DataRequestPriority.Foreground,
                                 AddChannelMemberRequest(
                                         channelId = channelId,
                                         memberId = MemberId(memberIdValue),
@@ -4168,7 +4231,7 @@ private fun SlockAppContent(
                                     key = "channel:${channelId.value}:members",
                                     reason = "add_channel_member_reload"
                             ) {
-                                memberRepository.getChannelMembers(SlockRequestPriority.Foreground, channelId)
+                                memberRepository.getChannelMembers(DataRequestPriority.Foreground, channelId)
                             }
                     if (!uiResultOwner(
                                     source = "add_member",
@@ -4231,7 +4294,7 @@ private fun SlockAppContent(
                             reason = "remove_channel_member"
                     ) {
                         memberRepository.removeChannelMember(
-                                priority = SlockRequestPriority.Foreground,
+                                priority = DataRequestPriority.Foreground,
                                 RemoveChannelMemberRequest(
                                         channelId = channelId,
                                         memberId = member.id,
@@ -4251,7 +4314,7 @@ private fun SlockAppContent(
                                     key = "channel:${channelId.value}:members",
                                     reason = "remove_channel_member_reload"
                             ) {
-                                memberRepository.getChannelMembers(SlockRequestPriority.Foreground, channelId)
+                                memberRepository.getChannelMembers(DataRequestPriority.Foreground, channelId)
                             }
                     if (!uiResultOwner(
                                     source = "remove_member",
@@ -5517,7 +5580,7 @@ private fun SlockAppContent(
                                         key = "thread_members:${channelId.value}",
                                         reason = "thread_members_panel"
                                 ) {
-                                    memberRepository.getChannelMembers(SlockRequestPriority.Visible, channelId)
+                                    memberRepository.getChannelMembers(DataRequestPriority.Visible, channelId)
                                 }
                             }
                     val candidatesD =
@@ -5528,7 +5591,7 @@ private fun SlockAppContent(
                                             key = "thread_members_candidates:${sid.value}",
                                             reason = "thread_members_panel"
                                     ) {
-                                        memberRepository.getMembers(SlockRequestPriority.Visible, sid)
+                                        memberRepository.getMembers(DataRequestPriority.Visible, sid)
                                     }
                                 }
                             }
@@ -6598,6 +6661,9 @@ private fun SlockAppContent(
             val homeRefreshPriority =
                     if (showRefreshAffordance) SlockRequestPriority.Visible
                     else SlockRequestPriority.Background
+            val homeRefreshDataPriority =
+                    if (showRefreshAffordance) DataRequestPriority.Visible
+                    else DataRequestPriority.Background
             coroutineScope {
                 val homeD =
                         async {
@@ -6633,7 +6699,7 @@ private fun SlockAppContent(
                                         key = "members:${selectedServerId.value}",
                                         reason = "home_refresh_members_$refreshSource"
                                 ) {
-                                    memberRepository.getMembers(homeRefreshPriority, selectedServerId)
+                                    memberRepository.getMembers(homeRefreshDataPriority, selectedServerId)
                                 }
                             }
                         }
@@ -8736,7 +8802,7 @@ private fun SlockAppContent(
                                                 key = "member:${memberId.value}",
                                                 reason = "load_human_profile"
                                         ) {
-                                            memberRepository.getMemberProfile(SlockRequestPriority.Foreground, memberId)
+                                            memberRepository.getMemberProfile(DataRequestPriority.Foreground, memberId)
                                         } as? DataResult.Content)?.data
                                     }
                             )

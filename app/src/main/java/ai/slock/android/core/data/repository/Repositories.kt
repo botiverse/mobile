@@ -85,165 +85,27 @@ interface TaskRepository {
     ): DataResult<TaskActionResult>
 }
 
-interface MemberRepository {
-    suspend fun getMembers(
-        priority: SlockRequestPriority,
-        serverId: ServerId
-    ): DataResult<MemberSnapshot>
-    suspend fun getMemberProfile(
-        priority: SlockRequestPriority,
-        memberId: MemberId
-    ): DataResult<MemberProfile>
-    suspend fun updateAgentProfile(
-        priority: SlockRequestPriority,
-        request: AgentProfileUpdateRequest
-    ): DataResult<MemberProfile>
-    suspend fun getAgentDetail(
-        priority: SlockRequestPriority,
-        agentId: MemberId
-    ): DataResult<AgentDetailSnapshot>
-    suspend fun getAgentDirectMessages(
-        priority: SlockRequestPriority,
-        agentId: MemberId
-    ): DataResult<AgentDmSnapshot>
-    suspend fun getAgentReminders(
-        priority: SlockRequestPriority,
-        agentId: MemberId
-    ): DataResult<AgentReminderSnapshot>
-    suspend fun getAgentActivity(
-        priority: SlockRequestPriority,
-        agentId: MemberId
-    ): DataResult<AgentActivitySnapshot>
-    suspend fun getAgentWorkspaces(
-        priority: SlockRequestPriority,
-        agentId: MemberId
-    ): DataResult<AgentWorkspaceSnapshot>
-    suspend fun getAgentWorkspaceTree(
-        priority: SlockRequestPriority,
-        agentId: MemberId
-    ): DataResult<AgentWorkspaceTreeSnapshot>
-    suspend fun getAgentWorkspaceChildren(
-        priority: SlockRequestPriority,
-        agentId: MemberId,
-        dirPath: String
-    ): DataResult<AgentWorkspaceChildrenSnapshot>
-    suspend fun readAgentWorkspaceFile(
-        priority: SlockRequestPriority,
-        agentId: MemberId,
-        path: String
-    ): DataResult<AgentWorkspaceFilePreviewSnapshot>
-    suspend fun getAgentSkills(
-        priority: SlockRequestPriority,
-        agentId: MemberId
-    ): DataResult<AgentSkillsSnapshot>
-    suspend fun getChannelMembers(
-        priority: SlockRequestPriority,
-        channelId: ChannelId
-    ): DataResult<ChannelMemberSnapshot>
-    suspend fun addChannelMember(
-        priority: SlockRequestPriority,
-        request: AddChannelMemberRequest
-    ): DataResult<ChannelMemberActionResult>
-    suspend fun removeChannelMember(
-        priority: SlockRequestPriority,
-        request: RemoveChannelMemberRequest
-    ): DataResult<ChannelMemberActionResult>
-}
+typealias MemberRepository = ai.slock.compose.data.MemberRepository
 
 interface AgentRepository {
     suspend fun getAgents(serverId: ServerId): DataResult<AgentSnapshot>
 }
 
-interface ChannelRepository {
-    suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot>
-    suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot>
-    suspend fun getDirectMessages(serverId: ServerId): DataResult<DirectMessageSnapshot>
-    suspend fun openAgentDirectMessage(agentId: MemberId): DataResult<OpenDirectMessageResult>
-    suspend fun openUserDirectMessage(userId: MemberId): DataResult<OpenDirectMessageResult>
-    suspend fun createChannel(request: CreateChannelRequest): DataResult<CreateChannelResult>
-    suspend fun joinChannel(channelId: ChannelId): DataResult<ChannelJoinResult>
-    suspend fun leaveChannel(channelId: ChannelId): DataResult<ChannelLeaveResult>
-    suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult>
-    suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult>
-}
+typealias ChannelRepository = ai.slock.compose.data.ChannelRepository
 
-interface InboxRepository {
-    suspend fun loadInitial(
-        serverId: ServerId,
-        filter: InboxFilter = InboxFilter.All,
-        limit: Int = DEFAULT_PAGE_LIMIT
-    ): DataResult<InboxSnapshot>
+typealias InboxRepository = ai.slock.compose.data.InboxRepository
 
-    suspend fun loadMore(
-        serverId: ServerId,
-        filter: InboxFilter = InboxFilter.All,
-        offset: Int,
-        limit: Int = DEFAULT_PAGE_LIMIT
-    ): DataResult<InboxSnapshot>
+typealias SavedRepository = ai.slock.compose.data.SavedRepository
 
-    suspend fun refresh(
-        serverId: ServerId,
-        filter: InboxFilter = InboxFilter.All,
-        limit: Int = DEFAULT_PAGE_LIMIT
-    ): DataResult<InboxSnapshot> = loadInitial(serverId, filter, limit)
-}
+typealias SearchRepository = ai.slock.compose.data.SearchRepository
 
-interface SavedRepository {
-    suspend fun loadInitial(
-        serverId: ServerId,
-        limit: Int = DEFAULT_PAGE_LIMIT
-    ): DataResult<SavedSnapshot>
+typealias SearchQueryOptions = ai.slock.compose.data.SearchQueryOptions
 
-    suspend fun loadMore(
-        serverId: ServerId,
-        offset: Int,
-        limit: Int = DEFAULT_PAGE_LIMIT
-    ): DataResult<SavedSnapshot>
+typealias SearchSort = ai.slock.compose.data.SearchSort
 
-    suspend fun saveMessage(
-        serverId: ServerId,
-        messageId: ai.slock.android.core.model.MessageId
-    ): DataResult<SavedMessageMutationResult>
+typealias InboxFilter = ai.slock.compose.data.InboxFilter
 
-    suspend fun unsaveMessage(
-        serverId: ServerId,
-        messageId: ai.slock.android.core.model.MessageId
-    ): DataResult<SavedMessageMutationResult>
-}
-
-interface SearchRepository {
-    suspend fun search(
-        serverId: ServerId,
-        query: String,
-        offset: Int = 0,
-        limit: Int = DEFAULT_PAGE_LIMIT,
-        options: SearchQueryOptions = SearchQueryOptions()
-    ): DataResult<SearchSnapshot>
-}
-
-data class SearchQueryOptions(
-    val sort: SearchSort = SearchSort.Relevance,
-    val senderId: String? = null,
-    val channelId: ChannelId? = null,
-    val afterIso: String? = null,
-    val beforeIso: String? = null
-)
-
-enum class SearchSort {
-    Relevance,
-    Recent;
-
-    val wireValue: String?
-        get() =
-            when (this) {
-                Relevance -> null
-                Recent -> "recent"
-            }
-}
-
-interface ServerUnreadRepository {
-    suspend fun getUnreadSummary(serverId: ServerId): DataResult<ServerUnreadSummarySnapshot>
-}
+typealias ServerUnreadRepository = ai.slock.compose.data.ServerUnreadRepository
 
 interface RealtimeRepository {
     suspend fun connect(serverId: ServerId, lastSeq: Long = 0): DataResult<Unit>
@@ -260,12 +122,6 @@ data class TaskFilter(
     val statuses: Set<ai.slock.android.core.model.TaskStatus> = emptySet(),
     val assignedToMeOnly: Boolean = false
 )
-
-enum class InboxFilter(val wireValue: String) {
-    All("all"),
-    Unread("unread"),
-    Mentions("mentions")
-}
 
 const val DEFAULT_PAGE_LIMIT = 30
 
@@ -292,10 +148,7 @@ data class SettingsServerActionResult(
     val message: String? = null
 )
 
-data class ChannelLeaveResult(
-    val channelId: ChannelId,
-    val left: Boolean = true
-)
+typealias ChannelLeaveResult = ai.slock.compose.data.ChannelLeaveResult
 
 data class CreateServerRequest(
     val name: String,
@@ -303,34 +156,12 @@ data class CreateServerRequest(
     val region: String? = null
 )
 
-data class CreateChannelRequest(
-    val name: String,
-    val description: String? = null,
-    val agentMemberIds: List<String> = emptyList(),
-    val userMemberIds: List<String> = emptyList()
-)
+typealias CreateChannelRequest = ai.slock.compose.data.CreateChannelRequest
 
-data class AddChannelMemberRequest(
-    val channelId: ChannelId,
-    val memberId: MemberId,
-    val kind: MemberKind
-)
+typealias AddChannelMemberRequest = ai.slock.compose.data.AddChannelMemberRequest
 
-data class RemoveChannelMemberRequest(
-    val channelId: ChannelId,
-    val memberId: MemberId,
-    val kind: MemberKind
-)
+typealias RemoveChannelMemberRequest = ai.slock.compose.data.RemoveChannelMemberRequest
 
-data class AgentProfileUpdateRequest(
-    val agentId: MemberId,
-    val displayName: String,
-    val description: String?
-)
+typealias AgentProfileUpdateRequest = ai.slock.compose.data.AgentProfileUpdateRequest
 
-data class ChannelMemberActionResult(
-    val channelId: ChannelId,
-    val memberId: MemberId,
-    val member: MemberProfile? = null,
-    val added: Boolean = true
-)
+typealias ChannelMemberActionResult = ai.slock.compose.data.ChannelMemberActionResult

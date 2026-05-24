@@ -4,6 +4,7 @@ import ai.slock.android.core.data.auth.AuthRepository
 import ai.slock.android.core.data.auth.AuthResult
 import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthSessionStore
+import ai.slock.android.core.data.auth.ComposeAuthSessionStoreAdapter
 import ai.slock.android.core.data.auth.KtorAuthRepository
 import ai.slock.android.core.data.local.SlockDatabase
 import ai.slock.android.core.data.local.SlockLocalWriteThrough
@@ -12,6 +13,7 @@ import ai.slock.android.core.data.repository.AttachmentUploadFile
 import ai.slock.android.core.data.repository.AttachmentUploadRequest
 import ai.slock.android.core.data.repository.CreateChannelRequest
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.RealChannelRepository
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.MessageId
 import ai.slock.android.core.model.ServerId
@@ -261,7 +263,12 @@ class LiveSlockDbFlowTest {
         val networkClient = RealSlockNetworkClientFactory.create(authStore, baseUrl = baseUrl)
         return LiveFixture(
             authStore = authStore,
-            channelRepository = RealChannelRepository(authStore, networkClient, warningLogger = {}),
+            channelRepository =
+                RealChannelRepository(
+                    sessionStore = ComposeAuthSessionStoreAdapter(authStore),
+                    networkClient = networkClient,
+                    warningLogger = {}
+                ),
             conversationRepository = RealConversationRepository(authStore, api, warningLogger = {}),
             baseUrl = baseUrl,
             accessToken = session.accessToken,

@@ -66,7 +66,7 @@ class NetworkPriorityCallSiteTest {
     @Test
     fun memberRepositoryMethodsRequireExplicitPriorityParameter() {
         val root = findRepoRoot()
-        val file = File(root, "app/src/main/java/ai/slock/android/core/data/repository/Repositories.kt")
+        val file = File(root, "compose/shared/src/commonMain/kotlin/ai/slock/compose/data/SlockRepositories.kt")
         val lines = file.readLines()
         val start = lines.indexOfFirst { it.trim() == "interface MemberRepository {" }
         val end = lines.drop(start + 1).indexOfFirst { it.trim() == "}" }.let { start + 1 + it }
@@ -82,7 +82,7 @@ class NetworkPriorityCallSiteTest {
                                             if (lines[i].contains("): DataResult<")) break
                                         }
                                     }
-                            if (signature.contains("priority: SlockRequestPriority")) {
+                            if (signature.contains("priority: DataRequestPriority")) {
                                 null
                             } else {
                                 "${file.relativeTo(root).path}:${start + offset + 1}: $trimmed"
@@ -99,10 +99,10 @@ class NetworkPriorityCallSiteTest {
     @Test
     fun realMemberRepositoryDoesNotUseRuntimePriorityGuard() {
         val root = findRepoRoot()
-        val file = File(root, "app/src/main/java/ai/slock/android/core/data/network/RealSlockRepositories.kt")
+        val file = File(root, "compose/shared/src/commonMain/kotlin/ai/slock/compose/data/MemberRepositoryDataSource.kt")
         val text = file.readText()
         val start = text.indexOf("class RealMemberRepository")
-        val end = text.indexOf("class RealInboxRepository", start)
+        val end = text.indexOf("@Serializable", start)
         val memberRepositoryBody = text.substring(start, end)
 
         assertTrue(

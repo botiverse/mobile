@@ -4,9 +4,17 @@ import ai.slock.android.core.data.auth.AuthServer
 import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthSessionStore
 import ai.slock.android.core.data.auth.AuthUser
+import ai.slock.android.core.data.auth.ComposeAuthSessionStoreAdapter
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.HomeNetworkResponse
+import ai.slock.compose.data.RealChannelRepository
+import ai.slock.compose.data.RealInboxRepository
+import ai.slock.compose.data.RealMemberRepository
+import ai.slock.compose.data.RealReadReceiptRepository
+import ai.slock.compose.data.RealSavedRepository
+import ai.slock.compose.data.RealSearchRepository
+import ai.slock.compose.data.RealServerUnreadRepository
 import ai.slock.compose.data.SlockNetworkClient
 import ai.slock.android.core.data.repository.AddChannelMemberRequest
 import ai.slock.android.core.data.repository.AgentProfileUpdateRequest
@@ -63,7 +71,7 @@ class RealSlockRepositoriesTest {
                 unreadCountsJson = """{"channel-1":3,"dm-1":2}"""
             )
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api)
         )
 
@@ -90,8 +98,8 @@ class RealSlockRepositoriesTest {
             )
         val repository =
             RealChannelRepository(
-                store = InMemoryAuthSessionStore(sampleSession),
-                networkClient = FakeMemberNetworkClient(api)
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
+            networkClient = FakeMemberNetworkClient(api)
             )
 
         val first = runSuspend { repository.getHome(ServerId("server-1")) }
@@ -116,8 +124,8 @@ class RealSlockRepositoriesTest {
             )
         val repository =
             RealChannelRepository(
-                store = InMemoryAuthSessionStore(sampleSession),
-                networkClient = FakeMemberNetworkClient(api)
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
+            networkClient = FakeMemberNetworkClient(api)
             )
 
         val first = runSuspend { repository.getHome(ServerId("server-1")) }
@@ -143,8 +151,8 @@ class RealSlockRepositoriesTest {
             )
         val repository =
             RealChannelRepository(
-                store = InMemoryAuthSessionStore(sampleSession),
-                networkClient = FakeMemberNetworkClient(api)
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
+            networkClient = FakeMemberNetworkClient(api)
             )
 
         runSuspend { repository.getHome(ServerId("server-1")) }
@@ -159,7 +167,7 @@ class RealSlockRepositoriesTest {
     @Test
     fun channelRepositoryHidesArchivedChannelsFromHomeSnapshot() {
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(
                 FakeSlockApi(
                     channelsJson = """
@@ -183,7 +191,7 @@ class RealSlockRepositoriesTest {
     @Test
     fun channelRepositoryPreservesNestedAgentPresenceForHomeDirectMessages() {
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(FakeSlockApi(
                 channelsJson = """[]""",
                 directMessagesJson = """
@@ -216,7 +224,7 @@ class RealSlockRepositoriesTest {
     @Test
     fun channelRepositoryMapsAgentPresenceAliasesForHomeDirectMessages() {
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(FakeSlockApi(
                 channelsJson = """[]""",
                 directMessagesJson = """
@@ -248,7 +256,7 @@ class RealSlockRepositoriesTest {
     @Test
     fun channelRepositoryDoesNotExposeHumanPresenceForHomeDirectMessages() {
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(FakeSlockApi(
                 channelsJson = """[]""",
                 directMessagesJson = """
@@ -280,7 +288,7 @@ class RealSlockRepositoriesTest {
     fun channelRepositoryToleratesWrappedHomeResponseShapesAndBadItems() {
         val warnings = mutableListOf<String>()
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(FakeSlockApi(
                 channelsJson = """
                     {
@@ -315,7 +323,7 @@ class RealSlockRepositoriesTest {
     @Test
     fun channelRepositoryParsesDirectMessageGravatarAvatarObjects() {
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(
                 FakeSlockApi(
                     channelsJson = """[]""",
@@ -363,7 +371,7 @@ class RealSlockRepositoriesTest {
     @Test
     fun channelRepositoryDoesNotMapCancellationToParseFailure() {
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(FakeSlockApi(
                 channelsJson = """[{"id":"channel-1","name":"android-dev","type":"channel"}]""",
                 directMessagesFailure = CancellationException("effect restarted")
@@ -392,7 +400,7 @@ class RealSlockRepositoriesTest {
             """.trimIndent()
         )
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
@@ -421,7 +429,7 @@ class RealSlockRepositoriesTest {
             """.trimIndent()
         )
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
@@ -451,8 +459,8 @@ class RealSlockRepositoriesTest {
             """.trimIndent()
         )
         val repository = RealInboxRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
-            api = api
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
+            networkClient = FakeMemberNetworkClient(api)
         )
 
         val result = runSuspend {
@@ -463,7 +471,7 @@ class RealSlockRepositoriesTest {
         val snapshot = (result as DataResult.Content).data
         assertEquals(true, snapshot.hasMore)
         assertEquals(31, snapshot.nextOffset)
-        assertEquals(1, snapshot.totalCount)
+        assertEquals(12, snapshot.totalCount)
         assertEquals(4, snapshot.totalUnreadCount)
         assertEquals("thread:thread-1", snapshot.items.single().key)
         assertEquals(InboxItemKind.Thread, snapshot.items.single().kind)
@@ -472,8 +480,8 @@ class RealSlockRepositoriesTest {
     @Test
     fun inboxRepositoryMapsRealThreadItemShape() {
         val repository = RealInboxRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
+            networkClient = FakeMemberNetworkClient(FakeSlockApi(
                 inboxJson = """
                     {
                       "items": [
@@ -505,7 +513,7 @@ class RealSlockRepositoriesTest {
                       "totalUnreadCount": 4
                     }
                 """.trimIndent()
-            )
+            ))
         )
 
         val result = runSuspend { repository.loadInitial(ServerId("server-1")) }
@@ -525,8 +533,8 @@ class RealSlockRepositoriesTest {
     @Test
     fun inboxRepositoryMapsMentionsFilterAndHasMentionFlag() {
         val repository = RealInboxRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
+            networkClient = FakeMemberNetworkClient(FakeSlockApi(
                 inboxJson = """
                     {
                       "items": [
@@ -541,7 +549,7 @@ class RealSlockRepositoriesTest {
                       ]
                     }
                 """.trimIndent()
-            )
+            ))
         )
 
         val result = runSuspend {
@@ -562,9 +570,11 @@ class RealSlockRepositoriesTest {
             searchJson = """{"results":[{"id":"message-2","seq":1,"channelId":"channel-2","channelName":"product","channelType":"channel","parentChannelId":"channel-2","parentChannelName":"product","parentChannelType":"channel","senderId":"user-1","senderType":"user","senderName":"Artin","content":"Search hit","snippet":"Search hit","createdAt":"2026-05-01T00:00:00Z"}],"hasMore":false}"""
         )
 
-        val saved = runSuspend { RealSavedRepository(store, api).loadInitial(ServerId("server-1")) }
-        val search = runSuspend { RealSearchRepository(store, api).search(ServerId("server-1"), "query") }
-        val blank = runSuspend { RealSearchRepository(store, api).search(ServerId("server-1"), " ") }
+        val sessionStore = ComposeAuthSessionStoreAdapter(store)
+        val networkClient = FakeMemberNetworkClient(api)
+        val saved = runSuspend { RealSavedRepository(sessionStore, networkClient).loadInitial(ServerId("server-1")) }
+        val search = runSuspend { RealSearchRepository(sessionStore, networkClient).search(ServerId("server-1"), "query") }
+        val blank = runSuspend { RealSearchRepository(sessionStore, networkClient).search(ServerId("server-1"), " ") }
 
         assertTrue(saved is DataResult.Content)
         assertEquals("Saved note", (saved as DataResult.Content).data.items.single().lastMessagePreview)
@@ -576,7 +586,10 @@ class RealSlockRepositoriesTest {
     @Test
     fun searchRepositoryForwardsWebSearchFilterParams() {
         val api = FakeSlockApi(searchJson = """{"results":[]}""")
-        val repository = RealSearchRepository(InMemoryAuthSessionStore(sampleSession), api)
+        val repository = RealSearchRepository(
+            ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
+            FakeMemberNetworkClient(api)
+        )
 
         runSuspend {
             repository.search(
@@ -615,18 +628,19 @@ class RealSlockRepositoriesTest {
     @Test
     fun serverUnreadRepositoryMapsSummaryAndRequiresSelectedServer() {
         val repository = RealServerUnreadRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
+            networkClient = FakeMemberNetworkClient(FakeSlockApi(
                 unreadSummaryJson = """
                     {
                       "servers": [
-                        {"serverId":"server-1","totalUnreadCount":9,"channelUnreadCount":3,"dmUnreadCount":2,"mentionCount":1},
+                        {"serverId":"server-1","totalUnreadCount":9,"channelUnreadCount":3,"directMessageUnreadCount":2,"mentionCount":1},
                         {"serverId":"server-2","totalUnreadCount":5}
                       ],
                       "totalUnreadCount": 14
                     }
                 """.trimIndent()
-            ),
+            )),
+            clockMillis = { 1_000L },
             logger = {},
             warningLogger = {}
         )
@@ -645,12 +659,15 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
-    fun serverUnreadRepositoryMapsCurrentServerOnlyShape() {
+    fun serverUnreadRepositoryMapsCanonicalSingleServerSummary() {
         val repository = RealServerUnreadRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(
-                unreadSummaryJson = """{"unreadCount":3,"mentions":1}"""
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
+            networkClient = FakeMemberNetworkClient(
+                FakeSlockApi(
+                    unreadSummaryJson = """{"servers":[{"serverId":"server-1","totalUnreadCount":3,"mentionCount":1}]}"""
+                )
             ),
+            clockMillis = { 1_000L },
             logger = {},
             warningLogger = {}
         )
@@ -668,11 +685,11 @@ class RealSlockRepositoriesTest {
     fun serverUnreadRepositoryThrottlesRepeatedCallsPerServer() {
         var now = 1_000L
         val api = FakeSlockApi(
-            unreadSummaryJson = """{"unreadCount":3}"""
+            unreadSummaryJson = """{"servers":[{"serverId":"server-1","totalUnreadCount":3}]}"""
         )
         val repository = RealServerUnreadRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
+            networkClient = FakeMemberNetworkClient(api),
             throttleWindowMillis = 5_000L,
             clockMillis = { now },
             logger = {},
@@ -693,8 +710,8 @@ class RealSlockRepositoriesTest {
     @Test
     fun repositoriesRequireSelectedSessionServer() {
         val repository = RealInboxRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi()
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
+            networkClient = FakeMemberNetworkClient(FakeSlockApi())
         )
 
         val result = runSuspend {
@@ -1248,7 +1265,7 @@ class RealSlockRepositoriesTest {
             createChannelJson = """{"id":"channel-new","name":"Launch","type":"channel","description":"Ship it"}"""
         )
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
@@ -1281,7 +1298,7 @@ class RealSlockRepositoriesTest {
             joinChannelJson = """{"ok":true}"""
         )
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
@@ -1300,7 +1317,7 @@ class RealSlockRepositoriesTest {
     fun channelRepositoryJoinsChannelWhenResponseHasOnlyOk() {
         val api = FakeSlockApi(joinChannelJson = """{"ok":true}""")
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
@@ -1318,7 +1335,7 @@ class RealSlockRepositoriesTest {
     fun channelRepositoryLeavesChannelWithWebEndpoint() {
         val api = FakeSlockApi(leaveChannelJson = """{"ok":true}""")
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
@@ -1339,7 +1356,7 @@ class RealSlockRepositoriesTest {
             archiveChannelJson = """{"id":"channel-1","name":"android-dev","type":"channel","archivedAt":"2026-05-14T11:00:00Z"}"""
         )
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
@@ -1359,7 +1376,7 @@ class RealSlockRepositoriesTest {
     fun channelRepositoryDeletesChannelWithWebEndpoint() {
         val api = FakeSlockApi(deleteChannelJson = """{"ok":true}""")
         val repository = RealChannelRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
@@ -1376,12 +1393,12 @@ class RealSlockRepositoriesTest {
     @Test
     fun readReceiptRepositoryMapsSeqReadAndUnreadCounts() {
         val api = FakeSlockApi(
-            unreadCountsJson = """{"channel-1":3,"thread-1":{"unreadCount":2}}""",
+            unreadCountsJson = """{"channel-1":3,"thread-1":2}""",
             readReceiptJson = """{"channelId":"channel-1","seq":42,"unreadCount":0}"""
         )
         val repository = RealReadReceiptRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -1629,17 +1646,17 @@ class RealSlockRepositoriesTest {
             """.trimIndent()
         )
         val repository = RealMemberRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
-        val serverMembers = runSuspend { repository.getMembers(SlockRequestPriority.Visible, ServerId("server-1")) }
+        val serverMembers = runSuspend { repository.getMembers(DataRequestPriority.Visible, ServerId("server-1")) }
         api.memberProfileCalls.clear()
-        val channelMembers = runSuspend { repository.getChannelMembers(SlockRequestPriority.Visible, ChannelId("channel-1")) }
+        val channelMembers = runSuspend { repository.getChannelMembers(DataRequestPriority.Visible, ChannelId("channel-1")) }
         val addResult = runSuspend {
             repository.addChannelMember(
-                    SlockRequestPriority.Foreground,
+                    DataRequestPriority.Foreground,
                     AddChannelMemberRequest(
                     channelId = ChannelId("channel-1"),
                     memberId = MemberId("agent-1"),
@@ -1649,7 +1666,7 @@ class RealSlockRepositoriesTest {
         }
         val removeResult = runSuspend {
             repository.removeChannelMember(
-                    SlockRequestPriority.Foreground,
+                    DataRequestPriority.Foreground,
                     RemoveChannelMemberRequest(
                     channelId = ChannelId("channel-1"),
                     memberId = MemberId("agent-1"),
@@ -1733,12 +1750,12 @@ class RealSlockRepositoriesTest {
             """.trimIndent()
         )
         val repository = RealMemberRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
-        val result = runSuspend { repository.getMembers(SlockRequestPriority.Visible, ServerId("server-1")) }
+        val result = runSuspend { repository.getMembers(DataRequestPriority.Visible, ServerId("server-1")) }
 
         assertTrue(result is DataResult.Content)
         val members = (result as DataResult.Content).data.members
@@ -1751,7 +1768,7 @@ class RealSlockRepositoriesTest {
     @Test
     fun memberRepositoryMapsNestedChannelMembersContainer() {
         val repository = RealMemberRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(
                 FakeSlockApi(
                     channelMembersJson = """
@@ -1799,7 +1816,7 @@ class RealSlockRepositoriesTest {
                     key = "test:channel-members",
                     reason = "unit_test"
                 ) {
-                    repository.getChannelMembers(SlockRequestPriority.Visible, ChannelId("channel-1"))
+                    repository.getChannelMembers(DataRequestPriority.Visible, ChannelId("channel-1"))
                 }
             }
 
@@ -1838,12 +1855,12 @@ class RealSlockRepositoriesTest {
             """.trimIndent()
         )
         val repository = RealMemberRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
-        val result = runSuspend { repository.getMembers(SlockRequestPriority.Visible, ServerId("server-1")) }
+        val result = runSuspend { repository.getMembers(DataRequestPriority.Visible, ServerId("server-1")) }
 
         assertTrue(result is DataResult.Content)
         val agent = (result as DataResult.Content).data.members.single { it.id.value == "agent-9" }
@@ -1874,12 +1891,12 @@ class RealSlockRepositoriesTest {
             """.trimIndent()
         )
         val repository = RealMemberRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
-        val result = runSuspend { repository.getAgentSkills(SlockRequestPriority.Visible, MemberId("agent-1")) }
+        val result = runSuspend { repository.getAgentSkills(DataRequestPriority.Visible, MemberId("agent-1")) }
 
         assertTrue(result is DataResult.Content)
         val groups = (result as DataResult.Content).data.groups
@@ -1924,12 +1941,12 @@ class RealSlockRepositoriesTest {
             """.trimIndent()
         )
         val repository = RealMemberRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
-        val result = runSuspend { repository.getAgentWorkspaces(SlockRequestPriority.Visible, MemberId("agent-1")) }
+        val result = runSuspend { repository.getAgentWorkspaces(DataRequestPriority.Visible, MemberId("agent-1")) }
 
         assertTrue(result is DataResult.Content)
         val snapshot = (result as DataResult.Content).data
@@ -1954,14 +1971,14 @@ class RealSlockRepositoriesTest {
             """.trimIndent()
         )
         val repository = RealMemberRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
         val result = runSuspend {
             repository.updateAgentProfile(
-                SlockRequestPriority.Foreground,
+                DataRequestPriority.Foreground,
                 AgentProfileUpdateRequest(
                     agentId = MemberId("agent-9"),
                     displayName = " Updated Agent ",
@@ -2008,12 +2025,12 @@ class RealSlockRepositoriesTest {
             """.trimIndent()
         )
         val repository = RealMemberRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
-        val result = runSuspend { repository.getMembers(SlockRequestPriority.Visible, ServerId("server-1")) }
+        val result = runSuspend { repository.getMembers(DataRequestPriority.Visible, ServerId("server-1")) }
 
         assertTrue(result is DataResult.Content)
         val human = (result as DataResult.Content).data.members.single { it.kind == MemberKind.Human }
@@ -2050,12 +2067,12 @@ class RealSlockRepositoriesTest {
             """.trimIndent()
         )
         val repository = RealMemberRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
-        val result = runSuspend { repository.getMembers(SlockRequestPriority.Visible, ServerId("server-1")) }
+        val result = runSuspend { repository.getMembers(DataRequestPriority.Visible, ServerId("server-1")) }
 
         assertTrue(result is DataResult.Content)
         val human = (result as DataResult.Content).data.members.single { it.kind == MemberKind.Human }
@@ -2096,12 +2113,12 @@ class RealSlockRepositoriesTest {
             """.trimIndent()
         )
         val repository = RealMemberRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
-        val result = runSuspend { repository.getMembers(SlockRequestPriority.Visible, ServerId("server-1")) }
+        val result = runSuspend { repository.getMembers(DataRequestPriority.Visible, ServerId("server-1")) }
 
         assertTrue(result is DataResult.Content)
         val members = (result as DataResult.Content).data.members
@@ -2127,19 +2144,19 @@ class RealSlockRepositoriesTest {
             """.trimIndent()
         )
         val repository = RealMemberRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
-        val first = runSuspend { repository.getAgentActivity(SlockRequestPriority.Visible, MemberId("agent-1")) }
+        val first = runSuspend { repository.getAgentActivity(DataRequestPriority.Visible, MemberId("agent-1")) }
         api.agentActivityLogJson = """
             [
               {"id":"activity-2","type":"tool_start","body":"Tool updated","timestamp":"2026-05-09T02:00:00Z"},
               {"id":"activity-3","type":"text","body":"New text","timestamp":"2026-05-09T03:00:00Z"}
             ]
         """.trimIndent()
-        val second = runSuspend { repository.getAgentActivity(SlockRequestPriority.Visible, MemberId("agent-1")) }
+        val second = runSuspend { repository.getAgentActivity(DataRequestPriority.Visible, MemberId("agent-1")) }
 
         assertTrue(first is DataResult.Content)
         assertTrue(second is DataResult.Content)
@@ -2163,12 +2180,12 @@ class RealSlockRepositoriesTest {
             agentActivityLogJson = """[]"""
         )
         val repository = RealMemberRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
+            sessionStore = ComposeAuthSessionStoreAdapter(InMemoryAuthSessionStore(sampleSession)),
             networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
-        val result = runSuspend { repository.getAgentActivity(SlockRequestPriority.Visible, MemberId("agent-1")) }
+        val result = runSuspend { repository.getAgentActivity(DataRequestPriority.Visible, MemberId("agent-1")) }
 
         assertTrue(result is DataResult.Content)
         val activity = (result as DataResult.Content).data.activity.single()
@@ -2449,8 +2466,58 @@ class RealSlockRepositoriesTest {
                     normalized == "channels/dm" && method == "POST" -> {
                         api.openDirectMessage(apiPriority, bodyText.orEmpty().toRequestBody(json))
                     }
+                    normalized == "channels/inbox" && method == "GET" -> {
+                        api.inbox(
+                            apiPriority,
+                            query.firstOrNull { it.first == "filter" }?.second ?: "all",
+                            query.firstOrNull { it.first == "limit" }?.second?.toIntOrNull() ?: 30,
+                            query.firstOrNull { it.first == "offset" }?.second?.toIntOrNull() ?: 0
+                        )
+                    }
+                    normalized == "channels/saved" && method == "GET" -> {
+                        api.saved(
+                            apiPriority,
+                            query.firstOrNull { it.first == "limit" }?.second?.toIntOrNull() ?: 30,
+                            query.firstOrNull { it.first == "offset" }?.second?.toIntOrNull() ?: 0
+                        )
+                    }
+                    normalized == "channels/saved" && method == "POST" -> {
+                        api.saveMessage(apiPriority, bodyText.orEmpty().toRequestBody(json))
+                    }
+                    normalized.matches(Regex("""channels/saved/[^/]+""")) && method == "DELETE" -> {
+                        api.unsaveMessage(apiPriority, normalized.removePrefix("channels/saved/"))
+                    }
+                    normalized == "messages/search" && method == "GET" -> {
+                        api.searchMessages(
+                            priority = apiPriority,
+                            query = query.firstOrNull { it.first == "q" }?.second.orEmpty(),
+                            limit = query.firstOrNull { it.first == "limit" }?.second?.toIntOrNull() ?: 30,
+                            offset = query.firstOrNull { it.first == "offset" }?.second?.toIntOrNull() ?: 0,
+                            sort = query.firstOrNull { it.first == "sort" }?.second,
+                            senderId = query.firstOrNull { it.first == "senderId" }?.second,
+                            channelId = query.firstOrNull { it.first == "channelId" }?.second,
+                            after = query.firstOrNull { it.first == "after" }?.second,
+                            before = query.firstOrNull { it.first == "before" }?.second
+                        )
+                    }
                     normalized == "channels/unread" -> {
                         api.channelUnreadCounts(apiPriority)
+                    }
+                    normalized.matches(Regex("""channels/[^/]+/read""")) && method == "POST" -> {
+                        api.markChannelReadToSeq(
+                            apiPriority,
+                            normalized.split("/")[1],
+                            bodyText.orEmpty().toRequestBody(json)
+                        )
+                    }
+                    normalized == "channels/inbox/read-all" && method == "POST" -> {
+                        api.markInboxReadAll(apiPriority)
+                    }
+                    normalized.matches(Regex("""channels/[^/]+/read-all""")) && method == "POST" -> {
+                        api.markChannelReadAll(apiPriority, normalized.split("/")[1])
+                    }
+                    normalized.matches(Regex("""channels/[^/]+/unread""")) && method == "POST" -> {
+                        api.markChannelUnread(apiPriority, normalized.split("/")[1])
                     }
                     normalized == "servers/unread-summary" -> {
                         api.serverUnreadSummary(apiPriority)

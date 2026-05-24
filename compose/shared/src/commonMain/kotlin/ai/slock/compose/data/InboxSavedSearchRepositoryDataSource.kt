@@ -1,0 +1,304 @@
+package ai.slock.compose.data
+
+import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ServerSummary
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+private val inboxSavedSearchRepositoryJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+}
+
+private suspend fun SlockNetworkClient.inbox(
+    priority: DataRequestPriority,
+    filter: InboxFilter,
+    limit: Int,
+    offset: Int
+): HomeNetworkResponse =
+    request(
+        priority,
+        "channels/inbox",
+        query = listOf(
+            "filter" to filter.wireValue,
+            "limit" to limit.toString(),
+            "offset" to offset.toString()
+        )
+    )
+
+private suspend fun SlockNetworkClient.saved(
+    priority: DataRequestPriority,
+    limit: Int,
+    offset: Int
+): HomeNetworkResponse =
+    request(
+        priority,
+        "channels/saved",
+        query = listOf("limit" to limit.toString(), "offset" to offset.toString())
+    )
+
+private suspend fun SlockNetworkClient.saveMessage(
+    priority: DataRequestPriority,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "channels/saved", method = "POST", bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.unsaveMessage(
+    priority: DataRequestPriority,
+    messageId: MessageId
+): HomeNetworkResponse =
+    request(priority, "channels/saved/${messageId.value}", method = "DELETE")
+
+private suspend fun SlockNetworkClient.searchMessages(
+    priority: DataRequestPriority,
+    query: String,
+    limit: Int,
+    offset: Int,
+    options: SearchQueryOptions
+): HomeNetworkResponse =
+    request(
+        priority,
+        "messages/search",
+        query =
+            listOfNotNull(
+                "q" to query,
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                options.sort.wireValue?.let { "sort" to it },
+                options.senderId?.takeIf { it.isNotBlank() }?.let { "senderId" to it },
+                options.channelId?.value?.let { "channelId" to it },
+                options.afterIso?.takeIf { it.isNotBlank() }?.let { "after" to it },
+                options.beforeIso?.takeIf { it.isNotBlank() }?.let { "before" to it }
+            )
+    )
+
+class RealInboxRepository(
+    private val sessionStore: SlockAuthSessionStore,
+    private val networkClient: SlockNetworkClient,
+    private val logger: (String) -> Unit = {},
+    private val warningLogger: (String) -> Unit = {}
+) : InboxRepository {
+    override suspend fun loadInitial(
+        serverId: ServerId,
+        filter: InboxFilter,
+        limit: Int
+    ): DataResult<InboxSnapshot> = load(serverId, filter, limit, offset = 0)
+
+    override suspend fun loadMore(
+        serverId: ServerId,
+        filter: InboxFilter,
+        offset: Int,
+        limit: Int
+    ): DataResult<InboxSnapshot> = load(serverId, filter, limit, offset)
+
+    private suspend fun load(
+        serverId: ServerId,
+        filter: InboxFilter,
+        limit: Int,
+        offset: Int
+    ): DataResult<InboxSnapshot> {
+        val context = sessionStore.serverContext(serverId) ?: return authRequired()
+        return executeInboxLike(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = { networkClient.inbox(DataRequestPriority.Visible, filter, limit, offset) },
+            emptyWhen = { it.items.isEmpty() },
+            source = "inbox",
+            warningLogger = warningLogger,
+            mapper = { bodyText ->
+                val parsed = parseSharedInboxSnapshot(bodyText)
+                    ?: throw IllegalStateException("Inbox response missing items")
+                if ((parsed.totalCount != parsed.items.size) ||
+                    (parsed.totalUnreadCount != parsed.items.sumOf { it.unreadCount })
+                ) {
+                    logger(
+                        "inbox_count_override serverId=${serverId.value} filter=${filter.wireValue} offset=$offset wireTotal=${parsed.totalCount} wireUnread=${parsed.totalUnreadCount} itemCount=${parsed.items.size} itemUnread=${parsed.items.sumOf { it.unreadCount }}"
+                    )
+                }
+                InboxSnapshot(
+                    server = context.server,
+                    items = parsed.items,
+                    totalCount = parsed.totalCount,
+                    totalUnreadCount = parsed.totalUnreadCount,
+                    hasMore = parsed.hasMore,
+                    nextOffset = offset + parsed.items.size
+                )
+            }
+        )
+    }
+}
+
+class RealSavedRepository(
+    private val sessionStore: SlockAuthSessionStore,
+    private val networkClient: SlockNetworkClient,
+    private val warningLogger: (String) -> Unit = {}
+) : SavedRepository {
+    override suspend fun loadInitial(serverId: ServerId, limit: Int): DataResult<SavedSnapshot> =
+        load(serverId, limit, offset = 0)
+
+    override suspend fun loadMore(
+        serverId: ServerId,
+        offset: Int,
+        limit: Int
+    ): DataResult<SavedSnapshot> = load(serverId, limit, offset)
+
+    override suspend fun saveMessage(
+        serverId: ServerId,
+        messageId: MessageId
+    ): DataResult<SavedMessageMutationResult> =
+        mutateSavedMessage(serverId, messageId, save = true)
+
+    override suspend fun unsaveMessage(
+        serverId: ServerId,
+        messageId: MessageId
+    ): DataResult<SavedMessageMutationResult> =
+        mutateSavedMessage(serverId, messageId, save = false)
+
+    private suspend fun mutateSavedMessage(
+        serverId: ServerId,
+        messageId: MessageId,
+        save: Boolean
+    ): DataResult<SavedMessageMutationResult> {
+        sessionStore.serverContext(serverId) ?: return authRequired()
+        return executeInboxLike(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = {
+                if (save) {
+                    networkClient.saveMessage(
+                        DataRequestPriority.Foreground,
+                        inboxSavedSearchRepositoryJson.encodeToString(SaveMessageBody(messageId.value))
+                    )
+                } else {
+                    networkClient.unsaveMessage(DataRequestPriority.Foreground, messageId)
+                }
+            },
+            source = if (save) "saved_save_message" else "saved_unsave_message",
+            warningLogger = warningLogger,
+            mapper = { SavedMessageMutationResult(messageId) }
+        )
+    }
+
+    private suspend fun load(
+        serverId: ServerId,
+        limit: Int,
+        offset: Int
+    ): DataResult<SavedSnapshot> {
+        val context = sessionStore.serverContext(serverId) ?: return authRequired()
+        return executeInboxLike(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = { networkClient.saved(DataRequestPriority.Visible, limit, offset) },
+            emptyWhen = { it.items.isEmpty() },
+            source = "saved",
+            warningLogger = warningLogger,
+            mapper = { bodyText ->
+                val parsed = parseSharedSavedItems(bodyText)
+                    ?: throw IllegalStateException("Saved response missing saved list")
+                SavedSnapshot(
+                    server = context.server,
+                    items = parsed.items,
+                    totalCount = parsed.totalCount,
+                    hasMore = parsed.hasMore,
+                    nextOffset = offset + parsed.items.size
+                )
+            }
+        )
+    }
+}
+
+class RealSearchRepository(
+    private val sessionStore: SlockAuthSessionStore,
+    private val networkClient: SlockNetworkClient,
+    private val warningLogger: (String) -> Unit = {}
+) : SearchRepository {
+    override suspend fun search(
+        serverId: ServerId,
+        query: String,
+        offset: Int,
+        limit: Int,
+        options: SearchQueryOptions
+    ): DataResult<SearchSnapshot> {
+        val trimmedQuery = query.trim()
+        if (trimmedQuery.isBlank()) return DataResult.Empty(EmptyReason.NoSearchResults)
+        val context = sessionStore.serverContext(serverId) ?: return authRequired()
+        return executeInboxLike(
+            emptyReason = EmptyReason.NoSearchResults,
+            block = {
+                networkClient.searchMessages(
+                    DataRequestPriority.Visible,
+                    trimmedQuery,
+                    limit,
+                    offset,
+                    options
+                )
+            },
+            emptyWhen = { it.items.isEmpty() },
+            source = "search_messages",
+            warningLogger = warningLogger,
+            mapper = { bodyText ->
+                val parsed = parseSharedSearchItems(bodyText)
+                    ?: throw IllegalStateException("Search response missing results")
+                SearchSnapshot(
+                    server = context.server,
+                    query = query,
+                    items = parsed.items,
+                    totalCount = parsed.items.size,
+                    hasMore = parsed.hasMore,
+                    nextOffset = offset + parsed.items.size
+                )
+            }
+        )
+    }
+}
+
+@Serializable
+private data class SaveMessageBody(val messageId: String)
+
+private data class InboxLikeServerContext(val server: ServerSummary)
+
+private suspend fun SlockAuthSessionStore.serverContext(serverId: ServerId): InboxLikeServerContext? {
+    val session = readSession() ?: return null
+    val selectedId = session.currentServerId ?: return null
+    if (selectedId != serverId.value) return null
+    val server = session.servers.firstOrNull { it.id == selectedId }?.toServerSummary() ?: return null
+    return InboxLikeServerContext(server)
+}
+
+private suspend fun <T> executeInboxLike(
+    emptyReason: EmptyReason,
+    block: suspend () -> HomeNetworkResponse,
+    emptyWhen: (T) -> Boolean = { false },
+    source: String,
+    warningLogger: (String) -> Unit = {},
+    mapper: (String) -> T
+): DataResult<T> {
+    var statusCode: Int? = null
+    return try {
+        val response = block()
+        statusCode = response.code
+        if (!response.isSuccessful) return response.toInboxLikeDataError()
+        val body = response.bodyText.orEmpty()
+        if (body.isBlank()) return DataResult.Empty(emptyReason)
+        val result = mapper(body)
+        if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (exception: Exception) {
+        warningLogger(
+            "parse_failed source=$source stage=response_or_mapper status=${statusCode ?: "unknown"} exception=${exception::class.simpleName}"
+        )
+        DataResult.Error(ScreenError(code = "network_parse_failed", retryable = true))
+    }
+}
+
+private fun <T> authRequired(): DataResult<T> =
+    DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+
+private fun <T> HomeNetworkResponse.toInboxLikeDataError(): DataResult<T> =
+    when (code) {
+        401 -> authRequired()
+        403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
+        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
+        else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
+    }

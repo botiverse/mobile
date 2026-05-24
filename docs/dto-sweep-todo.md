@@ -70,32 +70,90 @@ shapes and `packages/shared/` for shared types. No snake_case aliases, no
   current-activity fallback, agent skills, channel members, and member
   add/remove action results.
 - Member repository orchestration moved to shared
-  `MemberRepositoryDataSource.kt`. Android now keeps only a compatibility
-  wrapper; the real repository uses shared DTO parsers/builders and the single
-  shared `SlockNetworkClient` path/query/body boundary. Android member wiring
-  now creates shared `SlockApiClient` + `KtorSlockNetworkClient` directly
-  instead of routing through the Android `SlockApi` endpoint facade. Kuikly
-  bridge network also adapts that same client shape instead of growing a
-  parallel member-specific API port.
+  `MemberRepositoryDataSource.kt`. Android now instantiates shared
+  `RealMemberRepository` directly; the Android `MemberRepository`,
+  `AgentProfileUpdateRequest`, `AddChannelMemberRequest`,
+  `RemoveChannelMemberRequest`, and `ChannelMemberActionResult` names are
+  typealiases to shared types instead of shadow definitions. Member/agent/
+  channel-member requests use shared DTO parsers/builders and the single shared
+  `SlockNetworkClient` path/query/body boundary. Android member wiring now
+  creates shared `SlockApiClient` + `KtorSlockNetworkClient` directly instead
+  of routing through the Android `SlockApi` endpoint facade. Kuikly bridge
+  network also adapts that same client shape instead of growing a parallel
+  member-specific API port.
 - Channel/home repository orchestration moved to shared
-  `ChannelRepositoryDataSource.kt`. Android `RealChannelRepository` is now a
-  thin compatibility wrapper, and channel/home/DM/create/join/leave/archive/delete
-  requests consume the shared `SlockNetworkClient` with strict DTO request
-  bodies and real response roots. The old Android `AndroidSlockHomeApi` adapter
-  has been removed.
+  `ChannelRepositoryDataSource.kt`. Android now instantiates shared
+  `RealChannelRepository` directly; the Android `ChannelRepository`,
+  `CreateChannelRequest`, and `ChannelLeaveResult` names are typealiases to
+  shared types instead of shadow definitions. Channel/home/DM/create/join/leave/
+  archive/delete requests consume the shared `SlockNetworkClient` with strict
+  DTO request bodies and real response roots. The old Android
+  `AndroidSlockHomeApi` adapter and `RealChannelRepository` wrapper have been
+  removed.
 - Workspace file response validation now stays in `WorkspaceFilesParser.kt`;
   app code asks shared for a canonical `{files:[...]}` payload or file-preview
   snapshot instead of checking `JsonObject` locally.
+- Read-receipt repository orchestration moved to shared
+  `ReadReceiptRepositoryDataSource.kt`. Android now instantiates shared
+  `RealReadReceiptRepository` directly with the shared network client; the old
+  Android `RealReadReceiptRepository` wrapper and its `SlockApi`/`RequestBody`
+  request construction have been removed. Unread counts and read/unread
+  mutations consume strict shared DTO request/response shapes.
+- Server-unread summary orchestration moved to shared
+  `ServerUnreadRepositoryDataSource.kt`. Android now instantiates shared
+  `RealServerUnreadRepository` directly; the old Android wrapper and legacy
+  current-server-only unread fixture shape were removed in favor of the real
+  `{servers:[...]}` response contract.
+- Inbox, saved, and search orchestration moved to shared
+  `InboxSavedSearchRepositoryDataSource.kt`. Android now instantiates shared
+  `RealInboxRepository`, `RealSavedRepository`, and `RealSearchRepository`
+  directly; the Android `InboxRepository`, `SavedRepository`,
+  `SearchRepository`, `InboxFilter`, `SearchQueryOptions`, and `SearchSort`
+  names are typealiases to shared. Saved-message request bodies and search
+  query construction now live at the shared `SlockNetworkClient` boundary.
 - `RealSlockRepositories.kt` no longer contains app-side `JsonObject` response
   helpers (`firstObject`, `unwrap`, `items`, `string`, `toMemberProfile`,
   `toConversation*`, agent skill/activity/workspace mappers, unread/read
   mappers, etc.).
 
-### In progress / next
+### Ordered Todo
 
-- `RealSlockRepositoriesTest` still contains many alias/wrapper-era fixtures
-  and assertions. Full class execution now intentionally exposes those stale
-  tests; update or delete alias-only cases and keep canonical-contract fixtures.
+1. Tasks
+   - Move `RealTaskRepository` orchestration into shared.
+   - Reuse existing shared `TasksDataSource.kt` DTO parsers/builders for task
+     lists, claim, status update, task create/convert bodies.
+   - Android `TaskRepository` / `TaskFilter` should become shared typealiases.
+
+2. Settings
+   - Move `RealSettingsRepository` and `SlockSettingsServerApi` orchestration
+     into shared.
+   - Keep Android-only UI affordances/platform capability state outside wire
+     parsing; server/account/machine request and response DTOs must live in
+     shared.
+   - Android Settings request types should become shared typealiases.
+
+3. Conversation / Thread / Files / Messages
+   - Move `RealConversationRepository` orchestration into shared.
+   - Reuse `ThreadMessagesParser.kt`, `ThreadActionParser.kt`,
+     `AttachmentsParser.kt`, `WorkspaceFilesParser.kt`, and shared request-body
+     builders.
+   - Multipart upload should expose a shared file model and keep only the
+     platform byte-source adaptation at the bottom layer.
+
+4. Android Network Facade Retirement
+   - Delete `SlockApi`, `ComposeSlockApiAdapter`, `ApiResponse`, and
+     `NetworkResponseMapper` once all repositories consume `SlockNetworkClient`
+     directly.
+   - Remove app-level `okhttp3.RequestBody`/`MultipartBody` usage from API
+     request construction. Ktor may still use OkHttp as the Android engine via
+     `PriorityHttpClient.android.kt`; that is the platform engine, not a second
+     API facade.
+
+5. Tests / Fixtures
+   - Update or delete alias-only and wrapper-era fixtures in
+     `RealSlockRepositoriesTest`.
+   - Keep focused contract tests for each shared repository and run full class
+     only after stale fixture cleanup.
 
 ## Canonical parser pattern
 

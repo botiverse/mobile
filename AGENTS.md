@@ -42,6 +42,10 @@ git submodule update --init --recursive third_party/slock-source
   repositories per platform, and do not add feature-specific platform transport
   ports such as `SlockXxxApi` when a path/query/body request through the shared
   network client is enough.
+- If a shared repository interface/type can be consumed directly from Android,
+  do that. Do not leave an Android "thin wrapper" whose only job is to delegate
+  to shared; use typealiases or direct shared imports while the old Android
+  package names are being retired.
 - Platform code (Android, OHOS/Kuikly, future targets) should adapt only the
   single bottom network layer: auth, refresh, priority, headers, and raw HTTP
   request/response. Server DTO parsing and request-body construction remain in
