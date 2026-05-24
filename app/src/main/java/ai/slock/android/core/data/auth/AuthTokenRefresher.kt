@@ -1,7 +1,9 @@
 package ai.slock.android.core.data.auth
 
 import ai.slock.compose.data.AuthApiResult
+import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
 import ai.slock.compose.data.SlockAuthApi
+import ai.slock.compose.data.StoredAuthSession as AuthSession
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import java.io.IOException
@@ -12,7 +14,7 @@ import okio.ByteString.Companion.decodeBase64
 
 class AuthTokenRefresher(
     private val store: AuthSessionStore,
-    private val api: SlockAuthApi = KtorAuthRepository.createAuthApi(),
+    private val api: SlockAuthApi = AndroidAuthApiFactory.createAuthApi(),
     private val refreshSoonThresholdMillis: Long = DEFAULT_REFRESH_SOON_THRESHOLD_MILLIS,
     private val clockMillis: () -> Long = { System.currentTimeMillis() },
     private val logger: (String) -> Unit = { message -> ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(TAG, message) },

@@ -19,7 +19,7 @@ import java.io.IOException
 import kotlinx.coroutines.CancellationException
 
 class KtorAuthApi(
-    private val baseUrl: String = KtorAuthRepository.BASE_URL,
+    private val baseUrl: String = AndroidAuthApiFactory.BASE_URL,
     private val httpClient: HttpClient = createHttpClient(
         HttpClientConfig(timeout = TimeoutConfig())
     ),

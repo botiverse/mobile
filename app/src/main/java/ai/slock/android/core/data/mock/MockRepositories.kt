@@ -1,78 +1,80 @@
 package ai.slock.android.core.data.mock
 
-import ai.slock.android.core.data.repository.AuthSessionRepository
-import ai.slock.android.core.data.repository.AgentRepository
-import ai.slock.android.core.data.repository.AgentActivityEntry
-import ai.slock.android.core.data.repository.AgentActivitySnapshot
-import ai.slock.android.core.data.repository.AgentDetailSnapshot
-import ai.slock.android.core.data.repository.AgentDmSnapshot
-import ai.slock.android.core.data.repository.AgentDmSummary
-import ai.slock.android.core.data.repository.AgentProfileUpdateRequest
-import ai.slock.android.core.data.repository.AgentSnapshot
-import ai.slock.android.core.data.repository.AccountProfileUpdateRequest
-import ai.slock.android.core.data.repository.AccountSettingsSnapshot
-import ai.slock.android.core.data.repository.AgentReminderSnapshot
-import ai.slock.android.core.data.repository.AgentReminderSummary
-import ai.slock.android.core.data.repository.AgentSkillGroup
-import ai.slock.android.core.data.repository.AgentSkillPathGroup
-import ai.slock.android.core.data.repository.AgentSkillSummary
-import ai.slock.android.core.data.repository.AgentSkillsSnapshot
-import ai.slock.android.core.data.repository.AgentWorkspaceSnapshot
-import ai.slock.android.core.data.repository.AgentWorkspaceChildrenSnapshot
-import ai.slock.android.core.data.repository.AgentWorkspaceFilePreviewSnapshot
-import ai.slock.android.core.data.repository.AgentWorkspaceTreeSnapshot
-import ai.slock.android.core.data.repository.AttachmentOpenTarget
-import ai.slock.android.core.data.repository.ChannelFilesSnapshot
-import ai.slock.android.core.data.repository.AttachmentUploadRequest
-import ai.slock.android.core.data.repository.AttachmentUploadResult
-import ai.slock.android.core.data.repository.AddChannelMemberRequest
-import ai.slock.android.core.data.repository.ChannelMemberActionResult
-import ai.slock.android.core.data.repository.ChannelMemberSnapshot
-import ai.slock.android.core.data.repository.ChannelArchiveResult
-import ai.slock.android.core.data.repository.ChannelDeleteResult
-import ai.slock.android.core.data.repository.ChannelJoinResult
-import ai.slock.android.core.data.repository.ChannelLeaveResult
-import ai.slock.android.core.data.repository.ChannelSnapshot
-import ai.slock.android.core.data.repository.ChannelUnreadSnapshot
-import ai.slock.android.core.data.repository.ConversationRepository
-import ai.slock.android.core.data.repository.CreateChannelRequest
-import ai.slock.android.core.data.repository.CreateChannelResult
-import ai.slock.android.core.data.repository.CreateServerRequest
+import ai.slock.compose.data.AuthSessionRepository
+import ai.slock.compose.data.AgentRepository
+import ai.slock.compose.data.AgentActivityEntry
+import ai.slock.compose.data.AgentActivitySnapshot
+import ai.slock.compose.data.AgentDetailSnapshot
+import ai.slock.compose.data.AgentDmSnapshot
+import ai.slock.compose.data.AgentDmSummary
+import ai.slock.compose.data.AgentProfileUpdateRequest
+import ai.slock.compose.data.AgentSnapshot
+import ai.slock.compose.data.AccountProfileUpdateRequest
+import ai.slock.compose.data.AccountSettingsSnapshot
+import ai.slock.compose.data.AgentReminderSnapshot
+import ai.slock.compose.data.AgentReminderSummary
+import ai.slock.compose.data.AgentSkillGroup
+import ai.slock.compose.data.AgentSkillPathGroup
+import ai.slock.compose.data.AgentSkillSummary
+import ai.slock.compose.data.AgentSkillsSnapshot
+import ai.slock.compose.data.AgentWorkspaceSnapshot
+import ai.slock.compose.data.AgentWorkspaceChildrenSnapshot
+import ai.slock.compose.data.AgentWorkspaceFilePreviewSnapshot
+import ai.slock.compose.data.AgentWorkspaceTreeSnapshot
+import ai.slock.compose.data.AttachmentOpenTarget
+import ai.slock.compose.data.ChannelFilesSnapshot
+import ai.slock.compose.data.AttachmentUploadRequest
+import ai.slock.compose.data.AttachmentUploadResult
+import ai.slock.compose.data.AddChannelMemberRequest
+import ai.slock.compose.data.ChannelMemberActionResult
+import ai.slock.compose.data.ChannelMemberSnapshot
+import ai.slock.compose.data.ChannelArchiveResult
+import ai.slock.compose.data.ChannelDeleteResult
+import ai.slock.compose.data.ChannelFileItem
+import ai.slock.compose.data.ChannelJoinResult
+import ai.slock.compose.data.ChannelLeaveResult
+import ai.slock.compose.data.ChannelRepository
+import ai.slock.compose.data.ChannelSnapshot
+import ai.slock.compose.data.ChannelUnreadSnapshot
+import ai.slock.compose.data.ConversationRepository
+import ai.slock.compose.data.CreateChannelRequest
+import ai.slock.compose.data.CreateChannelResult
+import ai.slock.compose.data.CreateServerRequest
 import ai.slock.compose.data.DataResult
-import ai.slock.android.core.data.repository.DirectMessageSnapshot
-import ai.slock.android.core.data.repository.HomeSnapshot
-import ai.slock.android.core.data.repository.InboxSnapshot
-import ai.slock.android.core.data.repository.MemberRepository
-import ai.slock.android.core.data.repository.MemberSnapshot
-import ai.slock.android.core.data.repository.OpenDirectMessageResult
-import ai.slock.android.core.data.repository.ReadReceiptRepository
-import ai.slock.android.core.data.repository.ReadReceiptResult
-import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
-import ai.slock.android.core.data.repository.SendMessageResult
-import ai.slock.android.core.data.repository.ServerListSnapshot
-import ai.slock.android.core.data.repository.ServerRepository
-import ai.slock.android.core.data.repository.SettingsComputerDetailSnapshot
-import ai.slock.android.core.data.repository.SettingsComputersSnapshot
-import ai.slock.android.core.data.repository.SettingsBillingCurrentPlanSnapshot
-import ai.slock.android.core.data.repository.SettingsBillingPlanSnapshot
-import ai.slock.android.core.data.repository.SettingsBillingSnapshot
-import ai.slock.android.core.data.repository.SettingsPlanUsageSnapshot
-import ai.slock.android.core.data.repository.SettingsMobileSnapshot
-import ai.slock.android.core.data.repository.SettingsComputerWorkspaceSnapshot
-import ai.slock.android.core.data.repository.SettingsRepository
-import ai.slock.android.core.data.repository.SettingsServerActionResult
-import ai.slock.android.core.data.repository.SettingsServerDeleteRequest
-import ai.slock.android.core.data.repository.SettingsServerInviteCreateRequest
-import ai.slock.android.core.data.repository.SettingsServerProfileUpdateRequest
-import ai.slock.android.core.data.repository.SettingsServerSnapshot
-import ai.slock.android.core.data.repository.SettingsSnapshot
-import ai.slock.android.core.data.repository.TaskActionResult
-import ai.slock.android.core.data.repository.TaskFilter
-import ai.slock.android.core.data.repository.TaskRepository
-import ai.slock.android.core.data.repository.TaskSnapshot
-import ai.slock.android.core.data.repository.ThreadActionResult
-import ai.slock.android.core.data.repository.ThreadListSnapshot
-import ai.slock.android.core.data.repository.ThreadSnapshot
+import ai.slock.compose.data.DirectMessageSnapshot
+import ai.slock.compose.data.HomeSnapshot
+import ai.slock.compose.data.InboxSnapshot
+import ai.slock.compose.data.MemberRepository
+import ai.slock.compose.data.MemberSnapshot
+import ai.slock.compose.data.OpenDirectMessageResult
+import ai.slock.compose.data.ReadReceiptRepository
+import ai.slock.compose.data.ReadReceiptResult
+import ai.slock.compose.data.RemoveChannelMemberRequest
+import ai.slock.compose.data.SendMessageResult
+import ai.slock.compose.data.ServerListSnapshot
+import ai.slock.compose.data.ServerRepository
+import ai.slock.compose.data.SettingsComputerDetailSnapshot
+import ai.slock.compose.data.SettingsComputersSnapshot
+import ai.slock.compose.data.SettingsBillingCurrentPlanSnapshot
+import ai.slock.compose.data.SettingsBillingPlanSnapshot
+import ai.slock.compose.data.SettingsBillingSnapshot
+import ai.slock.compose.data.SettingsPlanUsageSnapshot
+import ai.slock.compose.data.SettingsMobileSnapshot
+import ai.slock.compose.data.SettingsComputerWorkspaceSnapshot
+import ai.slock.compose.data.SettingsRepository
+import ai.slock.compose.data.SettingsServerActionResult
+import ai.slock.compose.data.SettingsServerDeleteRequest
+import ai.slock.compose.data.SettingsServerInviteCreateRequest
+import ai.slock.compose.data.SettingsServerProfileUpdateRequest
+import ai.slock.compose.data.SettingsServerSnapshot
+import ai.slock.compose.data.SettingsSnapshot
+import ai.slock.compose.data.TaskActionResult
+import ai.slock.compose.data.TaskFilter
+import ai.slock.compose.data.TaskRepository
+import ai.slock.compose.data.TaskSnapshot
+import ai.slock.compose.data.ThreadActionResult
+import ai.slock.compose.data.ThreadListSnapshot
+import ai.slock.compose.data.ThreadSnapshot
 import ai.slock.android.core.model.Attachment
 import ai.slock.android.core.model.AttachmentId
 import ai.slock.android.core.model.ChannelId
@@ -329,7 +331,7 @@ class MockConversationRepository(
                     .flatMap { message -> message.attachments }
                     .distinctBy { it.id }
                     .map { attachment ->
-                        ai.slock.android.core.data.repository.ChannelFileItem(
+                        ChannelFileItem(
                             attachment = attachment,
                             createdAt = MockSeedData.threadSnapshot.messages.firstOrNull()?.timestampLabel,
                             messageId = MockSeedData.threadSnapshot.messages.firstOrNull()?.id,
@@ -758,7 +760,7 @@ class MockMemberRepository(
 
 class MockChannelRepository(
     private val scenario: MockScenario = MockScenario.Content
-) : ai.slock.android.core.data.repository.ChannelRepository {
+) : ChannelRepository {
     override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> =
         resultFor(scenario, EmptyReason.NoChannels) { MockSeedData.homeSnapshot }
 

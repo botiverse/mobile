@@ -151,7 +151,12 @@ class NetworkPriorityCallSiteTest {
                         "app/src/main/java/ai/slock/android/core/data/network/NetworkResponseMapper.kt",
                         "app/src/main/java/ai/slock/android/core/data/network/ApiResponse.kt",
                         "app/src/main/java/ai/slock/android/core/data/auth/AuthApi.kt",
-                        "app/src/main/java/ai/slock/android/core/data/auth/AndroidSlockAuthApi.kt"
+                        "app/src/main/java/ai/slock/android/core/data/auth/AndroidSlockAuthApi.kt",
+                        "app/src/main/java/ai/slock/android/core/data/auth/AuthRepository.kt",
+                        "app/src/main/java/ai/slock/android/core/data/auth/KtorAuthRepository.kt",
+                        "app/src/main/java/ai/slock/android/core/data/auth/AuthModels.kt",
+                        "app/src/main/java/ai/slock/android/core/data/auth/AuthSessionStore.kt",
+                        "app/src/main/java/ai/slock/android/core/data/auth/ComposeAuthSessionStoreAdapter.kt"
                 )
                         .filter { File(root, it).exists() }
 
@@ -159,6 +164,24 @@ class NetworkPriorityCallSiteTest {
                 "Android must not keep legacy API facade/repository files; API requests belong in shared DTO repositories.\n" +
                         legacyFiles.joinToString("\n"),
                 legacyFiles.isEmpty()
+        )
+    }
+
+    @Test
+    fun androidDoesNotKeepSharedRepositoryTypealiasPackage() {
+        val root = findRepoRoot()
+        val repositoryDir = File(root, "app/src/main/java/ai/slock/android/core/data/repository")
+        val remainingFiles =
+                repositoryDir
+                        .walkTopDown()
+                        .filter { it.isFile }
+                        .map { it.relativeTo(root).path }
+                        .toList()
+
+        assertTrue(
+                "Android must import shared repository contracts/snapshots directly; do not reintroduce typealias shims.\n" +
+                        remainingFiles.joinToString("\n"),
+                remainingFiles.isEmpty()
         )
     }
 

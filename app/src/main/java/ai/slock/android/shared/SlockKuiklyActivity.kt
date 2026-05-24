@@ -39,17 +39,17 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.lifecycleScope
 import ai.slock.android.R
-import ai.slock.android.core.data.auth.AuthSession
+import ai.slock.compose.data.StoredAuthSession as AuthSession
 import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
-import ai.slock.android.core.data.auth.KtorAuthRepository
+import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.realtime.SessionRealtimeRepository
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.android.core.data.realtime.SocketIoSocketTransport
-import ai.slock.android.core.data.repository.RealtimeRepository
-import ai.slock.android.core.data.repository.RealtimeSubscription
+import ai.slock.android.core.data.realtime.RealtimeRepository
+import ai.slock.android.core.data.realtime.RealtimeSubscription
 import ai.slock.android.core.model.DirectMessageCreated
 import ai.slock.android.core.model.Heartbeat
 import ai.slock.android.core.model.MemberKind
@@ -261,7 +261,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             )
         }
         val boundary = "SlockBoundary${System.currentTimeMillis()}"
-        val url = URL("${KtorAuthRepository.BASE_URL.trimEnd('/')}/attachments/upload")
+        val url = URL("${AndroidAuthApiFactory.BASE_URL.trimEnd('/')}/attachments/upload")
         val connection =
                 (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"

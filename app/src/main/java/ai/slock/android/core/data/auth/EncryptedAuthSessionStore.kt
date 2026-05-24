@@ -3,6 +3,8 @@ package ai.slock.android.core.data.auth
 import android.content.Context
 import android.util.Log
 import android.util.Base64
+import ai.slock.compose.data.SlockAuthSessionStore
+import ai.slock.compose.data.StoredAuthSession
 import com.google.gson.Gson
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -10,15 +12,15 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-class EncryptedAuthSessionStore(context: Context) : AuthSessionStore {
+class EncryptedAuthSessionStore(context: Context) : SlockAuthSessionStore {
     private val appContext = context.applicationContext
     private val preferences = appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val gson = Gson()
 
-    override suspend fun readSession(): AuthSession? {
+    override suspend fun readSession(): StoredAuthSession? {
         val encrypted = preferences.getString(KEY_SESSION, null) ?: return null
         return runCatching {
-            gson.fromJson(decrypt(encrypted), AuthSession::class.java)
+            gson.fromJson(decrypt(encrypted), StoredAuthSession::class.java)
         }.getOrElse {
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(TAG, "Stored auth session could not be decrypted; clearing local session.")
             clearSession()
@@ -26,7 +28,7 @@ class EncryptedAuthSessionStore(context: Context) : AuthSessionStore {
         }
     }
 
-    override suspend fun saveSession(session: AuthSession) {
+    override suspend fun saveSession(session: StoredAuthSession) {
         preferences.edit()
             .putString(KEY_SESSION, encrypt(gson.toJson(session)))
             .commit()

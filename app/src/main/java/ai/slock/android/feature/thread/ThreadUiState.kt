@@ -1,8 +1,8 @@
 package ai.slock.android.feature.thread
 
-import ai.slock.android.core.data.repository.ChannelUnreadSnapshot
-import ai.slock.android.core.data.repository.ChannelFileItem
-import ai.slock.android.core.data.repository.ThreadSnapshot
+import ai.slock.compose.data.ChannelUnreadSnapshot
+import ai.slock.compose.data.ChannelFileItem
+import ai.slock.compose.data.ThreadSnapshot
 import ai.slock.android.core.model.AttachmentId
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationSummary

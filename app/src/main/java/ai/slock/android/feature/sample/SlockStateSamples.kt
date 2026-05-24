@@ -210,7 +210,7 @@ object SlockStateSamples {
             parentMessageId = MessageId("sample-auth-parent"),
             parentMessagePreview = "Research Web login flow and wire real token session.",
             latestActivityMessageId = MessageId("sample-auth-reply"),
-            latestActivityPreview = "AuthRepository and secure session wiring are now split into phase two.",
+            latestActivityPreview = "Shared auth data source and secure session wiring are now split into phase two.",
             latestActivityAt = "18:02",
             latestActivitySenderName = "API-Integration-Developer",
             replyCount = 2,

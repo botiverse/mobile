@@ -1,7 +1,7 @@
 package ai.slock.android
 
 import ai.slock.compose.data.DataResult
-import ai.slock.android.core.data.repository.ThreadSnapshot
+import ai.slock.compose.data.ThreadSnapshot
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationKind
 import ai.slock.android.core.model.ConversationSummary

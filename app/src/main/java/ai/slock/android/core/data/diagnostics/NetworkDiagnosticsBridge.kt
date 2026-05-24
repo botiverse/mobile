@@ -1,6 +1,6 @@
 package ai.slock.android.core.data.diagnostics
 
-import ai.slock.android.core.data.auth.KtorAuthRepository
+import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.realtime.RealtimeClientDiagnostics
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.compose.data.DataResult
@@ -24,7 +24,7 @@ import ai.slock.compose.network.realtime.RealtimeConnectionReducer
 import java.util.concurrent.atomic.AtomicReference
 
 class NetworkDiagnosticsBridge(
-        private val baseUrl: String = KtorAuthRepository.BASE_URL,
+        private val baseUrl: String = AndroidAuthApiFactory.BASE_URL,
         private val socketUrl: String = SocketIoRealtimeClient.DEFAULT_SOCKET_URL,
         private val buildLabel: String? = null,
         private val nowMillis: () -> Long = System::currentTimeMillis,

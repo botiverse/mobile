@@ -206,7 +206,7 @@ class SharedAuthDataSource(
         }
         val body =
             authJson.encodeToString(
-                CreateServerRequestPayload(
+                AuthCreateServerRequestBody(
                     name = normalizedName,
                     slug = slug?.trim()?.takeIf { it.isNotBlank() },
                     region = region?.trim()?.takeIf { it.isNotBlank() }
@@ -308,15 +308,15 @@ class SlockAuthApiClient(
     private val transport: SlockAuthTransport
 ) : SlockAuthApi {
     override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
-        transport.login(authJson.encodeToString(LoginRequestPayload(email = email, password = password)))
+        transport.login(authJson.encodeToString(AuthLoginRequestBody(email = email, password = password)))
             .mapAuthBody("auth_login_contract_mismatch", AuthLoginResponseDto.serializer()) { it.toDomain() }
 
     override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
-        transport.register(authJson.encodeToString(RegisterRequestPayload(email = email, password = password, name = name)))
+        transport.register(authJson.encodeToString(AuthRegisterRequestBody(email = email, password = password, name = name)))
             .mapAuthBody("auth_register_contract_mismatch", AuthLoginResponseDto.serializer()) { it.toDomain() }
 
     override suspend fun forgotPassword(email: String): AuthApiResult<Unit> {
-        val response = transport.forgotPassword(authJson.encodeToString(ForgotPasswordRequestPayload(email = email)))
+        val response = transport.forgotPassword(authJson.encodeToString(AuthForgotPasswordRequestBody(email = email)))
         if (!response.isSuccessful) return response.toAuthApiFailure()
         return response.mapAuthBody("auth_forgot_password_contract_mismatch", AuthOkResponseDto.serializer()) { Unit }
     }
@@ -326,11 +326,11 @@ class SlockAuthApiClient(
             .mapAuthBody("auth_me_contract_mismatch", StoredAuthUser.serializer()) { it }
 
     override suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse> =
-        transport.refresh(authJson.encodeToString(RefreshRequestPayload(refreshToken = refreshToken)))
+        transport.refresh(authJson.encodeToString(AuthRefreshRequestBody(refreshToken = refreshToken)))
             .mapAuthBody("auth_refresh_contract_mismatch", AuthRefreshResponseDto.serializer()) { it.toDomain() }
 
     override suspend fun logout(refreshToken: String): AuthApiResult<Unit> {
-        val response = transport.logout(authJson.encodeToString(LogoutRequestPayload(refreshToken = refreshToken)))
+        val response = transport.logout(authJson.encodeToString(AuthLogoutRequestBody(refreshToken = refreshToken)))
         if (!response.isSuccessful) return response.toAuthApiFailure()
         return AuthApiResult.Success(Unit)
     }
@@ -402,37 +402,37 @@ enum class SharedAuthErrorCode {
 }
 
 @kotlinx.serialization.Serializable
-private data class LoginRequestPayload(
+data class AuthLoginRequestBody(
     val email: String,
     val password: String
 )
 
 @kotlinx.serialization.Serializable
-private data class RegisterRequestPayload(
+data class AuthRegisterRequestBody(
     val email: String,
     val password: String,
     val name: String
 )
 
 @kotlinx.serialization.Serializable
-private data class ForgotPasswordRequestPayload(
+data class AuthForgotPasswordRequestBody(
     val email: String
 )
 
 @kotlinx.serialization.Serializable
-private data class CreateServerRequestPayload(
+data class AuthCreateServerRequestBody(
     val name: String,
     val slug: String? = null,
     val region: String? = null
 )
 
 @kotlinx.serialization.Serializable
-private data class RefreshRequestPayload(
+data class AuthRefreshRequestBody(
     val refreshToken: String
 )
 
 @kotlinx.serialization.Serializable
-private data class LogoutRequestPayload(
+data class AuthLogoutRequestBody(
     val refreshToken: String
 )
 

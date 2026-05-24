@@ -34,9 +34,8 @@ git submodule update --init --recursive third_party/slock-source
 - App repositories should wire responses by calling public shared parser
   functions such as `parseSharedXxx(...)` and should keep only UI composition,
   fallback context, and repository orchestration locally.
-- Request bodies that represent server API contracts should likewise use shared
-  DTOs/builders when they are more than tiny one-off action payloads. Avoid
-  drifting ad hoc maps in app code for reusable API shapes.
+- Request bodies that represent server API contracts must likewise use named
+  shared DTOs/builders. Avoid drifting ad hoc maps in app code for API shapes.
 - Shared repositories should own reusable API orchestration and consume the
   shared `SlockNetworkClient` request boundary. Do not duplicate real
   repositories per platform, and do not add feature-specific platform transport

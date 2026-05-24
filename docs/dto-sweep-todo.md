@@ -143,13 +143,25 @@ shapes and `packages/shared/` for shared types. No snake_case aliases, no
 - Auth API request/response parsing moved to shared `AuthDataSource.kt` typed
   DTOs. Register, login, forgot-password, refresh, logout, current user,
   server list, and server creation now flow through shared `SlockAuthApi` /
-  `SlockAuthTransport`. Android deleted `ApiResponse.kt`, `AuthApi.kt`, and
-  `AndroidSlockAuthApi.kt`; `KtorAuthApi` is now only the platform Ktor
-  transport, and `KtorAuthRepository` / `AuthServerRepository` are Android
-  result/model adapters over shared auth orchestration.
-- Request body builders now encode named shared DTOs instead of dynamic maps for
-  task status/create/convert, saved-message mutation, thread actions,
-  create-thread-by-parent-message, and auth server creation.
+  `SlockAuthTransport`. Android deleted `ApiResponse.kt`, `AuthApi.kt`,
+  `AndroidSlockAuthApi.kt`, `AuthRepository.kt`, `KtorAuthRepository.kt`,
+  `AuthModels.kt`, `AuthSessionStore.kt`, and the
+  `ComposeAuthSessionStoreAdapter`; `KtorAuthApi` is now only the platform Ktor
+  transport, while encrypted storage implements shared
+  `SlockAuthSessionStore` directly and app/live-test auth flows call
+  `SharedAuthDataSource`.
+- Request body builders now encode named shared DTOs instead of dynamic maps or
+  private anonymous shapes for auth, channel/member/settings mutations,
+  read-receipts, message reactions, thread sends/actions, saved-message
+  mutation, and task status/create/convert.
+- Android repository interfaces for auth-session, server, and agent access now
+  typealias the shared contracts instead of declaring parallel shadows. The
+  duplicate Android read-receipt coordinator/gate alias files and tests were
+  deleted; their behavior is covered by shared commonTest.
+- Android no longer keeps a `core/data/repository` typealias package. App/UI,
+  mock, and local-store code import shared repository contracts/snapshots
+  directly from `ai.slock.compose.data`; the remaining Android realtime socket
+  contract lives under `core/data/realtime`.
 
 ### Ordered Todo
 
@@ -159,11 +171,16 @@ shapes and `packages/shared/` for shared types. No snake_case aliases, no
      diagnostics, local SQLDelight store, realtime/socket transport, locale,
      preferences, and storage management.
    - New non-auth HTTP routes must not be added under Android data/network.
+   - Remaining candidates to inspect: Android auth model/session adapters and
+     mock/sample fixtures. Keep them only where they are platform persistence,
+     live-test, or demo-preview concerns.
 
 2. Tests / Fixtures
    - Shared repository behavior belongs in
      `compose/shared/src/commonTest/kotlin/ai/slock/compose/data`.
    - Android tests should cover platform adapters/integration only.
+   - Remaining Android mock fixtures are app/demo fixtures; migrate only if they
+     start asserting shared repository behavior rather than Android wiring.
 
 ## Canonical parser pattern
 

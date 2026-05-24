@@ -1,7 +1,7 @@
 package ai.slock.android.feature.thread
 
 import ai.slock.android.core.model.AttachmentId
-import ai.slock.android.core.data.repository.ThreadSnapshot
+import ai.slock.compose.data.ThreadSnapshot
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationKind
 import ai.slock.android.core.model.ConversationSummary
@@ -20,7 +20,7 @@ import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
 import ai.slock.android.core.model.unreadReplyCount
 import ai.slock.android.core.model.withUnreadReplyCount
-import ai.slock.android.core.data.repository.ChannelUnreadSnapshot
+import ai.slock.compose.data.ChannelUnreadSnapshot
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.mergeRealtimeUpdate
 import org.junit.Assert.assertEquals

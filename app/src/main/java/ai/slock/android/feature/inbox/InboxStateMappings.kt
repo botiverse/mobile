@@ -1,11 +1,11 @@
 package ai.slock.android.feature.inbox
 
 import ai.slock.compose.data.DataResult
-import ai.slock.android.core.data.repository.InboxFilter as RepositoryInboxFilter
-import ai.slock.android.core.data.repository.InboxSnapshot
-import ai.slock.android.core.data.repository.SavedSnapshot
-import ai.slock.android.core.data.repository.SearchSnapshot
-import ai.slock.android.core.data.repository.ThreadListSnapshot
+import ai.slock.compose.data.InboxFilter as RepositoryInboxFilter
+import ai.slock.compose.data.InboxSnapshot
+import ai.slock.compose.data.SavedSnapshot
+import ai.slock.compose.data.SearchSnapshot
+import ai.slock.compose.data.ThreadListSnapshot
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationKind
 import ai.slock.android.core.model.ConversationSummary

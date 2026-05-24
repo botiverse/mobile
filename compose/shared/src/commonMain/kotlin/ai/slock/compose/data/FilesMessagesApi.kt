@@ -199,7 +199,10 @@ private data class MessageMutationResponseDto(
 )
 
 @Serializable
-private data class ReactionBody(val emoji: String)
+data class ReactionRequestBody(val emoji: String)
 
 internal fun buildSharedReactionBody(emoji: String): String =
-    filesMessagesApiJson.encodeToString(ReactionBody(emoji = emoji))
+    buildSharedReactionBody(ReactionRequestBody(emoji = emoji))
+
+fun buildSharedReactionBody(request: ReactionRequestBody): String =
+    filesMessagesApiJson.encodeToString(request)

@@ -1,6 +1,6 @@
 package ai.slock.android.core.data.realtime
 
-import ai.slock.android.core.data.repository.RealtimeSubscription
+import ai.slock.android.core.data.realtime.RealtimeSubscription
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.MessageNew

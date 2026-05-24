@@ -1,6 +1,6 @@
 package ai.slock.android
 
-import ai.slock.android.core.data.repository.AttachmentUploadFile
+import ai.slock.compose.data.AttachmentUploadFile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

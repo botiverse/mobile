@@ -454,42 +454,42 @@ private class NetworkSlockHomeApi(
 }
 
 @Serializable
-private data class CreateChannelBody(
+data class CreateChannelRequestBody(
     val name: String,
     val description: String? = null
 )
 
 private fun buildCreateChannelBody(request: CreateChannelRequest): String =
     channelRepositoryJson.encodeToString(
-        CreateChannelBody(
+        CreateChannelRequestBody(
             name = request.name.trim(),
             description = request.description?.trim()?.takeIf { it.isNotBlank() }
         )
     )
 
 @Serializable
-private data class OpenAgentDirectMessageBody(val agentId: String)
+data class OpenAgentDirectMessageRequestBody(val agentId: String)
 
 @Serializable
-private data class OpenUserDirectMessageBody(val userId: String)
+data class OpenUserDirectMessageRequestBody(val userId: String)
 
 private fun buildOpenAgentDirectMessageBody(agentId: MemberId): String =
-    channelRepositoryJson.encodeToString(OpenAgentDirectMessageBody(agentId.value))
+    channelRepositoryJson.encodeToString(OpenAgentDirectMessageRequestBody(agentId.value))
 
 private fun buildOpenUserDirectMessageBody(userId: MemberId): String =
-    channelRepositoryJson.encodeToString(OpenUserDirectMessageBody(userId.value))
+    channelRepositoryJson.encodeToString(OpenUserDirectMessageRequestBody(userId.value))
 
 @Serializable
-private data class ChannelAddAgentMemberBody(val agentId: String)
+data class ChannelAddAgentMemberRequestBody(val agentId: String)
 
 @Serializable
-private data class ChannelAddUserMemberBody(val userId: String)
+data class ChannelAddUserMemberRequestBody(val userId: String)
 
 private fun buildAddAgentChannelMemberBody(agentId: MemberId): String =
-    channelRepositoryJson.encodeToString(ChannelAddAgentMemberBody(agentId.value))
+    channelRepositoryJson.encodeToString(ChannelAddAgentMemberRequestBody(agentId.value))
 
 private fun buildAddUserChannelMemberBody(userId: MemberId): String =
-    channelRepositoryJson.encodeToString(ChannelAddUserMemberBody(userId.value))
+    channelRepositoryJson.encodeToString(ChannelAddUserMemberRequestBody(userId.value))
 
 private data class SharedChannelServerContext(
     val session: StoredAuthSession,

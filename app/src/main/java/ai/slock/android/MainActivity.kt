@@ -2,13 +2,11 @@
 
 package ai.slock.android
 
-import ai.slock.android.core.data.auth.AuthResult
 import ai.slock.android.core.data.auth.AuthServerRepository
-import ai.slock.android.core.data.auth.AuthSession
+import ai.slock.compose.data.StoredAuthSession as AuthSession
 import ai.slock.android.core.data.auth.AuthTokenRefresher
-import ai.slock.android.core.data.auth.ComposeAuthSessionStoreAdapter
+import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
-import ai.slock.android.core.data.auth.KtorAuthRepository
 import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
 import ai.slock.android.core.data.diagnostics.NetworkDiagnosticsBridge
 import ai.slock.android.core.data.diagnostics.SlockPerformanceDiagnostics
@@ -31,28 +29,30 @@ import ai.slock.android.core.data.preferences.SharedPreferencesNotificationPrefe
 import ai.slock.android.core.data.realtime.SessionRealtimeRepository
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.android.core.data.realtime.SocketIoSocketTransport
-import ai.slock.android.core.data.repository.AccountProfileSnapshot
-import ai.slock.android.core.data.repository.AccountSettingsSnapshot
-import ai.slock.android.core.data.repository.AddChannelMemberRequest
-import ai.slock.android.core.data.repository.AgentProfileUpdateRequest
-import ai.slock.android.core.data.repository.AgentActivitySnapshot
-import ai.slock.android.core.data.repository.AgentDmSnapshot
-import ai.slock.android.core.data.repository.AgentReminderSnapshot
-import ai.slock.android.core.data.repository.AgentSkillsSnapshot
-import ai.slock.android.core.data.repository.AgentWorkspaceSnapshot
-import ai.slock.android.core.data.repository.AgentWorkspaceTreeSnapshot
-import ai.slock.android.core.data.repository.AttachmentUploadFile
-import ai.slock.android.core.data.repository.AttachmentUploadRequest
-import ai.slock.android.core.data.repository.ChannelJoinResult
-import ai.slock.android.core.data.repository.ChannelMemberSnapshot
-import ai.slock.android.core.data.repository.ChannelRepository
-import ai.slock.android.core.data.repository.ChannelUnreadSnapshot
-import ai.slock.android.core.data.repository.ChannelFilesSnapshot
-import ai.slock.android.core.data.repository.ConnectedAccountSnapshot
-import ai.slock.android.core.data.repository.ConnectedAccountStatus as RepositoryConnectedAccountStatus
-import ai.slock.android.core.data.repository.ConversationRepository
+import ai.slock.compose.data.AccountProfileSnapshot
+import ai.slock.compose.data.AccountSettingsSnapshot
+import ai.slock.compose.data.AddChannelMemberRequest
+import ai.slock.compose.data.AgentProfileUpdateRequest
+import ai.slock.compose.data.AgentActivitySnapshot
+import ai.slock.compose.data.AgentDmSnapshot
+import ai.slock.compose.data.AgentReminderSnapshot
+import ai.slock.compose.data.AgentSkillsSnapshot
+import ai.slock.compose.data.AgentWorkspaceSnapshot
+import ai.slock.compose.data.AgentWorkspaceTreeSnapshot
+import ai.slock.compose.data.AttachmentUploadFile
+import ai.slock.compose.data.AttachmentUploadRequest
+import ai.slock.compose.data.ChannelJoinResult
+import ai.slock.compose.data.ChannelMemberSnapshot
+import ai.slock.compose.data.ChannelRepository
+import ai.slock.compose.data.ChannelUnreadSnapshot
+import ai.slock.compose.data.ChannelFilesSnapshot
+import ai.slock.compose.data.ConnectedAccountSnapshot
+import ai.slock.compose.data.ConnectedAccountStatus as RepositoryConnectedAccountStatus
+import ai.slock.compose.data.ConversationRepository
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.SharedAuthDataSource
+import ai.slock.compose.data.SharedAuthResult
 import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealConversationRepository
 import ai.slock.compose.data.RealInboxRepository
@@ -63,44 +63,44 @@ import ai.slock.compose.data.RealSearchRepository
 import ai.slock.compose.data.RealServerUnreadRepository
 import ai.slock.compose.data.RealSettingsRepository
 import ai.slock.compose.data.RealTaskRepository
-import ai.slock.android.core.data.repository.HomeSnapshot
-import ai.slock.android.core.data.repository.InboxSnapshot
-import ai.slock.android.core.data.repository.InboxRepository
-import ai.slock.android.core.data.repository.MemberRepository
-import ai.slock.android.core.data.repository.MemberSnapshot
-import ai.slock.android.core.data.repository.OpenDirectMessageResult
-import ai.slock.android.core.data.repository.ReadReceiptRepository
+import ai.slock.compose.data.HomeSnapshot
+import ai.slock.compose.data.InboxSnapshot
+import ai.slock.compose.data.InboxRepository
+import ai.slock.compose.data.MemberRepository
+import ai.slock.compose.data.MemberSnapshot
+import ai.slock.compose.data.OpenDirectMessageResult
+import ai.slock.compose.data.ReadReceiptRepository
 import ai.slock.compose.data.ReadReceiptCoordinator
 import ai.slock.compose.data.ReadReceiptRequest
 import ai.slock.compose.data.ReadReceiptVisibilityGate
-import ai.slock.android.core.data.repository.RealtimeRepository
-import ai.slock.android.core.data.repository.RealtimeSubscription
-import ai.slock.android.core.data.repository.RemoveChannelMemberRequest
-import ai.slock.android.core.data.repository.SavedRepository
-import ai.slock.android.core.data.repository.SavedSnapshot
-import ai.slock.android.core.data.repository.SearchQueryOptions
-import ai.slock.android.core.data.repository.SearchRepository
-import ai.slock.android.core.data.repository.SearchSnapshot
-import ai.slock.android.core.data.repository.SearchSort
-import ai.slock.android.core.data.repository.SendMessageResult
-import ai.slock.android.core.data.repository.ServerListSnapshot
-import ai.slock.android.core.data.repository.ServerUnreadRepository
-import ai.slock.android.core.data.repository.ServerUnreadSummarySnapshot
-import ai.slock.android.core.data.repository.SettingsBillingSnapshot
-import ai.slock.android.core.data.repository.SettingsComputerDetailSnapshot
-import ai.slock.android.core.data.repository.SettingsComputersSnapshot
-import ai.slock.android.core.data.repository.SettingsMobileSnapshot
-import ai.slock.android.core.data.repository.SettingsRepository
-import ai.slock.android.core.data.repository.SettingsServerDeleteRequest
-import ai.slock.android.core.data.repository.SettingsServerInviteCreateRequest
-import ai.slock.android.core.data.repository.SettingsServerProfileUpdateRequest
-import ai.slock.android.core.data.repository.SettingsServerSnapshot
-import ai.slock.android.core.data.repository.TaskFilter
-import ai.slock.android.core.data.repository.TaskRepository
-import ai.slock.android.core.data.repository.TaskSnapshot
-import ai.slock.android.core.data.repository.ThreadActionResult
-import ai.slock.android.core.data.repository.ThreadListSnapshot
-import ai.slock.android.core.data.repository.ThreadSnapshot
+import ai.slock.android.core.data.realtime.RealtimeRepository
+import ai.slock.android.core.data.realtime.RealtimeSubscription
+import ai.slock.compose.data.RemoveChannelMemberRequest
+import ai.slock.compose.data.SavedRepository
+import ai.slock.compose.data.SavedSnapshot
+import ai.slock.compose.data.SearchQueryOptions
+import ai.slock.compose.data.SearchRepository
+import ai.slock.compose.data.SearchSnapshot
+import ai.slock.compose.data.SearchSort
+import ai.slock.compose.data.SendMessageResult
+import ai.slock.compose.data.ServerListSnapshot
+import ai.slock.compose.data.ServerUnreadRepository
+import ai.slock.compose.data.ServerUnreadSummarySnapshot
+import ai.slock.compose.data.SettingsBillingSnapshot
+import ai.slock.compose.data.SettingsComputerDetailSnapshot
+import ai.slock.compose.data.SettingsComputersSnapshot
+import ai.slock.compose.data.SettingsMobileSnapshot
+import ai.slock.compose.data.SettingsRepository
+import ai.slock.compose.data.SettingsServerDeleteRequest
+import ai.slock.compose.data.SettingsServerInviteCreateRequest
+import ai.slock.compose.data.SettingsServerProfileUpdateRequest
+import ai.slock.compose.data.SettingsServerSnapshot
+import ai.slock.compose.data.TaskFilter
+import ai.slock.compose.data.TaskRepository
+import ai.slock.compose.data.TaskSnapshot
+import ai.slock.compose.data.ThreadActionResult
+import ai.slock.compose.data.ThreadListSnapshot
+import ai.slock.compose.data.ThreadSnapshot
 import ai.slock.android.core.data.storage.StorageClearTarget
 import ai.slock.android.core.data.storage.StorageManagementRepository
 import ai.slock.android.core.data.storage.StorageManagementSnapshot
@@ -711,9 +711,14 @@ private fun SlockAppContent(
     val context = LocalContext.current
     val view = LocalView.current
     val authSessionStore = remember { EncryptedAuthSessionStore(context) }
-    val authRepository = remember { KtorAuthRepository(authSessionStore) }
+    val authDataSource = remember {
+        SharedAuthDataSource(
+                api = AndroidAuthApiFactory.createAuthApi(),
+                sessionStore = authSessionStore
+        )
+    }
     val authTokenRefresher = remember { AuthTokenRefresher(authSessionStore) }
-    val serverRepository = remember { AuthServerRepository(authSessionStore, authRepository) }
+    val serverRepository = remember { AuthServerRepository(authSessionStore, authDataSource) }
     var currentAuthSession by remember { mutableStateOf<AuthSession?>(null) }
     val networkDiagnosticsBridge = remember { NetworkDiagnosticsBridge() }
     val slockNetworkClient = remember {
@@ -721,7 +726,7 @@ private fun SlockAppContent(
     }
     val channelRepository: ChannelRepository = remember {
         RealChannelRepository(
-                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                sessionStore = authSessionStore,
                 networkClient = slockNetworkClient,
                 warningLogger = { message ->
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
@@ -733,7 +738,7 @@ private fun SlockAppContent(
     }
     val inboxRepository: InboxRepository = remember {
         RealInboxRepository(
-                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                sessionStore = authSessionStore,
                 networkClient = slockNetworkClient,
                 logger = { message ->
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
@@ -751,7 +756,7 @@ private fun SlockAppContent(
     }
     val savedRepository: SavedRepository = remember {
         RealSavedRepository(
-                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                sessionStore = authSessionStore,
                 networkClient = slockNetworkClient,
                 warningLogger = { message ->
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
@@ -763,7 +768,7 @@ private fun SlockAppContent(
     }
     val searchRepository: SearchRepository = remember {
         RealSearchRepository(
-                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                sessionStore = authSessionStore,
                 networkClient = slockNetworkClient,
                 warningLogger = { message ->
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
@@ -775,7 +780,7 @@ private fun SlockAppContent(
     }
     val conversationRepository: ConversationRepository = remember {
         RealConversationRepository(
-                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                sessionStore = authSessionStore,
                 networkClient = slockNetworkClient,
                 warningLogger = { message ->
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
@@ -987,19 +992,19 @@ private fun SlockAppContent(
     }
     val readReceiptRepository: ReadReceiptRepository = remember {
         RealReadReceiptRepository(
-                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                sessionStore = authSessionStore,
                 networkClient = slockNetworkClient
         )
     }
     val taskRepository: TaskRepository = remember {
         RealTaskRepository(
-                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                sessionStore = authSessionStore,
                 networkClient = slockNetworkClient
         )
     }
     val memberRepository: MemberRepository = remember {
         RealMemberRepository(
-                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                sessionStore = authSessionStore,
                 networkClient = slockNetworkClient,
                 warningLogger = { message ->
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
@@ -1017,7 +1022,7 @@ private fun SlockAppContent(
     }
     val serverUnreadRepository: ServerUnreadRepository = remember {
         RealServerUnreadRepository(
-                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                sessionStore = authSessionStore,
                 networkClient = slockNetworkClient,
                 clockMillis = { System.currentTimeMillis() },
                 logger = { message ->
@@ -1036,7 +1041,7 @@ private fun SlockAppContent(
     }
     val settingsRepository: SettingsRepository = remember {
         RealSettingsRepository(
-                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                sessionStore = authSessionStore,
                 networkClient = slockNetworkClient,
                 logger = { message ->
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
@@ -1926,22 +1931,22 @@ private fun SlockAppContent(
 
     fun signOutFromAuthenticated(source: String) {
         coroutineScope.launch {
-            when (val result = authRepository.logout()) {
-                is AuthResult.Success -> {
+            when (val result = authDataSource.logout()) {
+                is SharedAuthResult.Success -> {
                     resetToSignedOut()
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                             "SlockAuth",
                             "${source}_logout_success"
                     )
                 }
-                AuthResult.Unauthenticated -> {
+                SharedAuthResult.Unauthenticated -> {
                     resetToSignedOut()
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                             "SlockAuth",
                             "${source}_logout_unauthenticated"
                     )
                 }
-                is AuthResult.Failure -> {
+                is SharedAuthResult.Failure -> {
                     resetToSignedOut(result.message)
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                             "SlockAuth",
@@ -5633,14 +5638,14 @@ private fun SlockAppContent(
         }
     }
 
-    LaunchedEffect(authRepository) {
+    LaunchedEffect(authDataSource) {
         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                 "SlockAuth",
                 "restore_effect_start"
         )
         val restoredState =
-                when (val restoreResult = authRepository.restoreSession()) {
-                    is AuthResult.Success -> {
+                when (val restoreResult = authDataSource.restoreSession()) {
+                    is SharedAuthResult.Success -> {
                         currentAuthSession = authSessionStore.readSession()
                         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                                 "SlockAuth",
@@ -5648,14 +5653,14 @@ private fun SlockAppContent(
                         )
                         AuthUiState.Authenticated
                     }
-                    AuthResult.Unauthenticated -> {
+                    SharedAuthResult.Unauthenticated -> {
                         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                                 "SlockAuth",
                                 "restore_effect_unauthenticated"
                         )
                         AuthUiState.SignedOut()
                     }
-                    is AuthResult.Failure -> {
+                    is SharedAuthResult.Failure -> {
                         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                                 "SlockAuth",
                                 "restore_effect_failure message=${restoreResult.message}"

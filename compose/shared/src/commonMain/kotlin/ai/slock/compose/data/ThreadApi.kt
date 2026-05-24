@@ -204,7 +204,7 @@ private data class CreateOrOpenThreadResponseDto(
 // ── Request bodies ──
 
 @Serializable
-private data class SharedThreadSendMessageBody(
+data class ThreadSendMessageRequestBody(
     val channelId: String,
     val content: String,
     val attachmentIds: List<String> = emptyList(),
@@ -217,11 +217,16 @@ internal fun buildSharedThreadSendMessageBody(
     attachmentIds: List<String> = emptyList(),
     asTask: Boolean = false
 ): String =
-    threadApiJson.encodeToString(
-        SharedThreadSendMessageBody(
+    buildSharedThreadSendMessageBody(
+        ThreadSendMessageRequestBody(
             channelId = channelId,
             content = body,
             attachmentIds = attachmentIds,
             asTask = asTask
         )
+    )
+
+fun buildSharedThreadSendMessageBody(request: ThreadSendMessageRequestBody): String =
+    threadApiJson.encodeToString(
+        request
     )

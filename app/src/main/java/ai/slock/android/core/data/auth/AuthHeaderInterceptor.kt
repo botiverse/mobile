@@ -1,5 +1,6 @@
 package ai.slock.android.core.data.auth
 
+import ai.slock.compose.data.StoredAuthSession as AuthSession
 import okhttp3.Interceptor
 import okhttp3.Response
 

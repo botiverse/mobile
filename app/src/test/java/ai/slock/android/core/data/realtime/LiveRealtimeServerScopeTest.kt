@@ -1,13 +1,10 @@
 package ai.slock.android.core.data.realtime
 
-import ai.slock.android.core.data.auth.AuthRepository
-import ai.slock.android.core.data.auth.AuthResult
-import ai.slock.android.core.data.auth.AuthSession
-import ai.slock.android.core.data.auth.AuthSessionStore
-import ai.slock.android.core.data.auth.ComposeAuthSessionStoreAdapter
-import ai.slock.android.core.data.auth.KtorAuthRepository
+import ai.slock.compose.data.StoredAuthSession as AuthSession
+import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
+import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
-import ai.slock.android.core.data.repository.CreateChannelRequest
+import ai.slock.compose.data.CreateChannelRequest
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.RealChannelRepository
@@ -32,13 +29,13 @@ class LiveRealtimeServerScopeTest {
         val networkClient = RealSlockNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl)
         val channelRepository =
             RealChannelRepository(
-                sessionStore = ComposeAuthSessionStoreAdapter(fixture.authStore),
+                sessionStore = fixture.authStore,
                 networkClient = networkClient,
                 warningLogger = {}
             )
         val conversationRepository =
             RealConversationRepository(
-                sessionStore = ComposeAuthSessionStoreAdapter(fixture.authStore),
+                sessionStore = fixture.authStore,
                 networkClient = networkClient,
                 warningLogger = {}
             )
@@ -124,13 +121,13 @@ class LiveRealtimeServerScopeTest {
         val networkClient = RealSlockNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl)
         val channelRepository =
             RealChannelRepository(
-                sessionStore = ComposeAuthSessionStoreAdapter(fixture.authStore),
+                sessionStore = fixture.authStore,
                 networkClient = networkClient,
                 warningLogger = {}
             )
         val conversationRepository =
             RealConversationRepository(
-                sessionStore = ComposeAuthSessionStoreAdapter(fixture.authStore),
+                sessionStore = fixture.authStore,
                 networkClient = networkClient,
                 warningLogger = {}
             )
@@ -223,15 +220,15 @@ class LiveRealtimeServerScopeTest {
             assumeTrue("Set SLOCK_LIVE_TESTS=true to run live Slock API tests.", env("SLOCK_LIVE_TESTS") == "true")
             val email = requireEnv("SLOCK_TEST_EMAIL")
             val password = requireEnv("SLOCK_TEST_PASSWORD")
-            val baseUrl = env("SLOCK_BASE_URL") ?: KtorAuthRepository.BASE_URL
+            val baseUrl = env("SLOCK_BASE_URL") ?: AndroidAuthApiFactory.BASE_URL
             val authStore = InMemoryAuthSessionStore()
-            val authRepository: AuthRepository = KtorAuthRepository(
-                store = authStore,
-                api = KtorAuthRepository.createAuthApi(baseUrl)
+            val authDataSource = ai.slock.compose.data.SharedAuthDataSource(
+                api = AndroidAuthApiFactory.createAuthApi(baseUrl),
+                sessionStore = authStore
             )
 
-            val login = runBlocking { authRepository.login(email, password) }
-            assertTrue(login is AuthResult.Success)
+            val login = runBlocking { authDataSource.login(email, password) }
+            assertTrue(login is ai.slock.compose.data.SharedAuthResult.Success)
             return Session(
                 authStore = authStore,
                 session = requireNotNull(authStore.session),

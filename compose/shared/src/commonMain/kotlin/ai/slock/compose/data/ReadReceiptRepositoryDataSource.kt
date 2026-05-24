@@ -68,7 +68,7 @@ class RealReadReceiptRepository(
                 networkClient.markChannelReadToSeq(
                     DataRequestPriority.Visible,
                     channelId,
-                    readReceiptRepositoryJson.encodeToString(ReadSeqBody(seq))
+                    buildSharedReadSeqBody(seq)
                 )
             },
             source = "read_channel_seq",
@@ -163,7 +163,10 @@ class RealReadReceiptRepository(
 private data class ReadReceiptServerContext(val server: ServerSummary)
 
 @Serializable
-private data class ReadSeqBody(val seq: Long)
+data class ReadSeqRequestBody(val seq: Long)
+
+fun buildSharedReadSeqBody(seq: Long): String =
+    readReceiptRepositoryJson.encodeToString(ReadSeqRequestBody(seq))
 
 private fun <T> authRequired(): DataResult<T> =
     DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))

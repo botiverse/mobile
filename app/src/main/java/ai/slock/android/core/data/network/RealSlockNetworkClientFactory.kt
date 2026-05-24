@@ -1,8 +1,8 @@
 package ai.slock.android.core.data.network
 
-import ai.slock.android.core.data.auth.AuthSessionStore
+import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
 import ai.slock.android.core.data.auth.AuthTokenRefresher
-import ai.slock.android.core.data.auth.KtorAuthRepository
+import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.compose.data.KtorSlockNetworkClient
 import ai.slock.compose.data.SlockNetworkClient
 import ai.slock.compose.network.AuthenticatedKtorTransport
@@ -17,11 +17,11 @@ import ai.slock.compose.network.createPriorityHttpClient
 object RealSlockNetworkClientFactory {
     fun create(
         store: AuthSessionStore,
-        baseUrl: String = KtorAuthRepository.BASE_URL,
+        baseUrl: String = AndroidAuthApiFactory.BASE_URL,
         tokenRefresher: AuthTokenRefresher =
             AuthTokenRefresher(
                 store = store,
-                api = KtorAuthRepository.createAuthApi(baseUrl)
+                api = AndroidAuthApiFactory.createAuthApi(baseUrl)
             )
     ): SlockNetworkClient {
         val logger: (String) -> Unit = { message ->
@@ -75,12 +75,12 @@ private class AndroidAuthTokenProvider(
     private val warningLogger: (String) -> Unit
 ) : AuthTokenProvider {
     override suspend fun currentTokens(): AuthTokens? =
-        tokenRefresher.refreshIfExpiringSoon(clearOnUnauthorized = false)?.toAuthTokens()
+        tokenRefresher.refreshIfExpiringSoon(clearOnUnauthorized = false)?.toNetworkAuthTokens()
 
     override suspend fun refreshTokens(failedAccessToken: String): AuthTokens? =
         tokenRefresher
             .refreshIfCurrent(failedAccessToken = failedAccessToken, clearOnUnauthorized = false)
-            ?.toAuthTokens()
+            ?.toNetworkAuthTokens()
 
     override suspend fun onUnauthorized(failedAccessToken: String?) {
         val current = store.readSession()
@@ -90,7 +90,7 @@ private class AndroidAuthTokenProvider(
         }
     }
 
-    private fun ai.slock.android.core.data.auth.AuthSession.toAuthTokens(): AuthTokens =
+    private fun ai.slock.compose.data.StoredAuthSession.toNetworkAuthTokens(): AuthTokens =
         AuthTokens(
             accessToken = accessToken,
             refreshToken = refreshToken.takeIf { it.isNotBlank() },

@@ -1,11 +1,11 @@
 package ai.slock.android.feature.members
 
-import ai.slock.android.core.data.repository.AgentActivitySnapshot
-import ai.slock.android.core.data.repository.AgentDmSnapshot
-import ai.slock.android.core.data.repository.AgentReminderSnapshot
-import ai.slock.android.core.data.repository.AgentDetailSnapshot
-import ai.slock.android.core.data.repository.AgentSkillsSnapshot
-import ai.slock.android.core.data.repository.AgentWorkspaceSnapshot
+import ai.slock.compose.data.AgentActivitySnapshot
+import ai.slock.compose.data.AgentDmSnapshot
+import ai.slock.compose.data.AgentReminderSnapshot
+import ai.slock.compose.data.AgentDetailSnapshot
+import ai.slock.compose.data.AgentSkillsSnapshot
+import ai.slock.compose.data.AgentWorkspaceSnapshot
 import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.ServerSummary

@@ -1,11 +1,11 @@
 package ai.slock.android.core.data.local
 
 import ai.slock.compose.data.DataResult
-import ai.slock.android.core.data.repository.ChannelUnreadSnapshot
-import ai.slock.android.core.data.repository.HomeSnapshot
-import ai.slock.android.core.data.repository.SendMessageResult
-import ai.slock.android.core.data.repository.TaskSnapshot
-import ai.slock.android.core.data.repository.ThreadSnapshot
+import ai.slock.compose.data.ChannelUnreadSnapshot
+import ai.slock.compose.data.HomeSnapshot
+import ai.slock.compose.data.SendMessageResult
+import ai.slock.compose.data.TaskSnapshot
+import ai.slock.compose.data.ThreadSnapshot
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationKind
 import ai.slock.android.core.model.ConversationSummary

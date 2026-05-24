@@ -11,7 +11,7 @@ import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ConversationKind
 import ai.slock.android.core.model.ConversationSummary
 import ai.slock.android.core.model.AgentStatus
-import ai.slock.android.core.data.repository.ChannelFileItem
+import ai.slock.compose.data.ChannelFileItem
 import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile

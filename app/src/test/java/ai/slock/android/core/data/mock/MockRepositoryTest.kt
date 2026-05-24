@@ -1,11 +1,11 @@
 package ai.slock.android.core.data.mock
 
-import ai.slock.android.core.data.repository.ConversationRepository
+import ai.slock.compose.data.ConversationRepository
 import ai.slock.compose.data.DataResult
-import ai.slock.android.core.data.repository.MemberRepository
-import ai.slock.android.core.data.repository.ServerRepository
-import ai.slock.android.core.data.repository.TaskFilter
-import ai.slock.android.core.data.repository.TaskRepository
+import ai.slock.compose.data.MemberRepository
+import ai.slock.compose.data.ServerRepository
+import ai.slock.compose.data.TaskFilter
+import ai.slock.compose.data.TaskRepository
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ThreadId

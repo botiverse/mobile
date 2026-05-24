@@ -594,7 +594,7 @@ class RealMemberRepository(
 }
 
 @Serializable
-private data class AgentProfileUpdateBody(
+data class AgentProfileUpdateRequestBody(
     val name: String,
     val displayName: String,
     val description: String? = null
@@ -604,7 +604,7 @@ fun buildSharedAgentProfileUpdateBody(request: AgentProfileUpdateRequest): Strin
     val displayName = request.displayName.trim()
     val description = request.description?.trim()?.takeIf { it.isNotBlank() }
     return memberRepositoryJson.encodeToString(
-        AgentProfileUpdateBody(
+        AgentProfileUpdateRequestBody(
             name = displayName,
             displayName = displayName,
             description = description
@@ -613,16 +613,16 @@ fun buildSharedAgentProfileUpdateBody(request: AgentProfileUpdateRequest): Strin
 }
 
 @Serializable
-private data class AddAgentChannelMemberBody(val agentId: String)
+data class AddAgentChannelMemberRequestBody(val agentId: String)
 
 @Serializable
-private data class AddUserChannelMemberBody(val userId: String)
+data class AddUserChannelMemberRequestBody(val userId: String)
 
 private fun AddChannelMemberRequest.toBodyText(): String =
     when (kind) {
-        MemberKind.Agent -> memberRepositoryJson.encodeToString(AddAgentChannelMemberBody(memberId.value))
-        MemberKind.Human -> memberRepositoryJson.encodeToString(AddUserChannelMemberBody(memberId.value))
-        MemberKind.System -> memberRepositoryJson.encodeToString(AddUserChannelMemberBody(memberId.value))
+        MemberKind.Agent -> memberRepositoryJson.encodeToString(AddAgentChannelMemberRequestBody(memberId.value))
+        MemberKind.Human -> memberRepositoryJson.encodeToString(AddUserChannelMemberRequestBody(memberId.value))
+        MemberKind.System -> memberRepositoryJson.encodeToString(AddUserChannelMemberRequestBody(memberId.value))
     }
 
 private data class SharedNetworkServerContext(val session: StoredAuthSession, val server: ServerSummary)

@@ -822,7 +822,7 @@ private fun String.toSettingsSlug(): String =
         .ifBlank { "server" }
 
 @Serializable
-private data class AccountProfileUpdateBody(
+data class AccountProfileUpdateRequestBody(
     val displayName: String,
     val handle: String,
     val email: String
@@ -830,7 +830,7 @@ private data class AccountProfileUpdateBody(
 
 fun buildSharedAccountProfileUpdateBody(request: AccountProfileUpdateRequest): String =
     settingsRepositoryJson.encodeToString(
-        AccountProfileUpdateBody(
+        AccountProfileUpdateRequestBody(
             displayName = request.displayName,
             handle = request.handle,
             email = request.email
@@ -838,13 +838,13 @@ fun buildSharedAccountProfileUpdateBody(request: AccountProfileUpdateRequest): S
     )
 
 @Serializable
-private data class SettingsServerProfileUpdateBody(val name: String)
+data class SettingsServerProfileUpdateRequestBody(val name: String)
 
 fun buildSharedSettingsServerProfileUpdateBody(name: String): String =
-    settingsRepositoryJson.encodeToString(SettingsServerProfileUpdateBody(name))
+    settingsRepositoryJson.encodeToString(SettingsServerProfileUpdateRequestBody(name))
 
 @Serializable
-private data class SettingsServerInviteCreateBody(val email: String)
+data class SettingsServerInviteCreateRequestBody(val email: String)
 
 fun buildSharedSettingsServerInviteCreateBody(email: String): String =
-    settingsRepositoryJson.encodeToString(SettingsServerInviteCreateBody(email))
+    settingsRepositoryJson.encodeToString(SettingsServerInviteCreateRequestBody(email))

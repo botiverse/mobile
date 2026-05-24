@@ -1,12 +1,12 @@
 package ai.slock.android.core.data.auth
 
-import ai.slock.android.core.data.repository.ChannelSnapshot
-import ai.slock.android.core.data.repository.CreateServerRequest
-import ai.slock.android.core.data.repository.HomeSnapshot
-import ai.slock.android.core.data.repository.InboxSnapshot
-import ai.slock.android.core.data.repository.ServerListSnapshot
-import ai.slock.android.core.data.repository.ServerRepository
-import ai.slock.android.core.data.repository.SettingsSnapshot
+import ai.slock.compose.data.ChannelSnapshot
+import ai.slock.compose.data.CreateServerRequest
+import ai.slock.compose.data.HomeSnapshot
+import ai.slock.compose.data.InboxSnapshot
+import ai.slock.compose.data.ServerListSnapshot
+import ai.slock.compose.data.ServerRepository
+import ai.slock.compose.data.SettingsSnapshot
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.PermissionBlocker
@@ -15,27 +15,20 @@ import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthErrorCode
 import ai.slock.compose.data.SharedAuthResult
-import ai.slock.compose.data.SlockAuthApi
-import ai.slock.compose.data.StoredAuthSession
+import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
+import ai.slock.compose.data.StoredAuthSession as AuthSession
 
 class AuthServerRepository(
     private val store: AuthSessionStore,
-    private val authRepository: AuthRepository,
-    api: SlockAuthApi = KtorAuthRepository.createAuthApi()
+    private val authDataSource: SharedAuthDataSource
 ) : ServerRepository {
-    private val sharedAuthDataSource =
-        SharedAuthDataSource(
-            api = api,
-            sessionStore = ComposeAuthSessionStoreAdapter(store)
-        )
-
     override suspend fun getServers(): DataResult<ServerListSnapshot> {
         val session = store.readSession() ?: return authRequired()
-        val restored = authRepository.currentUser()
+        val restored = authDataSource.restoreSession()
         val latest = store.readSession() ?: session
 
         if (latest.servers.isEmpty()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
-        if (restored is AuthResult.Failure && restored.code == AuthErrorCode.Network) {
+        if (restored is SharedAuthResult.Failure && restored.code == SharedAuthErrorCode.Network) {
             return DataResult.Error(ScreenError(code = "servers_network", retryable = true))
         }
 
@@ -43,8 +36,8 @@ class AuthServerRepository(
     }
 
     override suspend fun selectServer(serverId: ServerId): DataResult<ServerListSnapshot> =
-        when (val result = sharedAuthDataSource.selectServer(serverId.value)) {
-            is SharedAuthResult.Success -> DataResult.Content(result.data.toAndroidAuthSession().toServerListSnapshot())
+        when (val result = authDataSource.selectServer(serverId.value)) {
+            is SharedAuthResult.Success -> DataResult.Content(result.data.toServerListSnapshot())
             SharedAuthResult.Unauthenticated -> authRequired()
             is SharedAuthResult.Failure -> DataResult.Error(ScreenError(code = "server_not_found", retryable = false))
         }
@@ -56,13 +49,13 @@ class AuthServerRepository(
         }
         return when (
             val result =
-                sharedAuthDataSource.createServer(
+                authDataSource.createServer(
                     name = name,
                     slug = request.slug,
                     region = request.region
                 )
         ) {
-            is SharedAuthResult.Success -> DataResult.Content(result.data.toAndroidAuthSession().toServerListSnapshot())
+            is SharedAuthResult.Success -> DataResult.Content(result.data.toServerListSnapshot())
             SharedAuthResult.Unauthenticated -> authRequired()
             is SharedAuthResult.Failure -> result.toCreateServerError()
         }

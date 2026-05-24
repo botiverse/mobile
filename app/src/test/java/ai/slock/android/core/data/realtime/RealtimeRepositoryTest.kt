@@ -1,9 +1,9 @@
 package ai.slock.android.core.data.realtime
 
-import ai.slock.android.core.data.auth.AuthServer
-import ai.slock.android.core.data.auth.AuthSession
-import ai.slock.android.core.data.auth.AuthSessionStore
-import ai.slock.android.core.data.auth.AuthUser
+import ai.slock.compose.data.StoredAuthServer as AuthServer
+import ai.slock.compose.data.StoredAuthSession as AuthSession
+import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
+import ai.slock.compose.data.StoredAuthUser as AuthUser
 import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.compose.data.AuthApiResult
 import ai.slock.compose.data.AuthLoginResponse
@@ -12,7 +12,7 @@ import ai.slock.compose.data.SlockAuthApi
 import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.DataResult
-import ai.slock.android.core.data.repository.RealtimeSubscription
+import ai.slock.android.core.data.realtime.RealtimeSubscription
 import ai.slock.android.core.model.AgentStatus
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.Heartbeat
