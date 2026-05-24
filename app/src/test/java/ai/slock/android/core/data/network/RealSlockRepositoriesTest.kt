@@ -494,7 +494,7 @@ class RealSlockRepositoriesTest {
                     {
                       "items": [
                         {"channelId":"channel-1","channelName":"standard","timestamp":1778335200000},
-                        {"channelId":"channel-2","channelName":"activity","latest_activity_at":"2026-05-09 22:00:00+08:00"}
+                        {"channelId":"channel-2","channelName":"activity","latestActivityAt":"2026-05-09 22:00:00+08:00"}
                       ]
                     }
                 """.trimIndent()
@@ -610,7 +610,7 @@ class RealSlockRepositoriesTest {
                     {
                       "tasks": [
                         {"id":"task-1","title":"Epoch task","timestamp":1778335200000},
-                        {"id":"task-2","title":"Activity task","latest_activity_at":"2026-05-09 22:00:00+08:00"}
+                        {"id":"task-2","title":"Activity task","latestActivityAt":"2026-05-09 22:00:00+08:00"}
                       ]
                     }
                 """.trimIndent()
@@ -790,7 +790,7 @@ class RealSlockRepositoriesTest {
                         {
                           "id":"c41039c4-1111-4222-8333-0123456789ab",
                           "channelId":"channel-1",
-                          "thread_id":"a98ec1f2-1111-4222-8333-fedcba987654",
+                          "threadId":"a98ec1f2-1111-4222-8333-fedcba987654",
                           "seq":"42",
                           "content":"Hello",
                           "createdByUser":{"id":"user-2","displayName":"Android Developer","kind":"agent"},
@@ -803,7 +803,7 @@ class RealSlockRepositoriesTest {
                               "thumbnailUrl":"https://cdn.example/thumbs/attachment-1.png"
                             }
                           ],
-                          "reply_count":7,
+                          "replyCount":7,
                           "task":{"id":"task-1","title":"Fix chat","status":"in_review","number":151}
                         },
                         {
@@ -969,7 +969,7 @@ class RealSlockRepositoriesTest {
                           "threadChannelId":"thread-c41039c4",
                           "parentMessageId":"c41039c4-1111-4222-8333-0123456789ab",
                           "parentChannelName":"android-dev",
-                          "reply_count":7
+                          "replyCount":7
                         }
                       ]
                     }
@@ -1765,7 +1765,7 @@ class RealSlockRepositoriesTest {
                   "data": {
                     "canAddMembers": true,
                     "humans": [
-                      {"user":{"id":"user-2","displayName":"Artin","handle":"artin","avatar_url":"https://cdn.example/artin.png"},"role":"owner","presence":"away"}
+                      {"user":{"id":"user-2","displayName":"Artin","handle":"artin","avatarUrl":"https://cdn.example/artin.png"},"role":"owner","presence":"away"}
                     ],
                     "agents": [
                       {"agent":{"id":"agent-1","name":"API Integration","handle":"api","avatar":"pixel:api"},"role":"developer","presence":"working"},
@@ -1911,7 +1911,7 @@ class RealSlockRepositoriesTest {
                                 "id": "user-2",
                                 "displayName": "Artin",
                                 "handle": "artin",
-                                "avatar_url": "https://cdn.example/artin.png"
+                                "avatarUrl": "https://cdn.example/artin.png"
                               },
                               "role": "owner",
                               "presence": "away"

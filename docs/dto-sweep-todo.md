@@ -1,0 +1,109 @@
+# Slock DTO Sweep — Cross-Commit Tracking
+
+Goal: every JSON parsing call site goes through a strict `@Serializable`
+camelCase DTO living in `compose/shared/.../data/`. App-side helpers in
+`RealSlockRepositories.kt` / `RealSettingsRepository.kt` should disappear, and
+`NetworkResponseMapper` should ultimately be deleted.
+
+Canonical contract is **camelCase only** — verified against the React bundle at
+`artifacts/web-current/index-D7TCB7di.js` (e.g. `channelId 162` vs
+`channel_id 1`, `displayName 82`, `messageId 46`, `taskNumber 17`, `serverId 14`).
+No snake_case aliases, no `firstObject(... metadata, meta, payload ...)` style
+field guessing.
+
+## Status
+
+### Done
+- ThreadPage.kt parsers → shared (`ThreadMessagesParser.kt`).
+- Unread/Summary parsers → shared (`UnreadParser.kt`).
+- Attachments upload + channel files → shared (`AttachmentsParser.kt`).
+- Workspace file tree + preview → shared (`WorkspaceFilesParser.kt`); deleted
+  `toWorkspaceFileNodes`, `toWorkspaceFileNode`, `toWorkspaceFilePreview`,
+  `workspaceFileKind`, `isImagePath` from `RealSlockRepositories.kt`.
+- Auth repos: strict `parseAuthUser` / `parseAuthServers`, removed
+  `objectValue`/`arrayValue` helpers.
+- `SocketIoRealtimeClient.serverIdOrNull` collapsed to strict `serverId` only.
+- Settings parsing audit (12 helpers cataloged).
+- Snake_case aliases stripped from these app-side helpers (still local, not yet
+  in shared):
+  - `toMessage` (~30 keys)
+  - `memberId`, `memberDisplayName`, `memberAvatarUrl`, `memberGravatarHash`,
+    `memberAgentStatus`
+  - `toAttachment`
+  - `systemEventType`
+- Test fixtures updated to camelCase: `thread_id`, `reply_count`×2,
+  `avatar_url`×2, `latest_activity_at`×2.
+
+### In progress / next
+
+- **20 pre-existing test failures** in `RealSlockRepositoriesTest`. These are
+  NOT caused by the sweep — `git stash` shows the same set on baseline. They
+  obscure regression signal for further parser surgery, so triage first or do
+  the moves under `--tests` filters that skip the broken set.
+- Strip remaining snake_case aliases from:
+  - `toThreadSnapshot`, `toThreadListSnapshot`
+  - `toTaskSummary`, `claimedByFallback`, task-flat fields on messages
+  - Conversation / inbox helpers
+  - `toMessageType`, `systemMetadata`
+  - Member-heavy helpers in Settings (`toSettingsMemberProfile`,
+    `toAccountSettingsSnapshot`, etc.)
+
+### Move to shared (one batch at a time, each its own commit)
+
+1. **Batch 5 — Messages / Profiles** (~600 LOC, foundational; blocks 2/4/6).
+   File: `compose/shared/.../data/MessagesParser.kt`. Public:
+   `parseSharedMessageSnapshot`, `parseSharedMemberProfile`.
+2. **Batch 2 — Tasks**.
+3. **Batch 6 — Conversations**.
+4. **Batch 4 — Inbox / Thread**.
+5. **Settings heavy parsers** (members, account).
+6. **Delete `NetworkResponseMapper`** once all callers go through shared.
+
+## Canonical parser pattern
+
+```kotlin
+// compose/shared/src/commonMain/kotlin/ai/slock/compose/data/XxxParser.kt
+private val xxxJson = Json {
+    ignoreUnknownKeys = true
+    coerceInputValues = true
+}
+
+@Serializable
+private data class WireXxxDto(/* camelCase fields only */)
+
+fun parseSharedXxx(bodyText: String, /* …context… */): T {
+    val wire = runCatching {
+        xxxJson.decodeFromString(WireXxxDto.serializer(), bodyText)
+    }.getOrElse { return /* safe default */ }
+    return wire.toDomain(/* … */)
+}
+```
+
+App side:
+
+```kotlin
+mapper = { json ->
+    ai.slock.compose.data.parseSharedXxx(json.toString(), …)
+}
+```
+
+Verify:
+
+```bash
+cd /Users/artin/AndroidStudioProjects/Slock/compose && \
+  ./gradlew :shared:publishAndroidReleasePublicationToMavenLocal
+cd /Users/artin/AndroidStudioProjects/Slock && \
+  ./gradlew :app:compileDebugKotlin
+./gradlew :app:testDebugUnitTest --tests \
+  "ai.slock.android.core.data.network.RealSlockRepositoriesTest*"
+# diff failing-test list against baseline; only the pre-existing 20 are allowed
+```
+
+## Rules
+
+- If a same-package private `Wire*` name collides, suffix with `Dto`.
+- Shared parsers MUST be public top-level — `internal` does not cross the Maven
+  artifact boundary.
+- Do not collapse the 3 OkHttp priority lanes (Foreground 12 / Visible 8 /
+  Background 4) when touching network code (see `AGENTS.md`).
+- Don't bypass safety checks (`--no-verify`, force-push) when committing.

@@ -1127,8 +1127,10 @@ class RealMemberRepository(
                 source = "agent_workspace_root",
                 warningLogger = warningLogger,
                 mapper = { json ->
-                    val files = json.getAsJsonArray("files")
-                            ?: throw IllegalStateException("Workspace file response missing files")
+                    val children = ai.slock.compose.data.parseSharedWorkspaceFileNodes(json.toString())
+                    if (children.isEmpty() && json.getAsJsonArray("files") == null) {
+                        throw IllegalStateException("Workspace file response missing files")
+                    }
                     AgentWorkspaceTreeSnapshot(
                             agentId = agentId,
                             rootPath = "Workspace",
@@ -1138,9 +1140,7 @@ class RealMemberRepository(
                                             name = "workspace",
                                             path = "/",
                                             kind = SlockWorkspaceFileKind.Folder,
-                                            children = files.toList().mapNotNull {
-                                                it.asObjectOrNull()?.toWorkspaceFileNode()
-                                            }
+                                            children = children
                                     )
                     )
                 }
@@ -1162,14 +1162,13 @@ class RealMemberRepository(
                 source = "agent_workspace_children",
                 warningLogger = warningLogger,
                 mapper = { json ->
-                    val files = json.getAsJsonArray("files")
-                            ?: throw IllegalStateException("Workspace file response missing files")
+                    if (json.getAsJsonArray("files") == null) {
+                        throw IllegalStateException("Workspace file response missing files")
+                    }
                     AgentWorkspaceChildrenSnapshot(
                             agentId = agentId,
                             dirPath = dirPath,
-                            children = files.toList().mapNotNull {
-                                it.asObjectOrNull()?.toWorkspaceFileNode()
-                            }
+                            children = ai.slock.compose.data.parseSharedWorkspaceFileNodes(json.toString())
                     )
                 }
         )
@@ -1188,10 +1187,11 @@ class RealMemberRepository(
                 source = "agent_workspace_file_read",
                 warningLogger = warningLogger,
                 mapper = { json ->
+                    val bodyText = json.toString()
                     AgentWorkspaceFilePreviewSnapshot(
                             agentId = agentId,
                             path = json.string("path") ?: path,
-                            preview = json.toWorkspaceFilePreview(path)
+                            preview = ai.slock.compose.data.parseSharedWorkspaceFilePreview(bodyText, path)
                     )
                 }
         )
@@ -3197,69 +3197,49 @@ private fun List<Message>.sortedForNetworkThreadTimeline(): List<Message> =
         sortedByMessageTime()
 
 private fun JsonObject.toMessage(fallbackThreadId: ThreadId): Message? {
-    val id = string("id", "messageId", "_id") ?: return null
+    val id = string("id", "messageId") ?: return null
     val rawThreadId =
-            string("threadId", "thread_id")
+            string("threadId")
                     ?: firstObject("thread", "replyThread", "messageThread", "repliesThread")
-                            ?.string("id", "threadId", "thread_id", "channelId", "channel_id")
+                            ?.string("id", "threadId", "channelId")
     val rawChannelId =
-            string("channelId", "channel_id")
+            string("channelId")
                     ?: firstObject("channel", "parentChannel")
-                            ?.string("id", "channelId", "channel_id")
+                            ?.string("id", "channelId")
     val explicitThreadChannelId =
             string(
                     "threadChannelId",
-                    "thread_channel_id",
                     "replyThreadChannelId",
-                    "reply_thread_channel_id",
                     "repliesThreadChannelId",
-                    "replies_thread_channel_id",
                     "childThreadChannelId",
-                    "child_thread_channel_id",
                     "threadChannel",
-                    "thread_channel",
                     "replyChannelId",
-                    "reply_channel_id",
                     "replyThreadId",
-                    "reply_thread_id",
-                    "commentsThreadChannelId",
-                    "comments_thread_channel_id"
+                    "commentsThreadChannelId"
             )
     val parentMessageId =
             string(
                             "parentMessageId",
-                            "parent_message_id",
                             "parentId",
-                            "parent_id",
-                            "rootMessageId",
-                            "root_message_id"
+                            "rootMessageId"
                     )
                     ?.let(::MessageId)
     val replyCount =
             int(
                     "replyCount",
-                    "reply_count",
                     "replies",
                     "threadReplyCount",
-                    "thread_reply_count",
                     "repliesCount",
-                    "replies_count",
                     "threadRepliesCount",
-                    "thread_replies_count",
                     "commentsCount",
-                    "comments_count",
-                    "childCount",
-                    "child_count"
+                    "childCount"
             )
                     ?: firstObject("thread", "replyThread", "messageThread", "repliesThread")
                             ?.int(
                                     "replyCount",
-                                    "reply_count",
                                     "replies",
                                     "repliesCount",
-                                    "replies_count",
-                                    "childCount",
-                                    "child_count"
+                                    "childCount"
                             )
                             ?: 0
     val topLevelReplyThreadId =
@@ -3293,25 +3273,20 @@ private fun JsonObject.toMessage(fallbackThreadId: ThreadId): Message? {
     return Message(
             id = MessageId(id),
             threadId = threadId,
-            channelId = string("channelId", "channel_id")?.let(::ChannelId),
+            channelId = string("channelId")?.let(::ChannelId),
             threadChannelId = (explicitThreadChannelId ?: topLevelReplyThreadId)?.let(::ChannelId),
             seq =
                     long(
                             "seq",
                             "sequence",
                             "sequenceNumber",
-                            "sequence_number",
                             "messageSeq",
-                            "message_seq",
                             "serverSeq",
-                            "server_seq",
                             "createdSeq",
-                            "created_seq",
-                            "logSeq",
-                            "log_seq"
+                            "logSeq"
                     ),
             author = author,
-            timestampLabel = string("timestampLabel", "createdAt", "created_at", "updatedAt") ?: "",
+            timestampLabel = string("timestampLabel", "createdAt", "updatedAt") ?: "",
             body = body,
             messageType = toMessageType(),
             systemEventType = systemEventType(),
@@ -3325,29 +3300,20 @@ private fun JsonObject.toMessage(fallbackThreadId: ThreadId): Message? {
                             nested.toTaskSummary()
                         } else {
                             // Flat task fields embedded directly on the message row
-                            val taskNum = int("taskNumber", "task_number")
-                            val taskStatus = string("taskStatus", "task_status")
+                            val taskNum = int("taskNumber")
+                            val taskStatus = string("taskStatus")
                             if (taskNum != null || taskStatus != null) {
                                 val msgId = MessageId(id)
                                 val assignee =
                                         claimedByFallback()
                                                 ?: run {
                                                     val aid =
-                                                            string(
-                                                                    "taskAssigneeId",
-                                                                    "task_assignee_id"
-                                                            )
+                                                            string("taskAssigneeId")
                                                     if (aid != null) {
                                                         val atype =
-                                                                string(
-                                                                        "taskAssigneeType",
-                                                                        "task_assignee_type"
-                                                                )
+                                                                string("taskAssigneeType")
                                                         val aname =
-                                                                string(
-                                                                        "taskAssigneeName",
-                                                                        "task_assignee_name"
-                                                                )
+                                                                string("taskAssigneeName")
                                                                         ?: aid
                                                         MemberProfile(
                                                                 id = MemberId(aid),
@@ -3365,13 +3331,13 @@ private fun JsonObject.toMessage(fallbackThreadId: ThreadId): Message? {
                                                 }
                                 TaskSummary(
                                         id = TaskId(string("taskId") ?: id),
-                                        title = string("taskTitle", "task_title")
+                                        title = string("taskTitle")
                                                         ?: taskNum?.let { "#$it" } ?: "",
                                         status = taskStatus?.toTaskStatus() ?: TaskStatus.Todo,
                                         taskNumber = taskNum,
                                         messageId = msgId,
                                         channelId =
-                                                string("channelId", "channel_id")?.let(::ChannelId),
+                                                string("channelId")?.let(::ChannelId),
                                         threadId = null,
                                         assignee = assignee,
                                         updatedAtLabel = string("updatedAt", "createdAt") ?: "",
@@ -3837,23 +3803,22 @@ private fun JsonObject.memberId(): String? =
                 MemberKind.Agent ->
                         string("agentId")
                                 ?: nestedMemberObject()?.memberId()
-                                ?: string("id", "_id", "memberId", "userId")
+                                ?: string("id", "memberId", "userId")
                 MemberKind.Human ->
                         string("userId", "memberId")
                                 ?: nestedMemberObject()?.memberId()
-                                ?: string("id", "_id")
+                                ?: string("id")
                 MemberKind.System ->
-                        string("id", "_id", "userId", "memberId", "agentId")
+                        string("id", "userId", "memberId", "agentId")
                                 ?: nestedMemberObject()?.memberId()
             }
         }
                 ?: nestedMemberObject()?.memberId()
-                ?: string("userId", "memberId", "agentId", "id", "_id")
+                ?: string("userId", "memberId", "agentId", "id")
 
 private fun JsonObject.memberDisplayName(): String? =
         string(
                 "displayName",
-                "display_name",
                 "name",
                 "username",
                 "title",
@@ -3865,7 +3830,6 @@ private fun JsonObject.memberDisplayName(): String? =
                         ?: firstObject("metadata", "meta")
                         ?.string(
                                 "displayName",
-                                "display_name",
                                 "name",
                                 "username",
                                 "title",
@@ -3888,7 +3852,6 @@ private fun JsonObject.memberAvatarUrl(): String? =
         avatarWireValue(
                 "avatarUrl",
                 "avatar",
-                "avatar_url",
                 "imageUrl",
                 "profileImageUrl",
                 "profileAvatar"
@@ -3896,7 +3859,7 @@ private fun JsonObject.memberAvatarUrl(): String? =
                 ?: nestedMemberObject()?.memberAvatarUrl()
 
 private fun JsonObject.memberGravatarHash(): String? =
-        string("gravatarHash", "gravatar_hash", "gravatar", "gravatarMd5", "gravatar_md5")
+        string("gravatarHash", "gravatar", "gravatarMd5")
                 ?: nestedMemberObject()?.memberGravatarHash()
 
 private fun JsonObject.memberPresence(): Presence =
@@ -3907,13 +3870,11 @@ private fun JsonObject.memberPresence(): Presence =
 private fun JsonObject.memberAgentStatus(): AgentStatus? =
         string(
                         "agentStatus",
-                        "agent_status",
                         "activity",
                         "status",
                         "presence",
                         "availability",
                         "connectionStatus",
-                        "connection_status",
                         "state"
                 )
                 .toAgentStatusOrNull()
@@ -4162,109 +4123,6 @@ private fun JsonObject.toAgentWorkspaceSnapshotFromObject(): SettingsComputerWor
             lastActiveLabel = string("lastActiveAt", "last_active_at", "updatedAt", "updated_at")
     )
 }
-
-private fun JsonObject.toWorkspaceFileNodes(): List<SlockWorkspaceNode> {
-    val root = unwrap("data", "files", "tree")
-    val entries = root.items("files", "children", "items", "nodes", "entries", "data")
-    return entries.mapNotNull { it.asObjectOrNull()?.toWorkspaceFileNode() }
-}
-
-private fun JsonObject.toWorkspaceFileNode(): SlockWorkspaceNode? {
-    val path = string("path", "fullPath", "full_path", "relativePath", "relative_path")
-        ?: string("id", "name")
-        ?: return null
-    val name = string("name", "basename", "label") ?: path.substringAfterLast('/').ifBlank { path }
-    val kind = workspaceFileKind(path)
-    return SlockWorkspaceNode(
-        id = string("id", "_id") ?: path,
-        name = name,
-        path = path,
-        kind = kind,
-        meta = sizeNumberLabel() ?: string("mimeType", "mime_type", "type"),
-        preview = firstObject("preview", "file")?.toWorkspaceFilePreview(path),
-        children =
-            items("children", "files", "items", "nodes", "entries")
-                .mapNotNull { it.asObjectOrNull()?.toWorkspaceFileNode() }
-    )
-}
-
-private fun JsonObject.toWorkspaceFilePreview(fallbackPath: String): SlockWorkspaceFilePreview {
-    val path = string("path", "fullPath", "full_path", "relativePath", "relative_path") ?: fallbackPath
-    val mimeType = string("mimeType", "mime_type", "contentType", "content_type")
-    val sizeBytes = long("sizeBytes", "size_bytes", "size")
-    val modifiedAt = string("modifiedAt", "modified_at", "updatedAt", "updated_at")
-    val content = string("content", "text", "body", "source")
-    if (content != null) {
-        val markdown =
-            boolean("markdown", "isMarkdown", "is_markdown")
-                ?: mimeType?.contains("markdown", ignoreCase = true)
-                ?: path.endsWith(".md", ignoreCase = true)
-        return SlockWorkspaceFilePreview.Text(
-            path = path,
-            content = content,
-            markdown = markdown,
-            sizeBytes = sizeBytes,
-            modifiedAt = modifiedAt,
-            mimeType = mimeType
-        )
-    }
-    val imageUrl =
-            avatarWireValue(
-                    "imageUrl",
-                    "image_url",
-                    "url",
-                    "href",
-                    "src",
-                    "downloadUrl",
-                    "download_url"
-            )
-    if (imageUrl != null) {
-        return SlockWorkspaceFilePreview.Image(
-            path = path,
-            imageUrl = imageUrl,
-            sampleAssetKey = string("sampleAssetKey", "sample_asset_key"),
-            sizeBytes = sizeBytes,
-            modifiedAt = modifiedAt,
-            mimeType = mimeType,
-            description = string("description", "alt", "caption")
-        )
-    }
-    if (path.isImagePath()) {
-        return SlockWorkspaceFilePreview.Unsupported(
-            path = path,
-            reason = "Binary image preview is not available in the current mobile contract.",
-            sizeBytes = sizeBytes,
-            modifiedAt = modifiedAt,
-            mimeType = mimeType
-        )
-    }
-    return SlockWorkspaceFilePreview.Unsupported(
-        path = path,
-        reason = string("reason", "message", "error") ?: "Preview unavailable",
-        sizeBytes = sizeBytes,
-        modifiedAt = modifiedAt,
-        mimeType = mimeType
-    )
-}
-
-private fun JsonObject.workspaceFileKind(path: String): SlockWorkspaceFileKind {
-    val type = string("kind", "type", "fileType", "file_type")?.lowercase()
-    return when {
-        type in setOf("dir", "directory", "folder") -> SlockWorkspaceFileKind.Folder
-        type in setOf("markdown", "md") || path.endsWith(".md", ignoreCase = true) -> SlockWorkspaceFileKind.Markdown
-        type in setOf("image", "photo") || path.isImagePath() -> SlockWorkspaceFileKind.Image
-        type in setOf("file", "text") -> SlockWorkspaceFileKind.Text
-        else -> SlockWorkspaceFileKind.Unsupported
-    }
-}
-
-private fun String.isImagePath(): Boolean =
-    endsWith(".png", ignoreCase = true) ||
-        endsWith(".jpg", ignoreCase = true) ||
-        endsWith(".jpeg", ignoreCase = true) ||
-        endsWith(".gif", ignoreCase = true) ||
-        endsWith(".webp", ignoreCase = true) ||
-        endsWith(".heic", ignoreCase = true)
 
 private fun JsonObject.memberItems(): List<MemberProfile> {
     val root = unwrap("data", "channel")
@@ -4762,63 +4620,47 @@ private fun JsonObject.toAttachment(): Attachment? {
                             ?.string(
                                     "id",
                                     "attachmentId",
-                                    "attachment_id",
-                                    "fileId",
-                                    "file_id",
-                                    "_id"
+                                    "fileId"
                             ) ?: return null
     val nested = firstObject("attachment", "file", "image", "media")
     return Attachment(
             id = AttachmentId(id),
             name =
-                    string("name", "fileName", "filename", "originalName", "original_name", "title", "label")
+                    string("name", "fileName", "filename", "originalName", "title", "label")
                             ?: nested?.string(
                                     "name",
                                     "fileName",
                                     "filename",
                                     "originalName",
-                                    "original_name",
                                     "title",
                                     "label"
                             ) ?: "Attachment",
             mimeType =
-                    string("mimeType", "mime_type", "contentType", "content_type", "type")
+                    string("mimeType", "contentType", "type")
                             ?: nested?.string(
                                     "mimeType",
-                                    "mime_type",
                                     "contentType",
-                                    "content_type",
                                     "type"
                             ) ?: "application/octet-stream",
             sizeLabel =
-                    string("sizeLabel", "size_label", "size", "fileSize", "file_size")
+                    string("sizeLabel", "size", "fileSize")
                             ?: nested?.string(
                                     "sizeLabel",
-                                    "size_label",
                                     "size",
-                                    "fileSize",
-                                    "file_size"
+                                    "fileSize"
                             ) ?: sizeNumberLabel() ?: nested?.sizeNumberLabel() ?: "",
             thumbnailUrl =
                     string(
                             "thumbnailUrl",
-                            "thumbnail_url",
                             "thumbUrl",
-                            "thumb_url",
                             "previewUrl",
-                            "preview_url",
-                            "imageUrl",
-                            "image_url"
+                            "imageUrl"
                     )
                             ?: nested?.string(
                                     "thumbnailUrl",
-                                    "thumbnail_url",
                                     "thumbUrl",
-                                    "thumb_url",
                                     "previewUrl",
-                                    "preview_url",
-                                    "imageUrl",
-                                    "image_url"
+                                    "imageUrl"
                             )
     )
 }
@@ -4835,9 +4677,7 @@ private fun JsonObject.toMessageType(): MessageType {
 private fun JsonObject.systemEventType(): String? =
         string(
                 "systemEventType",
-                "system_event_type",
                 "eventType",
-                "event_type",
                 "systemType",
                 "subtype",
                 "action"
