@@ -9,6 +9,7 @@ import ai.slock.compose.data.SharedThreadNetworkApi
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.ThreadSnapshot
+import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesResponse
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
@@ -434,7 +435,7 @@ class SharedThreadStoreTest {
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10),
-                olderBodyText = messagesResponse("older body", id = "m5", seq = 5, hasMore = false)
+                olderBodyText = messagesResponse("older body", id = "m5", seq = 5, historyLimited = false)
             )
         val dataSource =
             SharedThreadDataSource(
@@ -461,7 +462,7 @@ class SharedThreadStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api =
             FakeThreadApi(
-                bodyText = messagesResponse("current body", id = "m10", seq = 10, hasMore = false, hasNextPage = true),
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
                 newerBodyText = syncResponse("newer body", id = "m12", seq = 12)
             )
         val dataSource =
@@ -484,8 +485,8 @@ class SharedThreadStoreTest {
 
     private class FakeThreadApi(
         var bodyText: String = messagesResponse("network body"),
-        var olderBodyText: String = messagesResponse("older body", id = "older", seq = 1, hasMore = false),
-        var newerBodyText: String = messagesResponse("newer body", id = "newer", seq = 100, hasNextPage = false),
+        var olderBodyText: String = messagesResponse("older body", id = "older", seq = 1, historyLimited = false),
+        var newerBodyText: String = messagesResponse("newer body", id = "newer", seq = 100, historyLimited = false),
         var failChannelMessages: Boolean = false
     ) : SharedThreadNetworkApi {
         var channelMessageCalls: Int = 0
@@ -591,14 +592,11 @@ class SharedThreadStoreTest {
             body: String,
             id: String = "m1",
             seq: Long = 10,
-            hasMore: Boolean = true,
-            hasNextPage: Boolean = false
+            historyLimited: Boolean = true
         ): String =
             """
             {
-              "hasMore": $hasMore,
-              "hasNextPage": $hasNextPage,
-              "historyLimited": false,
+              "historyLimited": $historyLimited,
               "messages": [
                 {
                   "id": "$id",

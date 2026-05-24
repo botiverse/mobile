@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesResponse
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.ReadReceiptResult
 import ai.slock.compose.data.ScreenError

@@ -6,7 +6,6 @@ import ai.slock.compose.data.SharedAuthErrorCode
 import ai.slock.compose.data.SharedAuthResult
 import com.google.gson.Gson
 import com.google.gson.JsonElement
-import com.google.gson.JsonObject
 import java.io.IOException
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -250,9 +249,10 @@ class KtorAuthRepository(
     }
 
     private fun ApiResponse.parseAuthUser(): AuthUser {
+        // Canonical: `{user: AuthUser}` or bare AuthUser.
         val root = parseJsonRoot()
         val userJson = if (root.isJsonObject) {
-            root.asJsonObject.objectValue("user", "account", "profile") ?: root
+            root.asJsonObject.get("user")?.takeIf { it.isJsonObject }?.asJsonObject ?: root
         } else {
             root
         }
@@ -260,15 +260,15 @@ class KtorAuthRepository(
     }
 
     private fun ApiResponse.parseAuthServers(): List<AuthServer> {
+        // Canonical: `{servers: AuthServer[]}` or bare array.
         val root = parseJsonRoot()
         val serversJson = when {
             root.isJsonArray -> root.asJsonArray
-            root.isJsonObject -> {
-                val objectRoot = root.asJsonObject
-                objectRoot.arrayValue("servers", "items", "data")
-                    ?: objectRoot.objectValue("data")?.arrayValue("servers", "items")
+            root.isJsonObject ->
+                root.asJsonObject.get("servers")
+                    ?.takeIf { it.isJsonArray }
+                    ?.asJsonArray
                     ?: return emptyList()
-            }
             else -> return emptyList()
         }
         return serversJson.map { gson.fromJson(it, AuthServer::class.java) }
@@ -293,22 +293,6 @@ class KtorAuthRepository(
         runCatching {
             gson.fromJson(string(), ApiErrorResponse::class.java).error
         }.getOrNull()
-
-    private fun JsonObject.objectValue(vararg names: String): JsonObject? {
-        for (name in names) {
-            val value = get(name)
-            if (value != null && value.isJsonObject) return value.asJsonObject
-        }
-        return null
-    }
-
-    private fun JsonObject.arrayValue(vararg names: String): com.google.gson.JsonArray? {
-        for (name in names) {
-            val value = get(name)
-            if (value != null && value.isJsonArray) return value.asJsonArray
-        }
-        return null
-    }
 
     private fun jsonBody(value: Any) =
         gson.toJson(value).toRequestBody(JSON)

@@ -15,7 +15,6 @@ import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenError
 import com.google.gson.Gson
 import com.google.gson.JsonElement
-import com.google.gson.JsonObject
 import java.io.IOException
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -125,10 +124,11 @@ class AuthServerRepository(
         (this.filterNot { it.id == server.id } + server)
 
     private fun ApiResponse.parseCreatedServer(): AuthServer {
+        // Canonical: server returns either `{server: AuthServer}` or the bare AuthServer object.
         val root = parseJsonRoot()
         val serverJson = if (root.isJsonObject) {
             val objectRoot = root.asJsonObject
-            objectRoot.objectValue("server", "item", "data", "workspace") ?: objectRoot
+            objectRoot.get("server")?.takeIf { it.isJsonObject }?.asJsonObject ?: objectRoot
         } else {
             root
         }
@@ -136,15 +136,15 @@ class AuthServerRepository(
     }
 
     private fun ApiResponse.parseAuthServers(): List<AuthServer> {
+        // Canonical: server returns `{servers: AuthServer[]}` or a bare array.
         val root = parseJsonRoot()
         val serversJson = when {
             root.isJsonArray -> root.asJsonArray
-            root.isJsonObject -> {
-                val objectRoot = root.asJsonObject
-                objectRoot.arrayValue("servers", "items", "data")
-                    ?: objectRoot.objectValue("data")?.arrayValue("servers", "items")
+            root.isJsonObject ->
+                root.asJsonObject.get("servers")
+                    ?.takeIf { it.isJsonArray }
+                    ?.asJsonArray
                     ?: return emptyList()
-            }
             else -> return emptyList()
         }
         return serversJson.map { gson.fromJson(it, AuthServer::class.java) }
@@ -157,22 +157,6 @@ class AuthServerRepository(
         val rawBody = body()?.string().orEmpty()
         if (rawBody.isBlank()) throw ServerHttpException(code())
         return gson.fromJson(rawBody, JsonElement::class.java)
-    }
-
-    private fun JsonObject.objectValue(vararg names: String): JsonObject? {
-        for (name in names) {
-            val value = get(name)
-            if (value != null && value.isJsonObject) return value.asJsonObject
-        }
-        return null
-    }
-
-    private fun JsonObject.arrayValue(vararg names: String): com.google.gson.JsonArray? {
-        for (name in names) {
-            val value = get(name)
-            if (value != null && value.isJsonArray) return value.asJsonArray
-        }
-        return null
     }
 
     private fun jsonBody(value: Any) =

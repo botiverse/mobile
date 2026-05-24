@@ -1776,14 +1776,7 @@ class RealConversationRepository(
                 },
                 source = "attachments_upload",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    AttachmentUploadResult(
-                            attachments =
-                                    json.items("attachments").mapNotNull {
-                                        it.asObjectOrNull()?.toAttachment()
-                                    }
-                    )
-                },
+                mapper = { json -> ai.slock.compose.data.parseSharedAttachmentUploadResult(json.toString()) },
                 emptyWhen = { it.attachments.isEmpty() }
         )
     }
@@ -1819,20 +1812,7 @@ class RealConversationRepository(
                 block = { api.channelFiles(currentSlockApiPriority(), channelId.value, limit, cursor) },
                 source = "channel_files",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    val items =
-                            json.items("files")
-                                    .mapNotNull { element ->
-                                        element.asObjectOrNull()?.toChannelFileItem()
-                                    }
-                    val nextCursor = json.string("nextCursor")
-                    ChannelFilesSnapshot(
-                            channelId = channelId,
-                            items = items,
-                            hasMore = nextCursor != null,
-                            nextCursor = nextCursor
-                    )
-                },
+                mapper = { json -> ai.slock.compose.data.parseSharedChannelFilesSnapshot(json.toString(), channelId) },
                 emptyWhen = { it.items.isEmpty() }
         )
     }
@@ -2744,21 +2724,6 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
             taskNumber = int("taskNumber"),
             taskStatus = string("taskStatus")?.toTaskStatus(),
             taskClaimedByName = string("taskClaimedByName", "claimedByName")
-    )
-}
-
-private fun JsonObject.toChannelFileItem(): ChannelFileItem? {
-    val attachment = toAttachment() ?: return null
-    val source = firstObject("source")
-    return ChannelFileItem(
-            attachment = attachment,
-            createdAt = timestampString("createdAt", "created_at", "timestamp", "time"),
-            messageId = string("messageId", "message_id")?.let(::MessageId),
-            sourceType = source?.string("type", "kind"),
-            sourceParentMessageId =
-                    source?.string("parentMessageId", "parent_message_id")?.let(::MessageId),
-            sourceParentMessageShortId =
-                    source?.string("parentMessageShortId", "parent_message_short_id")
     )
 }
 
@@ -5050,90 +5015,39 @@ private val textMediaType = "text/plain; charset=utf-8".toMediaType()
 
 private fun JsonObject.toServerUnreadSummarySnapshot(
         selectedServer: ServerSummary
-): ServerUnreadSummarySnapshot {
-    val summaries =
-            items("servers", "items", "summaries").mapNotNull {
-                it.asObject().toServerUnreadSummary()
-            }
-    val selectedSummary =
-            summaries.firstOrNull { it.serverId == selectedServer.id }
-                    ?: toServerUnreadSummary(defaultServerId = selectedServer.id)
-    val totalUnread =
-            int("totalUnreadCount", "totalUnread", "unreadTotal", "unreadCount")
-                    ?: selectedSummary?.totalUnreadCount ?: summaries.sumOf { it.totalUnreadCount }
-    return ServerUnreadSummarySnapshot(
-            server =
-                    selectedServer.copy(
-                            unreadCount = selectedSummary?.totalUnreadCount ?: totalUnread
-                    ),
-            summaries = summaries.ifEmpty { selectedSummary?.let(::listOf).orEmpty() },
-            selectedServerSummary = selectedSummary,
-            totalUnreadCount = totalUnread,
-            mentionCount = int("mentionCount", "mentions") ?: selectedSummary?.mentionCount ?: 0
-    )
-}
+): ServerUnreadSummarySnapshot =
+        ai.slock.compose.data.parseServerUnreadSummarySnapshot(toString(), selectedServer)
+                ?: ServerUnreadSummarySnapshot(
+                        server = selectedServer,
+                        summaries = emptyList(),
+                        selectedServerSummary = null,
+                        totalUnreadCount = 0,
+                        mentionCount = 0
+                )
 
-private fun JsonObject.toServerUnreadSummary(
-        defaultServerId: ServerId? = null
-): ServerUnreadSummary? {
-    val serverId = string("serverId", "id")?.let(::ServerId) ?: defaultServerId ?: return null
-    val channelUnread = int("channelUnreadCount", "channelsUnread", "channels") ?: 0
-    val dmUnread =
-            int("directMessageUnreadCount", "dmUnreadCount", "directMessagesUnread", "dms") ?: 0
-    val mentionCount = int("mentionCount", "mentions") ?: 0
-    val taskUnread = int("taskUnreadCount", "tasksUnread", "tasks") ?: 0
-    val total =
-            int("totalUnreadCount", "totalUnread", "unreadTotal", "unreadCount")
-                    ?: (channelUnread + dmUnread + mentionCount + taskUnread)
-    return ServerUnreadSummary(
-            serverId = serverId,
-            totalUnreadCount = total,
-            channelUnreadCount = channelUnread,
-            directMessageUnreadCount = dmUnread,
-            mentionCount = mentionCount,
-            taskUnreadCount = taskUnread,
-            updatedAt = string("updatedAt", "lastActivityAt")
-    )
-}
-
-private fun JsonObject.toChannelUnreadCounts(): Map<ChannelId, Int> {
-    val unwrapped = unwrap("data", "unreadCounts", "counts")
-    val directEntries =
-            unwrapped.entrySet().mapNotNull { (key, value) ->
-                val count =
-                        when {
-                            value.isJsonPrimitive -> value.asJsonPrimitive.asString.toIntOrNull()
-                            value.isJsonObject ->
-                                    value.asJsonObject.int("unreadCount", "unread", "count")
-                            else -> null
-                        }
-                if (count == null) null else ChannelId(key) to count
-            }
-    if (directEntries.isNotEmpty()) return directEntries.toMap()
-    return unwrapped
-            .items("channels", "items", "counts")
-            .mapNotNull { element ->
-                val item = element.asObjectOrNull() ?: return@mapNotNull null
-                val channelId =
-                        item.string("channelId", "id", "threadChannelId") ?: return@mapNotNull null
-                val count = item.int("unreadCount", "unread", "count") ?: 0
-                ChannelId(channelId) to count
-            }
-            .toMap()
-}
+private fun JsonObject.toChannelUnreadCounts(): Map<ChannelId, Int> =
+        ai.slock.compose.data.parseChannelUnreadSnapshot(
+                        toString(),
+                        ServerSummary(id = ServerId(""), name = "", slug = "")
+                )
+                ?.unreadCounts
+                ?: emptyMap()
 
 private fun JsonObject.toReadReceiptResult(
         fallbackChannelId: ChannelId? = null,
         fallbackSeq: Long? = null
-): ReadReceiptResult {
-    val unwrapped = unwrap("data", "result")
-    return ReadReceiptResult(
-            channelId = unwrapped.string("channelId", "id")?.let(::ChannelId) ?: fallbackChannelId,
-            seq = unwrapped.long("seq", "readSeq", "lastReadSeq") ?: fallbackSeq,
-            unreadCount = unwrapped.int("unreadCount", "unread", "count") ?: 0,
-            changed = unwrapped.boolean("changed", "ok", "success") ?: true
-    )
-}
+): ReadReceiptResult =
+        ai.slock.compose.data.parseReadReceiptResult(
+                        toString(),
+                        fallbackChannelId = fallbackChannelId,
+                        fallbackSeq = fallbackSeq
+                )
+                ?: ReadReceiptResult(
+                        channelId = fallbackChannelId,
+                        seq = fallbackSeq,
+                        unreadCount = 0,
+                        changed = true
+                )
 
 private fun String.toTaskStatus(): TaskStatus? =
     when (lowercase()) {

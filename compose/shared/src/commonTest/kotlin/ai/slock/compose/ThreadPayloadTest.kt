@@ -8,6 +8,9 @@ import ai.slock.compose.model.ThreadId
 import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
+import ai.slock.compose.data.appendSharedThreadSentMessageFromResponse
+import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesResponse
+import ai.slock.compose.data.parseSharedThreadUploadedAttachments
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -201,28 +204,27 @@ class ThreadPayloadTest {
                 bodyText =
                     """
                     {
-                      "data": {
-                        "messages": [
-                          {
-                            "id": "m1",
-                            "body": "hello from shared route",
-                            "createdAt": "2026-05-19T16:00:00Z",
-                            "replyCount": 3,
-                            "author": {
-                              "id": "u1",
-                              "displayName": "Artin",
-                              "avatar": {"type": "pixel", "key": "robot"}
-                            },
-                            "attachments": [
-                              {"id": "a1", "name": "log.txt", "mimeType": "text/plain"},
-                              {"id": "a2", "name": "screen.png", "mimeType": "image/png", "imageUrl": "https://cdn.example/screen.png"}
-                            ],
-                            "reactions": [
-                              {"emoji": "👍", "count": 2, "selected": true}
-                            ]
-                          }
-                        ]
-                      }
+                      "messages": [
+                        {
+                          "id": "m1",
+                          "channelId": "channel-1",
+                          "senderType": "user",
+                          "senderId": "u1",
+                          "senderName": "Artin",
+                          "messageType": "chat",
+                          "content": "hello from shared route",
+                          "createdAt": "2026-05-19T16:00:00Z",
+                          "replyCount": 3,
+                          "attachments": [
+                            {"id": "a1", "filename": "log.txt", "mimeType": "text/plain", "sizeBytes": 12},
+                            {"id": "a2", "filename": "screen.png", "mimeType": "image/png", "sizeBytes": 2048, "thumbnailUrl": "https://cdn.example/screen.png"}
+                          ],
+                          "reactions": [
+                            {"emoji": "👍", "count": 2, "reactorIds": ["u1"], "reactorNames": ["Artin"]}
+                          ]
+                        }
+                      ],
+                      "historyLimited": false
                     }
                     """.trimIndent()
             )
@@ -232,7 +234,6 @@ class ThreadPayloadTest {
         assertEquals("hello from shared route", payload.messages.first().body)
         assertEquals("Artin", payload.messages.first().authorName)
         assertEquals(true, payload.messages.first().isOwn)
-        assertEquals("pixel:robot", payload.messages.first().avatarWireValue)
         assertEquals(3, payload.messages.first().replyCount)
         assertEquals("👍", payload.messages.first().reactions.first().emoji)
         assertEquals(2, payload.messages.first().reactions.first().count)
@@ -242,7 +243,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun hydratesSharedThreadAuthorsFromResponseDirectories() {
+    fun parsesCanonicalAuthorAndTimestampForOwnUserRow() {
         val base =
             KuiklyThreadScreenPayload(
                 instanceId = "thread-channel-1",
@@ -266,92 +267,32 @@ class ThreadPayloadTest {
                 bodyText =
                     """
                     {
-                      "data": {
-                        "messages": [
-                          {
-                            "id": "m1",
-                            "body": "directory author",
-                            "authorId": "u1",
-                            "created_at": "2026-05-19T16:00:00Z"
-                          }
-                        ],
-                        "users": [
-                          {
-                            "id": "u1",
-                            "displayName": "Artin",
-                            "avatar": {"type": "pixel", "key": "robot"}
-                          }
-                        ]
-                      }
+                      "messages": [
+                        {
+                          "id": "m1",
+                          "channelId": "channel-1",
+                          "senderType": "user",
+                          "senderId": "u1",
+                          "senderName": "Artin",
+                          "content": "directory author",
+                          "createdAt": "2026-05-19T16:00:00Z"
+                        }
+                      ],
+                      "historyLimited": false
                     }
                     """.trimIndent()
             )
 
         val message = payload.messages.single()
         assertEquals("Artin", message.authorName)
-        assertEquals("pixel:robot", message.avatarWireValue)
+        assertEquals("human", message.authorKind)
         assertEquals(true, message.isOwn)
         assertEquals("2026-05-19T16:00:00Z", message.timestampLabel)
         assertEquals("00:00", payload.formatTimestampLabel(message.timestampLabel))
     }
 
     @Test
-    fun prefersAgentAuthorFieldsOverCurrentUserFieldsForDirectMessageRows() {
-        val base =
-            KuiklyThreadScreenPayload(
-                instanceId = "thread-dm-1",
-                title = "stdrc",
-                sourceThreadId = "dm-1",
-                status = "loading",
-                localOffsetMinutes = 480,
-                todayEpochDay = 20593
-            )
-        val session =
-            StoredAuthSession(
-                user = StoredAuthUser(id = "u-artin", email = "artin@slock.ai"),
-                accessToken = "access",
-                refreshToken = "refresh"
-            )
-
-        val payload =
-            buildSharedThreadPayloadFromMessagesResponse(
-                basePayload = base,
-                session = session,
-                bodyText =
-                    """
-                    {
-                      "data": {
-                        "messages": [
-                          {
-                            "id": "m1",
-                            "body": "agent dm reply",
-                            "userId": "u-artin",
-                            "userDisplayName": "artin",
-                            "agentId": "agent-stdrc",
-                            "createdAt": "2026-05-19T16:00:00Z"
-                          }
-                        ],
-                        "agents": [
-                          {
-                            "id": "agent-stdrc",
-                            "displayName": "stdrc",
-                            "avatar": {"type": "pixel", "key": "stdrc"}
-                          }
-                        ]
-                      }
-                    }
-                    """.trimIndent()
-            )
-
-        val message = payload.messages.single()
-        assertEquals("agent-stdrc", message.authorId)
-        assertEquals("stdrc", message.authorName)
-        assertEquals("pixel:stdrc", message.avatarWireValue)
-        assertEquals(false, message.isOwn)
-    }
-
-    @Test
-    fun resolvesAgentPixelAvatarFallbackForThreadRows() {
+    fun parsesCanonicalAgentSenderRow() {
         val base =
             KuiklyThreadScreenPayload(
                 instanceId = "thread-channel-1",
@@ -373,22 +314,18 @@ class ThreadPayloadTest {
                 bodyText =
                     """
                     {
-                      "data": {
-                        "messages": [
-                          {
-                            "id": "m1",
-                            "body": "agent visual row",
-                            "authorId": "agent-android",
-                            "createdAt": "2026-05-19T16:00:00Z"
-                          }
-                        ],
-                        "agents": [
-                          {
-                            "id": "agent-android",
-                            "displayName": "Android Developer"
-                          }
-                        ]
-                      }
+                      "messages": [
+                        {
+                          "id": "m1",
+                          "channelId": "channel-1",
+                          "senderType": "agent",
+                          "senderId": "agent-android",
+                          "senderName": "Android Developer",
+                          "content": "agent visual row",
+                          "createdAt": "2026-05-19T16:00:00Z"
+                        }
+                      ],
+                      "historyLimited": false
                     }
                     """.trimIndent()
             )
@@ -396,7 +333,8 @@ class ThreadPayloadTest {
         val message = payload.messages.single()
         assertEquals("agent", message.authorKind)
         assertEquals("Android Developer", message.authorName)
-        assertEquals("random:agent-android", message.resolvedThreadAvatarWireValue())
+        assertEquals("agent-android", message.authorId)
+        assertEquals(false, message.isOwn)
     }
 
     @Test
@@ -431,11 +369,13 @@ class ThreadPayloadTest {
                 bodyText =
                     """
                     {
-                      "data": {
-                        "id": "m2",
-                        "body": "sent from shared composer",
-                        "author": {"id": "u1", "displayName": "Artin"}
-                      }
+                      "id": "m2",
+                      "channelId": "channel-1",
+                      "senderType": "user",
+                      "senderId": "u1",
+                      "senderName": "Artin",
+                      "content": "sent from shared composer",
+                      "createdAt": "2026-05-19T16:00:00Z"
                     }
                     """.trimIndent()
             )
@@ -502,71 +442,6 @@ class ThreadPayloadTest {
         assertEquals("InReview", message.taskStatus)
         assertEquals("Android-Developer-2", message.taskAssigneeName)
         assertEquals(2, message.replyCount)
-    }
-
-    @Test
-    fun parsesMessageFooterMetadataFromNestedTaskAndReplyAliases() {
-        val base =
-            KuiklyThreadScreenPayload(
-                instanceId = "thread-1",
-                title = "对话流专修",
-                sourceThreadId = "channel-1",
-                status = "loading"
-            )
-        val payload =
-            buildSharedThreadPayloadFromMessagesResponse(
-                basePayload = base,
-                session = null,
-                bodyText =
-                    """
-                    {
-                      "data": {
-                        "messages": [
-                          {
-                            "id": "m1",
-                            "authorId": "u1",
-                            "authorName": "Artin",
-                          "body": "please check this",
-                          "replies": 4,
-                          "unreadReplyCount": 2,
-                          "firstUnreadReplyMessageId": "reply-unread-1",
-                          "task": {
-                              "id": "task-193",
-                              "number": 193,
-                              "status": "Todo",
-                              "assignee": {
-                                "displayName": "Android-Developer-2"
-                              }
-                            }
-                          },
-                          {
-                            "id": "m2",
-                            "authorId": "u2",
-                            "authorName": "Cindy",
-                            "body": "nested replies",
-                            "replyThread": {
-                              "count": 3,
-                              "unreadCount": 1,
-                              "firstUnreadMessageId": "reply-unread-2"
-                            }
-                          }
-                        ]
-                      }
-                    }
-                    """.trimIndent()
-            )
-
-        val message = payload.messages.first()
-        assertEquals("task-193", message.taskId)
-        assertEquals(193, message.taskNumber)
-        assertEquals("Todo", message.taskStatus)
-        assertEquals("Android-Developer-2", message.taskAssigneeName)
-        assertEquals(4, message.replyCount)
-        assertEquals(2, message.unreadReplyCount)
-        assertEquals("reply-unread-1", message.firstUnreadReplyMessageId)
-        assertEquals(3, payload.messages[1].replyCount)
-        assertEquals(1, payload.messages[1].unreadReplyCount)
-        assertEquals("reply-unread-2", payload.messages[1].firstUnreadReplyMessageId)
     }
 
     @Test
@@ -736,16 +611,14 @@ class ThreadPayloadTest {
                         "bodyText",
                         """
                         {
-                          "data": {
-                            "attachments": [
-                              {
-                                "id": "att-1",
-                                "fileName": "report.pdf",
-                                "mimeType": "application/pdf",
-                                "sizeLabel": "12 KB"
-                              }
-                            ]
-                          }
+                          "attachments": [
+                            {
+                              "id": "att-1",
+                              "filename": "report.pdf",
+                              "mimeType": "application/pdf",
+                              "sizeBytes": 12288
+                            }
+                          ]
                         }
                         """.trimIndent()
                     )
