@@ -2208,14 +2208,18 @@ private fun SharedMembersScreen(bridge: ai.slock.compose.base.BridgeModule) {
                 iconName = "users"
             )
         is SharedMembersUiState.Content ->
-            MembersListContent(
+            MembersRouteContent(
                 payload = KuiklyMembersPayload(
                     instanceId = current.server.id.value,
                     title = "Members",
                     members = current.members
                 ),
                 onAddHuman = { bridge.toast("Add member is not available yet") },
-                onOpenMember = { bridge.toast(it.displayName) }
+                onOpenDirectMessage = { bridge.toast("Direct message is not available yet") },
+                onCopyMemberId = {
+                    bridge.copyToPasteboard(it.id.value)
+                    bridge.toast("Copied member id")
+                }
             )
     }
 }
