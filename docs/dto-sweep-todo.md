@@ -41,21 +41,31 @@ field guessing.
 - Test fixtures updated to camelCase: `thread_id`, `reply_count`×2,
   `avatar_url`×2, `latest_activity_at`×2, `has_more_before`.
 
+- Snake_case aliases stripped from `RealSettingsRepository.kt`
+  (`belongsToMachine` machine/computer/daemon `_id`, `toSettingsMemberProfile`
+  gravatar aliases) and `NetworkResponseMapper.toAvatarWireValue`
+  (`avatar_url`, `image_url`, `profile_image_url`, `picture_url`, `photo_url`,
+  `icon_url`, `gravatar_hash`) — commit `462703d`.
+
 ### In progress / next
 
 - **20 pre-existing test failures** in `RealSlockRepositoriesTest`. These are
   NOT caused by the sweep — `git stash` shows the same set on baseline. They
   obscure regression signal for further parser surgery, so triage first or do
   the moves under `--tests` filters that skip the broken set.
-- Member-heavy helpers in Settings (`toSettingsMemberProfile`,
-  `toAccountSettingsSnapshot`, etc.) still need snake_case strip + move to
-  shared.
 
 ### Move to shared (one batch at a time, each its own commit)
 
 1. **Batch 5 — Messages / Profiles** (~600 LOC, foundational; blocks 2/4/6).
    File: `compose/shared/.../data/MessagesParser.kt`. Public:
    `parseSharedMessageSnapshot`, `parseSharedMemberProfile`.
+   *Approach note*: don't port the Gson `toMessage` chain literally — instead
+   reuse the canonical `WireMessage`/`WireAttachment`/`WireReaction` already
+   defined in `ThreadMessagesParser.kt` (mirrors React server `Message` row)
+   and add a thin `WireMessage.toDomainMessage(...)` mapper. UI-only join
+   fields (`task`, `unreadReplyCount`, `firstUnreadReplyMessageId`,
+   `replyCount` from summary join) MUST stay in the caller — they're not on
+   the wire.
 2. **Batch 2 — Tasks**.
 3. **Batch 6 — Conversations**.
 4. **Batch 4 — Inbox / Thread**.
