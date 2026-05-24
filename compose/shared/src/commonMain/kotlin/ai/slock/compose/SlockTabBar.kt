@@ -187,6 +187,13 @@ internal fun SlockAppBottomTabBarHost(
             .fillMaxWidth()
             .height(SlockSharedBottomTabBarHeight + bottomSafeArea)
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(bottomSafeArea)
+                .background(SlockColor.SurfaceWhite)
+                .align(Alignment.BottomCenter)
+        )
         SlockBottomTabBar(
             items = items,
             onSelect = onSelect,
@@ -210,13 +217,20 @@ private fun SlockOhosHdsBottomTabBarHost(
             .fillMaxWidth()
             .height(SlockOhosHdsBottomTabBarHostHeight + bottomSafeArea)
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(bottomSafeArea)
+                .background(SlockColor.SurfaceWhite)
+                .align(Alignment.BottomCenter)
+        )
         SlockOhosHdsTabBar(
             items = items,
             onSelect = onSelect,
             bottomSafeArea = 0.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(SlockOhosHdsBottomTabBarHostHeight)
+                .height(50.dp)
                 .align(Alignment.TopCenter)
         )
     }

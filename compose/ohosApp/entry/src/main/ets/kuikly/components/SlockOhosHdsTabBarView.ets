@@ -14,10 +14,8 @@ const kSelect = 'select';
 const kSeparator = '\u001F';
 
 const kDockHeight = 50;
-const kDockBottomMargin = 18;
 const kItemHeight = 44;
 const kIconSize = 18;
-const kHostExtraHeight = 24;
 
 interface SlockHdsTabItem {
   key: string;
@@ -166,7 +164,7 @@ export struct SlockOhosHdsTabBar {
       .barOverlap(true)
       .barFloatingStyle({
         barSideMargin: 20,
-        barBottomMargin: kDockBottomMargin,
+        barBottomMargin: 0,
         thermoCtrl: true,
         systemMaterialEffect: {
           materialType: hdsMaterial.MaterialType.ADAPTIVE,
@@ -181,11 +179,11 @@ export struct SlockOhosHdsTabBar {
       })
       .divider({ mode: DividerMode.NONE })
       .width('100%')
-      .height(`${kDockHeight + kDockBottomMargin + kHostExtraHeight}vp`)
+      .height(`${kDockHeight}vp`)
       .backgroundColor('#00FFFFFF')
     }
     .width('100%')
-    .height(`${kDockHeight + kDockBottomMargin + kHostExtraHeight}vp`)
+    .height(`${kDockHeight}vp`)
   }
 
   @Builder
