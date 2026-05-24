@@ -166,7 +166,7 @@ export struct SlockOhosHdsTabBar {
       .barOverlap(true)
       .barFloatingStyle({
         barSideMargin: 20,
-        barBottomMargin: kDockBottomMargin + this.renderView.bottomSafeArea,
+        barBottomMargin: kDockBottomMargin,
         thermoCtrl: true,
         systemMaterialEffect: {
           materialType: hdsMaterial.MaterialType.ADAPTIVE,
@@ -181,11 +181,11 @@ export struct SlockOhosHdsTabBar {
       })
       .divider({ mode: DividerMode.NONE })
       .width('100%')
-      .height(`${kDockHeight + kDockBottomMargin + kHostExtraHeight + this.renderView.bottomSafeArea}vp`)
+      .height(`${kDockHeight + kDockBottomMargin + kHostExtraHeight}vp`)
       .backgroundColor('#00FFFFFF')
     }
     .width('100%')
-    .height(`${kDockHeight + kDockBottomMargin + kHostExtraHeight + this.renderView.bottomSafeArea}vp`)
+    .height(`${kDockHeight + kDockBottomMargin + kHostExtraHeight}vp`)
   }
 
   @Builder

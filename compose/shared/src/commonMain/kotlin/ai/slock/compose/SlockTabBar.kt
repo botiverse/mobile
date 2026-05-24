@@ -186,17 +186,20 @@ private fun SlockOhosHdsBottomTabBarHost(
     modifier: Modifier = Modifier,
     bottomSafeArea: Dp = 0.dp
 ) {
-    Box(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(92.dp + bottomSafeArea)
+            .background(SlockColor.SurfaceWhite)
     ) {
         SlockOhosHdsTabBar(
             items = items,
             onSelect = onSelect,
-            bottomSafeArea = bottomSafeArea,
-            modifier = Modifier.matchParentSize()
+            bottomSafeArea = 0.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(92.dp)
         )
+        Spacer(modifier = Modifier.fillMaxWidth().height(bottomSafeArea))
     }
 }
 
