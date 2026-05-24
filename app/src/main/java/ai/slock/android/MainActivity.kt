@@ -30,6 +30,7 @@ import ai.slock.android.core.data.network.RealSearchRepository
 import ai.slock.android.core.data.network.RealServerUnreadRepository
 import ai.slock.android.core.data.network.RealSettingsRepository
 import ai.slock.android.core.data.network.RealSlockApiFactory
+import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
 import ai.slock.android.core.data.network.RealTaskRepository
 import ai.slock.android.core.data.preferences.ChatLayoutPreferenceSnapshot
 import ai.slock.android.core.data.preferences.LargeScreenNavigationPreference
@@ -717,8 +718,11 @@ private fun SlockAppContent(
     val slockApi = remember {
         RealSlockApiFactory.create(store = authSessionStore, tokenRefresher = authTokenRefresher)
     }
+    val slockNetworkClient = remember {
+        RealSlockNetworkClientFactory.create(store = authSessionStore, tokenRefresher = authTokenRefresher)
+    }
     val channelRepository: ChannelRepository = remember {
-        RealChannelRepository(authSessionStore, slockApi)
+        RealChannelRepository(authSessionStore, slockNetworkClient)
     }
     val inboxRepository: InboxRepository = remember {
         RealInboxRepository(authSessionStore, slockApi)
@@ -939,7 +943,7 @@ private fun SlockAppContent(
     val memberRepository: MemberRepository = remember {
         RealMemberRepository(
                 store = authSessionStore,
-                api = slockApi,
+                networkClient = slockNetworkClient,
                 warningLogger = { message ->
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                             "SlockMembers",

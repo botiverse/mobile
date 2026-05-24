@@ -157,6 +157,34 @@ internal class BridgeAuthenticatedRequestExecutor(
         )
 }
 
+internal class BridgeSlockNetworkClient(
+    private val bridge: BridgeModule,
+    sessionStore: SlockAuthSessionStore,
+    baseUrl: String = AUTH_BASE_URL
+) : SlockNetworkClient {
+    private val executor = BridgeAuthenticatedRequestExecutor(bridge, sessionStore, baseUrl)
+
+    override suspend fun request(
+        priority: DataRequestPriority,
+        path: String,
+        method: String,
+        query: List<Pair<String, String>>,
+        serverIdOverride: ServerId?,
+        bodyText: String?
+    ): HomeNetworkResponse =
+        executor.request(
+            path = path,
+            query = query.toBridgeQuery(),
+            serverIdOverride = serverIdOverride?.value,
+            method = method,
+            bodyText = bodyText
+        )
+
+    private fun List<Pair<String, String>>.toBridgeQuery(): String? =
+        joinToString("&") { (name, value) -> "${bridge.urlEncode(name)}=${bridge.urlEncode(value)}" }
+            .takeIf { it.isNotBlank() }
+}
+
 internal data class BridgeAuthenticatedRequest(
     val url: String,
     val method: String,
@@ -233,21 +261,30 @@ internal class BridgeAnnouncementsRemindersApi(
 }
 
 internal class BridgeMembersApi(
-    private val bridge: BridgeModule,
-    private val sessionStore: SlockAuthSessionStore,
-    private val baseUrl: String = AUTH_BASE_URL
+    bridge: BridgeModule,
+    sessionStore: SlockAuthSessionStore,
+    baseUrl: String = AUTH_BASE_URL
 ) {
-    private val executor = BridgeAuthenticatedRequestExecutor(bridge, sessionStore, baseUrl)
+    private val networkClient =
+        BridgeSlockNetworkClient(
+            bridge = bridge,
+            sessionStore = sessionStore,
+            baseUrl = baseUrl
+        )
 
     suspend fun serverMembers(serverId: String): HomeNetworkResponse =
-        request("servers/$serverId/members", serverId)
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "servers/$serverId/members",
+            serverIdOverride = ServerId(serverId)
+        )
 
     suspend fun agents(serverId: String): HomeNetworkResponse =
-        request("agents", serverId)
-
-    private suspend fun request(path: String, serverId: String): HomeNetworkResponse {
-        return executor.request(path = path, serverIdOverride = serverId)
-    }
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "agents",
+            serverIdOverride = ServerId(serverId)
+        )
 }
 
 internal class BridgeSettingsPlatformCapabilities(

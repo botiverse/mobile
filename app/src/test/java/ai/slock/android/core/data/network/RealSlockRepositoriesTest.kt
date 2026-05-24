@@ -5,6 +5,9 @@ import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthSessionStore
 import ai.slock.android.core.data.auth.AuthUser
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.DataRequestPriority
+import ai.slock.compose.data.HomeNetworkResponse
+import ai.slock.compose.data.SlockNetworkClient
 import ai.slock.android.core.data.repository.AddChannelMemberRequest
 import ai.slock.android.core.data.repository.AgentProfileUpdateRequest
 import ai.slock.android.core.data.repository.CreateChannelRequest
@@ -34,6 +37,7 @@ import ai.slock.compose.network.withSlockRequestPriority
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okio.Buffer
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody
@@ -51,15 +55,16 @@ class RealSlockRepositoriesTest {
         val api =
             FakeSlockApi(
                 channelsJson = """
-                    {"channels":[{"id":"channel-1","name":"android-dev","description":"Android work","unreadCount":3,"lastMessagePreview":"Ready","memberCount":7}]}
+                    [{"id":"channel-1","name":"android-dev","type":"channel","description":"Android work"}]
                 """.trimIndent(),
                 directMessagesJson = """
-                    [{"id":"dm-1","peerDisplayName":"Android-Developer","unreadCount":2,"lastMessagePreview":"Done"}]
-                """.trimIndent()
+                    [{"id":"dm-1","name":"dm-agent","type":"dm","peerType":"agent","peerId":"agent-1","peerName":"android-agent","peerDisplayName":"Android-Developer"}]
+                """.trimIndent(),
+                unreadCountsJson = """{"channel-1":3,"dm-1":2}"""
             )
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api
+            networkClient = FakeMemberNetworkClient(api)
         )
 
         val result = runSuspend { repository.getHome(ServerId("server-1")) }
@@ -68,7 +73,7 @@ class RealSlockRepositoriesTest {
         val snapshot = (result as DataResult.Content).data
         assertEquals("Slock Android", snapshot.server.name)
         assertEquals("android-dev", snapshot.channels.single().name)
-        assertEquals(7, snapshot.channels.single().memberCount)
+        assertNull(snapshot.channels.single().memberCount)
         assertEquals(ConversationKind.DirectMessage, snapshot.directMessages.single().kind)
         assertEquals(5, snapshot.unreadTotal)
         assertEquals(listOf<String?>(null), api.channelArchivedQueries)
@@ -79,25 +84,24 @@ class RealSlockRepositoriesTest {
         val api =
             FakeSlockApi(
                 channelsJson = """
-                    {"channels":[{"id":"channel-1","name":"android-dev","memberCount":7,"lastMessagePreview":"Ready"}]}
+                    [{"id":"channel-1","name":"android-dev","type":"channel","lastMessageAt":"2026-05-14T11:00:00Z"}]
                 """.trimIndent(),
                 directMessagesJson = """[]"""
             )
         val repository =
             RealChannelRepository(
                 store = InMemoryAuthSessionStore(sampleSession),
-                api = api
+                networkClient = FakeMemberNetworkClient(api)
             )
 
         val first = runSuspend { repository.getHome(ServerId("server-1")) }
-        api.channelsJson = """{"channels":[{"id":"channel-1","name":"android-dev"}]}"""
+        api.channelsJson = """[{"id":"channel-1","name":"android-dev","type":"channel"}]"""
         val second = runSuspend { repository.getHome(ServerId("server-1")) }
 
         assertTrue(first is DataResult.Content)
         assertTrue(second is DataResult.Content)
         val channel = (second as DataResult.Content).data.channels.single()
-        assertEquals(7, channel.memberCount)
-        assertEquals("Ready", channel.lastMessagePreview)
+        assertEquals("2026-05-14T11:00:00Z", channel.lastMessageAt)
     }
 
     @Test
@@ -105,27 +109,26 @@ class RealSlockRepositoriesTest {
         val api =
             FakeSlockApi(
                 channelsJson = """
-                    {"channels":[{"id":"channel-1","name":"android-dev","memberCount":7,"unreadCount":5,"hasDraft":true,"lastMessagePreview":"Ready"}]}
+                    [{"id":"channel-1","name":"android-dev","type":"channel"}]
                 """.trimIndent(),
-                directMessagesJson = """[]"""
+                directMessagesJson = """[]""",
+                unreadCountsJson = """{"channel-1":5}"""
             )
         val repository =
             RealChannelRepository(
                 store = InMemoryAuthSessionStore(sampleSession),
-                api = api
+                networkClient = FakeMemberNetworkClient(api)
             )
 
         val first = runSuspend { repository.getHome(ServerId("server-1")) }
-        api.channelsJson = """{"channels":[{"id":"channel-1","name":"android-dev"}]}"""
+        api.channelsJson = """[{"id":"channel-1","name":"android-dev","type":"channel"}]"""
+        api.unreadCountsJson = "{}"
         val second = runSuspend { repository.getHome(ServerId("server-1")) }
 
         assertTrue(first is DataResult.Content)
         assertTrue(second is DataResult.Content)
         val channel = (second as DataResult.Content).data.channels.single()
-        assertEquals(7, channel.memberCount)
         assertEquals(5, channel.unreadCount)
-        assertEquals(true, channel.hasDraft)
-        assertEquals("Ready", channel.lastMessagePreview)
     }
 
     @Test
@@ -133,45 +136,41 @@ class RealSlockRepositoriesTest {
         val api =
             FakeSlockApi(
                 channelsJson = """
-                    {"channels":[{"id":"channel-1","name":"android-dev","memberCount":7,"unreadCount":5,"hasDraft":true}]}
+                    [{"id":"channel-1","name":"android-dev","type":"channel"}]
                 """.trimIndent(),
-                directMessagesJson = """[]"""
+                directMessagesJson = """[]""",
+                unreadCountsJson = """{"channel-1":5}"""
             )
         val repository =
             RealChannelRepository(
                 store = InMemoryAuthSessionStore(sampleSession),
-                api = api
+                networkClient = FakeMemberNetworkClient(api)
             )
 
         runSuspend { repository.getHome(ServerId("server-1")) }
-        api.channelsJson =
-            """{"channels":[{"id":"channel-1","name":"android-dev","memberCount":0,"unreadCount":0,"hasDraft":false}]}"""
+        api.unreadCountsJson = """{"channel-1":0}"""
         val second = runSuspend { repository.getHome(ServerId("server-1")) }
 
         assertTrue(second is DataResult.Content)
         val channel = (second as DataResult.Content).data.channels.single()
-        assertEquals(0, channel.memberCount)
         assertEquals(0, channel.unreadCount)
-        assertEquals(false, channel.hasDraft)
     }
 
     @Test
     fun channelRepositoryHidesArchivedChannelsFromHomeSnapshot() {
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api =
+            networkClient = FakeMemberNetworkClient(
                 FakeSlockApi(
                     channelsJson = """
-                        {
-                          "channels": [
-                            {"id":"channel-active","name":"active"},
-                            {"id":"channel-archived","name":"archived","archived":true},
-                            {"id":"channel-archived-alias","name":"archived alias","isArchived":true}
-                          ]
-                        }
+                        [
+                          {"id":"channel-active","name":"active","type":"channel"},
+                          {"id":"channel-archived","name":"archived","type":"channel","archivedAt":"2026-05-14T11:00:00Z"}
+                        ]
                     """.trimIndent(),
                     directMessagesJson = """[]"""
                 )
+            )
         )
 
         val result = runSuspend { repository.getHome(ServerId("server-1")) }
@@ -185,25 +184,23 @@ class RealSlockRepositoriesTest {
     fun channelRepositoryPreservesNestedAgentPresenceForHomeDirectMessages() {
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(
-                channelsJson = """{"channels":[]}""",
+            networkClient = FakeMemberNetworkClient(FakeSlockApi(
+                channelsJson = """[]""",
                 directMessagesJson = """
-                    {
-                      "dms": [
-                        {
-                          "channelId": "dm-agent-1",
-                          "peer": {
-                            "id": "agent-1",
-                            "displayName": "Android-Developer",
-                            "kind": "agent",
-                            "avatarUrl": "https://cdn.example/agent.png",
-                            "presence": "active"
-                          }
-                        }
-                      ]
-                    }
+                    [
+                      {
+                        "id": "dm-agent-1",
+                        "name": "agent-dm",
+                        "type": "dm",
+                        "peerType": "agent",
+                        "peerId": "agent-1",
+                        "peerName": "android-agent",
+                        "peerDisplayName": "Android-Developer",
+                        "peerAvatarUrl": "https://cdn.example/agent.png"
+                      }
+                    ]
                 """.trimIndent()
-            )
+            ))
         )
 
         val result = runSuspend { repository.getHome(ServerId("server-1")) }
@@ -212,7 +209,7 @@ class RealSlockRepositoriesTest {
         val directMessage = (result as DataResult.Content).data.directMessages.single()
         assertEquals(ConversationKind.DirectMessage, directMessage.kind)
         assertEquals("Android-Developer", directMessage.name)
-        assertEquals(Presence.Active, directMessage.presence)
+        assertEquals("https://cdn.example/agent.png", directMessage.avatarUrl)
         assertEquals("agent-1", directMessage.presenceMemberId?.value)
     }
 
@@ -220,22 +217,22 @@ class RealSlockRepositoriesTest {
     fun channelRepositoryMapsAgentPresenceAliasesForHomeDirectMessages() {
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(
-                channelsJson = """{"channels":[]}""",
+            networkClient = FakeMemberNetworkClient(FakeSlockApi(
+                channelsJson = """[]""",
                 directMessagesJson = """
-                    {
-                      "directMessages": [
-                        {
-                          "id": "dm-agent-2",
-                          "agentId": "agent-2",
-                          "agentName": "QA-Tester",
-                          "agentStatus": "busy",
-                          "avatar": "random:qa"
-                        }
-                      ]
-                    }
+                    [
+                      {
+                        "id": "dm-agent-2",
+                        "name": "agent-dm",
+                        "type": "dm",
+                        "peerType": "agent",
+                        "peerId": "agent-2",
+                        "peerName": "qa-tester",
+                        "peerDisplayName": "QA-Tester"
+                      }
+                    ]
                 """.trimIndent()
-            )
+            ))
         )
 
         val result = runSuspend { repository.getHome(ServerId("server-1")) }
@@ -243,8 +240,8 @@ class RealSlockRepositoriesTest {
         assertTrue(result is DataResult.Content)
         val directMessage = (result as DataResult.Content).data.directMessages.single()
         assertEquals("QA-Tester", directMessage.name)
-        assertEquals(AgentStatus.Working, directMessage.agentStatus)
-        assertEquals(Presence.Active, directMessage.presence)
+        assertEquals(null, directMessage.agentStatus)
+        assertEquals(null, directMessage.presence)
         assertEquals("agent-2", directMessage.presenceMemberId?.value)
     }
 
@@ -252,21 +249,22 @@ class RealSlockRepositoriesTest {
     fun channelRepositoryDoesNotExposeHumanPresenceForHomeDirectMessages() {
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(
-                channelsJson = """{"channels":[]}""",
+            networkClient = FakeMemberNetworkClient(FakeSlockApi(
+                channelsJson = """[]""",
                 directMessagesJson = """
-                    {
-                      "directMessages": [
-                        {
-                          "id": "dm-human-1",
-                          "userId": "user-2",
-                          "userDisplayName": "Human User",
-                          "userPresence": "online"
-                        }
-                      ]
-                    }
+                    [
+                      {
+                        "id": "dm-human-1",
+                        "name": "human-dm",
+                        "type": "dm",
+                        "peerType": "user",
+                        "peerId": "user-2",
+                        "peerName": "human-user",
+                        "peerDisplayName": "Human User"
+                      }
+                    ]
                 """.trimIndent()
-            )
+            ))
         )
 
         val result = runSuspend { repository.getHome(ServerId("server-1")) }
@@ -283,7 +281,7 @@ class RealSlockRepositoriesTest {
         val warnings = mutableListOf<String>()
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(
+            networkClient = FakeMemberNetworkClient(FakeSlockApi(
                 channelsJson = """
                     {
                       "data": {
@@ -304,25 +302,13 @@ class RealSlockRepositoriesTest {
                       }
                     }
                 """.trimIndent()
-            ),
+            )),
             warningLogger = warnings::add
         )
 
         val result = runSuspend { repository.getHome(ServerId("server-1")) }
 
-        assertTrue(result is DataResult.Content)
-        val snapshot = (result as DataResult.Content).data
-        assertEquals(1, snapshot.channels.size)
-        assertEquals("channel-1", snapshot.channels.single().channelId?.value)
-        assertEquals(false, snapshot.channels.single().joined)
-        assertEquals(false, snapshot.channels.single().permissions.canSend)
-        assertEquals("Ready", snapshot.channels.single().lastMessagePreview)
-        assertEquals("random:android-dev-agent", snapshot.channels.single().avatar?.wireValue)
-        assertTrue(snapshot.channels.single().avatar is ai.slock.compose.model.AvatarReference.Random)
-        assertEquals(1, snapshot.directMessages.size)
-        assertEquals("Android-Developer", snapshot.directMessages.single().name)
-        assertTrue(snapshot.directMessages.single().avatar is ai.slock.compose.model.AvatarReference.Url)
-        assertEquals(5, snapshot.unreadTotal)
+        assertTrue(result is DataResult.Error)
         assertTrue(warnings.none { it.contains("token", ignoreCase = true) || it.contains("Bearer") })
     }
 
@@ -330,37 +316,35 @@ class RealSlockRepositoriesTest {
     fun channelRepositoryParsesDirectMessageGravatarAvatarObjects() {
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api =
+            networkClient = FakeMemberNetworkClient(
                 FakeSlockApi(
-                    channelsJson = """{"channels":[]}""",
+                    channelsJson = """[]""",
                     directMessagesJson = """
-                        {
-                          "directMessages": [
-                            {
-                              "channelId": "dm-1",
-                              "peer": {
-                                "id": "agent-1",
-                                "displayName": "Android-Developer",
-                                "kind": "agent",
-                                "avatar": {
-                                  "type": "gravatar",
-                                  "hash": "ABC123"
-                                }
-                              }
-                            },
-                            {
-                              "channelId": "dm-2",
-                              "peer": {
-                                "id": "agent-2",
-                                "displayName": "KMP-Expert",
-                                "kind": "agent",
-                                "avatar": "gravatar:DEF456"
-                              }
-                            }
-                          ]
-                        }
+                        [
+                          {
+                            "id": "dm-1",
+                            "name": "dm-1",
+                            "type": "dm",
+                            "peerType": "user",
+                            "peerId": "user-1",
+                            "peerName": "android-dev",
+                            "peerDisplayName": "Android-Developer",
+                            "peerGravatarHash": "ABC123"
+                          },
+                          {
+                            "id": "dm-2",
+                            "name": "dm-2",
+                            "type": "dm",
+                            "peerType": "user",
+                            "peerId": "user-2",
+                            "peerName": "kmp-expert",
+                            "peerDisplayName": "KMP-Expert",
+                            "peerGravatarHash": "DEF456"
+                          }
+                        ]
                     """.trimIndent()
                 )
+            )
         )
 
         val result = runSuspend { repository.getHome(ServerId("server-1")) }
@@ -380,10 +364,10 @@ class RealSlockRepositoriesTest {
     fun channelRepositoryDoesNotMapCancellationToParseFailure() {
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(
-                channelsJson = """{"channels":[{"id":"channel-1","name":"android-dev"}]}""",
+            networkClient = FakeMemberNetworkClient(FakeSlockApi(
+                channelsJson = """[{"id":"channel-1","name":"android-dev","type":"channel"}]""",
                 directMessagesFailure = CancellationException("effect restarted")
-            ),
+            )),
             warningLogger = {}
         )
 
@@ -401,15 +385,15 @@ class RealSlockRepositoriesTest {
     fun channelRepositoryOpensAgentDirectMessageAndMergesCache() {
         val api = FakeSlockApi(
             directMessagesJson = """
-                {"directMessages":[{"id":"dm-existing","agentId":"agent-existing","agentName":"Existing Agent"}]}
+                [{"id":"dm-existing","name":"existing-dm","type":"dm","peerType":"agent","peerId":"agent-existing","peerName":"existing-agent","peerDisplayName":"Existing Agent"}]
             """.trimIndent(),
             openDirectMessageJson = """
-                {"channel":{"id":"dm-agent-1","agentId":"agent-1","agentName":"API Agent","agentStatus":"active","lastMessagePreview":"Created"}}
+                {"id":"dm-agent-1","name":"api-agent","type":"dm","peerType":"agent","peerId":"agent-1","peerName":"api-agent","peerDisplayName":"API Agent","lastMessageAt":"2026-05-14T11:00:00Z"}
             """.trimIndent()
         )
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -420,25 +404,25 @@ class RealSlockRepositoriesTest {
         val openedContent = (opened as DataResult.Content).data
         assertEquals("""{"agentId":"agent-1"}""", api.openDirectMessageBodies.single())
         assertEquals("dm-agent-1", openedContent.conversation.channelId?.value)
-        assertEquals(Presence.Active, openedContent.conversation.presence)
+        assertEquals("API Agent", openedContent.conversation.name)
         assertEquals(1, openedContent.directMessages.count { it.channelId?.value == "dm-agent-1" })
         assertTrue(directMessages is DataResult.Content)
         val merged = (directMessages as DataResult.Content).data.directMessages
         assertEquals(2, merged.size)
         assertEquals(1, merged.count { it.channelId?.value == "dm-agent-1" })
-        assertEquals("Created", merged.first { it.channelId?.value == "dm-agent-1" }.lastMessagePreview)
+        assertEquals("2026-05-14T11:00:00Z", merged.first { it.channelId?.value == "dm-agent-1" }.lastMessageAt)
     }
 
     @Test
     fun channelRepositoryOpensUserDirectMessageWithUserIdBody() {
         val api = FakeSlockApi(
             openDirectMessageJson = """
-                {"dm":{"channelId":"dm-user-2","userId":"user-2","userDisplayName":"Artin"}}
+                {"id":"dm-user-2","name":"artin-dm","type":"dm","peerType":"user","peerId":"user-2","peerName":"artin","peerDisplayName":"Artin"}
             """.trimIndent()
         )
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -1261,11 +1245,11 @@ class RealSlockRepositoriesTest {
     @Test
     fun channelRepositoryCreatesChannelAndAddsSelectedMembers() {
         val api = FakeSlockApi(
-            createChannelJson = """{"id":"channel-new","name":"Launch","description":"Ship it"}"""
+            createChannelJson = """{"id":"channel-new","name":"Launch","type":"channel","description":"Ship it"}"""
         )
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -1292,13 +1276,13 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
-    fun channelRepositoryJoinsChannelAndMapsOptionalChannelResponse() {
+    fun channelRepositoryJoinsChannelWithWebEndpoint() {
         val api = FakeSlockApi(
-            joinChannelJson = """{"channel":{"id":"channel-1","name":"android-dev","joined":true}}"""
+            joinChannelJson = """{"ok":true}"""
         )
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -1308,8 +1292,7 @@ class RealSlockRepositoriesTest {
         val data = (result as DataResult.Content).data
         assertEquals("channel-1", data.channelId.value)
         assertEquals(true, data.joined)
-        assertEquals(true, data.channel?.joined)
-        assertEquals("android-dev", data.channel?.name)
+        assertEquals(null, data.channel)
         assertEquals(listOf("channel-1"), api.joinedChannelIds)
     }
 
@@ -1318,7 +1301,7 @@ class RealSlockRepositoriesTest {
         val api = FakeSlockApi(joinChannelJson = """{"ok":true}""")
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -1336,7 +1319,7 @@ class RealSlockRepositoriesTest {
         val api = FakeSlockApi(leaveChannelJson = """{"ok":true}""")
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -1353,11 +1336,11 @@ class RealSlockRepositoriesTest {
     @Test
     fun channelRepositoryArchivesChannelWithWebEndpoint() {
         val api = FakeSlockApi(
-            archiveChannelJson = """{"id":"channel-1","name":"android-dev","archived":true}"""
+            archiveChannelJson = """{"id":"channel-1","name":"android-dev","type":"channel","archivedAt":"2026-05-14T11:00:00Z"}"""
         )
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -1377,7 +1360,7 @@ class RealSlockRepositoriesTest {
         val api = FakeSlockApi(deleteChannelJson = """{"ok":true}""")
         val repository = RealChannelRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -1602,13 +1585,15 @@ class RealSlockRepositoriesTest {
     fun memberRepositoryMapsServerChannelMembersAndAddAction() {
         val api = FakeSlockApi(
             serverMembersJson = """
-                {
-                  "data": {
-                    "users": [
-                      {"id":"user-2","displayName":"Artin","handle":"artin","role":"owner","presence":"online","avatarUrl":"https://cdn.example/artin.png"}
-                    ]
+                [
+                  {
+                    "userId":"user-2",
+                    "name":"artin",
+                    "displayName":"Artin",
+                    "role":"owner",
+                    "avatarUrl":"https://cdn.example/artin.png"
                   }
-                }
+                ]
             """.trimIndent(),
             memberProfileJson = """
                 {
@@ -1623,32 +1608,29 @@ class RealSlockRepositoriesTest {
                 }
             """.trimIndent(),
             settingsAgentsJson = """
-                {"agents":[
-                  {"id":"agent-2","name":"QA Tester","handle":"qa","role":"tester","presence":"working","avatar":"random:qa"},
-                  {"id":"user-2","name":"Artin Agent","handle":"artin-agent","role":"assistant","presence":"online","avatar":"pixel:artin-agent"}
-                ]}
+                [
+                  {"id":"agent-2","name":"qa","displayName":"QA Tester","runtime":"tester","status":"working","avatarUrl":"random:qa"},
+                  {"id":"user-2","name":"artin-agent","displayName":"Artin Agent","runtime":"assistant","status":"active","avatarUrl":"pixel:artin-agent"}
+                ]
             """.trimIndent(),
             channelMembersJson = """
                 {
-                  "data": {
-                    "canAddMembers": true,
-                    "humans": [
-                      {"user":{"id":"user-2","displayName":"Artin","handle":"artin","avatarUrl":"https://cdn.example/artin.png"},"role":"owner","presence":"away"}
-                    ],
-                    "agents": [
-                      {"agent":{"id":"agent-1","name":"API Integration","handle":"api","avatar":"pixel:api"},"role":"developer","presence":"working"},
-                      {"id":"agent-2","name":"QA Tester","handle":"qa","avatar":"random:qa","role":"tester","presence":"online"}
-                    ]
-                  }
+                  "humans": [
+                    {"id":"user-2","name":"artin","displayName":"Artin","avatarUrl":"https://cdn.example/artin.png","role":"owner"}
+                  ],
+                  "agents": [
+                    {"id":"agent-1","name":"api","displayName":"API Integration","avatarUrl":"pixel:api","runtime":"developer","status":"working"},
+                    {"id":"agent-2","name":"qa","displayName":"QA Tester","avatarUrl":"random:qa","runtime":"tester","status":"active"}
+                  ]
                 }
             """.trimIndent(),
             addChannelMemberJson = """
-                {"added":true,"member":{"id":"agent-1","displayName":"API Integration","kind":"agent","presence":"online"}}
+                {"ok":true}
             """.trimIndent()
         )
         val repository = RealMemberRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -1680,7 +1662,7 @@ class RealSlockRepositoriesTest {
         val serverMemberRows = (serverMembers as DataResult.Content).data.members
         val humanServerMember = serverMemberRows.first { it.id.value == "user-2" }
         assertEquals("Artin", humanServerMember.displayName)
-        assertEquals(Presence.Active, humanServerMember.presence)
+        assertEquals(Presence.Offline, humanServerMember.presence)
         assertEquals("https://cdn.example/artin.png", humanServerMember.avatarUrl)
         val serverAgent = serverMemberRows.first { it.id.value == "agent-2" }
         assertEquals(MemberKind.Agent, serverAgent.kind)
@@ -1695,7 +1677,7 @@ class RealSlockRepositoriesTest {
         assertFalse(members.any { it.id.value == "user-1" })
         val humanChannelMember = members.first { it.id.value == "user-2" }
         assertEquals("Artin", humanChannelMember.displayName)
-        assertEquals(Presence.Away, humanChannelMember.presence)
+        assertEquals(Presence.Offline, humanChannelMember.presence)
         assertEquals("https://cdn.example/artin.png", humanChannelMember.avatarUrl)
         assertTrue(api.memberProfileCalls.isEmpty())
         val agent = members.first { it.id.value == "agent-1" }
@@ -1715,11 +1697,9 @@ class RealSlockRepositoriesTest {
     fun memberRepositoryTreatsAgentsEndpointFallbackRowsAsAgents() {
         val api = FakeSlockApi(
             serverMembersJson = """
-                {
-                  "members": [
-                    {"id":"user-3","displayName":"Taylor","handle":"taylor","kind":"user","role":"member","presence":"online"}
-                  ]
-                }
+                [
+                  {"userId":"user-3","name":"taylor","displayName":"Taylor","role":"member"}
+                ]
             """.trimIndent(),
             memberProfileJson = """
                 {
@@ -1733,23 +1713,28 @@ class RealSlockRepositoriesTest {
                 }
             """.trimIndent(),
             settingsAgentsJson = """
+                [
+                  {
+                    "id":"agent-9",
+                    "name":"runtime-agent",
+                    "displayName":"Runtime Agent",
+                    "runtime":"worker",
+                    "status":"active",
+                    "machineId":"machine-9"
+                  }
+                ]
+            """.trimIndent(),
+            settingsMachinesJson = """
                 {
-                  "items": [
-                    {
-                      "id":"agent-9",
-                      "name":"Runtime Agent",
-                      "handle":"runtime-agent",
-                      "role":"worker",
-                      "presence":"online",
-                      "machineName":"Jiachengs-MacBook-Pro.local"
-                    }
+                  "machines": [
+                    {"id":"machine-9","name":"Jiachengs-MacBook-Pro.local"}
                   ]
                 }
             """.trimIndent()
         )
         val repository = RealMemberRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -1767,40 +1752,42 @@ class RealSlockRepositoriesTest {
     fun memberRepositoryMapsNestedChannelMembersContainer() {
         val repository = RealMemberRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(
-                channelMembersJson = """
-                    {
-                      "channel": {
-                        "canAddMembers": false,
-                        "members": {
-                          "humans": [
-                            {
-                              "user": {
-                                "id": "user-2",
-                                "displayName": "Artin",
-                                "handle": "artin",
-                                "avatarUrl": "https://cdn.example/artin.png"
-                              },
-                              "role": "owner",
-                              "presence": "away"
+            networkClient = FakeMemberNetworkClient(
+                FakeSlockApi(
+                    channelMembersJson = """
+                        {
+                          "channel": {
+                            "canAddMembers": false,
+                            "members": {
+                              "humans": [
+                                {
+                                  "user": {
+                                    "id": "user-2",
+                                    "displayName": "Artin",
+                                    "handle": "artin",
+                                    "avatarUrl": "https://cdn.example/artin.png"
+                                  },
+                                  "role": "owner",
+                                  "presence": "away"
+                                }
+                              ],
+                              "agents": [
+                                {
+                                  "agent": {
+                                    "id": "agent-1",
+                                    "name": "API Integration",
+                                    "handle": "api",
+                                    "avatar": "pixel:api"
+                                  },
+                                  "role": "developer",
+                                  "presence": "working"
+                                }
+                              ]
                             }
-                          ],
-                          "agents": [
-                            {
-                              "agent": {
-                                "id": "agent-1",
-                                "name": "API Integration",
-                                "handle": "api",
-                                "avatar": "pixel:api"
-                              },
-                              "role": "developer",
-                              "presence": "working"
-                            }
-                          ]
+                          }
                         }
-                      }
-                    }
-                """.trimIndent()
+                    """.trimIndent()
+                )
             ),
             warningLogger = {}
         )
@@ -1852,7 +1839,7 @@ class RealSlockRepositoriesTest {
         )
         val repository = RealMemberRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -1888,7 +1875,7 @@ class RealSlockRepositoriesTest {
         )
         val repository = RealMemberRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -1938,7 +1925,7 @@ class RealSlockRepositoriesTest {
         )
         val repository = RealMemberRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -1968,7 +1955,7 @@ class RealSlockRepositoriesTest {
         )
         val repository = RealMemberRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -2022,7 +2009,7 @@ class RealSlockRepositoriesTest {
         )
         val repository = RealMemberRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -2064,7 +2051,7 @@ class RealSlockRepositoriesTest {
         )
         val repository = RealMemberRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -2110,7 +2097,7 @@ class RealSlockRepositoriesTest {
         )
         val repository = RealMemberRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -2141,7 +2128,7 @@ class RealSlockRepositoriesTest {
         )
         val repository = RealMemberRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -2177,7 +2164,7 @@ class RealSlockRepositoriesTest {
         )
         val repository = RealMemberRepository(
             store = InMemoryAuthSessionStore(sampleSession),
-            api = api,
+            networkClient = FakeMemberNetworkClient(api),
             warningLogger = {}
         )
 
@@ -2373,13 +2360,140 @@ class RealSlockRepositoriesTest {
         )
     }
 
+    private class FakeMemberNetworkClient(
+        private val api: FakeSlockApi
+    ) : SlockNetworkClient {
+        override suspend fun request(
+            priority: DataRequestPriority,
+            path: String,
+            method: String,
+            query: List<Pair<String, String>>,
+            serverIdOverride: ServerId?,
+            bodyText: String?
+        ): HomeNetworkResponse {
+            val apiPriority = priority.toSlockRequestPriority()
+            val normalized = path.trim('/')
+            val response =
+                when {
+                    normalized == "agents" ->
+                        api.settingsAgents(apiPriority)
+                    normalized.startsWith("agents/") && normalized.endsWith("/agent-dms") -> {
+                        val agentId = normalized.removePrefix("agents/").substringBefore("/")
+                        api.agentDirectMessages(apiPriority, agentId)
+                    }
+                    normalized.startsWith("agents/") && normalized.endsWith("/activity-log") -> {
+                        val agentId = normalized.removePrefix("agents/").substringBefore("/")
+                        val limit = query.firstOrNull { it.first == "limit" }?.second?.toIntOrNull() ?: 50
+                        api.agentActivityLog(apiPriority, agentId, limit)
+                    }
+                    normalized.startsWith("agents/") && normalized.endsWith("/workspace-files/read") -> {
+                        val agentId = normalized.removePrefix("agents/").substringBefore("/")
+                        val filePath = query.firstOrNull { it.first == "path" }?.second.orEmpty()
+                        api.readAgentWorkspaceFile(apiPriority, agentId, filePath)
+                    }
+                    normalized.startsWith("agents/") && normalized.endsWith("/workspace-files") -> {
+                        val agentId = normalized.removePrefix("agents/").substringBefore("/")
+                        val dirPath = query.firstOrNull { it.first == "dirPath" }?.second
+                        api.agentWorkspaceFiles(apiPriority, agentId, dirPath)
+                    }
+                    normalized.startsWith("agents/") && normalized.endsWith("/skills") -> {
+                        val agentId = normalized.removePrefix("agents/").substringBefore("/")
+                        api.agentSkills(apiPriority, agentId)
+                    }
+                    normalized.startsWith("agents/") && method == "PATCH" -> {
+                        val agentId = normalized.removePrefix("agents/")
+                        api.updateAgent(apiPriority, agentId, bodyText.orEmpty().toRequestBody(json))
+                    }
+                    normalized == "reminders" -> {
+                        val ownerAgentId = query.firstOrNull { it.first == "ownerAgentId" }?.second.orEmpty()
+                        val status = query.firstOrNull { it.first == "status" }?.second ?: "scheduled"
+                        api.reminders(apiPriority, ownerAgentId, status)
+                    }
+                    normalized.matches(Regex("""servers/[^/]+/members""")) -> {
+                        val serverId = normalized.split("/")[1]
+                        api.serverMembers(apiPriority, serverId)
+                    }
+                    normalized.matches(Regex("""servers/[^/]+/machines""")) -> {
+                        val serverId = normalized.split("/")[1]
+                        api.settingsMachines(apiPriority, serverId)
+                    }
+                    normalized.matches(Regex("""servers/[^/]+/machines/[^/]+/workspaces""")) -> {
+                        val parts = normalized.split("/")
+                        api.settingsMachineWorkspaces(apiPriority, parts[1], parts[3])
+                    }
+                    normalized.matches(Regex("""servers/[^/]+/members/[^/]+/profile""")) -> {
+                        val parts = normalized.split("/")
+                        api.memberProfile(apiPriority, parts[1], parts[3])
+                    }
+                    normalized.matches(Regex("""channels/[^/]+/members""")) && method == "GET" -> {
+                        val channelId = normalized.split("/")[1]
+                        api.channelMembers(apiPriority, channelId)
+                    }
+                    normalized.matches(Regex("""channels/[^/]+/members""")) && method == "POST" -> {
+                        val channelId = normalized.split("/")[1]
+                        api.addChannelMember(apiPriority, channelId, bodyText.orEmpty().toRequestBody(json))
+                    }
+                    normalized.matches(Regex("""channels/[^/]+/members/[^/]+/[^/]+""")) && method == "DELETE" -> {
+                        val parts = normalized.split("/")
+                        api.removeChannelMember(apiPriority, parts[1], parts[3], parts[4])
+                    }
+                    normalized == "channels" && method == "GET" -> {
+                        api.channels(apiPriority)
+                    }
+                    normalized == "channels" && method == "POST" -> {
+                        api.createChannel(apiPriority, bodyText.orEmpty().toRequestBody(json))
+                    }
+                    normalized == "channels/dm" && method == "GET" -> {
+                        api.directMessages(apiPriority)
+                    }
+                    normalized == "channels/dm" && method == "POST" -> {
+                        api.openDirectMessage(apiPriority, bodyText.orEmpty().toRequestBody(json))
+                    }
+                    normalized == "channels/unread" -> {
+                        api.channelUnreadCounts(apiPriority)
+                    }
+                    normalized == "servers/unread-summary" -> {
+                        api.serverUnreadSummary(apiPriority)
+                    }
+                    normalized.matches(Regex("""channels/[^/]+/join""")) && method == "POST" -> {
+                        api.joinChannel(apiPriority, normalized.split("/")[1])
+                    }
+                    normalized.matches(Regex("""channels/[^/]+/leave""")) && method == "POST" -> {
+                        api.leaveChannel(apiPriority, normalized.split("/")[1])
+                    }
+                    normalized.matches(Regex("""channels/[^/]+/archive""")) && method == "POST" -> {
+                        api.archiveChannel(apiPriority, normalized.split("/")[1])
+                    }
+                    normalized.matches(Regex("""channels/[^/]+""")) && method == "DELETE" -> {
+                        api.deleteChannel(apiPriority, normalized.split("/")[1])
+                    }
+                    else -> error("Unhandled member network request $method $normalized")
+                }
+            return response.toHomeNetworkResponse()
+        }
+
+        private fun DataRequestPriority.toSlockRequestPriority(): SlockRequestPriority =
+            when (this) {
+                DataRequestPriority.Foreground -> SlockRequestPriority.Foreground
+                DataRequestPriority.Visible -> SlockRequestPriority.Visible
+                DataRequestPriority.Background -> SlockRequestPriority.Background
+            }
+
+        private fun ApiResponse.toHomeNetworkResponse(): HomeNetworkResponse =
+            HomeNetworkResponse(
+                code = code,
+                bodyText = body?.string(),
+                errorBodyText = errorBody?.string()
+            )
+    }
+
     private class FakeSlockApi(
         private val settingsAccountJson: String = """{}""",
         private val settingsAgentsJson: String = """{"agents":[]}""",
         private val settingsMachinesJson: String = """{"machines":[]}""",
         private val settingsMachineWorkspacesJson: String = """{"workspaces":[]}""",
-        var channelsJson: String = """{"channels":[]}""",
-        private val createChannelJson: String = """{"id":"channel-1","name":"android-dev"}""",
+        var channelsJson: String = """[]""",
+        private val createChannelJson: String = """{"id":"channel-1","name":"android-dev","type":"channel"}""",
         private val joinChannelJson: String = """{"ok":true}""",
         private val leaveChannelJson: String = """{"ok":true}""",
         private val serverMembersJson: String = """{"members":[]}""",
@@ -2389,10 +2503,11 @@ class RealSlockRepositoriesTest {
         private val addChannelMemberJson: String = """{"ok":true}""",
         private val directMessagesJson: String = """[]""",
         private val directMessagesFailure: Exception? = null,
-        private val openDirectMessageJson: String = """{"channel":{"id":"dm-1","name":"Direct message","type":"dm"}}""",
+        private val openDirectMessageJson: String =
+            """{"id":"dm-1","name":"Direct message","type":"dm","peerType":"agent","peerId":"agent-1","peerName":"Agent"}""",
         var agentActivityLogJson: String = """[]""",
         private val agentSkillsJson: String = """{"global":[],"workspace":[]}""",
-        private val unreadCountsJson: String = """{}""",
+        var unreadCountsJson: String = """{}""",
         private val readReceiptJson: String = """{"ok":true}""",
         private val serverTasksJson: String = """{"tasks":[]}""",
         private val channelTasksJson: String = """{"tasks":[]}""",
@@ -2401,7 +2516,7 @@ class RealSlockRepositoriesTest {
         private val inboxJson: String = """{"items":[]}""",
         private val savedJson: String = """{"items":[]}""",
         private val searchJson: String = """{"results":[]}""",
-        private val unreadSummaryJson: String = """{"unreadCount":0}""",
+        private val unreadSummaryJson: String = """[]""",
         private val channelMessagesJson: String = """{"messages":[]}""",
         private val messageContextJson: String = """{"messages":[]}""",
         private val messageSyncJson: String = """{"messages":[]}""",

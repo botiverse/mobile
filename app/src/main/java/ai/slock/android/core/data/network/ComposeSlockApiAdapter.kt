@@ -292,7 +292,7 @@ class ComposeSlockApiAdapter(
     }
 }
 
-private class AndroidAuthTokenProvider(
+internal class AndroidAuthTokenProvider(
         private val store: AuthSessionStore,
         private val tokenRefresher: AuthTokenRefresher,
         private val warningLogger: (String) -> Unit
@@ -316,7 +316,7 @@ private class AndroidAuthTokenProvider(
     }
 }
 
-private fun AuthSession.toAuthTokens(): AuthTokens =
+internal fun AuthSession.toAuthTokens(): AuthTokens =
         AuthTokens(
                 accessToken = accessToken,
                 refreshToken = refreshToken,

@@ -8,6 +8,7 @@ import ai.slock.android.core.data.auth.KtorAuthRepository
 import ai.slock.android.core.data.network.RealChannelRepository
 import ai.slock.android.core.data.network.RealConversationRepository
 import ai.slock.android.core.data.network.RealSlockApiFactory
+import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
 import ai.slock.android.core.data.repository.CreateChannelRequest
 import ai.slock.compose.data.DataResult
 import ai.slock.android.core.model.MessageNew
@@ -29,7 +30,12 @@ class LiveRealtimeServerScopeTest {
     fun liveCaptureInboxAndRealtimePayloadShape() = runBlocking {
         val fixture = LiveFixture.login()
         val api = RealSlockApiFactory.create(fixture.authStore, baseUrl = fixture.baseUrl)
-        val channelRepository = RealChannelRepository(fixture.authStore, api, warningLogger = {})
+        val channelRepository =
+            RealChannelRepository(
+                fixture.authStore,
+                RealSlockNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl),
+                warningLogger = {}
+            )
         val conversationRepository = RealConversationRepository(fixture.authStore, api, warningLogger = {})
         val artifact = LiveArtifact("live-realtime-payload-shape")
         val serverId = requireNotNull(fixture.session.currentServerId)
@@ -106,7 +112,12 @@ class LiveRealtimeServerScopeTest {
         assumeTrue("Live account needs at least two servers to verify cross-server socket delivery.", secondServer != null)
 
         val api = RealSlockApiFactory.create(fixture.authStore, baseUrl = fixture.baseUrl)
-        val channelRepository = RealChannelRepository(fixture.authStore, api, warningLogger = {})
+        val channelRepository =
+            RealChannelRepository(
+                fixture.authStore,
+                RealSlockNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl),
+                warningLogger = {}
+            )
         val conversationRepository = RealConversationRepository(fixture.authStore, api, warningLogger = {})
         val artifact = LiveArtifact("live-realtime-server-switch")
         val suffix = System.currentTimeMillis().toString(36)

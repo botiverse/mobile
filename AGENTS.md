@@ -37,6 +37,15 @@ git submodule update --init --recursive third_party/slock-source
 - Request bodies that represent server API contracts should likewise use shared
   DTOs/builders when they are more than tiny one-off action payloads. Avoid
   drifting ad hoc maps in app code for reusable API shapes.
+- Shared repositories should own reusable API orchestration and consume the
+  shared `SlockNetworkClient` request boundary. Do not duplicate real
+  repositories per platform, and do not add feature-specific platform transport
+  ports such as `SlockXxxApi` when a path/query/body request through the shared
+  network client is enough.
+- Platform code (Android, OHOS/Kuikly, future targets) should adapt only the
+  single bottom network layer: auth, refresh, priority, headers, and raw HTTP
+  request/response. Server DTO parsing and request-body construction remain in
+  shared.
 - After changing `compose/shared`, publish it locally before app validation:
   `cd /Users/artin/AndroidStudioProjects/Slock/compose && ./gradlew :shared:publishAndroidReleasePublicationToMavenLocal`.
 
@@ -89,10 +98,11 @@ cd /Users/artin/AndroidStudioProjects/Slock
 
 - Every Android request that reaches `ai.slock.compose.network.SlockApiClient` must be
   started inside `withSlockRequestPriority(...)`; do not rely on an implicit default.
-- `SlockApi` methods must take an explicit `SlockRequestPriority` parameter. Do not
-  add no-priority overloads or defaults. This is the compile-time tripwire: new API
-  methods and fake implementations should fail to compile until the caller chooses
-  Foreground, Visible, or Background.
+- Legacy `SlockApi` methods must take an explicit `SlockRequestPriority`
+  parameter, and shared `SlockNetworkClient` calls must take an explicit
+  `DataRequestPriority`. Do not add no-priority overloads or defaults. This is
+  the compile-time tripwire: new API methods and fake implementations should
+  fail to compile until the caller chooses Foreground, Visible, or Background.
 - Use `Foreground` only for user-blocking work: opening the current thread, sending
   messages, uploading attachments for send, opening/downloading the tapped attachment,
   task status changes, membership/channel mutations, and settings save/delete actions.

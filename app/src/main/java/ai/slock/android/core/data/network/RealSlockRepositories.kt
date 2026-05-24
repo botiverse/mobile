@@ -42,8 +42,7 @@ import ai.slock.android.core.data.repository.CreateChannelRequest
 import ai.slock.android.core.data.repository.CreateChannelResult
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.DataRequestPriority
-import ai.slock.compose.data.SharedHomeDataSource
-import ai.slock.compose.data.parseSlockHome
+import ai.slock.compose.data.SlockNetworkClient
 import ai.slock.android.core.data.repository.DirectMessageSnapshot
 import ai.slock.android.core.data.repository.HomeSnapshot
 import ai.slock.android.core.data.repository.InboxFilter
@@ -122,419 +121,51 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import ai.slock.compose.model.topLevelThreadId
 
 class RealChannelRepository(
-        private val store: AuthSessionStore,
-        private val api: SlockApi,
-        private val warningLogger: (String) -> Unit = { message ->
+        store: AuthSessionStore,
+        networkClient: SlockNetworkClient,
+        warningLogger: (String) -> Unit = { message ->
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
                     "SlockHomeData",
                     message
             )
         }
 ) : ChannelRepository {
-    private val directMessageCacheMutex = Mutex()
-    private var directMessageCache: CachedDirectMessages? = null
-    private val conversationSummaryCacheLock = Any()
-    private var conversationSummaryCache: CachedConversationSummaries? = null
-    private val sharedHomeDataSource =
-            SharedHomeDataSource(
+    private val delegate =
+            ai.slock.compose.data.RealChannelRepository(
                     sessionStore = ComposeAuthSessionStoreAdapter(store),
-                    api = AndroidSlockHomeApi(api),
-                    localWriteThrough = null,
-                    parseHome = { payload, session ->
-                        parseSlockHome(payload, session, warningLogger)
-                    }
+                    networkClient = networkClient,
+                    warningLogger = warningLogger
             )
 
-    override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> {
-        return when (val result = sharedHomeDataSource.loadHome(serverId, DataRequestPriority.Visible)) {
-            is DataResult.Content -> {
-                val snapshot = result.data
-                rememberConversationSummaries(serverId, snapshot.channels)
-                rememberConversationSummaries(serverId, snapshot.directMessages)
-                val channels = snapshot.channels.withCachedConversationSummaries(serverId)
-                val directMessages =
-                        mergeDirectMessageCache(serverId, snapshot.directMessages)
-                                .withCachedConversationSummaries(serverId)
-                DataResult.Content(
-                        snapshot.copy(
-                                channels = channels,
-                                directMessages = directMessages,
-                                unreadTotal =
-                                        channels.sumOf { it.unreadCount } +
-                                                directMessages.sumOf { it.unreadCount }
-                        )
-                )
-            }
-            else -> result
-        }
-    }
+    override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> =
+            delegate.getHome(serverId)
 
-    override suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot> {
-        val context = serverContext(serverId) ?: return authRequired()
-        return fetchChannels(context)
-    }
+    override suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot> =
+            delegate.getChannels(serverId)
 
-    override suspend fun getDirectMessages(serverId: ServerId): DataResult<DirectMessageSnapshot> {
-        val context = serverContext(serverId) ?: return authRequired()
-        return fetchDirectMessages(context)
-    }
+    override suspend fun getDirectMessages(serverId: ServerId): DataResult<DirectMessageSnapshot> =
+            delegate.getDirectMessages(serverId)
 
-    override suspend fun openAgentDirectMessage(
-            agentId: MemberId
-    ): DataResult<OpenDirectMessageResult> =
-            openDirectMessage(memberId = agentId, fieldName = "agentId", source = "dm_open_agent")
+    override suspend fun openAgentDirectMessage(agentId: MemberId): DataResult<OpenDirectMessageResult> =
+            delegate.openAgentDirectMessage(agentId)
 
-    override suspend fun openUserDirectMessage(
-            userId: MemberId
-    ): DataResult<OpenDirectMessageResult> =
-            openDirectMessage(memberId = userId, fieldName = "userId", source = "dm_open_user")
+    override suspend fun openUserDirectMessage(userId: MemberId): DataResult<OpenDirectMessageResult> =
+            delegate.openUserDirectMessage(userId)
 
-    override suspend fun createChannel(
-            request: CreateChannelRequest
-    ): DataResult<CreateChannelResult> {
-        val context = currentContext() ?: return authRequired()
-        val name = request.name.trim()
-        if (name.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
-        val createResult =
-                execute(
-                        emptyReason = EmptyReason.NoChannels,
-                        block = {
-                            api.createChannel(currentSlockApiPriority(),
-                                    mapOf(
-                                                    "name" to name,
-                                                    "description" to
-                                                            request.description?.trim()?.takeIf {
-                                                                it.isNotBlank()
-                                                            }
-                                            )
-                                            .toJsonBody()
-                            )
-                        },
-                        source = "channel_create",
-                        warningLogger = warningLogger,
-                        mapper = { bodyText ->
-                            ai.slock.compose.data.parseSharedCreateChannelResult(bodyText)
-                                    ?: throw IllegalStateException("Create channel response missing channel")
-                        }
-                )
-        if (createResult !is DataResult.Content) return createResult
-        val channelId =
-                createResult.data.channel.channelId
-                        ?: ChannelId(createResult.data.channel.threadId.value)
-        rememberConversationSummaries(context.server.id, listOf(createResult.data.channel))
-        val addedAgents = mutableListOf<String>()
-        val addedUsers = mutableListOf<String>()
-        for (agentId in request.agentMemberIds.distinct().filter { it.isNotBlank() }) {
-            when (val result =
-                            addChannelMember(
-                                    channelId,
-                                    "agentId",
-                                    agentId,
-                                    source = "channel_member_add_agent"
-                            )
-            ) {
-                is DataResult.Content -> addedAgents += agentId
-                else -> return result.mapError()
-            }
-        }
-        for (userId in request.userMemberIds.distinct().filter { it.isNotBlank() }) {
-            when (val result =
-                            addChannelMember(
-                                    channelId,
-                                    "userId",
-                                    userId,
-                                    source = "channel_member_add_user"
-                            )
-            ) {
-                is DataResult.Content -> addedUsers += userId
-                else -> return result.mapError()
-            }
-        }
-        val updatedChannel =
-                createResult.data.channel.withMergedMemberCount(
-                        (addedAgents.size + addedUsers.size).takeIf { it > 0 }
-                )
-        rememberConversationSummaries(context.server.id, listOf(updatedChannel))
-        return DataResult.Content(
-                createResult.data.copy(
-                        channel = updatedChannel,
-                        addedAgentMemberIds = addedAgents,
-                        addedUserMemberIds = addedUsers
-                )
-        )
-    }
+    override suspend fun createChannel(request: CreateChannelRequest): DataResult<CreateChannelResult> =
+            delegate.createChannel(request.toSharedRequest())
 
-    override suspend fun joinChannel(channelId: ChannelId): DataResult<ChannelJoinResult> {
-        val context = currentContext() ?: return authRequired()
-        if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
-        return execute(
-                emptyReason = EmptyReason.NoChannels,
-                block = { api.joinChannel(currentSlockApiPriority(), channelId.value) },
-                source = "channel_join",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    ai.slock.compose.data.parseSharedChannelJoinResult(bodyText, channelId)
-                            ?: throw IllegalStateException("Join channel response missing ok")
-                }
-        ).also { result ->
-            (result as? DataResult.Content)?.data?.channel?.let { channel ->
-                rememberConversationSummaries(context.server.id, listOf(channel))
-            }
-        }
-    }
+    override suspend fun joinChannel(channelId: ChannelId): DataResult<ChannelJoinResult> =
+            delegate.joinChannel(channelId)
 
-    override suspend fun leaveChannel(channelId: ChannelId): DataResult<ChannelLeaveResult> {
-        val context = currentContext() ?: return authRequired()
-        if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
-        return execute(
-                emptyReason = EmptyReason.NoChannels,
-                block = { api.leaveChannel(currentSlockApiPriority(), channelId.value) },
-                source = "channel_leave",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    val parsed = ai.slock.compose.data.parseSharedChannelLeaveResult(bodyText, channelId)
-                            ?: throw IllegalStateException("Leave channel response missing ok")
-                    ChannelLeaveResult(channelId = parsed.channelId, left = parsed.left)
-                }
-        ).also { result ->
-            if (result is DataResult.Content) {
-                removeConversationSummary(context.server.id, channelId)
-            }
-        }
-    }
+    override suspend fun leaveChannel(channelId: ChannelId): DataResult<ChannelLeaveResult> =
+            delegate.leaveChannel(channelId).toAndroidChannelLeaveResult()
 
-    override suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult> {
-        val context = currentContext() ?: return authRequired()
-        if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
-        return execute(
-                emptyReason = EmptyReason.NoChannels,
-                block = { api.archiveChannel(currentSlockApiPriority(), channelId.value) },
-                source = "channel_archive",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    ai.slock.compose.data.parseSharedChannelArchiveResult(bodyText, channelId)
-                            ?: throw IllegalStateException("Archive channel response missing channel")
-                }
-        ).also { result ->
-            if (result is DataResult.Content) {
-                removeConversationSummary(context.server.id, channelId)
-            }
-        }
-    }
+    override suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult> =
+            delegate.archiveChannel(channelId)
 
-    override suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult> {
-        val context = currentContext() ?: return authRequired()
-        if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
-        return execute(
-                emptyReason = EmptyReason.NoChannels,
-                block = { api.deleteChannel(currentSlockApiPriority(), channelId.value) },
-                source = "channel_delete",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    ai.slock.compose.data.parseSharedChannelDeleteResult(bodyText, channelId)
-                            ?: throw IllegalStateException("Delete channel response missing ok")
-                }
-        ).also { result ->
-            if (result is DataResult.Content) {
-                removeConversationSummary(context.server.id, channelId)
-            }
-        }
-    }
-
-    private suspend fun addChannelMember(
-            channelId: ChannelId,
-            fieldName: String,
-            memberId: String,
-            source: String
-    ): DataResult<Unit> =
-            execute(
-                    emptyReason = EmptyReason.NoMembers,
-                    block = {
-                        api.addChannelMember(currentSlockApiPriority(),
-                                channelId.value,
-                                mapOf(fieldName to memberId).toJsonBody()
-                        )
-                    },
-                    source = source,
-                    warningLogger = warningLogger,
-                    mapper = { Unit }
-            )
-
-    private suspend fun fetchChannels(context: NetworkServerContext): DataResult<ChannelSnapshot> =
-            execute(
-                    emptyReason = EmptyReason.NoChannels,
-                    block = { api.channels(currentSlockApiPriority()) },
-                    emptyWhen = { it.channels.isEmpty() },
-                    source = "home_channels",
-                    warningLogger = warningLogger,
-                    mapper = { bodyText ->
-                        val parsed =
-                                ai.slock.compose.data.parseSharedChannelSnapshot(
-                                        bodyText,
-                                        context.server
-                                ) ?: throw IllegalStateException("Channels response missing channel array")
-                        val channels = parsed.channels.dedupeHomeConversations()
-                        rememberConversationSummaries(context.server.id, channels)
-                        parsed.copy(
-                                channels = channels.withCachedConversationSummaries(context.server.id)
-                        )
-                    }
-            )
-
-    private suspend fun fetchDirectMessages(
-            context: NetworkServerContext
-    ): DataResult<DirectMessageSnapshot> =
-            when (
-                    val result =
-                            execute(
-                                    emptyReason = EmptyReason.NoChannels,
-                                    block = { api.directMessages(currentSlockApiPriority()) },
-                                    emptyWhen = { it.directMessages.isEmpty() },
-                                    source = "home_direct_messages",
-                                    warningLogger = warningLogger,
-                                    mapper = { bodyText ->
-                                        val parsed =
-                                                ai.slock.compose.data.parseSharedDirectMessageSnapshot(
-                                                        bodyText,
-                                                        context.server,
-                                                        warningLogger
-                                                )
-                                                        ?: throw IllegalStateException(
-                                                                "Direct messages response missing dm array"
-                                                        )
-                                        val directMessages = parsed.directMessages.dedupeHomeConversations()
-                                        rememberConversationSummaries(context.server.id, directMessages)
-                                        parsed.copy(
-                                                directMessages =
-                                                        directMessages.withCachedConversationSummaries(
-                                                                context.server.id
-                                                        )
-                                        )
-                                    }
-                            )
-            ) {
-                is DataResult.Content -> {
-                    val merged =
-                            mergeDirectMessageCache(
-                                    context.server.id,
-                                    result.data.directMessages
-                                )
-                    DataResult.Content(result.data.copy(directMessages = merged))
-                }
-                else -> result
-            }
-
-    private suspend fun openDirectMessage(
-            memberId: MemberId,
-            fieldName: String,
-            source: String
-    ): DataResult<OpenDirectMessageResult> {
-        val context = currentContext() ?: return authRequired()
-        if (memberId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
-        val result =
-                execute(
-                        emptyReason = EmptyReason.NoChannels,
-                        block = {
-                            api.openDirectMessage(currentSlockApiPriority(), mapOf(fieldName to memberId.value).toJsonBody())
-                        },
-                        source = source,
-                        warningLogger = warningLogger,
-                        mapper = { bodyText ->
-                            ai.slock.compose.data.parseSharedOpenDirectMessageResult(bodyText)
-                                    ?: throw IllegalStateException("Open DM response missing channel")
-                        }
-                )
-        return when (result) {
-            is DataResult.Content -> {
-                val merged =
-                        mergeDirectMessageCache(
-                                context.server.id,
-                                listOf(result.data.conversation)
-                        )
-                DataResult.Content(result.data.copy(directMessages = merged))
-            }
-            else -> result
-        }
-    }
-
-    private suspend fun mergeDirectMessageCache(
-            serverId: ServerId,
-            incoming: List<ConversationSummary>
-    ): List<ConversationSummary> =
-            directMessageCacheMutex.withLock {
-                val existing =
-                        directMessageCache?.takeIf { it.serverId == serverId }?.directMessages
-                                .orEmpty()
-                val merged = mergeDirectMessages(existing, incoming)
-                directMessageCache = CachedDirectMessages(serverId, merged)
-                rememberConversationSummaries(serverId, merged)
-                merged
-            }
-
-    private fun rememberConversationSummaries(
-            serverId: ServerId,
-            conversations: List<ConversationSummary>
-    ) {
-        if (conversations.isEmpty()) return
-        synchronized(conversationSummaryCacheLock) {
-            val existing =
-                    conversationSummaryCache?.takeIf { it.serverId == serverId }?.summaries
-                            .orEmpty()
-            val merged = existing.toMutableMap()
-            conversations.forEach { conversation ->
-                val key = conversation.cacheKey() ?: return@forEach
-                merged[key] = merged[key]?.mergeConversationSummary(conversation) ?: conversation
-            }
-            conversationSummaryCache = CachedConversationSummaries(serverId, merged)
-        }
-    }
-
-    private fun removeConversationSummary(serverId: ServerId, channelId: ChannelId) {
-        synchronized(conversationSummaryCacheLock) {
-            val existing =
-                    conversationSummaryCache?.takeIf { it.serverId == serverId }?.summaries
-                            ?: return
-            val filtered =
-                    existing.filterValues { summary ->
-                        summary.channelId != channelId && summary.threadId.value != channelId.value
-                    }
-            conversationSummaryCache = CachedConversationSummaries(serverId, filtered)
-        }
-    }
-
-    private fun List<ConversationSummary>.withCachedConversationSummaries(
-            serverId: ServerId
-    ): List<ConversationSummary> =
-            synchronized(conversationSummaryCacheLock) {
-                val cached =
-                        conversationSummaryCache?.takeIf { it.serverId == serverId }?.summaries
-                                .orEmpty()
-                if (cached.isEmpty()) return@synchronized this
-                map { conversation ->
-                    val key = conversation.cacheKey()
-                    if (key == null) conversation
-                    else cached[key]?.mergeConversationSummary(conversation) ?: conversation
-                }
-            }
-
-    private suspend fun serverContext(serverId: ServerId): NetworkServerContext? =
-            store.readSession()?.toNetworkServerContext(serverId)
-
-    private suspend fun currentContext(): NetworkServerContext? {
-        val session = store.readSession() ?: return null
-        val selectedId = session.currentServerId ?: return null
-        return session.toNetworkServerContext(ServerId(selectedId))
-    }
-
-    private data class CachedDirectMessages(
-            val serverId: ServerId,
-            val directMessages: List<ConversationSummary>
-    )
-
-    private data class CachedConversationSummaries(
-            val serverId: ServerId,
-            val summaries: Map<String, ConversationSummary>
-    )
+    override suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult> =
+            delegate.deleteChannel(channelId)
 }
 
 class RealReadReceiptRepository(
@@ -713,647 +344,182 @@ class RealTaskRepository(
 }
 
 class RealMemberRepository(
-        private val store: AuthSessionStore,
-        private val api: SlockApi,
-        private val warningLogger: (String) -> Unit = { message ->
+        store: AuthSessionStore,
+        networkClient: SlockNetworkClient,
+        warningLogger: (String) -> Unit = { message ->
             ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w("SlockMembers", message)
         },
-        private val logger: (String) -> Unit = {}
+        logger: (String) -> Unit = {}
 ) : MemberRepository {
-    private val agentActivityCacheMutex = Mutex()
-    private val agentActivityCache = mutableMapOf<MemberId, List<AgentActivityEntry>>()
+    private val delegate =
+            ai.slock.compose.data.RealMemberRepository(
+                    sessionStore = ComposeAuthSessionStoreAdapter(store),
+                    networkClient = networkClient,
+                    warningLogger = warningLogger,
+                    logger = logger
+            )
 
     override suspend fun getMembers(
             priority: SlockRequestPriority,
             serverId: ServerId
-    ): DataResult<MemberSnapshot> {
-        val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
-        val result =
-                execute(
-                        emptyReason = EmptyReason.NoMembers,
-                        block = { api.serverMembers(priority, serverId.value) },
-                        source = "server_members",
-                        warningLogger = warningLogger,
-                        mapper = { bodyText ->
-                            ai.slock.compose.data.parseSharedServerMemberSnapshot(
-                                    bodyText,
-                                    context.server
-                            ) ?: throw IllegalStateException("Server members response missing member array")
-                        }
-                )
-        val agentResult =
-                execute(
-                        emptyReason = EmptyReason.NoMembers,
-                        block = { api.settingsAgents(priority) },
-                        source = "server_agents",
-                        warningLogger = warningLogger,
-                        mapper = { bodyText ->
-                            ai.slock.compose.data.parseSharedSettingsAgentsAsMembers(bodyText)
-                                    ?: throw IllegalStateException("Agents response missing agent array")
-                        }
-                )
-        val machineNameResult =
-                execute(
-                        emptyReason = EmptyReason.NoMembers,
-                        block = { api.settingsMachines(priority, serverId.value) },
-                        source = "server_agent_machines",
-                        warningLogger = warningLogger,
-                        mapper = { bodyText ->
-                            ai.slock.compose.data.parseSharedSettingsAgentMachineNames(bodyText)
-                                    ?: throw IllegalStateException("Machines response missing machines")
-                        }
-                )
-        val mergedResult =
-                when (result) {
-                    is DataResult.Content -> {
-                        val machineNames = (machineNameResult as? DataResult.Content)?.data.orEmpty()
-                        val agents =
-                                (agentResult as? DataResult.Content)
-                                        ?.data
-                                        .orEmpty()
-                                        .resolveComputerLabels(machineNames)
-                        val humans = result.data.members
-                        val mergedMembers = (humans + agents).distinctBy { it.memberKey }
-                        if (mergedMembers.isEmpty()) {
-                            DataResult.Empty(EmptyReason.NoMembers)
-                        } else {
-                            DataResult.Content(result.data.copy(members = mergedMembers))
-                        }
-                    }
-                    else -> result
-                }
-        mergedResult.logMemberCounts(
-                source = "server_members",
-                serverId = serverId.value,
-                logger = logger
-        )
-        logger(
-                "repository_agents_merge source=server_agents serverId=${serverId.value} result=${agentResult.memberResultName()} " +
-                        "agentsCount=${(agentResult as? DataResult.Content)?.data?.count { it.kind == MemberKind.Agent } ?: 0}"
-        )
-        return mergedResult
-    }
+    ): DataResult<MemberSnapshot> =
+            delegate.getMembers(priority.toDataRequestPriority(), serverId)
 
     override suspend fun getMemberProfile(
             priority: SlockRequestPriority,
             memberId: MemberId
-    ): DataResult<MemberProfile> {
-        currentContext() ?: return authRequired()
-        return getHumanProfile(priority, memberId, source = "member_profile")
-    }
+    ): DataResult<MemberProfile> =
+            delegate.getMemberProfile(priority.toDataRequestPriority(), memberId)
 
     override suspend fun updateAgentProfile(
             priority: SlockRequestPriority,
             request: AgentProfileUpdateRequest
-    ): DataResult<MemberProfile> {
-        currentContext() ?: return authRequired()
-        val displayName = request.displayName.trim()
-        val description = request.description?.trim()?.takeIf { it.isNotBlank() }
-        if (displayName.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
-        return execute(
-                emptyReason = EmptyReason.NoMembers,
-                block = {
-                    api.updateAgent(priority,
-                            request.agentId.value,
-                            mapOf(
-                                            "name" to displayName,
-                                            "displayName" to displayName,
-                                            "description" to description
-                                    )
-                                    .toJsonBody()
-                    )
-                },
-                source = "agent_profile_update",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    ai.slock.compose.data.parseSharedAgentProfile(bodyText)
-                            ?: throw IllegalStateException(
-                                    "Agent profile update response missing agent"
-                            )
-                }
-        )
-    }
+    ): DataResult<MemberProfile> =
+            delegate.updateAgentProfile(priority.toDataRequestPriority(), request.toSharedRequest())
 
     override suspend fun getAgentDetail(
             priority: SlockRequestPriority,
             agentId: MemberId
-    ): DataResult<AgentDetailSnapshot> {
-        currentContext() ?: return authRequired()
-        val directMessages = getAgentDirectMessages(priority, agentId)
-        val reminders = getAgentReminders(priority, agentId)
-        val activity = getAgentActivity(priority, agentId)
-        val skills = getAgentSkills(priority, agentId)
-        return when {
-            directMessages is DataResult.Content &&
-                    reminders is DataResult.Content &&
-                    activity is DataResult.Content &&
-                    skills is DataResult.Content ->
-                    DataResult.Content(
-                            AgentDetailSnapshot(
-                                    agentId = agentId,
-                                    directMessages = directMessages.data.directMessages,
-                                    reminders = reminders.data.reminders,
-                                    activity = activity.data.activity,
-                                    skills = skills.data
-                            )
-                    )
-            directMessages is DataResult.NoPermission -> directMessages
-            reminders is DataResult.NoPermission -> reminders
-            activity is DataResult.NoPermission -> activity
-            skills is DataResult.NoPermission -> skills
-            directMessages is DataResult.Error -> directMessages
-            reminders is DataResult.Error -> reminders
-            activity is DataResult.Error -> activity
-            skills is DataResult.Error -> skills
-            directMessages is DataResult.Empty &&
-                    reminders is DataResult.Empty &&
-                    activity is DataResult.Empty &&
-                    skills is DataResult.Empty -> DataResult.Empty(EmptyReason.NoMembers)
-            else -> DataResult.Empty(EmptyReason.NoMembers)
-        }
-    }
+    ): DataResult<AgentDetailSnapshot> =
+            delegate.getAgentDetail(priority.toDataRequestPriority(), agentId)
 
     override suspend fun getAgentDirectMessages(
             priority: SlockRequestPriority,
             agentId: MemberId
-    ): DataResult<AgentDmSnapshot> {
-        currentContext() ?: return authRequired()
-        return execute(
-                emptyReason = EmptyReason.NoMembers,
-                block = { api.agentDirectMessages(priority, agentId.value) },
-                source = "agent_direct_messages",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    ai.slock.compose.data.parseSharedAgentDirectMessages(bodyText, agentId)
-                            ?: throw IllegalStateException("Agent DM response missing dm array")
-                }
-        )
-    }
+    ): DataResult<AgentDmSnapshot> =
+            delegate.getAgentDirectMessages(priority.toDataRequestPriority(), agentId)
 
     override suspend fun getAgentReminders(
             priority: SlockRequestPriority,
             agentId: MemberId
-    ): DataResult<AgentReminderSnapshot> {
-        currentContext() ?: return authRequired()
-        return execute(
-                emptyReason = EmptyReason.NoMembers,
-                block = { api.reminders(priority, agentId.value) },
-                source = "agent_reminders",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    ai.slock.compose.data.parseSharedAgentReminders(bodyText, agentId)
-                            ?: throw IllegalStateException("Agent reminders response missing reminders")
-                }
-        )
-    }
+    ): DataResult<AgentReminderSnapshot> =
+            delegate.getAgentReminders(priority.toDataRequestPriority(), agentId)
 
     override suspend fun getAgentActivity(
             priority: SlockRequestPriority,
             agentId: MemberId
-    ): DataResult<AgentActivitySnapshot> {
-        currentContext() ?: return authRequired()
-        val logResult =
-                execute(
-                        emptyReason = EmptyReason.NoMembers,
-                        block = { api.agentActivityLog(priority, agentId.value, limit = 50) },
-                        source = "agent_activity",
-                        warningLogger = warningLogger,
-                        mapper = { bodyText ->
-                            val snapshot =
-                                    ai.slock.compose.data.parseSharedAgentActivity(bodyText, agentId)
-                                            ?: throw IllegalStateException(
-                                                    "Agent activity response missing log array"
-                                            )
-                            logger(
-                                    "agent_activity_log_fetch agentId=${agentId.value} mappedCount=${snapshot.activity.size}"
-                            )
-                            snapshot
-                        }
-                )
-        val fallbackEntries = fetchAgentCurrentActivityFallback(priority, agentId)
-        return when (logResult) {
-            is DataResult.Content -> {
-                val mergedInput = fallbackEntries + logResult.data.activity
-                DataResult.Content(
-                        logResult.data.copy(
-                                activity = mergeAgentActivity(agentId, mergedInput)
-                        )
-                )
-            }
-            is DataResult.Empty -> {
-                if (fallbackEntries.isNotEmpty()) {
-                    DataResult.Content(
-                            AgentActivitySnapshot(
-                                    agentId = agentId,
-                                    activity = mergeAgentActivity(agentId, fallbackEntries)
-                            )
-                    )
-                } else {
-                    logResult
-                }
-            }
-            else -> logResult
-        }
-    }
+    ): DataResult<AgentActivitySnapshot> =
+            delegate.getAgentActivity(priority.toDataRequestPriority(), agentId)
 
     override suspend fun getAgentWorkspaces(
             priority: SlockRequestPriority,
             agentId: MemberId
-    ): DataResult<AgentWorkspaceSnapshot> {
-        val context = currentContext() ?: return authRequired()
-        if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
-        val lookupResult =
-                execute(
-                        emptyReason = EmptyReason.NoMembers,
-                        block = { api.settingsAgents(priority) },
-                        source = "agent_workspaces_lookup",
-                        warningLogger = warningLogger,
-                        mapper = { bodyText ->
-                            ai.slock.compose.data.parseSharedAgentWorkspaceLookup(bodyText, agentId)
-                                    ?: throw IllegalStateException(
-                                            "Agent workspace lookup response missing agent"
-                                    )
-                        }
-                )
-        return when (lookupResult) {
-            is DataResult.Content -> {
-                val lookup = lookupResult.data
-                val baseSnapshot =
-                        AgentWorkspaceSnapshot(
-                                agentId = agentId,
-                                computerId = lookup.computerId,
-                                computerName = lookup.computerName
-                        )
-                when {
-                    lookup.directWorkspaces.isNotEmpty() ->
-                            DataResult.Content(baseSnapshot.copy(workspaces = lookup.directWorkspaces))
-                    !lookup.computerId.isNullOrBlank() -> {
-                        val computerId = lookup.computerId.orEmpty()
-                        val machineResult =
-                                execute(
-                                        emptyReason = EmptyReason.NoMembers,
-                                        block = {
-                                            api.settingsMachineWorkspaces(priority,
-                                                    context.server.id.value,
-                                                    computerId
-                                            )
-                                        },
-                                        source = "agent_workspaces_machine",
-                                        warningLogger = warningLogger,
-                                mapper = { bodyText ->
-                                    ai.slock.compose.data.parseSharedSettingsMachineWorkspaces(
-                                            bodyText
-                                    ) ?: throw IllegalStateException(
-                                            "Machine workspaces response missing workspace array"
-                                    )
-                                }
-                                )
-                        when (machineResult) {
-                            is DataResult.Content ->
-                                    DataResult.Content(
-                                            baseSnapshot.copy(workspaces = machineResult.data)
-                                    )
-                            is DataResult.Empty ->
-                                    if (lookup.fallbackWorkspaces.isNotEmpty()) {
-                                        DataResult.Content(
-                                                baseSnapshot.copy(
-                                                        workspaces = lookup.fallbackWorkspaces
-                                                )
-                                        )
-                                    } else {
-                                        machineResult
-                                    }
-                            is DataResult.Error ->
-                                    if (lookup.fallbackWorkspaces.isNotEmpty()) {
-                                        DataResult.Content(
-                                                baseSnapshot.copy(
-                                                        workspaces = lookup.fallbackWorkspaces
-                                                )
-                                        )
-                                    } else {
-                                        machineResult
-                                    }
-                            is DataResult.NoPermission ->
-                                    if (lookup.fallbackWorkspaces.isNotEmpty()) {
-                                        DataResult.Content(
-                                                baseSnapshot.copy(
-                                                        workspaces = lookup.fallbackWorkspaces
-                                                )
-                                        )
-                                    } else {
-                                        machineResult
-                                    }
-                        }
-                    }
-                    lookup.fallbackWorkspaces.isNotEmpty() ->
-                            DataResult.Content(baseSnapshot.copy(workspaces = lookup.fallbackWorkspaces))
-                    else -> DataResult.Empty(EmptyReason.NoMembers)
-                }
-            }
-            is DataResult.Empty -> lookupResult
-            is DataResult.Error -> lookupResult
-            is DataResult.NoPermission -> lookupResult
-        }
-    }
+    ): DataResult<AgentWorkspaceSnapshot> =
+            delegate.getAgentWorkspaces(priority.toDataRequestPriority(), agentId)
 
     override suspend fun getAgentWorkspaceTree(
             priority: SlockRequestPriority,
             agentId: MemberId
-    ): DataResult<AgentWorkspaceTreeSnapshot> {
-        currentContext() ?: return authRequired()
-        if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
-        return execute(
-                emptyReason = EmptyReason.NoMembers,
-                block = { api.agentWorkspaceFiles(priority, agentId.value) },
-                source = "agent_workspace_root",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    val children =
-                            ai.slock.compose.data.parseSharedWorkspaceFileNodesOrNull(bodyText)
-                                    ?: throw IllegalStateException(
-                                            "Workspace file response missing files"
-                                    )
-                    AgentWorkspaceTreeSnapshot(
-                            agentId = agentId,
-                            rootPath = "Workspace",
-                            root =
-                                    SlockWorkspaceNode(
-                                            id = "/",
-                                            name = "workspace",
-                                            path = "/",
-                                            kind = SlockWorkspaceFileKind.Folder,
-                                            children = children
-                                    )
-                    )
-                }
-        )
-    }
+    ): DataResult<AgentWorkspaceTreeSnapshot> =
+            delegate.getAgentWorkspaceTree(priority.toDataRequestPriority(), agentId)
 
     override suspend fun getAgentWorkspaceChildren(
             priority: SlockRequestPriority,
             agentId: MemberId,
             dirPath: String
-    ): DataResult<AgentWorkspaceChildrenSnapshot> {
-        currentContext() ?: return authRequired()
-        if (agentId.value.isBlank() || dirPath.isBlank()) {
-            return DataResult.Empty(EmptyReason.NoMembers)
-        }
-        return execute(
-                emptyReason = EmptyReason.NoMembers,
-                block = { api.agentWorkspaceFiles(priority, agentId.value, dirPath) },
-                source = "agent_workspace_children",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    val children =
-                            ai.slock.compose.data.parseSharedWorkspaceFileNodesOrNull(bodyText)
-                                    ?: throw IllegalStateException(
-                                            "Workspace file response missing files"
-                                    )
-                    AgentWorkspaceChildrenSnapshot(
-                            agentId = agentId,
-                            dirPath = dirPath,
-                            children = children
-                    )
-                }
-        )
-    }
+    ): DataResult<AgentWorkspaceChildrenSnapshot> =
+            delegate.getAgentWorkspaceChildren(priority.toDataRequestPriority(), agentId, dirPath)
 
     override suspend fun readAgentWorkspaceFile(
             priority: SlockRequestPriority,
             agentId: MemberId,
             path: String
-    ): DataResult<AgentWorkspaceFilePreviewSnapshot> {
-        currentContext() ?: return authRequired()
-        if (agentId.value.isBlank() || path.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
-        return execute(
-                emptyReason = EmptyReason.NoMembers,
-                block = { api.readAgentWorkspaceFile(priority, agentId.value, path) },
-                source = "agent_workspace_file_read",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    ai.slock.compose.data.parseSharedAgentWorkspaceFilePreviewSnapshot(
-                            bodyText,
-                            agentId,
-                            path
-                    )
-                }
-        )
-    }
+    ): DataResult<AgentWorkspaceFilePreviewSnapshot> =
+            delegate.readAgentWorkspaceFile(priority.toDataRequestPriority(), agentId, path)
 
     override suspend fun getAgentSkills(
             priority: SlockRequestPriority,
             agentId: MemberId
-    ): DataResult<AgentSkillsSnapshot> {
-        currentContext() ?: return authRequired()
-        if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
-        return execute(
-                emptyReason = EmptyReason.NoMembers,
-                block = { api.agentSkills(priority, agentId.value) },
-                source = "agent_skills",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    ai.slock.compose.data.parseSharedAgentSkillsSnapshot(bodyText, agentId)
-                            ?: throw IllegalStateException("Agent skills response missing skill groups")
-                }
-        )
-    }
+    ): DataResult<AgentSkillsSnapshot> =
+            delegate.getAgentSkills(priority.toDataRequestPriority(), agentId)
 
     override suspend fun getChannelMembers(
             priority: SlockRequestPriority,
             channelId: ChannelId
-    ): DataResult<ChannelMemberSnapshot> {
-        currentContext() ?: return authRequired()
-        val result =
-                execute(
-                        emptyReason = EmptyReason.NoMembers,
-                        block = { api.channelMembers(priority, channelId.value) },
-                        emptyWhen = { it.members.isEmpty() },
-                        source = "channel_members",
-                        warningLogger = warningLogger,
-                        mapper = { bodyText ->
-                            ai.slock.compose.data.parseSharedChannelMemberSnapshot(
-                                    bodyText,
-                                    channelId
-                            ) ?: throw IllegalStateException(
-                                    "Channel members response missing members"
-                            )
-                        }
-                )
-        result.logChannelMemberCounts(
-                source = "channel_members",
-                channelId = channelId.value,
-                logger = logger
-        )
-        return result
-    }
+    ): DataResult<ChannelMemberSnapshot> =
+            delegate.getChannelMembers(priority.toDataRequestPriority(), channelId)
 
     override suspend fun addChannelMember(
             priority: SlockRequestPriority,
             request: AddChannelMemberRequest
-    ): DataResult<ChannelMemberActionResult> {
-        currentContext() ?: return authRequired()
-        val fieldName = if (request.kind == MemberKind.Agent) "agentId" else "userId"
-        return execute(
-                emptyReason = EmptyReason.NoMembers,
-                block = {
-                    api.addChannelMember(priority,
-                            request.channelId.value,
-                            mapOf(fieldName to request.memberId.value).toJsonBody()
-                    )
-                },
-                source = "channel_member_add",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    val parsed =
-                            ai.slock.compose.data.parseSharedChannelMemberActionResult(
-                            bodyText,
-                            channelId = request.channelId,
-                            memberId = request.memberId,
-                            added = true
-                    ) ?: throw IllegalStateException("Channel member add response missing ok")
-                    ChannelMemberActionResult(
-                            channelId = parsed.channelId,
-                            memberId = parsed.memberId,
-                            member = parsed.member,
-                            added = parsed.added
-                    )
-                }
-        )
-    }
+    ): DataResult<ChannelMemberActionResult> =
+            delegate.addChannelMember(priority.toDataRequestPriority(), request.toSharedRequest())
+                    .toAndroidChannelMemberActionResult()
 
     override suspend fun removeChannelMember(
             priority: SlockRequestPriority,
             request: RemoveChannelMemberRequest
-    ): DataResult<ChannelMemberActionResult> {
-        currentContext() ?: return authRequired()
-        return execute(
-                emptyReason = EmptyReason.NoMembers,
-                block = {
-                    api.removeChannelMember(priority,
-                            channelId = request.channelId.value,
-                            kind = request.kind.channelMemberPathSegment,
-                            memberId = request.memberId.value
-                    )
-                },
-                source = "channel_member_remove",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    val parsed =
-                            ai.slock.compose.data.parseSharedChannelMemberActionResult(
-                            bodyText,
-                            channelId = request.channelId,
-                            memberId = request.memberId,
-                            added = false
-                    ) ?: throw IllegalStateException("Channel member remove response missing ok")
-                    ChannelMemberActionResult(
-                            channelId = parsed.channelId,
-                            memberId = parsed.memberId,
-                            member = parsed.member,
-                            added = parsed.added
-                    )
-                }
-        )
-    }
-
-    private suspend fun currentContext(): NetworkServerContext? {
-        val session = store.readSession() ?: return null
-        val selectedId = session.currentServerId ?: return null
-        return session.toNetworkServerContext(ServerId(selectedId))
-    }
-
-    private suspend fun mergeAgentActivity(
-            agentId: MemberId,
-            incoming: List<AgentActivityEntry>
-    ): List<AgentActivityEntry> =
-            agentActivityCacheMutex.withLock {
-                val merged = mergeAgentActivityEntries(agentActivityCache[agentId].orEmpty(), incoming)
-                agentActivityCache[agentId] = merged
-                merged
-            }
-
-    private suspend fun fetchAgentCurrentActivityFallback(
-            priority: SlockRequestPriority,
-            agentId: MemberId
-    ): List<AgentActivityEntry> {
-        val result =
-                execute<List<AgentActivityEntry>>(
-                        emptyReason = EmptyReason.NoMembers,
-                        block = { api.settingsAgents(priority) },
-                        source = "agent_activity_current_fallback",
-                        warningLogger = warningLogger,
-                        mapper = { bodyText ->
-                            val entries =
-                                    ai.slock.compose.data.parseSharedCurrentAgentActivityEntries(
-                                            bodyText,
-                                            agentId
-                                    ) ?: throw IllegalStateException(
-                                            "Current agent activity response missing agent array"
-                                    )
-                            logger(
-                                    "agent_activity_fallback_fetch agentId=${agentId.value} mappedCount=${entries.size}"
-                            )
-                            entries
-                        }
-                )
-        return (result as? DataResult.Content)?.data.orEmpty()
-    }
-
-    private suspend fun enrichHumanProfiles(
-            priority: SlockRequestPriority,
-            members: List<MemberProfile>,
-            source: String
-    ): List<MemberProfile> {
-        if (members.none { it.kind == MemberKind.Human }) return members
-        val uniqueHumanIds = members
-                .filter { it.kind == MemberKind.Human }
-                .map { it.id }
-                .distinct()
-        val profileById: Map<MemberId, MemberProfile> = coroutineScope {
-            uniqueHumanIds.map { memberId ->
-                async {
-                    val profileResult = getHumanProfile(priority, memberId, source = source)
-                    val profile = (profileResult as? DataResult.Content)?.data
-                    logger(
-                            "human_profile_merge source=$source memberId=${memberId.value} " +
-                                    "result=${profileResult.memberResultName()}"
-                    )
-                    memberId to profile
-                }
-            }.map { it.await() }
-        }.mapNotNull { (id, profile) -> profile?.let { id to it } }.toMap()
-        return members.map { member ->
-            if (member.kind != MemberKind.Human) member
-            else profileById[member.id]?.let { member.withHumanProfile(it) } ?: member
-        }
-    }
-
-    private suspend fun getHumanProfile(
-            priority: SlockRequestPriority,
-            memberId: MemberId,
-            source: String
-    ): DataResult<MemberProfile> =
-            currentContext()?.let { context ->
-                execute(
-                        emptyReason = EmptyReason.NoMembers,
-                        block = { api.memberProfile(priority, context.server.id.value, memberId.value) },
-                        source = source,
-                        warningLogger = warningLogger,
-                        mapper = { bodyText ->
-                            ai.slock.compose.data.parseSharedMemberProfile(bodyText)
-                                    ?: throw IllegalStateException(
-                                            "Member profile response missing member"
-                                    )
-                        }
-                )
-            } ?: authRequired()
+    ): DataResult<ChannelMemberActionResult> =
+            delegate.removeChannelMember(priority.toDataRequestPriority(), request.toSharedRequest())
+                    .toAndroidChannelMemberActionResult()
 }
 
-private data class AgentWorkspaceLookup(
-        val computerId: String?,
-        val computerName: String?,
-        val directWorkspaces: List<SettingsComputerWorkspaceSnapshot>,
-        val fallbackWorkspaces: List<SettingsComputerWorkspaceSnapshot>
-)
+private fun SlockRequestPriority.toDataRequestPriority(): DataRequestPriority =
+        when (this) {
+            SlockRequestPriority.Foreground -> DataRequestPriority.Foreground
+            SlockRequestPriority.Visible -> DataRequestPriority.Visible
+            SlockRequestPriority.Background -> DataRequestPriority.Background
+        }
+
+private fun CreateChannelRequest.toSharedRequest(): ai.slock.compose.data.CreateChannelRequest =
+        ai.slock.compose.data.CreateChannelRequest(
+                name = name,
+                description = description,
+                agentMemberIds = agentMemberIds,
+                userMemberIds = userMemberIds
+        )
+
+private fun DataResult<ai.slock.compose.data.ChannelLeaveResult>.toAndroidChannelLeaveResult():
+        DataResult<ChannelLeaveResult> =
+        when (this) {
+            is DataResult.Content ->
+                    DataResult.Content(
+                            ChannelLeaveResult(
+                                    channelId = data.channelId,
+                                    left = data.left
+                            )
+                    )
+            is DataResult.Empty -> this
+            is DataResult.Error -> this
+            is DataResult.NoPermission -> this
+        }
+
+private fun AgentProfileUpdateRequest.toSharedRequest(): ai.slock.compose.data.AgentProfileUpdateRequest =
+        ai.slock.compose.data.AgentProfileUpdateRequest(
+                agentId = agentId,
+                displayName = displayName,
+                description = description
+        )
+
+private fun AddChannelMemberRequest.toSharedRequest(): ai.slock.compose.data.AddChannelMemberRequest =
+        ai.slock.compose.data.AddChannelMemberRequest(
+                channelId = channelId,
+                memberId = memberId,
+                kind = kind
+        )
+
+private fun RemoveChannelMemberRequest.toSharedRequest(): ai.slock.compose.data.RemoveChannelMemberRequest =
+        ai.slock.compose.data.RemoveChannelMemberRequest(
+                channelId = channelId,
+                memberId = memberId,
+                kind = kind
+        )
+
+private fun DataResult<ai.slock.compose.data.ChannelMemberActionResult>.toAndroidChannelMemberActionResult(): DataResult<ChannelMemberActionResult> =
+        when (this) {
+            is DataResult.Content ->
+                    DataResult.Content(
+                            ChannelMemberActionResult(
+                                    channelId = data.channelId,
+                                    memberId = data.memberId,
+                                    member = data.member,
+                                    added = data.added
+                            )
+                    )
+            is DataResult.Empty -> this
+            is DataResult.Error -> this
+            is DataResult.NoPermission -> this
+        }
 
 class RealInboxRepository(private val store: AuthSessionStore, private val api: SlockApi) :
         InboxRepository {
@@ -2382,125 +1548,6 @@ private fun String.matchesThreadSummaryId(candidate: String): Boolean {
 }
 
 
-
-private fun mergeAgentActivityEntries(
-        existing: List<AgentActivityEntry>,
-        incoming: List<AgentActivityEntry>
-): List<AgentActivityEntry> {
-    val merged = LinkedHashMap<String, AgentActivityEntry>()
-    for (entry in existing) {
-        merged[entry.activityCacheKey] = entry
-    }
-    for (entry in incoming) {
-        merged[entry.activityCacheKey] = entry
-    }
-    return merged.values.sortedWith(compareBy<AgentActivityEntry> { it.timestamp.orEmpty() }.thenBy { it.id })
-}
-
-private val AgentActivityEntry.activityCacheKey: String
-    get() = id.ifBlank { listOf(type, timestamp.orEmpty(), body.orEmpty()).joinToString(":") }
-
-private fun MemberProfile.withHumanProfile(profile: MemberProfile): MemberProfile {
-    val mergedAvatarUrl = profile.avatarUrl ?: avatarUrl
-    val mergedGravatarHash = profile.gravatarHash ?: gravatarHash
-    return copy(
-            displayName = profile.displayName.takeUnless { it.isBlank() || it == profile.id.value }
-                            ?: displayName,
-            handle = profile.handle.takeUnless { it.isBlank() || it == profile.id.value } ?: handle,
-            kind = MemberKind.Human,
-            description = profile.description ?: description,
-            roleDescription = profile.roleDescription ?: roleDescription,
-            avatarUrl = mergedAvatarUrl,
-            gravatarHash = mergedGravatarHash,
-            avatar = profile.avatar
-                            ?: avatar ?: AvatarReference.fromWireValue(mergedAvatarUrl)
-                                    ?: mergedGravatarHash?.toGravatarAvatarReference(),
-            avatarLabel = profile.avatarLabel.takeIf { it.isNotBlank() } ?: avatarLabel,
-            presence = profile.presence,
-            permissionBadges =
-                    if (profile.permissionBadges.isNotEmpty()) profile.permissionBadges
-                    else permissionBadges
-    )
-}
-
-private fun String.toMemberComputerBadge(): String = "$MemberComputerBadgePrefix$this"
-private fun String.toMemberComputerIdBadge(): String = "$MemberComputerIdBadgePrefix$this"
-private fun String.memberComputerLabelOrNull(): String? =
-        removePrefix(MemberComputerBadgePrefix)
-                .takeIf { startsWith(MemberComputerBadgePrefix) && it.isNotBlank() }
-private fun String.memberComputerIdOrNull(): String? =
-        removePrefix(MemberComputerIdBadgePrefix)
-                .takeIf { startsWith(MemberComputerIdBadgePrefix) && it.isNotBlank() }
-
-private const val MemberComputerBadgePrefix = "computer:"
-private const val MemberComputerIdBadgePrefix = "computer-id:"
-
-private fun List<MemberProfile>.resolveComputerLabels(
-        machineNames: Map<String, String>
-): List<MemberProfile> = map { it.resolveComputerLabel(machineNames) }
-
-private fun MemberProfile.resolveComputerLabel(machineNames: Map<String, String>): MemberProfile {
-    val badgesWithoutIds =
-            permissionBadges.filterNot { it.startsWith(MemberComputerIdBadgePrefix) }
-    val currentComputerLabel =
-            permissionBadges.firstNotNullOfOrNull { it.memberComputerLabelOrNull() }
-    if (!currentComputerLabel.isNullOrBlank()) {
-        return if (badgesWithoutIds == permissionBadges) this else copy(permissionBadges = badgesWithoutIds)
-    }
-    val machineId =
-            permissionBadges.firstNotNullOfOrNull { it.memberComputerIdOrNull() } ?: return this
-    val resolvedName = machineNames[machineId]?.takeIf { it.isNotBlank() }
-    return if (resolvedName != null) {
-        copy(permissionBadges = badgesWithoutIds + resolvedName.toMemberComputerBadge())
-    } else if (badgesWithoutIds == permissionBadges) {
-        this
-    } else {
-        copy(permissionBadges = badgesWithoutIds)
-    }
-}
-
-private val MemberProfile.memberKey: String
-    get() = "${kind.name}:${id.value}"
-
-private val MemberKind.channelMemberPathSegment: String
-    get() =
-            when (this) {
-                MemberKind.Agent -> "agent"
-                MemberKind.Human -> "user"
-                MemberKind.System -> "system"
-            }
-
-private fun DataResult<MemberSnapshot>.logMemberCounts(
-        source: String,
-        serverId: String,
-        logger: (String) -> Unit
-) {
-    val members = (this as? DataResult.Content)?.data?.members.orEmpty()
-    logger(
-            "members_count source=$source serverId=$serverId result=${memberResultName()} " +
-                    "agentsCount=${members.count { it.kind == MemberKind.Agent }} humansCount=${members.count { it.kind == MemberKind.Human }}"
-    )
-}
-
-private fun DataResult<ChannelMemberSnapshot>.logChannelMemberCounts(
-        source: String,
-        channelId: String,
-        logger: (String) -> Unit
-) {
-    val members = (this as? DataResult.Content)?.data?.members.orEmpty()
-    logger(
-            "members_count source=$source channelId=$channelId result=${memberResultName()} " +
-                    "agentsCount=${members.count { it.kind == MemberKind.Agent }} humansCount=${members.count { it.kind == MemberKind.Human }}"
-    )
-}
-
-private fun DataResult<*>.memberResultName(): String =
-        when (this) {
-            is DataResult.Content -> "content"
-            is DataResult.Empty -> "empty"
-            is DataResult.Error -> "error:${error.code}"
-            is DataResult.NoPermission -> "noPermission:${blocker.code}"
-        }
 
 private fun String?.toPresence(fallback: Presence = Presence.Offline): Presence =
         toPresenceOrNull() ?: fallback

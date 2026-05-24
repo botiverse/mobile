@@ -218,6 +218,15 @@ class SlockApiClient(
     private suspend fun get(priority: SlockRequestPriority, path: String, query: List<Pair<String, String>> = emptyList()): KmpHttpResponse =
         request(priority, HttpMethod.Get, path, query)
 
+    suspend fun authenticatedRequest(
+        priority: SlockRequestPriority,
+        method: String,
+        path: String,
+        query: List<Pair<String, String>> = emptyList(),
+        body: String? = null
+    ): KmpHttpResponse =
+        request(priority, HttpMethod(method), path, query, body)
+
     private suspend fun post(priority: SlockRequestPriority, path: String, body: String? = null): KmpHttpResponse =
         request(priority, HttpMethod.Post, path, body = body)
 

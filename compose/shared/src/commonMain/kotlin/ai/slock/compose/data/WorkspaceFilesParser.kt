@@ -5,90 +5,62 @@ import ai.slock.compose.model.SlockWorkspaceFileKind
 import ai.slock.compose.model.SlockWorkspaceFilePreview
 import ai.slock.compose.model.SlockWorkspaceNode
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 
 /**
  * Strict canonical parsers for the agent-workspace file routes.
  *
- *  - GET `/api/agents/:id/workspace/files[?path=...]`
- *      → `{files: WireWorkspaceNode[]}`
+ * - GET `/api/agents/:id/workspace-files[?dirPath=...]`
+ *   -> `{files: FileNode[]}`
+ * - GET `/api/agents/:id/workspace-files/read?path=...`
+ *   -> `{path, content, binary, size, mimeType?, encoding?, modifiedAt}`
  *
- *  - GET `/api/agents/:id/workspace/file?path=...`
- *      → `{path, content?, mimeType?, sizeBytes?, modifiedAt?, markdown?,
- *         imageUrl?, sampleAssetKey?, description?, reason?}`
- *
- *  WireWorkspaceNode ::= `{id?, name, path, kind?, mimeType?, sizeBytes?,
- *                          children?: WireWorkspaceNode[], preview?: WireWorkspacePreview}`
- *
- *  All field names are camelCase; no alias scanning.
+ * The wire DTOs mirror the upstream TypeScript contracts directly. No alias
+ * scanning, envelope sniffing, or JSON-tree probing belongs here.
  */
-
 private val workspaceJson = Json {
     ignoreUnknownKeys = true
     coerceInputValues = true
 }
 
 @Serializable
+private data class WireWorkspaceFilesResponse(
+    val files: List<WireWorkspaceNode> = emptyList(),
+)
+
+@Serializable
 private data class WireWorkspaceNode(
-    val id: String? = null,
     val name: String = "",
     val path: String = "",
-    val kind: String? = null,
-    val mimeType: String? = null,
-    val sizeBytes: Long? = null,
+    val isDirectory: Boolean = false,
+    val size: Long? = null,
+    val modifiedAt: String? = null,
     val children: List<WireWorkspaceNode> = emptyList(),
-    val preview: WireWorkspacePreview? = null,
 )
 
 @Serializable
 private data class WireWorkspacePreview(
-    val path: String? = null,
+    val path: String,
     val content: String? = null,
-    val markdown: Boolean? = null,
+    val binary: Boolean = false,
+    val size: Long? = null,
     val mimeType: String? = null,
-    val sizeBytes: Long? = null,
+    val encoding: String? = null,
     val modifiedAt: String? = null,
-    val imageUrl: String? = null,
-    val sampleAssetKey: String? = null,
-    val description: String? = null,
-    val reason: String? = null,
 )
 
-/**
- * Parses a `{files: [...]}` response into a flat list of [SlockWorkspaceNode]s.
- */
-fun parseSharedWorkspaceFileNodes(bodyText: String): List<SlockWorkspaceNode> {
-    return parseSharedWorkspaceFileNodesOrNull(bodyText).orEmpty()
-}
+fun parseSharedWorkspaceFileNodes(bodyText: String): List<SlockWorkspaceNode> =
+    parseSharedWorkspaceFileNodesOrNull(bodyText).orEmpty()
 
-/**
- * Parses a `{files: [...]}` response and returns null when the route did not
- * return the canonical workspace-files payload.
- */
 fun parseSharedWorkspaceFileNodesOrNull(bodyText: String): List<SlockWorkspaceNode>? {
     if (bodyText.isBlank()) return emptyList()
-    val root = runCatching {
-        workspaceJson.parseToJsonElement(bodyText) as? JsonObject
-    }.getOrNull() ?: return null
-    val filesElement = root["files"] ?: return null
     return runCatching {
-        workspaceJson
-            .decodeFromJsonElement(
-                ListSerializer(WireWorkspaceNode.serializer()),
-                filesElement,
-            )
+        workspaceJson.decodeFromString(WireWorkspaceFilesResponse.serializer(), bodyText)
+            .files
             .map { it.toDomain() }
     }.getOrNull()
 }
 
-/**
- * Parses a single-file preview response, falling back to [fallbackPath] when the
- * server omits `path`.
- */
 fun parseSharedWorkspaceFilePreview(
     bodyText: String,
     fallbackPath: String,
@@ -124,89 +96,73 @@ fun parseSharedAgentWorkspaceFilePreviewSnapshot(
 fun parseSharedWorkspaceFilePathFromBody(bodyText: String, fallback: String): String {
     if (bodyText.isBlank()) return fallback
     return runCatching {
-        (workspaceJson.parseToJsonElement(bodyText) as? JsonObject)
-            ?.get("path")
-            ?.jsonPrimitive
-            ?.contentOrNull
+        workspaceJson.decodeFromString(WireWorkspacePreview.serializer(), bodyText).path
     }.getOrNull()?.takeIf { it.isNotBlank() } ?: fallback
 }
 
 private fun WireWorkspaceNode.toDomain(): SlockWorkspaceNode {
-    val resolvedPath = path.ifBlank { id.orEmpty() }
+    val resolvedPath = path
     val resolvedName = name.ifBlank {
         resolvedPath.substringAfterLast('/').ifBlank { resolvedPath }
     }
     return SlockWorkspaceNode(
-        id = id ?: resolvedPath,
+        id = resolvedPath,
         name = resolvedName,
         path = resolvedPath,
-        kind = resolveWorkspaceKind(kind, resolvedPath),
-        meta = formatNodeMeta(sizeBytes, mimeType),
-        preview = preview?.toDomain(resolvedPath),
+        kind = resolveWorkspaceKind(isDirectory, resolvedPath),
+        meta = formatNodeMeta(size, modifiedAt),
         children = children.map { it.toDomain() },
     )
 }
 
 private fun WireWorkspacePreview.toDomain(fallbackPath: String): SlockWorkspaceFilePreview {
-    val resolvedPath = path?.ifBlank { null } ?: fallbackPath
-    if (content != null) {
-        val isMarkdown = markdown
-            ?: mimeType?.contains("markdown", ignoreCase = true)
-            ?: resolvedPath.endsWith(".md", ignoreCase = true)
+    val resolvedPath = path.ifBlank { fallbackPath }
+    if (!binary && content != null) {
         return SlockWorkspaceFilePreview.Text(
             path = resolvedPath,
             content = content,
-            markdown = isMarkdown,
-            sizeBytes = sizeBytes,
+            markdown = mimeType?.contains("markdown", ignoreCase = true)
+                ?: resolvedPath.endsWith(".md", ignoreCase = true),
+            sizeBytes = size,
             modifiedAt = modifiedAt,
             mimeType = mimeType,
         )
     }
-    if (imageUrl != null) {
+    if (binary && content != null && encoding == "base64" && mimeType?.startsWith("image/") == true) {
         return SlockWorkspaceFilePreview.Image(
             path = resolvedPath,
-            imageUrl = imageUrl,
-            sampleAssetKey = sampleAssetKey,
-            sizeBytes = sizeBytes,
+            imageUrl = "data:$mimeType;base64,$content",
+            sizeBytes = size,
             modifiedAt = modifiedAt,
             mimeType = mimeType,
-            description = description,
         )
     }
     if (resolvedPath.isImagePath()) {
         return SlockWorkspaceFilePreview.Unsupported(
             path = resolvedPath,
             reason = "Binary image preview is not available in the current mobile contract.",
-            sizeBytes = sizeBytes,
+            sizeBytes = size,
             modifiedAt = modifiedAt,
             mimeType = mimeType,
         )
     }
     return SlockWorkspaceFilePreview.Unsupported(
         path = resolvedPath,
-        reason = reason ?: "Preview unavailable",
-        sizeBytes = sizeBytes,
+        reason = "Preview unavailable",
+        sizeBytes = size,
         modifiedAt = modifiedAt,
         mimeType = mimeType,
     )
 }
 
-private fun resolveWorkspaceKind(rawKind: String?, path: String): SlockWorkspaceFileKind {
-    val normalized = rawKind?.lowercase()
-    return when {
-        normalized in folderKinds -> SlockWorkspaceFileKind.Folder
-        normalized in markdownKinds || path.endsWith(".md", ignoreCase = true) ->
-            SlockWorkspaceFileKind.Markdown
-        normalized in imageKinds || path.isImagePath() -> SlockWorkspaceFileKind.Image
-        normalized in textKinds -> SlockWorkspaceFileKind.Text
+private fun resolveWorkspaceKind(isDirectory: Boolean, path: String): SlockWorkspaceFileKind =
+    when {
+        isDirectory -> SlockWorkspaceFileKind.Folder
+        path.endsWith(".md", ignoreCase = true) -> SlockWorkspaceFileKind.Markdown
+        path.isImagePath() -> SlockWorkspaceFileKind.Image
+        path.hasTextExtension() -> SlockWorkspaceFileKind.Text
         else -> SlockWorkspaceFileKind.Unsupported
     }
-}
-
-private val folderKinds = setOf("dir", "directory", "folder")
-private val markdownKinds = setOf("markdown", "md")
-private val imageKinds = setOf("image", "photo")
-private val textKinds = setOf("file", "text")
 
 private fun String.isImagePath(): Boolean =
     endsWith(".png", ignoreCase = true) ||
@@ -216,9 +172,18 @@ private fun String.isImagePath(): Boolean =
         endsWith(".webp", ignoreCase = true) ||
         endsWith(".heic", ignoreCase = true)
 
-private fun formatNodeMeta(sizeBytes: Long?, mimeType: String?): String? {
+private fun String.hasTextExtension(): Boolean =
+    endsWith(".txt", ignoreCase = true) ||
+        endsWith(".json", ignoreCase = true) ||
+        endsWith(".kt", ignoreCase = true) ||
+        endsWith(".ts", ignoreCase = true) ||
+        endsWith(".js", ignoreCase = true) ||
+        endsWith(".yml", ignoreCase = true) ||
+        endsWith(".yaml", ignoreCase = true)
+
+private fun formatNodeMeta(sizeBytes: Long?, modifiedAt: String?): String? {
     if (sizeBytes != null && sizeBytes > 0) {
         return formatAttachmentSizeLabel(sizeBytes)
     }
-    return mimeType
+    return modifiedAt
 }

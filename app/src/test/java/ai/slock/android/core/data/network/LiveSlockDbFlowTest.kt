@@ -258,9 +258,10 @@ class LiveSlockDbFlowTest {
         val serverId = requireNotNull(session.currentServerId) { "Live account has no selected server." }
 
         val api = RealSlockApiFactory.create(authStore, baseUrl = baseUrl)
+        val networkClient = RealSlockNetworkClientFactory.create(authStore, baseUrl = baseUrl)
         return LiveFixture(
             authStore = authStore,
-            channelRepository = RealChannelRepository(authStore, api, warningLogger = {}),
+            channelRepository = RealChannelRepository(authStore, networkClient, warningLogger = {}),
             conversationRepository = RealConversationRepository(authStore, api, warningLogger = {}),
             baseUrl = baseUrl,
             accessToken = session.accessToken,

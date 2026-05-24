@@ -69,6 +69,20 @@ shapes and `packages/shared/` for shared types. No snake_case aliases, no
   member profile, agent profile update, agent DMs, reminders, activity log,
   current-activity fallback, agent skills, channel members, and member
   add/remove action results.
+- Member repository orchestration moved to shared
+  `MemberRepositoryDataSource.kt`. Android now keeps only a compatibility
+  wrapper; the real repository uses shared DTO parsers/builders and the single
+  shared `SlockNetworkClient` path/query/body boundary. Android member wiring
+  now creates shared `SlockApiClient` + `KtorSlockNetworkClient` directly
+  instead of routing through the Android `SlockApi` endpoint facade. Kuikly
+  bridge network also adapts that same client shape instead of growing a
+  parallel member-specific API port.
+- Channel/home repository orchestration moved to shared
+  `ChannelRepositoryDataSource.kt`. Android `RealChannelRepository` is now a
+  thin compatibility wrapper, and channel/home/DM/create/join/leave/archive/delete
+  requests consume the shared `SlockNetworkClient` with strict DTO request
+  bodies and real response roots. The old Android `AndroidSlockHomeApi` adapter
+  has been removed.
 - Workspace file response validation now stays in `WorkspaceFilesParser.kt`;
   app code asks shared for a canonical `{files:[...]}` payload or file-preview
   snapshot instead of checking `JsonObject` locally.
