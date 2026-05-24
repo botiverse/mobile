@@ -486,33 +486,6 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
-    fun inboxRepositoryMapsTimestampAliasesForUnifiedFormatting() {
-        val repository = RealInboxRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(
-                inboxJson = """
-                    {
-                      "items": [
-                        {"channelId":"channel-1","channelName":"standard","timestamp":1778335200000},
-                        {"channelId":"channel-2","channelName":"activity","latestActivityAt":"2026-05-09 22:00:00+08:00"}
-                      ]
-                    }
-                """.trimIndent()
-            )
-        )
-
-        val result = runSuspend { repository.loadInitial(ServerId("server-1")) }
-
-        assertTrue(result is DataResult.Content)
-        val items = (result as DataResult.Content).data.items
-        assertEquals("1778335200000", items.first { it.channelName == "standard" }.lastMessageAt)
-        assertEquals(
-            "2026-05-09 22:00:00+08:00",
-            items.first { it.channelName == "activity" }.latestActivityAt
-        )
-    }
-
-    @Test
     fun inboxRepositoryMapsRealThreadItemShape() {
         val repository = RealInboxRepository(
             store = InMemoryAuthSessionStore(sampleSession),
@@ -533,10 +506,6 @@ class RealSlockRepositoriesTest {
                           "latestActivityPreview": "收到，我会修 inline code",
                           "latestActivitySenderType": "agent",
                           "latestActivitySenderId": "agent-1",
-                          "latestActivitySender": {
-                            "id": "agent-1",
-                            "displayName": "Android-App-Integrator"
-                          },
                           "latestActivityMessageId": "reply-message-1",
                           "firstUnreadMessageId": null,
                           "lastActivityAt": "2026-05-10T21:26:00+08:00",
@@ -565,7 +534,6 @@ class RealSlockRepositoriesTest {
         assertEquals(ConversationKind.Channel, item.parentChannelKind)
         assertEquals("inline code 也有这个问题", item.parentMessagePreview)
         assertEquals("收到，我会修 inline code", item.latestActivityPreview)
-        assertEquals("Android-App-Integrator", item.latestActivitySenderName)
         assertEquals("2026-05-10T21:26:00+08:00", item.latestActivityAt)
         assertEquals(8, item.replyCount)
     }
@@ -579,6 +547,7 @@ class RealSlockRepositoriesTest {
                     {
                       "items": [
                         {
+                          "kind": "channel",
                           "channelId": "channel-mention-1",
                           "channelName": "android-dev",
                           "unreadCount": 2,
@@ -605,8 +574,8 @@ class RealSlockRepositoriesTest {
     fun savedAndSearchMapItemsAndBlankSearchReturnsEmpty() {
         val store = InMemoryAuthSessionStore(sampleSession)
         val api = FakeSlockApi(
-            savedJson = """{"items":[{"channelId":"channel-1","channelName":"android-dev","messageId":"message-1","preview":"Saved note"}],"hasMore":false}""",
-            searchJson = """{"results":[{"channelId":"channel-2","channelName":"product","messageId":"message-2","content":"Search hit"}],"totalCount":1}"""
+            savedJson = """{"saved":[{"messageId":"message-1","channelId":"channel-1","channelName":"android-dev","channelType":"channel","content":"Saved note","senderType":"user","senderId":"user-1","senderName":"Artin","createdAt":"2026-05-01T00:00:00Z","savedAt":"2026-05-02T00:00:00Z"}],"hasMore":false}""",
+            searchJson = """{"results":[{"id":"message-2","seq":1,"channelId":"channel-2","channelName":"product","channelType":"channel","parentChannelId":"channel-2","parentChannelName":"product","parentChannelType":"channel","senderId":"user-1","senderType":"user","senderName":"Artin","content":"Search hit","snippet":"Search hit","createdAt":"2026-05-01T00:00:00Z"}],"hasMore":false}"""
         )
 
         val saved = runSuspend { RealSavedRepository(store, api).loadInitial(ServerId("server-1")) }
@@ -981,7 +950,7 @@ class RealSlockRepositoriesTest {
                 """.trimIndent(),
                 followedThreadsJson = """
                     {
-                      "items": [
+                      "threads": [
                         {
                           "kind":"thread",
                           "channelId":"thread-c41039c4",
@@ -1191,7 +1160,7 @@ class RealSlockRepositoriesTest {
                 {"message":{"id":"message-sent","channelId":"channel-1","seq":52,"content":"Sent"}}
             """.trimIndent(),
             followedThreadsJson = """
-                {"items":[{"kind":"thread","channelId":"thread-1","channelName":"Thread","threadChannelId":"thread-1","parentChannelName":"android-dev","replyCount":4}],"totalCount":1}
+                {"threads":[{"kind":"thread","channelId":"thread-1","channelName":"Thread","threadChannelId":"thread-1","parentChannelName":"android-dev","replyCount":4}],"totalCount":1}
             """.trimIndent()
         )
         val repository = RealConversationRepository(
@@ -2298,8 +2267,8 @@ class RealSlockRepositoriesTest {
     @Test
     fun conversationRepositoryCreatesOrOpensThreadFromParentMessage() {
         val api = FakeSlockApi(
-            createThreadJson = """{"thread":{"replyThreadChannelId":"thread-parent-1","rootMessageId":"parent-1","repliesCount":3}}""",
-            threadActionJson = """{"data":{"replyThreadId":"thread-parent-1","parentId":"parent-1","childCount":3}}"""
+            createThreadJson = """{"threadChannelId":"thread-parent-1","replyCount":3,"lastReplyAt":null,"participantIds":[]}""",
+            threadActionJson = """{"ok":true,"threadChannelId":"thread-parent-1"}"""
         )
         val repository = RealConversationRepository(
             store = InMemoryAuthSessionStore(sampleSession),
@@ -2321,7 +2290,7 @@ class RealSlockRepositoriesTest {
         assertTrue(followed is DataResult.Content)
         assertEquals("thread-parent-1", (followed as DataResult.Content).data.threadChannelId.value)
         assertEquals("parent-1", followed.data.parentMessageId?.value)
-        assertEquals(3, followed.data.replyCount)
+        assertEquals(0, followed.data.replyCount)
         assertEquals("""{"parentMessageId":"parent-1"}""", api.createThreadBodies.single())
         assertEquals("""{"parentMessageId":"parent-1"}""", api.followThreadBodies.single())
     }
@@ -2451,9 +2420,9 @@ class RealSlockRepositoriesTest {
     fun conversationRepositoryDoesNotUseGenericActionIdAsThreadChannelId() {
         val api = FakeSlockApi(
             createThreadJson =
-                    """{"thread":{"id":"thread-row-1","threadChannelId":"thread-channel-1","rootMessageId":"parent-1","repliesCount":1}}""",
+                    """{"threadChannelId":"thread-channel-1","replyCount":1,"lastReplyAt":null,"participantIds":[]}""",
             threadActionJson =
-                    """{"data":{"id":"follow-row-1","threadChannel":{"id":"follow-thread-channel-1"},"parentId":"parent-1","childCount":1}}"""
+                    """{"ok":true,"threadChannelId":"follow-thread-channel-1"}"""
         )
         val repository = RealConversationRepository(
             store = InMemoryAuthSessionStore(sampleSession),

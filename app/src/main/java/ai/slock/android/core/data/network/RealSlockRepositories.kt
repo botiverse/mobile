@@ -1441,36 +1441,23 @@ class RealInboxRepository(private val store: AuthSessionStore, private val api: 
                 block = { api.inbox(currentSlockApiPriority(), filter.wireValue, limit, offset) },
                 emptyWhen = { it.items.isEmpty() },
                 mapper = { json ->
-                    val items =
-                            json.items("items", "messages", "results", "data")
-                                    .mapNotNull { element -> element.asObjectOrNull()?.toInboxItem() }
-                                    .distinctBy { it.key }
-                    val wireTotalCount = json.int("totalCount")
-                    val wireTotalUnreadCount = json.int("totalUnreadCount")
-                    val derivedTotalCount = items.size
-                    val derivedTotalUnreadCount = items.sumOf { it.unreadCount }
-                    val totalCount = maxOf(wireTotalCount ?: derivedTotalCount, derivedTotalCount)
-                    val totalUnreadCount =
-                            maxOf(
-                                    wireTotalUnreadCount ?: derivedTotalUnreadCount,
-                                    derivedTotalUnreadCount
-                            )
-                    if (
-                            (wireTotalCount != null && wireTotalCount != derivedTotalCount) ||
-                                    (wireTotalUnreadCount != null &&
-                                            wireTotalUnreadCount != derivedTotalUnreadCount)
-                    ) {
+                    val parsed = ai.slock.compose.data.parseSharedInboxSnapshot(json.toString())
+                    val items = parsed?.items.orEmpty()
+                    if (parsed != null &&
+                            ((parsed.totalCount != items.size) ||
+                                    (parsed.totalUnreadCount != items.sumOf { it.unreadCount }))) {
                         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                                 "SlockInboxScope",
-                                "inbox_count_override serverId=${serverId.value} filter=${filter.wireValue} offset=$offset wireTotal=${wireTotalCount ?: -1} wireUnread=${wireTotalUnreadCount ?: -1} itemCount=$derivedTotalCount itemUnread=$derivedTotalUnreadCount"
+                                "inbox_count_override serverId=${serverId.value} filter=${filter.wireValue} offset=$offset wireTotal=${parsed.totalCount} wireUnread=${parsed.totalUnreadCount} itemCount=${items.size} itemUnread=${items.sumOf { it.unreadCount }}"
                         )
                     }
                     InboxSnapshot(
                             server = context.server,
                             items = items,
-                            totalCount = totalCount,
-                            totalUnreadCount = totalUnreadCount,
-                            hasMore = json.boolean("hasMore") ?: false,
+                            totalCount = parsed?.totalCount ?: items.size,
+                            totalUnreadCount =
+                                    parsed?.totalUnreadCount ?: items.sumOf { it.unreadCount },
+                            hasMore = parsed?.hasMore ?: false,
                             nextOffset = offset + items.size
                     )
                 }
@@ -1531,19 +1518,14 @@ class RealSavedRepository(private val store: AuthSessionStore, private val api: 
                 block = { api.saved(currentSlockApiPriority(), limit, offset) },
                 emptyWhen = { it.items.isEmpty() },
                 mapper = { json ->
-                    val items =
-                            json.items("items", "messages", "saved")
-                                    .mapNotNull {
-                                        it.asObject()
-                                                .toInboxItem(defaultKind = InboxItemKind.Channel)
-                                    }
-                                    .distinctBy { it.key }
+                    val parsed = ai.slock.compose.data.parseSharedSavedItems(json.toString())
+                            ?: ai.slock.compose.data.SharedSavedItems(emptyList(), false, 0)
                     SavedSnapshot(
                             server = context.server,
-                            items = items,
-                            totalCount = json.int("totalCount") ?: items.size,
-                            hasMore = json.boolean("hasMore") ?: false,
-                            nextOffset = offset + items.size
+                            items = parsed.items,
+                            totalCount = parsed.totalCount,
+                            hasMore = parsed.hasMore,
+                            nextOffset = offset + parsed.items.size
                     )
                 }
         )
@@ -1578,20 +1560,15 @@ class RealSearchRepository(private val store: AuthSessionStore, private val api:
                 },
                 emptyWhen = { it.items.isEmpty() },
                 mapper = { json ->
-                    val items =
-                            json.items("results")
-                                    .mapNotNull {
-                                        it.asObject()
-                                                .toInboxItem(defaultKind = InboxItemKind.Channel)
-                                    }
-                                    .distinctBy { it.key }
+                    val parsed = ai.slock.compose.data.parseSharedSearchItems(json.toString())
+                            ?: ai.slock.compose.data.SharedSearchItems(emptyList(), false)
                     SearchSnapshot(
                             server = context.server,
                             query = query,
-                            items = items,
-                            totalCount = items.size,
-                            hasMore = json.boolean("hasMore") ?: false,
-                            nextOffset = offset + items.size
+                            items = parsed.items,
+                            totalCount = parsed.items.size,
+                            hasMore = parsed.hasMore,
+                            nextOffset = offset + parsed.items.size
                     )
                 }
         )
@@ -1975,37 +1952,24 @@ class RealConversationRepository(
                 source = source,
                 warningLogger = warningLogger,
                 mapper = { json ->
-                    val unwrapped = json.unwrap("thread", "summary", "data")
                     val parsedThreadChannelId =
-                            unwrapped.threadActionThreadChannelId()
-                                    ?: json.threadActionThreadChannelId()
+                            json.string("threadChannelId")
                                     ?: fallbackThreadChannelId?.value
                                     ?: error("thread action response missing thread channel id")
+                    val replyCount = json.int("replyCount") ?: 0
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                             "SlockThreadReplies",
                             "thread_action_result source=$source " +
                                     "threadChannelId=$parsedThreadChannelId " +
                                     "fallback=${fallbackThreadChannelId?.value.orEmpty()} " +
                                     "parentMessageId=${fallbackParentMessageId?.value.orEmpty()} " +
-                                    "replyCount=${unwrapped.replyCountFromAliases() ?: json.replyCountFromAliases() ?: 0}"
+                                    "replyCount=$replyCount"
                     )
                     ThreadActionResult(
                             threadChannelId = ChannelId(parsedThreadChannelId),
-                            changed = unwrapped.boolean("changed", "ok", "success")
-                                            ?: json.boolean("changed", "ok", "success") ?: true,
-                            parentMessageId =
-                                    unwrapped
-                                            .string("parentMessageId", "parentId", "rootMessageId")
-                                            ?.let(::MessageId)
-                                            ?: json.string(
-                                                            "parentMessageId",
-                                                            "parentId",
-                                                            "rootMessageId"
-                                                    )
-                                                    ?.let(::MessageId)
-                                                    ?: fallbackParentMessageId,
-                            replyCount = unwrapped.replyCountFromAliases()
-                                            ?: json.replyCountFromAliases() ?: 0
+                            changed = json.boolean("ok") ?: true,
+                            parentMessageId = fallbackParentMessageId,
+                            replyCount = replyCount
                     )
                 }
         )
@@ -2304,10 +2268,7 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
             lastMessagePreview =
                     string("lastMessagePreview", "preview", "latestActivityPreview", "content"),
             lastMessageAt = string("lastMessageAt", "updatedAt", "latestActivityAt", "createdAt"),
-            lastMessageSenderName =
-                    string("lastMessageSenderName", "senderName", "authorName")
-                            ?: firstObject("lastMessage", "latestMessage", "message")
-                                    ?.messageSenderName(),
+            lastMessageSenderName = string("lastMessageSenderName"),
             presence =
                     presence.takeIf {
                         kind != ConversationKind.DirectMessage ||
@@ -2535,265 +2496,8 @@ private fun JsonObject.archivedChannelOrNull(channelId: ChannelId): Conversation
             .copy(archived = true)
 }
 
-private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxItem? {
-    val kind =
-            defaultKind
-                    ?: when (string("kind", "type")) {
-                        "dm", "directMessage" -> InboxItemKind.DirectMessage
-                        "thread" -> InboxItemKind.Thread
-                        "system", "systemMessage", "event" -> InboxItemKind.System
-                        else -> InboxItemKind.Channel
-                    }
-        val channelId = string("channelId", "id", "threadChannelId") ?: return null
-    val threadChannelId = string("threadChannelId")
-    val key =
-            when {
-                kind == InboxItemKind.Thread && threadChannelId != null -> "thread:$threadChannelId"
-                kind == InboxItemKind.DirectMessage -> "dm:$channelId"
-                kind == InboxItemKind.System -> "system:$channelId:${string("lastMessageId", "latestActivityMessageId", "messageId", "id").orEmpty()}"
-                else -> "channel:$channelId"
-            }
-    val lastMessagePreview =
-            string("lastMessagePreview", "preview", "content", "body")
-                    ?: messagePreviewFrom("lastMessage", "latestMessage", "message")
-    val parentMessagePreview =
-            string("parentMessagePreview", "rootMessagePreview", "originalMessagePreview")
-                    ?: messagePreviewFrom("parentMessage", "rootMessage", "originalMessage")
-    val latestActivityPreview =
-            string("latestActivityPreview", "latestReplyPreview", "lastReplyPreview")
-                    ?: messagePreviewFrom(
-                            "latestActivity",
-                            "latestMessage",
-                            "lastMessage",
-                            "reply",
-                            "lastReply",
-                            "message"
-                    )
-    val mentionCount = int("mentionCount", "mentions")
-    val hasMention =
-            boolean("hasMention")
-                    ?: (mentionCount?.let { it > 0 })
-                    ?: firstObject("mentions") != null
-    return InboxItem(
-            key = string("key") ?: key,
-            kind = kind,
-            channelId = ChannelId(channelId),
-            channelName =
-                    string(
-                            "channelName",
-                            "name",
-                            "peerDisplayName",
-                            "peerName",
-                            "parentChannelName",
-                            "slug",
-                            "channelSlug"
-                    )
-                            ?: channelId,
-            unreadCount = int("unreadCount", "unread") ?: 0,
-            hasMention = hasMention,
-            firstUnreadMessageId = string("firstUnreadMessageId")?.let(::MessageId),
-            lastMessageId =
-                    string("lastMessageId", "latestMessageId", "messageId", "id")?.let(::MessageId),
-            lastMessagePreview = lastMessagePreview,
-            lastMessageAt =
-                    timestampString(
-                            "lastMessageAt",
-                            "updatedAt",
-                            "createdAt",
-                            "timestamp",
-                            "time"
-                    ) ?: messageTimestampFrom("lastMessage", "latestMessage", "message"),
-            lastMessageSenderName =
-                    string(
-                            "lastMessageSenderName",
-                            "lastMessageSenderDisplayName",
-                            "senderDisplayName",
-                            "senderName",
-                            "authorDisplayName",
-                            "authorName",
-                            "agentDisplayName",
-                            "agentName"
-                    )
-                            ?: senderNameFrom(
-                                    "lastMessageSender",
-                                    "latestMessageSender",
-                                    "sender",
-                                    "author",
-                                    "agent",
-                                    "createdBy",
-                                    "createdByUser"
-                            )
-                            ?: messageSenderNameFrom("lastMessage", "latestMessage", "message"),
-            threadChannelId = threadChannelId?.let(::ChannelId),
-            parentChannelId = string("parentChannelId")?.let(::ChannelId),
-            parentChannelName = string("parentChannelName"),
-            parentChannelKind =
-                    string("parentChannelKind", "parentChannelType")?.let {
-                        if (it == "dm") ConversationKind.DirectMessage else ConversationKind.Channel
-                    },
-            parentMessageId =
-                    string("parentMessageId", "parentId", "rootMessageId", "messageId")
-                            ?.let(::MessageId),
-            parentMessagePreview = parentMessagePreview,
-            latestActivityMessageId =
-                    string("latestActivityMessageId", "latestReplyMessageId", "lastReplyMessageId")
-                            ?.let(::MessageId)
-                            ?: messageIdFrom(
-                                            "latestActivity",
-                                            "latestMessage",
-                                            "lastMessage",
-                                            "reply",
-                                            "lastReply",
-                                            "message"
-                                    )
-                                    ?.let(::MessageId),
-            latestActivityPreview = latestActivityPreview,
-            latestActivityAt =
-                    timestampString(
-                            "latestActivityAt",
-                            "activityAt",
-                            "lastActivityAt",
-                            "lastReplyAt"
-                    ) ?: messageTimestampFrom(
-                            "latestActivity",
-                            "latestMessage",
-                            "lastMessage",
-                            "reply",
-                            "lastReply",
-                            "message"
-                    ),
-            latestActivitySenderName =
-                    string(
-                            "latestActivitySenderName",
-                            "latestActivitySenderDisplayName",
-                            "latestActivityAgentName",
-                            "latestActivityAgentDisplayName",
-                            "latestReplySenderName",
-                            "latestReplySenderDisplayName",
-                            "latestReplyAgentName",
-                            "latestReplyAgentDisplayName",
-                            "lastReplySenderName",
-                            "lastReplySenderDisplayName",
-                            "lastReplyAgentName",
-                            "lastReplyAgentDisplayName"
-                    )
-                            ?: senderNameFrom(
-                                    "latestActivitySender",
-                                    "latestActivityAuthor",
-                                    "latestActivityAgent",
-                                    "latestReplySender",
-                                    "latestReplyAuthor",
-                                    "latestReplyAgent",
-                                    "lastReplySender",
-                                    "lastReplyAuthor",
-                                    "lastReplyAgent",
-                                    "sender",
-                                    "author",
-                                    "agent"
-                            )
-                            ?: messageSenderNameFrom(
-                                    "latestActivity",
-                                    "latestMessage",
-                                    "lastMessage",
-                                    "reply",
-                                    "lastReply",
-                                    "message"
-                            ),
-            replyCount = replyCountFromAliases() ?: 0,
-            participantIds = stringList("participantIds", "participants").map(::MemberId),
-            taskNumber = int("taskNumber"),
-            taskStatus = string("taskStatus")?.toTaskStatus(),
-            taskClaimedByName = string("taskClaimedByName", "claimedByName")
-    )
-}
-
 private fun JsonObject.timestampString(vararg names: String): String? =
         string(*names) ?: long(*names)?.toString()
-
-private fun JsonObject.messagePreviewFrom(vararg objectNames: String): String? =
-        firstMessageObject(*objectNames)?.messagePreview()
-
-private fun JsonObject.messageSenderNameFrom(vararg objectNames: String): String? =
-        firstMessageObject(*objectNames)?.messageSenderName()
-
-private fun JsonObject.senderNameFrom(vararg objectNames: String): String? =
-        firstObject(*objectNames)?.messageSenderName()
-
-private fun JsonObject.messageTimestampFrom(vararg objectNames: String): String? =
-        firstMessageObject(*objectNames)
-                ?.timestampString(
-                        "timestamp",
-                        "time",
-                        "createdAt",
-                        "updatedAt",
-                        "lastActivityAt"
-                )
-
-private fun JsonObject.messageIdFrom(vararg objectNames: String): String? =
-        firstMessageObject(*objectNames)?.string("id", "messageId")
-
-private fun JsonObject.firstMessageObject(vararg objectNames: String): JsonObject? {
-    for (objectName in objectNames) {
-        val value = get(objectName) ?: continue
-        when {
-            value.isJsonObject -> return value.asJsonObject
-            value.isJsonArray ->
-                    value.asJsonArray.firstOrNull { it.isJsonObject }?.asJsonObject?.let {
-                        return it
-                    }
-        }
-    }
-    return null
-}
-
-private fun JsonObject.messagePreview(): String? =
-        string("preview", "content", "body", "text", "message", "title")
-
-private fun JsonObject.messageSenderName(): String? =
-        string(
-                        "senderName",
-                        "senderDisplayName",
-                        "authorName",
-                        "authorDisplayName",
-                        "displayName",
-                        "name",
-                        "username",
-                        "handle",
-                        "agentDisplayName",
-                        "agentName"
-                )
-                ?: firstObject("author", "sender", "member", "user", "agent")
-                        ?.string("displayName", "name", "username", "handle", "email")
-
-private fun JsonObject.replyCountFromAliases(): Int? {
-    int(
-                    "replyCount",
-                    "replies",
-                    "threadReplyCount",
-                    "repliesCount",
-                    "threadRepliesCount",
-                    "commentsCount",
-                    "childCount"
-            )
-            ?.let {
-                return it
-            }
-    for (objectName in
-            listOf(
-                    "thread",
-                    "replyThread",
-                    "messageThread",
-                    "repliesThread",
-                    "summary",
-                    "data",
-                    "meta"
-            )) {
-        firstObject(objectName)?.replyCountFromAliases()?.let {
-            return it
-        }
-    }
-    return null
-}
 
 private fun JsonObject.toThreadSnapshot(
         context: NetworkServerContext,
@@ -2984,18 +2688,14 @@ private fun JsonObject.hasNonBlankString(vararg names: String): Boolean =
         names.any { name -> string(name)?.isNotBlank() == true }
 
 private fun JsonObject.toThreadListSnapshot(context: NetworkServerContext): ThreadListSnapshot {
-    val threads =
-            items("threads", "items", "data")
-                    .mapNotNull { element ->
-                        element.asObjectOrNull()?.toInboxItem(defaultKind = InboxItemKind.Thread)
-                    }
-                    .distinctBy { it.key }
+    val parsed = ai.slock.compose.data.parseSharedThreadListItems(this.toString())
+            ?: ai.slock.compose.data.SharedThreadListItems(emptyList(), 0, false, null)
     return ThreadListSnapshot(
             server = context.server,
-            threads = threads,
-            totalCount = int("totalCount", "count") ?: threads.size,
-            hasMore = boolean("hasMore") ?: false,
-            nextOffset = int("nextOffset", "offset")
+            threads = parsed.items,
+            totalCount = parsed.totalCount,
+            hasMore = parsed.hasMore,
+            nextOffset = parsed.nextOffset
     )
 }
 
@@ -4680,23 +4380,6 @@ private fun JsonObject.firstObject(vararg names: String): JsonObject? {
     }
     return null
 }
-
-private fun JsonObject.threadActionThreadChannelId(): String? =
-        string(
-                        "threadChannelId",
-                        "replyThreadChannelId",
-                        "repliesThreadChannelId",
-                        "childThreadChannelId",
-                        "replyChannelId",
-                        "replyThreadId",
-                        "commentsThreadChannelId"
-                )
-                ?: firstObject("channel", "threadChannel", "replyThread", "thread")
-                        ?.string(
-                                "threadChannelId",
-                                "channelId",
-                                "id"
-                        )
 
 private fun ChannelId.toThreadActionBody(): RequestBody =
         mapOf("threadChannelId" to value, "channelId" to value).toJsonBody()
