@@ -2206,35 +2206,27 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
     val avatarWireValue = conversationAvatarWireValue()
     val unreadCount = int("unreadCount", "unread")
     val mentionCount = int("mentionCount", "mentions")
-    val hasDraft = boolean("hasDraft", "draft", "has_draft")
+    val hasDraft = boolean("hasDraft", "draft")
     val agentStatus =
             string(
                             "agentStatus",
-                            "agent_status",
                             "activity",
                             "agentActivity",
-                            "agent_activity",
                             "agentStatusLabel",
-                            "agent_status_label",
                             "connectionStatus",
-                            "connection_status",
                             "state",
                             "agentState",
-                            "agent_state",
-                            "agentPresence",
-                            "agentStatus"
+                            "agentPresence"
                     )
                     .toAgentStatusOrNull()
                     ?: presenceSource
                             ?.string(
                                     "agentStatus",
-                                    "agent_status",
                                     "activity",
                                     "status",
                                     "presence",
                                     "availability",
                                     "connectionStatus",
-                                    "connection_status",
                                     "state"
                             )
                             .toAgentStatusOrNull()
@@ -2268,9 +2260,9 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
                                     "state"
                             )
                             .toPresenceOrNull()
-    val rawThreadChannelId = string("threadChannelId", "thread_channel_id")
-    val rawParentChannelId = string("parentChannelId", "parent_channel_id")
-    val rawParentMessageId = string("parentMessageId", "parent_message_id", "rootMessageId", "root_message_id")
+    val rawThreadChannelId = string("threadChannelId")
+    val rawParentChannelId = string("parentChannelId")
+    val rawParentMessageId = string("parentMessageId", "rootMessageId")
     val resolvedKind =
             if (kind == ConversationKind.Thread || (rawThreadChannelId != null && rawParentMessageId != null)) {
                 ConversationKind.Thread
@@ -2354,12 +2346,8 @@ private fun JsonObject.toConversation(kind: ConversationKind, id: String): Conve
                     int(
                             "memberCount",
                             "membersCount",
-                            "member_count",
-                            "members_count",
                             "participantCount",
-                            "participantsCount",
-                            "participant_count",
-                            "participants_count"
+                            "participantsCount"
                     ),
             permissions =
                     ConversationPermissions(
@@ -2496,12 +2484,10 @@ private fun JsonObject.conversationAvatarWireValue(): String? =
         avatarWireValue(
                 "avatarUrl",
                 "avatar",
-                "avatar_url",
                 "imageUrl",
                 "profileImageUrl",
                 "peerAvatarUrl",
                 "peerAvatar",
-                "peerAvatar_url",
                 "agentAvatarUrl",
                 "agentAvatar",
                 "userAvatarUrl",
@@ -2511,7 +2497,6 @@ private fun JsonObject.conversationAvatarWireValue(): String? =
                         ?.avatarWireValue(
                                 "avatarUrl",
                                 "avatar",
-                                "avatar_url",
                                 "imageUrl",
                                 "profileImageUrl"
                         )
@@ -2523,7 +2508,7 @@ private fun JsonObject.channelJoined(): Boolean {
     return when (string("membership", "membershipStatus", "memberStatus", "joinStatus")?.lowercase()
     ) {
         "joined", "member", "active", "owner", "admin" -> true
-        "left", "unjoined", "not_joined", "not-member", "not_member", "none", "removed" -> false
+        "left", "unjoined", "none", "removed" -> false
         else -> true
     }
 }
@@ -2531,7 +2516,7 @@ private fun JsonObject.channelJoined(): Boolean {
 private fun JsonObject.joinedChannelOrNull(channelId: ChannelId): ConversationSummary? {
     val channelObject = firstObject("channel", "data") ?: this
     val hasChannelShape =
-            channelObject.string("id", "channelId", "threadChannelId", "_id") != null ||
+            channelObject.string("id", "channelId", "threadChannelId") != null ||
                     channelObject.string("name", "channelName", "title") != null
     if (!hasChannelShape) return null
     return channelObject
@@ -2542,7 +2527,7 @@ private fun JsonObject.joinedChannelOrNull(channelId: ChannelId): ConversationSu
 private fun JsonObject.archivedChannelOrNull(channelId: ChannelId): ConversationSummary? {
     val channelObject = firstObject("channel", "data") ?: this
     val hasChannelShape =
-            channelObject.string("id", "channelId", "threadChannelId", "_id") != null ||
+            channelObject.string("id", "channelId", "threadChannelId") != null ||
                     channelObject.string("name", "channelName", "title") != null
     if (!hasChannelShape) return null
     return channelObject
@@ -2554,9 +2539,9 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
     val kind =
             defaultKind
                     ?: when (string("kind", "type")) {
-                        "dm", "direct_message", "directMessage" -> InboxItemKind.DirectMessage
+                        "dm", "directMessage" -> InboxItemKind.DirectMessage
                         "thread" -> InboxItemKind.Thread
-                        "system", "system_message", "systemMessage", "event" -> InboxItemKind.System
+                        "system", "systemMessage", "event" -> InboxItemKind.System
                         else -> InboxItemKind.Channel
                     }
         val channelId = string("channelId", "id", "threadChannelId") ?: return null
@@ -2586,7 +2571,7 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
                     )
     val mentionCount = int("mentionCount", "mentions")
     val hasMention =
-            boolean("hasMention", "has_mention")
+            boolean("hasMention")
                     ?: (mentionCount?.let { it > 0 })
                     ?: firstObject("mentions") != null
     return InboxItem(
@@ -2614,9 +2599,7 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
                     timestampString(
                             "lastMessageAt",
                             "updatedAt",
-                            "updated_at",
                             "createdAt",
-                            "created_at",
                             "timestamp",
                             "time"
                     ) ?: messageTimestampFrom("lastMessage", "latestMessage", "message"),
@@ -2668,11 +2651,8 @@ private fun JsonObject.toInboxItem(defaultKind: InboxItemKind? = null): InboxIte
             latestActivityAt =
                     timestampString(
                             "latestActivityAt",
-                            "latest_activity_at",
                             "activityAt",
-                            "activity_at",
                             "lastActivityAt",
-                            "last_activity_at",
                             "lastReplyAt"
                     ) ?: messageTimestampFrom(
                             "latestActivity",
@@ -2745,15 +2725,12 @@ private fun JsonObject.messageTimestampFrom(vararg objectNames: String): String?
                         "timestamp",
                         "time",
                         "createdAt",
-                        "created_at",
                         "updatedAt",
-                        "updated_at",
-                        "lastActivityAt",
-                        "last_activity_at"
+                        "lastActivityAt"
                 )
 
 private fun JsonObject.messageIdFrom(vararg objectNames: String): String? =
-        firstMessageObject(*objectNames)?.string("id", "_id", "messageId")
+        firstMessageObject(*objectNames)?.string("id", "messageId")
 
 private fun JsonObject.firstMessageObject(vararg objectNames: String): JsonObject? {
     for (objectName in objectNames) {
@@ -2791,18 +2768,12 @@ private fun JsonObject.messageSenderName(): String? =
 private fun JsonObject.replyCountFromAliases(): Int? {
     int(
                     "replyCount",
-                    "reply_count",
                     "replies",
-                    "replies_count",
                     "threadReplyCount",
-                    "thread_reply_count",
                     "repliesCount",
                     "threadRepliesCount",
-                    "thread_replies_count",
                     "commentsCount",
-                    "comments_count",
-                    "childCount",
-                    "child_count"
+                    "childCount"
             )
             ?.let {
                 return it
@@ -3383,8 +3354,8 @@ private fun JsonObject.toAgentReminderSummary(): AgentReminderSummary? {
     return AgentReminderSummary(
             id = id,
             title = string("title", "body", "text", "content") ?: "Reminder",
-            fireAt = string("fireAt", "fire_at", "scheduledAt", "scheduled_at"),
-            recurrenceDescription = string("recurrenceDescription", "recurrence_description")
+            fireAt = string("fireAt", "scheduledAt"),
+            recurrenceDescription = string("recurrenceDescription")
                             ?: recurrence?.string("description", "label"),
             messageRef = string("msgRef", "messageRef", "messageId"),
             messagePermalink = string("msgPermalink", "permalink", "messagePermalink"),
@@ -3412,7 +3383,7 @@ private fun JsonObject.toAgentActivityEntry(): AgentActivityEntry? {
             id = id,
             type = type,
             title = title,
-            body = entry.string("body", "text", "content", "message", "detail", "activityDetail", "toolName", "tool_name", "name")
+            body = entry.string("body", "text", "content", "message", "detail", "activityDetail", "toolName", "name")
                             ?: entry.string("status", "activity")
                             ?: string("detail", "activityDetail"),
             timestamp = agentActivityTimestamp(),
@@ -3428,19 +3399,15 @@ private fun JsonObject.toAgentSkillsSnapshot(agentId: MemberId): AgentSkillsSnap
 private fun JsonObject.agentSkillGroups(): List<AgentSkillGroup> {
     val groupObjects =
             listOfNotNull(
-                    firstObject("skillGroups", "skill_groups"),
-                    firstObject("skillsByScope", "skills_by_scope"),
-                    firstObject("skillsByPath", "skills_by_path"),
+                    firstObject("skillGroups"),
+                    firstObject("skillsByScope"),
+                    firstObject("skillsByPath"),
                     firstObject(
                             "skills",
                             "aiSkills",
-                            "ai_skills",
                             "availableSkills",
-                            "available_skills",
                             "codexSkills",
-                            "codex_skills",
-                            "installedSkills",
-                            "installed_skills"
+                            "installedSkills"
                     )
             )
     val objectGroups =
@@ -3458,10 +3425,10 @@ private fun JsonObject.agentSkillGroups(): List<AgentSkillGroup> {
                         value.toAgentSkillGroup(defaultTitle = key.toSkillGroupTitle())
                     }
     val namedGroups =
-            items("skillGroups", "skill_groups", "groups")
+            items("skillGroups", "groups")
                     .mapNotNull { it.toAgentSkillGroup(defaultTitle = "Skills") }
     val directSkills =
-            items("skills", "aiSkills", "ai_skills", "availableSkills", "available_skills", "codexSkills", "codex_skills", "installedSkills", "installed_skills")
+            items("skills", "aiSkills", "availableSkills", "codexSkills", "installedSkills")
                     .mapNotNull { it.toParsedAgentSkill(defaultGroup = "Skills") }
     val directGroup =
             if (directSkills.isNotEmpty()) listOf(directSkills.toAgentSkillGroup("Skills")) else emptyList()
@@ -3482,7 +3449,7 @@ private fun JsonElement.toAgentSkillGroup(defaultTitle: String): AgentSkillGroup
                     obj.items("skills", "items", "data")
                             .mapNotNull { it.toParsedAgentSkill(defaultGroup = title) }
             val pathGroups =
-                    obj.items("paths", "pathGroups", "path_groups", "directories")
+                    obj.items("paths", "pathGroups", "directories")
                             .mapNotNull { it.toAgentSkillPathGroup(defaultGroup = title) } +
                             obj.entrySet()
                                     .filter { (_, value) -> value.isJsonArray }
@@ -3544,7 +3511,7 @@ private fun JsonElement.toParsedAgentSkill(
         isJsonObject -> {
             val obj = asJsonObject
             val name =
-                    obj.string("name", "id", "title", "skill", "slug", "displayName", "display_name")
+                    obj.string("name", "id", "title", "skill", "slug", "displayName")
                             ?: return null
             ParsedAgentSkill(
                     group =
@@ -3552,7 +3519,7 @@ private fun JsonElement.toParsedAgentSkill(
                                     ?.toSkillGroupTitle()
                                     ?: defaultGroup,
                     path =
-                            obj.string("path", "directory", "dir", "root", "sourcePath", "source_path")
+                            obj.string("path", "directory", "dir", "root", "sourcePath")
                                     ?: defaultPath
                                     ?: defaultGroup,
                     name = name,
@@ -3640,7 +3607,6 @@ private fun JsonObject.agentActivityDetails(): List<Pair<String, String>> {
                     "label",
                     "timestamp",
                     "createdAt",
-                    "created_at",
                     "time"
             )
     return entrySet()
@@ -3699,8 +3665,8 @@ private fun String.agentActivityDetailLabel(): String =
                 .replaceFirstChar { it.uppercase() }
 
 private fun JsonObject.agentActivityTimestamp(): String? =
-        string("timestamp", "createdAt", "created_at", "time")
-                ?: long("timestamp", "createdAt", "created_at", "time")?.toString()
+        string("timestamp", "createdAt", "time")
+                ?: long("timestamp", "createdAt", "time")?.toString()
 
 private fun String?.toAgentActivityTypeOrNull(): String? =
         when (val normalized = this?.lowercase()) {
@@ -3938,11 +3904,8 @@ private fun JsonObject.memberComputerName(): String? {
     val direct =
             string(
                     "computerName",
-                    "computer_name",
                     "machineName",
-                    "machine_name",
                     "deviceName",
-                    "device_name",
                     "hostname",
                     "hostName"
             )
@@ -3966,11 +3929,8 @@ private fun JsonObject.memberComputerId(): String? {
     val direct =
             string(
                     "computerId",
-                    "computer_id",
                     "machineId",
-                    "machine_id",
-                    "daemonId",
-                    "daemon_id"
+                    "daemonId"
             )
     if (!direct.isNullOrBlank()) return direct
     val nested =
@@ -3978,11 +3938,8 @@ private fun JsonObject.memberComputerId(): String? {
                     ?.string(
                             "id",
                             "computerId",
-                            "computer_id",
                             "machineId",
-                            "machine_id",
-                            "daemonId",
-                            "daemon_id"
+                            "daemonId"
                     )
     if (!nested.isNullOrBlank()) return nested
     return nestedMemberObject()?.memberComputerId()
@@ -3994,11 +3951,8 @@ private fun JsonObject.agentWorkspaceSnapshots(): List<SettingsComputerWorkspace
                             "workspaces",
                             "workspace",
                             "workspaceRoots",
-                            "workspace_roots",
                             "workspaceDirectories",
-                            "workspace_directories",
-                            "workspacePaths",
-                            "workspace_paths"
+                            "workspacePaths"
                     )
                     .mapNotNull { it.toAgentWorkspaceSnapshot() }
     return if (direct.isNotEmpty()) {
@@ -4085,8 +4039,8 @@ private fun JsonElement.toAgentWorkspaceSnapshot(): SettingsComputerWorkspaceSna
         }
 
 private fun JsonObject.toAgentWorkspaceSnapshotFromObject(): SettingsComputerWorkspaceSnapshot? {
-    val path = string("path", "workspacePath", "workspace_path", "root", "directory", "dir")
-    val id = string("id", "_id", "workspaceId", "workspace_id") ?: path
+    val path = string("path", "workspacePath", "root", "directory", "dir")
+    val id = string("id", "workspaceId") ?: path
     if (id.isNullOrBlank()) return null
     return SettingsComputerWorkspaceSnapshot(
             id = id,
@@ -4098,7 +4052,7 @@ private fun JsonObject.toAgentWorkspaceSnapshotFromObject(): SettingsComputerWor
             statusLabel =
                     string("status", "state", "health")
                             ?: if (boolean("active", "online") == true) "active" else null,
-            lastActiveLabel = string("lastActiveAt", "last_active_at", "updatedAt", "updated_at")
+            lastActiveLabel = string("lastActiveAt", "updatedAt")
     )
 }
 
@@ -4182,7 +4136,7 @@ private fun JsonObject.directArrayItems(name: String): List<com.google.gson.Json
         get(name)?.takeIf { it.isJsonArray }?.asJsonArray?.toList().orEmpty()
 
 private fun JsonObject.sizeNumberLabel(): String? =
-        long("sizeBytes", "size_bytes", "bytes", "byteSize", "byte_size")
+        long("sizeBytes", "bytes", "byteSize")
                 ?.let { bytes -> "$bytes B" }
 
 private val MemberProfile.memberKey: String
@@ -4346,7 +4300,6 @@ private fun JsonObject.toMessageAuthorProfile(): MemberProfile {
                             "userGravatarHash",
                             "userGravatar",
                             "gravatarHash",
-                            "gravatar_hash",
                             "gravatar"
                     )
                             ?: nestedAuthor?.gravatarHash,
@@ -4771,28 +4724,18 @@ private fun JsonObject.firstObject(vararg names: String): JsonObject? {
 private fun JsonObject.threadActionThreadChannelId(): String? =
         string(
                         "threadChannelId",
-                        "thread_channel_id",
                         "replyThreadChannelId",
-                        "reply_thread_channel_id",
                         "repliesThreadChannelId",
-                        "replies_thread_channel_id",
                         "childThreadChannelId",
-                        "child_thread_channel_id",
                         "replyChannelId",
-                        "reply_channel_id",
                         "replyThreadId",
-                        "reply_thread_id",
-                        "commentsThreadChannelId",
-                        "comments_thread_channel_id"
+                        "commentsThreadChannelId"
                 )
                 ?: firstObject("channel", "threadChannel", "replyThread", "thread")
                         ?.string(
                                 "threadChannelId",
-                                "thread_channel_id",
                                 "channelId",
-                                "channel_id",
-                                "id",
-                                "_id"
+                                "id"
                         )
 
 private fun ChannelId.toThreadActionBody(): RequestBody =
