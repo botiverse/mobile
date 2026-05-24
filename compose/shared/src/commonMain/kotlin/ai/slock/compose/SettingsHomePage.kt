@@ -96,6 +96,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.material3.navigation.composable
 import com.tencent.kuikly.compose.material3.navigation.rememberNavController
 import com.tencent.kuikly.compose.setContent
+import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
@@ -712,8 +713,12 @@ private fun SlockAppShellContent() {
             }
         }
         composable(AppShellRouteMain) {
-            Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-                Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = slockAppBottomTabBarContentInset(bottomSafeArea))
+                ) {
                     when (selectedTab) {
                         "settings" -> {
                             SettingsAppShellContent(
@@ -798,7 +803,9 @@ private fun SlockAppShellContent() {
                             selectedSettingsDestination = SettingsDestinationHome
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter),
                     bottomSafeArea = bottomSafeArea
                 )
             }
@@ -2608,92 +2615,100 @@ private fun BottomTabBarSmokeContent() {
     val bottomSafeArea = slockBottomSafeAreaPadding()
     var selectedTab by remember { mutableStateOf("tasks") }
     val smokeItems = bottomTabBarSmokeItems.map { item -> item.copy(selected = item.key == selectedTab) }
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = slockAppBottomTabBarContentInset(bottomSafeArea))
         ) {
-            Text(
-                "Bottom TabBar",
-                style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                "Harmony smoke preview",
-                style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                smokeItems.forEach { item ->
-                    Text(
-                        text = item.label,
-                        style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-        Spacer(modifier = Modifier.height(14.dp))
-        Text(
-            "Edge",
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        SlockBottomTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth())
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            "Floating Dock",
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        SlockFloatingDockTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth())
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            "Navigation Rail",
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Row(modifier = Modifier.fillMaxWidth().height(140.dp)) {
-            SlockNavigationRailTabBar(items = smokeItems, onSelect = { selectedTab = it })
             Column(
-                modifier = Modifier.weight(1f).fillMaxSize().background(SlockColor.AppBgLightBlue).padding(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    "Rail layout",
+                    "Bottom TabBar",
                     style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    "Shared TabBar variant parity with Android",
+                    "Harmony smoke preview",
                     style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    smokeItems.forEach { item ->
+                        Text(
+                            text = item.label,
+                            style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
+                            color = SlockColor.TextMutedGray,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                "Edge",
+                style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            SlockBottomTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                "Floating Dock",
+                style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            SlockFloatingDockTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                "Navigation Rail",
+                style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Row(modifier = Modifier.fillMaxWidth().height(140.dp)) {
+                SlockNavigationRailTabBar(items = smokeItems, onSelect = { selectedTab = it })
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxSize().background(SlockColor.AppBgLightBlue).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        "Rail layout",
+                        style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        "Shared TabBar variant parity with Android",
+                        style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.weight(1f))
         }
-        Spacer(modifier = Modifier.weight(1f))
         SlockAppBottomTabBarHost(
             items = smokeItems,
             onSelect = { selectedTab = it },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter),
             bottomSafeArea = bottomSafeArea
         )
     }

@@ -68,6 +68,20 @@ private enum class SlockAppTabBarRenderer {
     OhosHdsImmersive
 }
 
+private val SlockSharedBottomTabBarHeight = 58.dp
+private val SlockOhosHdsBottomTabBarHostHeight = 92.dp
+private val SlockBottomTabBarFloatingMargin = SlockSpacing.Md
+
+@Composable
+internal fun slockAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {
+    val hostHeight =
+        when (slockAppTabBarRenderer()) {
+            SlockAppTabBarRenderer.OhosHdsImmersive -> SlockOhosHdsBottomTabBarHostHeight
+            SlockAppTabBarRenderer.SharedCompose -> SlockSharedBottomTabBarHeight
+        }
+    return hostHeight + bottomSafeArea + SlockBottomTabBarFloatingMargin
+}
+
 @Composable
 internal fun SlockVerticalTabBar(
     items: List<SlockTabItemPayload>,
@@ -168,14 +182,19 @@ internal fun SlockAppBottomTabBarHost(
         )
         return
     }
-    Column(modifier = modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(SlockSharedBottomTabBarHeight + bottomSafeArea)
+    ) {
         SlockBottomTabBar(
             items = items,
             onSelect = onSelect,
-            modifier = Modifier.fillMaxWidth().offset(y = -SlockStroke.Default)
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .offset(y = -SlockStroke.Default)
         )
-        Spacer(modifier = Modifier.fillMaxWidth().height(SlockSpacing.Xs))
-        Spacer(modifier = Modifier.fillMaxWidth().height(bottomSafeArea))
     }
 }
 
@@ -186,10 +205,10 @@ private fun SlockOhosHdsBottomTabBarHost(
     modifier: Modifier = Modifier,
     bottomSafeArea: Dp = 0.dp
 ) {
-    Column(
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(SlockColor.SurfaceWhite)
+            .height(SlockOhosHdsBottomTabBarHostHeight + bottomSafeArea)
     ) {
         SlockOhosHdsTabBar(
             items = items,
@@ -197,9 +216,9 @@ private fun SlockOhosHdsBottomTabBarHost(
             bottomSafeArea = 0.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(92.dp)
+                .height(SlockOhosHdsBottomTabBarHostHeight)
+                .align(Alignment.TopCenter)
         )
-        Spacer(modifier = Modifier.fillMaxWidth().height(bottomSafeArea))
     }
 }
 
