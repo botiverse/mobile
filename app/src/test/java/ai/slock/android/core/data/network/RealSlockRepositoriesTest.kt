@@ -602,33 +602,6 @@ class RealSlockRepositoriesTest {
     }
 
     @Test
-    fun taskRepositoryMapsTimestampAliasesForDefaultRecentSorting() {
-        val repository = RealTaskRepository(
-            store = InMemoryAuthSessionStore(sampleSession),
-            api = FakeSlockApi(
-                serverTasksJson = """
-                    {
-                      "tasks": [
-                        {"id":"task-1","title":"Epoch task","timestamp":1778335200000},
-                        {"id":"task-2","title":"Activity task","latestActivityAt":"2026-05-09 22:00:00+08:00"}
-                      ]
-                    }
-                """.trimIndent()
-            )
-        )
-
-        val result = runSuspend { repository.getTasks(ServerId("server-1"), TaskFilter()) }
-
-        assertTrue(result is DataResult.Content)
-        val tasks = (result as DataResult.Content).data.tasks
-        assertEquals("1778335200000", tasks.first { it.title == "Epoch task" }.updatedAtLabel)
-        assertEquals(
-            "2026-05-09 22:00:00+08:00",
-            tasks.first { it.title == "Activity task" }.updatedAtLabel
-        )
-    }
-
-    @Test
     fun savedAndSearchMapItemsAndBlankSearchReturnsEmpty() {
         val store = InMemoryAuthSessionStore(sampleSession)
         val api = FakeSlockApi(
@@ -1491,12 +1464,11 @@ class RealSlockRepositoriesTest {
                       "title": "Wire tasks",
                       "status": "in_progress",
                       "taskNumber": 181,
-                      "messageId": "message-1",
-                      "parentMessageId": "parent-message-1",
-                      "threadChannelId": "thread-message-1",
+                      "messageId": "parent-message-1",
+                      "threadId": "thread-message-1",
                       "claimedById": "user-1",
                       "claimedByName": "Artin",
-                      "channel": {"name": "android-dev"},
+                      "channelName": "android-dev",
                       "updatedAt": "Today"
                     },
                     {

@@ -3279,8 +3279,8 @@ private fun JsonObject.toMessage(fallbackThreadId: ThreadId): Message? {
                                                     } else null
                                                 }
                                 TaskSummary(
-                                        id = TaskId(string("taskId") ?: id),
-                                        title = string("taskTitle")
+                                        id = TaskId(id),
+                                        title = string("content")
                                                         ?: taskNum?.let { "#$it" } ?: "",
                                         status = taskStatus?.toTaskStatus() ?: TaskStatus.Todo,
                                         taskNumber = taskNum,
@@ -4318,50 +4318,20 @@ private fun JsonObject.toMessageAuthorProfile(): MemberProfile {
 }
 
 private fun JsonObject.toTaskSummary(): TaskSummary? {
-    val id = string("id", "taskId") ?: return null
-    val taskNumber = int("taskNumber", "number")
+    val id = string("id") ?: return null
+    val taskNumber = int("taskNumber")
     val title = taskDisplayTitle(taskNumber) ?: return null
-    val assignee =
-            firstObject(
-                            "assignee",
-                            "claimedBy",
-                            "assignedTo",
-                            "assigneeUser",
-                            "claimedByUser",
-                            "claimedByAgent"
-                    )
-                    ?.toMemberProfile()
-                    ?: claimedByFallback()
+    val assignee = claimedByFallback()
     val messageId = string("messageId")?.let(::MessageId)
-    val explicitThreadId =
-            string(
-                    "threadChannelId",
-                    "replyThreadChannelId",
-                    "replyThreadId",
-                    "repliesThreadChannelId",
-                    "childThreadChannelId",
-                    "commentsThreadChannelId"
-            )
-    val nestedThreadId =
-            firstObject("thread", "replyThread", "messageThread", "repliesThread")
-                    ?.string(
-                            "threadChannelId",
-                            "replyThreadChannelId",
-                            "replyThreadId",
-                            "id",
-                            "channelId"
-                    )
-    val fallbackThreadId = string("threadId") ?: nestedThreadId
-    val channelType = string("channelType", "type", "kind")?.lowercase()
+    val explicitThreadId = string("threadId")
+    val channelType = string("channelType")?.lowercase()
     val channelId =
-            string("channelId", "parentChannelId")
-                    ?: firstObject("channel", "parentChannel", "conversation")
-                            ?.string("id", "channelId", "parentChannelId")
-                    ?: if (channelType == "channel") fallbackThreadId else null
-    val taskThreadId = explicitThreadId ?: fallbackThreadId
+            string("channelId")
+                    ?: if (channelType == "channel") explicitThreadId else null
+    val taskThreadId = explicitThreadId
     val parentMessageId =
-            string("parentMessageId", "parentId", "rootMessageId", "threadParentMessageId")
-                    ?.let(::MessageId) ?: if (taskThreadId != null) messageId else null
+            string("parentMessageId")?.let(::MessageId)
+                    ?: if (taskThreadId != null) messageId else null
     return TaskSummary(
             id = TaskId(id),
             title = title,
@@ -4374,22 +4344,12 @@ private fun JsonObject.toTaskSummary(): TaskSummary? {
             isThreadTask =
                     parentMessageId != null ||
                             explicitThreadId != null ||
-                            (channelType == "thread" && fallbackThreadId != null),
+                            (channelType == "thread" && taskThreadId != null),
             assignee = assignee,
-            channelName =
-                    string("channelName")
-                            ?: firstObject("channel", "parentChannel", "conversation")
-                                    ?.string("name", "channelName", "slug", "channelSlug"),
+            channelName = string("channelName"),
             updatedAtLabel =
-                    timestampString(
-                            "updatedAt",
-                            "latestActivityAt",
-                            "lastActivityAt",
-                            "createdAt",
-                            "timestamp",
-                            "time"
-                    ) ?: "",
-            canClaim = boolean("canClaim") ?: true
+                    timestampString("updatedAt", "createdAt") ?: "",
+            canClaim = true
     )
 }
 
@@ -4523,16 +4483,16 @@ private fun taskSummaryCounts(tasks: List<TaskSummary>): Map<TaskStatus, Int> =
 
 private fun JsonObject.claimedByFallback(): MemberProfile? {
     val claimedById =
-            string("claimedById", "assigneeId", "assignedToId", "taskAssigneeId") ?: return null
+            string("claimedById", "taskAssigneeId") ?: return null
     val claimedByType =
-            string("claimedByType", "assigneeType", "assignedToType", "taskAssigneeType")
+            string("claimedByType", "taskAssigneeType")
     val label =
-            string("claimedByName", "assigneeName", "assignedToName", "claimedByHandle")
+            string("claimedByName", "taskAssigneeName")
                     ?: claimedById
     return MemberProfile(
             id = MemberId(claimedById),
             displayName = label,
-            handle = string("claimedByHandle", "assigneeHandle", "assignedToHandle") ?: label,
+            handle = label,
             kind = if (claimedByType == "agent") MemberKind.Agent else MemberKind.Human,
             avatarLabel = label.take(1).uppercase(),
             presence = Presence.Offline
