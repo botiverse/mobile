@@ -1,9 +1,8 @@
 # Slock DTO Migration Skill
 
-Use this skill when migrating Slock server endpoints off the legacy
-"firstObject / string(...alias, alias, alias)" wire-guessing helpers in
-[app/src/main/java/ai/slock/android/core/data/network/RealSlockRepositories.kt](app/src/main/java/ai/slock/android/core/data/network/RealSlockRepositories.kt)
-and onto strict kotlinx-serialization DTOs in the shared module.
+Use this skill when adding, changing, reviewing, or cleaning up Slock server API
+contracts. All HTTP request/response shapes must live as strict
+kotlinx-serialization DTOs in the shared module.
 
 The goal is fail-fast on contract drift: if the server renames a field, the
 parser returns `null` (or the test fixture deserializes to defaults) instead
@@ -12,14 +11,42 @@ of silently filling holes with `???` text and stale alias matches.
 ## When to use
 
 Trigger words: "DTO sweep", "strip field aliases", "remove field guessing",
-"strict parser", "migrate to shared parser", any `toXxxSummary()` /
-`toXxxSnapshot()` extension on `JsonObject` in `RealSlockRepositories.kt`
-that takes multiple alias names.
+"strict parser", "migrate to shared parser", "request body DTO", "shared
+repository", or any Android-side API/parser/repository code that duplicates a
+shared contract.
 
-Do NOT use for:
-- New endpoints that already have a shared parser.
-- Pure UI / view-model code.
-- Settings save/delete actions that have no JSON payload to map.
+Do NOT use for pure UI/view-model code, local-only persistence shape changes,
+or Android platform plumbing that does not define a server wire contract.
+
+## Current architecture
+
+The DTO sweep is complete. Treat these as the standing rules:
+
+- API response contracts live under
+  `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/` as
+  `@Serializable` camelCase DTOs and public shared parser/repository APIs.
+- API request bodies are also contracts. They must be named shared
+  `@Serializable` request DTOs/builders. Do not use `mapOf`, ad hoc
+  `JsonObject`, string concatenation, or route-local anonymous shapes.
+- Shared repositories own reusable API orchestration and consume the shared
+  `SlockNetworkClient` boundary. Android should instantiate shared
+  repositories directly.
+- Android `app/src/main/java/ai/slock/android/core/data` is for platform
+  capabilities only: encrypted auth storage, token refresh/interceptors, Ktor
+  transport/factory wiring, diagnostics, SQLDelight local store, realtime/socket
+  transport, locale, preferences, storage management, and app/demo fixtures.
+- Android must not keep product API facades or shadow repository/typealias
+  packages. In particular, do not reintroduce `RealSlockRepositories.kt`,
+  `SlockApi.kt`, `ComposeSlockApiAdapter.kt`, `NetworkResponseMapper.kt`,
+  Android `AuthRepository`/`KtorAuthRepository` wrappers, or
+  `core/data/repository` typealias shims.
+- Auth flows use shared `SharedAuthDataSource`, `SlockAuthApi`, and
+  `SlockAuthTransport`. Android `KtorAuthApi` is only the platform Ktor
+  transport, and `EncryptedAuthSessionStore` implements shared
+  `SlockAuthSessionStore` directly.
+- Shared repository behavior tests belong in
+  `compose/shared/src/commonTest/kotlin/ai/slock/compose/data`. Android tests
+  should cover platform adapters, integration, or app/demo fixture behavior.
 
 ## Canonical wire contract
 
@@ -130,27 +157,17 @@ There are TWO `InboxItem` data classes — a recurring trap:
 When in doubt, grep the call site:
 
 ```text
-grep -n "import ai.slock.compose.(data|model).InboxItem" app/src/main/java/ai/slock/android/core/data/network/RealSlockRepositories.kt
+rg -n "import ai\\.slock\\.compose\\.(data|model)\\.InboxItem" app/src/main/java compose/shared/src
 ```
 
 Same care applies to any other duplicate-named type pair.
 
 ### 4. Wire from the app
 
-In `RealSlockRepositories.kt`, replace the `mapper = { json -> json.toXxx() }`
-body with:
-
-```kotlin
-mapper = { json -> ai.slock.compose.data.parseSharedXxxSnapshot(json.toString()) },
-```
-
-Then delete the now-unused `JsonObject.toXxx()` extension and any
-`firstObject(...)` / multi-alias `string(...)` it dragged along.
-
-If multiple endpoints (e.g. `/inbox`, `/saved`, `/search`) share an
-extension, do them in a single batch and only delete the helper after the
-last caller is gone — otherwise `compileDebugKotlin` will fail on the
-dangling references.
+Wire callers to shared repository/data-source APIs directly. If Android needs a
+platform transport, keep it generic and platform-scoped (for example Ktor
+engine/factory wiring), then pass it into the shared repository boundary. Do not
+add feature-specific Android endpoint facades.
 
 ## Build & test loop
 
@@ -164,15 +181,12 @@ cd /Users/artin/AndroidStudioProjects/Slock/compose
 
 # 2. run targeted tests from repo root
 cd /Users/artin/AndroidStudioProjects/Slock
+./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin
 ./gradlew :app:testDebugUnitTest \
-  --tests "ai.slock.android.core.data.network.RealSlockRepositoriesTest*" \
-  2>&1 | grep -E "FAILED$|tests completed" | sort > /tmp/cur.txt
-diff /tmp/base.txt /tmp/cur.txt
+  --tests "ai.slock.android.core.data.quality.NetworkPriorityCallSiteTest*" \
+  --tests "ai.slock.android.core.data.mock.MockRepositoryTest*" \
+  --tests "ai.slock.android.core.data.realtime.RealtimeRepositoryTest*"
 ```
-
-`/tmp/base.txt` holds the pre-change baseline of expected failures. The
-acceptance bar is **empty diff vs baseline** (or a strictly smaller
-failure set, never larger).
 
 If you forget step 1, the app sees the previous shared snapshot and your
 new parser appears to "not exist" or "have the wrong signature". This is
@@ -204,32 +218,9 @@ dto-sweep: strict InboxParser DTO in shared; wire RealInboxRepository
 dto-sweep: strip task wire aliases to upstream canonical shape
 ```
 
-Each commit must independently:
-1. Republish + recompile the app clean.
-2. Leave `diff /tmp/base.txt /tmp/cur.txt` empty.
-3. Not leave a partially-migrated helper alive — if `toXxx()` still has
-   callers after your commit, the commit should not delete it yet.
-
-## Migration progress checklist
-
-Track open work in [docs/dto-sweep-todo.md](docs/dto-sweep-todo.md).
-Rough remaining order (low-risk → high-risk):
-
-1. **Inbox** — `parseSharedInboxSnapshot` (in flight, see InboxParser.kt).
-2. **Saved + Search** — strict DTOs (`/api/saved`, `/api/search/*`),
-   delete the last two `toInboxItem()` callers, then delete `toInboxItem`.
-3. **Conversations** — `toConversation*` family in
-   `RealSlockRepositories.kt` (~L2160-2330). Largest alias surface; do
-   after saved/search to reuse pattern.
-4. **Messages / send result** — extend `ThreadMessagesParser.WireMessage`
-   to back `parseSharedSendMessageResult` for POST `/api/messages`.
-5. **Settings** — `toAccountSettingsSnapshot`, `toConnectedAccount`, etc.
-6. **Final cleanup** — delete
-   `app/src/main/java/ai/slock/android/core/data/network/NetworkResponseMapper.kt`
-   (the home of `execute<T>{}`, `firstObject`, `items`, `string`, `int`,
-   `long`, `boolean`, `avatarWireValue`). It can only go away once every
-   `RealSlockRepositories.kt` and `RealSettingsRepository.kt` call site
-   has been migrated.
+Each commit must independently republish shared when needed, compile the app,
+and keep the architecture guards green. Do not leave a half-migrated endpoint
+with both Android and shared contracts alive.
 
 ## Anti-patterns to refuse
 
@@ -247,3 +238,5 @@ Rough remaining order (low-risk → high-risk):
 - Editing shared code under `app/src/main/java/ai/slock/compose/...`
   (it's a stale shadow tree). The real source is
   `compose/shared/src/commonMain/kotlin/ai/slock/compose/...`.
+- Reintroducing Android-side product API request wrappers, response parsers,
+  repository shadows, or typealias packages after the sweep has been closed.
