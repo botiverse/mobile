@@ -1,13 +1,14 @@
 package ai.slock.compose
 
+import ai.slock.compose.data.KeyValueTasksViewPreferenceRepository
 import ai.slock.compose.data.ScreenLoadState
-import ai.slock.compose.data.KuiklySharedPreferencesKeyValueStore
 import ai.slock.compose.data.SharedTasksRouteIntent
 import ai.slock.compose.data.TasksContent
 import ai.slock.compose.data.TasksPresentationIntent
 import ai.slock.compose.data.TasksPresentationState
 import ai.slock.compose.data.TasksUiState
 import ai.slock.compose.data.TasksViewMode
+import ai.slock.compose.data.kuiklySharedPreferenceStore
 import ai.slock.compose.data.boardColumns
 import ai.slock.compose.data.reduce
 import ai.slock.compose.data.tasksAssigneeDisplayName
@@ -228,14 +229,17 @@ private fun SharedTasksLoadedBodyContent(
     defaultViewMode: TasksViewMode
 ) {
     val pager = LocalActivity.current.getPager() as Pager
-    val viewModeStore = remember(pager) { KuiklySharedPreferencesKeyValueStore(pager, TasksViewModePreferenceNamespace) }
+    val viewModeRepository =
+        remember(pager) {
+            KeyValueTasksViewPreferenceRepository(kuiklySharedPreferenceStore(pager))
+        }
     val initialPresentationState =
-        remember(viewModeStore, defaultViewMode) {
+        remember(viewModeRepository, defaultViewMode) {
             TasksPresentationState.Default.copy(
-                selectedMode = viewModeStore.readTasksViewMode() ?: defaultViewMode
+                selectedMode = viewModeRepository.getTasksViewModeSync(defaultViewMode)
             )
         }
-    var presentationState by remember(viewModeStore) { mutableStateOf(initialPresentationState) }
+    var presentationState by remember(viewModeRepository) { mutableStateOf(initialPresentationState) }
     val sortedContent = remember(content) {
         content.copy(tasks = content.tasks.sortedByTaskDisplayOrder())
     }
@@ -319,7 +323,7 @@ private fun SharedTasksLoadedBodyContent(
                 openFilterId = presentationState.openFilterId,
                 showCreateButton = createTasksChannelId != null,
                 onModeSelected = { mode ->
-                    viewModeStore.writeTasksViewMode(mode)
+                    viewModeRepository.selectTasksViewModeSync(mode)
                     presentationState = presentationState.reduce(TasksPresentationIntent.SelectMode(mode))
                 },
                 onChannelChipClick = { anchor ->
@@ -516,28 +520,8 @@ internal fun sharedTasksLazyItemCount(
     return fixedItems + errorItems + bodyItems
 }
 
-private const val TasksViewModePreferenceNamespace = "tasks"
-private const val TasksViewModePreferenceKey = "viewMode"
-
 private fun defaultTasksViewMode(maxWidth: Dp): TasksViewMode =
     if (maxWidth < 768.dp) TasksViewMode.List else TasksViewMode.Board
-
-private fun KuiklySharedPreferencesKeyValueStore.readTasksViewMode(): TasksViewMode? =
-    when (getString(TasksViewModePreferenceKey)) {
-        "board" -> TasksViewMode.Board
-        "list" -> TasksViewMode.List
-        else -> null
-    }
-
-private fun KuiklySharedPreferencesKeyValueStore.writeTasksViewMode(mode: TasksViewMode) {
-    putString(
-        TasksViewModePreferenceKey,
-        when (mode) {
-            TasksViewMode.Board -> "board"
-            TasksViewMode.List -> "list"
-        }
-    )
-}
 
 private sealed interface SharedTasksListRow {
     val key: String

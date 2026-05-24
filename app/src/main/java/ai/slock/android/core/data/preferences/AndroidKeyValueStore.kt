@@ -1,12 +1,12 @@
 package ai.slock.android.core.data.preferences
 
 import android.content.Context
-import ai.slock.compose.data.SlockKeyValueStore
+import ai.slock.compose.data.SharedPreferenceStore
 
 class AndroidSharedPreferencesKeyValueStore(
     context: Context,
     preferencesName: String
-) : SlockKeyValueStore {
+) : SharedPreferenceStore {
     private val preferences = context.applicationContext.getSharedPreferences(
         preferencesName,
         Context.MODE_PRIVATE

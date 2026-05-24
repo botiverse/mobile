@@ -6,7 +6,6 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 
 private const val NOTIFICATION_PREFERENCE_EVENT = "slock.notificationPreferenceChanged"
-private const val NOTIFICATION_PREFERENCE_NAMESPACE = "notifications"
 private const val KEY_ENABLED = "enabled"
 private const val KEY_SOURCE = "source"
 
@@ -45,10 +44,7 @@ fun kuiklyNotificationPreferenceRepository(
         delegate =
             PersistentNotificationPreferenceRepository(
                 KeyValueNotificationPreferenceStore(
-                    KuiklySharedPreferencesKeyValueStore(
-                        pager,
-                        NOTIFICATION_PREFERENCE_NAMESPACE
-                    )
+                    kuiklySharedPreferenceStore(pager)
                 )
             ),
         events = events

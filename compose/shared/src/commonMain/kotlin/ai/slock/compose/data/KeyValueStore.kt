@@ -3,19 +3,26 @@ package ai.slock.compose.data
 import com.tencent.kuikly.core.module.SharedPreferencesModule
 import com.tencent.kuikly.core.pager.Pager
 
-interface SlockKeyValueStore {
+interface SharedPreferenceStore {
     fun getString(key: String): String?
     fun putString(key: String, value: String?)
 }
 
-fun SlockKeyValueStore.getBoolean(key: String, defaultValue: Boolean = false): Boolean =
+interface SlockKeyValueStore : SharedPreferenceStore
+
+object SlockLocalPreferenceStore {
+    const val AndroidPreferencesName = "slock_local_preferences"
+    const val KuiklyNamespace = "slockLocal"
+}
+
+fun SharedPreferenceStore.getBoolean(key: String, defaultValue: Boolean = false): Boolean =
     when (getString(key)) {
         "true" -> true
         "false" -> false
         else -> defaultValue
     }
 
-fun SlockKeyValueStore.putBoolean(key: String, value: Boolean) {
+fun SharedPreferenceStore.putBoolean(key: String, value: Boolean) {
     putString(key, value.toString())
 }
 

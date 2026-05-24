@@ -1,25 +1,9 @@
-package ai.slock.android.core.data.auth
+package ai.slock.compose.data
 
-import ai.slock.compose.data.ChannelSnapshot
-import ai.slock.compose.data.CreateServerRequest
-import ai.slock.compose.data.HomeSnapshot
-import ai.slock.compose.data.InboxSnapshot
-import ai.slock.compose.data.ServerListSnapshot
-import ai.slock.compose.data.ServerRepository
-import ai.slock.compose.data.SettingsSnapshot
-import ai.slock.android.core.model.ServerId
-import ai.slock.android.core.state.EmptyReason
-import ai.slock.android.core.state.PermissionBlocker
-import ai.slock.android.core.state.ScreenError
-import ai.slock.compose.data.DataResult
-import ai.slock.compose.data.SharedAuthDataSource
-import ai.slock.compose.data.SharedAuthErrorCode
-import ai.slock.compose.data.SharedAuthResult
-import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
-import ai.slock.compose.data.StoredAuthSession as AuthSession
+import ai.slock.compose.model.ServerId
 
 class AuthServerRepository(
-    private val store: AuthSessionStore,
+    private val store: SlockAuthSessionStore,
     private val authDataSource: SharedAuthDataSource
 ) : ServerRepository {
     override suspend fun getServers(): DataResult<ServerListSnapshot> {
@@ -73,7 +57,7 @@ class AuthServerRepository(
     override suspend fun getSettings(serverId: ServerId): DataResult<SettingsSnapshot> =
         DataResult.Error(ScreenError(code = "server_settings_not_wired", retryable = false))
 
-    private fun AuthSession.toServerListSnapshot(): ServerListSnapshot {
+    private fun StoredAuthSession.toServerListSnapshot(): ServerListSnapshot {
         val summaries = servers.map { it.toServerSummary() }
         return ServerListSnapshot(
             servers = summaries,

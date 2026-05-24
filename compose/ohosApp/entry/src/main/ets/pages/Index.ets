@@ -33,6 +33,7 @@ struct Index {
   build() {
     Stack() {
       Kuikly({
+        useOhSharedPreferences: true,
         pagerName: this.pageName ?? DEFAULT_PAGE_NAME,
         pagerData: this.pageDataWithSafeArea(),
         delegate: this.kuiklyViewDelegate,

@@ -11,7 +11,7 @@ interface NotificationPreferenceStore {
 }
 
 class KeyValueNotificationPreferenceStore(
-    private val store: SlockKeyValueStore
+    private val store: SharedPreferenceStore
 ) : NotificationPreferenceStore {
     override fun readNotificationEnabledSync(): Boolean =
         store.getBoolean(KEY_NOTIFICATION_ENABLED, false)
@@ -24,7 +24,7 @@ class KeyValueNotificationPreferenceStore(
     }
 
     private companion object {
-        const val KEY_NOTIFICATION_ENABLED = "notification_enabled"
+        const val KEY_NOTIFICATION_ENABLED = "notifications:enabled"
     }
 }
 

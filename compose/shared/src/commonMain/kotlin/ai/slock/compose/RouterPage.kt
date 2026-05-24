@@ -34,7 +34,8 @@ import com.tencent.kuikly.core.utils.urlParams
 import ai.slock.compose.base.BasePager
 import ai.slock.compose.base.bridgeModule
 import ai.slock.compose.base.Utils
-import ai.slock.compose.data.KuiklySharedPreferencesKeyValueStore
+import ai.slock.compose.data.KeyValueRouterPreferenceRepository
+import ai.slock.compose.data.kuiklySharedPreferenceStore
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 
 @Page("router", supportInLocal = true)
@@ -49,7 +50,6 @@ internal class ComposeRoutePager : BasePager() {
 
     companion object {
         const val PLACEHOLDER = "输入pageName（不区分大小写）"
-        const val CACHE_KEY = "router_last_input_key2"
         const val LOGO = "https://vfiles.gtimg.cn/wuji_dashboard/wupload/xy/starter/62394e19.png"
         const val JUMP_TEXT = "跳转"
         const val TEXT_KEY = "text"
@@ -62,8 +62,8 @@ internal class ComposeRoutePager : BasePager() {
 internal fun ComposeRouteImpl() {
     var textFieldValue by remember { mutableStateOf("") }
     val localPager = LocalActivity.current.getPager() as Pager
-    val routeStore = remember(localPager) {
-        KuiklySharedPreferencesKeyValueStore(localPager, "router")
+    val routePreferenceRepository = remember(localPager) {
+        KeyValueRouterPreferenceRepository(kuiklySharedPreferenceStore(localPager))
     }
     val statusBarHeight = LocalActivity.current.pageData.statusBarHeight
     Column(
@@ -117,7 +117,7 @@ internal fun ComposeRouteImpl() {
                     if (textFieldValue.isEmpty()) {
                         Utils.bridgeModule(localPager.pagerId).toast("请输入PageName")
                     } else {
-                        routeStore.putString(ComposeRoutePager.CACHE_KEY, textFieldValue)
+                        routePreferenceRepository.saveLastRouteInput(textFieldValue)
                         jumpPage(localPager, textFieldValue)
                     }
                 },

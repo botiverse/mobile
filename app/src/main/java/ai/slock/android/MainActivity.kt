@@ -2,7 +2,7 @@
 
 package ai.slock.android
 
-import ai.slock.android.core.data.auth.AuthServerRepository
+import ai.slock.compose.data.AuthServerRepository
 import ai.slock.compose.data.StoredAuthSession as AuthSession
 import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
@@ -10,22 +10,13 @@ import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
 import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
 import ai.slock.android.core.data.diagnostics.NetworkDiagnosticsBridge
 import ai.slock.android.core.data.diagnostics.SlockPerformanceDiagnostics
-import ai.slock.android.core.data.locale.AppLocale
-import ai.slock.android.core.data.locale.LocaleSnapshot
 import ai.slock.android.core.data.local.LocalTaskContext
 import ai.slock.android.core.data.local.LocalThreadTimeline
 import ai.slock.android.core.data.local.SlockLocalWriteThrough
 import ai.slock.android.core.data.local.createSlockLocalStore
 import ai.slock.android.core.data.local.toThreadUiState
-import ai.slock.android.core.data.locale.PersistentLocaleRepository
-import ai.slock.android.core.data.locale.SharedPreferencesLocalePreferenceStore
 import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
-import ai.slock.android.core.data.preferences.ChatLayoutPreferenceSnapshot
-import ai.slock.android.core.data.preferences.LargeScreenNavigationPreference
-import ai.slock.android.core.data.preferences.MyMessageAlignmentPreference
-import ai.slock.android.core.data.preferences.PersistentChatLayoutPreferenceRepository
-import ai.slock.android.core.data.preferences.SharedPreferencesChatLayoutPreferenceStore
-import ai.slock.android.core.data.preferences.SharedPreferencesNotificationPreferenceStore
+import ai.slock.android.core.data.preferences.AndroidSharedPreferencesKeyValueStore
 import ai.slock.android.core.data.realtime.SessionRealtimeRepository
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.android.core.data.realtime.SocketIoSocketTransport
@@ -39,6 +30,7 @@ import ai.slock.compose.data.AgentReminderSnapshot
 import ai.slock.compose.data.AgentSkillsSnapshot
 import ai.slock.compose.data.AgentWorkspaceSnapshot
 import ai.slock.compose.data.AgentWorkspaceTreeSnapshot
+import ai.slock.compose.data.AppLocale
 import ai.slock.compose.data.AttachmentUploadFile
 import ai.slock.compose.data.AttachmentUploadRequest
 import ai.slock.compose.data.ChannelJoinResult
@@ -46,6 +38,7 @@ import ai.slock.compose.data.ChannelMemberSnapshot
 import ai.slock.compose.data.ChannelRepository
 import ai.slock.compose.data.ChannelUnreadSnapshot
 import ai.slock.compose.data.ChannelFilesSnapshot
+import ai.slock.compose.data.ChatLayoutPreferenceSnapshot
 import ai.slock.compose.data.ConnectedAccountSnapshot
 import ai.slock.compose.data.ConnectedAccountStatus as RepositoryConnectedAccountStatus
 import ai.slock.compose.data.ConversationRepository
@@ -66,8 +59,14 @@ import ai.slock.compose.data.RealTaskRepository
 import ai.slock.compose.data.HomeSnapshot
 import ai.slock.compose.data.InboxSnapshot
 import ai.slock.compose.data.InboxRepository
+import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
+import ai.slock.compose.data.KeyValueLocalePreferenceStore
+import ai.slock.compose.data.KeyValueNotificationPreferenceStore
+import ai.slock.compose.data.LargeScreenNavigationPreference
+import ai.slock.compose.data.LocaleSnapshot
 import ai.slock.compose.data.MemberRepository
 import ai.slock.compose.data.MemberSnapshot
+import ai.slock.compose.data.MyMessageAlignmentPreference
 import ai.slock.compose.data.OpenDirectMessageResult
 import ai.slock.compose.data.ReadReceiptRepository
 import ai.slock.compose.data.ReadReceiptCoordinator
@@ -146,7 +145,10 @@ import ai.slock.compose.model.toGravatarAvatarReference
 import ai.slock.compose.model.withPreviewMembershipFallback
 import ai.slock.compose.model.withTitleFallback
 import ai.slock.compose.data.NotificationPreferenceRepository
+import ai.slock.compose.data.PersistentChatLayoutPreferenceRepository
+import ai.slock.compose.data.PersistentLocaleRepository
 import ai.slock.compose.data.PersistentNotificationPreferenceRepository
+import ai.slock.compose.data.SlockLocalPreferenceStore
 import ai.slock.compose.data.shouldShowSystemInboxNotification
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.ScreenError
@@ -600,16 +602,24 @@ fun SlockApp(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
-    val localeStore = remember { SharedPreferencesLocalePreferenceStore(context) }
-    val localeRepository = remember { PersistentLocaleRepository(localeStore) }
-    val chatLayoutPreferenceStore = remember { SharedPreferencesChatLayoutPreferenceStore(context) }
-    val chatLayoutPreferenceRepository = remember {
+    val localPreferenceStore =
+            remember {
+                AndroidSharedPreferencesKeyValueStore(
+                        context,
+                        SlockLocalPreferenceStore.AndroidPreferencesName
+                )
+            }
+    val localeStore = remember(localPreferenceStore) { KeyValueLocalePreferenceStore(localPreferenceStore) }
+    val localeRepository = remember(localeStore) { PersistentLocaleRepository(localeStore) }
+    val chatLayoutPreferenceStore =
+            remember(localPreferenceStore) { KeyValueChatLayoutPreferenceStore(localPreferenceStore) }
+    val chatLayoutPreferenceRepository = remember(chatLayoutPreferenceStore) {
         PersistentChatLayoutPreferenceRepository(chatLayoutPreferenceStore)
     }
-    val notificationPreferenceStore = remember {
-        SharedPreferencesNotificationPreferenceStore(context)
+    val notificationPreferenceStore = remember(localPreferenceStore) {
+        KeyValueNotificationPreferenceStore(localPreferenceStore)
     }
-    val notificationPreferenceRepository: NotificationPreferenceRepository = remember {
+    val notificationPreferenceRepository: NotificationPreferenceRepository = remember(notificationPreferenceStore) {
         PersistentNotificationPreferenceRepository(notificationPreferenceStore)
     }
     val localeScope = rememberCoroutineScope()
@@ -695,6 +705,9 @@ private fun SlockLocaleProvider(locale: AppLocale, content: @Composable () -> Un
         )
     }
 }
+
+private fun AppLocale.toJavaLocale(): java.util.Locale =
+        java.util.Locale.forLanguageTag(languageTag)
 
 @Composable
 private fun SlockAppContent(

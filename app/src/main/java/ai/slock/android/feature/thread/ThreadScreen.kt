@@ -3,7 +3,7 @@
 package ai.slock.android.feature.thread
 
 import ai.slock.android.R
-import ai.slock.android.core.data.preferences.MyMessageAlignmentPreference
+import ai.slock.compose.data.MyMessageAlignmentPreference
 import ai.slock.android.core.model.Attachment
 import ai.slock.android.core.model.AttachmentId
 import ai.slock.android.core.model.AvatarReference

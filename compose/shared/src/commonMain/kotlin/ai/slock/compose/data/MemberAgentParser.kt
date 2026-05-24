@@ -11,6 +11,10 @@ import ai.slock.compose.model.ServerSummary
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 private val memberAgentJson = Json {
     ignoreUnknownKeys = true
@@ -57,12 +61,17 @@ private data class WireAgent(
     val runtime: String? = null,
     val model: String? = null,
     val reasoningEffort: String? = null,
+    val executionMode: String? = null,
+    val computerId: String? = null,
+    val computerName: String? = null,
+    val computerHostname: String? = null,
+    val daemonVersion: String? = null,
     val creatorType: String? = null,
     val creatorId: String? = null,
     val machineId: String? = null,
     val activity: String? = null,
     val activityDetail: String? = null,
-    val runtimeProfile: WireAgentRuntimeProfile? = null,
+    val runtimeProfile: WireAgentRuntimeProfileSummary? = null,
     val createdAgents: List<WireAgentCreatedSummary> = emptyList(),
 )
 
@@ -77,12 +86,23 @@ private data class WireAgentCreatedSummary(
 )
 
 @Serializable
-private data class WireAgentRuntimeProfile(
+private data class WireAgentRuntimeProfileSummary(
+    val current: WireAgentRuntimeProfileSnapshot? = null,
+    val migrationStatus: String? = null,
+    val pending: JsonElement? = null,
+)
+
+@Serializable
+private data class WireAgentRuntimeProfileSnapshot(
     val machineId: String? = null,
-    val workspaceRefLabel: String? = null,
-    val workspaceRefPath: String? = null,
-    val workspacePathRefLabel: String? = null,
-    val workspacePathRefPath: String? = null,
+    val machineName: String? = null,
+    val daemonVersion: String? = null,
+    val runtime: String? = null,
+    val model: String? = null,
+    val reasoningEffort: String? = null,
+    val executionMode: String? = null,
+    val workspaceRef: JsonElement? = null,
+    val workspacePathRef: JsonElement? = null,
 )
 
 fun parseSharedServerMemberSnapshot(
@@ -278,23 +298,41 @@ fun parseSharedAgentWorkspaceLookup(
         .firstOrNull { it.id == agentId.value }
     agent?.let {
         SharedAgentWorkspaceLookup(
-            computerId = it.runtimeProfile?.machineId ?: it.machineId,
-            computerName = null,
-            directWorkspaces = listOfNotNull(it.runtimeProfile?.toWorkspaceSnapshot()),
+            computerId = firstNonBlank(it.computerId, it.machineId, it.runtimeProfile?.current?.machineId),
+            computerName = firstNonBlank(it.computerName, it.computerHostname, it.runtimeProfile?.current?.machineName),
+            directWorkspaces = listOfNotNull(it.runtimeProfile?.current?.toWorkspaceSnapshot()),
             fallbackWorkspaces = emptyList(),
         )
     }
 }.getOrNull()
 
-private fun WireAgentRuntimeProfile.toWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot? {
-    val path = workspaceRefPath ?: workspacePathRefPath ?: return null
-    val label = workspaceRefLabel ?: workspacePathRefLabel ?: path.substringAfterLast('/').ifBlank { path }
-    return SettingsComputerWorkspaceSnapshot(
-        id = path,
-        name = label,
-        path = path,
-    )
-}
+private fun WireAgentRuntimeProfileSnapshot.toWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot? =
+    workspaceRef.toWorkspaceSnapshot() ?: workspacePathRef.toWorkspaceSnapshot()
+
+private fun JsonElement?.toWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot? =
+    when (this) {
+        is JsonObject -> {
+            val path = stringValue("path") ?: return null
+            val label = stringValue("label") ?: path.substringAfterLast('/').ifBlank { path }
+            SettingsComputerWorkspaceSnapshot(
+                id = path,
+                name = label,
+                path = path,
+            )
+        }
+        is JsonPrimitive -> {
+            val path = contentOrNull?.takeIf { it.isNotBlank() } ?: return null
+            SettingsComputerWorkspaceSnapshot(
+                id = path,
+                name = path.substringAfterLast('/').ifBlank { path },
+                path = path,
+            )
+        }
+        else -> null
+    }
+
+private fun JsonObject.stringValue(key: String): String? =
+    (this[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
 
 @Serializable
 private data class WireAgentSkillsResponse(
@@ -428,10 +466,16 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         agentStatus = agentStatus,
         permissionBadges = listOfNotNull(
             runtime?.takeIf { it.isNotBlank() },
-            machineId?.takeIf { it.isNotBlank() }?.let { "computer-id:$it" },
+            firstNonBlank(computerName, computerHostname, runtimeProfile?.current?.machineName)
+                ?.let { "computer:$it" },
+            firstNonBlank(computerId, machineId, runtimeProfile?.current?.machineId)
+                ?.let { "computer-id:$it" },
         ),
     )
 }
+
+private fun firstNonBlank(vararg values: String?): String? =
+    values.firstOrNull { !it.isNullOrBlank() }
 
 private fun String.toSettingsLabel(): String =
     replace("_", " ")

@@ -1,10 +1,10 @@
 package ai.slock.android.feature.settings
 
 import ai.slock.android.R
-import ai.slock.android.core.data.locale.AppLocale
-import ai.slock.android.core.data.locale.LocaleSnapshot
-import ai.slock.android.core.data.preferences.LargeScreenNavigationPreference
-import ai.slock.android.core.data.preferences.MyMessageAlignmentPreference
+import ai.slock.compose.data.AppLocale
+import ai.slock.compose.data.LocaleSnapshot
+import ai.slock.compose.data.LargeScreenNavigationPreference
+import ai.slock.compose.data.MyMessageAlignmentPreference
 import ai.slock.compose.data.SettingsComputerAgentSnapshot
 import ai.slock.compose.data.SettingsComputerDetailSnapshot
 import ai.slock.compose.data.SettingsComputerSnapshot

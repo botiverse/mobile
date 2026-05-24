@@ -1,0 +1,101 @@
+package ai.slock.compose.data
+
+import ai.slock.compose.model.MemberId
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+
+class MemberAgentParserTest {
+    @Test
+    fun agentsListUsesRuntimeProfileComputerName() {
+        val members = parseSharedSettingsAgentsAsMembers(
+            """
+            [
+              {
+                "id": "agent-1",
+                "name": "builder",
+                "displayName": "Builder",
+                "status": "active",
+                "runtime": "claude",
+                "runtimeProfile": {
+                  "current": {
+                    "machineId": "machine-1",
+                    "machineName": "Mac Studio",
+                    "daemonVersion": "0.43.0"
+                  },
+                  "migrationStatus": "stable"
+                }
+              }
+            ]
+            """.trimIndent()
+        )
+
+        val profile = assertNotNull(members).single()
+        assertEquals(
+            listOf("claude", "computer:Mac Studio", "computer-id:machine-1"),
+            profile.permissionBadges
+        )
+    }
+
+    @Test
+    fun agentsListUsesProfileComputerFieldsWhenPresent() {
+        val members = parseSharedSettingsAgentsAsMembers(
+            """
+            [
+              {
+                "id": "agent-1",
+                "name": "builder",
+                "displayName": "Builder",
+                "status": "active",
+                "runtime": "claude",
+                "computerId": "computer-1",
+                "computerName": "Office Mini",
+                "computerHostname": "office-mini.local"
+              }
+            ]
+            """.trimIndent()
+        )
+
+        val profile = assertNotNull(members).single()
+        assertEquals(
+            listOf("claude", "computer:Office Mini", "computer-id:computer-1"),
+            profile.permissionBadges
+        )
+    }
+
+    @Test
+    fun workspaceLookupReadsRuntimeProfileSummaryCurrent() {
+        val lookup = parseSharedAgentWorkspaceLookup(
+            """
+            [
+              {
+                "id": "agent-1",
+                "name": "builder",
+                "status": "active",
+                "runtimeProfile": {
+                  "current": {
+                    "machineId": "machine-1",
+                    "machineName": "Mac Studio",
+                    "workspaceRef": {
+                      "label": "Slock",
+                      "path": "/Users/artin/AndroidStudioProjects/Slock",
+                      "machineId": "machine-1",
+                      "runtime": "claude",
+                      "reachable": true
+                    }
+                  },
+                  "migrationStatus": "stable"
+                }
+              }
+            ]
+            """.trimIndent(),
+            MemberId("agent-1")
+        )
+
+        val snapshot = assertNotNull(lookup)
+        assertEquals("machine-1", snapshot.computerId)
+        assertEquals("Mac Studio", snapshot.computerName)
+        assertEquals("Slock", snapshot.directWorkspaces.single().name)
+        assertEquals("/Users/artin/AndroidStudioProjects/Slock", snapshot.directWorkspaces.single().path)
+    }
+}

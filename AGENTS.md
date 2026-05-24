@@ -84,6 +84,16 @@ scripts/sync_kuikly_ai_skills.sh
 - In shared code, `KuiklySharedPreferencesKeyValueStore` namespaces are only
   key prefixes such as `tasks:viewMode`; do not reinterpret those namespaces as
   platform Preference file names.
+- Local product preferences must be represented as shared repositories over
+  `SharedPreferenceStore` in `compose/shared`. Business code must not create
+  platform `SharedPreferences` / OHOS `Preference` instances, choose file names,
+  or hand-roll preference keys in feature pages.
+- Platform hosts only adapt the bottom store: Android provides
+  `AndroidSharedPreferencesKeyValueStore` using the shared
+  `SlockLocalPreferenceStore.AndroidPreferencesName`; Kuikly/OHOS provides
+  `KuiklySharedPreferencesKeyValueStore` through `kuiklySharedPreferenceStore(...)`.
+  Business repositories for locale, chat layout, notifications, tasks view mode,
+  and future local settings stay in shared.
 
 ## Compose Shared Workflow
 
