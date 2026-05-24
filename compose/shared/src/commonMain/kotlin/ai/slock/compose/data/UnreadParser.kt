@@ -4,6 +4,8 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
 /**
@@ -56,6 +58,8 @@ private data class WireReadReceipt(
     val seq: Long? = null,
     val unreadCount: Int = 0,
     val changed: Boolean = true,
+    val ok: Boolean = true,
+    val markedCount: Int = 0,
 )
 
 /**
@@ -66,8 +70,12 @@ fun parseChannelUnreadSnapshot(
     bodyText: String,
     server: ServerSummary,
 ): ChannelUnreadSnapshot? = runCatching {
-    val decoded = unreadJson.decodeFromString(WireChannelUnreadCounts.serializer(), bodyText)
-    val unreadCounts = decoded.channels.mapKeys { (key, _) -> ChannelId(key) }
+    val unreadCounts =
+        runCatching {
+            unreadJson.decodeFromString(MapSerializer(String.serializer(), Int.serializer()), bodyText)
+        }.getOrElse {
+            unreadJson.decodeFromString(WireChannelUnreadCounts.serializer(), bodyText).channels
+        }.mapKeys { (key, _) -> ChannelId(key) }
     ChannelUnreadSnapshot(
         server = server.copy(unreadCount = unreadCounts.values.sum()),
         unreadCounts = unreadCounts,
@@ -110,12 +118,16 @@ fun parseReadReceiptResult(
     fallbackSeq: Long? = null,
 ): ReadReceiptResult? = runCatching {
     val decoded = unreadJson.decodeFromString(WireReadReceipt.serializer(), bodyText)
-    ReadReceiptResult(
-        channelId = decoded.channelId?.let(::ChannelId) ?: fallbackChannelId,
-        seq = decoded.seq ?: fallbackSeq,
-        unreadCount = decoded.unreadCount,
-        changed = decoded.changed,
-    )
+    if (decoded.ok) {
+        ReadReceiptResult(
+            channelId = decoded.channelId?.let(::ChannelId) ?: fallbackChannelId,
+            seq = decoded.seq ?: fallbackSeq,
+            unreadCount = decoded.unreadCount,
+            changed = decoded.changed,
+        )
+    } else {
+        null
+    }
 }.getOrNull()
 
 private fun WireServerUnreadSummary.toDomain(): ServerUnreadSummary =

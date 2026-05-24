@@ -110,8 +110,6 @@ import ai.slock.compose.model.toGravatarAvatarReference
 import ai.slock.compose.network.SlockRequestPriority
 import ai.slock.android.core.state.EmptyReason
 import com.google.gson.Gson
-import com.google.gson.JsonElement
-import com.google.gson.JsonObject
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
@@ -214,11 +212,9 @@ class RealChannelRepository(
                         },
                         source = "channel_create",
                         warningLogger = warningLogger,
-                        mapper = { json ->
-                            val channel =
-                                    json.unwrap("channel", "data")
-                                            .toConversation(ConversationKind.Channel)
-                            CreateChannelResult(channel = channel)
+                        mapper = { bodyText ->
+                            ai.slock.compose.data.parseSharedCreateChannelResult(bodyText)
+                                    ?: throw IllegalStateException("Create channel response missing channel")
                         }
                 )
         if (createResult !is DataResult.Content) return createResult
@@ -276,13 +272,9 @@ class RealChannelRepository(
                 block = { api.joinChannel(currentSlockApiPriority(), channelId.value) },
                 source = "channel_join",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    val channel = json.joinedChannelOrNull(channelId)
-                    ChannelJoinResult(
-                            channelId = channelId,
-                            joined = channel?.joined ?: true,
-                            channel = channel
-                    )
+                mapper = { bodyText ->
+                    ai.slock.compose.data.parseSharedChannelJoinResult(bodyText, channelId)
+                            ?: throw IllegalStateException("Join channel response missing ok")
                 }
         ).also { result ->
             (result as? DataResult.Content)?.data?.channel?.let { channel ->
@@ -299,11 +291,10 @@ class RealChannelRepository(
                 block = { api.leaveChannel(currentSlockApiPriority(), channelId.value) },
                 source = "channel_leave",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    ChannelLeaveResult(
-                            channelId = channelId,
-                            left = json.boolean("left", "ok", "success") ?: true
-                    )
+                mapper = { bodyText ->
+                    val parsed = ai.slock.compose.data.parseSharedChannelLeaveResult(bodyText, channelId)
+                            ?: throw IllegalStateException("Leave channel response missing ok")
+                    ChannelLeaveResult(channelId = parsed.channelId, left = parsed.left)
                 }
         ).also { result ->
             if (result is DataResult.Content) {
@@ -320,13 +311,9 @@ class RealChannelRepository(
                 block = { api.archiveChannel(currentSlockApiPriority(), channelId.value) },
                 source = "channel_archive",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    val channel = json.archivedChannelOrNull(channelId)
-                    ChannelArchiveResult(
-                            channelId = channelId,
-                            archived = channel?.archived ?: true,
-                            channel = channel
-                    )
+                mapper = { bodyText ->
+                    ai.slock.compose.data.parseSharedChannelArchiveResult(bodyText, channelId)
+                            ?: throw IllegalStateException("Archive channel response missing channel")
                 }
         ).also { result ->
             if (result is DataResult.Content) {
@@ -343,8 +330,9 @@ class RealChannelRepository(
                 block = { api.deleteChannel(currentSlockApiPriority(), channelId.value) },
                 source = "channel_delete",
                 warningLogger = warningLogger,
-                mapper = {
-                    ChannelDeleteResult(channelId = channelId, deleted = true)
+                mapper = { bodyText ->
+                    ai.slock.compose.data.parseSharedChannelDeleteResult(bodyText, channelId)
+                            ?: throw IllegalStateException("Delete channel response missing ok")
                 }
         ).also { result ->
             if (result is DataResult.Content) {
@@ -379,32 +367,15 @@ class RealChannelRepository(
                     emptyWhen = { it.channels.isEmpty() },
                     source = "home_channels",
                     warningLogger = warningLogger,
-                    mapper = { json ->
-                        val channelItems =
-                                json.homeConversationItems(
-                                        source = "home_channels",
-                                        names = arrayOf("channels", "items", "data"),
-                                        warningLogger = warningLogger
-                                )
-                        val channels =
-                                channelItems.mapNotNull { item ->
-                                    val itemObject = item.asObjectOrNull()
-                                    if (itemObject == null) {
-                                        warningLogger(
-                                                "skip_item source=home_channels stage=item_map fieldPath=item reason=non_object"
-                                        )
-                                        null
-                                    } else {
-                                        itemObject.toConversationOrNull(
-                                                kind = ConversationKind.Channel,
-                                                source = "home_channels",
-                                                warningLogger = warningLogger
-                                        )?.takeUnless { it.archived }
-                                    }
-                                }.dedupeHomeConversations()
+                    mapper = { bodyText ->
+                        val parsed =
+                                ai.slock.compose.data.parseSharedChannelSnapshot(
+                                        bodyText,
+                                        context.server
+                                ) ?: throw IllegalStateException("Channels response missing channel array")
+                        val channels = parsed.channels.dedupeHomeConversations()
                         rememberConversationSummaries(context.server.id, channels)
-                        ChannelSnapshot(
-                                server = context.server,
+                        parsed.copy(
                                 channels = channels.withCachedConversationSummaries(context.server.id)
                         )
                     }
@@ -421,42 +392,19 @@ class RealChannelRepository(
                                     emptyWhen = { it.directMessages.isEmpty() },
                                     source = "home_direct_messages",
                                     warningLogger = warningLogger,
-                                    mapper = { json ->
-                                        val directMessageItems =
-                                                json.homeConversationItems(
-                                                        source = "home_direct_messages",
-                                                        names =
-                                                                arrayOf(
-                                                                        "directMessages",
-                                                                        "dmChannels",
-                                                                        "dms",
-                                                                        "channels",
-                                                                        "items",
-                                                                        "data"
-                                                                ),
-                                                        warningLogger = warningLogger
+                                    mapper = { bodyText ->
+                                        val parsed =
+                                                ai.slock.compose.data.parseSharedDirectMessageSnapshot(
+                                                        bodyText,
+                                                        context.server,
+                                                        warningLogger
                                                 )
-                                        val directMessages =
-                                                directMessageItems.mapNotNull { item ->
-                                                    val itemObject = item.asObjectOrNull()
-                                                    if (itemObject == null) {
-                                                        warningLogger(
-                                                                "skip_item source=home_direct_messages stage=item_map fieldPath=item reason=non_object"
+                                                        ?: throw IllegalStateException(
+                                                                "Direct messages response missing dm array"
                                                         )
-                                                        null
-                                                    } else {
-                                                        itemObject.toConversationOrNull(
-                                                                kind =
-                                                                        ConversationKind
-                                                                                .DirectMessage,
-                                                                source = "home_direct_messages",
-                                                                warningLogger = warningLogger
-                                                        )
-                                                    }
-                                                }.dedupeHomeConversations()
+                                        val directMessages = parsed.directMessages.dedupeHomeConversations()
                                         rememberConversationSummaries(context.server.id, directMessages)
-                                        DirectMessageSnapshot(
-                                                server = context.server,
+                                        parsed.copy(
                                                 directMessages =
                                                         directMessages.withCachedConversationSummaries(
                                                                 context.server.id
@@ -491,21 +439,9 @@ class RealChannelRepository(
                         },
                         source = source,
                         warningLogger = warningLogger,
-                        mapper = { json ->
-                            val conversationRoot =
-                                    json.firstObject("channel", "dm", "directMessage")
-                                            ?: json.firstObject("data")
-                                                    ?.firstObject("channel", "dm", "directMessage")
-                                            ?: json.unwrap("data")
-                            val conversation =
-                                    conversationRoot
-                                            .toConversation(
-                                                    kind = ConversationKind.DirectMessage
-                                            )
-                            OpenDirectMessageResult(
-                                    conversation = conversation,
-                                    directMessages = emptyList()
-                            )
+                        mapper = { bodyText ->
+                            ai.slock.compose.data.parseSharedOpenDirectMessageResult(bodyText)
+                                    ?: throw IllegalStateException("Open DM response missing channel")
                         }
                 )
         return when (result) {
@@ -615,12 +551,9 @@ class RealReadReceiptRepository(
                 block = { api.channelUnreadCounts(currentSlockApiPriority()) },
                 source = "read_unread_counts",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    val unreadCounts = json.toChannelUnreadCounts()
-                    ChannelUnreadSnapshot(
-                            server = context.server.copy(unreadCount = unreadCounts.values.sum()),
-                            unreadCounts = unreadCounts
-                    )
+                mapper = { bodyText ->
+                    ai.slock.compose.data.parseChannelUnreadSnapshot(bodyText, context.server)
+                            ?: throw IllegalStateException("Unread counts response missing channel map")
                 }
         )
     }
@@ -638,8 +571,12 @@ class RealReadReceiptRepository(
                 },
                 source = "read_channel_seq",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    json.toReadReceiptResult(fallbackChannelId = channelId, fallbackSeq = seq)
+                mapper = { bodyText ->
+                    ai.slock.compose.data.parseReadReceiptResult(
+                            bodyText,
+                            fallbackChannelId = channelId,
+                            fallbackSeq = seq
+                    ) ?: throw IllegalStateException("Read receipt response missing ok")
                 }
         )
     }
@@ -651,7 +588,10 @@ class RealReadReceiptRepository(
                 block = { api.markChannelReadAll(currentSlockApiPriority(), channelId.value) },
                 source = "read_channel_all",
                 warningLogger = warningLogger,
-                mapper = { json -> json.toReadReceiptResult(fallbackChannelId = channelId) }
+                mapper = { bodyText ->
+                    ai.slock.compose.data.parseReadReceiptResult(bodyText, fallbackChannelId = channelId)
+                            ?: throw IllegalStateException("Read receipt response missing ok")
+                }
         )
     }
 
@@ -662,7 +602,10 @@ class RealReadReceiptRepository(
                 block = { api.markChannelUnread(currentSlockApiPriority(), channelId.value) },
                 source = "read_channel_unread",
                 warningLogger = warningLogger,
-                mapper = { json -> json.toReadReceiptResult(fallbackChannelId = channelId) }
+                mapper = { bodyText ->
+                    ai.slock.compose.data.parseReadReceiptResult(bodyText, fallbackChannelId = channelId)
+                            ?: throw IllegalStateException("Unread response missing ok")
+                }
         )
     }
 
@@ -673,7 +616,10 @@ class RealReadReceiptRepository(
                 block = { api.markInboxReadAll(currentSlockApiPriority()) },
                 source = "read_inbox_all",
                 warningLogger = warningLogger,
-                mapper = { json -> json.toReadReceiptResult() }
+                mapper = { bodyText ->
+                    ai.slock.compose.data.parseReadReceiptResult(bodyText)
+                            ?: throw IllegalStateException("Inbox read-all response missing ok")
+                }
         )
     }
 
@@ -702,8 +648,8 @@ class RealTaskRepository(
                 emptyWhen = { it.tasks.isEmpty() },
                 source = "tasks_server",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    parseTaskSnapshotFromBody(json, filter, currentUserId = context.session.user.id)
+                mapper = { bodyText ->
+                    parseTaskSnapshotFromBody(bodyText, filter, currentUserId = context.session.user.id)
                 }
         )
     }
@@ -720,8 +666,8 @@ class RealTaskRepository(
                 emptyWhen = { it.tasks.isEmpty() },
                 source = "tasks_channel",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    parseTaskSnapshotFromBody(json, filter, currentUserId = context.session.user.id)
+                mapper = { bodyText ->
+                    parseTaskSnapshotFromBody(bodyText, filter, currentUserId = context.session.user.id)
                 }
         )
     }
@@ -733,8 +679,8 @@ class RealTaskRepository(
             block = { api.claimTask(currentSlockApiPriority(), taskId.value) },
                 source = "tasks_claim",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    val task = parseTaskActionFromBody(json)
+                mapper = { bodyText ->
+                    val task = parseTaskActionFromBody(bodyText)
                             ?: throw IllegalStateException("Task action response missing task")
                     TaskActionResult(task)
             }
@@ -751,8 +697,8 @@ class RealTaskRepository(
             block = { api.updateTaskStatus(currentSlockApiPriority(), taskId.value, mapOf("status" to status.toApiValue()).toJsonBody()) },
             source = "tasks_status",
             warningLogger = warningLogger,
-            mapper = { json ->
-                val task = parseTaskActionFromBody(json)
+            mapper = { bodyText ->
+                val task = parseTaskActionFromBody(bodyText)
                     ?: throw IllegalStateException("Task status response missing task")
                 TaskActionResult(task)
             }
@@ -788,8 +734,11 @@ class RealMemberRepository(
                         block = { api.serverMembers(priority, serverId.value) },
                         source = "server_members",
                         warningLogger = warningLogger,
-                        mapper = { json ->
-                            MemberSnapshot(server = context.server, members = json.memberItems())
+                        mapper = { bodyText ->
+                            ai.slock.compose.data.parseSharedServerMemberSnapshot(
+                                    bodyText,
+                                    context.server
+                            ) ?: throw IllegalStateException("Server members response missing member array")
                         }
                 )
         val agentResult =
@@ -798,7 +747,10 @@ class RealMemberRepository(
                         block = { api.settingsAgents(priority) },
                         source = "server_agents",
                         warningLogger = warningLogger,
-                        mapper = { json -> json.agentMemberItems() }
+                        mapper = { bodyText ->
+                            ai.slock.compose.data.parseSharedSettingsAgentsAsMembers(bodyText)
+                                    ?: throw IllegalStateException("Agents response missing agent array")
+                        }
                 )
         val machineNameResult =
                 execute(
@@ -806,7 +758,10 @@ class RealMemberRepository(
                         block = { api.settingsMachines(priority, serverId.value) },
                         source = "server_agent_machines",
                         warningLogger = warningLogger,
-                        mapper = { json -> json.machineNameMap() }
+                        mapper = { bodyText ->
+                            ai.slock.compose.data.parseSharedSettingsAgentMachineNames(bodyText)
+                                    ?: throw IllegalStateException("Machines response missing machines")
+                        }
                 )
         val mergedResult =
                 when (result) {
@@ -870,9 +825,8 @@ class RealMemberRepository(
                 },
                 source = "agent_profile_update",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    json.toMemberProfile()
-                            ?.copy(kind = MemberKind.Agent)
+                mapper = { bodyText ->
+                    ai.slock.compose.data.parseSharedAgentProfile(bodyText)
                             ?: throw IllegalStateException(
                                     "Agent profile update response missing agent"
                             )
@@ -929,12 +883,9 @@ class RealMemberRepository(
                 block = { api.agentDirectMessages(priority, agentId.value) },
                 source = "agent_direct_messages",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    val items =
-                            json.items().mapNotNull {
-                                it.asObjectOrNull()?.toAgentDmSummary()
-                            }
-                    AgentDmSnapshot(agentId = agentId, directMessages = items)
+                mapper = { bodyText ->
+                    ai.slock.compose.data.parseSharedAgentDirectMessages(bodyText, agentId)
+                            ?: throw IllegalStateException("Agent DM response missing dm array")
                 }
         )
     }
@@ -949,12 +900,9 @@ class RealMemberRepository(
                 block = { api.reminders(priority, agentId.value) },
                 source = "agent_reminders",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    val items =
-                            json.items("reminders").mapNotNull {
-                                it.asObjectOrNull()?.toAgentReminderSummary()
-                            }
-                    AgentReminderSnapshot(agentId = agentId, reminders = items)
+                mapper = { bodyText ->
+                    ai.slock.compose.data.parseSharedAgentReminders(bodyText, agentId)
+                            ?: throw IllegalStateException("Agent reminders response missing reminders")
                 }
         )
     }
@@ -970,16 +918,16 @@ class RealMemberRepository(
                         block = { api.agentActivityLog(priority, agentId.value, limit = 50) },
                         source = "agent_activity",
                         warningLogger = warningLogger,
-                        mapper = { json ->
-                            val items =
-                                    json.items()
-                                            .mapNotNull {
-                                                it.asObjectOrNull()?.toAgentActivityEntry()
-                                            }
+                        mapper = { bodyText ->
+                            val snapshot =
+                                    ai.slock.compose.data.parseSharedAgentActivity(bodyText, agentId)
+                                            ?: throw IllegalStateException(
+                                                    "Agent activity response missing log array"
+                                            )
                             logger(
-                                    "agent_activity_log_fetch agentId=${agentId.value} mappedCount=${items.size}"
+                                    "agent_activity_log_fetch agentId=${agentId.value} mappedCount=${snapshot.activity.size}"
                             )
-                            AgentActivitySnapshot(agentId = agentId, activity = items)
+                            snapshot
                         }
                 )
         val fallbackEntries = fetchAgentCurrentActivityFallback(priority, agentId)
@@ -1020,20 +968,11 @@ class RealMemberRepository(
                         block = { api.settingsAgents(priority) },
                         source = "agent_workspaces_lookup",
                         warningLogger = warningLogger,
-                        mapper = { json ->
-                            val agent =
-                                    json.agentObjects()
-                                            .firstOrNull { it.memberId() == agentId.value }
-                                            ?: json.unwrap("agent", "data").takeIf {
-                                                it.memberId() == agentId.value
-                                            }
-                            AgentWorkspaceLookup(
-                                    computerId = agent?.memberComputerId(),
-                                    computerName = agent?.memberComputerName(),
-                                    directWorkspaces = agent?.agentWorkspaceSnapshots().orEmpty(),
-                                    fallbackWorkspaces =
-                                            agent?.agentSkillWorkspaceSnapshots().orEmpty()
-                            )
+                        mapper = { bodyText ->
+                            ai.slock.compose.data.parseSharedAgentWorkspaceLookup(bodyText, agentId)
+                                    ?: throw IllegalStateException(
+                                            "Agent workspace lookup response missing agent"
+                                    )
                         }
                 )
         return when (lookupResult) {
@@ -1049,18 +988,25 @@ class RealMemberRepository(
                     lookup.directWorkspaces.isNotEmpty() ->
                             DataResult.Content(baseSnapshot.copy(workspaces = lookup.directWorkspaces))
                     !lookup.computerId.isNullOrBlank() -> {
+                        val computerId = lookup.computerId.orEmpty()
                         val machineResult =
                                 execute(
                                         emptyReason = EmptyReason.NoMembers,
                                         block = {
                                             api.settingsMachineWorkspaces(priority,
                                                     context.server.id.value,
-                                                    lookup.computerId
+                                                    computerId
                                             )
                                         },
                                         source = "agent_workspaces_machine",
                                         warningLogger = warningLogger,
-                                mapper = { json -> json.toAgentWorkspaceSnapshots() }
+                                mapper = { bodyText ->
+                                    ai.slock.compose.data.parseSharedSettingsMachineWorkspaces(
+                                            bodyText
+                                    ) ?: throw IllegalStateException(
+                                            "Machine workspaces response missing workspace array"
+                                    )
+                                }
                                 )
                         when (machineResult) {
                             is DataResult.Content ->
@@ -1121,11 +1067,12 @@ class RealMemberRepository(
                 block = { api.agentWorkspaceFiles(priority, agentId.value) },
                 source = "agent_workspace_root",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    val children = ai.slock.compose.data.parseSharedWorkspaceFileNodes(json.toString())
-                    if (children.isEmpty() && json.getAsJsonArray("files") == null) {
-                        throw IllegalStateException("Workspace file response missing files")
-                    }
+                mapper = { bodyText ->
+                    val children =
+                            ai.slock.compose.data.parseSharedWorkspaceFileNodesOrNull(bodyText)
+                                    ?: throw IllegalStateException(
+                                            "Workspace file response missing files"
+                                    )
                     AgentWorkspaceTreeSnapshot(
                             agentId = agentId,
                             rootPath = "Workspace",
@@ -1156,14 +1103,16 @@ class RealMemberRepository(
                 block = { api.agentWorkspaceFiles(priority, agentId.value, dirPath) },
                 source = "agent_workspace_children",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    if (json.getAsJsonArray("files") == null) {
-                        throw IllegalStateException("Workspace file response missing files")
-                    }
+                mapper = { bodyText ->
+                    val children =
+                            ai.slock.compose.data.parseSharedWorkspaceFileNodesOrNull(bodyText)
+                                    ?: throw IllegalStateException(
+                                            "Workspace file response missing files"
+                                    )
                     AgentWorkspaceChildrenSnapshot(
                             agentId = agentId,
                             dirPath = dirPath,
-                            children = ai.slock.compose.data.parseSharedWorkspaceFileNodes(json.toString())
+                            children = children
                     )
                 }
         )
@@ -1181,12 +1130,11 @@ class RealMemberRepository(
                 block = { api.readAgentWorkspaceFile(priority, agentId.value, path) },
                 source = "agent_workspace_file_read",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    val bodyText = json.toString()
-                    AgentWorkspaceFilePreviewSnapshot(
-                            agentId = agentId,
-                            path = json.string("path") ?: path,
-                            preview = ai.slock.compose.data.parseSharedWorkspaceFilePreview(bodyText, path)
+                mapper = { bodyText ->
+                    ai.slock.compose.data.parseSharedAgentWorkspaceFilePreviewSnapshot(
+                            bodyText,
+                            agentId,
+                            path
                     )
                 }
         )
@@ -1203,8 +1151,9 @@ class RealMemberRepository(
                 block = { api.agentSkills(priority, agentId.value) },
                 source = "agent_skills",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    json.toAgentSkillsSnapshot(agentId)
+                mapper = { bodyText ->
+                    ai.slock.compose.data.parseSharedAgentSkillsSnapshot(bodyText, agentId)
+                            ?: throw IllegalStateException("Agent skills response missing skill groups")
                 }
         )
     }
@@ -1221,18 +1170,12 @@ class RealMemberRepository(
                         emptyWhen = { it.members.isEmpty() },
                         source = "channel_members",
                         warningLogger = warningLogger,
-                        mapper = { json ->
-                            val root = json.unwrap("data", "channel")
-                            ChannelMemberSnapshot(
-                                    channelId = channelId,
-                                    members = root.memberItems(),
-                                    canAddMembers =
-                                            root.boolean(
-                                                    "canAddMembers",
-                                                    "canAddMember",
-                                                    "canInviteMember"
-                                            )
-                                                    ?: true
+                        mapper = { bodyText ->
+                            ai.slock.compose.data.parseSharedChannelMemberSnapshot(
+                                    bodyText,
+                                    channelId
+                            ) ?: throw IllegalStateException(
+                                    "Channel members response missing members"
                             )
                         }
                 )
@@ -1260,16 +1203,19 @@ class RealMemberRepository(
                 },
                 source = "channel_member_add",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    val member =
-                            json.firstObject("member", "user", "agent", "data")
-                                    ?.toChannelMemberProfile()
-                                    ?: json.toChannelMemberProfile()
-                    ChannelMemberActionResult(
+                mapper = { bodyText ->
+                    val parsed =
+                            ai.slock.compose.data.parseSharedChannelMemberActionResult(
+                            bodyText,
                             channelId = request.channelId,
-                            memberId = member?.id ?: request.memberId,
-                            member = member,
-                            added = json.boolean("added", "ok", "success") ?: true
+                            memberId = request.memberId,
+                            added = true
+                    ) ?: throw IllegalStateException("Channel member add response missing ok")
+                    ChannelMemberActionResult(
+                            channelId = parsed.channelId,
+                            memberId = parsed.memberId,
+                            member = parsed.member,
+                            added = parsed.added
                     )
                 }
         )
@@ -1291,16 +1237,19 @@ class RealMemberRepository(
                 },
                 source = "channel_member_remove",
                 warningLogger = warningLogger,
-                mapper = { json ->
-                    val member =
-                            json.firstObject("member", "user", "agent", "data")
-                                    ?.toChannelMemberProfile()
-                                    ?: json.toChannelMemberProfile()
-                    ChannelMemberActionResult(
+                mapper = { bodyText ->
+                    val parsed =
+                            ai.slock.compose.data.parseSharedChannelMemberActionResult(
+                            bodyText,
                             channelId = request.channelId,
-                            memberId = member?.id ?: request.memberId,
-                            member = member,
+                            memberId = request.memberId,
                             added = false
+                    ) ?: throw IllegalStateException("Channel member remove response missing ok")
+                    ChannelMemberActionResult(
+                            channelId = parsed.channelId,
+                            memberId = parsed.memberId,
+                            member = parsed.member,
+                            added = parsed.added
                     )
                 }
         )
@@ -1332,13 +1281,14 @@ class RealMemberRepository(
                         block = { api.settingsAgents(priority) },
                         source = "agent_activity_current_fallback",
                         warningLogger = warningLogger,
-                        mapper = { json ->
+                        mapper = { bodyText ->
                             val entries =
-                                    json.agentObjects().mapNotNull { agent ->
-                                        agent.takeIf {
-                                            it.string("id", "agentId", "_id") == agentId.value
-                                        }?.toCurrentAgentActivityEntry()
-                                    }
+                                    ai.slock.compose.data.parseSharedCurrentAgentActivityEntries(
+                                            bodyText,
+                                            agentId
+                                    ) ?: throw IllegalStateException(
+                                            "Current agent activity response missing agent array"
+                                    )
                             logger(
                                     "agent_activity_fallback_fetch agentId=${agentId.value} mappedCount=${entries.size}"
                             )
@@ -1388,15 +1338,11 @@ class RealMemberRepository(
                         block = { api.memberProfile(priority, context.server.id.value, memberId.value) },
                         source = source,
                         warningLogger = warningLogger,
-                        mapper = { json ->
-                            val profile =
-                                    json.firstObject("profile", "member", "user", "data")
-                                            ?.toMemberProfile()
-                                            ?: json.toMemberProfile()
-                                                    ?: throw IllegalStateException(
-                                                    "Member profile response missing member"
-                                            )
-                            profile.copy(kind = MemberKind.Human)
+                        mapper = { bodyText ->
+                            ai.slock.compose.data.parseSharedMemberProfile(bodyText)
+                                    ?: throw IllegalStateException(
+                                            "Member profile response missing member"
+                                    )
                         }
                 )
             } ?: authRequired()
@@ -1435,8 +1381,8 @@ class RealInboxRepository(private val store: AuthSessionStore, private val api: 
                 emptyReason = EmptyReason.NoInboxItems,
                 block = { api.inbox(currentSlockApiPriority(), filter.wireValue, limit, offset) },
                 emptyWhen = { it.items.isEmpty() },
-                mapper = { json ->
-                    val parsed = ai.slock.compose.data.parseSharedInboxSnapshot(json.toString())
+                mapper = { bodyText ->
+                    val parsed = ai.slock.compose.data.parseSharedInboxSnapshot(bodyText)
                     val items = parsed?.items.orEmpty()
                     if (parsed != null &&
                             ((parsed.totalCount != items.size) ||
@@ -1512,8 +1458,8 @@ class RealSavedRepository(private val store: AuthSessionStore, private val api: 
                 emptyReason = EmptyReason.NoInboxItems,
                 block = { api.saved(currentSlockApiPriority(), limit, offset) },
                 emptyWhen = { it.items.isEmpty() },
-                mapper = { json ->
-                    val parsed = ai.slock.compose.data.parseSharedSavedItems(json.toString())
+                mapper = { bodyText ->
+                    val parsed = ai.slock.compose.data.parseSharedSavedItems(bodyText)
                             ?: ai.slock.compose.data.SharedSavedItems(emptyList(), false, 0)
                     SavedSnapshot(
                             server = context.server,
@@ -1554,8 +1500,8 @@ class RealSearchRepository(private val store: AuthSessionStore, private val api:
                     )
                 },
                 emptyWhen = { it.items.isEmpty() },
-                mapper = { json ->
-                    val parsed = ai.slock.compose.data.parseSharedSearchItems(json.toString())
+                mapper = { bodyText ->
+                    val parsed = ai.slock.compose.data.parseSharedSearchItems(bodyText)
                             ?: ai.slock.compose.data.SharedSearchItems(emptyList(), false)
                     SearchSnapshot(
                             server = context.server,
@@ -1602,11 +1548,11 @@ class RealConversationRepository(
                 emptyWhen = { it.messages.isEmpty() && it.parentMessage == null },
                 source = "messages_context",
                 warningLogger = warningLogger,
-                mapper = { json ->
+                mapper = { bodyText ->
                     val fallbackThreadId = ThreadId(messageId.value)
                     val payload =
                             ai.slock.compose.data.parseSharedMessageContext(
-                                    json.toString(),
+                                    bodyText,
                                     fallbackThreadId
                             )
                     val resolvedThreadId = payload.channelId?.let { ThreadId(it.value) }
@@ -1654,10 +1600,10 @@ class RealConversationRepository(
                 emptyWhen = { it.messages.isEmpty() },
                 source = "messages_sync",
                 warningLogger = warningLogger,
-                mapper = { json ->
+                mapper = { bodyText ->
                     val payload =
                             ai.slock.compose.data.parseSharedSyncMessages(
-                                    json.toString(),
+                                    bodyText,
                                     threadId
                             )
                     buildSharedThreadSnapshot(
@@ -1679,7 +1625,7 @@ class RealConversationRepository(
                 emptyWhen = { it.threads.isEmpty() },
                 source = "channel_threads",
                 warningLogger = warningLogger,
-                mapper = { json -> json.toThreadListSnapshot(context) }
+                mapper = { bodyText -> parseThreadListSnapshotFromBody(bodyText, context) }
         )
     }
 
@@ -1694,7 +1640,7 @@ class RealConversationRepository(
                 emptyWhen = { it.threads.isEmpty() },
                 source = "followed_threads",
                 warningLogger = warningLogger,
-                mapper = { json -> json.toThreadListSnapshot(context) }
+                mapper = { bodyText -> parseThreadListSnapshotFromBody(bodyText, context) }
         )
     }
 
@@ -1758,7 +1704,7 @@ class RealConversationRepository(
                 },
                 source = "attachments_upload",
                 warningLogger = warningLogger,
-                mapper = { json -> ai.slock.compose.data.parseSharedAttachmentUploadResult(json.toString()) },
+                mapper = { bodyText -> ai.slock.compose.data.parseSharedAttachmentUploadResult(bodyText) },
                 emptyWhen = { it.attachments.isEmpty() }
         )
     }
@@ -1772,9 +1718,9 @@ class RealConversationRepository(
                 block = { api.attachmentUrl(currentSlockApiPriority(), attachmentId.value) },
                 source = "attachment_open_url",
                 warningLogger = warningLogger,
-                mapper = { json ->
+                mapper = { bodyText ->
                     ai.slock.compose.data.parseSharedAttachmentOpenTarget(
-                            json.toString(),
+                            bodyText,
                             attachmentId
                     ) ?: throw IllegalStateException("Attachment URL response missing target")
                 },
@@ -1793,7 +1739,7 @@ class RealConversationRepository(
                 block = { api.channelFiles(currentSlockApiPriority(), channelId.value, limit, cursor) },
                 source = "channel_files",
                 warningLogger = warningLogger,
-                mapper = { json -> ai.slock.compose.data.parseSharedChannelFilesSnapshot(json.toString(), channelId) },
+                mapper = { bodyText -> ai.slock.compose.data.parseSharedChannelFilesSnapshot(bodyText, channelId) },
                 emptyWhen = { it.items.isEmpty() }
         )
     }
@@ -1812,11 +1758,11 @@ class RealConversationRepository(
                 block = { api.sendMessage(currentSlockApiPriority(), sendMessageBody(channelId, body, attachmentIds, asTask)) },
                 source = "messages_send",
                 warningLogger = warningLogger,
-                mapper = { json ->
+                mapper = { bodyText ->
                     val fallbackThreadId = topLevelThreadId(channelId)
                     val message =
                             ai.slock.compose.data.parseSharedSentMessage(
-                                    json.toString(),
+                                    bodyText,
                                     fallbackThreadId
                             )
                                     ?: Message(
@@ -1849,10 +1795,10 @@ class RealConversationRepository(
                             emptyWhen = { it.messages.isEmpty() },
                             source = source,
                             warningLogger = warningLogger,
-                            mapper = { json ->
+                            mapper = { bodyText ->
                                 val payload =
                                         ai.slock.compose.data.parseSharedChannelMessages(
-                                                json.toString(),
+                                                bodyText,
                                                 threadId
                                         )
                                 buildSharedThreadSnapshot(
@@ -1872,7 +1818,7 @@ class RealConversationRepository(
                             emptyWhen = { false },
                             source = "${source}_thread_summaries",
                             warningLogger = warningLogger,
-                            mapper = { json -> json.toThreadListSnapshot(context) }
+                            mapper = { bodyText -> parseThreadListSnapshotFromBody(bodyText, context) }
                     )
                 }
         val followedSummariesDeferred =
@@ -1884,7 +1830,7 @@ class RealConversationRepository(
                                 emptyWhen = { false },
                                 source = "${source}_followed_summaries",
                                 warningLogger = warningLogger,
-                                mapper = { json -> json.toThreadListSnapshot(context) }
+                                mapper = { bodyText -> parseThreadListSnapshotFromBody(bodyText, context) }
                         )
                     }
                 } else {
@@ -1956,10 +1902,10 @@ class RealConversationRepository(
                 block = block,
                 source = source,
                 warningLogger = warningLogger,
-                mapper = { json ->
+                mapper = { bodyText ->
                     val result =
                             ai.slock.compose.data.parseSharedThreadActionResult(
-                                    bodyText = json.toString(),
+                                    bodyText = bodyText,
                                     fallbackThreadChannelId = fallbackThreadChannelId,
                                     fallbackParentMessageId = fallbackParentMessageId
                             ) ?: error("thread action response missing thread channel id")
@@ -2031,7 +1977,14 @@ class RealServerUnreadRepository(
                     execute(
                             emptyReason = EmptyReason.NoInboxItems,
                             block = { api.serverUnreadSummary(currentSlockApiPriority()) },
-                            mapper = { json -> json.toServerUnreadSummarySnapshot(context.server) }
+                            mapper = { bodyText ->
+                                ai.slock.compose.data.parseServerUnreadSummarySnapshot(
+                                        bodyText,
+                                        context.server
+                                ) ?: throw IllegalStateException(
+                                        "Server unread summary response missing servers"
+                                )
+                            }
                     )
             when (result) {
                 is DataResult.Content -> {
@@ -2109,217 +2062,6 @@ private fun <T> DataResult<*>.mapError(): DataResult<T> =
             is DataResult.NoPermission -> this
             is DataResult.Content -> error("Cannot map content as error.")
         }
-
-private fun JsonObject.homeConversationItems(
-        source: String,
-        names: Array<String>,
-        warningLogger: (String) -> Unit
-): List<com.google.gson.JsonElement> {
-    val items = items(*names)
-    if (items.isNotEmpty()) return items
-    warningLogger(
-            "empty_items source=$source stage=list_extract fieldPath=${names.joinToString("|")}"
-    )
-    return emptyList()
-}
-
-private fun JsonObject.toConversationOrNull(
-        kind: ConversationKind,
-        source: String,
-        warningLogger: (String) -> Unit
-): ConversationSummary? {
-    val id = string("id", "channelId", "threadChannelId", "_id")
-    if (id == null) {
-        warningLogger(
-                "skip_item source=$source stage=item_map fieldPath=id|channelId|threadChannelId|_id reason=missing_id"
-        )
-        return null
-    }
-    return toConversation(kind, id)
-}
-
-private fun JsonObject.toConversation(kind: ConversationKind): ConversationSummary {
-    val id =
-            string("id", "channelId", "threadChannelId", "_id")
-                    ?: throwMissingChannelTimelineId(kind, this)
-    return toConversation(kind, id)
-}
-
-private fun JsonObject.toConversation(kind: ConversationKind, id: String): ConversationSummary {
-    val presenceSource = firstObject("peer", "agent", "user", "member", "profile")
-    val presenceMemberKind =
-            explicitMemberKindOrNull() ?: presenceSource?.explicitMemberKindOrNull()
-    val name =
-            string(
-                            "name",
-                            "channelName",
-                            "peerDisplayName",
-                            "peerName",
-                            "agentName",
-                            "agentDisplayName",
-                            "agentUsername",
-                            "userDisplayName",
-                            "username",
-                            "slug",
-                            "channelSlug",
-                            "title"
-                    )
-                    ?: presenceSource?.string("displayName", "name", "username", "email")
-                            ?: id
-    val joined = if (kind == ConversationKind.DirectMessage) true else channelJoined()
-    val canSend = boolean("canSend", "canWrite", "canMessage") ?: joined
-    val avatarWireValue = conversationAvatarWireValue()
-    val unreadCount = int("unreadCount", "unread")
-    val mentionCount = int("mentionCount", "mentions")
-    val hasDraft = boolean("hasDraft", "draft")
-    val agentStatus =
-            string(
-                            "agentStatus",
-                            "activity",
-                            "agentActivity",
-                            "agentStatusLabel",
-                            "connectionStatus",
-                            "state",
-                            "agentState",
-                            "agentPresence"
-                    )
-                    .toAgentStatusOrNull()
-                    ?: presenceSource
-                            ?.string(
-                                    "agentStatus",
-                                    "activity",
-                                    "status",
-                                    "presence",
-                                    "availability",
-                                    "connectionStatus",
-                                    "state"
-                            )
-                            .toAgentStatusOrNull()
-    val presence =
-            agentStatus?.presence
-                    ?: string(
-                            "presence",
-                            "status",
-                            "activity",
-                            "availability",
-                            "onlineStatus",
-                            "connectionStatus",
-                            "state",
-                            "peerPresence",
-                            "peerStatus",
-                            "peerAvailability",
-                            "agentPresence",
-                            "agentStatus",
-                            "userPresence",
-                            "userStatus"
-                    )
-                    .toPresenceOrNull()
-                    ?: presenceSource
-                            ?.string(
-                                    "presence",
-                                    "status",
-                                    "activity",
-                                    "availability",
-                                    "onlineStatus",
-                                    "connectionStatus",
-                                    "state"
-                            )
-                            .toPresenceOrNull()
-    val rawThreadChannelId = string("threadChannelId")
-    val rawParentChannelId = string("parentChannelId")
-    val rawParentMessageId = string("parentMessageId", "rootMessageId")
-    val resolvedKind =
-            if (kind == ConversationKind.Thread || (rawThreadChannelId != null && rawParentMessageId != null)) {
-                ConversationKind.Thread
-            } else {
-                kind
-            }
-    val parentChannelId = rawParentChannelId?.let(::ChannelId)
-    val parentMessageId = rawParentMessageId?.let(::MessageId)
-    val streamChannelId = rawThreadChannelId?.let(::ChannelId)
-    return ConversationSummary(
-            threadId =
-                    if (resolvedKind == ConversationKind.Thread && parentChannelId != null && parentMessageId != null) {
-                        threadIdentity(parentChannelId, parentMessageId)
-                    } else {
-                        ThreadId(string("threadId", "id") ?: rawThreadChannelId ?: id)
-                    },
-            channelId = parentChannelId ?: string("channelId")?.let(::ChannelId) ?: ChannelId(id),
-            thread =
-                    if (resolvedKind == ConversationKind.Thread && parentChannelId != null && parentMessageId != null) {
-                        ThreadConversation(
-                                parentChannelId = parentChannelId,
-                                parentMessageId = parentMessageId,
-                                streamChannelId = streamChannelId
-                        )
-                    } else {
-                        null
-                    },
-            kind = resolvedKind,
-            name = name,
-            subtitle = string("description", "topic", "purpose", "peerDescription"),
-            avatarUrl = avatarWireValue,
-            avatar = AvatarReference.fromWireValue(avatarWireValue),
-            unreadCount = unreadCount ?: 0,
-            unreadCountKnown = unreadCount != null,
-            mentionCount = mentionCount ?: 0,
-            mentionCountKnown = mentionCount != null,
-            lastMessageId = string("lastMessageId", "latestMessageId")?.let(::MessageId),
-            firstUnreadMessageId = string("firstUnreadMessageId")?.let(::MessageId),
-            lastMessagePreview =
-                    string("lastMessagePreview", "preview", "latestActivityPreview", "content"),
-            lastMessageAt = string("lastMessageAt", "updatedAt", "latestActivityAt", "createdAt"),
-            lastMessageSenderName = string("lastMessageSenderName"),
-            presence =
-                    presence.takeIf {
-                        kind != ConversationKind.DirectMessage ||
-                                presenceMemberKind == MemberKind.Agent
-                    },
-            agentStatus =
-                    agentStatus.takeIf {
-                        kind == ConversationKind.DirectMessage &&
-                                (presenceMemberKind == null ||
-                                        presenceMemberKind == MemberKind.Agent)
-                    },
-            presenceMemberId =
-                    (string(
-                                    "presenceMemberId",
-                                    "peerMemberId",
-                                    "peerId",
-                                    "memberId",
-                                    "agentId",
-                                    "userId"
-                            )
-                                    ?: presenceSource?.string(
-                                            "presenceMemberId",
-                                            "peerMemberId",
-                                            "peerId",
-                                            "memberId",
-                                            "agentId",
-                                            "userId",
-                                            "id"
-                                    ))
-                            ?.let(::MemberId),
-            hasDraft = hasDraft ?: false,
-            hasDraftKnown = hasDraft != null,
-            joined = joined,
-            archived = boolean("archived", "isArchived") ?: false,
-            memberCount =
-                    int(
-                            "memberCount",
-                            "membersCount",
-                            "participantCount",
-                            "participantsCount"
-                    ),
-            permissions =
-                    ConversationPermissions(
-                            canRead = boolean("canRead") ?: true,
-                            canSend = canSend,
-                            canAttach = boolean("canAttach", "canUpload") ?: canSend,
-                            canCreateTask = boolean("canCreateTask", "canCreateTasks") ?: canSend
-                    )
-    )
-}
 
 private fun mergeDirectMessages(
         existing: List<ConversationSummary>,
@@ -2442,75 +2184,31 @@ private fun ConversationSummary.withDirectMessageFallback(
                 memberCount = memberCount ?: previous.memberCount
         )
 
-private fun JsonObject.conversationAvatarWireValue(): String? =
-        avatarWireValue(
-                "avatarUrl",
-                "avatar",
-                "imageUrl",
-                "profileImageUrl",
-                "peerAvatarUrl",
-                "peerAvatar",
-                "agentAvatarUrl",
-                "agentAvatar",
-                "userAvatarUrl",
-                "userAvatar"
-        )
-                ?: firstObject("peer", "agent", "user", "member", "profile")
-                        ?.avatarWireValue(
-                                "avatarUrl",
-                                "avatar",
-                                "imageUrl",
-                                "profileImageUrl"
-                        )
-
-private fun JsonObject.channelJoined(): Boolean {
-    boolean("joined", "isJoined", "isMember", "member")?.let {
-        return it
-    }
-    return when (string("membership", "membershipStatus", "memberStatus", "joinStatus")?.lowercase()
-    ) {
-        "joined", "member", "active", "owner", "admin" -> true
-        "left", "unjoined", "none", "removed" -> false
-        else -> true
-    }
-}
-
-private fun JsonObject.joinedChannelOrNull(channelId: ChannelId): ConversationSummary? {
-    val channelObject = firstObject("channel", "data") ?: this
-    val hasChannelShape =
-            channelObject.string("id", "channelId", "threadChannelId") != null ||
-                    channelObject.string("name", "channelName", "title") != null
-    if (!hasChannelShape) return null
-    return channelObject
-            .toConversation(ConversationKind.Channel, channelId.value)
-            .copy(joined = true)
-}
-
-private fun JsonObject.archivedChannelOrNull(channelId: ChannelId): ConversationSummary? {
-    val channelObject = firstObject("channel", "data") ?: this
-    val hasChannelShape =
-            channelObject.string("id", "channelId", "threadChannelId") != null ||
-                    channelObject.string("name", "channelName", "title") != null
-    if (!hasChannelShape) return null
-    return channelObject
-            .toConversation(ConversationKind.Channel, channelId.value)
-            .copy(archived = true)
-}
-
-private fun JsonObject.timestampString(vararg names: String): String? =
-        string(*names) ?: long(*names)?.toString()
-
-
-
-private fun parseTaskSnapshotFromBody(json: JsonObject, filter: TaskFilter, currentUserId: String): TaskSnapshot {
-    val payload = ai.slock.compose.data.parseSharedServerTasksPayload(json.toString())
+private fun parseTaskSnapshotFromBody(bodyText: String, filter: TaskFilter, currentUserId: String): TaskSnapshot {
+    val payload = ai.slock.compose.data.parseSharedServerTasksPayload(bodyText)
             ?: ai.slock.compose.data.SharedTasksPayload(emptyList())
     return TaskSnapshot(tasks = payload.tasks, summaryCounts = taskSummaryCounts(payload.tasks))
             .filteredByTaskFilter(filter, currentUserId)
 }
 
-private fun parseTaskActionFromBody(json: JsonObject): TaskSummary? =
-        ai.slock.compose.data.parseSharedTaskActionPayload(json.toString())
+private fun parseTaskActionFromBody(bodyText: String): TaskSummary? =
+        ai.slock.compose.data.parseSharedTaskActionPayload(bodyText)
+
+private fun parseThreadListSnapshotFromBody(
+        bodyText: String,
+        context: NetworkServerContext
+): ThreadListSnapshot {
+    val parsed =
+            ai.slock.compose.data.parseSharedThreadListItems(bodyText)
+                    ?: throw IllegalStateException("Thread list response missing threads")
+    return ThreadListSnapshot(
+            server = context.server,
+            threads = parsed.items,
+            totalCount = parsed.totalCount,
+            hasMore = parsed.hasMore,
+            nextOffset = parsed.nextOffset
+    )
+}
 
 private fun TaskSnapshot.filteredByTaskFilter(filter: TaskFilter, currentUserId: String): TaskSnapshot {
     val filteredTasks =
@@ -2578,18 +2276,6 @@ private fun buildDefaultConversation(threadId: ThreadId, name: String): Conversa
                         ConversationKind.Channel
                     },
             name = name
-    )
-}
-
-private fun JsonObject.toThreadListSnapshot(context: NetworkServerContext): ThreadListSnapshot {
-    val parsed = ai.slock.compose.data.parseSharedThreadListItems(this.toString())
-            ?: ai.slock.compose.data.SharedThreadListItems(emptyList(), 0, false, null)
-    return ThreadListSnapshot(
-            server = context.server,
-            threads = parsed.items,
-            totalCount = parsed.totalCount,
-            hasMore = parsed.hasMore,
-            nextOffset = parsed.nextOffset
     )
 }
 
@@ -2697,403 +2383,6 @@ private fun String.matchesThreadSummaryId(candidate: String): Boolean {
 
 
 
-private fun JsonObject.toMemberProfile(): MemberProfile? {
-    val id = memberId() ?: return null
-    val displayName = memberDisplayName() ?: id
-    val avatarUrl = memberAvatarUrl()
-    val gravatarHash = memberGravatarHash()
-    return MemberProfile(
-            id = MemberId(id),
-            displayName = displayName,
-            handle = memberHandle(displayName),
-            kind = memberKind(),
-            description = memberDescription(),
-            roleDescription = memberRoleDescription(),
-            avatarUrl = avatarUrl,
-            gravatarHash = gravatarHash,
-            avatarLabel = displayName.take(1).uppercase(),
-            presence = memberPresence(),
-            agentStatus = memberAgentStatus(),
-            permissionBadges = memberPermissionBadgesWithComputerName()
-    )
-}
-
-private fun JsonObject.toAgentDmSummary(): AgentDmSummary? {
-    val id = string("id", "dmId", "channelId", "threadId") ?: return null
-    val peer = firstObject("peer", "user", "member", "profile")
-    val peerName =
-            string("peerName", "peerDisplayName", "displayName", "name")
-                    ?: peer?.string("displayName", "name", "username", "email") ?: "Unknown"
-    return AgentDmSummary(
-            id = id,
-            peerId = string("peerId", "peerUserId", "memberId", "userId")
-                            ?: peer?.string("id", "userId", "memberId"),
-            peerName = peerName,
-            peerAvatarUrl = avatarWireValue("peerAvatarUrl", "peerAvatar", "avatarUrl", "avatar")
-                            ?: peer?.avatarWireValue(
-                                    "avatarUrl",
-                                    "avatar",
-                                    "profileAvatar",
-                                    "imageUrl"
-                            ),
-            lastMessageAt = string("lastMessageAt", "createdAt", "updatedAt"),
-            lastMessagePreview = string("lastMessagePreview", "preview", "body", "content", "text")
-    )
-}
-
-private fun JsonObject.toAgentReminderSummary(): AgentReminderSummary? {
-    val id = string("reminderId", "id", "_id") ?: return null
-    val recurrence = firstObject("recurrence")
-    return AgentReminderSummary(
-            id = id,
-            title = string("title", "body", "text", "content") ?: "Reminder",
-            fireAt = string("fireAt", "scheduledAt"),
-            recurrenceDescription = string("recurrenceDescription")
-                            ?: recurrence?.string("description", "label"),
-            messageRef = string("msgRef", "messageRef", "messageId"),
-            messagePermalink = string("msgPermalink", "permalink", "messagePermalink"),
-            ownerAgentId = string("ownerAgentId", "agentId"),
-            status = string("status")
-    )
-}
-
-private fun JsonObject.toAgentActivityEntry(): AgentActivityEntry? {
-    val entry = firstObject("entry", "activity", "event", "data") ?: this
-    val type =
-            entry.string("type", "eventType", "kind", "activity")
-                    ?.lowercase()
-                    ?.takeIf { it.isNotBlank() }
-                    ?: entry.string("status")?.lowercase()
-                    ?: "status"
-    val title = entry.string("title", "label") ?: type.toAgentActivityTitle()
-    val id =
-            entry.string("id", "entryId", "eventId")
-                    ?: string("id", "entryId", "eventId")
-                    ?: listOfNotNull(type, agentActivityTimestamp())
-                            .joinToString(":")
-                            .ifBlank { type }
-    return AgentActivityEntry(
-            id = id,
-            type = type,
-            title = title,
-            body = entry.string("body", "text", "content", "message", "detail", "activityDetail", "toolName", "name")
-                            ?: entry.string("status", "activity")
-                            ?: string("detail", "activityDetail"),
-            timestamp = agentActivityTimestamp(),
-            details = entry.agentActivityDetails()
-    )
-}
-
-private fun JsonObject.toAgentSkillsSnapshot(agentId: MemberId): AgentSkillsSnapshot {
-    val groups = agentSkillGroups()
-    return AgentSkillsSnapshot(agentId = agentId, groups = groups)
-}
-
-private fun JsonObject.agentSkillGroups(): List<AgentSkillGroup> {
-    val groupObjects =
-            listOfNotNull(
-                    firstObject("skillGroups"),
-                    firstObject("skillsByScope"),
-                    firstObject("skillsByPath"),
-                    firstObject(
-                            "skills",
-                            "aiSkills",
-                            "availableSkills",
-                            "codexSkills",
-                            "installedSkills"
-                    )
-            )
-    val objectGroups =
-            groupObjects.flatMap { container ->
-                container.entrySet().mapNotNull { (key, value) ->
-                    value.toAgentSkillGroup(defaultTitle = key.toSkillGroupTitle())
-                }
-            }
-    val rootArrayGroups =
-            entrySet()
-                    .filter { (key, value) ->
-                        value.isJsonArray && key in setOf("global", "workspace")
-                    }
-                    .mapNotNull { (key, value) ->
-                        value.toAgentSkillGroup(defaultTitle = key.toSkillGroupTitle())
-                    }
-    val namedGroups =
-            items("skillGroups", "groups")
-                    .mapNotNull { it.toAgentSkillGroup(defaultTitle = "Skills") }
-    val directSkills =
-            items("skills", "aiSkills", "availableSkills", "codexSkills", "installedSkills")
-                    .mapNotNull { it.toParsedAgentSkill(defaultGroup = "Skills") }
-    val directGroup =
-            if (directSkills.isNotEmpty()) listOf(directSkills.toAgentSkillGroup("Skills")) else emptyList()
-    return (objectGroups + rootArrayGroups + namedGroups + directGroup)
-            .filter { it.paths.any { path -> path.skills.isNotEmpty() } }
-            .mergeAgentSkillGroups()
-}
-
-private fun JsonElement.toAgentSkillGroup(defaultTitle: String): AgentSkillGroup? {
-    return when {
-        isJsonArray -> asJsonArray.toList()
-                .mapNotNull { it.toParsedAgentSkill(defaultGroup = defaultTitle) }
-                .toAgentSkillGroup(defaultTitle)
-        isJsonObject -> {
-            val obj = asJsonObject
-            val title = obj.string("title", "label", "name", "scope") ?: defaultTitle
-            val directSkills =
-                    obj.items("skills", "items", "data")
-                            .mapNotNull { it.toParsedAgentSkill(defaultGroup = title) }
-            val pathGroups =
-                    obj.items("paths", "pathGroups", "directories")
-                            .mapNotNull { it.toAgentSkillPathGroup(defaultGroup = title) } +
-                            obj.entrySet()
-                                    .filter { (_, value) -> value.isJsonArray }
-                                    .mapNotNull { (key, value) ->
-                                        value.asJsonArray.toList()
-                                                .mapNotNull {
-                                                    it.toParsedAgentSkill(
-                                                            defaultGroup = title,
-                                                            defaultPath = key
-                                                    )
-                                                }
-                                                .toAgentSkillPathGroup(key)
-                                    }
-            (directSkills.toAgentSkillGroup(title).paths + pathGroups)
-                    .mergeAgentSkillPathGroups()
-                    .takeIf { it.isNotEmpty() }
-                    ?.let { paths ->
-                        AgentSkillGroup(
-                                title = title,
-                                count = obj.int("count") ?: paths.sumOf { it.count },
-                                paths = paths
-                        )
-                    }
-        }
-        else -> null
-    }
-}
-
-private fun JsonElement.toAgentSkillPathGroup(defaultGroup: String): AgentSkillPathGroup? {
-    if (!isJsonObject) return null
-    val obj = asJsonObject
-    val path = obj.string("path", "directory", "dir", "root", "source") ?: defaultGroup
-    return obj.items("skills", "items", "data")
-            .mapNotNull { it.toParsedAgentSkill(defaultGroup = defaultGroup, defaultPath = path) }
-            .toAgentSkillPathGroup(path)
-}
-
-private data class ParsedAgentSkill(
-        val group: String,
-        val path: String,
-        val name: String,
-        val detail: String?
-)
-
-private fun JsonElement.toParsedAgentSkill(
-        defaultGroup: String,
-        defaultPath: String? = null
-): ParsedAgentSkill? {
-    return when {
-        isJsonPrimitive && asJsonPrimitive.isString -> {
-            val name = asString.takeIf { it.isNotBlank() } ?: return null
-            ParsedAgentSkill(
-                    group = defaultGroup,
-                    path = defaultPath ?: defaultGroup,
-                    name = name,
-                    detail = null
-            )
-        }
-        isJsonObject -> {
-            val obj = asJsonObject
-            val name =
-                    obj.string("name", "id", "title", "skill", "slug", "displayName")
-                            ?: return null
-            ParsedAgentSkill(
-                    group =
-                            obj.string("group", "scope", "source", "type")
-                                    ?.toSkillGroupTitle()
-                                    ?: defaultGroup,
-                    path =
-                            obj.string("path", "directory", "dir", "root", "sourcePath")
-                                    ?: defaultPath
-                                    ?: defaultGroup,
-                    name = name,
-                    detail = obj.string("description", "detail", "summary", "readme", "prompt")
-            )
-        }
-        else -> null
-    }
-}
-
-private fun List<ParsedAgentSkill>.toAgentSkillGroup(title: String): AgentSkillGroup =
-        AgentSkillGroup(
-                title = title,
-                count = size,
-                paths =
-                        groupBy { it.path }
-                                .map { (path, skills) -> skills.toAgentSkillPathGroup(path) }
-                                .mergeAgentSkillPathGroups()
-        )
-
-private fun List<ParsedAgentSkill>.toAgentSkillPathGroup(path: String): AgentSkillPathGroup =
-        AgentSkillPathGroup(
-                path = path,
-                count = size,
-                skills =
-                        distinctBy { it.name }
-                                .map { AgentSkillSummary(name = it.name, detail = it.detail) }
-        )
-
-private fun List<AgentSkillGroup>.mergeAgentSkillGroups(): List<AgentSkillGroup> =
-        groupBy { it.title }
-                .map { (title, groups) ->
-                    val paths = groups.flatMap { it.paths }.mergeAgentSkillPathGroups()
-                    AgentSkillGroup(
-                            title = title,
-                            count = groups.sumOf { it.count }.takeIf { it > 0 }
-                                    ?: paths.sumOf { it.count },
-                            paths = paths
-                    )
-                }
-
-private fun List<AgentSkillPathGroup>.mergeAgentSkillPathGroups(): List<AgentSkillPathGroup> =
-        groupBy { it.path }
-                .map { (path, groups) ->
-                    val skills = groups.flatMap { it.skills }.distinctBy { it.name }
-                    AgentSkillPathGroup(
-                            path = path,
-                            count = groups.sumOf { it.count }.takeIf { it > 0 } ?: skills.size,
-                            skills = skills
-                    )
-                }
-
-private fun String.toSkillGroupTitle(): String =
-        split('_', '-', ' ')
-                .filter { it.isNotBlank() }
-                .joinToString(" ") { word ->
-                    word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-                }
-                .ifBlank { this }
-
-private fun JsonObject.toCurrentAgentActivityEntry(): AgentActivityEntry? {
-    val type = string("activity", "status").toAgentActivityTypeOrNull() ?: return null
-    val detail = string("activityDetail", "detail", "statusLabel", "status")
-    return AgentActivityEntry(
-            id = listOfNotNull("current", string("id", "agentId", "_id"), type, detail).joinToString(":"),
-            type = type,
-            title = type.toAgentActivityTitle(),
-            body = detail,
-            timestamp = string("updatedAt", "lastActivityAt", "lastSeenAt"),
-            details = agentActivityDetails()
-    )
-}
-
-private fun JsonObject.agentActivityDetails(): List<Pair<String, String>> {
-    val excluded =
-            setOf(
-                    "id",
-                    "entryId",
-                    "eventId",
-                    "type",
-                    "eventType",
-                    "kind",
-                    "activity",
-                    "title",
-                    "label",
-                    "timestamp",
-                    "createdAt",
-                    "time"
-            )
-    return entrySet()
-            .mapNotNull { (key, value) ->
-                if (key in excluded) return@mapNotNull null
-                val detailValue = value.agentActivityDetailValue() ?: return@mapNotNull null
-                key.agentActivityDetailLabel() to detailValue
-            }
-            .distinctBy { it.first.lowercase() to it.second }
-            .take(8)
-}
-
-private fun JsonElement.agentActivityDetailValue(): String? =
-        when {
-            isJsonPrimitive -> asJsonPrimitive.asString.takeIf { it.isNotBlank() }
-            isJsonObject -> {
-                val objectValue = asJsonObject
-                objectValue.string(
-                        "name",
-                        "label",
-                        "title",
-                        "value",
-                        "id",
-                        "message",
-                        "detail",
-                        "content",
-                        "text"
-                )
-                        ?: objectValue.entrySet()
-                                .take(3)
-                                .mapNotNull { (key, value) ->
-                                    value.takeIf { it.isJsonPrimitive }
-                                            ?.asJsonPrimitive
-                                            ?.asString
-                                            ?.takeIf { it.isNotBlank() }
-                                            ?.let { "${key.agentActivityDetailLabel()}: $it" }
-                                }
-                                .joinToString("; ")
-                                .takeIf { it.isNotBlank() }
-            }
-            isJsonArray ->
-                    asJsonArray
-                            .take(3)
-                            .mapNotNull { it.agentActivityDetailValue() }
-                            .joinToString(", ")
-                            .takeIf { it.isNotBlank() }
-            else -> null
-        }
-
-private fun String.agentActivityDetailLabel(): String =
-        replace('_', ' ')
-                .replace('-', ' ')
-                .replace(Regex("([a-z])([A-Z])"), "$1 $2")
-                .trim()
-                .ifBlank { "Detail" }
-                .replaceFirstChar { it.uppercase() }
-
-private fun JsonObject.agentActivityTimestamp(): String? =
-        string("timestamp", "createdAt", "time")
-                ?: long("timestamp", "createdAt", "time")?.toString()
-
-private fun String?.toAgentActivityTypeOrNull(): String? =
-        when (val normalized = this?.lowercase()) {
-            null, "", "unknown" -> null
-            "active",
-            "online",
-            "connected",
-            "working",
-            "thinking",
-            "error",
-            "offline",
-            "disconnected",
-            "idle" -> normalized
-            else -> normalized
-        }
-
-private fun String.toAgentActivityTitle(): String =
-        when (this) {
-            "thinking" -> "Thinking"
-            "tool_start" -> "Tool started"
-            "text" -> "Text"
-            "system" -> "System"
-            "status" -> "Status"
-            "working" -> "Working"
-            "online", "active", "connected" -> "Online"
-            "disconnected" -> "Disconnected"
-            "offline" -> "Offline"
-            "idle" -> "Idle"
-            "error" -> "Error"
-            "compaction_started" -> "Compaction started"
-            "compaction_finished" -> "Compaction finished"
-            else -> replace('_', ' ').replaceFirstChar { it.uppercase() }
-        }
-
 private fun mergeAgentActivityEntries(
         existing: List<AgentActivityEntry>,
         incoming: List<AgentActivityEntry>
@@ -3134,153 +2423,6 @@ private fun MemberProfile.withHumanProfile(profile: MemberProfile): MemberProfil
     )
 }
 
-private fun JsonObject.memberId(): String? =
-        explicitMemberKindOrNull()?.let { kind ->
-            when (kind) {
-                MemberKind.Agent ->
-                        string("agentId")
-                                ?: nestedMemberObject()?.memberId()
-                                ?: string("id", "memberId", "userId")
-                MemberKind.Human ->
-                        string("userId", "memberId")
-                                ?: nestedMemberObject()?.memberId()
-                                ?: string("id")
-                MemberKind.System ->
-                        string("id", "userId", "memberId", "agentId")
-                                ?: nestedMemberObject()?.memberId()
-            }
-        }
-                ?: nestedMemberObject()?.memberId()
-                ?: string("userId", "memberId", "agentId", "id")
-
-private fun JsonObject.memberDisplayName(): String? =
-        string(
-                "displayName",
-                "name",
-                "username",
-                "title",
-                "label",
-                "handle",
-                "email"
-        )
-                ?: nestedMemberObject()?.memberDisplayName()
-                        ?: firstObject("metadata", "meta")
-                        ?.string(
-                                "displayName",
-                                "name",
-                                "username",
-                                "title",
-                                "label"
-                        )
-
-private fun JsonObject.memberHandle(displayName: String): String =
-        string("handle", "username", "email")
-                ?: nestedMemberObject()?.string("handle", "username", "email") ?: displayName
-
-private fun JsonObject.memberRoleDescription(): String? =
-        string("roleDescription", "role")
-                ?: nestedMemberObject()?.string("roleDescription", "role")
-
-private fun JsonObject.memberDescription(): String? =
-        string("description")
-                ?: nestedMemberObject()?.string("description")
-
-private fun JsonObject.memberAvatarUrl(): String? =
-        avatarWireValue(
-                "avatarUrl",
-                "avatar",
-                "imageUrl",
-                "profileImageUrl",
-                "profileAvatar"
-        )
-                ?: nestedMemberObject()?.memberAvatarUrl()
-
-private fun JsonObject.memberGravatarHash(): String? =
-        string("gravatarHash", "gravatar", "gravatarMd5")
-                ?: nestedMemberObject()?.memberGravatarHash()
-
-private fun JsonObject.memberPresence(): Presence =
-        memberAgentStatus()?.presence
-                ?: string("presence", "status", "activity", "availability").toPresenceOrNull()
-                ?: nestedMemberObject()?.memberPresence() ?: Presence.Offline
-
-private fun JsonObject.memberAgentStatus(): AgentStatus? =
-        string(
-                        "agentStatus",
-                        "activity",
-                        "status",
-                        "presence",
-                        "availability",
-                        "connectionStatus",
-                        "state"
-                )
-                .toAgentStatusOrNull()
-                ?: nestedMemberObject()?.memberAgentStatus()
-
-private fun JsonObject.memberKind(): MemberKind =
-        explicitMemberKindOrNull()
-                ?: nestedMemberObject()?.explicitMemberKindOrNull() ?: MemberKind.Human
-
-private fun JsonObject.explicitMemberKindOrNull(
-        allowAgentIdInference: Boolean = true
-): MemberKind? {
-    val kindValue = string("kind", "type", "memberType")?.lowercase()
-    return when {
-        kindValue == "human" ||
-                kindValue == "user" ||
-                string("userId") != null ||
-                firstObject("user", "member") != null -> MemberKind.Human
-        boolean("isAgent") == true ||
-                kindValue == "agent" ||
-                (allowAgentIdInference && string("agentId") != null) ||
-                firstObject("agent") != null -> MemberKind.Agent
-        else -> null
-    }
-}
-
-private fun JsonObject.nestedMemberObject(): JsonObject? =
-        firstObject("profile", "user", "account", "member", "agent")
-
-private fun JsonObject.toChannelMemberProfile(defaultKind: MemberKind? = null): MemberProfile? {
-    val profileObject = firstObject("member", "user", "agent", "profile") ?: this
-    val profile = profileObject.toMemberProfile() ?: toMemberProfile() ?: return null
-    val role =
-            string("role", "channelRole", "memberRole", "roleDescription")
-                    ?: profile.roleDescription
-    val computerName = memberComputerName()
-    val agentStatus = memberAgentStatus() ?: profile.agentStatus
-    val presence =
-            agentStatus?.presence
-                    ?: string("presence", "status", "availability").toPresence(profile.presence)
-    val badges =
-            buildList {
-                profile.permissionBadges
-                        .filterNot { it.startsWith(MemberComputerBadgePrefix) }
-                        .filterNot { it.startsWith(MemberComputerIdBadgePrefix) }
-                        .forEach(::add)
-                role?.takeIf { it.isNotBlank() }?.let(::add)
-                computerName?.takeIf { it.isNotBlank() }?.let { add(it.toMemberComputerBadge()) }
-                memberComputerId()?.takeIf { it.isNotBlank() }?.let { add(it.toMemberComputerIdBadge()) }
-            }.distinct()
-    return profile.copy(
-            kind = defaultKind ?: explicitMemberKindOrNull() ?: profile.kind,
-            roleDescription = role,
-            presence = presence,
-            agentStatus = agentStatus,
-            permissionBadges = if (badges.isNotEmpty()) badges else profile.permissionBadges
-    )
-}
-
-private fun JsonObject.memberPermissionBadgesWithComputerName(): List<String> =
-        buildList {
-            memberComputerName()
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { add(it.toMemberComputerBadge()) }
-            memberComputerId()
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { add(it.toMemberComputerIdBadge()) }
-        }
-
 private fun String.toMemberComputerBadge(): String = "$MemberComputerBadgePrefix$this"
 private fun String.toMemberComputerIdBadge(): String = "$MemberComputerIdBadgePrefix$this"
 private fun String.memberComputerLabelOrNull(): String? =
@@ -3292,85 +2434,6 @@ private fun String.memberComputerIdOrNull(): String? =
 
 private const val MemberComputerBadgePrefix = "computer:"
 private const val MemberComputerIdBadgePrefix = "computer-id:"
-
-private fun JsonObject.memberComputerName(): String? {
-    val direct =
-            string(
-                    "computerName",
-                    "machineName",
-                    "deviceName",
-                    "hostname",
-                    "hostName"
-            )
-    if (!direct.isNullOrBlank()) return direct
-    val nested =
-            firstObject("computer", "machine", "daemon", "host")
-                    ?.string(
-                            "name",
-                            "displayName",
-                            "computerName",
-                            "machineName",
-                            "deviceName",
-                            "hostname",
-                            "hostName"
-                    )
-    if (!nested.isNullOrBlank()) return nested
-    return null
-}
-
-private fun JsonObject.memberComputerId(): String? {
-    val direct =
-            string(
-                    "computerId",
-                    "machineId",
-                    "daemonId"
-            )
-    if (!direct.isNullOrBlank()) return direct
-    val nested =
-            firstObject("computer", "machine", "daemon", "host")
-                    ?.string(
-                            "id",
-                            "computerId",
-                            "machineId",
-                            "daemonId"
-                    )
-    if (!nested.isNullOrBlank()) return nested
-    return nestedMemberObject()?.memberComputerId()
-}
-
-private fun JsonObject.agentWorkspaceSnapshots(): List<SettingsComputerWorkspaceSnapshot> {
-    val direct =
-            items(
-                            "workspaces",
-                            "workspace",
-                            "workspaceRoots",
-                            "workspaceDirectories",
-                            "workspacePaths"
-                    )
-                    .mapNotNull { it.toAgentWorkspaceSnapshot() }
-    return if (direct.isNotEmpty()) {
-        direct.distinctBy { it.id }
-    } else {
-        emptyList()
-    }
-}
-
-private fun JsonObject.machineNameMap(): Map<String, String> =
-        items("machines", "computers", "items", "nodes", "records", "rows", "list", "results", "data")
-                .mapNotNull { it.asObjectOrNull() }
-                .mapNotNull { machine ->
-                    val id = machine.string("id", "machineId", "computerId", "uuid") ?: return@mapNotNull null
-                    val label =
-                            machine.string(
-                                    "name",
-                                    "displayName",
-                                    "deviceName",
-                                    "hostname",
-                                    "hostName"
-                            ) ?: return@mapNotNull null
-                    id to label
-                }
-                .toMap()
 
 private fun List<MemberProfile>.resolveComputerLabels(
         machineNames: Map<String, String>
@@ -3395,139 +2458,6 @@ private fun MemberProfile.resolveComputerLabel(machineNames: Map<String, String>
         copy(permissionBadges = badgesWithoutIds)
     }
 }
-
-private fun JsonObject.agentSkillWorkspaceSnapshots(): List<SettingsComputerWorkspaceSnapshot> =
-        agentSkillGroups()
-                .filter { it.title.equals("workspace", ignoreCase = true) }
-                .flatMap { group ->
-                    group.paths.map { pathGroup ->
-                        SettingsComputerWorkspaceSnapshot(
-                                id = pathGroup.path,
-                                name = pathGroup.path.substringAfterLast('/').ifBlank {
-                                    pathGroup.path
-                                },
-                                path = pathGroup.path
-                        )
-                    }
-                }
-                .distinctBy { it.id }
-
-private fun JsonObject.toAgentWorkspaceSnapshots(): List<SettingsComputerWorkspaceSnapshot> =
-        items("workspaces", "items", "data")
-                .mapNotNull { it.asObjectOrNull()?.toAgentWorkspaceSnapshotFromObject() }
-                .distinctBy { it.id }
-
-private fun JsonElement.toAgentWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot? =
-        when {
-            isJsonPrimitive && asJsonPrimitive.isString -> {
-                val path = asString.takeIf { it.isNotBlank() } ?: return null
-                SettingsComputerWorkspaceSnapshot(
-                        id = path,
-                        name = path.substringAfterLast('/').ifBlank { path },
-                        path = path
-                )
-            }
-            isJsonObject -> asJsonObject.toAgentWorkspaceSnapshotFromObject()
-            else -> null
-        }
-
-private fun JsonObject.toAgentWorkspaceSnapshotFromObject(): SettingsComputerWorkspaceSnapshot? {
-    val path = string("path", "workspacePath", "root", "directory", "dir")
-    val id = string("id", "workspaceId") ?: path
-    if (id.isNullOrBlank()) return null
-    return SettingsComputerWorkspaceSnapshot(
-            id = id,
-            name =
-                    string("name", "title", "label")
-                            ?: path?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
-                            ?: id,
-            path = path.orEmpty(),
-            statusLabel =
-                    string("status", "state", "health")
-                            ?: if (boolean("active", "online") == true) "active" else null,
-            lastActiveLabel = string("lastActiveAt", "updatedAt")
-    )
-}
-
-private fun JsonObject.memberItems(): List<MemberProfile> {
-    val root = unwrap("data", "channel")
-    val containers = listOf(root) + listOfNotNull(root.firstObject("members", "participants", "channelMembers"))
-    val direct =
-            containers.flatMap { container ->
-                container.items("members", "items").filterNot {
-                    it.asObjectOrNull()?.explicitMemberKindOrNull() == MemberKind.Agent
-                }
-            }
-    val users =
-            containers.flatMap { container ->
-                container.directArrayItems("humans") +
-                        container.directArrayItems("users") +
-                        container.directArrayItems("humanMembers")
-            }
-    val agents =
-            containers.flatMap { container ->
-                container.directArrayItems("agents") +
-                        container.directArrayItems("agentMembers")
-            }
-    val fallback =
-            containers.flatMap { container ->
-                container.items("data").filterNot {
-                    it.asObjectOrNull()?.explicitMemberKindOrNull() == MemberKind.Agent
-                }
-            }
-    val directMembers = direct.mapNotNull { it.asObjectOrNull()?.toChannelMemberProfile() }
-    val splitMembers =
-            users.mapNotNull { it.asObjectOrNull()?.toChannelMemberProfile(MemberKind.Human) } +
-                    agents.mapNotNull {
-                        it.asObjectOrNull()?.toChannelMemberProfile(MemberKind.Agent)
-                    }
-    val members =
-            when {
-                directMembers.isNotEmpty() || splitMembers.isNotEmpty() ->
-                        directMembers + splitMembers
-                else -> fallback.mapNotNull { it.asObjectOrNull()?.toChannelMemberProfile() }
-            }
-    return members.distinctBy { it.memberKey }
-}
-
-private fun JsonObject.agentMemberItems(): List<MemberProfile> {
-    val agentContainers = agentObjects()
-    if (agentContainers.isNotEmpty()) {
-        return agentContainers
-                .filterNot { it.isExplicitHumanMember() }
-                .mapNotNull { it.toChannelMemberProfile(MemberKind.Agent) }
-                .distinctBy { it.memberKey }
-    }
-    return emptyList()
-}
-
-private fun JsonObject.agentObjects(): List<JsonObject> {
-    val root = unwrap("data")
-    val agentContainers = root.directArrayItems("agents").mapNotNull { it.asObjectOrNull() }
-    if (agentContainers.isNotEmpty()) {
-        return agentContainers
-    }
-    val explicitAgents =
-            root.get("agents")
-                    ?.takeIf { it.isJsonArray }
-                    ?.asJsonArray
-                    ?.toList()
-                    ?.mapNotNull { it.asObjectOrNull() }
-                    .orEmpty()
-    if (explicitAgents.isNotEmpty()) {
-        return explicitAgents
-    }
-    return root.items("items", "nodes", "records", "rows", "list", "results")
-            .mapNotNull { it.asObjectOrNull() }
-}
-
-private fun JsonObject.isExplicitHumanMember(): Boolean =
-        string("kind", "type", "memberType")?.lowercase()?.let { it == "human" || it == "user" } ==
-                true || string("userId") != null || firstObject("user", "member") != null
-
-private fun JsonObject.directArrayItems(name: String): List<com.google.gson.JsonElement> =
-        get(name)?.takeIf { it.isJsonArray }?.asJsonArray?.toList().orEmpty()
-
 
 private val MemberProfile.memberKey: String
     get() = "${kind.name}:${id.value}"
@@ -3590,38 +2520,6 @@ private fun String?.toAgentStatusOrNull(): AgentStatus? = AgentStatus.fromWireVa
 
 
 
-private fun JsonObject.toConversationOrDefault(
-        threadId: ThreadId,
-        name: String
-): ConversationSummary =
-        if (entrySet().isEmpty() || !hasChannelTimelineIdentity()) {
-            val parentChannelId = threadId.parentChannelIdOrNull()
-            val parentMessageId = threadId.parentMessageIdOrNull()
-            ConversationSummary(
-                    threadId = threadId,
-                    channelId = parentChannelId ?: ChannelId(threadId.value),
-                    thread =
-                            if (parentChannelId != null && parentMessageId != null) {
-                                ThreadConversation(
-                                        parentChannelId = parentChannelId,
-                                        parentMessageId = parentMessageId,
-                                        streamChannelId = null
-                                )
-                            } else {
-                                null
-                            },
-                    kind =
-                            if (parentChannelId != null && parentMessageId != null) {
-                                ConversationKind.Thread
-                            } else {
-                                ConversationKind.Channel
-                            },
-                    name = name
-            )
-        } else {
-            toConversation(ConversationKind.Channel)
-        }
-
 private fun ConversationSummary.withThreadAnchor(
         parentMessage: Message?,
         streamChannelId: ChannelId,
@@ -3650,37 +2548,6 @@ private fun ConversationSummary.withThreadAnchor(
                     ),
             kind = ConversationKind.Thread
     ).withParentNameFallback()
-}
-
-private fun JsonObject.hasChannelTimelineIdentity(): Boolean =
-        string("id", "channelId", "threadChannelId", "_id") != null
-
-private fun throwMissingChannelTimelineId(kind: ConversationKind, root: JsonObject): Nothing {
-    val message = "missing_channel_timeline_id kind=${kind.name} rootKeys=${root.safeNetworkKeyList()}"
-    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
-            "SlockConversation",
-            message
-    )
-    throw IllegalStateException(message)
-}
-
-private fun JsonObject.safeNetworkKeyList(): String =
-        entrySet().map { it.key }.sorted().joinToString("|").ifBlank { "none" }
-
-private fun JsonObject.unwrap(vararg names: String): JsonObject {
-    for (name in names) {
-        val value = get(name)
-        if (value != null && value.isJsonObject) return value.asJsonObject
-    }
-    return this
-}
-
-private fun JsonObject.firstObject(vararg names: String): JsonObject? {
-    for (name in names) {
-        val value = get(name)
-        if (value != null && value.isJsonObject) return value.asJsonObject
-    }
-    return null
 }
 
 private fun ChannelId.toThreadActionBody(): RequestBody =
@@ -3713,52 +2580,6 @@ private fun Map<String, Any?>.toJsonBody(): RequestBody =
 
 private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 private val textMediaType = "text/plain; charset=utf-8".toMediaType()
-
-private fun JsonObject.toServerUnreadSummarySnapshot(
-        selectedServer: ServerSummary
-): ServerUnreadSummarySnapshot =
-        ai.slock.compose.data.parseServerUnreadSummarySnapshot(toString(), selectedServer)
-                ?: ServerUnreadSummarySnapshot(
-                        server = selectedServer,
-                        summaries = emptyList(),
-                        selectedServerSummary = null,
-                        totalUnreadCount = 0,
-                        mentionCount = 0
-                )
-
-private fun JsonObject.toChannelUnreadCounts(): Map<ChannelId, Int> =
-        ai.slock.compose.data.parseChannelUnreadSnapshot(
-                        toString(),
-                        ServerSummary(id = ServerId(""), name = "", slug = "")
-                )
-                ?.unreadCounts
-                ?: emptyMap()
-
-private fun JsonObject.toReadReceiptResult(
-        fallbackChannelId: ChannelId? = null,
-        fallbackSeq: Long? = null
-): ReadReceiptResult =
-        ai.slock.compose.data.parseReadReceiptResult(
-                        toString(),
-                        fallbackChannelId = fallbackChannelId,
-                        fallbackSeq = fallbackSeq
-                )
-                ?: ReadReceiptResult(
-                        channelId = fallbackChannelId,
-                        seq = fallbackSeq,
-                        unreadCount = 0,
-                        changed = true
-                )
-
-private fun String.toTaskStatus(): TaskStatus? =
-    when (lowercase()) {
-        "todo", "to_do", "open" -> TaskStatus.Todo
-        "in_progress", "inprogress", "progress" -> TaskStatus.InProgress
-        "in_review", "inreview", "review" -> TaskStatus.InReview
-        "done", "complete", "completed" -> TaskStatus.Done
-        "closed" -> TaskStatus.Closed
-        else -> null
-    }
 
 private fun TaskStatus.toApiValue(): String =
         when (this) {

@@ -8,6 +8,11 @@ import ai.slock.compose.model.Presence
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 
 private val settingsJson = Json {
     ignoreUnknownKeys = true
@@ -116,6 +121,206 @@ private fun WireServerMemberProfile.toMemberProfile(): MemberProfile {
         agentStatus = AgentStatus.Offline,
     )
 }
+
+@Serializable
+private data class WireSettingsComputersResponse(
+    val machines: List<WireSettingsComputer>,
+    val latestDaemonVersion: String? = null,
+)
+
+@Serializable
+private data class WireSettingsComputer(
+    val id: String,
+    val name: String,
+    val hostname: String? = null,
+    val os: String? = null,
+    val daemonVersion: String? = null,
+    val status: String? = null,
+    val lastHeartbeat: String? = null,
+)
+
+fun parseSharedSettingsComputers(bodyText: String): SettingsComputersSnapshot? = runCatching {
+    val response = settingsJson.decodeFromString(WireSettingsComputersResponse.serializer(), bodyText)
+    SettingsComputersSnapshot(
+        computers = response.machines
+            .map { it.toSettingsComputerSnapshot() }
+            .filter { it.id.isNotBlank() || it.name.isNotBlank() },
+        canAddComputer = false,
+        latestDaemonVersion = response.latestDaemonVersion,
+    )
+}.getOrNull()
+
+private fun WireSettingsComputer.toSettingsComputerSnapshot(): SettingsComputerSnapshot {
+    val label = name.ifBlank { hostname ?: id }
+    val normalizedStatus = status?.lowercase()
+    return SettingsComputerSnapshot(
+        id = id.ifBlank { label },
+        name = label.ifBlank { "Unknown computer" },
+        daemonVersion = daemonVersion ?: "daemon unavailable",
+        online = normalizedStatus == "online",
+        hostname = hostname,
+        platform = os,
+        lastSeenLabel = lastHeartbeat,
+    )
+}
+
+@Serializable
+private data class WireSettingsMachineWorkspace(
+    val directoryName: String,
+    val status: String? = null,
+    val lastModified: String? = null,
+)
+
+fun parseSharedSettingsMachineWorkspaces(
+    bodyText: String,
+): List<SettingsComputerWorkspaceSnapshot>? = runCatching {
+    settingsJson.decodeFromString(ListSerializer(WireSettingsMachineWorkspace.serializer()), bodyText)
+        .map { it.toSettingsComputerWorkspaceSnapshot() }
+        .filter { it.id.isNotBlank() || it.path.isNotBlank() }
+}.getOrNull()
+
+private fun WireSettingsMachineWorkspace.toSettingsComputerWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =
+    SettingsComputerWorkspaceSnapshot(
+        id = directoryName,
+        name = directoryName,
+        path = directoryName,
+        statusLabel = status,
+        lastActiveLabel = lastModified,
+    )
+
+@Serializable
+private data class WireSettingsServerMember(
+    val userId: String? = null,
+    val name: String? = null,
+    val displayName: String? = null,
+    val email: String? = null,
+    val role: String? = null,
+)
+
+fun parseSharedSettingsServerAdmins(bodyText: String): List<SettingsServerAdminSnapshot>? = runCatching {
+    settingsJson.decodeFromString(ListSerializer(WireSettingsServerMember.serializer()), bodyText)
+        .filter { it.role?.lowercase() == "admin" }
+        .mapNotNull { it.toSettingsServerAdminSnapshot() }
+}.getOrNull()
+
+private fun WireSettingsServerMember.toSettingsServerAdminSnapshot(): SettingsServerAdminSnapshot? {
+    val id = userId?.takeIf { it.isNotBlank() } ?: return null
+    return SettingsServerAdminSnapshot(
+        id = id,
+        name = displayName?.takeIf { it.isNotBlank() }
+            ?: name?.takeIf { it.isNotBlank() }
+            ?: email?.takeIf { it.isNotBlank() }
+            ?: id,
+        detail = email,
+        role = role?.toSettingsRoleLabel(),
+    )
+}
+
+@Serializable
+private data class WireSettingsServerUsage(
+    val agents: JsonElement,
+    val machines: JsonElement,
+    val channels: JsonElement,
+)
+
+fun parseSharedSettingsServerUsage(bodyText: String): List<SettingsPlanUsageSnapshot>? = runCatching {
+    val usage = settingsJson.decodeFromString(WireSettingsServerUsage.serializer(), bodyText)
+    listOf(
+        SettingsPlanUsageSnapshot("Agents", usage.agents.settingsDisplayValue() ?: return null),
+        SettingsPlanUsageSnapshot("Computers", usage.machines.settingsDisplayValue() ?: return null),
+        SettingsPlanUsageSnapshot("Channels", usage.channels.settingsDisplayValue() ?: return null),
+    )
+}.getOrNull()
+
+@Serializable
+private data class WireSettingsBillingSubscription(
+    val subscription: WireSettingsSubscription? = null,
+    val stripeConfigured: Boolean,
+)
+
+@Serializable
+private data class WireSettingsSubscription(
+    val status: String? = null,
+    val currentPeriodEnd: String? = null,
+)
+
+fun parseSharedSettingsBillingSubscription(bodyText: String): List<SettingsPlanUsageSnapshot>? = runCatching {
+    val billing = settingsJson.decodeFromString(WireSettingsBillingSubscription.serializer(), bodyText)
+    buildList {
+        add(
+            SettingsPlanUsageSnapshot(
+                label = "Billing Status",
+                value = billing.subscription?.status?.toSettingsRoleLabel() ?: "No subscription",
+            )
+        )
+        billing.subscription?.currentPeriodEnd?.let { currentPeriodEnd ->
+            add(SettingsPlanUsageSnapshot(label = "Current Period End", value = currentPeriodEnd))
+        }
+        add(SettingsPlanUsageSnapshot(label = "Stripe Configured", value = billing.stripeConfigured.toString()))
+    }
+}.getOrNull()
+
+@Serializable
+private data class WireSettingsServerOnboarding(
+    val setupModalReminderOptOut: Boolean,
+)
+
+fun parseSharedSettingsServerOnboarding(bodyText: String): SettingsServerOnboardingSnapshot? = runCatching {
+    val onboarding = settingsJson.decodeFromString(WireSettingsServerOnboarding.serializer(), bodyText)
+    SettingsServerOnboardingSnapshot(
+        setupModalReminderOptOut = onboarding.setupModalReminderOptOut,
+        statusLabel = if (onboarding.setupModalReminderOptOut) "Reminder muted" else "Reminder active",
+        detail = if (onboarding.setupModalReminderOptOut) {
+            "The onboarding setup reminder is muted for this server."
+        } else {
+            "The onboarding setup reminder can appear when the server has no computer or agent."
+        },
+    )
+}.getOrNull()
+
+@Serializable
+private data class WireSettingsServerProfileUpdate(
+    val id: String,
+    val name: String,
+)
+
+fun parseSharedSettingsServerProfileUpdated(bodyText: String): Boolean = runCatching {
+    val profile = settingsJson.decodeFromString(WireSettingsServerProfileUpdate.serializer(), bodyText)
+    profile.id.isNotBlank() && profile.name.isNotBlank()
+}.getOrDefault(false)
+
+@Serializable
+private data class WireSettingsServerInvite(
+    val id: String? = null,
+    val email: String? = null,
+)
+
+fun parseSharedSettingsServerInviteCreated(bodyText: String): SettingsServerActionResult? = runCatching {
+    val invite = settingsJson.decodeFromString(WireSettingsServerInvite.serializer(), bodyText)
+    val email = invite.email?.takeIf { it.isNotBlank() }
+    val id = invite.id?.takeIf { it.isNotBlank() }
+    if (email == null && id == null) return null
+    SettingsServerActionResult(
+        success = true,
+        message = email?.let { "Invite created for $it" },
+    )
+}.getOrNull()
+
+@Serializable
+private data class WireSettingsServerDelete(
+    val ok: Boolean,
+)
+
+fun parseSharedSettingsServerDeleted(bodyText: String): SettingsServerActionResult? = runCatching {
+    val deleted = settingsJson.decodeFromString(WireSettingsServerDelete.serializer(), bodyText)
+    if (!deleted.ok) return null
+    SettingsServerActionResult(success = true)
+}.getOrNull()
+
+private fun JsonElement.settingsDisplayValue(): String? =
+    (this as? JsonPrimitive)?.let { primitive ->
+        primitive.contentOrNull ?: primitive.intOrNull?.toString() ?: primitive.booleanOrNull?.toString()
+    }
 
 private fun String.toSettingsRoleLabel(): String =
     replace("_", " ")

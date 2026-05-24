@@ -49,9 +49,9 @@ class RealSettingsRepository(
         return execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
             block = { api.settingsAccount(currentSlockApiPriority()) },
-            mapper = { json ->
+            mapper = { bodyText ->
                 ai.slock.compose.data.parseSharedAccountSettingsSnapshot(
-                    bodyText = json.toString(),
+                    bodyText = bodyText,
                     fallbackRole = session.servers.firstOrNull { it.id == session.currentServerId }?.role
                 ) ?: throw IllegalStateException("Account settings response missing user")
             }
@@ -63,9 +63,9 @@ class RealSettingsRepository(
         return execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
             block = { api.updateSettingsAccount(currentSlockApiPriority(), request.toJsonBody()) },
-            mapper = { json ->
+            mapper = { bodyText ->
                 ai.slock.compose.data.parseSharedAccountSettingsSnapshot(
-                    bodyText = json.toString(),
+                    bodyText = bodyText,
                     fallbackRole = session.servers.firstOrNull { it.id == session.currentServerId }?.role
                 ) ?: throw IllegalStateException("Account settings response missing user")
             }
@@ -130,9 +130,9 @@ class RealSettingsRepository(
             block = { api.settingsAgents(currentSlockApiPriority()) },
             source = "settings_machine_agents",
             warningLogger = warningLogger,
-            mapper = { json ->
+            mapper = { bodyText ->
                 val agents = ai.slock.compose.data.parseSharedSettingsComputerAgents(
-                    bodyText = json.getAsJsonArray("items")?.toString() ?: json.toString(),
+                    bodyText = bodyText,
                     machineId = machineId
                 ) ?: throw IllegalStateException("Settings agents response missing agent list")
                 if (agents.isEmpty()) {
@@ -192,9 +192,9 @@ class RealSettingsRepository(
             block = { api.serverMembers(currentSlockApiPriority(), serverId) },
             source = "settings_machine_agent_members",
             warningLogger = warningLogger,
-            mapper = { json ->
+            mapper = { bodyText ->
                 ai.slock.compose.data.parseSharedSettingsMemberProfiles(
-                    json.getAsJsonArray("items")?.toString() ?: json.toString()
+                    bodyText
                 )
                     ?: throw IllegalStateException("Settings member response missing member list")
             }

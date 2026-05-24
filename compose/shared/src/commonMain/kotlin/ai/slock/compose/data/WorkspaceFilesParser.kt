@@ -1,5 +1,6 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.SlockWorkspaceFileKind
 import ai.slock.compose.model.SlockWorkspaceFilePreview
 import ai.slock.compose.model.SlockWorkspaceNode
@@ -61,11 +62,19 @@ private data class WireWorkspacePreview(
  * Parses a `{files: [...]}` response into a flat list of [SlockWorkspaceNode]s.
  */
 fun parseSharedWorkspaceFileNodes(bodyText: String): List<SlockWorkspaceNode> {
+    return parseSharedWorkspaceFileNodesOrNull(bodyText).orEmpty()
+}
+
+/**
+ * Parses a `{files: [...]}` response and returns null when the route did not
+ * return the canonical workspace-files payload.
+ */
+fun parseSharedWorkspaceFileNodesOrNull(bodyText: String): List<SlockWorkspaceNode>? {
     if (bodyText.isBlank()) return emptyList()
     val root = runCatching {
         workspaceJson.parseToJsonElement(bodyText) as? JsonObject
-    }.getOrNull() ?: return emptyList()
-    val filesElement = root["files"] ?: return emptyList()
+    }.getOrNull() ?: return null
+    val filesElement = root["files"] ?: return null
     return runCatching {
         workspaceJson
             .decodeFromJsonElement(
@@ -73,7 +82,7 @@ fun parseSharedWorkspaceFileNodes(bodyText: String): List<SlockWorkspaceNode> {
                 filesElement,
             )
             .map { it.toDomain() }
-    }.getOrElse { emptyList() }
+    }.getOrNull()
 }
 
 /**
@@ -101,7 +110,18 @@ fun parseSharedWorkspaceFilePreview(
     return preview.toDomain(fallbackPath)
 }
 
-internal fun parseSharedWorkspaceFilePathFromBody(bodyText: String, fallback: String): String {
+fun parseSharedAgentWorkspaceFilePreviewSnapshot(
+    bodyText: String,
+    agentId: MemberId,
+    fallbackPath: String,
+): AgentWorkspaceFilePreviewSnapshot =
+    AgentWorkspaceFilePreviewSnapshot(
+        agentId = agentId,
+        path = parseSharedWorkspaceFilePathFromBody(bodyText, fallbackPath),
+        preview = parseSharedWorkspaceFilePreview(bodyText, fallbackPath),
+    )
+
+fun parseSharedWorkspaceFilePathFromBody(bodyText: String, fallback: String): String {
     if (bodyText.isBlank()) return fallback
     return runCatching {
         (workspaceJson.parseToJsonElement(bodyText) as? JsonObject)

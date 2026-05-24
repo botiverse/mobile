@@ -19,6 +19,27 @@ cd /Users/artin/AndroidStudioProjects/Slock
 git submodule update --init --recursive third_party/slock-source
 ```
 
+## Shared DTO API Contract Rule
+
+- Iron rule: every Android API wire contract must go through an explicit shared
+  DTO/parser in `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/`.
+  Do not add new app-side Gson/JsonObject response mappers for API payloads in
+  `app/src/main/java/.../network/`.
+- For any new or changed API endpoint, first verify the canonical field names
+  in `third_party/slock-source/packages/server/` and
+  `third_party/slock-source/packages/shared/`, then model that exact camelCase
+  shape as a `@Serializable` DTO in shared. No snake_case aliases, no
+  `firstObject(...)` envelope sniffing, and no `string("a", "b", "c")` field
+  guessing.
+- App repositories should wire responses by calling public shared parser
+  functions such as `parseSharedXxx(...)` and should keep only UI composition,
+  fallback context, and repository orchestration locally.
+- Request bodies that represent server API contracts should likewise use shared
+  DTOs/builders when they are more than tiny one-off action payloads. Avoid
+  drifting ad hoc maps in app code for reusable API shapes.
+- After changing `compose/shared`, publish it locally before app validation:
+  `cd /Users/artin/AndroidStudioProjects/Slock/compose && ./gradlew :shared:publishAndroidReleasePublicationToMavenLocal`.
+
 ## Kuikly AI Skills
 
 - Workspace-level Kuikly guidance lives under `.agents/`:

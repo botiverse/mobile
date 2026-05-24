@@ -53,33 +53,35 @@ shapes and `packages/shared/` for shared types. No snake_case aliases, no
   `objectValue`, connected-account-status, and role-label helpers.
 - Thin attachment URL and thread action result parsing moved to shared
   (`parseSharedAttachmentOpenTarget`, `parseSharedThreadActionResult`).
+- `NetworkResponseMapper.execute` now passes through the raw response body
+  string. App repositories no longer receive `JsonElement`/`JsonObject`, so any
+  endpoint that returns a bare array, such as `GET /api/agents`, must parse that
+  array directly in a shared DTO parser.
+- Settings server API typed parsing moved out of `SlockSettingsServerApi.kt`
+  into shared strict DTO parsers for machines, machine workspaces, server
+  admins, usage, billing subscription, onboarding, server profile update,
+  invite creation, and delete.
+- Channel/home actions and lists moved to shared strict parsers in
+  `HomeParser.kt`: create channel, open DM, channel join/leave/archive/delete,
+  bare channel arrays, and bare DM arrays.
+- Member, channel-member, and agent detail surfaces moved to
+  `MemberAgentParser.kt`: server members, `GET /api/agents` bare array,
+  member profile, agent profile update, agent DMs, reminders, activity log,
+  current-activity fallback, agent skills, channel members, and member
+  add/remove action results.
+- Workspace file response validation now stays in `WorkspaceFilesParser.kt`;
+  app code asks shared for a canonical `{files:[...]}` payload or file-preview
+  snapshot instead of checking `JsonObject` locally.
+- `RealSlockRepositories.kt` no longer contains app-side `JsonObject` response
+  helpers (`firstObject`, `unwrap`, `items`, `string`, `toMemberProfile`,
+  `toConversation*`, agent skill/activity/workspace mappers, unread/read
+  mappers, etc.).
 
 ### In progress / next
 
-- **20 pre-existing test failures** in `RealSlockRepositoriesTest`. These are
-  NOT caused by the sweep — `git stash` shows the same set on baseline. They
-  obscure regression signal for further parser surgery, so triage first or do
-  the moves under `--tests` filters that skip the broken set.
-
-### Move to shared (one batch at a time, each its own commit)
-
-1. **Channel/Home conversation actions and lists**:
-   `createChannel`, `openDirectMessage`, channel join/archive response mapping,
-   `homeConversationItems`, `toConversation*`, and the conversation avatar /
-   joined / archived helpers in `RealSlockRepositories.kt`.
-2. **Member/channel-members profile parsing**:
-   `toMemberProfile`, `toChannelMemberProfile`, `memberItems`,
-   `agentMemberItems`, and the add/remove member response wrappers.
-3. **Agent detail surfaces**:
-   agent DMs, reminders, activity log, current activity fallback, skills, and
-   workspace/machine lookup helpers.
-4. **Settings server API parser cleanup**:
-   move `SlockSettingsServerApi.kt`'s typed Gson mappers for machines,
-   workspaces, admins, usage, billing, onboarding, profile update, invite, and
-   delete into shared strict DTO parsers.
-5. **Delete or split `NetworkResponseMapper`** once `execute<T>{}` no longer
-   needs to carry legacy `items`, `string`, `int`, `long`, `boolean`,
-   `stringList`, and `avatarWireValue` helpers for repository parsing.
+- `RealSlockRepositoriesTest` still contains many alias/wrapper-era fixtures
+  and assertions. Full class execution now intentionally exposes those stale
+  tests; update or delete alias-only cases and keep canonical-contract fixtures.
 
 ## Canonical parser pattern
 
@@ -104,8 +106,8 @@ fun parseSharedXxx(bodyText: String, /* …context… */): T {
 App side:
 
 ```kotlin
-mapper = { json ->
-    ai.slock.compose.data.parseSharedXxx(json.toString(), …)
+mapper = { bodyText ->
+    ai.slock.compose.data.parseSharedXxx(bodyText, …)
 }
 ```
 

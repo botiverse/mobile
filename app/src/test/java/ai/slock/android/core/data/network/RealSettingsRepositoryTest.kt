@@ -189,11 +189,10 @@ class RealSettingsRepositoryTest {
             machinesJson = """
                 {
                   "machines": [
-                    {"id":"machine-1","hostname":"Jiachengs-MacBook-Pro","daemonVersion":"1.4.2","status":"online"},
-                    {"id":"machine-2","name":"Build host","daemonVersion":"1.3.0","online":false}
+                    {"id":"machine-1","name":"Jiachengs-MacBook-Pro","hostname":"Jiachengs-MacBook-Pro","daemonVersion":"1.4.2","status":"online"},
+                    {"id":"machine-2","name":"Build host","daemonVersion":"1.3.0","status":"offline"}
                   ],
-                  "latestDaemonVersion": "1.5.0",
-                  "canAddComputer": true
+                  "latestDaemonVersion": "1.5.0"
                 }
             """.trimIndent()
         )
@@ -209,7 +208,7 @@ class RealSettingsRepositoryTest {
         assertTrue(result is DataResult.Content)
         val snapshot = (result as DataResult.Content).data
         assertEquals("server-1", api.machinesServerId)
-        assertEquals(true, snapshot.canAddComputer)
+        assertEquals(false, snapshot.canAddComputer)
         assertEquals("1.5.0", snapshot.latestDaemonVersion)
         assertEquals(2, snapshot.computers.size)
         assertEquals("Jiachengs-MacBook-Pro", snapshot.computers[0].name)
@@ -218,7 +217,7 @@ class RealSettingsRepositoryTest {
         assertEquals("machine-2", snapshot.computers[1].id)
         assertEquals(false, snapshot.computers[1].online)
         assertTrue(logs.any { it == "machines_fetch_start serverId=server-1" })
-        assertTrue(logs.any { it == "machines_fetch_content serverId=server-1 count=2 canAdd=true" })
+        assertTrue(logs.any { it == "machines_fetch_content serverId=server-1 count=2 canAdd=false" })
         assertTrue(logs.none { it.contains("Bearer") || it.contains("token", ignoreCase = true) })
     }
 
@@ -289,7 +288,7 @@ class RealSettingsRepositoryTest {
     fun computerDetailCombinesMachineWorkspacesAndAgents() {
         val api = FakeSlockApi(
             machinesJson = """
-                {"machines":[{"id":"machine-1","name":"MacBook","hostname":"mac.local","platform":"macOS","daemonVersion":"1.4.2","status":"online","lastSeenAt":"2026-05-07T01:00:00Z"}]}
+                {"machines":[{"id":"machine-1","name":"MacBook","hostname":"mac.local","os":"macOS","daemonVersion":"1.4.2","status":"online","lastHeartbeat":"2026-05-07T01:00:00Z"}]}
             """.trimIndent(),
             membersJson = """
                 [
@@ -297,7 +296,7 @@ class RealSettingsRepositoryTest {
                 ]
             """.trimIndent(),
             workspacesJson = """
-                [{"id":"workspace-1","name":"Slock","path":"~/AndroidStudioProjects/Slock","status":"active","lastActiveAt":"2026-05-07T01:01:00Z"}]
+                [{"directoryName":"Slock","status":"active","lastModified":"2026-05-07T01:01:00Z"}]
             """.trimIndent(),
             agentsJson = """
                 [

@@ -6,6 +6,7 @@ import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.toGravatarAvatarUrl
 import kotlinx.serialization.KSerializer
@@ -117,6 +118,87 @@ fun parseSlockHome(
         )
     )
 }
+
+fun parseSharedChannelSnapshot(
+    bodyText: String,
+    server: ServerSummary,
+): ChannelSnapshot? = runCatching {
+    ChannelSnapshot(
+        server = server,
+        channels = homeJson.decodeFromString(ListSerializer(ChannelWireDto.serializer()), bodyText)
+            .filter { it.archivedAt == null }
+            .map { it.toConversation() }
+            .dedupeHomeConversations(),
+    )
+}.getOrNull()
+
+fun parseSharedDirectMessageSnapshot(
+    bodyText: String,
+    server: ServerSummary,
+    warningLogger: (String) -> Unit = {},
+): DirectMessageSnapshot? = runCatching {
+    DirectMessageSnapshot(
+        server = server,
+        directMessages = homeJson.decodeFromString(ListSerializer(DMChannelWireDto.serializer()), bodyText)
+            .map { it.toConversation(warningLogger) }
+            .dedupeHomeConversations(),
+    )
+}.getOrNull()
+
+fun parseSharedCreateChannelResult(bodyText: String): CreateChannelResult? = runCatching {
+    CreateChannelResult(
+        channel = homeJson.decodeFromString(ChannelWireDto.serializer(), bodyText)
+            .toConversation()
+    )
+}.getOrNull()
+
+fun parseSharedOpenDirectMessageResult(bodyText: String): OpenDirectMessageResult? = runCatching {
+    OpenDirectMessageResult(
+        conversation = homeJson.decodeFromString(DMChannelWireDto.serializer(), bodyText)
+            .toConversation { _ -> },
+        directMessages = emptyList(),
+    )
+}.getOrNull()
+
+fun parseSharedChannelArchiveResult(
+    bodyText: String,
+    fallbackChannelId: ChannelId,
+): ChannelArchiveResult? = runCatching {
+    val channel = homeJson.decodeFromString(ChannelWireDto.serializer(), bodyText)
+        .toConversation()
+        .copy(archived = true)
+    ChannelArchiveResult(
+        channelId = channel.channelId ?: fallbackChannelId,
+        archived = true,
+        channel = channel,
+    )
+}.getOrNull()
+
+@Serializable
+private data class WireOkResponse(
+    val ok: Boolean = false,
+    val seq: Long? = null,
+    val unreadCount: Int = 0,
+    val markedCount: Int = 0,
+)
+
+fun parseSharedChannelJoinResult(bodyText: String, channelId: ChannelId): ChannelJoinResult? =
+    runCatching {
+        val decoded = homeJson.decodeFromString(WireOkResponse.serializer(), bodyText)
+        if (decoded.ok) ChannelJoinResult(channelId = channelId, joined = true) else null
+    }.getOrNull()
+
+fun parseSharedChannelLeaveResult(bodyText: String, channelId: ChannelId): ChannelLeaveResult? =
+    runCatching {
+        val decoded = homeJson.decodeFromString(WireOkResponse.serializer(), bodyText)
+        if (decoded.ok) ChannelLeaveResult(channelId = channelId, left = true) else null
+    }.getOrNull()
+
+fun parseSharedChannelDeleteResult(bodyText: String, channelId: ChannelId): ChannelDeleteResult? =
+    runCatching {
+        val decoded = homeJson.decodeFromString(WireOkResponse.serializer(), bodyText)
+        if (decoded.ok) ChannelDeleteResult(channelId = channelId, deleted = true) else null
+    }.getOrNull()
 
 private fun HomeNetworkPayload.failedResponse(): HomeNetworkResponse? =
     listOf(channels, directMessages, unreadCounts, serverUnreadSummary).firstOrNull { !it.isSuccessful }
