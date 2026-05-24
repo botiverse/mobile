@@ -271,15 +271,16 @@ internal data class OkEnvelope(val ok: Boolean = false)
 internal data class TaskWireDto(
     val id: String,
     val messageId: String? = null,
-    val channelId: String,
+    val channelId: String? = null,
     val channelName: String? = null,
     val channelType: String? = null,
-    val taskNumber: Int,
-    val title: String,
+    val threadId: String? = null,
+    val taskNumber: Int? = null,
+    val title: String? = null,
     val description: String? = null,
-    val status: String,
-    val createdByType: String,
-    val createdById: String,
+    val status: String? = null,
+    val createdByType: String? = null,
+    val createdById: String? = null,
     val createdByName: String? = null,
     val claimedByType: String? = null,
     val claimedById: String? = null,
@@ -291,17 +292,19 @@ internal data class TaskWireDto(
 )
 
 internal fun TaskWireDto.toTaskSummary(): TaskSummary {
-    val displayTitle = title.trim().ifBlank { "#$taskNumber" }
+    val displayTitle = title?.trim().orEmpty().ifBlank { taskNumber?.let { "#$it" }.orEmpty() }
+    val resolvedMessageId = (messageId ?: id).let(::MessageId)
+    val resolvedThreadId = threadId?.let(::ThreadId)
     return TaskSummary(
         id = TaskId(id),
         title = displayTitle,
-        status = status.toTaskStatus() ?: TaskStatus.Todo,
+        status = status?.let { TaskStatus.fromWireValue(it) } ?: TaskStatus.Todo,
         taskNumber = taskNumber,
-        messageId = (messageId ?: id).let(::MessageId),
-        parentMessageId = null,
-        channelId = ChannelId(channelId),
-        threadId = null,
-        isThreadTask = channelType == "thread",
+        messageId = resolvedMessageId,
+        parentMessageId = if (resolvedThreadId != null) resolvedMessageId else null,
+        channelId = channelId?.let(::ChannelId),
+        threadId = resolvedThreadId,
+        isThreadTask = resolvedThreadId != null || channelType == "thread",
         assignee = memberFrom(claimedByType, claimedById, claimedByName),
         creator = memberFrom(createdByType, createdById, createdByName),
         channelName = channelName,
@@ -322,17 +325,6 @@ private fun memberFrom(type: String?, id: String?, name: String?): MemberProfile
         presence = Presence.Offline
     )
 }
-
-
-private fun String.toTaskStatus(): TaskStatus? =
-    when (lowercase()) {
-        "todo", "to_do", "open" -> TaskStatus.Todo
-        "in_progress", "inprogress", "progress" -> TaskStatus.InProgress
-        "in_review", "inreview", "review" -> TaskStatus.InReview
-        "done", "complete", "completed" -> TaskStatus.Done
-        "closed" -> TaskStatus.Closed
-        else -> null
-    }
 
 private fun TaskStatus.toApiValue(): String =
     when (this) {

@@ -198,18 +198,7 @@ private fun String.isImagePath(): Boolean =
 
 private fun formatNodeMeta(sizeBytes: Long?, mimeType: String?): String? {
     if (sizeBytes != null && sizeBytes > 0) {
-        return formatBytes(sizeBytes)
+        return formatAttachmentSizeLabel(sizeBytes)
     }
     return mimeType
-}
-
-private fun formatBytes(bytes: Long): String {
-    val units = listOf("B", "KB", "MB", "GB")
-    var value = bytes.toDouble()
-    var unitIdx = 0
-    while (value >= 1024.0 && unitIdx < units.lastIndex) {
-        value /= 1024.0
-        unitIdx++
-    }
-    return if (unitIdx == 0) "$bytes B" else "${(value * 10).toInt() / 10.0} ${units[unitIdx]}"
 }

@@ -703,8 +703,7 @@ class RealTaskRepository(
                 source = "tasks_server",
                 warningLogger = warningLogger,
                 mapper = { json ->
-                    json.toTaskSnapshot()
-                            .filteredBy(filter, currentUserId = context.session.user.id)
+                    parseTaskSnapshotFromBody(json, filter, currentUserId = context.session.user.id)
                 }
         )
     }
@@ -722,8 +721,7 @@ class RealTaskRepository(
                 source = "tasks_channel",
                 warningLogger = warningLogger,
                 mapper = { json ->
-                    json.toTaskSnapshot()
-                            .filteredBy(filter, currentUserId = context.session.user.id)
+                    parseTaskSnapshotFromBody(json, filter, currentUserId = context.session.user.id)
                 }
         )
     }
@@ -736,11 +734,8 @@ class RealTaskRepository(
                 source = "tasks_claim",
                 warningLogger = warningLogger,
                 mapper = { json ->
-                    val task =
-                            json.unwrap("task", "data").toTaskSummary()
-                                    ?: throw IllegalStateException(
-                                            "Task action response missing task"
-                                    )
+                    val task = parseTaskActionFromBody(json)
+                            ?: throw IllegalStateException("Task action response missing task")
                     TaskActionResult(task)
             }
         )
@@ -757,7 +752,7 @@ class RealTaskRepository(
             source = "tasks_status",
             warningLogger = warningLogger,
             mapper = { json ->
-                val task = json.unwrap("task", "data").toTaskSummary()
+                val task = parseTaskActionFromBody(json)
                     ?: throw IllegalStateException("Task status response missing task")
                 TaskActionResult(task)
             }
@@ -1065,7 +1060,7 @@ class RealMemberRepository(
                                         },
                                         source = "agent_workspaces_machine",
                                         warningLogger = warningLogger,
-                                        mapper = { json -> json.toAgentWorkspaceSnapshots() }
+                                mapper = { json -> json.toAgentWorkspaceSnapshots() }
                                 )
                         when (machineResult) {
                             is DataResult.Content ->
@@ -1608,14 +1603,20 @@ class RealConversationRepository(
                 source = "messages_context",
                 warningLogger = warningLogger,
                 mapper = { json ->
-                    json.toThreadSnapshot(
-                            context = context,
-                            fallbackThreadId =
-                                    ThreadId(
-                                            json.messageContextThreadId()
-                                                    ?: messageId.value
-                                    ),
-                            highlightedMessageId = messageId
+                    val fallbackThreadId = ThreadId(messageId.value)
+                    val payload =
+                            ai.slock.compose.data.parseSharedMessageContext(
+                                    json.toString(),
+                                    fallbackThreadId
+                            )
+                    val resolvedThreadId = payload.channelId?.let { ThreadId(it.value) }
+                            ?: fallbackThreadId
+                    buildSharedThreadSnapshot(
+                            payload = payload,
+                            threadId = resolvedThreadId,
+                            canLoadMoreBefore = payload.hasOlder,
+                            canLoadMoreAfter = payload.hasNewer,
+                            highlightedMessageId = payload.targetMessageId ?: messageId
                     )
                 }
         )
@@ -1654,10 +1655,14 @@ class RealConversationRepository(
                 source = "messages_sync",
                 warningLogger = warningLogger,
                 mapper = { json ->
-                    json.toThreadSnapshot(
-                            context = context,
-                            fallbackThreadId = threadId,
-                            fallbackConversationName = threadId.value
+                    val payload =
+                            ai.slock.compose.data.parseSharedSyncMessages(
+                                    json.toString(),
+                                    threadId
+                            )
+                    buildSharedThreadSnapshot(
+                            payload = payload,
+                            threadId = threadId
                     )
                 }
         )
@@ -1811,21 +1816,17 @@ class RealConversationRepository(
                 mapper = { json ->
                     val fallbackThreadId = topLevelThreadId(channelId)
                     val message =
-                            json.unwrap("message", "data")
-                                    .toMessage(fallbackThreadId = fallbackThreadId)
-                                    ?: json.toMessage(fallbackThreadId = fallbackThreadId)
-                                            ?: Message(
-                                            id =
-                                                    MessageId(
-                                                            json.string("id", "messageId")
-                                                                    ?: "message-sent"
-                                            ),
+                            ai.slock.compose.data.parseSharedSentMessage(
+                                    json.toString(),
+                                    fallbackThreadId
+                            )
+                                    ?: Message(
+                                            id = MessageId("message-sent"),
                                             threadId = fallbackThreadId,
                                             channelId = channelId,
-                                            author = context.session.user.toMemberProfile(),
-                                            timestampLabel =
-                                                    json.string("createdAt", "timestampLabel")
-                                                            ?: "",
+                                            author =
+                                                    context.session.user.toMemberProfile(),
+                                            timestampLabel = "",
                                             body = body,
                                             deliveryState = MessageDeliveryState.Sent
                                     )
@@ -1850,11 +1851,16 @@ class RealConversationRepository(
                             source = source,
                             warningLogger = warningLogger,
                             mapper = { json ->
-                                logThreadSnapshotShape(source, threadId, json)
-                                json.toThreadSnapshot(
-                                        context = context,
-                                        fallbackThreadId = threadId,
-                                        fallbackConversationName = threadId.value
+                                val payload =
+                                        ai.slock.compose.data.parseSharedChannelMessages(
+                                                json.toString(),
+                                                threadId
+                                        )
+                                buildSharedThreadSnapshot(
+                                        payload = payload,
+                                        threadId = threadId,
+                                        canLoadMoreBefore =
+                                                payload.messages.size >= MESSAGE_PAGE_LIMIT
                                 )
                             }
                     )
@@ -2499,193 +2505,86 @@ private fun JsonObject.archivedChannelOrNull(channelId: ChannelId): Conversation
 private fun JsonObject.timestampString(vararg names: String): String? =
         string(*names) ?: long(*names)?.toString()
 
-private fun JsonObject.toThreadSnapshot(
-        context: NetworkServerContext,
-        fallbackThreadId: ThreadId,
-        fallbackConversationName: String? = null,
+
+
+private fun parseTaskSnapshotFromBody(json: JsonObject, filter: TaskFilter, currentUserId: String): TaskSnapshot {
+    val payload = ai.slock.compose.data.parseSharedServerTasksPayload(json.toString())
+            ?: ai.slock.compose.data.SharedTasksPayload(emptyList())
+    return TaskSnapshot(tasks = payload.tasks, summaryCounts = taskSummaryCounts(payload.tasks))
+            .filteredByTaskFilter(filter, currentUserId)
+}
+
+private fun parseTaskActionFromBody(json: JsonObject): TaskSummary? =
+        ai.slock.compose.data.parseSharedTaskActionPayload(json.toString())
+
+private fun TaskSnapshot.filteredByTaskFilter(filter: TaskFilter, currentUserId: String): TaskSnapshot {
+    val filteredTasks =
+            tasks.filter { task ->
+                (filter.statuses.isEmpty() || task.status in filter.statuses) &&
+                        (!filter.assignedToMeOnly || task.assignee?.id?.value == currentUserId)
+            }
+    return copy(tasks = filteredTasks, summaryCounts = taskSummaryCounts(filteredTasks))
+}
+
+private fun taskSummaryCounts(tasks: List<TaskSummary>): Map<TaskStatus, Int> =
+        TaskStatus.entries.associateWith { status -> tasks.count { it.status == status } }
+
+
+private fun buildSharedThreadSnapshot(
+        payload: ai.slock.compose.data.SharedMessagesPayload,
+        threadId: ThreadId,
+        canLoadMoreBefore: Boolean = false,
+        canLoadMoreAfter: Boolean = false,
         highlightedMessageId: MessageId? = null
 ): ThreadSnapshot {
-    val unwrapped = unwrap("data", "context")
-    val parentMessage =
-            (
-                    firstObject(
-                            "parentMessage",
-                            "parent",
-                            "rootMessage",
-                            "originMessage",
-                            "threadParentMessage",
-                            "currentMessage",
-                            "targetMessage",
-                            "highlightedMessage",
-                            "requestedMessage"
-                    )
-                            ?: unwrapped.firstObject(
-                                    "parentMessage",
-                                    "parent",
-                                    "rootMessage",
-                                    "originMessage",
-                                    "threadParentMessage",
-                                    "currentMessage",
-                                    "targetMessage",
-                                    "highlightedMessage",
-                                    "requestedMessage"
-                            )
-            )
-                    ?.toMessage(fallbackThreadId)
-                    ?.takeIf { highlightedMessageId == null || it.id == highlightedMessageId ||
-                            listOf(
-                                    "parentMessage",
-                                    "parent",
-                                    "rootMessage",
-                                    "originMessage",
-                                    "threadParentMessage"
-                            ).any { name -> firstObject(name) != null || unwrapped.firstObject(name) != null }
-                    }
-    val messages =
-            messageItems()
-                    .mapNotNull {
-                        it.asObjectOrNull()?.toMessage(fallbackThreadId = fallbackThreadId)
-                    }
-                    .distinctBy { it.id }
-                    .sortedForNetworkThreadTimeline()
-    val mappedConversation =
-            (
-                    firstObject("conversation", "channel", "thread")
-                            ?: unwrapped.firstObject("conversation", "channel", "thread")
-                            ?: this
-            )
-                    .toConversationOrDefault(
-                            threadId = fallbackThreadId,
-                            name = fallbackConversationName
-                                            ?: messages.firstOrNull()?.threadId?.value ?: fallbackThreadId.value
-                    )
-    val parentMessageChannelId = parentMessage?.channelId
-    val parentChannelName =
-            mappedConversation.name
-                    .takeIf {
-                        parentMessageChannelId != null &&
-                                it.isNotBlank() &&
-                                it != parentMessageChannelId.value
-                    }
-                    ?: parentMessageChannelId
-                            ?.takeIf { it.value == context.server.id.value }
-                            ?.let { context.server.name.takeIf { name -> name.isNotBlank() && name != it.value } }
-    val conversation = mappedConversation.withThreadAnchor(
-            parentMessage = parentMessage,
-            streamChannelId = ChannelId(fallbackThreadId.value),
-            parentChannelName = parentChannelName
-    )
+    val highlighted =
+            highlightedMessageId?.let { id ->
+                payload.messages.firstOrNull { it.id == id }
+            }
+    val baseConversation = buildDefaultConversation(threadId, threadId.value)
+    val conversation =
+            if (highlighted != null) {
+                baseConversation.withThreadAnchor(
+                        parentMessage = highlighted,
+                        streamChannelId = ChannelId(threadId.value)
+                )
+            } else {
+                baseConversation
+            }
     return ThreadSnapshot(
             conversation = conversation,
-            messages = messages,
-            parentMessage = parentMessage ?: messages.firstOrNull { message ->
-                message.id == highlightedMessageId
-            },
-            canLoadMoreBefore = canLoadMoreBefore(),
-            canLoadMoreAfter = canLoadMoreAfter(),
-            hasGap = boolean("hasGap", "gap") ?: false,
-            historyLimited = boolean("historyLimited", "limited") ?: false,
+            messages = payload.messages,
+            parentMessage = highlighted,
+            canLoadMoreBefore = canLoadMoreBefore,
+            canLoadMoreAfter = canLoadMoreAfter,
+            historyLimited = payload.historyLimited,
             highlightedMessageId = highlightedMessageId
-                            ?: string("highlightedMessageId", "messageId")?.let(::MessageId)
     )
 }
 
-private fun logThreadSnapshotShape(source: String, fallbackThreadId: ThreadId, root: JsonObject) {
-    val unwrapped = root.unwrap("data", "context")
-    val messages = root.messageItems().mapNotNull { it.asObjectOrNull() }
-    val firstMessage = messages.firstOrNull()
-    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
-            "SlockConversation",
-            "thread_snapshot_shape source=$source fallbackThreadId=${fallbackThreadId.value} " +
-                    "rootKeys=${root.safeNetworkKeyList()} " +
-                    "dataKeys=${unwrapped.safeNetworkKeyList()} " +
-                    "conversationKeys=${root.firstObject("conversation", "channel", "thread")?.safeNetworkKeyList() ?: "none"} " +
-                    "messageCount=${messages.size} " +
-                    "firstMessageKeys=${firstMessage?.safeNetworkKeyList() ?: "none"} " +
-                    "firstMessageThreadId=${firstMessage?.string("threadId").orEmpty()} " +
-                    "firstMessageChannelId=${firstMessage?.string("channelId").orEmpty()}"
+private fun buildDefaultConversation(threadId: ThreadId, name: String): ConversationSummary {
+    val parentChannelId = threadId.parentChannelIdOrNull()
+    val parentMessageId = threadId.parentMessageIdOrNull()
+    return ConversationSummary(
+            threadId = threadId,
+            channelId = parentChannelId ?: ChannelId(threadId.value),
+            thread =
+                    if (parentChannelId != null && parentMessageId != null) {
+                        ThreadConversation(
+                                parentChannelId = parentChannelId,
+                                parentMessageId = parentMessageId,
+                                streamChannelId = null
+                        )
+                    } else null,
+            kind =
+                    if (parentChannelId != null && parentMessageId != null) {
+                        ConversationKind.Thread
+                    } else {
+                        ConversationKind.Channel
+                    },
+            name = name
     )
 }
-
-private fun JsonObject.canLoadMoreBefore(): Boolean {
-    val candidates = listOfNotNull(this, firstObject("data", "context")).distinct()
-    candidates.forEach { candidate ->
-        val direct =
-                candidate.boolean(
-                        "hasMoreBefore",
-                        "hasMore",
-                        "canLoadMoreBefore",
-                        "hasPrevious",
-                        "hasPrev"
-                )
-        if (direct != null) return direct
-        for (objectName in listOf("pagination", "pageInfo", "paging", "meta")) {
-            val nested =
-                    candidate
-                            .firstObject(objectName)
-                            ?.boolean(
-                                    "hasMoreBefore",
-                                    "hasMore",
-                                    "canLoadMoreBefore",
-                                    "hasPrevious",
-                                    "hasPrev"
-                            )
-            if (nested != null) return nested
-        }
-    }
-    return candidates.any { candidate ->
-        candidate.hasNonBlankString(
-                "previousCursor",
-                "prevCursor",
-                "beforeCursor"
-        ) ||
-                listOf("pagination", "pageInfo", "paging", "meta").any { objectName ->
-                    candidate
-                            .firstObject(objectName)
-                            ?.hasNonBlankString(
-                                    "previousCursor",
-                                    "prevCursor",
-                                    "beforeCursor"
-                            ) == true
-                }
-    }
-}
-
-private fun JsonObject.canLoadMoreAfter(): Boolean {
-    val candidates = listOfNotNull(this, firstObject("data", "context")).distinct()
-    candidates.forEach { candidate ->
-        val direct =
-                candidate.boolean(
-                        "hasMoreAfter",
-                        "canLoadMoreAfter"
-                )
-        if (direct != null) return direct
-        for (objectName in listOf("pagination", "pageInfo", "paging", "meta")) {
-            val nested =
-                    candidate
-                            .firstObject(objectName)
-                            ?.boolean(
-                                    "hasMoreAfter",
-                                    "canLoadMoreAfter"
-                            )
-            if (nested != null) return nested
-        }
-    }
-    return candidates.any { candidate ->
-        candidate.hasNonBlankString("nextCursor", "afterCursor") ||
-                listOf("pagination", "pageInfo", "paging", "meta").any { objectName ->
-                    candidate
-                            .firstObject(objectName)
-                            ?.hasNonBlankString(
-                                    "nextCursor",
-                                    "afterCursor"
-                            ) == true
-                }
-    }
-}
-
-private fun JsonObject.hasNonBlankString(vararg names: String): Boolean =
-        names.any { name -> string(name)?.isNotBlank() == true }
 
 private fun JsonObject.toThreadListSnapshot(context: NetworkServerContext): ThreadListSnapshot {
     val parsed = ai.slock.compose.data.parseSharedThreadListItems(this.toString())
@@ -2801,208 +2700,7 @@ private fun String.matchesThreadSummaryId(candidate: String): Boolean {
             parentShortId.equals(candidateShortId, ignoreCase = true)
 }
 
-private fun JsonObject.messageItems(): List<com.google.gson.JsonElement> {
-    val unwrapped = unwrap("data", "context")
-    val direct = unwrapped.items("messages", "items", "results")
-    if (direct.isNotEmpty()) return direct
-    val before = unwrapped.items("before", "previous")
-    val after = unwrapped.items("after", "next")
-    val current =
-            listOf(
-                            "message",
-                            "currentMessage",
-                            "targetMessage",
-                            "highlightedMessage",
-                            "requestedMessage"
-                    )
-                    .firstNotNullOfOrNull { name -> unwrapped.get(name) }
-                    ?.let(::listOf)
-                    .orEmpty()
-    return before + current + after
-}
 
-private fun JsonObject.messageContextThreadId(): String? {
-    val unwrapped = unwrap("data", "context")
-    return string("threadId", "threadChannelId", "channelId")
-            ?: unwrapped.string("threadId", "threadChannelId", "channelId")
-            ?: firstObject("conversation", "channel", "thread")
-                    ?.string("id", "threadId", "threadChannelId", "channelId")
-            ?: unwrapped.firstObject("conversation", "channel", "thread")
-                    ?.string("id", "threadId", "threadChannelId", "channelId")
-            ?: unwrapped.firstObject(
-                            "message",
-                            "currentMessage",
-                            "targetMessage",
-                            "highlightedMessage",
-                            "requestedMessage",
-                            "parentMessage",
-                            "rootMessage",
-                            "originMessage"
-                    )
-                    ?.string("threadId", "threadChannelId", "channelId")
-}
-
-private fun List<Message>.sortedForNetworkThreadTimeline(): List<Message> =
-        sortedByMessageTime()
-
-private fun JsonObject.toMessage(fallbackThreadId: ThreadId): Message? {
-    val id = string("id", "messageId") ?: return null
-    val rawThreadId =
-            string("threadId")
-                    ?: firstObject("thread", "replyThread", "messageThread", "repliesThread")
-                            ?.string("id", "threadId", "channelId")
-    val rawChannelId =
-            string("channelId")
-                    ?: firstObject("channel", "parentChannel")
-                            ?.string("id", "channelId")
-    val explicitThreadChannelId =
-            string(
-                    "threadChannelId",
-                    "replyThreadChannelId",
-                    "repliesThreadChannelId",
-                    "childThreadChannelId",
-                    "threadChannel",
-                    "replyChannelId",
-                    "replyThreadId",
-                    "commentsThreadChannelId"
-            )
-    val parentMessageId =
-            string(
-                            "parentMessageId",
-                            "parentId",
-                            "rootMessageId"
-                    )
-                    ?.let(::MessageId)
-    val replyCount =
-            int(
-                    "replyCount",
-                    "replies",
-                    "threadReplyCount",
-                    "repliesCount",
-                    "threadRepliesCount",
-                    "commentsCount",
-                    "childCount"
-            )
-                    ?: firstObject("thread", "replyThread", "messageThread", "repliesThread")
-                            ?.int(
-                                    "replyCount",
-                                    "replies",
-                                    "repliesCount",
-                                    "childCount"
-                            )
-                            ?: 0
-    val topLevelReplyThreadId =
-            rawThreadId
-                    ?.takeIf { parentMessageId == null && explicitThreadChannelId == null }
-                    ?.takeIf { replyCount > 0 }
-                    ?.takeIf { it != rawChannelId && it != fallbackThreadId.value }
-    val threadId =
-            ThreadId(
-                    when {
-                        topLevelReplyThreadId != null -> rawChannelId ?: fallbackThreadId.value
-                        else -> rawThreadId
-                                        ?: rawChannelId ?: explicitThreadChannelId
-                                                ?: fallbackThreadId.value
-                    }
-            )
-    val body = string("body", "content", "text", "message") ?: ""
-    val author =
-            firstObject(
-                            "author",
-                            "sender",
-                            "user",
-                            "createdBy",
-                            "createdByUser",
-                            "senderUser",
-                            "agent",
-                            "authorAgent"
-                    )
-                    ?.toMemberProfile()
-                    ?: toMessageAuthorProfile()
-    return Message(
-            id = MessageId(id),
-            threadId = threadId,
-            channelId = string("channelId")?.let(::ChannelId),
-            threadChannelId = (explicitThreadChannelId ?: topLevelReplyThreadId)?.let(::ChannelId),
-            seq =
-                    long(
-                            "seq",
-                            "sequence",
-                            "sequenceNumber",
-                            "messageSeq",
-                            "serverSeq",
-                            "createdSeq",
-                            "logSeq"
-                    ),
-            author = author,
-            timestampLabel = string("timestampLabel", "createdAt", "updatedAt") ?: "",
-            body = body,
-            messageType = toMessageType(),
-            systemEventType = systemEventType(),
-            metadata = systemMetadata(),
-            attachments = attachmentItems().mapNotNull { it.asObjectOrNull()?.toAttachment() },
-            deliveryState = MessageDeliveryState.Sent,
-            task =
-                    run {
-                        val nested = firstObject("task")
-                        if (nested != null) {
-                            nested.toTaskSummary()
-                        } else {
-                            // Flat task fields embedded directly on the message row
-                            val taskNum = int("taskNumber")
-                            val taskStatus = string("taskStatus")
-                            if (taskNum != null || taskStatus != null) {
-                                val msgId = MessageId(id)
-                                val assignee =
-                                        claimedByFallback()
-                                                ?: run {
-                                                    val aid =
-                                                            string("taskAssigneeId")
-                                                    if (aid != null) {
-                                                        val atype =
-                                                                string("taskAssigneeType")
-                                                        val aname =
-                                                                string("taskAssigneeName")
-                                                                        ?: aid
-                                                        MemberProfile(
-                                                                id = MemberId(aid),
-                                                                displayName = aname,
-                                                                handle = aname,
-                                                                kind =
-                                                                        if (atype == "agent")
-                                                                                MemberKind.Agent
-                                                                        else MemberKind.Human,
-                                                                avatarLabel =
-                                                                        aname.take(1).uppercase(),
-                                                                presence = Presence.Offline
-                                                        )
-                                                    } else null
-                                                }
-                                TaskSummary(
-                                        id = TaskId(id),
-                                        title = string("content")
-                                                        ?: taskNum?.let { "#$it" } ?: "",
-                                        status = taskStatus?.toTaskStatus() ?: TaskStatus.Todo,
-                                        taskNumber = taskNum,
-                                        messageId = msgId,
-                                        channelId =
-                                                string("channelId")?.let(::ChannelId),
-                                        threadId = null,
-                                        assignee = assignee,
-                                        updatedAtLabel = string("updatedAt", "createdAt") ?: "",
-                                        canClaim = true
-                                )
-                            } else null
-                        }
-                    },
-            replyCount = replyCount,
-            parentMessageId = parentMessageId,
-            updatedAtLabel = string("updatedAt")
-    )
-}
-
-private fun JsonObject.attachmentItems(): List<JsonElement> =
-        items("attachments", "files", "images", "media")
 
 private fun JsonObject.toMemberProfile(): MemberProfile? {
     val id = memberId() ?: return null
@@ -3835,9 +3533,6 @@ private fun JsonObject.isExplicitHumanMember(): Boolean =
 private fun JsonObject.directArrayItems(name: String): List<com.google.gson.JsonElement> =
         get(name)?.takeIf { it.isJsonArray }?.asJsonArray?.toList().orEmpty()
 
-private fun JsonObject.sizeNumberLabel(): String? =
-        long("sizeBytes", "bytes", "byteSize")
-                ?.let { bytes -> "$bytes B" }
 
 private val MemberProfile.memberKey: String
     get() = "${kind.name}:${id.value}"
@@ -3897,396 +3592,8 @@ private fun String?.toPresenceOrNull(): Presence? =
 
 private fun String?.toAgentStatusOrNull(): AgentStatus? = AgentStatus.fromWireValue(this)
 
-private fun JsonObject.toMessageAuthorProfile(): MemberProfile {
-    val nestedAuthor =
-            firstObject(
-                            "author",
-                            "sender",
-                            "user",
-                            "createdBy",
-                            "createdByUser",
-                            "senderUser",
-                            "agent",
-                            "authorAgent"
-                    )
-                    ?.toMemberProfile()
-    val authorId =
-            string(
-                    "authorId",
-                    "senderId",
-                    "userId",
-                    "createdById",
-                    "createdByUserId",
-                    "senderUserId",
-                    "agentId",
-                    "authorAgentId",
-                    "agentUserId"
-            )
-                    ?: nestedAuthor?.id?.value ?: "unknown-author"
-    val displayName =
-            string(
-                    "authorDisplayName",
-                    "authorName",
-                    "senderDisplayName",
-                    "senderName",
-                    "userDisplayName",
-                    "userName",
-                    "createdByName",
-                    "createdByDisplayName",
-                    "createdByUsername",
-                    "createdByUserDisplayName",
-                    "agentName",
-                    "agentDisplayName",
-                    "agentUsername",
-                    "agentTitle",
-                    "authorAgentName",
-                    "authorAgentDisplayName",
-                    "senderAgentName",
-                    "senderAgentDisplayName",
-                    "profileDisplayName",
-                    "profileName",
-                    "authorHandle",
-                    "senderHandle",
-                    "email"
-            )
-                    ?: nestedAuthor?.displayName ?: authorId
-    val handle =
-            string(
-                    "authorHandle",
-                    "senderHandle",
-                    "userHandle",
-                    "agentHandle",
-                    "agentUsername",
-                    "handle",
-                    "email"
-            )
-                    ?: nestedAuthor?.handle ?: displayName
-    val isAgent =
-            boolean("authorIsAgent", "senderIsAgent", "isAgent") == true ||
-                    string("authorKind", "senderKind", "senderType", "kind", "type")
-                            ?.lowercase() == "agent" ||
-                    string("agentId", "authorAgentId", "agentUserId") != null ||
-                    nestedAuthor?.kind == MemberKind.Agent
-    return MemberProfile(
-            id = MemberId(authorId),
-            displayName = displayName,
-            handle = handle,
-            kind = if (isAgent) MemberKind.Agent else MemberKind.Human,
-            description = string("senderDescription") ?: nestedAuthor?.description,
-            roleDescription = string("roleDescription") ?: nestedAuthor?.roleDescription,
-            avatarUrl =
-                    avatarWireValue(
-                            "authorAvatarUrl",
-                            "authorAvatar",
-                            "senderAvatarUrl",
-                            "senderAvatar",
-                            "agentAvatarUrl",
-                            "agentAvatar",
-                            "authorAgentAvatarUrl",
-                            "authorAgentAvatar",
-                            "senderAgentAvatarUrl",
-                            "senderAgentAvatar",
-                            "profileAvatar",
-                            "avatarUrl",
-                            "avatar"
-                    )
-                            ?: nestedAuthor?.avatarUrl,
-            gravatarHash =
-                    string(
-                            "authorGravatarHash",
-                            "authorGravatar",
-                            "senderGravatarHash",
-                            "senderGravatar",
-                            "userGravatarHash",
-                            "userGravatar",
-                            "gravatarHash",
-                            "gravatar"
-                    )
-                            ?: nestedAuthor?.gravatarHash,
-            avatarLabel = displayName.take(1).uppercase(),
-            presence =
-                    string(
-                                    "authorPresence",
-                                    "senderPresence",
-                                    "agentPresence",
-                                    "presence",
-                                    "status",
-                                    "activity"
-                            )
-                            .toPresence(nestedAuthor?.presence ?: Presence.Offline)
-    )
-}
 
-private fun JsonObject.toTaskSummary(): TaskSummary? {
-    val id = string("id") ?: return null
-    val taskNumber = int("taskNumber")
-    val title = taskDisplayTitle(taskNumber) ?: return null
-    val assignee = claimedByFallback()
-    val messageId = string("messageId")?.let(::MessageId)
-    val explicitThreadId = string("threadId")
-    val channelType = string("channelType")?.lowercase()
-    val channelId =
-            string("channelId")
-                    ?: if (channelType == "channel") explicitThreadId else null
-    val taskThreadId = explicitThreadId
-    val parentMessageId =
-            string("parentMessageId")?.let(::MessageId)
-                    ?: if (taskThreadId != null) messageId else null
-    return TaskSummary(
-            id = TaskId(id),
-            title = title,
-            status = string("status", "taskStatus")?.toTaskStatus() ?: TaskStatus.Todo,
-            taskNumber = taskNumber,
-            messageId = messageId,
-            parentMessageId = parentMessageId,
-            channelId = channelId?.let(::ChannelId),
-            threadId = taskThreadId?.let(::ThreadId),
-            isThreadTask =
-                    parentMessageId != null ||
-                            explicitThreadId != null ||
-                            (channelType == "thread" && taskThreadId != null),
-            assignee = assignee,
-            channelName = string("channelName"),
-            updatedAtLabel =
-                    timestampString("updatedAt", "createdAt") ?: "",
-            canClaim = true
-    )
-}
 
-private fun JsonObject.taskDisplayTitle(taskNumber: Int?): String? {
-    val candidates =
-            listOfNotNull(
-                    string("taskTitle", "displayTitle"),
-                    string("title"),
-                    string("content"),
-                    string("description"),
-                    string("body"),
-                    string("text"),
-                    string(
-                            "messageBody",
-                            "messageContent",
-                            "messageText",
-                            "parentMessageBody",
-                            "parentMessageContent",
-                            "parentMessagePreview",
-                            "rootMessagePreview",
-                            "originalMessagePreview",
-                            "sourceMessageBody",
-                            "sourceMessageContent",
-                            "sourceMessagePreview",
-                            "messagePreview",
-                            "lastMessagePreview",
-                            "latestActivityPreview",
-                            "preview"
-                    ),
-                    firstObject(
-                            "message",
-                            "parentMessage",
-                            "sourceMessage",
-                            "originMessage",
-                            "rootMessage",
-                            "latestActivity",
-                            "lastMessage"
-                    )?.taskTextValue()
-            )
-    return candidates.firstNotNullOfOrNull { candidate ->
-        candidate.takeMeaningfulTaskTitle(taskNumber)
-    }
-}
-
-private fun JsonElement.taskTextValue(): String? =
-        when {
-            isJsonPrimitive && asJsonPrimitive.isString -> asString.takeIf { it.isNotBlank() }
-            isJsonArray ->
-                    asJsonArray.firstNotNullOfOrNull { element -> element.taskTextValue() }
-            isJsonObject -> {
-                val obj = asJsonObject
-                obj.string(
-                                "body",
-                                "content",
-                                "text",
-                                "plainText",
-                                "markdown",
-                                "messageBody",
-                                "messageContent",
-                                "messageText",
-                                "preview",
-                                "messagePreview",
-                                "parentMessagePreview",
-                                "rootMessagePreview",
-                                "originalMessagePreview",
-                                "sourceMessagePreview",
-                                "lastMessagePreview",
-                                "latestActivityPreview",
-                                "summary",
-                                "description",
-                                "detail",
-                                "details",
-                                "title"
-                        )
-                        ?: listOf(
-                                        "content",
-                                        "body",
-                                        "message",
-                                        "parentMessage",
-                                        "sourceMessage",
-                                        "originMessage",
-                                        "rootMessage",
-                                        "latestActivity",
-                                        "lastMessage",
-                                        "children",
-                                        "data",
-                                        "payload"
-                                )
-                                .firstNotNullOfOrNull { key -> obj.get(key)?.taskTextValue() }
-            }
-            else -> null
-        }
-
-private fun String.takeMeaningfulTaskTitle(taskNumber: Int?): String? {
-    val trimmed = trim()
-    if (trimmed.isBlank()) return null
-    val number = taskNumber ?: return trimmed
-    val withoutNumberPrefix =
-            trimmed.replaceFirst(Regex("""^\s*(?:task\s*)?#$number(?:\s*[-:：,，]\s*|\s+)""", RegexOption.IGNORE_CASE), "")
-                    .trim()
-    if (withoutNumberPrefix.isNotBlank() && withoutNumberPrefix != trimmed) return withoutNumberPrefix
-    val placeholders =
-            setOf(
-                    "#$number",
-                    number.toString(),
-                    "task #$number",
-                    "task $number"
-            )
-    return trimmed.takeUnless { it.lowercase() in placeholders }
-}
-
-private fun JsonObject.toTaskSnapshot(): TaskSnapshot {
-    val tasks =
-            items("tasks", "serverTasks", "items", "data").mapNotNull {
-                it.asObjectOrNull()?.toTaskSummary()
-            }
-    return TaskSnapshot(tasks = tasks, summaryCounts = taskSummaryCounts(tasks))
-}
-
-private fun TaskSnapshot.filteredBy(filter: TaskFilter, currentUserId: String): TaskSnapshot {
-    val filteredTasks =
-            tasks.filter { task ->
-                (filter.statuses.isEmpty() || task.status in filter.statuses) &&
-                        (!filter.assignedToMeOnly || task.assignee?.id?.value == currentUserId)
-            }
-    return copy(tasks = filteredTasks, summaryCounts = taskSummaryCounts(filteredTasks))
-}
-
-private fun taskSummaryCounts(tasks: List<TaskSummary>): Map<TaskStatus, Int> =
-        TaskStatus.entries.associateWith { status -> tasks.count { it.status == status } }
-
-private fun JsonObject.claimedByFallback(): MemberProfile? {
-    val claimedById =
-            string("claimedById", "taskAssigneeId") ?: return null
-    val claimedByType =
-            string("claimedByType", "taskAssigneeType")
-    val label =
-            string("claimedByName", "taskAssigneeName")
-                    ?: claimedById
-    return MemberProfile(
-            id = MemberId(claimedById),
-            displayName = label,
-            handle = label,
-            kind = if (claimedByType == "agent") MemberKind.Agent else MemberKind.Human,
-            avatarLabel = label.take(1).uppercase(),
-            presence = Presence.Offline
-    )
-}
-
-private fun JsonObject.toAttachment(): Attachment? {
-    val id =
-            string("id", "attachmentId", "fileId")
-                    ?: firstObject("attachment", "file", "image", "media")
-                            ?.string(
-                                    "id",
-                                    "attachmentId",
-                                    "fileId"
-                            ) ?: return null
-    val nested = firstObject("attachment", "file", "image", "media")
-    return Attachment(
-            id = AttachmentId(id),
-            name =
-                    string("name", "fileName", "filename", "originalName", "title", "label")
-                            ?: nested?.string(
-                                    "name",
-                                    "fileName",
-                                    "filename",
-                                    "originalName",
-                                    "title",
-                                    "label"
-                            ) ?: "Attachment",
-            mimeType =
-                    string("mimeType", "contentType", "type")
-                            ?: nested?.string(
-                                    "mimeType",
-                                    "contentType",
-                                    "type"
-                            ) ?: "application/octet-stream",
-            sizeLabel =
-                    string("sizeLabel", "size", "fileSize")
-                            ?: nested?.string(
-                                    "sizeLabel",
-                                    "size",
-                                    "fileSize"
-                            ) ?: sizeNumberLabel() ?: nested?.sizeNumberLabel() ?: "",
-            thumbnailUrl =
-                    string(
-                            "thumbnailUrl",
-                            "thumbUrl",
-                            "previewUrl",
-                            "imageUrl"
-                    )
-                            ?: nested?.string(
-                                    "thumbnailUrl",
-                                    "thumbUrl",
-                                    "previewUrl",
-                                    "imageUrl"
-                            )
-    )
-}
-
-private fun JsonObject.toMessageType(): MessageType {
-    val type = string("type", "messageType", "kind", "messageKind")?.lowercase()
-    return if (type == "system" || type == "event" || systemEventType() != null) {
-        MessageType.System
-    } else {
-        MessageType.Chat
-    }
-}
-
-private fun JsonObject.systemEventType(): String? =
-        string(
-                "systemEventType",
-                "eventType",
-                "systemType",
-                "subtype",
-                "action"
-        )
-                ?: firstObject("systemEvent", "event")
-                        ?.string("type", "eventType", "name", "action")
-
-private fun JsonObject.systemMetadata(): Map<String, String> {
-    val metadataObject = firstObject("metadata", "meta", "data", "payload") ?: return emptyMap()
-    return metadataObject
-            .entrySet()
-            .mapNotNull { (key, value) ->
-                val stringValue =
-                        when {
-                            value.isJsonPrimitive -> value.asJsonPrimitive.asString
-                            value.isJsonObject ->
-                                    value.asJsonObject.string("id", "name", "label", "value")
-                            else -> null
-                        }?.takeIf { it.isNotBlank() }
-                stringValue?.let { key to it }
-            }
-            .toMap()
-}
 
 private fun JsonObject.toConversationOrDefault(
         threadId: ThreadId,

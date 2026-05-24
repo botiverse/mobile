@@ -110,7 +110,7 @@ private fun WireAttachmentDto.toDomain(index: Int): Attachment =
         id = AttachmentId(id),
         name = filename.ifBlank { "Attachment ${index + 1}" },
         mimeType = mimeType.ifBlank { "application/octet-stream" },
-        sizeLabel = formatAttachmentSize(sizeBytes),
+        sizeLabel = formatAttachmentSizeLabel(sizeBytes),
         thumbnailUrl = thumbnailUrl,
     )
 
@@ -132,21 +132,4 @@ private fun WireChannelFileDto.toChannelFileItem(index: Int): ChannelFileItem? {
         sourceParentMessageId = source?.parentMessageId?.let(::MessageId),
         sourceParentMessageShortId = source?.parentMessageShortId,
     )
-}
-
-private fun formatAttachmentSize(bytes: Long): String {
-    if (bytes <= 0) return ""
-    val units = listOf("B", "KB", "MB", "GB")
-    var value = bytes.toDouble()
-    var unitIdx = 0
-    while (value >= 1024.0 && unitIdx < units.lastIndex) {
-        value /= 1024.0
-        unitIdx++
-    }
-    return if (unitIdx == 0) {
-        "$bytes B"
-    } else {
-        val rounded = (value * 10).toInt() / 10.0
-        "$rounded ${units[unitIdx]}"
-    }
 }
