@@ -1,9 +1,9 @@
 # Slock DTO Sweep — Cross-Commit Tracking
 
-Goal: every JSON parsing call site goes through a strict `@Serializable`
-camelCase DTO living in `compose/shared/.../data/`. App-side helpers in
-`RealSlockRepositories.kt` / `RealSettingsRepository.kt` should disappear, and
-`NetworkResponseMapper` should ultimately be deleted.
+Goal: every API request/response contract goes through a strict
+`@Serializable` camelCase DTO living in `compose/shared/.../data/`. Android is
+only allowed to provide platform capabilities such as auth storage, token
+refresh, and the Android Ktor/OkHttp engine wiring.
 
 Canonical contract is **camelCase only** — verified against the upstream
 TypeScript source at `third_party/slock-source/` (submodule of
@@ -125,38 +125,39 @@ shapes and `packages/shared/` for shared types. No snake_case aliases, no
   `RealSettingsRepository.kt` and `SlockSettingsServerApi.kt` were deleted;
   focused Settings repository contract tests moved to shared commonTest in
   `SettingsRepositoryDataSourceTest.kt`.
-- `RealSlockRepositories.kt` no longer contains app-side `JsonObject` response
-  helpers (`firstObject`, `unwrap`, `items`, `string`, `toMemberProfile`,
-  `toConversation*`, agent skill/activity/workspace mappers, unread/read
-  mappers, etc.).
+- Conversation/thread/files/messages orchestration moved to shared
+  `ConversationRepositoryDataSource.kt`. Android now instantiates shared
+  `RealConversationRepository` directly, and `ConversationRepository` is a
+  shared typealias. Channel message paging, message context/sync, send message,
+  thread create/follow/done actions, attachment URL, attachment upload, and
+  channel files now consume shared DTO parsers/builders and the shared
+  `SlockNetworkClient` boundary.
+- Focused conversation repository contract tests moved to shared commonTest in
+  `ConversationRepositoryDataSourceTest.kt`.
+- Android wrapper-era network facade files were deleted:
+  `RealSlockRepositories.kt`, `SlockApi.kt`, `ComposeSlockApiAdapter.kt`, and
+  `NetworkResponseMapper.kt`. Live Android tests now create shared
+  `RealConversationRepository` with `RealSlockNetworkClientFactory`.
 
 ### Ordered Todo
 
-1. Conversation / Thread / Files / Messages
-   - Move `RealConversationRepository` orchestration into shared.
-   - Reuse `ThreadMessagesParser.kt`, `ThreadActionParser.kt`,
-     `AttachmentsParser.kt`, `WorkspaceFilesParser.kt`, and shared request-body
-     builders.
-   - Multipart upload should expose a shared file model and keep only the
-     platform byte-source adaptation at the bottom layer.
+1. Auth API migration
+   - `ApiResponse` remains only for Android auth (`AuthApi`,
+     `KtorAuthRepository`, `AuthServerRepository`, and realtime/auth tests).
+   - Move auth request/response DTOs and auth/server repository orchestration to
+     shared, then delete Android `ApiResponse`.
 
-2. Android Network Facade Retirement
-   - Delete `SlockApi`, `ComposeSlockApiAdapter`, `ApiResponse`, and
-     `NetworkResponseMapper` once all repositories consume `SlockNetworkClient`
-     directly.
-   - Remove app-level `okhttp3.RequestBody`/`MultipartBody` usage from API
-     request construction. Ktor may still use OkHttp as the Android engine via
-     `PriorityHttpClient.android.kt`; that is the platform engine, not a second
-     API facade.
+2. Platform-only Android data cleanup
+   - Keep Android `app/src/main/java/ai/slock/android/core/data` focused on
+     platform capabilities: encrypted session storage, token refresh adapter,
+     diagnostics, local SQLDelight store, realtime/socket transport, locale,
+     preferences, and storage management.
+   - New non-auth HTTP routes must not be added under Android data/network.
 
 3. Tests / Fixtures
-   - Update or delete alias-only and wrapper-era fixtures in
-     `RealSlockRepositoriesTest`.
-   - Keep focused contract tests for each shared repository and run full class
-     only after stale fixture cleanup.
-   - As each repository moves to shared, move its focused contract tests into
-     `compose/shared/src/commonTest` and leave Android tests for platform
-     adapter/integration behavior only.
+   - Shared repository behavior belongs in
+     `compose/shared/src/commonTest/kotlin/ai/slock/compose/data`.
+   - Android tests should cover platform adapters/integration only.
 
 ## Canonical parser pattern
 
@@ -181,9 +182,7 @@ fun parseSharedXxx(bodyText: String, /* …context… */): T {
 App side:
 
 ```kotlin
-mapper = { bodyText ->
-    ai.slock.compose.data.parseSharedXxx(bodyText, …)
-}
+val repository = RealXxxRepository(sessionStore = sharedStore, networkClient = sharedNetworkClient)
 ```
 
 Verify:
@@ -192,10 +191,10 @@ Verify:
 cd /Users/artin/AndroidStudioProjects/Slock/compose && \
   ./gradlew :shared:publishAndroidReleasePublicationToMavenLocal
 cd /Users/artin/AndroidStudioProjects/Slock && \
-  ./gradlew :app:compileDebugKotlin
+  ./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin
 ./gradlew :app:testDebugUnitTest --tests \
-  "ai.slock.android.core.data.network.RealSlockRepositoriesTest*"
-# diff failing-test list against baseline; only the pre-existing 20 are allowed
+  "ai.slock.android.core.data.quality.NetworkPriorityCallSiteTest*" \
+  --tests "ai.slock.android.core.data.mock.MockRepositoryTest*"
 ```
 
 ## Rules

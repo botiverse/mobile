@@ -6,40 +6,6 @@ import org.junit.Test
 
 class NetworkPriorityCallSiteTest {
     @Test
-    fun slockApiMethodsRequireExplicitPriorityParameter() {
-        val root = findRepoRoot()
-        val file = File(root, "app/src/main/java/ai/slock/android/core/data/network/SlockApi.kt")
-        val lines = file.readLines()
-        val offenders = mutableListOf<String>()
-        lines.forEachIndexed { index, line ->
-            val trimmed = line.trim()
-            if (!trimmed.startsWith("suspend fun ")) return@forEachIndexed
-            if (trimmed.contains("currentSlockApiPriority")) return@forEachIndexed
-            val signature =
-                    buildString {
-                        for (i in index until lines.size) {
-                            append(lines[i].trim()).append(' ')
-                            if (lines[i].contains("): ApiResponse") ||
-                                            lines[i].contains("):") ||
-                                            lines[i].contains(": ApiResponse")
-                            ) {
-                                break
-                            }
-                        }
-                    }
-            if (!signature.contains("priority: SlockRequestPriority")) {
-                offenders += "${file.relativeTo(root).path}:${index + 1}: $trimmed"
-            }
-        }
-
-        assertTrue(
-                "SlockApi methods must expose priority as an explicit compile-time parameter.\n" +
-                        offenders.joinToString("\n"),
-                offenders.isEmpty()
-        )
-    }
-
-    @Test
     fun mainActivityRepositoryCallsArePriorityScoped() {
         val root = findRepoRoot()
         val file = File(root, "app/src/main/java/ai/slock/android/MainActivity.kt")
@@ -146,16 +112,50 @@ class NetworkPriorityCallSiteTest {
     }
 
     @Test
-    fun slockApiPriorityFallbackDoesNotFailAtRuntime() {
+    fun sharedSlockNetworkClientMethodsRequireExplicitPriority() {
         val root = findRepoRoot()
-        val file = File(root, "app/src/main/java/ai/slock/android/core/data/network/SlockApi.kt")
+        val file = File(root, "compose/shared/src/commonMain/kotlin/ai/slock/compose/data/MemberRepositoryDataSource.kt")
         val text = file.readText()
-        val fallbackBody = text.substringAfter("internal suspend fun currentSlockApiPriority()")
+        val start = text.indexOf("interface SlockNetworkClient {")
+        val end = text.indexOf("\n}\n\nclass KtorSlockNetworkClient", start)
+        val networkClientBody = text.substring(start, end)
+        val offenders =
+                Regex("""^\s*suspend fun (\w+)\(([^)]*)\)""", RegexOption.MULTILINE)
+                        .findAll(networkClientBody)
+                        .mapNotNull { match ->
+                            val name = match.groupValues[1]
+                            val params = match.groupValues[2]
+                            if (params.contains("priority: DataRequestPriority")) {
+                                null
+                            } else {
+                                "${file.relativeTo(root).path}: $name($params)"
+                            }
+                        }
+                        .toList()
 
         assertTrue(
-                "currentSlockApiPriority must default to a normal priority instead of throwing runtime guard errors.",
-                fallbackBody.contains("?: SlockRequestPriority.Visible") &&
-                        !fallbackBody.contains("Missing SlockRequestPriority")
+                "Shared SlockNetworkClient methods must require explicit DataRequestPriority.\n" +
+                        offenders.joinToString("\n"),
+                offenders.isEmpty()
+        )
+    }
+
+    @Test
+    fun androidNetworkLayerDoesNotKeepLegacySlockApiFacade() {
+        val root = findRepoRoot()
+        val legacyFiles =
+                listOf(
+                        "app/src/main/java/ai/slock/android/core/data/network/SlockApi.kt",
+                        "app/src/main/java/ai/slock/android/core/data/network/ComposeSlockApiAdapter.kt",
+                        "app/src/main/java/ai/slock/android/core/data/network/RealSlockRepositories.kt",
+                        "app/src/main/java/ai/slock/android/core/data/network/NetworkResponseMapper.kt"
+                )
+                        .filter { File(root, it).exists() }
+
+        assertTrue(
+                "Android must not keep legacy SlockApi facade/repository files; API requests belong in shared DTO repositories.\n" +
+                        legacyFiles.joinToString("\n"),
+                legacyFiles.isEmpty()
         )
     }
 

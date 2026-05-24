@@ -14,6 +14,7 @@ import ai.slock.android.core.data.repository.AttachmentUploadRequest
 import ai.slock.android.core.data.repository.CreateChannelRequest
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.RealChannelRepository
+import ai.slock.compose.data.RealConversationRepository
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.MessageId
 import ai.slock.android.core.model.ServerId
@@ -259,7 +260,6 @@ class LiveSlockDbFlowTest {
         val session = requireNotNull(authStore.session) { "Login succeeded but no session was stored." }
         val serverId = requireNotNull(session.currentServerId) { "Live account has no selected server." }
 
-        val api = RealSlockApiFactory.create(authStore, baseUrl = baseUrl)
         val networkClient = RealSlockNetworkClientFactory.create(authStore, baseUrl = baseUrl)
         return LiveFixture(
             authStore = authStore,
@@ -269,7 +269,12 @@ class LiveSlockDbFlowTest {
                     networkClient = networkClient,
                     warningLogger = {}
                 ),
-            conversationRepository = RealConversationRepository(authStore, api, warningLogger = {}),
+            conversationRepository =
+                RealConversationRepository(
+                    sessionStore = ComposeAuthSessionStoreAdapter(authStore),
+                    networkClient = networkClient,
+                    warningLogger = {}
+                ),
             baseUrl = baseUrl,
             accessToken = session.accessToken,
             serverId = serverId,

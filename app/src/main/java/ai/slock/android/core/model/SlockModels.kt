@@ -49,10 +49,13 @@ typealias ConversationSummary = ai.slock.compose.model.ConversationSummary
 private const val THREAD_UNREAD_REPLY_COUNT_METADATA_KEY = "threadUnreadReplyCount"
 
 fun Message.unreadReplyCount(): Int =
-    metadata[THREAD_UNREAD_REPLY_COUNT_METADATA_KEY]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+    unreadReplyCount.takeIf { it > 0 }
+        ?: metadata[THREAD_UNREAD_REPLY_COUNT_METADATA_KEY]?.toIntOrNull()?.coerceAtLeast(0)
+        ?: 0
 
 fun Message.withUnreadReplyCount(count: Int): Message =
     copy(
+        unreadReplyCount = count.coerceAtLeast(0),
         metadata =
             metadata +
                 (

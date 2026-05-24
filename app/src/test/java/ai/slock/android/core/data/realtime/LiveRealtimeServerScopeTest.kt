@@ -6,15 +6,14 @@ import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthSessionStore
 import ai.slock.android.core.data.auth.ComposeAuthSessionStoreAdapter
 import ai.slock.android.core.data.auth.KtorAuthRepository
-import ai.slock.android.core.data.network.RealConversationRepository
-import ai.slock.android.core.data.network.RealSlockApiFactory
 import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
 import ai.slock.android.core.data.repository.CreateChannelRequest
+import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.RealChannelRepository
+import ai.slock.compose.data.RealConversationRepository
 import ai.slock.android.core.model.MessageNew
 import ai.slock.android.core.model.ServerId
-import ai.slock.compose.network.SlockRequestPriority
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -30,23 +29,33 @@ class LiveRealtimeServerScopeTest {
     @Test
     fun liveCaptureInboxAndRealtimePayloadShape() = runBlocking {
         val fixture = LiveFixture.login()
-        val api = RealSlockApiFactory.create(fixture.authStore, baseUrl = fixture.baseUrl)
+        val networkClient = RealSlockNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl)
         val channelRepository =
             RealChannelRepository(
                 sessionStore = ComposeAuthSessionStoreAdapter(fixture.authStore),
-                networkClient = RealSlockNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl),
+                networkClient = networkClient,
                 warningLogger = {}
             )
-        val conversationRepository = RealConversationRepository(fixture.authStore, api, warningLogger = {})
+        val conversationRepository =
+            RealConversationRepository(
+                sessionStore = ComposeAuthSessionStoreAdapter(fixture.authStore),
+                networkClient = networkClient,
+                warningLogger = {}
+            )
         val artifact = LiveArtifact("live-realtime-payload-shape")
         val serverId = requireNotNull(fixture.session.currentServerId)
 
-        val inboxResponse = api.inbox(SlockRequestPriority.Visible, filter = "all", limit = 30, offset = 0)
-        val inboxBody = inboxResponse.body()?.string().orEmpty()
+        val inboxResponse =
+            networkClient.request(
+                priority = DataRequestPriority.Visible,
+                path = "channels/inbox",
+                query = listOf("filter" to "all", "limit" to "30", "offset" to "0")
+            )
+        val inboxBody = inboxResponse.bodyText.orEmpty()
         artifact.record(
             "rest_inbox",
             mapOf(
-                "code" to inboxResponse.code(),
+                "code" to inboxResponse.code,
                 "selectedServerId" to serverId,
                 "containsServerScopeKey" to inboxBody.containsAnyServerScopeKey(),
                 "topLevelKeys" to inboxBody.topLevelKeys()
@@ -101,7 +110,7 @@ class LiveRealtimeServerScopeTest {
             assertTrue("Socket did not receive a realtime payload to inspect.", realtimePayload.await(20, TimeUnit.SECONDS))
         } finally {
             transport.disconnect()
-            api.archiveChannel(SlockRequestPriority.Visible, channelId.value)
+            channelRepository.archiveChannel(channelId)
         }
     }
 
@@ -112,14 +121,19 @@ class LiveRealtimeServerScopeTest {
         val secondServer = fixture.session.servers.firstOrNull { it.id != firstServer }
         assumeTrue("Live account needs at least two servers to verify cross-server socket delivery.", secondServer != null)
 
-        val api = RealSlockApiFactory.create(fixture.authStore, baseUrl = fixture.baseUrl)
+        val networkClient = RealSlockNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl)
         val channelRepository =
             RealChannelRepository(
                 sessionStore = ComposeAuthSessionStoreAdapter(fixture.authStore),
-                networkClient = RealSlockNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl),
+                networkClient = networkClient,
                 warningLogger = {}
             )
-        val conversationRepository = RealConversationRepository(fixture.authStore, api, warningLogger = {})
+        val conversationRepository =
+            RealConversationRepository(
+                sessionStore = ComposeAuthSessionStoreAdapter(fixture.authStore),
+                networkClient = networkClient,
+                warningLogger = {}
+            )
         val artifact = LiveArtifact("live-realtime-server-switch")
         val suffix = System.currentTimeMillis().toString(36)
         val channelId = channelRepository.createChannel(
@@ -184,7 +198,7 @@ class LiveRealtimeServerScopeTest {
         } finally {
             transport.disconnect()
             fixture.authStore.updateSelectedServer(firstServer, fixture.session.servers.first { it.id == firstServer }.slug)
-            api.archiveChannel(SlockRequestPriority.Visible, channelId.value)
+            channelRepository.archiveChannel(channelId)
         }
     }
 

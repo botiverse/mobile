@@ -9,6 +9,7 @@ import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.SlockWorkspaceFileKind
 import ai.slock.compose.model.SlockWorkspaceNode
 import ai.slock.compose.network.KmpHttpResponse
+import ai.slock.compose.network.MultipartFile
 import ai.slock.compose.network.SlockApiClient
 import ai.slock.compose.network.SlockRequestPriority
 import kotlinx.coroutines.CancellationException
@@ -32,6 +33,13 @@ interface SlockNetworkClient {
         serverIdOverride: ServerId? = null,
         bodyText: String? = null
     ): HomeNetworkResponse
+
+    suspend fun uploadAttachments(
+        priority: DataRequestPriority,
+        channelId: ChannelId,
+        files: List<MultipartFile>
+    ): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
 }
 
 class KtorSlockNetworkClient(
@@ -50,7 +58,18 @@ class KtorSlockNetworkClient(
             method = method,
             path = path,
             query = query,
-            body = bodyText
+        body = bodyText
+    ).toHomeNetworkResponse()
+
+    override suspend fun uploadAttachments(
+        priority: DataRequestPriority,
+        channelId: ChannelId,
+        files: List<MultipartFile>
+    ): HomeNetworkResponse =
+        client.uploadAttachments(
+            priority = priority.toNetworkPriority(),
+            channelId = channelId.value,
+            files = files
         ).toHomeNetworkResponse()
 }
 

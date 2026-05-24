@@ -27,38 +27,7 @@ interface ServerRepository {
 
 typealias SettingsRepository = ai.slock.compose.data.SettingsRepository
 
-interface ConversationRepository {
-    suspend fun getThread(
-        threadId: ThreadId,
-        includeFollowedSummaries: Boolean = true
-    ): DataResult<ThreadSnapshot>
-    suspend fun getMessageContext(messageId: ai.slock.android.core.model.MessageId): DataResult<ThreadSnapshot>
-    suspend fun loadOlderMessages(threadId: ThreadId, beforeSeq: Long): DataResult<ThreadSnapshot>
-    suspend fun loadNewerMessages(threadId: ThreadId, afterSeq: Long): DataResult<ThreadSnapshot>
-    suspend fun getChannelThreads(channelId: ChannelId, limit: Int = DEFAULT_PAGE_LIMIT): DataResult<ThreadListSnapshot>
-    suspend fun getFollowedThreads(serverId: ServerId, limit: Int = DEFAULT_PAGE_LIMIT): DataResult<ThreadListSnapshot>
-    suspend fun createOrOpenThread(channelId: ChannelId, parentMessageId: ai.slock.android.core.model.MessageId): DataResult<ThreadActionResult>
-    suspend fun followThread(parentMessageId: ai.slock.android.core.model.MessageId): DataResult<ThreadActionResult>
-    suspend fun followThread(threadChannelId: ChannelId): DataResult<ThreadActionResult>
-    suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult>
-    suspend fun markThreadDone(threadChannelId: ChannelId): DataResult<ThreadActionResult>
-    suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult>
-    suspend fun uploadAttachments(request: AttachmentUploadRequest): DataResult<AttachmentUploadResult>
-    suspend fun getAttachmentOpenTarget(
-        attachmentId: ai.slock.android.core.model.AttachmentId
-    ): DataResult<AttachmentOpenTarget>
-    suspend fun getChannelFiles(
-        channelId: ChannelId,
-        limit: Int = 50,
-        cursor: String? = null
-    ): DataResult<ChannelFilesSnapshot>
-    suspend fun sendMessage(
-        channelId: ChannelId,
-        body: String,
-        attachmentIds: List<ai.slock.android.core.model.AttachmentId> = emptyList(),
-        asTask: Boolean = false
-    ): DataResult<SendMessageResult>
-}
+typealias ConversationRepository = ai.slock.compose.data.ConversationRepository
 
 typealias TaskRepository = ai.slock.compose.data.TaskRepository
 

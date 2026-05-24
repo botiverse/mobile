@@ -102,11 +102,14 @@ cd /Users/artin/AndroidStudioProjects/Slock
 
 - Every Android request that reaches `ai.slock.compose.network.SlockApiClient` must be
   started inside `withSlockRequestPriority(...)`; do not rely on an implicit default.
-- Legacy `SlockApi` methods must take an explicit `SlockRequestPriority`
-  parameter, and shared `SlockNetworkClient` calls must take an explicit
-  `DataRequestPriority`. Do not add no-priority overloads or defaults. This is
-  the compile-time tripwire: new API methods and fake implementations should
-  fail to compile until the caller chooses Foreground, Visible, or Background.
+- New product API routes must be implemented in `compose/shared` behind shared
+  request/response DTOs and `SlockNetworkClient`; Android must not reintroduce a
+  parallel `SlockApi`, endpoint facade, or app-local JSON parser for those
+  contracts.
+- Shared `SlockNetworkClient` calls must take an explicit `DataRequestPriority`.
+  Do not add no-priority overloads or defaults. This is the compile-time
+  tripwire: new API methods and fake implementations should fail to compile
+  until the caller chooses Foreground, Visible, or Background.
 - Use `Foreground` only for user-blocking work: opening the current thread, sending
   messages, uploading attachments for send, opening/downloading the tapped attachment,
   task status changes, membership/channel mutations, and settings save/delete actions.

@@ -1,0 +1,766 @@
+package ai.slock.compose.data
+
+import ai.slock.compose.model.AttachmentId
+import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.ConversationKind
+import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.Message
+import ai.slock.compose.model.MessageDeliveryState
+import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ThreadConversation
+import ai.slock.compose.model.ThreadId
+import ai.slock.compose.model.parentChannelIdOrNull
+import ai.slock.compose.model.parentMessageIdOrNull
+import ai.slock.compose.model.threadIdentity
+import ai.slock.compose.model.topLevelThreadId
+import ai.slock.compose.network.MultipartFile
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+private val conversationRepositoryJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+}
+
+private suspend fun SlockNetworkClient.channelMessages(
+    priority: DataRequestPriority,
+    channelId: ChannelId,
+    limit: Int,
+    beforeSeq: Long? = null
+): HomeNetworkResponse =
+    request(
+        priority = priority,
+        path = "messages/channel/${channelId.value}",
+        query = listOfNotNull("limit" to limit.toString(), beforeSeq?.let { "before" to it.toString() })
+    )
+
+private suspend fun SlockNetworkClient.messageContext(
+    priority: DataRequestPriority,
+    messageId: MessageId
+): HomeNetworkResponse =
+    request(priority, "messages/context/${messageId.value}")
+
+private suspend fun SlockNetworkClient.messageSync(
+    priority: DataRequestPriority,
+    sinceSeq: Long,
+    limit: Int,
+    channelId: ChannelId? = null
+): HomeNetworkResponse =
+    request(
+        priority = priority,
+        path = "messages/sync",
+        query =
+            listOfNotNull(
+                "since_seq" to sinceSeq.toString(),
+                "limit" to limit.toString(),
+                channelId?.let { "channel_id" to it.value }
+            )
+    )
+
+private suspend fun SlockNetworkClient.channelThreads(
+    priority: DataRequestPriority,
+    channelId: ChannelId,
+    limit: Int
+): HomeNetworkResponse =
+    request(priority, "channels/${channelId.value}/threads", query = listOf("limit" to limit.toString()))
+
+private suspend fun SlockNetworkClient.followedThreads(
+    priority: DataRequestPriority,
+    limit: Int
+): HomeNetworkResponse =
+    request(priority, "channels/threads/followed", query = listOf("limit" to limit.toString()))
+
+private suspend fun SlockNetworkClient.createOrOpenThread(
+    priority: DataRequestPriority,
+    channelId: ChannelId,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "channels/${channelId.value}/threads", method = "POST", bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.followThread(
+    priority: DataRequestPriority,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "channels/threads/follow", method = "POST", bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.unfollowThread(
+    priority: DataRequestPriority,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "channels/threads/unfollow", method = "POST", bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.markThreadDone(
+    priority: DataRequestPriority,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "channels/threads/done", method = "POST", bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.markThreadUndone(
+    priority: DataRequestPriority,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "channels/threads/undone", method = "POST", bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.attachmentUrl(
+    priority: DataRequestPriority,
+    attachmentId: AttachmentId
+): HomeNetworkResponse =
+    request(priority, "attachments/${attachmentId.value}/url")
+
+private suspend fun SlockNetworkClient.channelFiles(
+    priority: DataRequestPriority,
+    channelId: ChannelId,
+    limit: Int,
+    cursor: String?
+): HomeNetworkResponse =
+    request(
+        priority = priority,
+        path = "channels/${channelId.value}/files",
+        query = listOfNotNull("limit" to limit.toString(), cursor?.takeIf { it.isNotBlank() }?.let { "cursor" to it })
+    )
+
+private suspend fun SlockNetworkClient.sendMessage(
+    priority: DataRequestPriority,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "messages", method = "POST", bodyText = bodyText)
+
+class RealConversationRepository(
+    private val sessionStore: SlockAuthSessionStore,
+    private val networkClient: SlockNetworkClient,
+    private val warningLogger: (String) -> Unit = {}
+) : ConversationRepository {
+    override suspend fun getThread(
+        threadId: ThreadId,
+        includeFollowedSummaries: Boolean
+    ): DataResult<ThreadSnapshot> {
+        val context = currentContext() ?: return authRequired()
+        return loadChannelMessages(
+            context = context,
+            threadId = threadId,
+            block = { networkClient.channelMessages(DataRequestPriority.Foreground, ChannelId(threadId.value), MESSAGE_PAGE_LIMIT) },
+            source = "messages_channel",
+            includeFollowedSummaries = includeFollowedSummaries
+        )
+    }
+
+    override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> {
+        currentContext() ?: return authRequired()
+        return executeConversation(
+            emptyReason = EmptyReason.NoMessages,
+            block = { networkClient.messageContext(DataRequestPriority.Foreground, messageId) },
+            emptyWhen = { it.messages.isEmpty() && it.parentMessage == null },
+            source = "messages_context",
+            mapper = { bodyText ->
+                val fallbackThreadId = ThreadId(messageId.value)
+                val payload = parseSharedMessageContext(bodyText, fallbackThreadId)
+                val resolvedThreadId = payload.channelId?.let { ThreadId(it.value) } ?: fallbackThreadId
+                buildSharedThreadSnapshot(
+                    payload = payload,
+                    threadId = resolvedThreadId,
+                    canLoadMoreBefore = payload.hasOlder,
+                    canLoadMoreAfter = payload.hasNewer,
+                    highlightedMessageId = payload.targetMessageId ?: messageId
+                )
+            }
+        )
+    }
+
+    override suspend fun loadOlderMessages(
+        threadId: ThreadId,
+        beforeSeq: Long
+    ): DataResult<ThreadSnapshot> {
+        val context = currentContext() ?: return authRequired()
+        return loadChannelMessages(
+            context = context,
+            threadId = threadId,
+            block = {
+                networkClient.channelMessages(
+                    DataRequestPriority.Visible,
+                    ChannelId(threadId.value),
+                    MESSAGE_PAGE_LIMIT,
+                    beforeSeq = beforeSeq
+                )
+            },
+            source = "messages_channel_older"
+        )
+    }
+
+    override suspend fun loadNewerMessages(
+        threadId: ThreadId,
+        afterSeq: Long
+    ): DataResult<ThreadSnapshot> {
+        currentContext() ?: return authRequired()
+        return executeConversation(
+            emptyReason = EmptyReason.NoMessages,
+            block = {
+                networkClient.messageSync(
+                    DataRequestPriority.Visible,
+                    sinceSeq = afterSeq,
+                    limit = SYNC_PAGE_LIMIT,
+                    channelId = ChannelId(threadId.value)
+                )
+            },
+            emptyWhen = { it.messages.isEmpty() },
+            source = "messages_sync",
+            mapper = { bodyText ->
+                val payload = parseSharedSyncMessages(bodyText, threadId)
+                buildSharedThreadSnapshot(payload = payload, threadId = threadId)
+            }
+        )
+    }
+
+    override suspend fun getChannelThreads(
+        channelId: ChannelId,
+        limit: Int
+    ): DataResult<ThreadListSnapshot> {
+        val context = currentContext() ?: return authRequired()
+        return executeConversation(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = { networkClient.channelThreads(DataRequestPriority.Visible, channelId, limit) },
+            emptyWhen = { it.threads.isEmpty() },
+            source = "channel_threads",
+            mapper = { bodyText -> parseThreadListSnapshotFromBody(bodyText, context) }
+        )
+    }
+
+    override suspend fun getFollowedThreads(
+        serverId: ServerId,
+        limit: Int
+    ): DataResult<ThreadListSnapshot> {
+        val context = sessionStore.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
+        return executeConversation(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = { networkClient.followedThreads(DataRequestPriority.Visible, limit) },
+            emptyWhen = { it.threads.isEmpty() },
+            source = "followed_threads",
+            mapper = { bodyText -> parseThreadListSnapshotFromBody(bodyText, context) }
+        )
+    }
+
+    override suspend fun createOrOpenThread(
+        channelId: ChannelId,
+        parentMessageId: MessageId
+    ): DataResult<ThreadActionResult> =
+        threadAction(
+            fallbackThreadChannelId = null,
+            fallbackParentMessageId = parentMessageId,
+            source = "thread_create_or_open"
+        ) {
+            networkClient.createOrOpenThread(
+                DataRequestPriority.Foreground,
+                channelId,
+                parentMessageId.toParentMessageThreadBody()
+            )
+        }
+
+    override suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult> =
+        threadAction(
+            fallbackThreadChannelId = null,
+            fallbackParentMessageId = parentMessageId,
+            source = "thread_follow_parent"
+        ) {
+            networkClient.followThread(DataRequestPriority.Foreground, parentMessageId.toParentMessageThreadBody())
+        }
+
+    override suspend fun followThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
+        threadAction(threadChannelId, source = "thread_follow") {
+            networkClient.followThread(DataRequestPriority.Foreground, threadChannelId.toThreadActionBody())
+        }
+
+    override suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
+        threadAction(threadChannelId, source = "thread_unfollow") {
+            networkClient.unfollowThread(DataRequestPriority.Foreground, threadChannelId.toThreadActionBody())
+        }
+
+    override suspend fun markThreadDone(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
+        threadAction(threadChannelId, source = "thread_done") {
+            networkClient.markThreadDone(DataRequestPriority.Foreground, threadChannelId.toThreadActionBody())
+        }
+
+    override suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
+        threadAction(threadChannelId, source = "thread_undone") {
+            networkClient.markThreadUndone(DataRequestPriority.Foreground, threadChannelId.toThreadActionBody())
+        }
+
+    override suspend fun uploadAttachments(request: AttachmentUploadRequest): DataResult<AttachmentUploadResult> {
+        currentContext() ?: return authRequired()
+        if (request.files.isEmpty()) return DataResult.Empty(EmptyReason.NoMessages)
+        return executeConversation(
+            emptyReason = EmptyReason.NoMessages,
+            block = {
+                networkClient.uploadAttachments(
+                    priority = DataRequestPriority.Foreground,
+                    channelId = request.channelId,
+                    files = request.files.map { it.toMultipartFile() }
+                )
+            },
+            source = "attachments_upload",
+            mapper = { bodyText -> parseSharedAttachmentUploadResult(bodyText) },
+            emptyWhen = { it.attachments.isEmpty() }
+        )
+    }
+
+    override suspend fun getAttachmentOpenTarget(attachmentId: AttachmentId): DataResult<AttachmentOpenTarget> {
+        currentContext() ?: return authRequired()
+        return executeConversation(
+            emptyReason = EmptyReason.NoMessages,
+            block = { networkClient.attachmentUrl(DataRequestPriority.Foreground, attachmentId) },
+            source = "attachment_open_url",
+            mapper = { bodyText ->
+                parseSharedAttachmentOpenTarget(bodyText, attachmentId)
+                    ?: throw IllegalStateException("Attachment URL response missing target")
+            },
+            emptyWhen = { it.url.isBlank() }
+        )
+    }
+
+    override suspend fun getChannelFiles(
+        channelId: ChannelId,
+        limit: Int,
+        cursor: String?
+    ): DataResult<ChannelFilesSnapshot> {
+        currentContext() ?: return authRequired()
+        return executeConversation(
+            emptyReason = EmptyReason.NoMessages,
+            block = { networkClient.channelFiles(DataRequestPriority.Visible, channelId, limit, cursor) },
+            source = "channel_files",
+            mapper = { bodyText -> parseSharedChannelFilesSnapshot(bodyText, channelId) },
+            emptyWhen = { it.items.isEmpty() }
+        )
+    }
+
+    override suspend fun sendMessage(
+        channelId: ChannelId,
+        body: String,
+        attachmentIds: List<AttachmentId>,
+        asTask: Boolean
+    ): DataResult<SendMessageResult> {
+        val context = currentContext() ?: return authRequired()
+        if (body.isBlank() && attachmentIds.isEmpty()) return DataResult.Empty(EmptyReason.NoMessages)
+        return executeConversation(
+            emptyReason = EmptyReason.NoMessages,
+            block = {
+                networkClient.sendMessage(
+                    DataRequestPriority.Foreground,
+                    buildSharedThreadSendMessageBody(
+                        channelId = channelId.value,
+                        body = body,
+                        attachmentIds = attachmentIds.map { it.value },
+                        asTask = asTask
+                    )
+                )
+            },
+            source = "messages_send",
+            mapper = { bodyText ->
+                val fallbackThreadId = topLevelThreadId(channelId)
+                val message =
+                    parseSharedSentMessage(bodyText, fallbackThreadId)
+                        ?: Message(
+                            id = MessageId("message-sent"),
+                            threadId = fallbackThreadId,
+                            channelId = channelId,
+                            author = context.session.user.toMemberProfile(),
+                            timestampLabel = "",
+                            body = body,
+                            deliveryState = MessageDeliveryState.Sent
+                        )
+                SendMessageResult(message)
+            }
+        )
+    }
+
+    private suspend fun loadChannelMessages(
+        context: NetworkServerContext,
+        threadId: ThreadId,
+        block: suspend () -> HomeNetworkResponse,
+        source: String,
+        includeFollowedSummaries: Boolean = true
+    ): DataResult<ThreadSnapshot> = coroutineScope {
+        val messagesDeferred =
+            async {
+                executeConversation(
+                    emptyReason = EmptyReason.NoMessages,
+                    block = block,
+                    emptyWhen = { it.messages.isEmpty() },
+                    source = source,
+                    mapper = { bodyText ->
+                        val payload = parseSharedChannelMessages(bodyText, threadId)
+                        buildSharedThreadSnapshot(
+                            payload = payload,
+                            threadId = threadId,
+                            canLoadMoreBefore = payload.messages.size >= MESSAGE_PAGE_LIMIT
+                        )
+                    }
+                )
+            }
+        val threadSummariesDeferred =
+            async {
+                executeConversation(
+                    emptyReason = EmptyReason.NoInboxItems,
+                    block = { networkClient.channelThreads(DataRequestPriority.Visible, ChannelId(threadId.value), MESSAGE_PAGE_LIMIT) },
+                    emptyWhen = { false },
+                    source = "${source}_thread_summaries",
+                    mapper = { bodyText -> parseThreadListSnapshotFromBody(bodyText, context) }
+                )
+            }
+        val followedSummariesDeferred =
+            if (includeFollowedSummaries) {
+                async {
+                    executeConversation(
+                        emptyReason = EmptyReason.NoInboxItems,
+                        block = { networkClient.followedThreads(DataRequestPriority.Visible, MESSAGE_PAGE_LIMIT) },
+                        emptyWhen = { false },
+                        source = "${source}_followed_summaries",
+                        mapper = { bodyText -> parseThreadListSnapshotFromBody(bodyText, context) }
+                    )
+                }
+            } else {
+                null
+            }
+        val messagesResult = messagesDeferred.await()
+        val threadSummaries = threadSummariesDeferred.await()
+        val followedSummaries = followedSummariesDeferred?.await()
+        if (messagesResult !is DataResult.Content) {
+            messagesResult
+        } else {
+            val channelThreads = if (threadSummaries is DataResult.Content) threadSummaries.data.threads else emptyList()
+            val followedForChannel =
+                if (followedSummaries is DataResult.Content) {
+                    followedSummaries.data.threads.filter { it.parentChannelId?.value == threadId.value }
+                } else {
+                    emptyList()
+                }
+            val mergedThreads = (channelThreads + followedForChannel).distinctBy { it.key }
+            if (threadSummaries is DataResult.Error && followedSummaries is DataResult.Error) {
+                warningLogger(
+                    "thread_summaries_error source=$source " +
+                        "channel_code=${threadSummaries.error.code} " +
+                        "followed_code=${followedSummaries.error.code}"
+                )
+                messagesResult
+            } else {
+                warningLogger(
+                    "thread_summaries_loaded source=$source " +
+                        "channel=${channelThreads.size} followed_filtered=${followedForChannel.size} " +
+                        "merged=${mergedThreads.size} " +
+                        "candidateIds=${mergedThreads.take(3).joinToString { t ->
+                            "${t.channelId.value.take(8)}/" +
+                                "${t.threadChannelId?.value?.take(8) ?: "null"}/" +
+                                (t.parentMessageId?.value?.take(8) ?: "null")
+                        }}"
+                )
+                DataResult.Content(messagesResult.data.withReplySummaries(mergedThreads, warningLogger))
+            }
+        }
+    }
+
+    private suspend fun threadAction(
+        threadChannelId: ChannelId,
+        source: String,
+        block: suspend () -> HomeNetworkResponse
+    ): DataResult<ThreadActionResult> =
+        threadAction(
+            fallbackThreadChannelId = threadChannelId,
+            fallbackParentMessageId = null,
+            source = source,
+            block = block
+        )
+
+    private suspend fun threadAction(
+        fallbackThreadChannelId: ChannelId?,
+        fallbackParentMessageId: MessageId?,
+        source: String,
+        block: suspend () -> HomeNetworkResponse
+    ): DataResult<ThreadActionResult> {
+        currentContext() ?: return authRequired()
+        return executeConversation(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = block,
+            source = source,
+            mapper = { bodyText ->
+                parseSharedThreadActionResult(
+                    bodyText = bodyText,
+                    fallbackThreadChannelId = fallbackThreadChannelId,
+                    fallbackParentMessageId = fallbackParentMessageId
+                ) ?: error("thread action response missing thread channel id")
+            }
+        )
+    }
+
+    private suspend fun currentContext(): NetworkServerContext? {
+        val session = sessionStore.readSession() ?: return null
+        val selectedId = session.currentServerId ?: return null
+        return session.toNetworkServerContext(ServerId(selectedId))
+    }
+
+    private companion object {
+        const val MESSAGE_PAGE_LIMIT = 50
+        const val SYNC_PAGE_LIMIT = 200
+    }
+}
+
+private data class NetworkServerContext(val session: StoredAuthSession, val server: ai.slock.compose.model.ServerSummary)
+
+private fun StoredAuthSession.toNetworkServerContext(serverId: ServerId): NetworkServerContext? {
+    val selectedId = currentServerId ?: return null
+    if (selectedId != serverId.value) return null
+    val server = servers.firstOrNull { it.id == selectedId }?.toServerSummary() ?: return null
+    return NetworkServerContext(session = this, server = server)
+}
+
+private fun parseThreadListSnapshotFromBody(
+    bodyText: String,
+    context: NetworkServerContext
+): ThreadListSnapshot {
+    val parsed =
+        parseSharedThreadListItems(bodyText)
+            ?: throw IllegalStateException("Thread list response missing threads")
+    return ThreadListSnapshot(
+        server = context.server,
+        threads = parsed.items,
+        totalCount = parsed.totalCount,
+        hasMore = parsed.hasMore,
+        nextOffset = parsed.nextOffset
+    )
+}
+
+private fun buildSharedThreadSnapshot(
+    payload: SharedMessagesPayload,
+    threadId: ThreadId,
+    canLoadMoreBefore: Boolean = false,
+    canLoadMoreAfter: Boolean = false,
+    highlightedMessageId: MessageId? = null
+): ThreadSnapshot {
+    val highlighted = highlightedMessageId?.let { id -> payload.messages.firstOrNull { it.id == id } }
+    val baseConversation = buildDefaultConversation(threadId, threadId.value)
+    val conversation =
+        if (highlighted != null) {
+            baseConversation.withThreadAnchor(
+                parentMessage = highlighted,
+                streamChannelId = ChannelId(threadId.value)
+            )
+        } else {
+            baseConversation
+        }
+    return ThreadSnapshot(
+        conversation = conversation,
+        messages = payload.messages,
+        parentMessage = highlighted,
+        canLoadMoreBefore = canLoadMoreBefore,
+        canLoadMoreAfter = canLoadMoreAfter,
+        historyLimited = payload.historyLimited,
+        highlightedMessageId = highlightedMessageId
+    )
+}
+
+private fun buildDefaultConversation(threadId: ThreadId, name: String): ConversationSummary {
+    val parentChannelId = threadId.parentChannelIdOrNull()
+    val parentMessageId = threadId.parentMessageIdOrNull()
+    return ConversationSummary(
+        threadId = threadId,
+        channelId = parentChannelId ?: ChannelId(threadId.value),
+        thread =
+            if (parentChannelId != null && parentMessageId != null) {
+                ThreadConversation(
+                    parentChannelId = parentChannelId,
+                    parentMessageId = parentMessageId,
+                    streamChannelId = null
+                )
+            } else {
+                null
+            },
+        kind =
+            if (parentChannelId != null && parentMessageId != null) {
+                ConversationKind.Thread
+            } else {
+                ConversationKind.Channel
+            },
+        name = name
+    )
+}
+
+private fun ThreadSnapshot.withReplySummaries(
+    threads: List<InboxItem>,
+    logger: (String) -> Unit
+): ThreadSnapshot {
+    if (threads.isEmpty()) return this
+    val summariesByParentMessageId =
+        threads
+            .asSequence()
+            .mapNotNull { thread -> thread.parentMessageId?.let { it.value to thread } }
+            .toMap()
+    val summariesByThreadChannelId =
+        threads
+            .asSequence()
+            .flatMap { thread ->
+                sequenceOf(
+                    thread.threadChannelId?.value?.let { it to thread },
+                    thread.channelId.value to thread
+                ).filterNotNull()
+            }
+            .toMap()
+    var joinMissCount = 0
+    var firstJoinMissMessageId: MessageId? = null
+    var firstJoinMissThreadChannelId: ChannelId? = null
+    val updatedMessages =
+        messages.map { message ->
+            val summary =
+                summariesByParentMessageId[message.id.value]
+                    ?: message.threadChannelId?.value?.let(summariesByThreadChannelId::get)
+                    ?: threads.firstOrNull { thread -> thread.matchesParentMessage(message.id) }
+            if (summary == null) {
+                if (message.replyCount == 0) {
+                    joinMissCount += 1
+                    if (firstJoinMissMessageId == null) {
+                        firstJoinMissMessageId = message.id
+                        firstJoinMissThreadChannelId = message.threadChannelId
+                    }
+                }
+                return@map message
+            }
+            val summaryThreadChannelId = summary.threadChannelId ?: summary.channelId
+            logger(
+                "summary_join parentMessageId=${message.id.value} " +
+                    "channelId=${message.channelId?.value.orEmpty()} " +
+                    "threadChannelId=${summaryThreadChannelId.value} " +
+                    "replyCount=${maxOf(message.replyCount, summary.replyCount)} " +
+                    "unreadCount=${summary.unreadCount} " +
+                    "source=channel_threads"
+            )
+            message.copy(
+                threadChannelId = message.threadChannelId ?: summaryThreadChannelId,
+                replyCount = maxOf(message.replyCount, summary.replyCount),
+                unreadReplyCount = maxOf(message.unreadReplyCount, summary.unreadCount)
+            )
+        }
+    if (joinMissCount > 0) {
+        val candidates =
+            threads.take(2).joinToString { thread ->
+                "ch=${thread.channelId.value.take(8)} " +
+                    "pMsgId=${thread.parentMessageId?.value?.take(8) ?: "null"}"
+            }
+        logger(
+            "summary_join_miss_count count=$joinMissCount " +
+                "firstMsgId=${firstJoinMissMessageId?.value?.take(8).orEmpty()} " +
+                "firstThreadCh=${firstJoinMissThreadChannelId?.value?.take(8) ?: "null"} " +
+                "threadCandidates=[$candidates] source=channel_threads"
+        )
+    }
+    return copy(messages = updatedMessages)
+}
+
+private fun InboxItem.matchesParentMessage(messageId: MessageId): Boolean {
+    val candidateIds =
+        listOfNotNull(
+            parentMessageId?.value,
+            lastMessageId?.value,
+            latestActivityMessageId?.value,
+            parentMessagePreview?.extractSlockMessageReferenceId(),
+            latestActivityPreview?.extractSlockMessageReferenceId(),
+            lastMessagePreview?.extractSlockMessageReferenceId(),
+            threadChannelId?.value,
+            channelId.value,
+            key.removePrefix("thread:").takeIf { it != key }
+        )
+    return candidateIds.any { candidate -> messageId.value.matchesThreadSummaryId(candidate) }
+}
+
+private fun String.extractSlockMessageReferenceId(): String? =
+    Regex("#[A-Za-z0-9_-]+:([A-Fa-f0-9]{8})(?:[A-Fa-f0-9-]{0,28})?")
+        .find(this)
+        ?.groupValues
+        ?.getOrNull(1)
+
+private fun String.matchesThreadSummaryId(candidate: String): Boolean {
+    if (equals(candidate, ignoreCase = true)) return true
+    val parentShortId = take(8)
+    val candidateShortId = candidate.take(8)
+    return parentShortId.length == 8 &&
+        candidateShortId.length == 8 &&
+        parentShortId.equals(candidateShortId, ignoreCase = true)
+}
+
+private fun ConversationSummary.withThreadAnchor(
+    parentMessage: Message?,
+    streamChannelId: ChannelId,
+    parentChannelName: String? = null
+): ConversationSummary {
+    fun ConversationSummary.withParentNameFallback(): ConversationSummary {
+        val fallbackName =
+            parentChannelName?.takeIf { name.isBlank() || name == threadId.value || name == channelId?.value }
+                ?: return this
+        return copy(name = fallbackName)
+    }
+    if (kind == ConversationKind.Thread && thread?.streamChannelId == null) {
+        return copy(thread = thread?.copy(streamChannelId = streamChannelId)).withParentNameFallback()
+    }
+    val parentChannelId = parentMessage?.channelId ?: return withParentNameFallback()
+    return copy(
+        threadId = threadIdentity(parentChannelId, parentMessage.id),
+        channelId = parentChannelId,
+        thread =
+            ThreadConversation(
+                parentChannelId = parentChannelId,
+                parentMessageId = parentMessage.id,
+                streamChannelId = parentMessage.threadChannelId ?: streamChannelId
+            ),
+        kind = ConversationKind.Thread
+    ).withParentNameFallback()
+}
+
+private fun ChannelId.toThreadActionBody(): String =
+    conversationRepositoryJson.encodeToString(mapOf("threadChannelId" to value, "channelId" to value))
+
+private fun MessageId.toParentMessageThreadBody(): String =
+    conversationRepositoryJson.encodeToString(mapOf("parentMessageId" to value))
+
+private fun AttachmentUploadFile.toMultipartFile(): MultipartFile =
+    MultipartFile(
+        name = "files",
+        fileName = fileName,
+        mimeType = mimeType ?: "application/octet-stream",
+        bytes = bytes
+    )
+
+private suspend fun <T> executeConversation(
+    emptyReason: EmptyReason,
+    block: suspend () -> HomeNetworkResponse,
+    emptyWhen: (T) -> Boolean = { false },
+    source: String? = null,
+    mapper: (String) -> T
+): DataResult<T> {
+    var statusCode: Int? = null
+    return try {
+        val response = block()
+        statusCode = response.code
+        if (!response.isSuccessful) return response.toConversationDataError()
+        val body = response.bodyText.orEmpty()
+        if (body.isBlank()) return DataResult.Empty(emptyReason)
+        val result = mapper(body)
+        if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
+    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+        throw cancellation
+    } catch (exception: Exception) {
+        if (source != null) {
+            @Suppress("UNUSED_VARIABLE")
+            val message =
+                "parse_failed source=$source stage=response_or_mapper status=${statusCode ?: "unknown"} exception=${exception::class.simpleName}"
+        }
+        DataResult.Error(ScreenError(code = "network_parse_failed", retryable = true))
+    }
+}
+
+private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> =
+    when (code) {
+        401 -> authRequired()
+        403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
+        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
+        else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
+    }
+
+private fun <T> authRequired(): DataResult<T> =
+    DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))

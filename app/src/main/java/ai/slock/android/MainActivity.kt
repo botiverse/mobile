@@ -21,8 +21,6 @@ import ai.slock.android.core.data.local.createSlockLocalStore
 import ai.slock.android.core.data.local.toThreadUiState
 import ai.slock.android.core.data.locale.PersistentLocaleRepository
 import ai.slock.android.core.data.locale.SharedPreferencesLocalePreferenceStore
-import ai.slock.android.core.data.network.RealConversationRepository
-import ai.slock.android.core.data.network.RealSlockApiFactory
 import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
 import ai.slock.android.core.data.preferences.ChatLayoutPreferenceSnapshot
 import ai.slock.android.core.data.preferences.LargeScreenNavigationPreference
@@ -56,6 +54,7 @@ import ai.slock.android.core.data.repository.ConversationRepository
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.RealChannelRepository
+import ai.slock.compose.data.RealConversationRepository
 import ai.slock.compose.data.RealInboxRepository
 import ai.slock.compose.data.RealMemberRepository
 import ai.slock.compose.data.RealReadReceiptRepository
@@ -717,9 +716,6 @@ private fun SlockAppContent(
     val serverRepository = remember { AuthServerRepository(authSessionStore, authRepository) }
     var currentAuthSession by remember { mutableStateOf<AuthSession?>(null) }
     val networkDiagnosticsBridge = remember { NetworkDiagnosticsBridge() }
-    val slockApi = remember {
-        RealSlockApiFactory.create(store = authSessionStore, tokenRefresher = authTokenRefresher)
-    }
     val slockNetworkClient = remember {
         RealSlockNetworkClientFactory.create(store = authSessionStore, tokenRefresher = authTokenRefresher)
     }
@@ -778,7 +774,16 @@ private fun SlockAppContent(
         )
     }
     val conversationRepository: ConversationRepository = remember {
-        RealConversationRepository(authSessionStore, slockApi)
+        RealConversationRepository(
+                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                networkClient = slockNetworkClient,
+                warningLogger = { message ->
+                    ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(
+                            "SlockConversation",
+                            message
+                    )
+                }
+        )
     }
     val localWriteThrough = remember {
         SlockLocalWriteThrough(
