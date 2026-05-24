@@ -46,6 +46,13 @@ shapes and `packages/shared/` for shared types. No snake_case aliases, no
   gravatar aliases) and `NetworkResponseMapper.toAvatarWireValue`
   (`avatar_url`, `image_url`, `profile_image_url`, `picture_url`, `photo_url`,
   `icon_url`, `gravatar_hash`) — commit `462703d`.
+- Settings account + machine-agent/member enrichment parsing moved to shared
+  strict DTOs in `SettingsParser.kt`; deleted the app-side
+  `toAccountSettingsSnapshot`, `toConnectedAccount`,
+  `toSettingsComputerAgents`, `toSettingsMemberProfiles`,
+  `objectValue`, connected-account-status, and role-label helpers.
+- Thin attachment URL and thread action result parsing moved to shared
+  (`parseSharedAttachmentOpenTarget`, `parseSharedThreadActionResult`).
 
 ### In progress / next
 
@@ -56,21 +63,23 @@ shapes and `packages/shared/` for shared types. No snake_case aliases, no
 
 ### Move to shared (one batch at a time, each its own commit)
 
-1. **Batch 5 — Messages / Profiles** (~600 LOC, foundational; blocks 2/4/6).
-   File: `compose/shared/.../data/MessagesParser.kt`. Public:
-   `parseSharedMessageSnapshot`, `parseSharedMemberProfile`.
-   *Approach note*: don't port the Gson `toMessage` chain literally — instead
-   reuse the canonical `WireMessage`/`WireAttachment`/`WireReaction` already
-   defined in `ThreadMessagesParser.kt` (mirrors React server `Message` row)
-   and add a thin `WireMessage.toDomainMessage(...)` mapper. UI-only join
-   fields (`task`, `unreadReplyCount`, `firstUnreadReplyMessageId`,
-   `replyCount` from summary join) MUST stay in the caller — they're not on
-   the wire.
-2. **Batch 2 — Tasks**.
-3. **Batch 6 — Conversations**.
-4. **Batch 4 — Inbox / Thread**.
-5. **Settings heavy parsers** (members, account).
-6. **Delete `NetworkResponseMapper`** once all callers go through shared.
+1. **Channel/Home conversation actions and lists**:
+   `createChannel`, `openDirectMessage`, channel join/archive response mapping,
+   `homeConversationItems`, `toConversation*`, and the conversation avatar /
+   joined / archived helpers in `RealSlockRepositories.kt`.
+2. **Member/channel-members profile parsing**:
+   `toMemberProfile`, `toChannelMemberProfile`, `memberItems`,
+   `agentMemberItems`, and the add/remove member response wrappers.
+3. **Agent detail surfaces**:
+   agent DMs, reminders, activity log, current activity fallback, skills, and
+   workspace/machine lookup helpers.
+4. **Settings server API parser cleanup**:
+   move `SlockSettingsServerApi.kt`'s typed Gson mappers for machines,
+   workspaces, admins, usage, billing, onboarding, profile update, invite, and
+   delete into shared strict DTO parsers.
+5. **Delete or split `NetworkResponseMapper`** once `execute<T>{}` no longer
+   needs to carry legacy `items`, `string`, `int`, `long`, `boolean`,
+   `stringList`, and `avatarWireValue` helpers for repository parsing.
 
 ## Canonical parser pattern
 

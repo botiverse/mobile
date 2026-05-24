@@ -1193,7 +1193,7 @@ class RealSlockRepositoriesTest {
             store = InMemoryAuthSessionStore(sampleSession),
             api = FakeSlockApi(
                 attachmentUrlJson = """
-                    {"downloadUrl":"https://example.invalid/signed/attachment-1","expires_at":"2026-05-07T00:00:00Z"}
+                    {"url":"https://example.invalid/signed/attachment-1","expiresAt":"2026-05-07T00:00:00Z"}
                 """.trimIndent()
             ),
             warningLogger = {}

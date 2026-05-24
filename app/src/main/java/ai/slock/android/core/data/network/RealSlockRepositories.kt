@@ -1773,11 +1773,10 @@ class RealConversationRepository(
                 source = "attachment_open_url",
                 warningLogger = warningLogger,
                 mapper = { json ->
-                    AttachmentOpenTarget(
-                            attachmentId = attachmentId,
-                            url = json.string("url") ?: "",
-                            expiresAt = json.string("expiresAt")
-                    )
+                    ai.slock.compose.data.parseSharedAttachmentOpenTarget(
+                            json.toString(),
+                            attachmentId
+                    ) ?: throw IllegalStateException("Attachment URL response missing target")
                 },
                 emptyWhen = { it.url.isBlank() }
         )
@@ -1958,25 +1957,21 @@ class RealConversationRepository(
                 source = source,
                 warningLogger = warningLogger,
                 mapper = { json ->
-                    val parsedThreadChannelId =
-                            json.string("threadChannelId")
-                                    ?: fallbackThreadChannelId?.value
-                                    ?: error("thread action response missing thread channel id")
-                    val replyCount = json.int("replyCount") ?: 0
+                    val result =
+                            ai.slock.compose.data.parseSharedThreadActionResult(
+                                    bodyText = json.toString(),
+                                    fallbackThreadChannelId = fallbackThreadChannelId,
+                                    fallbackParentMessageId = fallbackParentMessageId
+                            ) ?: error("thread action response missing thread channel id")
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                             "SlockThreadReplies",
                             "thread_action_result source=$source " +
-                                    "threadChannelId=$parsedThreadChannelId " +
+                                    "threadChannelId=${result.threadChannelId.value} " +
                                     "fallback=${fallbackThreadChannelId?.value.orEmpty()} " +
                                     "parentMessageId=${fallbackParentMessageId?.value.orEmpty()} " +
-                                    "replyCount=$replyCount"
+                                    "replyCount=${result.replyCount}"
                     )
-                    ThreadActionResult(
-                            threadChannelId = ChannelId(parsedThreadChannelId),
-                            changed = json.boolean("ok") ?: true,
-                            parentMessageId = fallbackParentMessageId,
-                            replyCount = replyCount
-                    )
+                    result
                 }
         )
     }

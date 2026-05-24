@@ -74,6 +74,12 @@ private data class WireChannelFilesResponseDto(
     val nextCursor: String? = null,
 )
 
+@Serializable
+private data class WireAttachmentOpenTargetDto(
+    val url: String,
+    val expiresAt: String? = null,
+)
+
 fun parseSharedAttachmentUploadResult(bodyText: String): AttachmentUploadResult {
     if (bodyText.isBlank()) return AttachmentUploadResult(emptyList())
     return runCatching {
@@ -83,6 +89,22 @@ fun parseSharedAttachmentUploadResult(bodyText: String): AttachmentUploadResult 
             .mapIndexed { index, att -> att.toDomain(index) }
     }.getOrElse { emptyList() }
         .let { AttachmentUploadResult(it) }
+}
+
+fun parseSharedAttachmentOpenTarget(
+    bodyText: String,
+    attachmentId: AttachmentId,
+): AttachmentOpenTarget? {
+    if (bodyText.isBlank()) return null
+    return runCatching {
+        attachmentsJson.decodeFromString(WireAttachmentOpenTargetDto.serializer(), bodyText)
+    }.getOrNull()?.let { wire ->
+        AttachmentOpenTarget(
+            attachmentId = attachmentId,
+            url = wire.url,
+            expiresAt = wire.expiresAt,
+        )
+    }
 }
 
 fun parseSharedChannelFilesSnapshot(

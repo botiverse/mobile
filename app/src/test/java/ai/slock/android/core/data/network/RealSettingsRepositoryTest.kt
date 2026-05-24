@@ -5,7 +5,6 @@ import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthSessionStore
 import ai.slock.android.core.data.auth.AuthUser
 import ai.slock.android.core.data.repository.AccountProfileUpdateRequest
-import ai.slock.android.core.data.repository.ConnectedAccountStatus
 import ai.slock.compose.data.DataResult
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
@@ -29,18 +28,11 @@ class RealSettingsRepositoryTest {
             api = FakeSlockApi(
                 accountJson = """
                     {
-                      "user": {
-                        "id": "user-1",
-                        "email": "user@slock.ai",
-                        "displayName": "Slock User",
-                        "handle": "@slock-user",
-                        "emailVerified": true
-                      },
-                      "connectedAccounts": [
-                        {"provider":"Google","identifier":"user@slock.ai","status":"connected"},
-                        {"provider":"GitHub","identifier":"github.com/slock","status":"not_connected"}
-                      ],
-                      "canEditProfile": true
+                      "id": "user-1",
+                      "email": "user@slock.ai",
+                      "name": "slock-user",
+                      "displayName": "Slock User",
+                      "emailVerified": true
                     }
                 """.trimIndent()
             )
@@ -51,10 +43,10 @@ class RealSettingsRepositoryTest {
         assertTrue(result is DataResult.Content)
         val snapshot = (result as DataResult.Content).data
         assertEquals("Slock User", snapshot.profile.displayName)
-        assertEquals("@slock-user", snapshot.profile.handle)
+        assertEquals("slock-user", snapshot.profile.handle)
         assertEquals(true, snapshot.profile.verified)
         assertEquals("Owner", snapshot.profile.roleLabel)
-        assertEquals(ConnectedAccountStatus.NotConnected, snapshot.connectedAccounts[1].status)
+        assertEquals("Email password", snapshot.connectedAccounts.single().provider)
     }
 
     @Test
@@ -62,7 +54,7 @@ class RealSettingsRepositoryTest {
         val repository = RealSettingsRepository(
             store = InMemoryAuthSessionStore(sampleSession),
             api = FakeSlockApi(
-                accountJson = """{"user":{"id":"user-1","email":"new@slock.ai","displayName":"New Name","handle":"@new","emailVerified":true}}"""
+                accountJson = """{"id":"user-1","email":"new@slock.ai","name":"new","displayName":"New Name","emailVerified":true}"""
             )
         )
 
@@ -301,17 +293,17 @@ class RealSettingsRepositoryTest {
             """.trimIndent(),
             membersJson = """
                 [
-                  {"id":"agent-1","displayName":"Settings Integrator","handle":"@settings-integrator","description":"Settings real-data wiring","avatar":"pixel:diamond","status":"online"}
+                  {"userId":"agent-1","name":"settings-integrator","displayName":"Settings Integrator","description":"Settings real-data wiring","avatarUrl":"pixel:diamond","role":"member"}
                 ]
             """.trimIndent(),
             workspacesJson = """
                 [{"id":"workspace-1","name":"Slock","path":"~/AndroidStudioProjects/Slock","status":"active","lastActiveAt":"2026-05-07T01:01:00Z"}]
             """.trimIndent(),
             agentsJson = """
-                {"agents":[
-                  {"id":"agent-1","name":"Settings Integrator","machineId":"machine-1","status":"active","ownerName":"Android"},
+                [
+                  {"id":"agent-1","name":"settings-integrator","displayName":"Settings Integrator","machineId":"machine-1","status":"active","creatorId":"Android"},
                   {"id":"agent-2","name":"Other Agent","machineId":"machine-2","status":"active"}
-                ]}
+                ]
             """.trimIndent()
         )
         val repository = RealSettingsRepository(
@@ -331,7 +323,7 @@ class RealSettingsRepositoryTest {
         assertEquals(1, detail.agents.size)
         assertEquals("Settings Integrator", detail.agents.first().name)
         assertEquals("Settings real-data wiring", detail.agents.first().memberProfile?.description)
-        assertEquals("@settings-integrator", detail.agents.first().memberProfile?.handle)
+        assertEquals("settings-integrator", detail.agents.first().memberProfile?.handle)
         assertTrue(detail.sections.any { it.key == "machine_status_events" })
     }
 
@@ -366,15 +358,15 @@ class RealSettingsRepositoryTest {
     }
 
     private class FakeSlockApi(
-        private val accountJson: String = """{"user":{"id":"user-1","email":"user@slock.ai","displayName":"Slock User"}}""",
+        private val accountJson: String = """{"id":"user-1","email":"user@slock.ai","name":"slock-user","displayName":"Slock User"}""",
         private val membersJson: String = """[]""",
         private val usageJson: String = """{"machines":0,"agents":0,"channels":0}""",
         private val billingSubscriptionJson: String = """{"subscription":null,"stripeConfigured":false}""",
         private val onboardingJson: String = """{"setupModalReminderOptOut":false}""",
         private val inviteJson: String = """{"id":"invite-1","email":"new@slock.ai"}""",
         private val machinesJson: String = """{"machines":[]}""",
-        private val workspacesJson: String = """{"workspaces":[]}""",
-        private val agentsJson: String = """{"agents":[]}""",
+        private val workspacesJson: String = """[]""",
+        private val agentsJson: String = """[]""",
         private val machinesResponseCode: Int? = null,
         private val workspacesResponseCode: Int? = null,
         private val agentsResponseCode: Int? = null,

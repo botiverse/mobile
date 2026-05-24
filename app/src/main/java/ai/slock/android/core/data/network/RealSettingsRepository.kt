@@ -1,16 +1,12 @@
 package ai.slock.android.core.data.network
 
-import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthSessionStore
-import ai.slock.android.core.data.repository.AccountProfileSnapshot
 import ai.slock.android.core.data.repository.AccountProfileUpdateRequest
 import ai.slock.android.core.data.repository.AccountSettingsSnapshot
 import ai.slock.android.core.data.repository.SettingsBillingCurrentPlanSnapshot
 import ai.slock.android.core.data.repository.SettingsBillingPlanSnapshot
 import ai.slock.android.core.data.repository.SettingsBillingSnapshot
 import ai.slock.android.core.data.repository.SettingsPlanUsageSnapshot
-import ai.slock.android.core.data.repository.ConnectedAccountSnapshot
-import ai.slock.android.core.data.repository.ConnectedAccountStatus
 import ai.slock.compose.data.DataResult
 import ai.slock.android.core.data.repository.SettingsComputerAgentSnapshot
 import ai.slock.android.core.data.repository.SettingsComputerDetailSnapshot
@@ -33,16 +29,11 @@ import ai.slock.android.core.data.repository.SettingsServerProfileSnapshot
 import ai.slock.android.core.data.repository.SettingsServerProfileUpdateRequest
 import ai.slock.android.core.data.repository.SettingsServerSectionSnapshot
 import ai.slock.android.core.data.repository.SettingsServerSnapshot
-import ai.slock.android.core.model.AgentStatus
-import ai.slock.android.core.model.MemberId
-import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
-import ai.slock.android.core.model.Presence
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenError
 import com.google.gson.Gson
-import com.google.gson.JsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 
@@ -58,7 +49,12 @@ class RealSettingsRepository(
         return execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
             block = { api.settingsAccount(currentSlockApiPriority()) },
-            mapper = { json -> json.toAccountSettingsSnapshot(session) }
+            mapper = { json ->
+                ai.slock.compose.data.parseSharedAccountSettingsSnapshot(
+                    bodyText = json.toString(),
+                    fallbackRole = session.servers.firstOrNull { it.id == session.currentServerId }?.role
+                ) ?: throw IllegalStateException("Account settings response missing user")
+            }
         )
     }
 
@@ -67,7 +63,12 @@ class RealSettingsRepository(
         return execute(
             emptyReason = EmptyReason.NoSettingsAvailable,
             block = { api.updateSettingsAccount(currentSlockApiPriority(), request.toJsonBody()) },
-            mapper = { json -> json.toAccountSettingsSnapshot(session) }
+            mapper = { json ->
+                ai.slock.compose.data.parseSharedAccountSettingsSnapshot(
+                    bodyText = json.toString(),
+                    fallbackRole = session.servers.firstOrNull { it.id == session.currentServerId }?.role
+                ) ?: throw IllegalStateException("Account settings response missing user")
+            }
         )
     }
 
@@ -129,7 +130,16 @@ class RealSettingsRepository(
             block = { api.settingsAgents(currentSlockApiPriority()) },
             source = "settings_machine_agents",
             warningLogger = warningLogger,
-            mapper = { json -> json.toSettingsComputerAgents(machineId, warningLogger) }
+            mapper = { json ->
+                val agents = ai.slock.compose.data.parseSharedSettingsComputerAgents(
+                    bodyText = json.getAsJsonArray("items")?.toString() ?: json.toString(),
+                    machineId = machineId
+                ) ?: throw IllegalStateException("Settings agents response missing agent list")
+                if (agents.isEmpty()) {
+                    warningLogger("empty_items source=settings_machine_agents stage=list_extract contract=agents_array")
+                }
+                agents
+            }
         ).mapSettingsContractMismatch("settings_agents_contract_mismatch")
         agents.logMachineDetailSection(
             serverId = serverId,
@@ -182,7 +192,12 @@ class RealSettingsRepository(
             block = { api.serverMembers(currentSlockApiPriority(), serverId) },
             source = "settings_machine_agent_members",
             warningLogger = warningLogger,
-            mapper = { json -> json.toSettingsMemberProfiles() }
+            mapper = { json ->
+                ai.slock.compose.data.parseSharedSettingsMemberProfiles(
+                    json.getAsJsonArray("items")?.toString() ?: json.toString()
+                )
+                    ?: throw IllegalStateException("Settings member response missing member list")
+            }
         )
         return when (members) {
             is DataResult.Content -> agents.enrichWithMembers(members.data)
@@ -221,7 +236,7 @@ class RealSettingsRepository(
                     planName = currentPlanName,
                     usageRows = listOf(
                         SettingsPlanUsageSnapshot(label = "Workspace", value = server.name),
-                        SettingsPlanUsageSnapshot(label = "Role", value = server.role?.replaceFirstChar { it.uppercase() } ?: "Member"),
+                        SettingsPlanUsageSnapshot(label = "Role", value = server.role.replaceFirstChar { it.uppercase() }),
                         SettingsPlanUsageSnapshot(label = "Plan source", value = "Selected server")
                     ),
                     trialActive = false
@@ -555,119 +570,6 @@ private fun AccountProfileUpdateRequest.toJsonBody() =
 private fun Map<String, Any?>.toJsonBody() =
     Gson().toJson(this).toRequestBody(jsonMediaType)
 
-private fun JsonObject.toAccountSettingsSnapshot(session: AuthSession): AccountSettingsSnapshot {
-    val user = objectValue("user", "account", "profile") ?: this
-    val displayName = user.string("displayName", "name")
-        ?: session.user.bestDisplayName
-    val email = user.string("email") ?: session.user.email
-    val handle = user.string("handle", "name", "username")
-        ?: email.takeIf { it.isNotBlank() }
-        ?: displayName
-    val role = user.string("role", "roleLabel")
-        ?: session.servers.firstOrNull { it.id == session.currentServerId }?.role
-    val connectedAccounts = items("connectedAccounts", "providers", "accounts")
-        .map { it.asObject().toConnectedAccount() }
-        .ifEmpty {
-            listOf(
-                ConnectedAccountSnapshot(
-                    provider = "Email password",
-                    identifier = email,
-                    status = ConnectedAccountStatus.Connected
-                )
-            )
-        }
-    return AccountSettingsSnapshot(
-        profile = AccountProfileSnapshot(
-            userId = user.string("id", "userId") ?: session.user.id,
-            displayName = displayName,
-            handle = handle,
-            email = email,
-            avatarLabel = displayName.take(2).uppercase(),
-            avatarUrl = user.string("avatarUrl", "avatar"),
-            verified = user.boolean("emailVerified", "verified") ?: session.user.emailVerified ?: false,
-            roleLabel = role?.toRoleLabel()
-        ),
-        connectedAccounts = connectedAccounts,
-        canEditProfile = boolean("canEditProfile", "canEdit") ?: true
-    )
-}
-
-private fun JsonObject.toConnectedAccount(): ConnectedAccountSnapshot {
-    val provider = string("provider", "name", "type") ?: "Account"
-    return ConnectedAccountSnapshot(
-        provider = provider,
-        identifier = string("identifier", "email", "username", "url") ?: provider,
-        status = string("status")?.toConnectedAccountStatus()
-            ?: if (boolean("connected", "enabled") == false) {
-                ConnectedAccountStatus.NotConnected
-            } else {
-                ConnectedAccountStatus.Connected
-            }
-    )
-}
-
-private fun JsonObject.safeKeyList(): String =
-    entrySet().map { it.key }.sorted().joinToString("|").ifBlank { "none" }
-
-private fun JsonObject.toSettingsComputerAgents(
-    machineId: String,
-    warningLogger: (String) -> Unit
-): List<SettingsComputerAgentSnapshot> {
-    val agents = items("agents", "items", "nodes", "records", "rows", "list", "results", "data")
-        .map { it.asObject() }
-        .filter { it.belongsToMachine(machineId) }
-        .map { it.toSettingsComputerAgentSnapshot() }
-    if (agents.isEmpty()) {
-        warningLogger("empty_items source=settings_machine_agents stage=list_extract rootKeys=${safeKeyList()}")
-    }
-    return agents
-}
-
-private fun JsonObject.belongsToMachine(machineId: String): Boolean =
-    string("machineId", "computerId", "daemonId") == machineId
-
-private fun JsonObject.toSettingsComputerAgentSnapshot(): SettingsComputerAgentSnapshot {
-    val id = string("id", "agentId", "userId") ?: ""
-    val name = string("name", "displayName", "agentName") ?: id.ifBlank { "Agent" }
-    return SettingsComputerAgentSnapshot(
-        id = id.ifBlank { name },
-        name = name,
-        statusLabel = string("status", "activity", "state"),
-        ownerLabel = string("ownerName", "assigneeName", "userName", "createdByName")
-    )
-}
-
-private fun JsonObject.toSettingsMemberProfiles(): List<MemberProfile> =
-    items("members", "users", "items", "nodes", "records", "rows", "list", "results", "data")
-        .mapNotNull { it.asObjectOrNull()?.toSettingsMemberProfile() }
-
-private fun JsonObject.toSettingsMemberProfile(): MemberProfile? {
-    val id = string("id", "userId", "memberId", "agentId") ?: return null
-    val displayName = string("displayName", "name", "username", "email") ?: id
-    val agentStatus = AgentStatus.fromWireValue(string("status", "activity", "state", "presence"))
-    return MemberProfile(
-        id = MemberId(id),
-        displayName = displayName,
-        handle = string("handle", "username", "email")?.takeIf { it.isNotBlank() } ?: displayName,
-        kind = when (string("kind", "type", "memberType")?.lowercase()) {
-            "human", "user" -> MemberKind.Human
-            "system" -> MemberKind.System
-            else -> MemberKind.Agent
-        },
-        description = string("description", "bio", "summary", "detail"),
-        roleDescription = string("roleDescription", "role", "title"),
-        avatarUrl = avatarWireValue("avatarUrl", "avatar", "profileAvatar", "imageUrl"),
-        gravatarHash = string("gravatarHash", "gravatar", "gravatarMd5"),
-        avatarLabel = displayName.take(1).uppercase(),
-        presence = when (agentStatus) {
-            AgentStatus.Online, AgentStatus.Working, AgentStatus.Thinking -> Presence.Active
-            AgentStatus.Idle -> Presence.Away
-            AgentStatus.Disconnected, AgentStatus.Offline, AgentStatus.Error, null -> Presence.Offline
-        },
-        agentStatus = agentStatus
-    )
-}
-
 private fun List<SettingsComputerAgentSnapshot>.enrichWithMembers(
     members: List<MemberProfile>
 ): List<SettingsComputerAgentSnapshot> {
@@ -742,29 +644,6 @@ private fun <T> DataResult<T>.logMachineDetailSection(
         )
     }
 }
-
-private fun JsonObject.objectValue(vararg names: String): JsonObject? {
-    for (name in names) {
-        val value = get(name)
-        if (value != null && value.isJsonObject) return value.asJsonObject
-    }
-    val data = get("data")
-    if (data != null && data.isJsonObject) return data.asJsonObject.objectValue(*names) ?: data.asJsonObject
-    return null
-}
-
-private fun String.toConnectedAccountStatus(): ConnectedAccountStatus =
-    when (lowercase()) {
-        "connected", "enabled", "active" -> ConnectedAccountStatus.Connected
-        "not_connected", "notconnected", "disconnected", "disabled" -> ConnectedAccountStatus.NotConnected
-        "loading", "pending" -> ConnectedAccountStatus.Loading
-        "failed", "error" -> ConnectedAccountStatus.Failed
-        else -> ConnectedAccountStatus.Connected
-    }
-
-private fun String.toRoleLabel(): String =
-    replace("_", " ")
-        .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 
 private fun String.toSettingsSlug(): String =
     lowercase()
