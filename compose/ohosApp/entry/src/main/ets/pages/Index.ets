@@ -36,7 +36,6 @@ struct Index {
         pagerData: this.pageDataWithSafeArea(),
         delegate: this.kuiklyViewDelegate,
         nativeManager: globalNativeManager,
-        useOhSharedPreferences: true,
         onControllerReadyCallback: (controller: KRNativeRenderController) => {
           this.controller = controller;
         },
