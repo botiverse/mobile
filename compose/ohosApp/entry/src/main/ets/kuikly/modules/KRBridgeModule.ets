@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { relationalStore } from '@kit.ArkData';
 import { http } from '@kit.NetworkKit';
+import { notificationManager } from '@kit.NotificationKit';
 import { KRAny } from '@kuikly-open/render';
 import { KuiklyRenderBaseModule } from '@kuikly-open/render';
 import { KuiklyRenderCallback } from '@kuikly-open/render';
@@ -26,6 +27,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly READ_ASSET_FILE = "readAssetFile";
   static readonly AUTH_REQUEST = "authRequest";
   static readonly RELATIONAL_STORE = "relationalStore";
+  static readonly SETTINGS_CAPABILITY = "settingsCapability";
 
   private rdbStores: Map<string, relationalStore.RdbStore> = new Map();
 
@@ -91,6 +93,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.RELATIONAL_STORE: {
         this.relationalStore(params, callback);
+        break;
+      }
+      case KRBridgeModule.SETTINGS_CAPABILITY: {
+        this.settingsCapability(params, callback);
         break;
       }
       default:
@@ -242,6 +248,127 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     } finally {
       request.destroy();
     }
+  }
+
+  private async settingsCapability(params: KRAny, callback: KuiklyRenderCallback) {
+    try {
+      const records = this.parseRecord(params);
+      const action = records["action"] as string;
+      switch (action) {
+        case "requestNotificationPermission": {
+          callback(await this.requestNotificationPermissionCapability());
+          return;
+        }
+        case "openNotificationSettings": {
+          callback(await this.openNotificationSettingsCapability());
+          return;
+        }
+        case "sendTestNotification": {
+          callback(await this.sendTestNotificationCapability());
+          return;
+        }
+        case "cancelTestNotification":
+        case "cancelNotification": {
+          callback(await this.cancelNotificationCapability(records));
+          return;
+        }
+        default: {
+          callback({
+            "status": "error",
+            "code": "settings_capability_unknown",
+            "message": `Unsupported settings capability action: ${action}`
+          });
+          return;
+        }
+      }
+    } catch (error) {
+      callback(this.notificationCapabilityError("settings_capability_failed", error));
+    }
+  }
+
+  private async requestNotificationPermissionCapability(): Promise<Record<string, Object>> {
+    try {
+      if (await notificationManager.isNotificationEnabled()) {
+        await this.ensureNotificationSlot();
+        return { "status": "ok", "code": "permission_granted" };
+      }
+
+      const context = getContext(this) as common.UIAbilityContext;
+      await notificationManager.requestEnableNotification(context);
+      const enabled = await notificationManager.isNotificationEnabled();
+      if (enabled) {
+        await this.ensureNotificationSlot();
+        return { "status": "ok", "code": "permission_granted" };
+      }
+      return { "status": "error", "code": "permission_denied", "message": "Notification permission is disabled" };
+    } catch (error) {
+      return this.notificationCapabilityError("permission_denied", error);
+    }
+  }
+
+  private async openNotificationSettingsCapability(): Promise<Record<string, Object>> {
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      await notificationManager.openNotificationSettings(context);
+      return { "status": "ok", "code": "settings_opened" };
+    } catch (error) {
+      return this.notificationCapabilityError("settings_open_failed", error);
+    }
+  }
+
+  private async sendTestNotificationCapability(): Promise<Record<string, Object>> {
+    try {
+      if (!(await notificationManager.isNotificationEnabled())) {
+        return { "status": "error", "code": "permission_denied", "message": "Notification permission is disabled" };
+      }
+      await this.ensureNotificationSlot();
+
+      const notificationId = Math.max(1, Math.floor(Date.now() % 2147483647));
+      const request: notificationManager.NotificationRequest = {
+        id: notificationId,
+        notificationSlotType: notificationManager.SlotType.SOCIAL_COMMUNICATION,
+        tapDismissed: true,
+        autoDeletedTime: Date.now() + 60000,
+        content: {
+          notificationContentType: notificationManager.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
+          normal: {
+            title: "Slock",
+            text: "System notifications are enabled for this device."
+          }
+        }
+      };
+      await notificationManager.publish(request);
+      return { "status": "ok", "code": "posted", "notificationId": notificationId };
+    } catch (error) {
+      return this.notificationCapabilityError("post_failed", error);
+    }
+  }
+
+  private async cancelNotificationCapability(records: Record<string, Object>): Promise<Record<string, Object>> {
+    const notificationId = Number(records["notificationId"] ?? records["id"] ?? 0);
+    if (notificationId <= 0) {
+      return { "status": "error", "code": "missing_notification_id" };
+    }
+    try {
+      await notificationManager.cancel(notificationId);
+      return { "status": "ok", "code": "cancelled", "notificationId": notificationId };
+    } catch (error) {
+      return this.notificationCapabilityError("cancel_failed", error);
+    }
+  }
+
+  private async ensureNotificationSlot(): Promise<void> {
+    await notificationManager.addSlot(notificationManager.SlotType.SOCIAL_COMMUNICATION);
+  }
+
+  private notificationCapabilityError(code: string, error: Object): Record<string, Object> {
+    const businessError = error as BusinessError;
+    return {
+      "status": "error",
+      "code": code,
+      "platformCode": businessError.code ?? -1,
+      "message": businessError.message ?? `${error}`
+    };
   }
 
   private async rdbStore(databaseName: string, version: number): Promise<relationalStore.RdbStore> {
