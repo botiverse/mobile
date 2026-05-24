@@ -111,6 +111,20 @@ shapes and `packages/shared/` for shared types. No snake_case aliases, no
   `SearchRepository`, `InboxFilter`, `SearchQueryOptions`, and `SearchSort`
   names are typealiases to shared. Saved-message request bodies and search
   query construction now live at the shared `SlockNetworkClient` boundary.
+- Inbox/saved/search repository contract tests moved to shared commonTest in
+  `InboxSavedSearchRepositoryDataSourceTest.kt`; Android no longer owns those
+  real-repository fixtures.
+- Tasks orchestration moved to shared `TasksDataSource.kt`. Android now
+  instantiates shared `RealTaskRepository` directly, and `TaskRepository` /
+  `TaskFilter` are shared typealiases. Focused Tasks repository contract tests
+  moved to shared commonTest in `TaskRepositoryDataSourceTest.kt`.
+- Settings orchestration moved to shared `SettingsRepositoryDataSource.kt`.
+  Android now instantiates shared `RealSettingsRepository` directly, and
+  `SettingsRepository`, account/server Settings request DTOs, and
+  `SettingsServerActionResult` are shared typealiases. The old Android
+  `RealSettingsRepository.kt` and `SlockSettingsServerApi.kt` were deleted;
+  focused Settings repository contract tests moved to shared commonTest in
+  `SettingsRepositoryDataSourceTest.kt`.
 - `RealSlockRepositories.kt` no longer contains app-side `JsonObject` response
   helpers (`firstObject`, `unwrap`, `items`, `string`, `toMemberProfile`,
   `toConversation*`, agent skill/activity/workspace mappers, unread/read
@@ -118,21 +132,7 @@ shapes and `packages/shared/` for shared types. No snake_case aliases, no
 
 ### Ordered Todo
 
-1. Tasks
-   - Move `RealTaskRepository` orchestration into shared.
-   - Reuse existing shared `TasksDataSource.kt` DTO parsers/builders for task
-     lists, claim, status update, task create/convert bodies.
-   - Android `TaskRepository` / `TaskFilter` should become shared typealiases.
-
-2. Settings
-   - Move `RealSettingsRepository` and `SlockSettingsServerApi` orchestration
-     into shared.
-   - Keep Android-only UI affordances/platform capability state outside wire
-     parsing; server/account/machine request and response DTOs must live in
-     shared.
-   - Android Settings request types should become shared typealiases.
-
-3. Conversation / Thread / Files / Messages
+1. Conversation / Thread / Files / Messages
    - Move `RealConversationRepository` orchestration into shared.
    - Reuse `ThreadMessagesParser.kt`, `ThreadActionParser.kt`,
      `AttachmentsParser.kt`, `WorkspaceFilesParser.kt`, and shared request-body
@@ -140,7 +140,7 @@ shapes and `packages/shared/` for shared types. No snake_case aliases, no
    - Multipart upload should expose a shared file model and keep only the
      platform byte-source adaptation at the bottom layer.
 
-4. Android Network Facade Retirement
+2. Android Network Facade Retirement
    - Delete `SlockApi`, `ComposeSlockApiAdapter`, `ApiResponse`, and
      `NetworkResponseMapper` once all repositories consume `SlockNetworkClient`
      directly.
@@ -149,11 +149,14 @@ shapes and `packages/shared/` for shared types. No snake_case aliases, no
      `PriorityHttpClient.android.kt`; that is the platform engine, not a second
      API facade.
 
-5. Tests / Fixtures
+3. Tests / Fixtures
    - Update or delete alias-only and wrapper-era fixtures in
      `RealSlockRepositoriesTest`.
    - Keep focused contract tests for each shared repository and run full class
      only after stale fixture cleanup.
+   - As each repository moves to shared, move its focused contract tests into
+     `compose/shared/src/commonTest` and leave Android tests for platform
+     adapter/integration behavior only.
 
 ## Canonical parser pattern
 

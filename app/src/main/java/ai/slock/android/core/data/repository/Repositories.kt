@@ -25,18 +25,7 @@ interface ServerRepository {
     suspend fun getSettings(serverId: ServerId): DataResult<SettingsSnapshot>
 }
 
-interface SettingsRepository {
-    suspend fun getAccount(): DataResult<AccountSettingsSnapshot>
-    suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot>
-    suspend fun getComputers(): DataResult<SettingsComputersSnapshot>
-    suspend fun getComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot>
-    suspend fun getBilling(): DataResult<SettingsBillingSnapshot>
-    suspend fun getServerSettings(): DataResult<SettingsServerSnapshot>
-    suspend fun updateServerProfile(request: SettingsServerProfileUpdateRequest): DataResult<SettingsServerSnapshot>
-    suspend fun createServerInvite(request: SettingsServerInviteCreateRequest): DataResult<SettingsServerActionResult>
-    suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult>
-    suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot>
-}
+typealias SettingsRepository = ai.slock.compose.data.SettingsRepository
 
 interface ConversationRepository {
     suspend fun getThread(
@@ -71,19 +60,7 @@ interface ConversationRepository {
     ): DataResult<SendMessageResult>
 }
 
-interface TaskRepository {
-    suspend fun getTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot>
-    suspend fun getChannelTasks(
-        serverId: ServerId,
-        channelId: ChannelId,
-        filter: TaskFilter
-    ): DataResult<TaskSnapshot>
-    suspend fun claimTask(taskId: TaskId): DataResult<TaskActionResult>
-    suspend fun updateTaskStatus(
-        taskId: TaskId,
-        status: ai.slock.android.core.model.TaskStatus
-    ): DataResult<TaskActionResult>
-}
+typealias TaskRepository = ai.slock.compose.data.TaskRepository
 
 typealias MemberRepository = ai.slock.compose.data.MemberRepository
 
@@ -118,35 +95,19 @@ fun interface RealtimeSubscription {
     fun close()
 }
 
-data class TaskFilter(
-    val statuses: Set<ai.slock.android.core.model.TaskStatus> = emptySet(),
-    val assignedToMeOnly: Boolean = false
-)
+typealias TaskFilter = ai.slock.compose.data.TaskFilter
 
 const val DEFAULT_PAGE_LIMIT = 30
 
-data class AccountProfileUpdateRequest(
-    val displayName: String,
-    val handle: String,
-    val email: String
-)
+typealias AccountProfileUpdateRequest = ai.slock.compose.data.AccountProfileUpdateRequest
 
-data class SettingsServerProfileUpdateRequest(
-    val name: String
-)
+typealias SettingsServerProfileUpdateRequest = ai.slock.compose.data.SettingsServerProfileUpdateRequest
 
-data class SettingsServerInviteCreateRequest(
-    val email: String
-)
+typealias SettingsServerInviteCreateRequest = ai.slock.compose.data.SettingsServerInviteCreateRequest
 
-data class SettingsServerDeleteRequest(
-    val confirmationName: String
-)
+typealias SettingsServerDeleteRequest = ai.slock.compose.data.SettingsServerDeleteRequest
 
-data class SettingsServerActionResult(
-    val success: Boolean,
-    val message: String? = null
-)
+typealias SettingsServerActionResult = ai.slock.compose.data.SettingsServerActionResult
 
 typealias ChannelLeaveResult = ai.slock.compose.data.ChannelLeaveResult
 

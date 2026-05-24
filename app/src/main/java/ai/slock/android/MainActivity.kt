@@ -22,10 +22,8 @@ import ai.slock.android.core.data.local.toThreadUiState
 import ai.slock.android.core.data.locale.PersistentLocaleRepository
 import ai.slock.android.core.data.locale.SharedPreferencesLocalePreferenceStore
 import ai.slock.android.core.data.network.RealConversationRepository
-import ai.slock.android.core.data.network.RealSettingsRepository
 import ai.slock.android.core.data.network.RealSlockApiFactory
 import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
-import ai.slock.android.core.data.network.RealTaskRepository
 import ai.slock.android.core.data.preferences.ChatLayoutPreferenceSnapshot
 import ai.slock.android.core.data.preferences.LargeScreenNavigationPreference
 import ai.slock.android.core.data.preferences.MyMessageAlignmentPreference
@@ -64,6 +62,8 @@ import ai.slock.compose.data.RealReadReceiptRepository
 import ai.slock.compose.data.RealSavedRepository
 import ai.slock.compose.data.RealSearchRepository
 import ai.slock.compose.data.RealServerUnreadRepository
+import ai.slock.compose.data.RealSettingsRepository
+import ai.slock.compose.data.RealTaskRepository
 import ai.slock.android.core.data.repository.HomeSnapshot
 import ai.slock.android.core.data.repository.InboxSnapshot
 import ai.slock.android.core.data.repository.InboxRepository
@@ -986,7 +986,12 @@ private fun SlockAppContent(
                 networkClient = slockNetworkClient
         )
     }
-    val taskRepository: TaskRepository = remember { RealTaskRepository(authSessionStore, slockApi) }
+    val taskRepository: TaskRepository = remember {
+        RealTaskRepository(
+                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                networkClient = slockNetworkClient
+        )
+    }
     val memberRepository: MemberRepository = remember {
         RealMemberRepository(
                 sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
@@ -1026,8 +1031,8 @@ private fun SlockAppContent(
     }
     val settingsRepository: SettingsRepository = remember {
         RealSettingsRepository(
-                store = authSessionStore,
-                api = slockApi,
+                sessionStore = ComposeAuthSessionStoreAdapter(authSessionStore),
+                networkClient = slockNetworkClient,
                 logger = { message ->
                     ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                             "SlockSettingsComputers",

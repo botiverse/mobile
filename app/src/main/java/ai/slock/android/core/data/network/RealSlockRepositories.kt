@@ -34,10 +34,6 @@ import ai.slock.android.core.data.repository.HomeSnapshot
 import ai.slock.android.core.data.repository.MemberSnapshot
 import ai.slock.android.core.data.repository.SendMessageResult
 import ai.slock.android.core.data.repository.SettingsComputerWorkspaceSnapshot
-import ai.slock.android.core.data.repository.TaskActionResult
-import ai.slock.android.core.data.repository.TaskFilter
-import ai.slock.android.core.data.repository.TaskRepository
-import ai.slock.android.core.data.repository.TaskSnapshot
 import ai.slock.android.core.data.repository.ThreadActionResult
 import ai.slock.android.core.data.repository.ThreadListSnapshot
 import ai.slock.android.core.data.repository.ThreadSnapshot
@@ -63,8 +59,6 @@ import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ServerSummary
 import ai.slock.android.core.model.TaskId
-import ai.slock.android.core.model.TaskStatus
-import ai.slock.android.core.model.TaskSummary
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.model.ThreadConversation
 import ai.slock.android.core.model.withUnreadReplyCount
@@ -86,88 +80,6 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import ai.slock.compose.model.topLevelThreadId
-
-class RealTaskRepository(
-        private val store: AuthSessionStore,
-        private val api: SlockApi,
-        private val warningLogger: (String) -> Unit = { message ->
-            ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w("SlockTasks", message)
-        }
-) : TaskRepository {
-    override suspend fun getTasks(
-            serverId: ServerId,
-            filter: TaskFilter
-    ): DataResult<TaskSnapshot> {
-        val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
-        return execute(
-                emptyReason = EmptyReason.NoTasks,
-                block = { api.serverTasks(currentSlockApiPriority()) },
-                emptyWhen = { it.tasks.isEmpty() },
-                source = "tasks_server",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    parseTaskSnapshotFromBody(bodyText, filter, currentUserId = context.session.user.id)
-                }
-        )
-    }
-
-    override suspend fun getChannelTasks(
-            serverId: ServerId,
-            channelId: ChannelId,
-            filter: TaskFilter
-    ): DataResult<TaskSnapshot> {
-        val context = store.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
-        return execute(
-                emptyReason = EmptyReason.NoTasks,
-                block = { api.channelTasks(currentSlockApiPriority(), channelId.value) },
-                emptyWhen = { it.tasks.isEmpty() },
-                source = "tasks_channel",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    parseTaskSnapshotFromBody(bodyText, filter, currentUserId = context.session.user.id)
-                }
-        )
-    }
-
-    override suspend fun claimTask(taskId: TaskId): DataResult<TaskActionResult> {
-        currentContext() ?: return authRequired()
-        return execute(
-            emptyReason = EmptyReason.NoTasks,
-            block = { api.claimTask(currentSlockApiPriority(), taskId.value) },
-                source = "tasks_claim",
-                warningLogger = warningLogger,
-                mapper = { bodyText ->
-                    val task = parseTaskActionFromBody(bodyText)
-                            ?: throw IllegalStateException("Task action response missing task")
-                    TaskActionResult(task)
-            }
-        )
-    }
-
-    override suspend fun updateTaskStatus(
-        taskId: TaskId,
-        status: TaskStatus
-    ): DataResult<TaskActionResult> {
-        currentContext() ?: return authRequired()
-        return execute(
-            emptyReason = EmptyReason.NoTasks,
-            block = { api.updateTaskStatus(currentSlockApiPriority(), taskId.value, mapOf("status" to status.toApiValue()).toJsonBody()) },
-            source = "tasks_status",
-            warningLogger = warningLogger,
-            mapper = { bodyText ->
-                val task = parseTaskActionFromBody(bodyText)
-                    ?: throw IllegalStateException("Task status response missing task")
-                TaskActionResult(task)
-            }
-        )
-    }
-
-    private suspend fun currentContext(): NetworkServerContext? {
-        val session = store.readSession() ?: return null
-        val selectedId = session.currentServerId ?: return null
-        return session.toNetworkServerContext(ServerId(selectedId))
-    }
-}
 
 class RealConversationRepository(
         private val store: AuthSessionStore,
@@ -746,16 +658,6 @@ private fun ConversationSummary.withDirectMessageFallback(
                 memberCount = memberCount ?: previous.memberCount
         )
 
-private fun parseTaskSnapshotFromBody(bodyText: String, filter: TaskFilter, currentUserId: String): TaskSnapshot {
-    val payload = ai.slock.compose.data.parseSharedServerTasksPayload(bodyText)
-            ?: ai.slock.compose.data.SharedTasksPayload(emptyList())
-    return TaskSnapshot(tasks = payload.tasks, summaryCounts = taskSummaryCounts(payload.tasks))
-            .filteredByTaskFilter(filter, currentUserId)
-}
-
-private fun parseTaskActionFromBody(bodyText: String): TaskSummary? =
-        ai.slock.compose.data.parseSharedTaskActionPayload(bodyText)
-
 private fun parseThreadListSnapshotFromBody(
         bodyText: String,
         context: NetworkServerContext
@@ -771,19 +673,6 @@ private fun parseThreadListSnapshotFromBody(
             nextOffset = parsed.nextOffset
     )
 }
-
-private fun TaskSnapshot.filteredByTaskFilter(filter: TaskFilter, currentUserId: String): TaskSnapshot {
-    val filteredTasks =
-            tasks.filter { task ->
-                (filter.statuses.isEmpty() || task.status in filter.statuses) &&
-                        (!filter.assignedToMeOnly || task.assignee?.id?.value == currentUserId)
-            }
-    return copy(tasks = filteredTasks, summaryCounts = taskSummaryCounts(filteredTasks))
-}
-
-private fun taskSummaryCounts(tasks: List<TaskSummary>): Map<TaskStatus, Int> =
-        TaskStatus.entries.associateWith { status -> tasks.count { it.status == status } }
-
 
 private fun buildSharedThreadSnapshot(
         payload: ai.slock.compose.data.SharedMessagesPayload,
@@ -1023,12 +912,3 @@ private fun Map<String, Any?>.toJsonBody(): RequestBody =
 
 private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 private val textMediaType = "text/plain; charset=utf-8".toMediaType()
-
-private fun TaskStatus.toApiValue(): String =
-        when (this) {
-            TaskStatus.Todo -> "todo"
-            TaskStatus.InProgress -> "in_progress"
-            TaskStatus.InReview -> "in_review"
-            TaskStatus.Done -> "done"
-            TaskStatus.Closed -> "closed"
-        }

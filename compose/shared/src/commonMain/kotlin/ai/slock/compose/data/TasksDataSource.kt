@@ -79,6 +79,74 @@ data class TaskCreateDraft(
     val description: String? = null
 )
 
+private suspend fun SlockNetworkClient.serverTasks(priority: DataRequestPriority): HomeNetworkResponse =
+    request(priority, "tasks/server")
+
+private suspend fun SlockNetworkClient.channelTasks(
+    priority: DataRequestPriority,
+    channelId: ChannelId
+): HomeNetworkResponse =
+    request(priority, "tasks/channel/${channelId.value}")
+
+private suspend fun SlockNetworkClient.claimTask(
+    priority: DataRequestPriority,
+    taskId: TaskId
+): HomeNetworkResponse =
+    request(priority, "tasks/${taskId.value}/claim", method = "PATCH")
+
+private suspend fun SlockNetworkClient.updateTaskStatus(
+    priority: DataRequestPriority,
+    taskId: TaskId,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "tasks/${taskId.value}/status", method = "PATCH", bodyText = bodyText)
+
+class RealTaskRepository(
+    private val sessionStore: SlockAuthSessionStore,
+    private val networkClient: SlockNetworkClient
+) : TaskRepository {
+    override suspend fun getTasks(
+        serverId: ServerId,
+        filter: TaskFilter
+    ): DataResult<TaskSnapshot> {
+        val context = sessionStore.taskServerContext(serverId) ?: return authRequired()
+        val result =
+            networkClient.serverTasks(DataRequestPriority.Visible)
+                .toTasksResult(filter = filter.withoutAssigneeFilter(), source = "tasks_server")
+        return result.filterAssignedToMe(filter, context.currentUserId)
+    }
+
+    override suspend fun getChannelTasks(
+        serverId: ServerId,
+        channelId: ChannelId,
+        filter: TaskFilter
+    ): DataResult<TaskSnapshot> {
+        val context = sessionStore.taskServerContext(serverId) ?: return authRequired()
+        val result =
+            networkClient.channelTasks(DataRequestPriority.Visible, channelId)
+                .toTasksResult(filter = filter.withoutAssigneeFilter(), source = "tasks_channel")
+        return result.filterAssignedToMe(filter, context.currentUserId)
+    }
+
+    override suspend fun claimTask(taskId: TaskId): DataResult<TaskActionResult> {
+        sessionStore.currentTaskContext() ?: return authRequired()
+        return networkClient.claimTask(DataRequestPriority.Foreground, taskId)
+            .toTaskActionResult(source = "tasks_claim")
+    }
+
+    override suspend fun updateTaskStatus(
+        taskId: TaskId,
+        status: TaskStatus
+    ): DataResult<TaskActionResult> {
+        sessionStore.currentTaskContext() ?: return authRequired()
+        return networkClient.updateTaskStatus(
+            DataRequestPriority.Foreground,
+            taskId,
+            buildSharedTaskStatusBody(status)
+        ).toTaskActionResult(source = "tasks_status")
+    }
+}
+
 /**
  * Typed Tasks boundary.
  *
@@ -242,6 +310,22 @@ private fun TaskSnapshot.filteredBy(filter: TaskFilter): TaskSnapshot {
     return copy(tasks = filtered, summaryCounts = filtered.summaryCounts())
 }
 
+private fun DataResult<TaskSnapshot>.filterAssignedToMe(
+    filter: TaskFilter,
+    currentUserId: String
+): DataResult<TaskSnapshot> {
+    if (!filter.assignedToMeOnly || this !is DataResult.Content) return this
+    val filteredTasks = data.tasks.filter { it.assignee?.id?.value == currentUserId }
+    return if (filteredTasks.isEmpty()) {
+        DataResult.Empty(EmptyReason.NoTasks)
+    } else {
+        DataResult.Content(data.copy(tasks = filteredTasks, summaryCounts = filteredTasks.summaryCounts()))
+    }
+}
+
+private fun TaskFilter.withoutAssigneeFilter(): TaskFilter =
+    if (!assignedToMeOnly) this else copy(assignedToMeOnly = false)
+
 /**
  * Wire-format envelopes for Tasks API responses.
  *
@@ -334,3 +418,21 @@ private fun TaskStatus.toApiValue(): String =
         TaskStatus.Done -> "done"
         TaskStatus.Closed -> "closed"
     }
+
+private data class TaskServerContext(val currentUserId: String)
+
+private suspend fun SlockAuthSessionStore.taskServerContext(serverId: ServerId): TaskServerContext? {
+    val session = readSession() ?: return null
+    val selectedId = session.currentServerId ?: return null
+    if (selectedId != serverId.value) return null
+    return TaskServerContext(currentUserId = session.user.id)
+}
+
+private suspend fun SlockAuthSessionStore.currentTaskContext(): TaskServerContext? {
+    val session = readSession() ?: return null
+    val selectedId = session.currentServerId ?: return null
+    return taskServerContext(ServerId(selectedId))
+}
+
+private fun <T> authRequired(): DataResult<T> =
+    DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
