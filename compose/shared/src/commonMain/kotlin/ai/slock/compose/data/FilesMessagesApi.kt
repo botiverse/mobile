@@ -3,27 +3,28 @@ package ai.slock.compose.data
 import ai.slock.compose.model.AttachmentId
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MessageId
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 
 private val filesMessagesApiJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
+    coerceInputValues = true
 }
 
 /**
  * Typed files/search/message-adjacent boundary.
  *
- * Canonical response roots: channel files use `{ files, nextCursor? }`,
- * attachment URL/HTML URL use `{ url, expiresAt? }`, previews use
- * `{ status, data?, truncated? }`, search uses `{ results, hasMore? }`,
- * context uses `{ channelId, messages, targetMessageId?, historyLimited? }`,
- * and reaction mutations return the updated message object.
+ * Server contracts:
+ *  - `packages/server/src/routes/files.ts` (channel files, attachment URL,
+ *    attachment preview).
+ *  - `packages/server/src/routes/messages.ts` (search, context, reactions).
+ *
+ * Field names are exact camelCase, no snake_case or speculative aliases.
  */
 internal interface SlockFilesMessagesApi {
     suspend fun channelFiles(channelId: ChannelId, limit: Int = 50, cursor: String? = null): HomeNetworkResponse
@@ -40,73 +41,73 @@ internal class SlockFilesMessagesApiClient(
     private val transport: SlockFilesMessagesApi
 ) {
     suspend fun channelFiles(channelId: ChannelId, limit: Int = 50, cursor: String? = null): DataResult<FilesPage> =
-        transport.channelFiles(channelId, limit, cursor)
-            .mapFilesBody("channel_files_contract_mismatch") { root ->
-                val files = root["files"] as? JsonArray ?: return@mapFilesBody null
-                FilesPage(itemCount = files.size, nextCursor = root.string("nextCursor"))
-            }
+        transport.channelFiles(channelId, limit, cursor).mapFilesBody(
+            "channel_files_contract_mismatch",
+            ChannelFilesResponseDto.serializer()
+        ) { wire -> FilesPage(itemCount = wire.files.size, nextCursor = wire.nextCursor) }
 
     suspend fun attachmentUrl(attachmentId: AttachmentId, disposition: String? = null): DataResult<AttachmentUrlTarget> =
-        transport.attachmentUrl(attachmentId, disposition)
-            .mapFilesBody("attachment_url_contract_mismatch") { root ->
-                AttachmentUrlTarget(
-                    url = root.string("url")?.takeIf { it.isNotBlank() } ?: return@mapFilesBody null,
-                    expiresAt = root.string("expiresAt")
-                )
-            }
+        transport.attachmentUrl(attachmentId, disposition).mapFilesBody(
+            "attachment_url_contract_mismatch",
+            AttachmentUrlResponseDto.serializer()
+        ) { wire ->
+            val url = wire.url.takeIf { it.isNotBlank() } ?: return@mapFilesBody null
+            AttachmentUrlTarget(url = url, expiresAt = wire.expiresAt)
+        }
 
     suspend fun attachmentPreview(attachmentId: AttachmentId): DataResult<AttachmentPreviewSummary> =
-        transport.attachmentPreview(attachmentId)
-            .mapFilesBody("attachment_preview_contract_mismatch") { root ->
-                val status = root.string("status") ?: return@mapFilesBody null
-                AttachmentPreviewSummary(
-                    status = status,
-                    kind = (root["data"] as? JsonObject)?.string("kind"),
-                    truncated = root.boolean("truncated") ?: false
-                )
-            }
-
-    suspend fun attachmentHtmlPreviewUrl(attachmentId: AttachmentId): DataResult<AttachmentUrlTarget> =
-        transport.attachmentHtmlPreviewUrl(attachmentId)
-            .mapFilesBody("attachment_html_preview_url_contract_mismatch") { root ->
-                AttachmentUrlTarget(
-                    url = root.string("url")?.takeIf { it.isNotBlank() } ?: return@mapFilesBody null,
-                    expiresAt = root.string("expiresAt") ?: return@mapFilesBody null
-                )
-            }
-
-    suspend fun messageSearch(query: String, limit: Int = 20, offset: Int = 0, sort: String? = null): DataResult<MessageSearchPage> =
-        transport.messageSearch(query, limit, offset, sort)
-            .mapFilesBody("message_search_contract_mismatch") { root ->
-                val results = root["results"] as? JsonArray ?: return@mapFilesBody null
-                MessageSearchPage(resultCount = results.size, hasMore = root.boolean("hasMore") ?: false)
-            }
-
-    suspend fun messageContext(messageId: MessageId, channelId: ChannelId? = null): DataResult<MessageContextSummary> =
-        transport.messageContext(messageId, channelId)
-            .mapFilesBody("message_context_contract_mismatch") { root ->
-                val messages = root["messages"] as? JsonArray ?: return@mapFilesBody null
-                MessageContextSummary(
-                    channelId = root.string("channelId")?.takeIf { it.isNotBlank() } ?: return@mapFilesBody null,
-                    targetMessageId = root.string("targetMessageId"),
-                    messageCount = messages.size,
-                    historyLimited = root.boolean("historyLimited") ?: false
-                )
-            }
-
-    suspend fun addReaction(messageId: MessageId, emoji: String): DataResult<MessageMutationSummary> =
-        transport.addReaction(messageId, emoji).toMessageMutation("message_reaction_contract_mismatch")
-
-    suspend fun removeReaction(messageId: MessageId, emoji: String): DataResult<MessageMutationSummary> =
-        transport.removeReaction(messageId, emoji).toMessageMutation("message_reaction_contract_mismatch")
-
-    private fun HomeNetworkResponse.toMessageMutation(contractCode: String): DataResult<MessageMutationSummary> =
-        mapFilesBody(contractCode) { root ->
-            MessageMutationSummary(
-                messageId = root.string("id")?.takeIf { it.isNotBlank() } ?: return@mapFilesBody null,
-                reactionCount = (root["reactions"] as? JsonArray)?.size ?: 0
+        transport.attachmentPreview(attachmentId).mapFilesBody(
+            "attachment_preview_contract_mismatch",
+            AttachmentPreviewResponseDto.serializer()
+        ) { wire ->
+            val status = wire.status.takeIf { it.isNotBlank() } ?: return@mapFilesBody null
+            AttachmentPreviewSummary(
+                status = status,
+                kind = wire.data?.kind,
+                truncated = wire.truncated ?: false,
             )
         }
+
+    suspend fun attachmentHtmlPreviewUrl(attachmentId: AttachmentId): DataResult<AttachmentUrlTarget> =
+        transport.attachmentHtmlPreviewUrl(attachmentId).mapFilesBody(
+            "attachment_html_preview_url_contract_mismatch",
+            AttachmentHtmlPreviewUrlDto.serializer()
+        ) { wire ->
+            val url = wire.url.takeIf { it.isNotBlank() } ?: return@mapFilesBody null
+            val expiresAt = wire.expiresAt.takeIf { it.isNotBlank() } ?: return@mapFilesBody null
+            AttachmentUrlTarget(url = url, expiresAt = expiresAt)
+        }
+
+    suspend fun messageSearch(
+        query: String,
+        limit: Int = 20,
+        offset: Int = 0,
+        sort: String? = null,
+    ): DataResult<MessageSearchPage> =
+        transport.messageSearch(query, limit, offset, sort).mapFilesBody(
+            "message_search_contract_mismatch",
+            MessageSearchResponseDto.serializer()
+        ) { wire -> MessageSearchPage(resultCount = wire.results.size, hasMore = wire.hasMore ?: false) }
+
+    suspend fun messageContext(messageId: MessageId, channelId: ChannelId? = null): DataResult<MessageContextSummary> =
+        transport.messageContext(messageId, channelId).mapFilesBody(
+            "message_context_contract_mismatch",
+            MessageContextResponseDto.serializer()
+        ) { wire ->
+            val cid = wire.channelId.takeIf { it.isNotBlank() } ?: return@mapFilesBody null
+            MessageContextSummary(
+                channelId = cid,
+                targetMessageId = wire.targetMessageId,
+                messageCount = wire.messages.size,
+                historyLimited = wire.historyLimited ?: false,
+            )
+        }
+
+    suspend fun addReaction(messageId: MessageId, emoji: String): DataResult<MessageMutationSummary> =
+        transport.addReaction(messageId, emoji).mapMessageMutation("message_reaction_contract_mismatch")
+
+    suspend fun removeReaction(messageId: MessageId, emoji: String): DataResult<MessageMutationSummary> =
+        transport.removeReaction(messageId, emoji).mapMessageMutation("message_reaction_contract_mismatch")
 }
 
 internal data class FilesPage(val itemCount: Int, val nextCursor: String?)
@@ -121,38 +122,83 @@ internal data class MessageContextSummary(
 )
 internal data class MessageMutationSummary(val messageId: String, val reactionCount: Int)
 
-private inline fun <T> HomeNetworkResponse.mapFilesBody(
+private inline fun <Wire, T> HomeNetworkResponse.mapFilesBody(
     contractCode: String,
-    mapper: (JsonObject) -> T?
+    serializer: KSerializer<Wire>,
+    crossinline transform: (Wire) -> T?,
 ): DataResult<T> {
     if (!isSuccessful) {
         return DataResult.Error(ScreenError(code = contractCode, retryable = code >= 500))
     }
     val body = bodyText?.takeIf { it.isNotBlank() }
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    val root = runCatching { filesMessagesApiJson.parseToJsonElement(body) as? JsonObject }.getOrNull()
-        ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    val value = mapper(root)
+    val wire = try {
+        filesMessagesApiJson.decodeFromString(serializer, body)
+    } catch (_: SerializationException) {
+        return DataResult.Error(ScreenError(code = contractCode, retryable = false))
+    }
+    val value = transform(wire)
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
     return DataResult.Content(value)
 }
 
-private fun JsonObject.string(key: String): String? =
-    (this[key] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
-
-private fun JsonObject.boolean(key: String): Boolean? =
-    when (val primitive = this[key] as? JsonPrimitive) {
-        null -> null
-        else -> primitive.contentOrNull?.trim()?.lowercase()?.let { value ->
-            when (value) {
-                "true" -> true
-                "false" -> false
-                else -> null
-            }
-        }
+private fun HomeNetworkResponse.mapMessageMutation(contractCode: String): DataResult<MessageMutationSummary> =
+    mapFilesBody(contractCode, MessageMutationResponseDto.serializer()) { wire ->
+        val id = wire.id.takeIf { it.isNotBlank() } ?: return@mapFilesBody null
+        MessageMutationSummary(messageId = id, reactionCount = wire.reactions.size)
     }
 
-@kotlinx.serialization.Serializable
+// ── Wire DTOs ──
+
+@Serializable
+private data class ChannelFilesResponseDto(
+    val files: List<JsonObject>,
+    val nextCursor: String? = null,
+)
+
+@Serializable
+private data class AttachmentUrlResponseDto(
+    val url: String,
+    val expiresAt: String? = null,
+)
+
+@Serializable
+private data class AttachmentPreviewResponseDto(
+    val status: String,
+    val data: AttachmentPreviewDataDto? = null,
+    val truncated: Boolean? = null,
+)
+
+@Serializable
+private data class AttachmentPreviewDataDto(val kind: String? = null)
+
+@Serializable
+private data class AttachmentHtmlPreviewUrlDto(
+    val url: String,
+    val expiresAt: String,
+)
+
+@Serializable
+private data class MessageSearchResponseDto(
+    val results: List<JsonObject>,
+    val hasMore: Boolean? = null,
+)
+
+@Serializable
+private data class MessageContextResponseDto(
+    val channelId: String,
+    val messages: List<JsonObject>,
+    val targetMessageId: String? = null,
+    val historyLimited: Boolean? = null,
+)
+
+@Serializable
+private data class MessageMutationResponseDto(
+    val id: String,
+    val reactions: List<JsonObject> = emptyList(),
+)
+
+@Serializable
 private data class ReactionBody(val emoji: String)
 
 internal fun buildSharedReactionBody(emoji: String): String =

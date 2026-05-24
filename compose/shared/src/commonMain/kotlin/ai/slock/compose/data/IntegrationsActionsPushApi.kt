@@ -2,25 +2,31 @@ package ai.slock.compose.data
 
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MessageId
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 
 private val integrationsActionsPushJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
+    coerceInputValues = true
 }
 
 /**
  * Typed Integrations/Actions/Push boundary.
  *
- * Overview/clients/grants stay on the upstream roots parsed below; action
- * event telemetry treats empty 204 responses as success, while action execute
- * and mark-executed require a typed action-card body. Push VAPID requires
- * `publicKey`; push command routes require canonical success bodies.
+ * Server contracts:
+ *  - `packages/server/src/services/oauthService.ts` (OAuthClient,
+ *    GrantSummary, RequestSummary shapes).
+ *  - `packages/server/src/routes/integrations.ts` (per-endpoint payloads).
+ *  - `packages/server/src/routes/actions.ts`, `routes/push.ts`.
+ *
+ * Field names are exact camelCase. No snake_case fallbacks, no speculative
+ * aliases like `secret`/`key`/`state`.
  */
 internal interface SlockIntegrationsActionsPushApi {
     suspend fun integrationsOverview(): HomeNetworkResponse
@@ -44,104 +50,112 @@ internal class SlockIntegrationsActionsPushApiClient(
     private val transport: SlockIntegrationsActionsPushApi
 ) {
     suspend fun integrationsOverview(): DataResult<IntegrationsOverviewPage> =
-        transport.integrationsOverview().mapApiArray("integrations_overview_contract_mismatch") { items ->
-            IntegrationsOverviewPage(itemCount = items.size, firstClientName = items.firstOrNullObject()?.string("clientName"))
+        transport.integrationsOverview().mapApiBody(
+            "integrations_overview_contract_mismatch",
+            ListSerializer(IntegrationOverviewItemDto.serializer())
+        ) { wire ->
+            IntegrationsOverviewPage(itemCount = wire.size, firstClientName = wire.firstOrNull()?.clientName)
         }
 
     suspend fun integrationClients(): DataResult<IntegrationClientsPage> =
-        transport.integrationClients().mapApiArray("integration_clients_contract_mismatch") { clients ->
-            IntegrationClientsPage(clientCount = clients.size, firstName = clients.firstOrNullObject()?.string("name"))
+        transport.integrationClients().mapApiBody(
+            "integration_clients_contract_mismatch",
+            ListSerializer(IntegrationClientDto.serializer())
+        ) { wire ->
+            IntegrationClientsPage(clientCount = wire.size, firstName = wire.firstOrNull()?.name)
         }
 
     suspend fun createIntegrationClient(body: String): DataResult<IntegrationClientCreateResult> =
-        transport.createIntegrationClient(body).mapApiBody("integration_client_create_contract_mismatch") { root ->
-            val client = root["client"] as? JsonObject ?: return@mapApiBody null
+        transport.createIntegrationClient(body).mapApiBody(
+            "integration_client_create_contract_mismatch",
+            CreateIntegrationClientResponseDto.serializer()
+        ) { wire ->
+            val id = wire.client.id.takeIf { it.isNotBlank() } ?: return@mapApiBody null
             IntegrationClientCreateResult(
-                clientId = client.string("id")?.takeIf { it.isNotBlank() } ?: client.string("clientId")?.takeIf { it.isNotBlank() }
-                    ?: return@mapApiBody null,
-                clientSecretPresent = !root.string("clientSecret").isNullOrBlank()
+                clientId = id,
+                clientSecretPresent = !wire.clientSecret.isNullOrBlank()
             )
         }
 
     suspend fun approveIntegrationRequest(requestId: String, body: String): DataResult<IntegrationApproveResult> =
-        transport.approveIntegrationRequest(requestId, body).mapApiBody("integration_request_approve_contract_mismatch") { root ->
-            val request = root["request"] as? JsonObject ?: return@mapApiBody null
-            IntegrationApproveResult(
-                requestId = request.string("id")?.takeIf { it.isNotBlank() } ?: return@mapApiBody null,
-                grantId = root.string("grantId")
-            )
+        transport.approveIntegrationRequest(requestId, body).mapApiBody(
+            "integration_request_approve_contract_mismatch",
+            ApproveIntegrationResponseDto.serializer()
+        ) { wire ->
+            val id = wire.request.id.takeIf { it.isNotBlank() } ?: return@mapApiBody null
+            IntegrationApproveResult(requestId = id, grantId = wire.grantId)
         }
 
     suspend fun denyIntegrationRequest(requestId: String): DataResult<IntegrationRequestResult> =
-        transport.denyIntegrationRequest(requestId).toIntegrationRequest("integration_request_deny_contract_mismatch")
+        transport.denyIntegrationRequest(requestId).mapApiBody(
+            "integration_request_deny_contract_mismatch",
+            IntegrationRequestDto.serializer()
+        ) { wire ->
+            val id = wire.id.takeIf { it.isNotBlank() } ?: return@mapApiBody null
+            val status = wire.status?.takeIf { it.isNotBlank() } ?: return@mapApiBody null
+            IntegrationRequestResult(requestId = id, status = status)
+        }
 
     suspend fun revokeIntegrationGrant(grantId: String): DataResult<IntegrationGrantResult> =
-        transport.revokeIntegrationGrant(grantId).mapApiBody("integration_grant_revoke_contract_mismatch") { root ->
-            IntegrationGrantResult(
-                grantId = root.string("id")?.takeIf { it.isNotBlank() } ?: return@mapApiBody null,
-                status = root.string("status") ?: root.string("state"),
-                revokedAt = root.string("revokedAt")
-            )
+        transport.revokeIntegrationGrant(grantId).mapApiBody(
+            "integration_grant_revoke_contract_mismatch",
+            IntegrationGrantDto.serializer()
+        ) { wire ->
+            val id = wire.id.takeIf { it.isNotBlank() } ?: return@mapApiBody null
+            IntegrationGrantResult(grantId = id, status = wire.status, revokedAt = wire.revokedAt)
         }
 
     suspend fun agentIntegrations(agentId: MemberId): DataResult<AgentIntegrationsPage> =
-        transport.agentIntegrations(agentId).mapApiArray("agent_integrations_contract_mismatch") { integrations ->
-            AgentIntegrationsPage(itemCount = integrations.size, firstClientName = integrations.firstOrNullObject()?.string("clientName"))
+        transport.agentIntegrations(agentId).mapApiBody(
+            "agent_integrations_contract_mismatch",
+            ListSerializer(IntegrationOverviewItemDto.serializer())
+        ) { wire ->
+            AgentIntegrationsPage(itemCount = wire.size, firstClientName = wire.firstOrNull()?.clientName)
         }
 
     suspend fun executeAction(messageId: MessageId, body: String): DataResult<ActionCardResult> =
-        transport.executeAction(messageId, body).toActionCardResult("action_execute_contract_mismatch")
+        transport.executeAction(messageId, body).mapActionCard("action_execute_contract_mismatch")
 
     suspend fun emitActionEvent(messageId: MessageId, body: String): DataResult<ActionEventResult> =
-        transport.emitActionEvent(messageId, body).mapApiUnit("action_event_contract_mismatch")
+        transport.emitActionEvent(messageId, body).mapActionEvent("action_event_contract_mismatch")
 
     suspend fun markActionExecuted(messageId: MessageId, body: String): DataResult<ActionCardResult> =
-        transport.markActionExecuted(messageId, body).toActionCardResult("action_mark_executed_contract_mismatch")
+        transport.markActionExecuted(messageId, body).mapActionCard("action_mark_executed_contract_mismatch")
 
     suspend fun pushVapidKey(): DataResult<PushVapidKey> =
-        transport.pushVapidKey().mapApiBody("push_vapid_key_contract_mismatch") { root ->
-            PushVapidKey(publicKey = root.string("publicKey")?.takeIf { it.isNotBlank() } ?: return@mapApiBody null)
+        transport.pushVapidKey().mapApiBody(
+            "push_vapid_key_contract_mismatch",
+            PushVapidKeyResponseDto.serializer()
+        ) { wire ->
+            val key = wire.publicKey.takeIf { it.isNotBlank() } ?: return@mapApiBody null
+            PushVapidKey(publicKey = key)
         }
 
     suspend fun recordPushPromptEvent(body: String): DataResult<PushCommandResult> =
-        transport.recordPushPromptEvent(body).toPushCommand("push_prompt_event_contract_mismatch")
+        transport.recordPushPromptEvent(body).mapPushCommand("push_prompt_event_contract_mismatch")
 
     suspend fun subscribePush(body: String): DataResult<PushCommandResult> =
-        transport.subscribePush(body).toPushCommand("push_subscribe_contract_mismatch")
+        transport.subscribePush(body).mapPushCommand("push_subscribe_contract_mismatch")
 
     suspend fun unsubscribePush(body: String): DataResult<PushCommandResult> =
-        transport.unsubscribePush(body).toPushCommand("push_unsubscribe_contract_mismatch")
+        transport.unsubscribePush(body).mapPushCommand("push_unsubscribe_contract_mismatch")
 
     suspend fun testPush(): DataResult<PushTestResult> =
-        transport.testPush().mapApiBody("push_test_contract_mismatch") { root ->
+        transport.testPush().mapApiBody(
+            "push_test_contract_mismatch",
+            PushTestResponseDto.serializer()
+        ) { wire ->
+            if (!wire.ok) return@mapApiBody null
+            val attempted = wire.attempted ?: return@mapApiBody null
+            val delivered = wire.delivered ?: return@mapApiBody null
+            val failed = wire.failed ?: return@mapApiBody null
             PushTestResult(
-                ok = root.boolean("ok")?.takeIf { it } ?: return@mapApiBody null,
-                attempted = root.int("attempted") ?: return@mapApiBody null,
-                delivered = root.int("delivered") ?: return@mapApiBody null,
-                failed = root.int("failed") ?: return@mapApiBody null,
-                stale = root.int("stale")
+                ok = true,
+                attempted = attempted,
+                delivered = delivered,
+                failed = failed,
+                stale = wire.stale,
             )
-        }
-
-    private fun HomeNetworkResponse.toIntegrationRequest(contractCode: String): DataResult<IntegrationRequestResult> =
-        mapApiBody(contractCode) { root ->
-            IntegrationRequestResult(
-                requestId = root.string("id")?.takeIf { it.isNotBlank() } ?: return@mapApiBody null,
-                status = root.string("status")?.takeIf { it.isNotBlank() } ?: return@mapApiBody null
-            )
-        }
-
-    private fun HomeNetworkResponse.toActionCardResult(contractCode: String): DataResult<ActionCardResult> =
-        mapApiBody(contractCode) { root ->
-            ActionCardResult(
-                messageId = root.string("messageId")?.takeIf { it.isNotBlank() } ?: return@mapApiBody null,
-                metadataPresent = root["metadata"] is JsonObject
-            )
-        }
-
-    private fun HomeNetworkResponse.toPushCommand(contractCode: String): DataResult<PushCommandResult> =
-        mapApiBody(contractCode) { root ->
-            PushCommandResult(ok = root.boolean("ok")?.takeIf { it } ?: return@mapApiBody null)
         }
 }
 
@@ -158,76 +172,125 @@ internal data class PushVapidKey(val publicKey: String)
 internal data class PushCommandResult(val ok: Boolean)
 internal data class PushTestResult(val ok: Boolean, val attempted: Int, val delivered: Int, val failed: Int, val stale: Int?)
 
-private inline fun <T> HomeNetworkResponse.mapApiBody(
+private inline fun <Wire, T> HomeNetworkResponse.mapApiBody(
     contractCode: String,
-    mapper: (JsonObject) -> T?
+    serializer: KSerializer<Wire>,
+    crossinline transform: (Wire) -> T?,
 ): DataResult<T> {
     if (!isSuccessful) {
         return DataResult.Error(ScreenError(code = contractCode, retryable = code >= 500))
     }
     val body = bodyText?.takeIf { it.isNotBlank() }
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    val root = runCatching { integrationsActionsPushJson.parseToJsonElement(body) as? JsonObject }.getOrNull()
-        ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    val value = mapper(root)
+    val wire = try {
+        integrationsActionsPushJson.decodeFromString(serializer, body)
+    } catch (_: SerializationException) {
+        return DataResult.Error(ScreenError(code = contractCode, retryable = false))
+    }
+    val value = transform(wire)
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
     return DataResult.Content(value)
 }
 
-private inline fun <T> HomeNetworkResponse.mapApiArray(
-    contractCode: String,
-    mapper: (JsonArray) -> T?
-): DataResult<T> {
-    if (!isSuccessful) {
-        return DataResult.Error(ScreenError(code = contractCode, retryable = code >= 500))
+private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<ActionCardResult> =
+    mapApiBody(contractCode, ActionCardResponseDto.serializer()) { wire ->
+        val id = wire.messageId.takeIf { it.isNotBlank() } ?: return@mapApiBody null
+        ActionCardResult(messageId = id, metadataPresent = wire.metadata != null)
     }
-    val body = bodyText?.takeIf { it.isNotBlank() }
-        ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    val root = runCatching { integrationsActionsPushJson.parseToJsonElement(body) as? JsonArray }.getOrNull()
-        ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    val value = mapper(root)
-        ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    return DataResult.Content(value)
-}
 
-private fun HomeNetworkResponse.mapApiUnit(contractCode: String): DataResult<ActionEventResult> {
+private fun HomeNetworkResponse.mapPushCommand(contractCode: String): DataResult<PushCommandResult> =
+    mapApiBody(contractCode, OkResponseDto.serializer()) { wire ->
+        if (!wire.ok) null else PushCommandResult(ok = true)
+    }
+
+/**
+ * Action event endpoints answer with HTTP 204 / empty body on success. An
+ * empty body — or an empty JSON object — passes; any other shape is a contract
+ * mismatch.
+ */
+private fun HomeNetworkResponse.mapActionEvent(contractCode: String): DataResult<ActionEventResult> {
     if (!isSuccessful) {
         return DataResult.Error(ScreenError(code = contractCode, retryable = code >= 500))
     }
-    if (bodyText.isNullOrBlank()) {
+    val raw = bodyText
+    if (raw.isNullOrBlank()) {
         return DataResult.Content(ActionEventResult(ok = true))
     }
-    val body = bodyText
-    val root = runCatching { integrationsActionsPushJson.parseToJsonElement(body) as? JsonObject }.getOrNull()
-        ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    return if (root.isEmpty()) {
+    val wire = try {
+        integrationsActionsPushJson.decodeFromString(JsonObject.serializer(), raw)
+    } catch (_: SerializationException) {
+        return DataResult.Error(ScreenError(code = contractCode, retryable = false))
+    }
+    return if (wire.isEmpty()) {
         DataResult.Content(ActionEventResult(ok = true))
     } else {
         DataResult.Error(ScreenError(code = contractCode, retryable = false))
     }
 }
 
-private fun JsonArray.firstOrNullObject(): JsonObject? = firstOrNull() as? JsonObject
+// ── Wire DTOs ──
 
-private fun JsonObject.string(key: String): String? =
-    (this[key] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
+@Serializable
+private data class IntegrationOverviewItemDto(
+    val clientId: String? = null,
+    val clientName: String? = null,
+)
 
-private fun JsonObject.boolean(key: String): Boolean? =
-    when (val primitive = this[key] as? JsonPrimitive) {
-        null -> null
-        else -> primitive.contentOrNull?.trim()?.lowercase()?.let { value ->
-            when (value) {
-                "true" -> true
-                "false" -> false
-                else -> null
-            }
-        }
-    }
+@Serializable
+private data class IntegrationClientDto(
+    val id: String,
+    val name: String,
+)
 
-private fun JsonObject.int(key: String): Int? =
-    (this[key] as? JsonPrimitive)?.contentOrNull?.trim()?.toIntOrNull()
+@Serializable
+private data class CreateIntegrationClientResponseDto(
+    val client: IntegrationClientDto,
+    val clientSecret: String? = null,
+)
 
-@kotlinx.serialization.Serializable
+@Serializable
+private data class ApproveIntegrationResponseDto(
+    val request: IntegrationRequestDto,
+    val grantId: String? = null,
+)
+
+@Serializable
+private data class IntegrationRequestDto(
+    val id: String,
+    val status: String? = null,
+)
+
+@Serializable
+private data class IntegrationGrantDto(
+    val id: String,
+    val status: String? = null,
+    val revokedAt: String? = null,
+)
+
+@Serializable
+private data class ActionCardResponseDto(
+    val messageId: String,
+    val metadata: JsonObject? = null,
+)
+
+@Serializable
+private data class OkResponseDto(val ok: Boolean)
+
+@Serializable
+private data class PushVapidKeyResponseDto(val publicKey: String)
+
+@Serializable
+private data class PushTestResponseDto(
+    val ok: Boolean,
+    val attempted: Int? = null,
+    val delivered: Int? = null,
+    val failed: Int? = null,
+    val stale: Int? = null,
+)
+
+// ── Request bodies ──
+
+@Serializable
 internal data class CreateIntegrationClientBody(
     val name: String,
     val description: String? = null,
@@ -235,20 +298,20 @@ internal data class CreateIntegrationClientBody(
     val clientId: String? = null
 )
 
-@kotlinx.serialization.Serializable
+@Serializable
 internal data class ApproveIntegrationRequestBody(val remember: Boolean)
 
-@kotlinx.serialization.Serializable
+@Serializable
 internal data class ExecuteActionBody(val expectedState: String? = null)
 
-@kotlinx.serialization.Serializable
+@Serializable
 internal data class ActionEventBody(
     val eventType: String,
     val metadata: JsonObject? = null,
     val idempotencyKey: String? = null
 )
 
-@kotlinx.serialization.Serializable
+@Serializable
 internal data class PushPromptEventBody(
     val event: String,
     val trigger: String,
@@ -258,19 +321,23 @@ internal data class PushPromptEventBody(
     val detail: String? = null
 )
 
-@kotlinx.serialization.Serializable
+@Serializable
 internal data class PushSubscriptionBody(val endpoint: String, val keys: PushSubscriptionKeys)
 
-@kotlinx.serialization.Serializable
+@Serializable
 internal data class PushSubscriptionKeys(val p256dh: String, val auth: String)
 
-@kotlinx.serialization.Serializable
+@Serializable
 internal data class PushUnsubscribeBody(val endpoint: String)
 
-internal fun buildCreateIntegrationClientBody(name: String, description: String? = null, homepageUrl: String? = null, clientId: String? = null): String =
-    integrationsActionsPushJson.encodeToString(
-        CreateIntegrationClientBody(name = name, description = description, homepageUrl = homepageUrl, clientId = clientId)
-    )
+internal fun buildCreateIntegrationClientBody(
+    name: String,
+    description: String? = null,
+    homepageUrl: String? = null,
+    clientId: String? = null,
+): String = integrationsActionsPushJson.encodeToString(
+    CreateIntegrationClientBody(name = name, description = description, homepageUrl = homepageUrl, clientId = clientId)
+)
 
 internal fun buildApproveIntegrationRequestBody(remember: Boolean): String =
     integrationsActionsPushJson.encodeToString(ApproveIntegrationRequestBody(remember = remember))
@@ -278,8 +345,13 @@ internal fun buildApproveIntegrationRequestBody(remember: Boolean): String =
 internal fun buildExecuteActionBody(expectedState: String? = null): String =
     integrationsActionsPushJson.encodeToString(ExecuteActionBody(expectedState = expectedState))
 
-internal fun buildActionEventBody(eventType: String, metadata: JsonObject? = null, idempotencyKey: String? = null): String =
-    integrationsActionsPushJson.encodeToString(ActionEventBody(eventType = eventType, metadata = metadata, idempotencyKey = idempotencyKey))
+internal fun buildActionEventBody(
+    eventType: String,
+    metadata: JsonObject? = null,
+    idempotencyKey: String? = null,
+): String = integrationsActionsPushJson.encodeToString(
+    ActionEventBody(eventType = eventType, metadata = metadata, idempotencyKey = idempotencyKey)
+)
 
 internal fun buildPushPromptEventBody(
     event: String,
@@ -287,21 +359,22 @@ internal fun buildPushPromptEventBody(
     result: String? = null,
     permissionBefore: String? = null,
     permissionAfter: String? = null,
-    detail: String? = null
-): String =
-    integrationsActionsPushJson.encodeToString(
-        PushPromptEventBody(
-            event = event,
-            trigger = trigger,
-            result = result,
-            permissionBefore = permissionBefore,
-            permissionAfter = permissionAfter,
-            detail = detail
-        )
+    detail: String? = null,
+): String = integrationsActionsPushJson.encodeToString(
+    PushPromptEventBody(
+        event = event,
+        trigger = trigger,
+        result = result,
+        permissionBefore = permissionBefore,
+        permissionAfter = permissionAfter,
+        detail = detail,
     )
+)
 
 internal fun buildPushSubscribeBody(endpoint: String, p256dh: String, auth: String): String =
-    integrationsActionsPushJson.encodeToString(PushSubscriptionBody(endpoint = endpoint, keys = PushSubscriptionKeys(p256dh = p256dh, auth = auth)))
+    integrationsActionsPushJson.encodeToString(
+        PushSubscriptionBody(endpoint = endpoint, keys = PushSubscriptionKeys(p256dh = p256dh, auth = auth))
+    )
 
 internal fun buildPushUnsubscribeBody(endpoint: String): String =
     integrationsActionsPushJson.encodeToString(PushUnsubscribeBody(endpoint = endpoint))

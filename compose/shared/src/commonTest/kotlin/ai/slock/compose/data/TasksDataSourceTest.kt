@@ -74,9 +74,12 @@ class TasksDataSourceTest {
     }
 
     private class RecordingTasksApi(
-        private val listBody: String = """{"tasks":[{"id":"task-1","title":"Task #1: canonical"}]}""",
-        private val actionBody: String = """{"task":{"id":"task-1","title":"Task #1: canonical"}}""",
-        private val createBody: String = """{"tasks":[{"id":"task-2","title":"Task #2: created"}]}""",
+        private val listBody: String =
+            """{"tasks":[{"id":"task-1","channelId":"channel-1","taskNumber":1,"title":"Task #1: canonical","status":"todo","createdByType":"user","createdById":"user-1"}]}""",
+        private val actionBody: String =
+            """{"task":{"id":"task-1","channelId":"channel-1","taskNumber":1,"title":"Task #1: canonical","status":"todo","createdByType":"user","createdById":"user-1"}}""",
+        private val createBody: String =
+            """{"tasks":[{"id":"task-2","channelId":"channel-1","taskNumber":2,"title":"Task #2: created","status":"todo","createdByType":"user","createdById":"user-1"}]}""",
         private val deleteBody: String = """{"ok":true}"""
     ) : SlockTasksApi {
         val calls = mutableListOf<String>()

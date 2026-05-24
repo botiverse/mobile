@@ -3,27 +3,34 @@ package ai.slock.compose.data
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MessageId
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 
 private val threadApiJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
+    coerceInputValues = true
 }
 
 /**
  * Typed Thread/Message boundary.
  *
- * Canonical response roots live next to the parser: channel pages are
- * `{ messages: [...] }`, sync returns a root array, send returns the created
- * message object, attachment open returns `{ url, expiresAt? }`, and
- * create/open reply thread returns `{ threadChannelId }`. New route or field
- * mappings should be added here with a focused contract test.
+ * Server contracts:
+ *  - `packages/server/src/routes/messages.ts`:
+ *      GET messages → `{ messages, historyLimited }` (no `hasMore`/`hasNextPage`)
+ *      GET messages/sync → root array
+ *      POST messages → created message object (`{ id, content, seq, ... }`)
+ *  - `packages/server/src/routes/files.ts`: `{ url, expiresAt? }`.
+ *  - `packages/server/src/routes/threads.ts`: `{ threadChannelId,
+ *    parentMessageId?, created? }`.
+ *
+ * Field names are exact camelCase. No snake_case fallbacks, no
+ * `hasMore`/`hasNextPage`/`downloadUrl` speculation.
  */
 internal interface SlockThreadApi {
     suspend fun channelMessages(threadId: String, limit: Int = 50, beforeSeq: Long? = null): ThreadApiResult<ThreadMessagesPage>
@@ -46,26 +53,26 @@ internal class SlockThreadApiClient(
 ) : SlockThreadApi {
     override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): ThreadApiResult<ThreadMessagesPage> =
         transport.channelMessages(threadId = threadId, limit = limit, beforeSeq = beforeSeq)
-            .mapThreadBody("thread_messages_contract_mismatch") { element, bodyText ->
-                val root = element as? JsonObject ?: return@mapThreadBody null
-                val messages = root["messages"] as? JsonArray ?: return@mapThreadBody null
+            .mapThreadBody("thread_messages_contract_mismatch", ChannelMessagesResponseDto.serializer()) { wire, body ->
                 ThreadMessagesPage(
-                    rawBodyText = bodyText,
-                    messageCount = messages.size,
-                    canLoadMoreBefore = root.boolean("hasMore", "historyLimited"),
-                    canLoadMoreAfter = root.boolean("hasNextPage")
+                    rawBodyText = body,
+                    messageCount = wire.messages.size,
+                    canLoadMoreBefore = wire.historyLimited,
+                    canLoadMoreAfter = null,
                 )
             }
 
     override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): ThreadApiResult<ThreadMessagesPage> =
         transport.messageSync(channelId = channelId, sinceSeq = sinceSeq, limit = limit)
-            .mapThreadBody("thread_sync_contract_mismatch") { element, bodyText ->
-                val messages = element as? JsonArray ?: return@mapThreadBody null
+            .mapThreadBody(
+                "thread_sync_contract_mismatch",
+                ListSerializer(JsonObject.serializer())
+            ) { wire, body ->
                 ThreadMessagesPage(
-                    rawBodyText = bodyText,
-                    messageCount = messages.size,
+                    rawBodyText = body,
+                    messageCount = wire.size,
                     canLoadMoreBefore = null,
-                    canLoadMoreAfter = false
+                    canLoadMoreAfter = false,
                 )
             }
 
@@ -80,28 +87,24 @@ internal class SlockThreadApiClient(
             body = body,
             asTask = asTask,
             attachmentIds = attachmentIds
-        ).mapThreadBody("thread_send_contract_mismatch") { element, bodyText ->
-            val root = element as? JsonObject ?: return@mapThreadBody null
-            if (root.string("id").isNullOrBlank() || root.string("content").isNullOrBlank()) {
-                return@mapThreadBody null
-            }
+        ).mapThreadBody("thread_send_contract_mismatch", SendMessageResponseDto.serializer()) { wire, bodyText ->
+            if (wire.id.isBlank() || wire.content.isBlank()) return@mapThreadBody null
             ThreadMessagesPage(
                 rawBodyText = bodyText,
                 messageCount = 1,
                 canLoadMoreBefore = null,
-                canLoadMoreAfter = null
+                canLoadMoreAfter = null,
             )
         }
 
     override suspend fun attachmentUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget> =
         transport.attachmentUrl(attachmentId)
-            .mapThreadBody("thread_attachment_url_contract_mismatch") { element, _ ->
-                val root = element as? JsonObject ?: return@mapThreadBody null
-                val url = root.string("url")?.takeIf { it.isNotBlank() } ?: return@mapThreadBody null
-                ThreadAttachmentOpenTarget(
-                    url = url,
-                    expiresAt = root.string("expiresAt")
-                )
+            .mapThreadBody(
+                "thread_attachment_url_contract_mismatch",
+                ThreadAttachmentUrlResponseDto.serializer()
+            ) { wire, _ ->
+                val url = wire.url.takeIf { it.isNotBlank() } ?: return@mapThreadBody null
+                ThreadAttachmentOpenTarget(url = url, expiresAt = wire.expiresAt)
             }
 
     override suspend fun markChannelReadAll(channelId: String): ThreadApiResult<Unit> =
@@ -115,14 +118,12 @@ internal class SlockThreadApiClient(
 
     override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): ThreadApiResult<ThreadActionResult> =
         transport.createOrOpenThread(channelId, parentMessageId)
-            .mapThreadBody("thread_create_contract_mismatch") { element, _ ->
-                val root = element as? JsonObject ?: return@mapThreadBody null
-                val threadChannelId = root.string("threadChannelId")?.takeIf { it.isNotBlank() }
-                    ?: return@mapThreadBody null
+            .mapThreadBody("thread_create_contract_mismatch", CreateOrOpenThreadResponseDto.serializer()) { wire, _ ->
+                val tid = wire.threadChannelId.takeIf { it.isNotBlank() } ?: return@mapThreadBody null
                 ThreadActionResult(
-                    threadChannelId = ChannelId(threadChannelId),
-                    parentMessageId = root.string("parentMessageId")?.let(::MessageId),
-                    changed = root.boolean("created") ?: false
+                    threadChannelId = ChannelId(tid),
+                    parentMessageId = wire.parentMessageId?.let(::MessageId),
+                    changed = wire.created ?: false,
                 )
             }
 }
@@ -151,16 +152,20 @@ internal data class ThreadAttachmentOpenTarget(
 private fun HomeNetworkResponse.toThreadApiFailure(): ThreadApiResult.Failure =
     ThreadApiResult.Failure(code = code, errorBodyText = errorBodyText)
 
-private inline fun <T> HomeNetworkResponse.mapThreadBody(
+private inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
     contractCode: String,
-    mapper: (JsonElement, String) -> T?
+    serializer: KSerializer<Wire>,
+    crossinline transform: (Wire, String) -> T?,
 ): ThreadApiResult<T> {
     if (!isSuccessful) return toThreadApiFailure()
     val body = bodyText?.takeIf { it.isNotBlank() }
         ?: return ThreadApiResult.Failure(code = code, contractCode = contractCode)
-    val element = runCatching { threadApiJson.parseToJsonElement(body) }.getOrNull()
-        ?: return ThreadApiResult.Failure(code = code, contractCode = contractCode)
-    val value = mapper(element, body)
+    val wire = try {
+        threadApiJson.decodeFromString(serializer, body)
+    } catch (_: SerializationException) {
+        return ThreadApiResult.Failure(code = code, contractCode = contractCode)
+    }
+    val value = transform(wire, body)
         ?: return ThreadApiResult.Failure(code = code, contractCode = contractCode)
     return ThreadApiResult.Success(value)
 }
@@ -168,24 +173,37 @@ private inline fun <T> HomeNetworkResponse.mapThreadBody(
 private fun HomeNetworkResponse.mapThreadUnit(): ThreadApiResult<Unit> =
     if (isSuccessful) ThreadApiResult.Success(Unit) else toThreadApiFailure()
 
-private fun JsonObject.string(vararg keys: String): String? =
-    keys.firstNotNullOfOrNull { key -> (this[key] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotBlank() } }
+// ── Wire DTOs ──
 
-private fun JsonObject.boolean(vararg keys: String): Boolean? =
-    keys.firstNotNullOfOrNull { key ->
-        when (val primitive = this[key] as? JsonPrimitive) {
-            null -> null
-            else -> primitive.contentOrNull?.trim()?.lowercase()?.let { value ->
-                when (value) {
-                    "true" -> true
-                    "false" -> false
-                    else -> null
-                }
-            }
-        }
-    }
+@Serializable
+private data class ChannelMessagesResponseDto(
+    val messages: List<JsonObject>,
+    val historyLimited: Boolean? = null,
+)
 
-@kotlinx.serialization.Serializable
+@Serializable
+private data class SendMessageResponseDto(
+    val id: String,
+    val content: String,
+    val seq: Long? = null,
+)
+
+@Serializable
+private data class ThreadAttachmentUrlResponseDto(
+    val url: String,
+    val expiresAt: String? = null,
+)
+
+@Serializable
+private data class CreateOrOpenThreadResponseDto(
+    val threadChannelId: String,
+    val parentMessageId: String? = null,
+    val created: Boolean? = null,
+)
+
+// ── Request bodies ──
+
+@Serializable
 private data class SharedThreadSendMessageBody(
     val channelId: String,
     val content: String,

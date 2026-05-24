@@ -224,7 +224,10 @@ class SharedHomeStoreTest {
         assertEquals("announcement-1", notification.id)
         assertEquals("Upgrade available", notification.title)
         assertEquals("Install the newest desktop daemon.", notification.body)
-        assertEquals(SharedHomeNotificationKind.Warning, notification.kind)
+        // The server `Announcement` contract has no severity / actionLabel — see
+        // packages/shared/src/index.ts. The home store maps every announcement
+        // to the neutral `Info` notification kind by design.
+        assertEquals(SharedHomeNotificationKind.Info, notification.kind)
         assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
         scope.cancel()
     }
@@ -327,9 +330,9 @@ class SharedHomeStoreTest {
                         {
                           "id": "announcement-1",
                           "title": "Upgrade available",
-                          "body": "Install the newest desktop daemon.",
-                          "severity": "warning",
-                          "actionLabel": "Review"
+                          "pages": [
+                            { "body": "Install the newest desktop daemon." }
+                          ]
                         }
                       ]
                     }

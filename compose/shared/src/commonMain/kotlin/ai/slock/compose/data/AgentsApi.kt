@@ -1,26 +1,29 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.MemberId
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 
 private val agentsApiJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
+    coerceInputValues = true
 }
 
 /**
  * Typed Agents boundary.
  *
- * Keep shape notes beside parsers: list-like endpoints that are arrays are
- * parsed as root arrays, workspace files require a `files` array, workspace
- * file reads require `path` and expose optional `binary`/`size`, and bootstrap
- * token responses require a non-empty token field.
+ * Server contracts:
+ *  - `packages/server/src/services/agentService.ts` (Agent record shape, with
+ *    canonical `name` + nullable `displayName`).
+ *  - `packages/server/src/routes/agents.ts` (per-endpoint payload shapes).
+ *
+ * Field names are exact, camelCase, matching the server payload. No snake_case
+ * fallbacks, no speculative aliases.
  */
 internal interface SlockAgentsApi {
     suspend fun agents(): HomeNetworkResponse
@@ -46,103 +49,112 @@ internal class SlockAgentsApiClient(
     private val transport: SlockAgentsApi
 ) {
     suspend fun agents(): DataResult<AgentsPage> =
-        transport.agents().mapAgentsArray("agents_list_contract_mismatch") { agents ->
-            AgentsPage(agentCount = agents.size)
-        }
+        transport.agents().mapAgentsBody(
+            "agents_list_contract_mismatch",
+            ListSerializer(AgentWireDto.serializer())
+        ) { wire -> AgentsPage(agentCount = wire.size) }
 
     suspend fun agent(agentId: MemberId): DataResult<AgentSummary> =
-        transport.agent(agentId).toAgentSummary("agent_detail_contract_mismatch")
+        transport.agent(agentId).mapAgentsBody(
+            "agent_detail_contract_mismatch",
+            AgentWireDto.serializer()
+        ) { it.toSummary() }
 
     suspend fun createAgent(body: String): DataResult<AgentSummary> =
-        transport.createAgent(body).toAgentSummary("agent_create_contract_mismatch")
+        transport.createAgent(body).mapAgentsBody(
+            "agent_create_contract_mismatch",
+            AgentWireDto.serializer()
+        ) { it.toSummary() }
 
     suspend fun updateAgent(agentId: MemberId, body: String): DataResult<AgentSummary> =
-        transport.updateAgent(agentId, body).toAgentSummary("agent_update_contract_mismatch")
+        transport.updateAgent(agentId, body).mapAgentsBody(
+            "agent_update_contract_mismatch",
+            AgentWireDto.serializer()
+        ) { it.toSummary() }
 
     suspend fun startAgent(agentId: MemberId): DataResult<AgentCommandResult> =
-        transport.startAgent(agentId).toAgentCommand("agent_start_contract_mismatch")
+        transport.startAgent(agentId).mapAgentsCommand("agent_start_contract_mismatch")
 
     suspend fun stopAgent(agentId: MemberId): DataResult<AgentCommandResult> =
-        transport.stopAgent(agentId).toAgentCommand("agent_stop_contract_mismatch")
+        transport.stopAgent(agentId).mapAgentsCommand("agent_stop_contract_mismatch")
 
     suspend fun resetAgent(agentId: MemberId, body: String): DataResult<AgentCommandResult> =
-        transport.resetAgent(agentId, body).toAgentCommand("agent_reset_contract_mismatch")
+        transport.resetAgent(agentId, body).mapAgentsCommand("agent_reset_contract_mismatch")
 
     suspend fun deleteAgent(agentId: MemberId): DataResult<AgentCommandResult> =
-        transport.deleteAgent(agentId).toAgentCommand("agent_delete_contract_mismatch")
+        transport.deleteAgent(agentId).mapAgentsCommand("agent_delete_contract_mismatch")
 
     suspend fun assignMachine(agentId: MemberId, body: String): DataResult<AgentCommandResult> =
-        transport.assignMachine(agentId, body).toAgentCommand("agent_assign_machine_contract_mismatch")
+        transport.assignMachine(agentId, body).mapAgentsCommand("agent_assign_machine_contract_mismatch")
 
     suspend fun agentDirectMessages(agentId: MemberId): DataResult<AgentDmPage> =
-        transport.agentDirectMessages(agentId).mapAgentsArray("agent_dms_contract_mismatch") { dms ->
-            AgentDmPage(itemCount = dms.size)
-        }
+        transport.agentDirectMessages(agentId).mapAgentsBody(
+            "agent_dms_contract_mismatch",
+            ListSerializer(AgentDmWireDto.serializer())
+        ) { wire -> AgentDmPage(itemCount = wire.size) }
 
     suspend fun agentActivityLog(agentId: MemberId, limit: Int = 50): DataResult<AgentActivityPage> =
-        transport.agentActivityLog(agentId, limit).mapAgentsArray("agent_activity_log_contract_mismatch") { entries ->
-            AgentActivityPage(entryCount = entries.size)
-        }
+        transport.agentActivityLog(agentId, limit).mapAgentsBody(
+            "agent_activity_log_contract_mismatch",
+            ListSerializer(AgentActivityWireDto.serializer())
+        ) { wire -> AgentActivityPage(entryCount = wire.size) }
 
     suspend fun agentWorkspaceFiles(agentId: MemberId, dirPath: String? = null): DataResult<AgentWorkspaceFilePage> =
-        transport.agentWorkspaceFiles(agentId, dirPath).mapAgentsBody("agent_workspace_files_contract_mismatch") { root ->
-            AgentWorkspaceFilePage(fileCount = (root["files"] as? JsonArray)?.size ?: return@mapAgentsBody null)
-        }
+        transport.agentWorkspaceFiles(agentId, dirPath).mapAgentsBody(
+            "agent_workspace_files_contract_mismatch",
+            AgentWorkspaceFilesResponseDto.serializer()
+        ) { AgentWorkspaceFilePage(fileCount = it.files.size) }
 
     suspend fun readAgentWorkspaceFile(agentId: MemberId, path: String): DataResult<AgentWorkspaceFileRead> =
-        transport.readAgentWorkspaceFile(agentId, path).mapAgentsBody("agent_workspace_file_read_contract_mismatch") { root ->
+        transport.readAgentWorkspaceFile(agentId, path).mapAgentsBody(
+            "agent_workspace_file_read_contract_mismatch",
+            AgentWorkspaceFileReadDto.serializer()
+        ) { wire ->
+            val resolvedPath = wire.path.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null
             AgentWorkspaceFileRead(
-                path = root.string("path")?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null,
-                content = root.string("content") ?: "",
-                binary = root.boolean("binary") ?: false,
-                size = root.long("size")
+                path = resolvedPath,
+                content = wire.content ?: "",
+                binary = wire.binary ?: false,
+                size = wire.size,
             )
         }
 
     suspend fun agentSkills(agentId: MemberId): DataResult<AgentSkillsSummary> =
-        transport.agentSkills(agentId).mapAgentsBody("agent_skills_contract_mismatch") { root ->
-            AgentSkillsSummary(
-                globalCount = (root["global"] as? JsonArray)?.size ?: return@mapAgentsBody null,
-                workspaceCount = (root["workspace"] as? JsonArray)?.size ?: return@mapAgentsBody null
-            )
-        }
+        transport.agentSkills(agentId).mapAgentsBody(
+            "agent_skills_contract_mismatch",
+            AgentSkillsResponseDto.serializer()
+        ) { AgentSkillsSummary(globalCount = it.global.size, workspaceCount = it.workspace.size) }
 
     suspend fun agentScopes(agentId: MemberId): DataResult<AgentScopesSummary> =
-        transport.agentScopes(agentId).toAgentScopes("agent_scopes_contract_mismatch")
+        transport.agentScopes(agentId).mapAgentsBody(
+            "agent_scopes_contract_mismatch",
+            AgentScopesResponseDto.serializer()
+        ) { wire ->
+            val id = wire.agentId?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null
+            AgentScopesSummary(agentId = id, grantedCount = wire.granted.size, revision = wire.revision)
+        }
 
     suspend fun updateAgentScopes(agentId: MemberId, body: String): DataResult<AgentScopesSummary> =
-        transport.updateAgentScopes(agentId, body).toAgentScopes("agent_scopes_update_contract_mismatch")
+        transport.updateAgentScopes(agentId, body).mapAgentsBody(
+            "agent_scopes_update_contract_mismatch",
+            AgentScopesResponseDto.serializer()
+        ) { wire ->
+            val id = wire.agentId?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null
+            AgentScopesSummary(agentId = id, grantedCount = wire.granted.size, revision = wire.revision)
+        }
 
     suspend fun issueBootstrapToken(agentId: MemberId, body: String): DataResult<AgentBootstrapTokenSummary> =
-        transport.issueBootstrapToken(agentId, body).mapAgentsBody("agent_bootstrap_token_contract_mismatch") { root ->
+        transport.issueBootstrapToken(agentId, body).mapAgentsBody(
+            "agent_bootstrap_token_contract_mismatch",
+            AgentBootstrapTokenResponseDto.serializer()
+        ) { wire ->
+            val tokenId = wire.tokenId?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null
+            val prefix = wire.tokenPrefix?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null
             AgentBootstrapTokenSummary(
-                tokenId = root.string("tokenId")?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null,
-                tokenPrefix = root.string("tokenPrefix")?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null,
-                bootstrapTokenPresent = !root.string("bootstrapToken").isNullOrBlank(),
-                scopeCount = (root["scopes"] as? JsonArray)?.size ?: return@mapAgentsBody null
-            )
-        }
-
-    private fun HomeNetworkResponse.toAgentSummary(contractCode: String): DataResult<AgentSummary> =
-        mapAgentsBody(contractCode) { root ->
-            AgentSummary(
-                id = root.string("id")?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null,
-                name = root.string("name") ?: root.string("displayName") ?: return@mapAgentsBody null,
-                status = root.string("status")
-            )
-        }
-
-    private fun HomeNetworkResponse.toAgentCommand(contractCode: String): DataResult<AgentCommandResult> =
-        mapAgentsBody(contractCode) { root ->
-            AgentCommandResult(ok = root.boolean("ok")?.takeIf { it } ?: return@mapAgentsBody null)
-        }
-
-    private fun HomeNetworkResponse.toAgentScopes(contractCode: String): DataResult<AgentScopesSummary> =
-        mapAgentsBody(contractCode) { root ->
-            AgentScopesSummary(
-                agentId = root.string("agentId")?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null,
-                grantedCount = (root["granted"] as? JsonArray)?.size ?: return@mapAgentsBody null,
-                revision = root.long("revision")
+                tokenId = tokenId,
+                tokenPrefix = prefix,
+                bootstrapTokenPresent = !wire.bootstrapToken.isNullOrBlank(),
+                scopeCount = wire.scopes.size,
             )
         }
 }
@@ -163,57 +175,101 @@ internal data class AgentBootstrapTokenSummary(
     val scopeCount: Int
 )
 
-private inline fun <T> HomeNetworkResponse.mapAgentsBody(
+private inline fun <Wire, T> HomeNetworkResponse.mapAgentsBody(
     contractCode: String,
-    mapper: (JsonObject) -> T?
+    serializer: KSerializer<Wire>,
+    crossinline transform: (Wire) -> T?,
 ): DataResult<T> {
     if (!isSuccessful) {
         return DataResult.Error(ScreenError(code = contractCode, retryable = code >= 500))
     }
     val body = bodyText?.takeIf { it.isNotBlank() }
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    val root = runCatching { agentsApiJson.parseToJsonElement(body) as? JsonObject }.getOrNull()
-        ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    val value = mapper(root)
+    val wire = try {
+        agentsApiJson.decodeFromString(serializer, body)
+    } catch (_: SerializationException) {
+        return DataResult.Error(ScreenError(code = contractCode, retryable = false))
+    }
+    val value = transform(wire)
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
     return DataResult.Content(value)
 }
 
-private inline fun <T> HomeNetworkResponse.mapAgentsArray(
-    contractCode: String,
-    mapper: (JsonArray) -> T?
-): DataResult<T> {
-    if (!isSuccessful) {
-        return DataResult.Error(ScreenError(code = contractCode, retryable = code >= 500))
+private fun HomeNetworkResponse.mapAgentsCommand(contractCode: String): DataResult<AgentCommandResult> =
+    mapAgentsBody(contractCode, AgentCommandResponseDto.serializer()) { wire ->
+        if (!wire.ok) null else AgentCommandResult(ok = true)
     }
-    val body = bodyText?.takeIf { it.isNotBlank() }
-        ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    val root = runCatching { agentsApiJson.parseToJsonElement(body) as? JsonArray }.getOrNull()
-        ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    val value = mapper(root)
-        ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    return DataResult.Content(value)
+
+// ── Wire DTOs ──
+// Source of truth: packages/server/src/services/agentService.ts and the
+// routes/agents.ts handlers. `name` is required; `displayName` may be null but
+// is not used as a fallback for `name` — the server always emits `name`.
+
+@Serializable
+private data class AgentWireDto(
+    val id: String,
+    val name: String,
+    val displayName: String? = null,
+    val status: String? = null,
+)
+
+private fun AgentWireDto.toSummary(): AgentSummary? {
+    if (id.isBlank() || name.isBlank()) return null
+    return AgentSummary(id = id, name = name, status = status)
 }
 
-private fun JsonObject.string(key: String): String? =
-    (this[key] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
+@Serializable
+private data class AgentCommandResponseDto(val ok: Boolean)
 
-private fun JsonObject.boolean(key: String): Boolean? =
-    when (val primitive = this[key] as? JsonPrimitive) {
-        null -> null
-        else -> primitive.contentOrNull?.trim()?.lowercase()?.let { value ->
-            when (value) {
-                "true" -> true
-                "false" -> false
-                else -> null
-            }
-        }
-    }
+@Serializable
+private data class AgentDmWireDto(val id: String)
 
-private fun JsonObject.long(key: String): Long? =
-    (this[key] as? JsonPrimitive)?.contentOrNull?.trim()?.toLongOrNull()
+@Serializable
+private data class AgentActivityWireDto(val id: String)
 
-@kotlinx.serialization.Serializable
+@Serializable
+private data class AgentWorkspaceFilesResponseDto(
+    val files: List<AgentWorkspaceFileEntryDto>,
+)
+
+@Serializable
+private data class AgentWorkspaceFileEntryDto(val path: String)
+
+@Serializable
+private data class AgentWorkspaceFileReadDto(
+    val path: String,
+    val content: String? = null,
+    val binary: Boolean? = null,
+    val size: Long? = null,
+)
+
+@Serializable
+private data class AgentSkillsResponseDto(
+    val global: List<AgentSkillEntryDto>,
+    val workspace: List<AgentSkillEntryDto>,
+)
+
+@Serializable
+private data class AgentSkillEntryDto(val name: String? = null)
+
+@Serializable
+private data class AgentScopesResponseDto(
+    val agentId: String? = null,
+    val granted: List<String>,
+    val revision: Long? = null,
+)
+
+@Serializable
+private data class AgentBootstrapTokenResponseDto(
+    val tokenId: String? = null,
+    val tokenPrefix: String? = null,
+    val bootstrapToken: String? = null,
+    val scopes: List<String> = emptyList(),
+)
+
+// ── Request bodies ──
+
+@Serializable
 internal data class CreateAgentBody(
     val name: String,
     val description: String? = null,
@@ -226,7 +282,7 @@ internal data class CreateAgentBody(
     val onboarding: Boolean? = null
 )
 
-@kotlinx.serialization.Serializable
+@Serializable
 internal data class UpdateAgentBody(
     val displayName: String? = null,
     val description: String? = null,
@@ -238,16 +294,16 @@ internal data class UpdateAgentBody(
     val restartMode: String? = null
 )
 
-@kotlinx.serialization.Serializable
+@Serializable
 internal data class ResetAgentBody(val mode: String)
 
-@kotlinx.serialization.Serializable
+@Serializable
 internal data class AssignAgentMachineBody(val machineId: String?)
 
-@kotlinx.serialization.Serializable
+@Serializable
 internal data class UpdateAgentScopesBody(val scopes: List<String>? = null, val mode: String? = null)
 
-@kotlinx.serialization.Serializable
+@Serializable
 internal data class IssueAgentBootstrapTokenBody(val scopes: List<String>? = null, val ttlMs: Long? = null)
 
 internal fun buildCreateAgentBody(body: CreateAgentBody): String = agentsApiJson.encodeToString(body)
@@ -256,4 +312,5 @@ internal fun buildResetAgentBody(mode: String): String = agentsApiJson.encodeToS
 internal fun buildAssignAgentMachineBody(machineId: String?): String =
     agentsApiJson.encodeToString(AssignAgentMachineBody(machineId = machineId))
 internal fun buildUpdateAgentScopesBody(body: UpdateAgentScopesBody): String = agentsApiJson.encodeToString(body)
-internal fun buildIssueAgentBootstrapTokenBody(body: IssueAgentBootstrapTokenBody): String = agentsApiJson.encodeToString(body)
+internal fun buildIssueAgentBootstrapTokenBody(body: IssueAgentBootstrapTokenBody): String =
+    agentsApiJson.encodeToString(body)

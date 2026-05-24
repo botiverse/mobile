@@ -258,7 +258,7 @@ private fun TaskSnapshot.filteredBy(filter: TaskFilter): TaskSnapshot {
  *   DELETE /api/tasks/:id    -> { ok: true }              (OkEnvelope)
  */
 @Serializable
-internal data class TasksListEnvelope(val tasks: List<TaskWireDto> = emptyList())
+internal data class TasksListEnvelope(val tasks: List<TaskWireDto>)
 
 @Serializable
 internal data class TaskEnvelope(val task: TaskWireDto? = null)

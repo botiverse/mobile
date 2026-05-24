@@ -227,7 +227,7 @@ class SharedTasksStoreTest {
     }
 
     @Test
-    fun taskNetworkResponseParsesRealPayloadAliasesWithoutPlatformRegex() {
+    fun taskNetworkResponseParsesCanonicalReactShape() {
         val response =
             HomeNetworkResponse(
                 code = 200,
@@ -236,15 +236,17 @@ class SharedTasksStoreTest {
                     {
                       "tasks": [
                         {
-                          "taskId": "task-65",
-                          "number": 65,
-                          "messagePreview": "Task #65: migrate Android UI to shared MVI",
-                          "taskStatus": "in_review",
-                          "channel": { "id": "channel-kmp", "name": "KMP" },
+                          "id": "task-65",
+                          "channelId": "channel-kmp",
+                          "channelName": "KMP",
+                          "taskNumber": 65,
+                          "title": "migrate Android UI to shared MVI",
+                          "status": "in_review",
+                          "createdByType": "user",
+                          "createdById": "user-1",
                           "claimedById": "agent-kmp",
                           "claimedByName": "KMP-专家",
-                          "claimedByType": "agent",
-                          "updated_at": "1779360000000"
+                          "claimedByType": "agent"
                         }
                       ]
                     }
