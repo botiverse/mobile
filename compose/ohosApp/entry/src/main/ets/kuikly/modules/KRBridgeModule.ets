@@ -9,6 +9,7 @@ import { KuiklyRenderCallback } from '@kuikly-open/render';
 import util from '@ohos.util';
 import fs from '@ohos.file.fs';
 import { fileUri } from '@kit.CoreFileKit';
+import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
 
 export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly MODULE_NAME = "HRBridgeModule";
@@ -154,6 +155,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   }
 
   private reportRealtime(params: KRAny) {
+    if (params == null) {
+      return;
+    }
+    slockOhosRealtimeBridge.handleCommand(this.parseRecord(params));
   }
 
   private localServeTime(params: KRAny, callback: KuiklyRenderCallback) {

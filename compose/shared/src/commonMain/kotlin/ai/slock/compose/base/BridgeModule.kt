@@ -219,6 +219,35 @@ internal class BridgeModule : Module() {
         callNativeMethod(REPORT_REALTIME, methodArgs, null)
     }
 
+    fun realtimeConnect(
+        serverId: String,
+        accessToken: String,
+        socketUrl: String = "https://api.slock.ai",
+        lastSeq: Long = 0L
+    ) {
+        val methodArgs = JSONObject()
+        methodArgs.put("action", "connect")
+        methodArgs.put("serverId", serverId)
+        methodArgs.put("accessToken", accessToken)
+        methodArgs.put("socketUrl", socketUrl)
+        methodArgs.put("lastSeq", lastSeq)
+        callNativeMethod(REPORT_REALTIME, methodArgs, null)
+    }
+
+    fun realtimeDisconnect(reason: String = "shared_disconnect") {
+        val methodArgs = JSONObject()
+        methodArgs.put("action", "disconnect")
+        methodArgs.put("reason", reason)
+        callNativeMethod(REPORT_REALTIME, methodArgs, null)
+    }
+
+    fun realtimeJoinChannel(channelId: String) {
+        val methodArgs = JSONObject()
+        methodArgs.put("action", "joinChannel")
+        methodArgs.put("channelId", channelId)
+        callNativeMethod(REPORT_REALTIME, methodArgs, null)
+    }
+
     // 页面首屏（有内容，来自缓存）耗时上报
     fun reportPageCostTimeForCache() {
         callNativeMethod(REPORT_PAGE_COST_TIME_FOR_CACHE, null, null)

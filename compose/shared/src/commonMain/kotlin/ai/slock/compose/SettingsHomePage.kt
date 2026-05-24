@@ -41,6 +41,7 @@ import ai.slock.compose.data.SharedSettingsState
 import ai.slock.compose.data.SharedSettingsViewModel
 import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.StoredAuthSession
+import ai.slock.compose.data.realtime.RealtimeEventMapper
 import ai.slock.compose.data.parseSlockHome
 import ai.slock.compose.data.BridgeThreadApi
 import ai.slock.compose.data.kuiklyNotificationPreferenceRepository
@@ -487,6 +488,8 @@ private fun SlockAppShellContent() {
     val settingsState by settingsViewModel.state.collectAsState()
     val navController = rememberNavController()
     val bottomSafeArea = slockBottomSafeAreaPadding()
+    val realtimeEventMapper = remember { RealtimeEventMapper() }
+    var realtimeLastSeq by remember { mutableStateOf(0L) }
     val threadTimeContext = remember(pager.pageData.params.toString()) {
         pager.pageData.params.threadTimeContext()
     }
@@ -565,6 +568,24 @@ private fun SlockAppShellContent() {
         }
         is SharedAuthGateState.Ready -> Unit
     }
+    val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
+
+    DisposableEffect(readySession?.currentServerId, readySession?.accessToken) {
+        val serverId = readySession?.currentServerId
+        val accessToken = readySession?.accessToken
+        if (!serverId.isNullOrBlank() && !accessToken.isNullOrBlank()) {
+            bridge.realtimeConnect(
+                serverId = serverId,
+                accessToken = accessToken,
+                lastSeq = realtimeLastSeq
+            )
+        }
+        onDispose {
+            if (!serverId.isNullOrBlank()) {
+                bridge.realtimeDisconnect("session_changed")
+            }
+        }
+    }
 
     fun popThreadRoute(): Boolean {
         if (threadBackStack.isNotEmpty()) {
@@ -634,18 +655,23 @@ private fun SlockAppShellContent() {
         }
     }
 
-    DisposableEffect(pager, homeViewModel) {
+    LaunchedEffect(activeThreadPayload?.sourceThreadId) {
+        activeThreadPayload?.sourceThreadId
+            ?.takeIf { it.isNotBlank() }
+            ?.let { bridge.realtimeJoinChannel(it) }
+    }
+
+    DisposableEffect(pager, homeViewModel, realtimeEventMapper) {
         val observer =
             object : IPagerEventObserver {
                 override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
                     if (pagerEvent != AppShellRealtimeEvent) return
                     val serverId = eventData.optString("serverId").takeIf { it.isNotBlank() } ?: return
-                    val payload = eventData.optString("payload").takeIf { it.isNotBlank() } ?: return
-                    val event =
-                        parseSharedShellRealtimeEvent(payload).getOrElse { throwable ->
-                            bridge.log("shared_realtime_decode_failed ${throwable.message.orEmpty()}")
-                            return
-                        }
+                    val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return
+                    realtimeLastSeq = realtimeLastSeq.updateFrom(event)
+                    if (event is DirectMessageCreated) {
+                        bridge.realtimeJoinChannel(event.channelId.value)
+                    }
                     homeViewModel.dispatch(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
                 }
             }
@@ -2358,6 +2384,28 @@ internal fun buildAppShellThreadPayload(
             )
     )
 
+private fun decodeSharedShellRealtimeEvent(
+    eventData: JSONObject,
+    mapper: RealtimeEventMapper,
+    log: (String) -> Unit
+): RealtimeEvent? {
+    val typedPayload = eventData.optString("payload").takeIf { it.isNotBlank() }
+    if (typedPayload != null) {
+        return parseSharedShellRealtimeEvent(typedPayload).getOrElse { throwable ->
+            log("shared_realtime_decode_failed ${throwable.message.orEmpty()}")
+            null
+        }
+    }
+
+    val eventName = eventData.optString("eventName").takeIf { it.isNotBlank() } ?: return null
+    val rawPayload = eventData.optString("rawPayload").takeIf { it.isNotBlank() } ?: return null
+    val event = mapper.map(eventName, rawPayload)
+    if (event == null) {
+        log("shared_realtime_raw_decode_failed eventName=$eventName")
+    }
+    return event
+}
+
 private fun parseSharedShellRealtimeEvent(payload: String): Result<RealtimeEvent> =
     runCatching {
         val json = JSONObject(payload)
@@ -2409,6 +2457,15 @@ private fun parseSharedShellRealtimeEvent(payload: String): Result<RealtimeEvent
             "heartbeat" -> Heartbeat(json.optLong("seq", 0L))
             else -> error("unsupported realtime event ${json.optString("type")}")
         }
+    }
+
+private fun Long.updateFrom(event: RealtimeEvent): Long =
+    when (event) {
+        is Heartbeat -> maxOf(this, event.seq)
+        is SyncResumeResponse -> maxOf(this, event.currentSeq)
+        is MessageNew -> maxOf(this, event.message.seq ?: 0L)
+        is MessageUpdated -> maxOf(this, event.message.seq ?: 0L)
+        else -> this
     }
 
 private fun JSONObject?.toSharedMessage(): Message {

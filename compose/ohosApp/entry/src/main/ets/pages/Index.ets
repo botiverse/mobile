@@ -3,6 +3,7 @@ import deviceInfo from '@ohos.deviceInfo';
 import router from '@ohos.router';
 import { KuiklyViewDelegate } from '../kuikly/KuiklyViewDelegate';
 import globalNativeManager from '../kuikly/MyNativeManager';
+import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
 const SAFE_AREA_BOTTOM_PX = 'slockSafeAreaBottomPx';
@@ -38,6 +39,7 @@ struct Index {
         nativeManager: globalNativeManager,
         onControllerReadyCallback: (controller: KRNativeRenderController) => {
           this.controller = controller;
+          slockOhosRealtimeBridge.setController(controller);
         },
         onRenderException: (exception: Error, reason: ErrorReason) => {
           this.exception = `${exception.name}:\n${exception.message}`;
