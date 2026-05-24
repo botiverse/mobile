@@ -19,6 +19,7 @@ import kotlinx.serialization.json.Json
 private val tasksJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
+    explicitNulls = false
 }
 
 class SharedTasksDataSource(
@@ -174,24 +175,38 @@ interface SlockTasksApi {
         HomeNetworkResponse(code = 501, bodyText = null)
 }
 
-fun buildSharedTaskStatusBody(status: TaskStatus): String =
-    tasksJson.encodeToString(mapOf("status" to status.toApiValue()))
+@Serializable
+data class TaskStatusUpdateRequestBody(val status: String)
 
-fun buildSharedTasksCreateBody(drafts: List<TaskCreateDraft>): String =
-    tasksJson.encodeToString(
-        mapOf(
-            "tasks" to
-                drafts.map { draft ->
-                    buildMap {
-                        put("title", draft.title.trim())
-                        draft.description?.trim()?.takeIf { it.isNotBlank() }?.let { put("description", it) }
-                    }
-                }
-        )
+@Serializable
+data class TaskCreateRequestBody(
+    val title: String,
+    val description: String? = null
+)
+
+@Serializable
+data class TasksCreateRequestBody(val tasks: List<TaskCreateRequestBody>)
+
+@Serializable
+data class TaskConvertRequestBody(val messageId: String)
+
+fun TaskStatus.toTaskStatusUpdateRequestBody(): TaskStatusUpdateRequestBody =
+    TaskStatusUpdateRequestBody(status = toApiValue())
+
+fun TaskCreateDraft.toTaskCreateRequestBody(): TaskCreateRequestBody =
+    TaskCreateRequestBody(
+        title = title.trim(),
+        description = description?.trim()?.takeIf { it.isNotBlank() }
     )
 
+fun buildSharedTaskStatusBody(status: TaskStatus): String =
+    tasksJson.encodeToString(status.toTaskStatusUpdateRequestBody())
+
+fun buildSharedTasksCreateBody(drafts: List<TaskCreateDraft>): String =
+    tasksJson.encodeToString(TasksCreateRequestBody(drafts.map { it.toTaskCreateRequestBody() }))
+
 fun buildSharedTaskConvertBody(messageId: MessageId): String =
-    tasksJson.encodeToString(mapOf("messageId" to messageId.value))
+    tasksJson.encodeToString(TaskConvertRequestBody(messageId.value))
 
 internal class SlockTasksApiClient(
     private val transport: SlockTasksApi

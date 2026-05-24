@@ -6,8 +6,6 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 
 private val authJson = Json {
     ignoreUnknownKeys = true
@@ -55,6 +53,58 @@ class SharedAuthDataSource(
             )
         sessionStore.saveSession(session)
         return SharedAuthResult.Success(session)
+    }
+
+    suspend fun register(
+        name: String,
+        email: String,
+        password: String
+    ): SharedAuthResult<StoredAuthSession> {
+        if (name.isBlank() || email.isBlank() || password.isBlank()) {
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "Name, email, and password are required."
+            )
+        }
+        if (password.length < 8) {
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "Password must be at least 8 characters."
+            )
+        }
+
+        val register =
+            when (val response = api.register(name = name.trim(), email = email.trim(), password = password)) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> return response.toSharedAuthFailure()
+            }
+        val servers =
+            when (val response = api.servers("Bearer ${register.accessToken}")) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> emptyList()
+            }
+        val selectedServer = servers.firstOrNull()
+        val session =
+            StoredAuthSession(
+                user = register.user,
+                accessToken = register.accessToken,
+                refreshToken = register.refreshToken,
+                selectedServerId = selectedServer?.id,
+                selectedServerSlug = selectedServer?.slug,
+                servers = servers
+            )
+        sessionStore.saveSession(session)
+        return SharedAuthResult.Success(session)
+    }
+
+    suspend fun forgotPassword(email: String): SharedAuthResult<Unit> {
+        if (email.isBlank() || !email.contains("@")) {
+            return SharedAuthResult.Failure(SharedAuthErrorCode.Validation, "Enter a valid email address.")
+        }
+        return when (val response = api.forgotPassword(email.trim())) {
+            is AuthApiResult.Success -> SharedAuthResult.Success(Unit)
+            is AuthApiResult.Failure -> response.toSharedAuthFailure()
+        }
     }
 
     suspend fun currentSession(): SharedAuthResult<StoredAuthSession> =
@@ -155,11 +205,13 @@ class SharedAuthDataSource(
             return SharedAuthResult.Failure(SharedAuthErrorCode.Validation, "Server name is required.")
         }
         val body =
-            buildJsonObject {
-                put("name", normalizedName)
-                slug?.trim()?.takeIf { it.isNotBlank() }?.let { put("slug", it) }
-                region?.trim()?.takeIf { it.isNotBlank() }?.let { put("region", it) }
-            }.toString()
+            authJson.encodeToString(
+                CreateServerRequestPayload(
+                    name = normalizedName,
+                    slug = slug?.trim()?.takeIf { it.isNotBlank() },
+                    region = region?.trim()?.takeIf { it.isNotBlank() }
+                )
+            )
         val created =
             when (val response = api.createServer(session.bearer(), body)) {
                 is AuthApiResult.Success -> response.data
@@ -243,6 +295,8 @@ class SharedAuthDataSource(
  */
 interface SlockAuthApi {
     suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse>
+    suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse>
+    suspend fun forgotPassword(email: String): AuthApiResult<Unit>
     suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser>
     suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse>
     suspend fun logout(refreshToken: String): AuthApiResult<Unit>
@@ -256,6 +310,16 @@ class SlockAuthApiClient(
     override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
         transport.login(authJson.encodeToString(LoginRequestPayload(email = email, password = password)))
             .mapAuthBody("auth_login_contract_mismatch", AuthLoginResponseDto.serializer()) { it.toDomain() }
+
+    override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
+        transport.register(authJson.encodeToString(RegisterRequestPayload(email = email, password = password, name = name)))
+            .mapAuthBody("auth_register_contract_mismatch", AuthLoginResponseDto.serializer()) { it.toDomain() }
+
+    override suspend fun forgotPassword(email: String): AuthApiResult<Unit> {
+        val response = transport.forgotPassword(authJson.encodeToString(ForgotPasswordRequestPayload(email = email)))
+        if (!response.isSuccessful) return response.toAuthApiFailure()
+        return response.mapAuthBody("auth_forgot_password_contract_mismatch", AuthOkResponseDto.serializer()) { Unit }
+    }
 
     override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
         transport.currentUser(authorization)
@@ -282,6 +346,8 @@ class SlockAuthApiClient(
 
 interface SlockAuthTransport {
     suspend fun login(bodyText: String): AuthNetworkResponse
+    suspend fun register(bodyText: String): AuthNetworkResponse
+    suspend fun forgotPassword(bodyText: String): AuthNetworkResponse
     suspend fun currentUser(authorization: String): AuthNetworkResponse
     suspend fun refresh(bodyText: String): AuthNetworkResponse
     suspend fun logout(bodyText: String): AuthNetworkResponse
@@ -339,6 +405,25 @@ enum class SharedAuthErrorCode {
 private data class LoginRequestPayload(
     val email: String,
     val password: String
+)
+
+@kotlinx.serialization.Serializable
+private data class RegisterRequestPayload(
+    val email: String,
+    val password: String,
+    val name: String
+)
+
+@kotlinx.serialization.Serializable
+private data class ForgotPasswordRequestPayload(
+    val email: String
+)
+
+@kotlinx.serialization.Serializable
+private data class CreateServerRequestPayload(
+    val name: String,
+    val slug: String? = null,
+    val region: String? = null
 )
 
 @kotlinx.serialization.Serializable
@@ -444,6 +529,12 @@ private data class AuthRefreshResponseDto(
 
 private fun AuthRefreshResponseDto.toDomain(): AuthRefreshResponse =
     AuthRefreshResponse(accessToken = accessToken, refreshToken = refreshToken)
+
+@Serializable
+private data class AuthOkResponseDto(
+    val ok: Boolean = true,
+    val message: String? = null,
+)
 
 @Serializable
 private data class AuthErrorBodyDto(

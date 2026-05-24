@@ -106,6 +106,10 @@ cd /Users/artin/AndroidStudioProjects/Slock
   request/response DTOs and `SlockNetworkClient`; Android must not reintroduce a
   parallel `SlockApi`, endpoint facade, or app-local JSON parser for those
   contracts.
+- Request bodies must be explicit `@Serializable` shared DTO types too. Do not
+  build API bodies with `mapOf`, ad hoc `JsonObject`, string concatenation, or
+  route-local anonymous shapes; expose a named request DTO/builder in shared and
+  encode that DTO at the network boundary.
 - Shared `SlockNetworkClient` calls must take an explicit `DataRequestPriority`.
   Do not add no-priority overloads or defaults. This is the compile-time
   tripwire: new API methods and fake implementations should fail to compile

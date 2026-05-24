@@ -77,6 +77,23 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun registerAndForgotPasswordUseSharedDtoBodies() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val registered = source.register(name = " Artin ", email = " user@slock.ai ", password = "password123")
+        val forgot = source.forgotPassword(" user@slock.ai ")
+
+        assertTrue(registered is SharedAuthResult.Success)
+        assertTrue(forgot is SharedAuthResult.Success)
+        assertEquals("""{"email":"user@slock.ai","password":"password123","name":"Artin"}""", api.registerBody)
+        assertEquals("""{"email":"user@slock.ai"}""", api.forgotPasswordBody)
+        assertEquals("user-1", store.readSession()?.user?.id)
+    }
+
+
+    @Test
     fun restoreSessionRefreshesUnauthorizedCurrentUserInSharedLayer() = runBlocking {
         val store =
             InMemorySlockAuthSessionStore(
@@ -193,6 +210,10 @@ class AuthDataSourceTest {
     ) : SlockAuthTransport {
         var loginBody: String? = null
             private set
+        var registerBody: String? = null
+            private set
+        var forgotPasswordBody: String? = null
+            private set
         var serversAuthorization: String? = null
             private set
         var createServerBody: String? = null
@@ -201,6 +222,16 @@ class AuthDataSourceTest {
         override suspend fun login(bodyText: String): AuthNetworkResponse {
             loginBody = bodyText
             return loginResponse
+        }
+
+        override suspend fun register(bodyText: String): AuthNetworkResponse {
+            registerBody = bodyText
+            return loginResponse
+        }
+
+        override suspend fun forgotPassword(bodyText: String): AuthNetworkResponse {
+            forgotPasswordBody = bodyText
+            return AuthNetworkResponse(200, """{"ok":true,"message":"sent"}""")
         }
 
         override suspend fun currentUser(authorization: String): AuthNetworkResponse =

@@ -148,12 +148,15 @@ class NetworkPriorityCallSiteTest {
                         "app/src/main/java/ai/slock/android/core/data/network/SlockApi.kt",
                         "app/src/main/java/ai/slock/android/core/data/network/ComposeSlockApiAdapter.kt",
                         "app/src/main/java/ai/slock/android/core/data/network/RealSlockRepositories.kt",
-                        "app/src/main/java/ai/slock/android/core/data/network/NetworkResponseMapper.kt"
+                        "app/src/main/java/ai/slock/android/core/data/network/NetworkResponseMapper.kt",
+                        "app/src/main/java/ai/slock/android/core/data/network/ApiResponse.kt",
+                        "app/src/main/java/ai/slock/android/core/data/auth/AuthApi.kt",
+                        "app/src/main/java/ai/slock/android/core/data/auth/AndroidSlockAuthApi.kt"
                 )
                         .filter { File(root, it).exists() }
 
         assertTrue(
-                "Android must not keep legacy SlockApi facade/repository files; API requests belong in shared DTO repositories.\n" +
+                "Android must not keep legacy API facade/repository files; API requests belong in shared DTO repositories.\n" +
                         legacyFiles.joinToString("\n"),
                 legacyFiles.isEmpty()
         )

@@ -168,7 +168,7 @@ class RealSavedRepository(
                 if (save) {
                     networkClient.saveMessage(
                         DataRequestPriority.Foreground,
-                        inboxSavedSearchRepositoryJson.encodeToString(SaveMessageBody(messageId.value))
+                        buildSharedSaveMessageBody(messageId)
                     )
                 } else {
                     networkClient.unsaveMessage(DataRequestPriority.Foreground, messageId)
@@ -253,7 +253,10 @@ class RealSearchRepository(
 }
 
 @Serializable
-private data class SaveMessageBody(val messageId: String)
+data class SaveMessageRequestBody(val messageId: String)
+
+fun buildSharedSaveMessageBody(messageId: MessageId): String =
+    inboxSavedSearchRepositoryJson.encodeToString(SaveMessageRequestBody(messageId.value))
 
 private data class InboxLikeServerContext(val server: ServerSummary)
 

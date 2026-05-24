@@ -5,11 +5,12 @@ import ai.slock.android.core.data.auth.AuthSession
 import ai.slock.android.core.data.auth.AuthSessionStore
 import ai.slock.android.core.data.auth.AuthUser
 import ai.slock.android.core.data.auth.AuthTokenRefresher
-import ai.slock.android.core.data.auth.AuthApi
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody
-import okhttp3.ResponseBody
-import okhttp3.ResponseBody.Companion.toResponseBody
+import ai.slock.compose.data.AuthApiResult
+import ai.slock.compose.data.AuthLoginResponse
+import ai.slock.compose.data.AuthRefreshResponse
+import ai.slock.compose.data.SlockAuthApi
+import ai.slock.compose.data.StoredAuthServer
+import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.DataResult
 import ai.slock.android.core.data.repository.RealtimeSubscription
 import ai.slock.android.core.model.AgentStatus
@@ -34,7 +35,6 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import ai.slock.android.core.data.network.ApiResponse
 
 class RealtimeRepositoryTest {
     @Test
@@ -646,42 +646,35 @@ class RealtimeRepositoryTest {
 
     private class FakeAuthApi(
         private val refreshFailure: Throwable? = null
-    ) : AuthApi {
-        override suspend fun login(body: RequestBody): ApiResponse =
-            ApiResponse.error(404, "".toResponseBody(json))
+    ) : SlockAuthApi {
+        override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
+            AuthApiResult.Failure(404)
 
-        override suspend fun register(body: RequestBody): ApiResponse =
-            ApiResponse.error(404, "".toResponseBody(json))
+        override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
+            AuthApiResult.Failure(404)
 
-        override suspend fun forgotPassword(body: RequestBody): ApiResponse =
-            ApiResponse.error(404, "".toResponseBody(json))
+        override suspend fun forgotPassword(email: String): AuthApiResult<Unit> =
+            AuthApiResult.Failure(404)
 
-        override suspend fun currentUser(authorization: String): ApiResponse =
-            ApiResponse.error(404, "".toResponseBody(json))
+        override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
+            AuthApiResult.Failure(404)
 
-        override suspend fun refresh(body: RequestBody): ApiResponse {
+        override suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse> {
             refreshFailure?.let { throw it }
-            return ApiResponse.success(
-                """{"accessToken":"socket-new-access","refreshToken":"socket-new-refresh"}""".toResponseBody(json)
-            )
+            return AuthApiResult.Success(AuthRefreshResponse("socket-new-access", "socket-new-refresh"))
         }
 
-        override suspend fun logout(body: RequestBody): ApiResponse =
-            ApiResponse.success("""{"ok":true}""".toResponseBody(json))
+        override suspend fun logout(refreshToken: String): AuthApiResult<Unit> =
+            AuthApiResult.Success(Unit)
 
-        override suspend fun servers(authorization: String): ApiResponse =
-            ApiResponse.error(404, "".toResponseBody(json))
+        override suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>> =
+            AuthApiResult.Failure(404)
 
-        override suspend fun createServer(
-            authorization: String,
-            body: RequestBody
-        ): ApiResponse =
-            ApiResponse.error(404, "".toResponseBody(json))
+        override suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer> =
+            AuthApiResult.Failure(404)
     }
 
     companion object {
-        private val json = "application/json; charset=utf-8".toMediaType()
-
         private val sampleSession = AuthSession(
             user = AuthUser(
                 id = "user-1",

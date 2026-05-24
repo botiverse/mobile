@@ -1,18 +1,18 @@
 package ai.slock.android.core.data.auth
 
+import ai.slock.compose.data.AuthApiResult
+import ai.slock.compose.data.SlockAuthApi
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import okio.ByteString.Companion.decodeBase64
 
 class AuthTokenRefresher(
     private val store: AuthSessionStore,
-    private val api: AuthApi = KtorAuthRepository.createAuthApi(),
+    private val api: SlockAuthApi = KtorAuthRepository.createAuthApi(),
     private val refreshSoonThresholdMillis: Long = DEFAULT_REFRESH_SOON_THRESHOLD_MILLIS,
     private val clockMillis: () -> Long = { System.currentTimeMillis() },
     private val logger: (String) -> Unit = { message -> ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(TAG, message) },
@@ -54,25 +54,22 @@ class AuthTokenRefresher(
 
             try {
                 logger("refresh_start")
-                val response = api.refresh(jsonBody(RefreshRequest(current.refreshToken)))
-                if (!response.isSuccessful) {
-                    val code = response.code()
-                    warningLogger("refresh_failed status=$code")
-                    if (code == 401 || code == 403) {
-                        if (clearOnUnauthorized) {
-                            store.clearSession()
-                        } else {
-                            warningLogger("refresh_unauthorized_session_preserved")
+                val refreshed =
+                    when (val response = api.refresh(current.refreshToken)) {
+                        is AuthApiResult.Success -> response.data
+                        is AuthApiResult.Failure -> {
+                            val code = response.code
+                            warningLogger("refresh_failed status=$code")
+                            if (code == 401 || code == 403) {
+                                if (clearOnUnauthorized) {
+                                    store.clearSession()
+                                } else {
+                                    warningLogger("refresh_unauthorized_session_preserved")
+                                }
+                            }
+                            return@withLock null
                         }
                     }
-                    return@withLock null
-                }
-                val rawBody = response.body()?.string().orEmpty()
-                if (rawBody.isBlank()) {
-                    warningLogger("refresh_failed reason=empty_body")
-                    return@withLock null
-                }
-                val refreshed = gson.fromJson(rawBody, RefreshResponse::class.java)
                 val updated = current.copy(
                     accessToken = refreshed.accessToken,
                     refreshToken = refreshed.refreshToken
@@ -90,9 +87,6 @@ class AuthTokenRefresher(
                 null
             }
         }
-
-    private fun jsonBody(value: Any) =
-        gson.toJson(value).toRequestBody(JSON)
 
     private fun String.jwtExpiresAtMillis(): Long? {
         return try {
@@ -113,6 +107,5 @@ class AuthTokenRefresher(
     private companion object {
         const val TAG = "SlockAuth"
         const val DEFAULT_REFRESH_SOON_THRESHOLD_MILLIS = 60_000L
-        val JSON = "application/json; charset=utf-8".toMediaType()
     }
 }

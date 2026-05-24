@@ -17,6 +17,7 @@ import ai.slock.compose.model.topLevelThreadId
 import ai.slock.compose.network.MultipartFile
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -712,11 +713,22 @@ private fun ConversationSummary.withThreadAnchor(
     ).withParentNameFallback()
 }
 
+@Serializable
+data class ThreadChannelActionRequestBody(
+    val threadChannelId: String,
+    val channelId: String
+)
+
+@Serializable
+data class ParentMessageThreadRequestBody(val parentMessageId: String)
+
 private fun ChannelId.toThreadActionBody(): String =
-    conversationRepositoryJson.encodeToString(mapOf("threadChannelId" to value, "channelId" to value))
+    conversationRepositoryJson.encodeToString(
+        ThreadChannelActionRequestBody(threadChannelId = value, channelId = value)
+    )
 
 private fun MessageId.toParentMessageThreadBody(): String =
-    conversationRepositoryJson.encodeToString(mapOf("parentMessageId" to value))
+    conversationRepositoryJson.encodeToString(ParentMessageThreadRequestBody(parentMessageId = value))
 
 private fun AttachmentUploadFile.toMultipartFile(): MultipartFile =
     MultipartFile(

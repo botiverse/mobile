@@ -27,6 +27,12 @@ internal class BridgeAuthApi(
     override suspend fun login(bodyText: String): AuthNetworkResponse =
         request(path = "auth/login", method = "POST", bodyText = bodyText)
 
+    override suspend fun register(bodyText: String): AuthNetworkResponse =
+        request(path = "auth/register", method = "POST", bodyText = bodyText)
+
+    override suspend fun forgotPassword(bodyText: String): AuthNetworkResponse =
+        request(path = "auth/forgot-password", method = "POST", bodyText = bodyText)
+
     override suspend fun currentUser(authorization: String): AuthNetworkResponse =
         request(path = "auth/me", method = "GET", authorization = authorization)
 
@@ -521,7 +527,7 @@ internal class BridgeThreadApi(
         request(
             path = "channels/saved",
             method = "POST",
-            bodyText = bridgeAuthJson.encodeToString(mapOf("messageId" to messageId.trim()))
+            bodyText = buildSharedSaveMessageBody(MessageId(messageId.trim()))
         )
 
     override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse =
@@ -535,9 +541,7 @@ internal class BridgeThreadApi(
         request(
             path = "channels/${channelId.trim()}/threads",
             method = "POST",
-            bodyText = bridgeAuthJson.encodeToString(
-                mapOf("parentMessageId" to parentMessageId.trim())
-            )
+            bodyText = bridgeAuthJson.encodeToString(ParentMessageThreadRequestBody(parentMessageId.trim()))
         )
 
     private suspend fun request(

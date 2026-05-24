@@ -1,6 +1,7 @@
 package ai.slock.android.core.data.auth
 
-import ai.slock.android.core.data.network.ApiResponse
+import ai.slock.compose.data.AuthNetworkResponse
+import ai.slock.compose.data.SlockAuthTransport
 import ai.slock.compose.network.HttpClientConfig
 import ai.slock.compose.network.TimeoutConfig
 import ai.slock.compose.network.createHttpClient
@@ -16,8 +17,6 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
-import okhttp3.RequestBody
-import okio.Buffer
 
 class KtorAuthApi(
     private val baseUrl: String = KtorAuthRepository.BASE_URL,
@@ -27,41 +26,41 @@ class KtorAuthApi(
     private val warningLogger: (String) -> Unit = { message ->
         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.w(TAG, message)
     }
-) : AuthApi {
-    override suspend fun login(body: RequestBody): ApiResponse =
-        request(method = HttpMethod.Post, path = "auth/login", body = body.bodyAsString())
+) : SlockAuthTransport {
+    override suspend fun login(bodyText: String): AuthNetworkResponse =
+        request(method = HttpMethod.Post, path = "auth/login", body = bodyText)
 
-    override suspend fun register(body: RequestBody): ApiResponse =
-        request(method = HttpMethod.Post, path = "auth/register", body = body.bodyAsString())
+    override suspend fun register(bodyText: String): AuthNetworkResponse =
+        request(method = HttpMethod.Post, path = "auth/register", body = bodyText)
 
-    override suspend fun forgotPassword(body: RequestBody): ApiResponse =
+    override suspend fun forgotPassword(bodyText: String): AuthNetworkResponse =
         request(
             method = HttpMethod.Post,
             path = "auth/forgot-password",
-            body = body.bodyAsString()
+            body = bodyText
         )
 
-    override suspend fun currentUser(authorization: String): ApiResponse =
+    override suspend fun currentUser(authorization: String): AuthNetworkResponse =
         request(method = HttpMethod.Get, path = "auth/me", authorization = authorization)
 
-    override suspend fun refresh(body: RequestBody): ApiResponse =
-        request(method = HttpMethod.Post, path = "auth/refresh", body = body.bodyAsString())
+    override suspend fun refresh(bodyText: String): AuthNetworkResponse =
+        request(method = HttpMethod.Post, path = "auth/refresh", body = bodyText)
 
-    override suspend fun logout(body: RequestBody): ApiResponse =
-        request(method = HttpMethod.Post, path = "auth/logout", body = body.bodyAsString())
+    override suspend fun logout(bodyText: String): AuthNetworkResponse =
+        request(method = HttpMethod.Post, path = "auth/logout", body = bodyText)
 
-    override suspend fun servers(authorization: String): ApiResponse =
+    override suspend fun servers(authorization: String): AuthNetworkResponse =
         request(method = HttpMethod.Get, path = "servers", authorization = authorization)
 
     override suspend fun createServer(
         authorization: String,
-        body: RequestBody
-    ): ApiResponse =
+        bodyText: String
+    ): AuthNetworkResponse =
         request(
             method = HttpMethod.Post,
             path = "servers",
             authorization = authorization,
-            body = body.bodyAsString()
+            body = bodyText
         )
 
     private suspend fun request(
@@ -69,7 +68,7 @@ class KtorAuthApi(
         path: String,
         authorization: String? = null,
         body: String? = null
-    ): ApiResponse {
+    ): AuthNetworkResponse {
         val response = try {
             when (method) {
                 HttpMethod.Get -> httpClient.get {
@@ -89,27 +88,28 @@ class KtorAuthApi(
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (io: IOException) {
-            throw io
+            return AuthNetworkResponse(code = 0, bodyText = null, errorBodyText = io.message)
         } catch (error: Exception) {
             warningLogger(
                 "auth_api_failed path=$path method=${method.value} " +
                     "reason=${error::class.java.simpleName}"
             )
-            throw IOException(error)
+            return AuthNetworkResponse(code = 0, bodyText = null, errorBodyText = error.message)
         }
-        return ApiResponse.from(response.toKmpHttpResponse())
+        return response.toKmpHttpResponse().toAuthNetworkResponse()
     }
 
     private fun absoluteUrl(path: String): String =
         "${baseUrl.trimEnd('/')}/${path.trimStart('/')}"
 
-    private fun RequestBody.bodyAsString(): String {
-        val buffer = Buffer()
-        writeTo(buffer)
-        return buffer.readUtf8()
-    }
-
     private companion object {
         const val TAG = "SlockAuth"
     }
 }
+
+private fun ai.slock.compose.network.KmpHttpResponse.toAuthNetworkResponse(): AuthNetworkResponse =
+    AuthNetworkResponse(
+        code = code,
+        bodyText = bodyText,
+        errorBodyText = errorBodyText
+    )

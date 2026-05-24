@@ -1,9 +1,7 @@
 package ai.slock.android.core.data.auth
 
-import ai.slock.android.core.data.network.ApiResponse
 import ai.slock.android.core.data.repository.ChannelSnapshot
 import ai.slock.android.core.data.repository.CreateServerRequest
-import ai.slock.compose.data.DataResult
 import ai.slock.android.core.data.repository.HomeSnapshot
 import ai.slock.android.core.data.repository.InboxSnapshot
 import ai.slock.android.core.data.repository.ServerListSnapshot
@@ -13,18 +11,23 @@ import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.state.EmptyReason
 import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenError
-import com.google.gson.Gson
-import com.google.gson.JsonElement
-import java.io.IOException
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
+import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.SharedAuthDataSource
+import ai.slock.compose.data.SharedAuthErrorCode
+import ai.slock.compose.data.SharedAuthResult
+import ai.slock.compose.data.SlockAuthApi
+import ai.slock.compose.data.StoredAuthSession
 
 class AuthServerRepository(
     private val store: AuthSessionStore,
     private val authRepository: AuthRepository,
-    private val api: AuthApi = KtorAuthRepository.createAuthApi()
+    api: SlockAuthApi = KtorAuthRepository.createAuthApi()
 ) : ServerRepository {
-    private val gson = Gson()
+    private val sharedAuthDataSource =
+        SharedAuthDataSource(
+            api = api,
+            sessionStore = ComposeAuthSessionStoreAdapter(store)
+        )
 
     override suspend fun getServers(): DataResult<ServerListSnapshot> {
         val session = store.readSession() ?: return authRequired()
@@ -39,62 +42,29 @@ class AuthServerRepository(
         return DataResult.Content(latest.toServerListSnapshot())
     }
 
-    override suspend fun selectServer(serverId: ServerId): DataResult<ServerListSnapshot> {
-        val session = store.readSession() ?: return authRequired()
-        val selected = session.servers.firstOrNull { it.id == serverId.value }
-            ?: return DataResult.Error(ScreenError(code = "server_not_found", retryable = false))
-
-        store.updateSelectedServer(selected.id, selected.slug)
-        val updated = store.readSession() ?: session.copy(
-            selectedServerId = selected.id,
-            selectedServerSlug = selected.slug
-        )
-        return DataResult.Content(updated.toServerListSnapshot())
-    }
+    override suspend fun selectServer(serverId: ServerId): DataResult<ServerListSnapshot> =
+        when (val result = sharedAuthDataSource.selectServer(serverId.value)) {
+            is SharedAuthResult.Success -> DataResult.Content(result.data.toAndroidAuthSession().toServerListSnapshot())
+            SharedAuthResult.Unauthenticated -> authRequired()
+            is SharedAuthResult.Failure -> DataResult.Error(ScreenError(code = "server_not_found", retryable = false))
+        }
 
     override suspend fun createServer(request: CreateServerRequest): DataResult<ServerListSnapshot> {
-        val session = store.readSession() ?: return authRequired()
         val name = request.name.trim()
         if (name.isBlank()) {
             return DataResult.Error(ScreenError(code = "server_name_required", retryable = false))
         }
-
-        return try {
-            val authorization = session.bearer()
-            val createdServer = api.createServer(
-                authorization = authorization,
-                body = jsonBody(
-                    mapOf(
-                        "name" to name,
-                        "slug" to request.slug?.trim().orEmpty().ifBlank { null },
-                        "region" to request.region?.trim().orEmpty().ifBlank { null }
-                    ).filterValues { it != null }
+        return when (
+            val result =
+                sharedAuthDataSource.createServer(
+                    name = name,
+                    slug = request.slug,
+                    region = request.region
                 )
-            ).parseCreatedServer()
-            val latestServers = runCatching { api.servers(authorization).parseAuthServers() }
-                .getOrElse { session.servers.upsert(createdServer) }
-                .upsert(createdServer)
-            val selected = latestServers.firstOrNull { it.id == createdServer.id } ?: createdServer
-            val updated = session.copy(
-                servers = latestServers,
-                selectedServerId = selected.id,
-                selectedServerSlug = selected.slug
-            )
-            store.saveSession(updated)
-            DataResult.Content(updated.toServerListSnapshot())
-        } catch (error: ServerHttpException) {
-            when (error.code) {
-                400 -> DataResult.Error(ScreenError(code = "server_validation", retryable = false))
-                401 -> authRequired()
-                403 -> DataResult.NoPermission(PermissionBlocker(code = "server_create_forbidden"))
-                409 -> DataResult.Error(ScreenError(code = "server_duplicate", retryable = false))
-                in 500..599 -> DataResult.Error(ScreenError(code = "server_create_unavailable", retryable = true))
-                else -> DataResult.Error(ScreenError(code = "server_create_failed", retryable = true))
-            }
-        } catch (_: IOException) {
-            DataResult.Error(ScreenError(code = "server_create_network", retryable = true))
-        } catch (_: Exception) {
-            DataResult.Error(ScreenError(code = "server_create_failed", retryable = true))
+        ) {
+            is SharedAuthResult.Success -> DataResult.Content(result.data.toAndroidAuthSession().toServerListSnapshot())
+            SharedAuthResult.Unauthenticated -> authRequired()
+            is SharedAuthResult.Failure -> result.toCreateServerError()
         }
     }
 
@@ -118,49 +88,19 @@ class AuthServerRepository(
         )
     }
 
-    private fun AuthSession.bearer(): String = "Bearer $accessToken"
-
-    private fun List<AuthServer>.upsert(server: AuthServer): List<AuthServer> =
-        (this.filterNot { it.id == server.id } + server)
-
-    private fun ApiResponse.parseCreatedServer(): AuthServer {
-        // Canonical: server returns either `{server: AuthServer}` or the bare AuthServer object.
-        val root = parseJsonRoot()
-        val serverJson = if (root.isJsonObject) {
-            val objectRoot = root.asJsonObject
-            objectRoot.get("server")?.takeIf { it.isJsonObject }?.asJsonObject ?: objectRoot
-        } else {
-            root
+    private fun SharedAuthResult.Failure.toCreateServerError(): DataResult<ServerListSnapshot> =
+        when (code) {
+            SharedAuthErrorCode.Validation ->
+                DataResult.Error(ScreenError(code = "server_validation", retryable = false))
+            SharedAuthErrorCode.InvalidCredentials ->
+                authRequired()
+            SharedAuthErrorCode.Network ->
+                DataResult.Error(ScreenError(code = "server_create_network", retryable = true))
+            SharedAuthErrorCode.Server ->
+                DataResult.Error(ScreenError(code = "server_create_unavailable", retryable = true))
+            SharedAuthErrorCode.Unknown ->
+                DataResult.Error(ScreenError(code = "server_create_failed", retryable = true))
         }
-        return gson.fromJson(serverJson, AuthServer::class.java)
-    }
-
-    private fun ApiResponse.parseAuthServers(): List<AuthServer> {
-        // Canonical: server returns `{servers: AuthServer[]}` or a bare array.
-        val root = parseJsonRoot()
-        val serversJson = when {
-            root.isJsonArray -> root.asJsonArray
-            root.isJsonObject ->
-                root.asJsonObject.get("servers")
-                    ?.takeIf { it.isJsonArray }
-                    ?.asJsonArray
-                    ?: return emptyList()
-            else -> return emptyList()
-        }
-        return serversJson.map { gson.fromJson(it, AuthServer::class.java) }
-    }
-
-    private fun ApiResponse.parseJsonRoot(): JsonElement {
-        if (!isSuccessful) {
-            throw ServerHttpException(code())
-        }
-        val rawBody = body()?.string().orEmpty()
-        if (rawBody.isBlank()) throw ServerHttpException(code())
-        return gson.fromJson(rawBody, JsonElement::class.java)
-    }
-
-    private fun jsonBody(value: Any) =
-        gson.toJson(value).toRequestBody(JSON)
 
     private fun <T> authRequired(): DataResult<T> =
         DataResult.NoPermission(
@@ -169,10 +109,4 @@ class AuthServerRepository(
                 requiredCapability = "auth_session"
             )
         )
-
-    private class ServerHttpException(val code: Int) : Exception()
-
-    companion object {
-        private val JSON = "application/json; charset=utf-8".toMediaType()
-    }
 }

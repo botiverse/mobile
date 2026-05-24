@@ -4,6 +4,8 @@ Goal: every API request/response contract goes through a strict
 `@Serializable` camelCase DTO living in `compose/shared/.../data/`. Android is
 only allowed to provide platform capabilities such as auth storage, token
 refresh, and the Android Ktor/OkHttp engine wiring.
+Request bodies are part of the same contract: no `mapOf`/ad hoc `JsonObject`
+body construction for API calls.
 
 Canonical contract is **camelCase only** — verified against the upstream
 TypeScript source at `third_party/slock-source/` (submodule of
@@ -138,23 +140,27 @@ shapes and `packages/shared/` for shared types. No snake_case aliases, no
   `RealSlockRepositories.kt`, `SlockApi.kt`, `ComposeSlockApiAdapter.kt`, and
   `NetworkResponseMapper.kt`. Live Android tests now create shared
   `RealConversationRepository` with `RealSlockNetworkClientFactory`.
+- Auth API request/response parsing moved to shared `AuthDataSource.kt` typed
+  DTOs. Register, login, forgot-password, refresh, logout, current user,
+  server list, and server creation now flow through shared `SlockAuthApi` /
+  `SlockAuthTransport`. Android deleted `ApiResponse.kt`, `AuthApi.kt`, and
+  `AndroidSlockAuthApi.kt`; `KtorAuthApi` is now only the platform Ktor
+  transport, and `KtorAuthRepository` / `AuthServerRepository` are Android
+  result/model adapters over shared auth orchestration.
+- Request body builders now encode named shared DTOs instead of dynamic maps for
+  task status/create/convert, saved-message mutation, thread actions,
+  create-thread-by-parent-message, and auth server creation.
 
 ### Ordered Todo
 
-1. Auth API migration
-   - `ApiResponse` remains only for Android auth (`AuthApi`,
-     `KtorAuthRepository`, `AuthServerRepository`, and realtime/auth tests).
-   - Move auth request/response DTOs and auth/server repository orchestration to
-     shared, then delete Android `ApiResponse`.
-
-2. Platform-only Android data cleanup
+1. Platform-only Android data cleanup
    - Keep Android `app/src/main/java/ai/slock/android/core/data` focused on
      platform capabilities: encrypted session storage, token refresh adapter,
      diagnostics, local SQLDelight store, realtime/socket transport, locale,
      preferences, and storage management.
    - New non-auth HTTP routes must not be added under Android data/network.
 
-3. Tests / Fixtures
+2. Tests / Fixtures
    - Shared repository behavior belongs in
      `compose/shared/src/commonTest/kotlin/ai/slock/compose/data`.
    - Android tests should cover platform adapters/integration only.
