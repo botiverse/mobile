@@ -119,17 +119,11 @@ private fun JsonElement.toAvatarWireValue(): String? {
         "href",
         "src",
         "avatarUrl",
-        "avatar_url",
         "imageUrl",
-        "image_url",
         "profileImageUrl",
-        "profile_image_url",
         "pictureUrl",
-        "picture_url",
         "photoUrl",
-        "photo_url",
-        "iconUrl",
-        "icon_url"
+        "iconUrl"
     )?.let { return it.toAvatarWireValueString() }
     avatarObject.avatarWireValue("data", "profile")?.let { return it }
     avatarObject.string("pixel", "pixelKey", "key", "icon")?.let { key ->
@@ -150,13 +144,12 @@ private fun JsonElement.toAvatarWireValue(): String? {
             "hash",
             "md5",
             "gravatarHash",
-            "gravatar_hash",
             "gravatar"
         )
     return when (type) {
         "pixel" -> "pixel:${typedValue?.removePrefix("pixel:") ?: "robot"}"
         "random" -> "random:${typedValue?.removePrefix("random:") ?: "default"}"
-        "gravatar", "gravatar_hash", "gravatarhash" -> typedValue?.toGravatarWireValue()
+        "gravatar", "gravatarhash" -> typedValue?.toGravatarWireValue()
         "url", "image", "photo" -> typedValue?.toAvatarWireValueString()
         else -> null
     }

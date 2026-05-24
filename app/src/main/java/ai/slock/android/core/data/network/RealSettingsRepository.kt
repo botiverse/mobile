@@ -624,7 +624,7 @@ private fun JsonObject.toSettingsComputerAgents(
 }
 
 private fun JsonObject.belongsToMachine(machineId: String): Boolean =
-    string("machineId", "machine_id", "computerId", "computer_id", "daemonId", "daemon_id") == machineId
+    string("machineId", "computerId", "daemonId") == machineId
 
 private fun JsonObject.toSettingsComputerAgentSnapshot(): SettingsComputerAgentSnapshot {
     val id = string("id", "agentId", "userId") ?: ""
@@ -657,7 +657,7 @@ private fun JsonObject.toSettingsMemberProfile(): MemberProfile? {
         description = string("description", "bio", "summary", "detail"),
         roleDescription = string("roleDescription", "role", "title"),
         avatarUrl = avatarWireValue("avatarUrl", "avatar", "profileAvatar", "imageUrl"),
-        gravatarHash = string("gravatarHash", "gravatar_hash", "gravatar", "gravatarMd5", "gravatar_md5"),
+        gravatarHash = string("gravatarHash", "gravatar", "gravatarMd5"),
         avatarLabel = displayName.take(1).uppercase(),
         presence = when (agentStatus) {
             AgentStatus.Online, AgentStatus.Working, AgentStatus.Thinking -> Presence.Active
