@@ -24,15 +24,22 @@ field guessing.
   `objectValue`/`arrayValue` helpers.
 - `SocketIoRealtimeClient.serverIdOrNull` collapsed to strict `serverId` only.
 - Settings parsing audit (12 helpers cataloged).
-- Snake_case aliases stripped from these app-side helpers (still local, not yet
-  in shared):
-  - `toMessage` (~30 keys)
-  - `memberId`, `memberDisplayName`, `memberAvatarUrl`, `memberGravatarHash`,
-    `memberAgentStatus`
-  - `toAttachment`
-  - `systemEventType`
+- Snake_case aliases fully stripped from `RealSlockRepositories.kt` (commits
+  `53c2f48`, `9dbdd24`, `b812677`). Remaining snake_case strings in the file
+  are intentionally preserved as enum values or internal source tags
+  (`in_review`, `in_progress`, `to_do`, `tool_start`, `thread_*` events,
+  `home_*`, `server_*`, `channel_*`, `messages_*`, `tasks_*`, `read_*`,
+  `not_connected`, `compaction_started/finished`, `dm_open_*`, etc.).
+- Helpers covered so far: `toMessage`, member/avatar/agent/computer/workspace
+  helpers, `toAttachment`, `systemEventType`, thread pagination + cursors,
+  `toTaskSummary`/`taskDisplayTitle`/`taskTextValue`, conversation `toDomain`
+  agent status + drafts + parent/thread channel ids + avatars + membership,
+  `toInboxItem` + kind/timestamps/hasMention, `replyCountFromAliases`,
+  joined/archived channel ids, `messageIdFrom`/`messageTimestampFrom`, skill
+  helpers, agent activity + reminder + skill detail, settings computer/machine
+  identity, workspace path lookup, `threadActionThreadChannelId`.
 - Test fixtures updated to camelCase: `thread_id`, `reply_count`×2,
-  `avatar_url`×2, `latest_activity_at`×2.
+  `avatar_url`×2, `latest_activity_at`×2, `has_more_before`.
 
 ### In progress / next
 
@@ -40,13 +47,9 @@ field guessing.
   NOT caused by the sweep — `git stash` shows the same set on baseline. They
   obscure regression signal for further parser surgery, so triage first or do
   the moves under `--tests` filters that skip the broken set.
-- Strip remaining snake_case aliases from:
-  - `toThreadSnapshot`, `toThreadListSnapshot`
-  - `toTaskSummary`, `claimedByFallback`, task-flat fields on messages
-  - Conversation / inbox helpers
-  - `toMessageType`, `systemMetadata`
-  - Member-heavy helpers in Settings (`toSettingsMemberProfile`,
-    `toAccountSettingsSnapshot`, etc.)
+- Member-heavy helpers in Settings (`toSettingsMemberProfile`,
+  `toAccountSettingsSnapshot`, etc.) still need snake_case strip + move to
+  shared.
 
 ### Move to shared (one batch at a time, each its own commit)
 
