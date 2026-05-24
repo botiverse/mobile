@@ -1,7 +1,7 @@
 package ai.slock.android.core.data.diagnostics
 
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
-import ai.slock.android.core.data.realtime.RealtimeClientDiagnostics
+import ai.slock.compose.data.realtime.RealtimeClientDiagnostics
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.compose.data.DataResult
 import ai.slock.android.core.model.Heartbeat

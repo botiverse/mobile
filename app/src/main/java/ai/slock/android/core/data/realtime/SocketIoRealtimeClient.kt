@@ -1,6 +1,12 @@
 package ai.slock.android.core.data.realtime
 
-import ai.slock.android.core.data.realtime.RealtimeSubscription
+import ai.slock.compose.data.RealtimeSubscription
+import ai.slock.compose.data.realtime.RealtimeConnectRequest
+import ai.slock.compose.data.realtime.RealtimeConnectionState
+import ai.slock.compose.data.realtime.RealtimeClientDiagnostics
+import ai.slock.compose.data.realtime.RealtimeResumeRequest
+import ai.slock.compose.data.realtime.RealtimeSocketTransport
+import ai.slock.compose.data.realtime.RealtimeSocketEvents
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.MessageNew

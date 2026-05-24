@@ -48,8 +48,8 @@ import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.realtime.SessionRealtimeRepository
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.android.core.data.realtime.SocketIoSocketTransport
-import ai.slock.android.core.data.realtime.RealtimeRepository
-import ai.slock.android.core.data.realtime.RealtimeSubscription
+import ai.slock.compose.data.RealtimeRepository
+import ai.slock.compose.data.RealtimeSubscription
 import ai.slock.android.core.model.DirectMessageCreated
 import ai.slock.android.core.model.Heartbeat
 import ai.slock.android.core.model.MemberKind

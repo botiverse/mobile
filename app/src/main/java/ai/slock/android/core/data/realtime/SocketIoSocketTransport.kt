@@ -1,7 +1,8 @@
 package ai.slock.android.core.data.realtime
 
 import android.util.Log
-import ai.slock.android.core.data.realtime.RealtimeSubscription
+import ai.slock.compose.data.RealtimeSubscription
+import ai.slock.compose.data.realtime.RealtimeSocketTransport
 import io.socket.client.IO
 import io.socket.client.Manager
 import io.socket.client.Socket

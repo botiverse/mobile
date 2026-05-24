@@ -72,8 +72,8 @@ import ai.slock.compose.data.ReadReceiptRepository
 import ai.slock.compose.data.ReadReceiptCoordinator
 import ai.slock.compose.data.ReadReceiptRequest
 import ai.slock.compose.data.ReadReceiptVisibilityGate
-import ai.slock.android.core.data.realtime.RealtimeRepository
-import ai.slock.android.core.data.realtime.RealtimeSubscription
+import ai.slock.compose.data.RealtimeRepository
+import ai.slock.compose.data.RealtimeSubscription
 import ai.slock.compose.data.RemoveChannelMemberRequest
 import ai.slock.compose.data.SavedRepository
 import ai.slock.compose.data.SavedSnapshot

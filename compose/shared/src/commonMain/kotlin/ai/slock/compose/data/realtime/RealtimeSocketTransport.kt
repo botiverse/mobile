@@ -1,6 +1,6 @@
-package ai.slock.android.core.data.realtime
+package ai.slock.compose.data.realtime
 
-import ai.slock.android.core.data.realtime.RealtimeSubscription
+import ai.slock.compose.data.RealtimeSubscription
 
 interface RealtimeSocketTransport {
     fun connect(auth: Map<String, String>)

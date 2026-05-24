@@ -3,8 +3,10 @@ package ai.slock.android.core.data.realtime
 import ai.slock.compose.data.SlockAuthSessionStore as AuthSessionStore
 import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.compose.data.DataResult
-import ai.slock.android.core.data.realtime.RealtimeRepository
-import ai.slock.android.core.data.realtime.RealtimeSubscription
+import ai.slock.compose.data.RealtimeRepository
+import ai.slock.compose.data.RealtimeSubscription
+import ai.slock.compose.data.realtime.RealtimeAuth
+import ai.slock.compose.data.realtime.RealtimeConnectRequest
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ServerId

@@ -1,7 +1,7 @@
-package ai.slock.android.core.data.realtime
+package ai.slock.compose.data.realtime
 
-import ai.slock.android.core.model.RealtimeEvent
-import ai.slock.android.core.model.ServerId
+import ai.slock.compose.model.RealtimeEvent
+import ai.slock.compose.model.ServerId
 
 interface RealtimeClientDiagnostics {
     fun onConnectRequested(serverId: ServerId, lastSeq: Long)

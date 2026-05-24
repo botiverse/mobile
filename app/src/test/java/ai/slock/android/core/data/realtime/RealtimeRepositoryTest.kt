@@ -12,7 +12,11 @@ import ai.slock.compose.data.SlockAuthApi
 import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.DataResult
-import ai.slock.android.core.data.realtime.RealtimeSubscription
+import ai.slock.compose.data.RealtimeSubscription
+import ai.slock.compose.data.realtime.RealtimeAuth
+import ai.slock.compose.data.realtime.RealtimeConnectRequest
+import ai.slock.compose.data.realtime.RealtimeSocketEvents
+import ai.slock.compose.data.realtime.RealtimeSocketTransport
 import ai.slock.android.core.model.AgentStatus
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.Heartbeat

@@ -9,6 +9,9 @@ import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealConversationRepository
+import ai.slock.compose.data.realtime.RealtimeAuth
+import ai.slock.compose.data.realtime.RealtimeConnectRequest
+import ai.slock.compose.data.realtime.RealtimeSocketEvents
 import ai.slock.android.core.model.MessageNew
 import ai.slock.android.core.model.ServerId
 import java.io.File
