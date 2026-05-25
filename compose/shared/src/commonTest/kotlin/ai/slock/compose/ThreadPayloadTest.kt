@@ -4,6 +4,10 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.TaskId
+import ai.slock.compose.model.TaskStatus
+import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthSession
@@ -199,6 +203,65 @@ class ThreadPayloadTest {
 
         assertEquals("general", payload.title)
         assertEquals(null, payload.subtitle)
+    }
+
+    @Test
+    fun buildsTaskThreadLoadingPayloadBeforeOpeningReplyThread() {
+        val payload =
+            buildAppShellTaskThreadLoadingPayload(
+                TaskSummary(
+                    id = TaskId("task-1"),
+                    title = "Fix slow route",
+                    status = TaskStatus.InProgress,
+                    taskNumber = 42,
+                    messageId = MessageId("message-1"),
+                    channelId = ChannelId("channel-1"),
+                    channelName = "general",
+                    updatedAtLabel = "now"
+                ),
+                AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593)
+            )
+
+        assertEquals("shared-shell-task-thread-task-1", payload.instanceId)
+        assertEquals("#42", payload.title)
+        assertEquals("general", payload.subtitle)
+        assertEquals("loading", payload.status)
+        assertEquals(null, payload.sourceThreadId)
+        assertEquals("message-1", payload.originParentMessageId)
+        assertEquals("loaded", payload.originStatus)
+        assertEquals("Opening task", payload.emptyTitle)
+        assertEquals(480, payload.localOffsetMinutes)
+        assertEquals(20593, payload.todayEpochDay)
+    }
+
+    @Test
+    fun buildsReplyThreadLoadingPayloadWithoutFetchingParentChannel() {
+        val parent =
+            KuiklyThreadMessageItem(
+                id = "message-1",
+                authorId = "u1",
+                authorName = "Artin",
+                body = "Parent message"
+            )
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "general",
+                sourceThreadId = "channel-1",
+                status = "content",
+                messages = listOf(parent)
+            ).replyThreadLoadingPayload(parent)
+
+        assertEquals("shared-shell-thread-pending-message-1", payload.instanceId)
+        assertEquals("Message Threads", payload.title)
+        assertEquals("general", payload.subtitle)
+        assertEquals("loading", payload.status)
+        assertEquals(null, payload.sourceThreadId)
+        assertEquals("message-1", payload.originParentMessageId)
+        assertEquals("loaded", payload.originStatus)
+        assertEquals(false, payload.showModeTabs)
+        assertEquals(true, payload.showOpenInChannelAction)
+        assertEquals("Opening replies", payload.emptyTitle)
     }
 
     @Test

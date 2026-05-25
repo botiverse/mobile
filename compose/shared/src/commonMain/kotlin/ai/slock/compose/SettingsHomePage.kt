@@ -648,9 +648,11 @@ private fun SlockAppShellContent() {
         return popped
     }
 
-    fun openThreadPayload(payload: KuiklyThreadScreenPayload) {
-        activeThreadPayload?.let { currentPayload ->
-            threadBackStack = threadBackStack + currentPayload
+    fun openThreadPayload(payload: KuiklyThreadScreenPayload, pushCurrent: Boolean = true) {
+        if (pushCurrent) {
+            activeThreadPayload?.let { currentPayload ->
+                threadBackStack = threadBackStack + currentPayload
+            }
         }
         activeThreadPayload = payload
         if (navController.currentRoute != AppShellRouteThread) {
@@ -749,6 +751,7 @@ private fun SlockAppShellContent() {
                     dataSource = threadDataSource,
                     onBack = { popThreadRoute() },
                     onOpenThreadPayload = { payload -> openThreadPayload(payload) },
+                    onReplaceThreadPayload = { payload -> openThreadPayload(payload, pushCurrent = false) },
                     onOpenParentThread = {
                         if (threadBackStack.isNotEmpty()) {
                             activeThreadPayload = threadBackStack.last()
@@ -818,6 +821,7 @@ private fun SlockAppShellContent() {
                                         dataSource = threadDataSource,
                                         timeContext = threadTimeContext,
                                         onOpenThreadPayload = { payload -> openThreadPayload(payload) },
+                                        onReplaceThreadPayload = { payload -> openThreadPayload(payload, pushCurrent = false) },
                                         onFailure = { bridge.toast("Unable to open task") }
                                     )
                                 }
@@ -2667,8 +2671,11 @@ private suspend fun openAppShellTaskThread(
     dataSource: SharedThreadDataSource,
     timeContext: AppShellThreadTimeContext?,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit,
+    onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit,
     onFailure: () -> Unit
 ) {
+    val loadingPayload = buildAppShellTaskThreadLoadingPayload(task, timeContext)
+    onOpenThreadPayload(loadingPayload)
     val channelId = task.channelId
     val parentMessage = task.toAppShellTaskParentMessage()
     if (channelId != null && parentMessage != null) {
@@ -2686,41 +2693,55 @@ private suspend fun openAppShellTaskThread(
             )
         when (val result = dataSource.createOrOpenReplyThread(channelPayload, parentMessage)) {
             is ai.slock.compose.data.DataResult.Content -> {
-                onOpenThreadPayload(result.data)
+                onReplaceThreadPayload(result.data)
                 return
             }
             is ai.slock.compose.data.DataResult.Empty,
             is ai.slock.compose.data.DataResult.Error,
-            is ai.slock.compose.data.DataResult.NoPermission -> Unit
+            is ai.slock.compose.data.DataResult.NoPermission -> {
+                onReplaceThreadPayload(loadingPayload.copy(status = "error", errorCode = "thread_task_open_failed"))
+                onFailure()
+                return
+            }
         }
     }
 
     val threadId = task.threadId?.value?.takeIf { it.isNotBlank() }
     if (threadId != null) {
-        onOpenThreadPayload(
-            KuiklyThreadScreenPayload(
-                instanceId = "shared-shell-task-thread-$threadId",
-                title = task.tasksDisplayTitleForAppShell(),
-                subtitle = task.channelName,
-                status = "loading",
-                sourceThreadId = threadId,
-                selectedTab = "chat",
-                navigationLabel = "Back",
-                showModeTabs = false,
-                showReplyActions = false,
-                showOpenInChannelAction = true,
-                originMessage = parentMessage,
-                originParentMessageId = parentMessage?.id,
-                originStatus = if (parentMessage != null) "loaded" else "idle",
-                localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
-                todayEpochDay = timeContext?.todayEpochDay,
-                showMembersAction = false,
-                showSettingsAction = false
-            )
-        )
+        onReplaceThreadPayload(loadingPayload.copy(sourceThreadId = threadId))
     } else {
+        onReplaceThreadPayload(loadingPayload.copy(status = "error", errorCode = "thread_task_open_failed"))
         onFailure()
     }
+}
+
+internal fun buildAppShellTaskThreadLoadingPayload(
+    task: TaskSummary,
+    timeContext: AppShellThreadTimeContext?
+): KuiklyThreadScreenPayload {
+    val threadId = task.threadId?.value?.takeIf { it.isNotBlank() }
+    val parentMessage = task.toAppShellTaskParentMessage()
+    return KuiklyThreadScreenPayload(
+        instanceId = "shared-shell-task-thread-${threadId ?: task.id.value}",
+        title = task.tasksDisplayTitleForAppShell(),
+        subtitle = task.channelName,
+        status = "loading",
+        sourceThreadId = threadId,
+        selectedTab = "chat",
+        navigationLabel = "Back",
+        showModeTabs = false,
+        showReplyActions = false,
+        showOpenInChannelAction = true,
+        originMessage = parentMessage,
+        originParentMessageId = parentMessage?.id,
+        originStatus = if (parentMessage != null) "loaded" else "idle",
+        localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
+        todayEpochDay = timeContext?.todayEpochDay,
+        showMembersAction = false,
+        showSettingsAction = false,
+        emptyTitle = "Opening task",
+        emptyDetail = "Loading the task conversation."
+    )
 }
 
 private fun TaskSummary.toAppShellTaskParentMessage(): KuiklyThreadMessageItem? {

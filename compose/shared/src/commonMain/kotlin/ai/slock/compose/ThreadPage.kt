@@ -418,6 +418,7 @@ internal fun SharedThreadRouteContent(
     dataSource: SharedThreadDataSource,
     onBack: () -> Unit,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
+    onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit = onOpenThreadPayload,
     onOpenParentThread: () -> Boolean = { false }
 ) {
     val threadViewModel: SharedThreadViewModel =
@@ -631,12 +632,19 @@ internal fun SharedThreadRouteContent(
                         bridge.toast("Unable to open replies")
                         return@ThreadPageContent
                     }
+                    val loadingPayload = renderedPayload.replyThreadLoadingPayload(parentMessage)
+                    onOpenThreadPayload(loadingPayload)
                     coroutineScope.launch {
                         when (val result = dataSource.createOrOpenReplyThread(renderedPayload, parentMessage)) {
-                            is DataResult.Content -> onOpenThreadPayload(result.data)
-                            is DataResult.Empty -> bridge.toast("Unable to open replies")
-                            is DataResult.Error -> bridge.toast("Unable to open replies")
-                            is DataResult.NoPermission -> bridge.toast("Unable to open replies")
+                            is DataResult.Content -> onReplaceThreadPayload(result.data)
+                            is DataResult.Empty,
+                            is DataResult.Error,
+                            is DataResult.NoPermission -> {
+                                onReplaceThreadPayload(
+                                    loadingPayload.copy(status = "error", errorCode = "thread_reply_open_failed")
+                                )
+                                bridge.toast("Unable to open replies")
+                            }
                         }
                     }
                 }
@@ -661,12 +669,19 @@ internal fun SharedThreadRouteContent(
                         bridge.toast("Unable to open task")
                         return@ThreadPageContent
                     }
+                    val loadingPayload = renderedPayload.replyThreadLoadingPayload(parentMessage)
+                    onOpenThreadPayload(loadingPayload)
                     coroutineScope.launch {
                         when (val result = dataSource.createOrOpenReplyThread(renderedPayload, parentMessage)) {
-                            is DataResult.Content -> onOpenThreadPayload(result.data)
+                            is DataResult.Content -> onReplaceThreadPayload(result.data)
                             is DataResult.Empty,
                             is DataResult.Error,
-                            is DataResult.NoPermission -> bridge.toast("Unable to open task")
+                            is DataResult.NoPermission -> {
+                                onReplaceThreadPayload(
+                                    loadingPayload.copy(status = "error", errorCode = "thread_task_open_failed")
+                                )
+                                bridge.toast("Unable to open task")
+                            }
                         }
                     }
                 }
@@ -688,50 +703,65 @@ internal fun SharedThreadRouteContent(
                         bridge.toast("Unsupported task status")
                         return@ThreadPageContent
                     }
+                    val previousPayload = renderedPayload
+                    threadViewModel.dispatch(SharedThreadIntent.SetPayload(previousPayload.withTaskStatus(itemId, status)))
                     coroutineScope.launch {
                         when (val result = dataSource.updateTaskStatus(itemId, status)) {
                             is DataResult.Content -> {
                                 val nextPayload =
                                     result.data.takeIf { it.instanceId.isNotBlank() }
-                                        ?: renderedPayload.withTaskStatus(itemId, status)
+                                        ?: previousPayload.withTaskStatus(itemId, status)
                                 threadViewModel.dispatch(SharedThreadIntent.SetPayload(nextPayload))
                                 bridge.toast("Task updated")
                             }
-                            is DataResult.Empty -> bridge.toast("Unable to update task")
-                            is DataResult.Error -> bridge.toast("Unable to update task")
-                            is DataResult.NoPermission -> bridge.toast("Unable to update task")
+                            is DataResult.Empty,
+                            is DataResult.Error,
+                            is DataResult.NoPermission -> {
+                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(previousPayload))
+                                bridge.toast("Unable to update task")
+                            }
                         }
                     }
                 }
                 action == "markTaskDone" && !itemId.isNullOrBlank() -> {
+                    val previousPayload = renderedPayload
+                    threadViewModel.dispatch(SharedThreadIntent.SetPayload(previousPayload.withTaskStatus(itemId, TaskStatus.Done)))
                     coroutineScope.launch {
                         when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Done)) {
                             is DataResult.Content -> {
                                 val nextPayload =
                                     result.data.takeIf { it.instanceId.isNotBlank() }
-                                        ?: renderedPayload.withTaskStatus(itemId, TaskStatus.Done)
+                                        ?: previousPayload.withTaskStatus(itemId, TaskStatus.Done)
                                 threadViewModel.dispatch(SharedThreadIntent.SetPayload(nextPayload))
                                 bridge.toast("Task updated")
                             }
-                            is DataResult.Empty -> bridge.toast("Unable to update task")
-                            is DataResult.Error -> bridge.toast("Unable to update task")
-                            is DataResult.NoPermission -> bridge.toast("Unable to update task")
+                            is DataResult.Empty,
+                            is DataResult.Error,
+                            is DataResult.NoPermission -> {
+                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(previousPayload))
+                                bridge.toast("Unable to update task")
+                            }
                         }
                     }
                 }
                 action == "reopenTask" && !itemId.isNullOrBlank() -> {
+                    val previousPayload = renderedPayload
+                    threadViewModel.dispatch(SharedThreadIntent.SetPayload(previousPayload.withTaskStatus(itemId, TaskStatus.Todo)))
                     coroutineScope.launch {
                         when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Todo)) {
                             is DataResult.Content -> {
                                 val nextPayload =
                                     result.data.takeIf { it.instanceId.isNotBlank() }
-                                        ?: renderedPayload.withTaskStatus(itemId, TaskStatus.Todo)
+                                        ?: previousPayload.withTaskStatus(itemId, TaskStatus.Todo)
                                 threadViewModel.dispatch(SharedThreadIntent.SetPayload(nextPayload))
                                 bridge.toast("Task updated")
                             }
-                            is DataResult.Empty -> bridge.toast("Unable to update task")
-                            is DataResult.Error -> bridge.toast("Unable to update task")
-                            is DataResult.NoPermission -> bridge.toast("Unable to update task")
+                            is DataResult.Empty,
+                            is DataResult.Error,
+                            is DataResult.NoPermission -> {
+                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(previousPayload))
+                                bridge.toast("Unable to update task")
+                            }
                         }
                     }
                 }
@@ -921,6 +951,30 @@ private suspend fun openSharedThreadAttachment(
         is ThreadApiResult.Failure -> bridge.toast("Unable to open attachment")
     }
 }
+
+internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
+    parentMessage: KuiklyThreadMessageItem
+): KuiklyThreadScreenPayload =
+    copy(
+        instanceId = "shared-shell-thread-pending-${parentMessage.id}",
+        title = "Message Threads",
+        subtitle = title,
+        status = "loading",
+        sourceThreadId = null,
+        navigationLabel = "Close",
+        selectedTab = "chat",
+        showModeTabs = false,
+        showReplyActions = false,
+        showOpenInChannelAction = true,
+        originMessage = parentMessage,
+        originParentMessageId = parentMessage.id,
+        originStatus = "loaded",
+        messages = emptyList(),
+        canLoadMoreBefore = false,
+        canLoadMoreAfter = false,
+        emptyTitle = "Opening replies",
+        emptyDetail = "Loading the message thread."
+    )
 
 private fun KuiklyThreadFilesPayload.shouldFetchInitialFiles(): Boolean =
     status == "loading" || (status == "error" && items.isEmpty())
