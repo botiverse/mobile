@@ -27,6 +27,7 @@ import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -574,10 +575,10 @@ private val SlockMarkdownMentionSpanStyle =
     )
 
 private fun slockMarkdownInlineChipWidthSp(label: String) =
-    (label.slockInlineTextWidthUnits() * 8 + 18).coerceAtLeast(24).sp
+    (label.slockInlineTextWidthUnits() * 9 + 36).coerceAtLeast(56).sp
 
 private fun slockMarkdownInlineCodeWidthSp(code: String) =
-    (code.slockInlineTextWidthUnits() * 8 + 18).coerceAtLeast(24).sp
+    (code.slockInlineTextWidthUnits() * 9 + 36).coerceAtLeast(56).sp
 
 internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
     slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxWidthUnits
@@ -609,14 +610,16 @@ private fun SlockMarkdownInlineChip(label: String, color: Color) {
     ) {
         Text(
             label,
+            modifier = Modifier.fillMaxWidth(),
             style = SlockType.Caption.copy(
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp,
                 lineHeight = 21.sp
             ),
             color = SlockColor.TextBlack,
+            textAlign = TextAlign.Center,
             maxLines = 1,
-            overflow = TextOverflow.Visible
+            overflow = TextOverflow.Clip
         )
     }
 }
@@ -650,6 +653,7 @@ private fun SlockMarkdownInlineCodeChip(code: String) {
     ) {
         Text(
             code,
+            modifier = Modifier.fillMaxWidth(),
             style =
                 SlockType.Caption.copy(
                     fontFamily = FontFamily.Monospace,
@@ -657,8 +661,9 @@ private fun SlockMarkdownInlineCodeChip(code: String) {
                     lineHeight = 21.sp
                 ),
             color = SlockColor.TextBlack,
+            textAlign = TextAlign.Center,
             maxLines = 1,
-            overflow = TextOverflow.Visible
+            overflow = TextOverflow.Clip
         )
     }
 }
