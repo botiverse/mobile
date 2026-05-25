@@ -747,8 +747,12 @@ internal fun SharedThreadRouteContent(
                             )
                         val uploaded = parseSharedThreadUploadedAttachments(response)
                         if (uploaded.isEmpty()) {
-                            response?.optString("errorCode")?.takeIf { it.isNotBlank() }?.let { error ->
-                                bridge.toast("Attachment upload failed: $error")
+                            val errorCode = response?.optString("errorCode")?.takeIf { it.isNotBlank() }
+                            when {
+                                errorCode != null ->
+                                    bridge.toast("Attachment upload failed: $errorCode")
+                                response == null ->
+                                    bridge.toast("Attachment picker unavailable")
                             }
                         } else {
                             uploadedAttachments =

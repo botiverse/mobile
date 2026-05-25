@@ -1,6 +1,8 @@
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { relationalStore } from '@kit.ArkData';
+import { picker, fileUri } from '@kit.CoreFileKit';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { http } from '@kit.NetworkKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { KRAny } from '@kuikly-open/render';
@@ -8,8 +10,13 @@ import { KuiklyRenderBaseModule } from '@kuikly-open/render';
 import { KuiklyRenderCallback } from '@kuikly-open/render';
 import util from '@ohos.util';
 import fs from '@ohos.file.fs';
-import { fileUri } from '@kit.CoreFileKit';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
+
+interface OhosPickedThreadAttachment {
+  fileName: string;
+  mimeType: string;
+  bytes: Uint8Array;
+}
 
 export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly MODULE_NAME = "HRBridgeModule";
@@ -29,6 +36,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly AUTH_REQUEST = "authRequest";
   static readonly RELATIONAL_STORE = "relationalStore";
   static readonly SETTINGS_CAPABILITY = "settingsCapability";
+  static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
 
   private rdbStores: Map<string, relationalStore.RdbStore> = new Map();
 
@@ -98,6 +106,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.SETTINGS_CAPABILITY: {
         this.settingsCapability(params, callback);
+        break;
+      }
+      case KRBridgeModule.THREAD_ATTACHMENT_UPLOAD: {
+        this.threadAttachmentUpload(params, callback);
         break;
       }
       default:
@@ -373,6 +385,226 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       "code": code,
       "platformCode": businessError.code ?? -1,
       "message": businessError.message ?? `${error}`
+    };
+  }
+
+  private async threadAttachmentUpload(params: KRAny, callback: KuiklyRenderCallback) {
+    try {
+      const records = this.parseRecord(params);
+      const channelId = (records["channelId"] as string | undefined) ?? "";
+      const imageOnlyValue = records["imageOnly"];
+      const imageOnly = imageOnlyValue === true || imageOnlyValue === "true";
+      if (channelId.length === 0) {
+        callback(this.threadAttachmentError(400, "missing_channel_id", "Missing channel id"));
+        return;
+      }
+
+      const uris = await this.pickThreadAttachmentUris(imageOnly).catch((error: BusinessError) => {
+        throw new Error(error.message ?? "Attachment picker unavailable");
+      });
+      if (uris.length === 0) {
+        callback({ "code": 204, "bodyText": "" });
+        return;
+      }
+
+      const session = await this.readStoredAuthSession();
+      const accessToken = ((session?.["accessToken"] as string | undefined) ?? "").trim();
+      const serverId = this.currentServerId(session);
+      if (accessToken.length === 0 || serverId.length === 0) {
+        callback(this.threadAttachmentError(401, "auth_required", "Auth required"));
+        return;
+      }
+
+      const files = this.readPickedThreadAttachments(uris, imageOnly);
+      if (files.length === 0) {
+        callback(this.threadAttachmentError(400, "attachment_read_failed", "No readable attachments"));
+        return;
+      }
+
+      callback(await this.uploadThreadAttachments(channelId, accessToken, serverId, files));
+    } catch (error) {
+      const businessError = error as BusinessError;
+      callback(this.threadAttachmentError(
+        0,
+        businessError.message === "Attachment picker unavailable" ? "attachment_picker_unavailable" : "attachment_upload_failed",
+        businessError.message ?? `${error}`
+      ));
+    }
+  }
+
+  private async pickThreadAttachmentUris(imageOnly: boolean): Promise<Array<string>> {
+    if (imageOnly) {
+      const options = new photoAccessHelper.PhotoSelectOptions();
+      options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
+      options.maxSelectNumber = 9;
+      const result = await new photoAccessHelper.PhotoViewPicker().select(options);
+      return result.photoUris ?? [];
+    }
+
+    const options = new picker.DocumentSelectOptions();
+    options.maxSelectNumber = 9;
+    return await new picker.DocumentViewPicker(getContext(this) as common.UIAbilityContext).select(options);
+  }
+
+  private async readStoredAuthSession(): Promise<Record<string, Object> | null> {
+    const store = await this.rdbStore("slock_shared.db", 1);
+    const resultSet = await store.querySql("SELECT value FROM slock_kv WHERE key = ?", ["auth_session"]);
+    try {
+      if (!resultSet.goToNextRow()) {
+        return null;
+      }
+      const encoded = resultSet.getString(0);
+      if (encoded.length === 0) {
+        return null;
+      }
+      return JSON.parse(encoded) as Record<string, Object>;
+    } finally {
+      resultSet.close();
+    }
+  }
+
+  private currentServerId(session: Record<string, Object> | null): string {
+    if (session == null) {
+      return "";
+    }
+    const selectedServerId = ((session["selectedServerId"] as string | undefined) ?? "").trim();
+    if (selectedServerId.length > 0) {
+      return selectedServerId;
+    }
+    const servers = (session["servers"] as Array<Record<string, Object>> | undefined) ?? [];
+    if (servers.length === 0) {
+      return "";
+    }
+    return ((servers[0]["id"] as string | undefined) ?? "").trim();
+  }
+
+  private readPickedThreadAttachments(uris: Array<string>, imageOnly: boolean): Array<OhosPickedThreadAttachment> {
+    const files: Array<OhosPickedThreadAttachment> = [];
+    uris.forEach((uri: string, index: number) => {
+      const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+      try {
+        const stat = fs.statSync(file.fd);
+        const buffer = new ArrayBuffer(stat.size);
+        const readLength = fs.readSync(file.fd, buffer);
+        files.push({
+          fileName: this.fileNameFromUri(uri, index, imageOnly),
+          mimeType: this.mimeTypeFromName(uri, imageOnly),
+          bytes: new Uint8Array(buffer, 0, readLength)
+        });
+      } finally {
+        fs.closeSync(file);
+      }
+    });
+    return files;
+  }
+
+  private async uploadThreadAttachments(
+    channelId: string,
+    accessToken: string,
+    serverId: string,
+    files: Array<OhosPickedThreadAttachment>
+  ): Promise<Record<string, Object>> {
+    const boundary = `SlockBoundary${Date.now()}`;
+    const body = this.multipartThreadAttachmentBody(boundary, channelId, files);
+    const request = http.createHttp();
+    try {
+      const response = await request.request("https://api.slock.ai/api/attachments/upload", {
+        method: http.RequestMethod.POST,
+        header: {
+          "Accept": "application/json",
+          "Authorization": `Bearer ${accessToken}`,
+          "X-Server-Id": serverId,
+          "Content-Type": `multipart/form-data; boundary=${boundary}`
+        },
+        extraData: body,
+        connectTimeout: 30000,
+        readTimeout: 60000
+      });
+      const responseCode = Number(response.responseCode ?? 0);
+      const responseBody = this.httpResultToString(response.result);
+      return {
+        "code": responseCode,
+        "bodyText": responseCode >= 200 && responseCode < 300 ? responseBody : "",
+        "errorCode": responseCode >= 200 && responseCode < 300 ? "" : "attachment_upload_failed",
+        "errorBodyText": responseCode >= 200 && responseCode < 300 ? "" : responseBody
+      };
+    } finally {
+      request.destroy();
+    }
+  }
+
+  private multipartThreadAttachmentBody(
+    boundary: string,
+    channelId: string,
+    files: Array<OhosPickedThreadAttachment>
+  ): ArrayBuffer {
+    const chunks: Array<Uint8Array> = [];
+    chunks.push(this.utf8(`--${boundary}\r\n`));
+    chunks.push(this.utf8(`Content-Disposition: form-data; name="channelId"\r\n\r\n`));
+    chunks.push(this.utf8(`${channelId}\r\n`));
+    files.forEach((file: OhosPickedThreadAttachment) => {
+      chunks.push(this.utf8(`--${boundary}\r\n`));
+      chunks.push(this.utf8(
+        `Content-Disposition: form-data; name="files"; filename="${this.escapeMultipartValue(file.fileName)}"\r\n`
+      ));
+      chunks.push(this.utf8(`Content-Type: ${file.mimeType}\r\n\r\n`));
+      chunks.push(file.bytes);
+      chunks.push(this.utf8(`\r\n`));
+    });
+    chunks.push(this.utf8(`--${boundary}--\r\n`));
+    return this.concatBytes(chunks).buffer;
+  }
+
+  private utf8(value: string): Uint8Array {
+    return new util.TextEncoder('utf-8').encodeInto(value);
+  }
+
+  private concatBytes(chunks: Array<Uint8Array>): Uint8Array {
+    const total = chunks.reduce((sum: number, chunk: Uint8Array) => sum + chunk.length, 0);
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    chunks.forEach((chunk: Uint8Array) => {
+      bytes.set(chunk, offset);
+      offset += chunk.length;
+    });
+    return bytes;
+  }
+
+  private fileNameFromUri(uri: string, index: number, imageOnly: boolean): string {
+    const raw = uri.split("/").pop() ?? "";
+    const withoutQuery = raw.split("?")[0];
+    const fallback = imageOnly ? `image-${index + 1}.jpg` : `attachment-${index + 1}`;
+    if (withoutQuery.length === 0) {
+      return fallback;
+    }
+    try {
+      return decodeURIComponent(withoutQuery);
+    } catch (_error) {
+      return withoutQuery;
+    }
+  }
+
+  private mimeTypeFromName(uri: string, imageOnly: boolean): string {
+    const lower = uri.toLowerCase();
+    if (lower.endsWith(".png")) return "image/png";
+    if (lower.endsWith(".gif")) return "image/gif";
+    if (lower.endsWith(".webp")) return "image/webp";
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || imageOnly) return "image/jpeg";
+    if (lower.endsWith(".pdf")) return "application/pdf";
+    if (lower.endsWith(".txt")) return "text/plain";
+    return "application/octet-stream";
+  }
+
+  private escapeMultipartValue(value: string): string {
+    return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+  }
+
+  private threadAttachmentError(code: number, errorCode: string, message: string): Record<string, Object> {
+    return {
+      "code": code,
+      "bodyText": "",
+      "errorCode": errorCode,
+      "errorBodyText": message
     };
   }
 
