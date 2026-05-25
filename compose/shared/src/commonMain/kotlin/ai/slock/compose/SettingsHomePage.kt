@@ -3066,7 +3066,8 @@ private fun SharedHomeSearchPanel(
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     onOpenItem: (InboxItem) -> Unit,
     onOpenEntity: (SearchEntityResult) -> Unit,
-    bottomContentPadding: Dp
+    bottomContentPadding: Dp,
+    modifier: Modifier = Modifier.fillMaxSize()
 ) {
     val channelFilters = remember(homeState) { homeSearchChannelFilters(homeState) }
     val entityResults = remember(state.query, homeState, state.senderFilters) {
@@ -3085,8 +3086,7 @@ private fun SharedHomeSearchPanel(
     }
     Box(
         modifier =
-            Modifier
-                .fillMaxSize()
+            modifier
                 .background(SlockColor.SurfaceWhite)
     ) {
         LazyColumn(
@@ -4909,22 +4909,15 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
 
 @Composable
 private fun HomeSearchVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(620.dp)
-                .background(SlockColor.SurfaceWhite)
-    ) {
-        SharedHomeSearchPanel(
-            state = homeSearchVisualSearchState,
-            homeState = homeSearchVisualHomeState,
-            onIntent = {},
-            onOpenItem = {},
-            onOpenEntity = {},
-            bottomContentPadding = 12.dp
-        )
-    }
+    SharedHomeSearchPanel(
+        state = homeSearchVisualSearchState,
+        homeState = homeSearchVisualHomeState,
+        onIntent = {},
+        onOpenItem = {},
+        onOpenEntity = {},
+        bottomContentPadding = 12.dp,
+        modifier = Modifier.width(342.dp).height(620.dp)
+    )
 }
 
 @Composable
