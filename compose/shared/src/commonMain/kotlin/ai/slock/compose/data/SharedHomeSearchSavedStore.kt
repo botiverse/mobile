@@ -1,6 +1,8 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
 import com.tencent.kuikly.lifecycle.ViewModel
@@ -19,16 +21,25 @@ class SharedHomeSearchSavedStore(
     private val authStore: SlockAuthSessionStore,
     private val savedRepository: SavedRepository,
     private val searchRepository: SearchRepository,
-    private val scope: CoroutineScope
+    private val memberRepository: MemberRepository? = null,
+    private val scope: CoroutineScope,
+    private val timeRangeBoundsProvider: (SearchTimeRange) -> SearchIsoBounds = { SearchIsoBounds() }
 ) {
     private val _state = MutableStateFlow(SharedHomeSearchSavedState())
     val state: StateFlow<SharedHomeSearchSavedState> = _state.asStateFlow()
 
     private var savedJob: Job? = null
     private var searchJob: Job? = null
+    private var senderFiltersJob: Job? = null
 
     fun dispatch(intent: SharedHomeSearchSavedIntent) {
         when (intent) {
+            SharedHomeSearchSavedIntent.OpenSearch -> {
+                val search = _state.value.search
+                if (search.senderFilters.isEmpty() && !search.senderFiltersLoading) {
+                    loadSenderFilters()
+                }
+            }
             SharedHomeSearchSavedIntent.OpenSaved -> {
                 val saved = _state.value.saved
                 if (!saved.loaded && !saved.loading) loadSaved(refresh = true)
@@ -48,14 +59,50 @@ class SharedHomeSearchSavedStore(
                     _state.value.copy(search = _state.value.search.copy(selectedChannelId = intent.channelId))
                 if (_state.value.search.searched) runSearch(refresh = true)
             }
+            is SharedHomeSearchSavedIntent.SetSearchSender -> {
+                _state.value =
+                    _state.value.copy(
+                        search =
+                            _state.value.search.copy(
+                                selectedSenderId = intent.senderId,
+                                myMessagesOnly = false
+                            )
+                    )
+                if (_state.value.search.searched) runSearch(refresh = true)
+            }
             is SharedHomeSearchSavedIntent.SetSearchSort -> {
                 _state.value = _state.value.copy(search = _state.value.search.copy(sort = intent.sort))
                 if (_state.value.search.searched) runSearch(refresh = true)
             }
+            is SharedHomeSearchSavedIntent.SetSearchTimeRange -> {
+                _state.value = _state.value.copy(search = _state.value.search.copy(timeRange = intent.range))
+                if (_state.value.search.searched) runSearch(refresh = true)
+            }
             is SharedHomeSearchSavedIntent.SetMyMessagesOnly -> {
                 _state.value =
-                    _state.value.copy(search = _state.value.search.copy(myMessagesOnly = intent.enabled))
+                    _state.value.copy(
+                        search =
+                            _state.value.search.copy(
+                                myMessagesOnly = intent.enabled,
+                                selectedSenderId = if (intent.enabled) null else _state.value.search.selectedSenderId
+                            )
+                    )
                 if (_state.value.search.searched) runSearch(refresh = true)
+            }
+            SharedHomeSearchSavedIntent.ClearSearchFilters -> {
+                _state.value =
+                    _state.value.copy(
+                        search =
+                            _state.value.search.copy(
+                                myMessagesOnly = false,
+                                selectedSenderId = null,
+                                selectedChannelId = null,
+                                timeRange = SearchTimeRange.Any
+                            )
+                    )
+                if (_state.value.search.searched && _state.value.search.query.isNotBlank()) {
+                    runSearch(refresh = true)
+                }
             }
         }
     }
@@ -63,8 +110,54 @@ class SharedHomeSearchSavedStore(
     fun clear() {
         savedJob?.cancel()
         searchJob?.cancel()
+        senderFiltersJob?.cancel()
         savedJob = null
         searchJob = null
+        senderFiltersJob = null
+    }
+
+    private fun loadSenderFilters() {
+        val repository = memberRepository ?: return
+        senderFiltersJob?.cancel()
+        senderFiltersJob =
+            scope.launch {
+                _state.value =
+                    _state.value.copy(
+                        search = _state.value.search.copy(senderFiltersLoading = true, senderFiltersErrorCode = null)
+                    )
+                try {
+                    val session = authStore.readSession() ?: return@launch setSenderFiltersError("unauthenticated")
+                    val serverId = session.currentServerId?.let(::ServerId) ?: return@launch setSenderFiltersError("server_missing")
+                    when (val result = repository.getMembers(DataRequestPriority.Visible, serverId)) {
+                        is DataResult.Content ->
+                            _state.value =
+                                _state.value.copy(
+                                    search =
+                                        _state.value.search.copy(
+                                            senderFilters = result.data.members.toSearchSenderFilters(session.user.id),
+                                            senderFiltersLoading = false,
+                                            senderFiltersErrorCode = null
+                                        )
+                                )
+                        is DataResult.Empty ->
+                            _state.value =
+                                _state.value.copy(
+                                    search =
+                                        _state.value.search.copy(
+                                            senderFilters = emptyList(),
+                                            senderFiltersLoading = false,
+                                            senderFiltersErrorCode = null
+                                        )
+                                )
+                        is DataResult.Error -> setSenderFiltersError(result.error.code)
+                        is DataResult.NoPermission -> setSenderFiltersError(result.blocker.code)
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    setSenderFiltersError("sender_filters_network")
+                }
+            }
     }
 
     private fun loadSaved(refresh: Boolean) {
@@ -137,6 +230,8 @@ class SharedHomeSearchSavedStore(
                 try {
                     val session = authStore.readSession() ?: return@launch setSearchError("unauthenticated")
                     val serverId = session.currentServerId?.let(::ServerId) ?: return@launch setSearchError("server_missing")
+                    val bounds = timeRangeBoundsProvider(previous.timeRange)
+                    val senderId = previous.selectedSenderId ?: session.user.id.takeIf { previous.myMessagesOnly }
                     val result =
                         searchRepository.search(
                             serverId = serverId,
@@ -146,8 +241,10 @@ class SharedHomeSearchSavedStore(
                             options =
                                 SearchQueryOptions(
                                     sort = previous.sort,
-                                    senderId = session.user.id.takeIf { previous.myMessagesOnly },
-                                    channelId = previous.selectedChannelId?.let(::ChannelId)
+                                    senderId = senderId,
+                                    channelId = previous.selectedChannelId?.let(::ChannelId),
+                                    afterIso = bounds.afterIso,
+                                    beforeIso = bounds.beforeIso
                                 )
                         )
                     applySearchResult(result, append = !refresh)
@@ -321,6 +418,17 @@ class SharedHomeSearchSavedStore(
             )
     }
 
+    private fun setSenderFiltersError(code: String) {
+        _state.value =
+            _state.value.copy(
+                search =
+                    _state.value.search.copy(
+                        senderFiltersLoading = false,
+                        senderFiltersErrorCode = code
+                    )
+            )
+    }
+
     private fun restoreSaved(previous: SharedHomeSavedPanelState, code: String) {
         _state.value = _state.value.copy(saved = previous.copy(errorCode = code, loading = false, loadingMore = false))
     }
@@ -329,11 +437,20 @@ class SharedHomeSearchSavedStore(
 class SharedHomeSearchSavedViewModel(
     authStore: SlockAuthSessionStore,
     savedRepository: SavedRepository,
-    searchRepository: SearchRepository
+    searchRepository: SearchRepository,
+    memberRepository: MemberRepository? = null,
+    timeRangeBoundsProvider: (SearchTimeRange) -> SearchIsoBounds = { SearchIsoBounds() }
 ) : ViewModel() {
     private val storeDelegate =
         lazy {
-            SharedHomeSearchSavedStore(authStore, savedRepository, searchRepository, viewModelScope)
+            SharedHomeSearchSavedStore(
+                authStore = authStore,
+                savedRepository = savedRepository,
+                searchRepository = searchRepository,
+                memberRepository = memberRepository,
+                scope = viewModelScope,
+                timeRangeBoundsProvider = timeRangeBoundsProvider
+            )
         }
     private val store: SharedHomeSearchSavedStore by storeDelegate
     val state: StateFlow<SharedHomeSearchSavedState>
@@ -372,7 +489,12 @@ data class SharedHomeSavedPanelState(
 data class SharedHomeSearchPanelState(
     val query: String = "",
     val sort: SearchSort = SearchSort.Relevance,
+    val timeRange: SearchTimeRange = SearchTimeRange.Any,
     val myMessagesOnly: Boolean = false,
+    val selectedSenderId: String? = null,
+    val senderFilters: List<SearchSenderFilterItem> = emptyList(),
+    val senderFiltersLoading: Boolean = false,
+    val senderFiltersErrorCode: String? = null,
     val selectedChannelId: String? = null,
     val items: List<InboxItem> = emptyList(),
     val totalCount: Int = 0,
@@ -387,6 +509,7 @@ data class SharedHomeSearchPanelState(
 )
 
 sealed interface SharedHomeSearchSavedIntent {
+    data object OpenSearch : SharedHomeSearchSavedIntent
     data object OpenSaved : SharedHomeSearchSavedIntent
     data object RefreshSaved : SharedHomeSearchSavedIntent
     data object LoadMoreSaved : SharedHomeSearchSavedIntent
@@ -395,10 +518,50 @@ sealed interface SharedHomeSearchSavedIntent {
     data object SubmitSearch : SharedHomeSearchSavedIntent
     data object RefreshSearch : SharedHomeSearchSavedIntent
     data object LoadMoreSearch : SharedHomeSearchSavedIntent
+    data class SetSearchSender(val senderId: String?) : SharedHomeSearchSavedIntent
     data class SetSearchChannel(val channelId: String?) : SharedHomeSearchSavedIntent
     data class SetSearchSort(val sort: SearchSort) : SharedHomeSearchSavedIntent
+    data class SetSearchTimeRange(val range: SearchTimeRange) : SharedHomeSearchSavedIntent
     data class SetMyMessagesOnly(val enabled: Boolean) : SharedHomeSearchSavedIntent
+    data object ClearSearchFilters : SharedHomeSearchSavedIntent
 }
 
 fun InboxItem.savedMessageIdOrNull(): MessageId? =
     latestActivityMessageId ?: lastMessageId ?: parentMessageId ?: firstUnreadMessageId
+
+enum class SearchTimeRange(val key: String, val label: String) {
+    Any("any", "ANY TIME"),
+    Today("today", "TODAY"),
+    Last7Days("7d", "LAST 7 DAYS"),
+    Last30Days("30d", "LAST 30 DAYS")
+}
+
+data class SearchIsoBounds(
+    val afterIso: String? = null,
+    val beforeIso: String? = null
+)
+
+data class SearchSenderFilterItem(
+    val id: String,
+    val label: String,
+    val handle: String,
+    val kind: MemberKind,
+    val isSelf: Boolean = false
+)
+
+private fun List<MemberProfile>.toSearchSenderFilters(currentUserId: String): List<SearchSenderFilterItem> =
+    map { member ->
+        SearchSenderFilterItem(
+            id = member.id.value,
+            label = member.displayName.ifBlank { member.handle.ifBlank { member.id.value } },
+            handle = member.handle,
+            kind = member.kind,
+            isSelf = member.id.value == currentUserId
+        )
+    }
+        .distinctBy { "${it.kind}:${it.id}" }
+        .sortedWith(
+            compareByDescending<SearchSenderFilterItem> { it.isSelf }
+                .thenBy { if (it.kind == MemberKind.Human) 0 else 1 }
+                .thenBy { it.label.lowercase() }
+        )

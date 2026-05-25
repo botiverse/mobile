@@ -84,4 +84,7 @@ private fun MutableMap<String, Any>.putHostTimeContextIfAbsent() {
         val today = LocalDate.now(ZoneId.systemDefault())
         put("todayEpochDay", slockEpochDayForDate(today.year, today.monthValue, today.dayOfMonth))
     }
+    if (!containsKey("nowEpochMillis")) {
+        put("nowEpochMillis", java.time.Instant.now().toEpochMilli())
+    }
 }

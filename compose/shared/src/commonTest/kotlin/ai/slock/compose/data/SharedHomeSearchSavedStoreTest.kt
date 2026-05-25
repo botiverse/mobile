@@ -47,12 +47,23 @@ class SharedHomeSearchSavedStoreTest {
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
-                scope = scope
+                scope = scope,
+                timeRangeBoundsProvider = { range ->
+                    when (range) {
+                        SearchTimeRange.Today ->
+                            SearchIsoBounds(
+                                afterIso = "2026-05-15T00:00:00Z",
+                                beforeIso = "2026-05-15T15:04:43.904Z"
+                            )
+                        else -> SearchIsoBounds()
+                    }
+                }
             )
 
         store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
         store.dispatch(SharedHomeSearchSavedIntent.SetMyMessagesOnly(true))
         store.dispatch(SharedHomeSearchSavedIntent.SetSearchChannel("channel-1"))
+        store.dispatch(SharedHomeSearchSavedIntent.SetSearchTimeRange(SearchTimeRange.Today))
         store.dispatch(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Recent))
         store.dispatch(SharedHomeSearchSavedIntent.SubmitSearch)
 
@@ -60,7 +71,71 @@ class SharedHomeSearchSavedStoreTest {
         assertEquals(SearchSort.Recent, search.options?.sort)
         assertEquals("user-1", search.options?.senderId)
         assertEquals(ChannelId("channel-1"), search.options?.channelId)
+        assertEquals("2026-05-15T00:00:00Z", search.options?.afterIso)
+        assertEquals("2026-05-15T15:04:43.904Z", search.options?.beforeIso)
         assertEquals(listOf("message-2"), store.state.value.search.items.map { it.key })
+        scope.cancel()
+    }
+
+    @Test
+    fun clearSearchFiltersResetsSharedSearchParityState() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val search = FakeSearchRepository(items = listOf(inboxItem("message-3")))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = search,
+                scope = scope,
+                timeRangeBoundsProvider = { range ->
+                    when (range) {
+                        SearchTimeRange.Last7Days ->
+                            SearchIsoBounds(
+                                afterIso = "2026-05-09T00:00:00Z",
+                                beforeIso = "2026-05-15T15:04:43.904Z"
+                            )
+                        else -> SearchIsoBounds()
+                    }
+                }
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
+        store.dispatch(SharedHomeSearchSavedIntent.SetMyMessagesOnly(true))
+        store.dispatch(SharedHomeSearchSavedIntent.SetSearchChannel("channel-1"))
+        store.dispatch(SharedHomeSearchSavedIntent.SetSearchTimeRange(SearchTimeRange.Last7Days))
+        store.dispatch(SharedHomeSearchSavedIntent.SubmitSearch)
+        store.dispatch(SharedHomeSearchSavedIntent.ClearSearchFilters)
+
+        assertEquals(false, store.state.value.search.myMessagesOnly)
+        assertEquals(null, store.state.value.search.selectedChannelId)
+        assertEquals(SearchTimeRange.Any, store.state.value.search.timeRange)
+        assertEquals(null, search.options?.senderId)
+        assertEquals(null, search.options?.channelId)
+        assertEquals(null, search.options?.afterIso)
+        assertEquals(null, search.options?.beforeIso)
+        scope.cancel()
+    }
+
+    @Test
+    fun explicitSenderFilterOverridesMyMessagesShortcut() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val search = FakeSearchRepository(items = listOf(inboxItem("message-4")))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = search,
+                scope = scope
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("handoff"))
+        store.dispatch(SharedHomeSearchSavedIntent.SetMyMessagesOnly(true))
+        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSender("agent-1"))
+        store.dispatch(SharedHomeSearchSavedIntent.SubmitSearch)
+
+        assertEquals(false, store.state.value.search.myMessagesOnly)
+        assertEquals("agent-1", store.state.value.search.selectedSenderId)
+        assertEquals("agent-1", search.options?.senderId)
         scope.cancel()
     }
 

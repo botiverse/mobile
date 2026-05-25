@@ -68,6 +68,14 @@ fun formatSlockTimestampEpochMillis(
 fun slockEpochDayForDate(year: Int, month: Int, day: Int): Long =
     daysSinceUnixEpoch(year, month, day)
 
+fun slockStartOfDayUtcIso(epochDay: Long, localOffsetMinutes: Int): String {
+    val epochMillis = epochDay * MillisPerDay - localOffsetMinutes * MillisPerMinute
+    return formatEpochMillisAsUtcIso(epochMillis)
+}
+
+fun slockEpochMillisUtcIso(epochMillis: Long): String =
+    formatEpochMillisAsUtcIso(epochMillis)
+
 private val SlockTimestampRegex =
     Regex("""^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(?:\s*(Z|[+-]\d{2}(?::?\d{2})?))?)?$""")
 
@@ -176,6 +184,32 @@ private fun floorDiv(value: Long, divisor: Long): Long {
 
 private fun floorMod(value: Long, divisor: Long): Long =
     value - floorDiv(value, divisor) * divisor
+
+private fun formatEpochMillisAsUtcIso(epochMillis: Long): String {
+    val epochDay = floorDiv(epochMillis, MillisPerDay)
+    val millisOfDay = floorMod(epochMillis, MillisPerDay)
+    val date = civilDateFromEpochDay(epochDay)
+    val hour = (millisOfDay / MillisPerHour).toInt()
+    val minute = ((millisOfDay % MillisPerHour) / MillisPerMinute).toInt()
+    val second = ((millisOfDay % MillisPerMinute) / MillisPerSecond).toInt()
+    val millis = (millisOfDay % MillisPerSecond).toInt()
+    val millisSuffix = if (millis == 0) "" else ".${millis.toString().padStart(3, '0')}"
+    return buildString {
+        append(date.year)
+        append('-')
+        append(date.month.twoDigits())
+        append('-')
+        append(date.day.twoDigits())
+        append('T')
+        append(hour.twoDigits())
+        append(':')
+        append(minute.twoDigits())
+        append(':')
+        append(second.twoDigits())
+        append(millisSuffix)
+        append('Z')
+    }
+}
 
 private fun Int.twoDigits(): String =
     if (this < 10) "0$this" else toString()
