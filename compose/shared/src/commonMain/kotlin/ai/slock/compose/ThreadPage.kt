@@ -464,7 +464,7 @@ internal fun SharedThreadRouteContent(
     val renderedComposerPayload = remember(payload.composerPayload, payload.instanceId) {
         parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId)
     }
-    val composerPayloadText =
+    val composerPayload =
         remember(
             renderedComposerPayload,
             composerDraftText,
@@ -488,23 +488,21 @@ internal fun SharedThreadRouteContent(
                 } + uploadedAttachments)
                     .distinctBy { attachment -> attachment.id }
                     .filterNot { attachment -> attachment.id in removedAttachmentIds }
-            payload.appShellComposerPayload(
-                baseComposer =
-                    renderedComposerPayload.copy(
-                        pendingAttachments =
-                            pendingAttachments.map { attachment ->
-                                KuiklyPendingAttachmentItem(
-                                    id = attachment.id,
-                                    fileName = attachment.fileName,
-                                    sizeLabel = attachment.sizeLabel,
-                                    mimeType = attachment.mimeType,
-                                    status = attachment.status
-                                )
-                            }
-                    ),
+            renderedComposerPayload.copy(
+                instanceId = renderedComposerPayload.instanceId.ifBlank { payload.instanceId },
                 seedText = composerDraftText,
                 seedAsTask = composerDraftAsTask,
                 syncNonce = composerSyncNonce,
+                pendingAttachments =
+                    pendingAttachments.map { attachment ->
+                        KuiklyPendingAttachmentItem(
+                            id = attachment.id,
+                            fileName = attachment.fileName,
+                            sizeLabel = attachment.sizeLabel,
+                            mimeType = attachment.mimeType,
+                            status = attachment.status
+                        )
+                    },
                 composerMode =
                     when {
                         composerSending -> "sending"
@@ -522,13 +520,6 @@ internal fun SharedThreadRouteContent(
                 enabled = payload.canSend && !composerSending
             )
         }
-    val composerPayload = remember(composerPayloadText, payload.instanceId) {
-        parseThreadComposerPayload(
-            payload = composerPayloadText,
-            fallbackPageData = "{}",
-            instanceId = payload.instanceId
-        )
-    }
     val renderedPayload = remember(payload) {
         payload.withSharedShellEventCapabilities()
     }
@@ -978,54 +969,6 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
 
 private fun KuiklyThreadFilesPayload.shouldFetchInitialFiles(): Boolean =
     status == "loading" || (status == "error" && items.isEmpty())
-
-private fun KuiklyThreadScreenPayload.appShellComposerPayload(
-    seedText: String,
-    seedAsTask: Boolean,
-    syncNonce: Int,
-    composerMode: String,
-    statusLabel: String?,
-    enabled: Boolean,
-    baseComposer: KuiklyThreadComposerPayload =
-        parseThreadComposerPayload(composerPayload, "{}", instanceId)
-): String =
-    buildSharedThreadComposerPayloadJson(
-        SharedThreadComposerPayloadInput(
-            seedText = seedText,
-            seedAsTask = seedAsTask,
-            syncNonce = syncNonce,
-            focusRequestNonce = baseComposer.focusRequestNonce,
-            placeholder = baseComposer.placeholder,
-            enabled = enabled,
-            showAsTaskToggle = baseComposer.showAsTaskToggle,
-            composerMode = composerMode,
-            statusLabel = statusLabel,
-            pendingAttachments =
-                baseComposer.pendingAttachments.map { attachment ->
-                    SharedThreadComposerAttachment(
-                        id = attachment.id,
-                        fileName = attachment.fileName,
-                        sizeLabel = attachment.sizeLabel,
-                        mimeType = attachment.mimeType,
-                        status = attachment.status
-                    )
-                },
-            memberSuggestions =
-                baseComposer.memberSuggestions.map { member ->
-                    SharedThreadComposerMemberSuggestion(
-                        displayName = member.displayName,
-                        handle = member.handle
-                    )
-                },
-            channelSuggestions =
-                baseComposer.channelSuggestions.map { channel ->
-                    SharedThreadComposerChannelSuggestion(
-                        name = channel.name,
-                        subtitle = channel.subtitle
-                    )
-                }
-        )
-    )
 
 private fun String.toSharedThreadTaskStatus(): TaskStatus? =
     when (trim().lowercase().replace("-", "").replace("_", "").replace(" ", "")) {
@@ -1481,15 +1424,35 @@ private fun ThreadMessagesList(
     var actionMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var actionMenuAnchor by remember(payload.instanceId) { mutableStateOf(Offset(16f, 16f)) }
     var allowBottomAutoAnchor by remember(payload.instanceId) { mutableStateOf(true) }
-    val latestItemIndex = payload.latestMessageListItemIndex()
-    val latestMessageLayoutKey = payload.messages.joinToString("|") { "${it.id}:${it.body.length}:${it.attachments.size}:${it.taskId.orEmpty()}:${it.replyCount}:${it.unreadReplyCount}" }
+    val latestItemIndex = remember(
+        payload.originStatus,
+        payload.canLoadMoreBefore,
+        payload.messages
+    ) {
+        payload.latestMessageListItemIndex()
+    }
+    val latestMessageLayoutKey = remember(
+        payload.originStatus,
+        payload.canLoadMoreBefore,
+        payload.canLoadMoreAfter,
+        payload.messages
+    ) {
+        payload.latestMessageLayoutKey()
+    }
     val lazyItemCount =
-        threadMessagesLazyItemCount(
-            originStatus = payload.originStatus,
-            canLoadMoreBefore = payload.canLoadMoreBefore,
-            messagesCount = payload.messages.size,
-            canLoadMoreAfter = payload.canLoadMoreAfter
-        )
+        remember(
+            payload.originStatus,
+            payload.canLoadMoreBefore,
+            payload.messages.size,
+            payload.canLoadMoreAfter
+        ) {
+            threadMessagesLazyItemCount(
+                originStatus = payload.originStatus,
+                canLoadMoreBefore = payload.canLoadMoreBefore,
+                messagesCount = payload.messages.size,
+                canLoadMoreAfter = payload.canLoadMoreAfter
+            )
+        }
     LaunchedEffect(payload.instanceId, latestItemIndex) {
         snapshotFlow {
             listState.isScrollInProgress to listState.isLatestItemAtRenderedBottom(latestItemIndex)
@@ -1502,17 +1465,22 @@ private fun ThreadMessagesList(
         }
     }
     LaunchedEffect(payload.instanceId, latestMessageLayoutKey, latestItemIndex, allowBottomAutoAnchor) {
-        if (latestItemIndex >= 0) {
-            if (!allowBottomAutoAnchor && !listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
+        if (latestItemIndex < 0) return@LaunchedEffect
+        if (!allowBottomAutoAnchor && !listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
+            return@LaunchedEffect
+        }
+        listState.awaitThreadMessagesLayoutStability(latestItemIndex)
+        repeat(ThreadBottomAnchorCorrectionAttempts) { attempt ->
+            if (listState.isScrollInProgress && !listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
+                allowBottomAutoAnchor = false
                 return@LaunchedEffect
             }
-            repeat(ThreadInitialBottomAnchorAttempts) {
-                if (listState.isScrollInProgress && !listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
-                    allowBottomAutoAnchor = false
-                    return@LaunchedEffect
-                }
-                listState.scrollLatestItemToRenderedBottom(latestItemIndex)
-                delay(16)
+            listState.scrollLatestItemToRenderedBottom(latestItemIndex)
+            delay(ThreadLayoutStabilityFrameDelayMs)
+            if (attempt >= ThreadBottomAnchorMinimumAttempts &&
+                listState.isLatestItemAtRenderedBottom(latestItemIndex)
+            ) {
+                return@LaunchedEffect
             }
         }
     }
@@ -1699,6 +1667,32 @@ private fun KuiklyThreadScreenPayload.latestMessageListItemIndex(): Int {
     return index + messages.lastIndex
 }
 
+private fun KuiklyThreadScreenPayload.latestMessageLayoutKey(): String {
+    val latest = messages.lastOrNull()
+        ?: return "empty:$originStatus:$canLoadMoreBefore:$canLoadMoreAfter"
+    return buildString {
+        append(originStatus)
+        append(':')
+        append(canLoadMoreBefore)
+        append(':')
+        append(canLoadMoreAfter)
+        append(':')
+        append(messages.size)
+        append(':')
+        append(latest.id)
+        append(':')
+        append(latest.body.length)
+        append(':')
+        append(latest.attachments.size)
+        append(':')
+        append(latest.taskId.orEmpty())
+        append(':')
+        append(latest.replyCount)
+        append(':')
+        append(latest.unreadReplyCount)
+    }
+}
+
 internal fun KuiklyThreadScreenPayload.formatTimestampLabel(value: String): String =
     todayEpochDay?.let { today ->
         formatSlockTimestampLabel(value, localOffsetMinutes, today)
@@ -1724,6 +1718,71 @@ private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemInd
             ?: 0
     scrollToItem(latestItemIndex, offset)
 }
+
+private suspend fun LazyListState.awaitThreadMessagesLayoutStability(latestItemIndex: Int): Boolean {
+    var previous: ThreadMessagesLayoutStabilitySnapshot? = null
+    var stableFrames = 0
+    repeat(ThreadLayoutStabilityMaxFrames) {
+        val current = threadMessagesLayoutStabilitySnapshot(latestItemIndex)
+        if (current.canAnchor && current == previous) {
+            stableFrames += 1
+            if (stableFrames >= ThreadLayoutStabilityRequiredFrames) {
+                return true
+            }
+        } else {
+            previous = current
+            stableFrames = 0
+        }
+        delay(ThreadLayoutStabilityFrameDelayMs)
+    }
+    return false
+}
+
+private fun LazyListState.threadMessagesLayoutStabilitySnapshot(
+    latestItemIndex: Int
+): ThreadMessagesLayoutStabilitySnapshot {
+    val layoutInfo = layoutInfo
+    val visibleItems = layoutInfo.visibleItemsInfo
+    val first = visibleItems.firstOrNull()
+    val last = visibleItems.lastOrNull()
+    val latest = visibleItems.firstOrNull { it.index == latestItemIndex }
+    return ThreadMessagesLayoutStabilitySnapshot(
+        totalItemCount = layoutInfo.totalItemsCount,
+        viewportStartOffset = layoutInfo.viewportStartOffset,
+        viewportEndOffset = layoutInfo.viewportEndOffset,
+        visibleItemCount = visibleItems.size,
+        firstItemIndex = first?.index ?: -1,
+        firstItemOffset = first?.offset ?: 0,
+        firstItemSize = first?.size ?: 0,
+        lastItemIndex = last?.index ?: -1,
+        lastItemOffset = last?.offset ?: 0,
+        lastItemSize = last?.size ?: 0,
+        latestItemIndex = latest?.index ?: -1,
+        latestItemOffset = latest?.offset ?: 0,
+        latestItemSize = latest?.size ?: 0,
+        canAnchor = latestItemIndex >= 0 &&
+            layoutInfo.totalItemsCount > latestItemIndex &&
+            visibleItems.isNotEmpty() &&
+            layoutInfo.viewportEndOffset > layoutInfo.viewportStartOffset
+    )
+}
+
+private data class ThreadMessagesLayoutStabilitySnapshot(
+    val totalItemCount: Int,
+    val viewportStartOffset: Int,
+    val viewportEndOffset: Int,
+    val visibleItemCount: Int,
+    val firstItemIndex: Int,
+    val firstItemOffset: Int,
+    val firstItemSize: Int,
+    val lastItemIndex: Int,
+    val lastItemOffset: Int,
+    val lastItemSize: Int,
+    val latestItemIndex: Int,
+    val latestItemOffset: Int,
+    val latestItemSize: Int,
+    val canAnchor: Boolean
+)
 
 internal fun threadLatestItemBottomAnchorScrollOffset(
     itemSize: Int,
@@ -1791,7 +1850,10 @@ private fun ThreadBackToBottomButton(
 
 private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
-private const val ThreadInitialBottomAnchorAttempts = 90
+private const val ThreadBottomAnchorCorrectionAttempts = 4
+private const val ThreadLayoutStabilityFrameDelayMs = 16L
+private const val ThreadLayoutStabilityMaxFrames = 30
+private const val ThreadLayoutStabilityRequiredFrames = 3
 private const val ThreadBackToBottomAnchorAttempts = 12
 
 @Composable
@@ -2826,8 +2888,8 @@ private fun ThreadMessageAttachments(
 ) {
     if (attachments.isEmpty()) return
 
-    val imageAttachments = attachments.filter { it.isImageAttachment() }
-    val fileAttachments = attachments.filterNot { it.isImageAttachment() }
+    val imageAttachments = remember(attachments) { attachments.filter { it.isImageAttachment() } }
+    val fileAttachments = remember(attachments) { attachments.filterNot { it.isImageAttachment() } }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
