@@ -33,12 +33,11 @@ import kotlinx.serialization.json.JsonObject
  *     threadId?, createdAt, attachments?: MessageAttachment[],
  *     reactions?: MessageReaction[] }
  *
- * UI-only fields on [KuiklyThreadMessageItem] (`taskId`, `taskNumber`,
- * `taskStatus`, `taskAssigneeName`, `unreadReplyCount`,
- * `firstUnreadReplyMessageId`, `avatarWireValue`, `gravatarHash`,
- * `systemEventType`, `metadata`) are NOT emitted on this route and are left
- * at their defaults here; they must be populated by joining against the
- * dedicated tasks / thread-metadata / member-profile endpoints upstream.
+ * Message footer metadata mirrors React's `MessageItem`: task badge fields,
+ * reply/new counts, and reactions are parsed here when the message route emits
+ * them. Member-profile-only fields (`avatarWireValue`, `gravatarHash`) and
+ * system-detail fields (`systemEventType`, `metadata`) are still populated by
+ * their dedicated upstream joins.
  */
 
 private val threadMessagesJson = Json {
@@ -62,6 +61,16 @@ private data class WireMessage(
     val attachments: List<WireAttachment> = emptyList(),
     val reactions: List<WireReaction> = emptyList(),
     val replyCount: Int? = null,
+    val unreadReplyCount: Int? = null,
+    val threadUnreadCount: Int? = null,
+    val firstUnreadReplyMessageId: String? = null,
+    val taskStatus: String? = null,
+    val taskNumber: Int? = null,
+    val taskAssigneeType: String? = null,
+    val taskAssigneeId: String? = null,
+    val taskAssigneeName: String? = null,
+    val claimedByName: String? = null,
+    val taskClaimedByName: String? = null,
 )
 
 @Serializable
@@ -222,16 +231,19 @@ private fun WireMessage.toMessageItem(currentUserId: String?): KuiklyThreadMessa
         metadata = emptyMap(),
         body = content,
         replyCount = replyCount ?: 0,
-        unreadReplyCount = 0,
-        firstUnreadReplyMessageId = null,
-        taskId = null,
-        taskNumber = null,
-        taskStatus = null,
-        taskAssigneeName = null,
-        reactions = reactions.map { it.toReactionItem(currentUserId) },
+        unreadReplyCount = unreadReplyCount ?: threadUnreadCount ?: 0,
+        firstUnreadReplyMessageId = firstUnreadReplyMessageId,
+        taskId = if (taskNumber != null || taskStatus != null) id else null,
+        taskNumber = taskNumber,
+        taskStatus = taskStatus,
+        taskAssigneeName = firstNonBlank(taskAssigneeName, claimedByName, taskClaimedByName, taskAssigneeId),
+        reactions = reactions.map { it.toReactionItem(currentUserId) }.filter { it.count > 0 },
         attachments = attachments.mapIndexed { i, a -> a.toAttachmentItem(i) }
     )
 }
+
+private fun firstNonBlank(vararg values: String?): String? =
+    values.firstOrNull { !it.isNullOrBlank() }?.trim()
 
 private fun WireReaction.toReactionItem(currentUserId: String?): KuiklyThreadReactionItem =
     KuiklyThreadReactionItem(

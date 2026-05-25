@@ -362,6 +362,7 @@ class KmpVisualScreenshotCaptureTest {
             .put("taskId", "task_msg_10")
             .put("taskNumber", 10)
             .put("taskStatus", "in_review")
+            .put("taskAssigneeName", "Android-Developer")
             .put(
                 "reactions",
                 JSONArray()

@@ -98,7 +98,6 @@ internal const val THREAD_PAGE = "compose_thread"
 private const val THREAD_MESSAGE_VISUAL_PAGE = "compose_thread_message_visual"
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesPageSize = 50
-private const val ThreadMessagesDefaultBeyondBoundsItemCount = 2
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 
@@ -1628,11 +1627,9 @@ internal fun threadMessagesLazyItemCount(
         messagesCount.coerceAtLeast(0) +
         (if (canLoadMoreAfter) 1 else 0)
 
-private fun threadMessagesBeyondBoundsItemCount(itemCount: Int): Int =
-    itemCount.coerceIn(
-        minimumValue = ThreadMessagesDefaultBeyondBoundsItemCount,
-        maximumValue = ThreadMessagesMaxBeyondBoundsItemCount
-    )
+internal fun threadMessagesBeyondBoundsItemCount(itemCount: Int): Int =
+    itemCount.coerceAtLeast(0)
+        .coerceAtMost(ThreadMessagesMaxBeyondBoundsItemCount)
 
 private fun KuiklyThreadScreenPayload.originListItemKey(): String =
     "thread-page:origin:${originParentMessageId ?: originMessage?.id ?: instanceId}"
@@ -1683,7 +1680,7 @@ internal fun threadLatestItemBottomAnchorScrollOffset(
     if (itemSize <= 0 || viewportHeight <= 0) return 0
     val rawOffset = itemSize - viewportHeight
     if (rawOffset >= 0) return rawOffset
-    return if (visibleItemCount >= totalItemCount) 0 else rawOffset
+    return 0
 }
 
 private fun LazyListState.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
@@ -2064,7 +2061,8 @@ private fun ThreadMessageFooterMeta(
             !message.taskStatus.isNullOrBlank() ||
             !message.taskAssigneeName.isNullOrBlank()
     val hasReplies = showReplyAction && message.replyCount > 0
-    val hasReactions = message.reactions.isNotEmpty()
+    val visibleReactions = message.reactions.filter { it.count > 0 }
+    val hasReactions = visibleReactions.isNotEmpty()
     if (!hasTask && !hasReplies && !hasReactions) return
     var statusSheetOpen by remember(message.id, message.taskStatus) { mutableStateOf(false) }
 
@@ -2075,14 +2073,7 @@ private fun ThreadMessageFooterMeta(
             if (alignEnd) Arrangement.spacedBy(6.dp, Alignment.End) else Arrangement.spacedBy(6.dp)
     ) {
         if (hasTask) {
-            val label =
-                buildString {
-                    append(message.taskNumber?.let { "#$it" } ?: "Task")
-                    message.taskAssigneeName?.takeIf { it.isNotBlank() }?.let {
-                        append(" @")
-                        append(it.removePrefix("@"))
-                    }
-                }
+            val label = threadMessageTaskMetaLabel(message) ?: "Task"
             val selectedStatus = message.taskStatus.threadTaskStatusOption()
             ThreadMetaChip(
                 label = label,
@@ -2115,16 +2106,7 @@ private fun ThreadMessageFooterMeta(
             }
         }
         if (hasReplies) {
-            val replyLabel =
-                buildString {
-                    append(message.replyCount)
-                    append(if (message.replyCount == 1) " reply" else " replies")
-                    if (message.unreadReplyCount > 0) {
-                        append(" · ")
-                        append(message.unreadReplyCount)
-                        append(" new")
-                    }
-                }
+            val replyLabel = threadMessageRepliesMetaLabel(message)
             ThreadMetaChip(
                 label = replyLabel,
                 icon = "message-square",
@@ -2133,13 +2115,39 @@ private fun ThreadMessageFooterMeta(
             )
         }
         if (hasReactions) {
-            message.reactions.forEach { reaction ->
+            visibleReactions.forEach { reaction ->
                 ThreadReactionChip(reaction)
             }
             ThreadReactionAddChip()
         }
     }
 }
+
+internal fun threadMessageTaskMetaLabel(message: KuiklyThreadMessageItem): String? {
+    val number = message.taskNumber?.let { "#$it" }
+    val assignee = message.taskAssigneeName?.trim()?.takeIf { it.isNotBlank() }?.removePrefix("@")
+    if (number == null && assignee == null && message.taskStatus.isNullOrBlank() && message.taskId.isNullOrBlank()) {
+        return null
+    }
+    return buildString {
+        append(number ?: "Task")
+        assignee?.let {
+            append(" @")
+            append(it)
+        }
+    }
+}
+
+internal fun threadMessageRepliesMetaLabel(message: KuiklyThreadMessageItem): String =
+    buildString {
+        append(message.replyCount)
+        append(if (message.replyCount == 1) " reply" else " replies")
+        if (message.unreadReplyCount > 0) {
+            append(" · ")
+            append(message.unreadReplyCount)
+            append(" new")
+        }
+    }
 
 private data class ThreadTaskStatusOption(
     val key: String,

@@ -61,7 +61,7 @@ class ThreadPayloadTest {
             )
         )
         assertEquals(
-            -520,
+            0,
             threadLatestItemBottomAnchorScrollOffset(
                 itemSize = 120,
                 viewportHeight = 640,
@@ -235,6 +235,11 @@ class ThreadPayloadTest {
                           "content": "hello from shared route",
                           "createdAt": "2026-05-19T16:00:00Z",
                           "replyCount": 3,
+                          "unreadReplyCount": 2,
+                          "firstUnreadReplyMessageId": "reply-2",
+                          "taskStatus": "in_review",
+                          "taskNumber": 42,
+                          "claimedByName": "Android-Developer-2",
                           "attachments": [
                             {"id": "a1", "filename": "log.txt", "mimeType": "text/plain", "sizeBytes": 12},
                             {"id": "a2", "filename": "screen.png", "mimeType": "image/png", "sizeBytes": 2048, "thumbnailUrl": "https://cdn.example/screen.png"}
@@ -255,6 +260,14 @@ class ThreadPayloadTest {
         assertEquals("Artin", payload.messages.first().authorName)
         assertEquals(true, payload.messages.first().isOwn)
         assertEquals(3, payload.messages.first().replyCount)
+        assertEquals(2, payload.messages.first().unreadReplyCount)
+        assertEquals("reply-2", payload.messages.first().firstUnreadReplyMessageId)
+        assertEquals("m1", payload.messages.first().taskId)
+        assertEquals(42, payload.messages.first().taskNumber)
+        assertEquals("in_review", payload.messages.first().taskStatus)
+        assertEquals("Android-Developer-2", payload.messages.first().taskAssigneeName)
+        assertEquals("#42 @Android-Developer-2", threadMessageTaskMetaLabel(payload.messages.first()))
+        assertEquals("3 replies · 2 new", threadMessageRepliesMetaLabel(payload.messages.first()))
         assertEquals("👍", payload.messages.first().reactions.first().emoji)
         assertEquals(2, payload.messages.first().reactions.first().count)
         assertEquals(true, payload.messages.first().reactions.first().selected)
@@ -462,6 +475,33 @@ class ThreadPayloadTest {
         assertEquals("InReview", message.taskStatus)
         assertEquals("Android-Developer-2", message.taskAssigneeName)
         assertEquals(2, message.replyCount)
+        assertEquals("#163 @Android-Developer-2", threadMessageTaskMetaLabel(message))
+        assertEquals("2 replies", threadMessageRepliesMetaLabel(message))
+    }
+
+    @Test
+    fun threadListBoundsUseMeasuredItemsAndNeverNegativeBottomOffset() {
+        assertEquals(0, threadMessagesBeyondBoundsItemCount(-1))
+        assertEquals(1, threadMessagesBeyondBoundsItemCount(1))
+        assertEquals(8, threadMessagesBeyondBoundsItemCount(80))
+        assertEquals(
+            0,
+            threadLatestItemBottomAnchorScrollOffset(
+                itemSize = 72,
+                viewportHeight = 640,
+                visibleItemCount = 2,
+                totalItemCount = 8
+            )
+        )
+        assertEquals(
+            160,
+            threadLatestItemBottomAnchorScrollOffset(
+                itemSize = 800,
+                viewportHeight = 640,
+                visibleItemCount = 2,
+                totalItemCount = 8
+            )
+        )
     }
 
     @Test
