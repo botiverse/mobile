@@ -209,6 +209,34 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun channelCreatedOptimisticallyAddsAndSelectsChannel() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = RecordingHomeApi()),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+
+        val created =
+            ConversationSummary(
+                threadId = ThreadId("channel-new"),
+                channelId = ChannelId("channel-new"),
+                kind = ConversationKind.Channel,
+                name = "release-room"
+            )
+        store.accept(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Activity))
+        store.accept(SharedHomeIntent.ChannelCreated(created))
+
+        val content = store.state.value.content
+        assertTrue(content is SharedHomeContentState.Content)
+        assertEquals(listOf("general", "release-room"), content.snapshot.channels.map { it.name })
+        assertEquals("channel-new", store.state.value.selectedConversationId)
+        assertEquals(null, store.state.value.selectedTopAction)
+        scope.cancel()
+    }
+
+    @Test
     fun startLoadsActiveAnnouncementsIntoHomeNotifications() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val announcementsApi = RecordingAnnouncementsApi()

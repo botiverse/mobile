@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.RealtimeEvent
 import com.tencent.kuikly.lifecycle.ViewModel
@@ -70,6 +71,8 @@ class SharedHomeStore(
                 applyRealtimeEvent(ServerId(intent.serverId), intent.event)
             is SharedHomeIntent.DismissNotification ->
                 dismissNotification(intent.id)
+            is SharedHomeIntent.ChannelCreated ->
+                _state.value = _state.value.withCreatedChannel(intent.channel)
             is SharedHomeIntent.SelectServer -> {
                 val currentServerId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
                 val nextSwitch =
@@ -88,6 +91,30 @@ class SharedHomeStore(
                 load(nextSwitch)
             }
         }
+    }
+
+    private fun SharedHomeState.withCreatedChannel(channel: ConversationSummary): SharedHomeState {
+        val nextContent =
+            when (val current = content) {
+                is SharedHomeContentState.Content ->
+                    current.copy(
+                        snapshot =
+                            current.snapshot.copy(
+                                channels =
+                                    (current.snapshot.channels.filterNot {
+                                        it.threadId == channel.threadId ||
+                                            it.channelId == channel.channelId
+                                    } + channel)
+                            ),
+                        contentRefreshing = false
+                    )
+                else -> current
+            }
+        return copy(
+            content = nextContent,
+            selectedConversationId = channel.threadId.value,
+            selectedTopAction = null
+        )
     }
 
     private suspend fun applyRealtimeEvent(serverId: ServerId, event: RealtimeEvent) {
@@ -262,6 +289,7 @@ sealed interface SharedHomeIntent {
     data class SelectServer(val serverId: String) : SharedHomeIntent
     data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
     data class DismissNotification(val id: String) : SharedHomeIntent
+    data class ChannelCreated(val channel: ConversationSummary) : SharedHomeIntent
 }
 
 private val SharedHomeIntent.loadsHome: Boolean
@@ -275,7 +303,8 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.SelectConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
-            is SharedHomeIntent.DismissNotification -> false
+            is SharedHomeIntent.DismissNotification,
+            is SharedHomeIntent.ChannelCreated -> false
         }
 
 sealed interface SharedHomeContentState {

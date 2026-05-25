@@ -45,8 +45,11 @@ import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.realtime.RealtimeEventMapper
 import ai.slock.compose.data.parseSlockHome
 import ai.slock.compose.data.BridgeThreadApi
+import ai.slock.compose.data.CreateChannelRequest
 import ai.slock.compose.data.DataRequestPriority
+import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.KuiklySlockNetworkClient
+import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealMemberRepository
 import ai.slock.compose.data.RealSettingsRepository
 import ai.slock.compose.data.kuiklyNotificationPreferenceRepository
@@ -102,10 +105,12 @@ import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.material3.navigation.NavHost
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.material3.navigation.composable
@@ -452,18 +457,29 @@ private fun SlockAppShellContent() {
                 warningLogger = { message -> bridge.log("kuikly_network $message") }
             )
         }
+    val memberRepository =
+        remember {
+            RealMemberRepository(
+                sessionStore = authStore,
+                networkClient = appShellNetworkClient,
+                logger = { message -> bridge.log("app_shell_member_repository $message") }
+            )
+        }
     val threadDataSource =
         remember {
             SharedThreadDataSource(
                 networkApi = BridgeThreadApi(bridge, authStore),
                 sessionStore = authStore,
                 localWriteThrough = localWriteThrough,
-                memberRepository =
-                    RealMemberRepository(
-                        sessionStore = authStore,
-                        networkClient = appShellNetworkClient,
-                        logger = { message -> bridge.log("thread_member_repository $message") }
-                    )
+                memberRepository = memberRepository
+            )
+        }
+    val channelRepository =
+        remember {
+            RealChannelRepository(
+                sessionStore = authStore,
+                networkClient = appShellNetworkClient,
+                warningLogger = { message -> bridge.log("shared_channel_repository $message") }
             )
         }
     val tasksDataSource =
@@ -499,6 +515,11 @@ private fun SlockAppShellContent() {
         }
     var activeThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
     var threadBackStack by remember { mutableStateOf<List<KuiklyThreadScreenPayload>>(emptyList()) }
+    var createChannelDialogOpen by remember { mutableStateOf(false) }
+    var createChannelSubmitting by remember { mutableStateOf(false) }
+    var createChannelError by remember { mutableStateOf<String?>(null) }
+    var createChannelMembersLoading by remember { mutableStateOf(false) }
+    var createChannelMembers by remember { mutableStateOf<List<MemberProfile>>(emptyList()) }
     val authGateViewModel: SharedAuthGateViewModel =
         viewModel(key = "shared-auth-gate") {
             SharedAuthGateViewModel(authDataSource)
@@ -661,6 +682,11 @@ private fun SlockAppShellContent() {
     }
 
     fun popMainRoute(): Boolean {
+        if (createChannelDialogOpen) {
+            createChannelDialogOpen = false
+            createChannelError = null
+            return true
+        }
         if (homeState.serverSwitcherExpanded) {
             homeViewModel.dispatch(SharedHomeIntent.DismissServerSwitcher)
             return true
@@ -704,6 +730,97 @@ private fun SlockAppShellContent() {
     LaunchedEffect(selectedTab) {
         if (selectedTab == "tasks") {
             tasksViewModel.dispatch(SharedTasksRouteIntent.Start)
+        }
+    }
+
+    fun loadCreateChannelMembers() {
+        createChannelMembersLoading = true
+        appShellScope.launch {
+            try {
+                val session = authStore.readSession()
+                val serverId = session?.currentServerId
+                if (serverId.isNullOrBlank()) {
+                    createChannelMembers = emptyList()
+                    createChannelMembersLoading = false
+                    return@launch
+                }
+                createChannelMembers =
+                    when (val result = memberRepository.getMembers(DataRequestPriority.Visible, ServerId(serverId))) {
+                        is DataResult.Content -> result.data.members
+                        is DataResult.Empty,
+                        is DataResult.Error,
+                        is DataResult.NoPermission -> emptyList()
+                    }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                createChannelMembers = emptyList()
+            } finally {
+                createChannelMembersLoading = false
+            }
+        }
+    }
+
+    fun openCreateChannelDialog() {
+        createChannelDialogOpen = true
+        createChannelError = null
+        createChannelMembers = emptyList()
+        loadCreateChannelMembers()
+    }
+
+    fun submitCreateChannel(
+        name: String,
+        description: String?,
+        agentMemberIds: List<String>,
+        userMemberIds: List<String>
+    ) {
+        val trimmedName = name.trim()
+        if (trimmedName.isBlank() || createChannelSubmitting) {
+            return
+        }
+        createChannelSubmitting = true
+        createChannelError = null
+        appShellScope.launch {
+            try {
+                when (
+                    val result =
+                        channelRepository.createChannel(
+                            CreateChannelRequest(
+                                name = trimmedName,
+                                description = description?.trim()?.takeIf { it.isNotBlank() },
+                                agentMemberIds = agentMemberIds,
+                                userMemberIds = userMemberIds
+                            )
+                        )
+                ) {
+                    is DataResult.Content -> {
+                        val channel = result.data.channel
+                        selectedTab = "home"
+                        selectedHomeDestination = null
+                        selectedHomeConversationId = channel.threadId.value
+                        homeViewModel.dispatch(SharedHomeIntent.ChannelCreated(channel))
+                        homeViewModel.dispatch(SharedHomeIntent.Refresh)
+                        createChannelDialogOpen = false
+                        createChannelError = null
+                        bridge.toast("Channel created")
+                    }
+                    is DataResult.Empty -> {
+                        createChannelError = "Channel was not created."
+                    }
+                    is DataResult.Error -> {
+                        createChannelError = result.error.code
+                    }
+                    is DataResult.NoPermission -> {
+                        createChannelError = result.blocker.code
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                createChannelError = "channel_create_failed"
+            } finally {
+                createChannelSubmitting = false
+            }
         }
     }
 
@@ -850,6 +967,7 @@ private fun SlockAppShellContent() {
                                         selectedHomeConversationId = null
                                         selectedHomeDestination = HomeDestinationSaved
                                     },
+                                    onCreateChannel = { openCreateChannelDialog() },
                                     onOpenConversation = { conversation ->
                                         selectedHomeDestination = null
                                         selectedHomeConversationId = conversation.threadId.value
@@ -893,6 +1011,23 @@ private fun SlockAppShellContent() {
                         .align(Alignment.BottomCenter),
                     bottomSafeArea = bottomSafeArea
                 )
+                if (createChannelDialogOpen) {
+                    SharedCreateChannelDialog(
+                        submitting = createChannelSubmitting,
+                        membersLoading = createChannelMembersLoading,
+                        members = createChannelMembers,
+                        errorMessage = createChannelError,
+                        onDismiss = {
+                            if (!createChannelSubmitting) {
+                                createChannelDialogOpen = false
+                                createChannelError = null
+                            }
+                        },
+                        onSubmit = { name, description, agentMemberIds, userMemberIds ->
+                            submitCreateChannel(name, description, agentMemberIds, userMemberIds)
+                        }
+                    )
+                }
             }
         }
     }
@@ -2369,6 +2504,7 @@ private fun SharedHomeScreen(
     onOpenSearch: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenSaved: () -> Unit,
+    onCreateChannel: () -> Unit,
     onOpenConversation: (ConversationSummary) -> Unit,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
@@ -2401,7 +2537,8 @@ private fun SharedHomeScreen(
                     },
                     onCreateServerClick = {
                         bridge.toast("Create server is not available yet")
-                    }
+                    },
+                    onCreateChannelClick = onCreateChannel
                 )
             }
         is SharedHomeContentState.Empty ->
@@ -2419,7 +2556,8 @@ private fun SharedHomeScreen(
                 },
                 onCreateServerClick = {
                     bridge.toast("Create server is not available yet")
-                }
+                },
+                onCreateChannelClick = onCreateChannel
             )
         is SharedHomeContentState.Error ->
             AppShellPlaceholderContent(
@@ -2471,6 +2609,7 @@ private fun SharedHomeScreen(
                 onCreateServerClick = {
                     bridge.toast("Create server is not available yet")
                 },
+                onCreateChannelClick = onCreateChannel,
                 onSearchClick = {
                     onIntent(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Search))
                     onOpenSearch()
@@ -2505,6 +2644,298 @@ private fun SharedHomeScreen(
     }
 }
 
+@Composable
+private fun SharedCreateChannelDialog(
+    submitting: Boolean,
+    membersLoading: Boolean,
+    members: List<MemberProfile>,
+    errorMessage: String?,
+    onDismiss: () -> Unit,
+    onSubmit: (String, String?, List<String>, List<String>) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var selectedMemberKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val canSubmit = name.isNotBlank() && !submitting
+    val selectableMembers = members.filter { it.kind == MemberKind.Human || it.kind == MemberKind.Agent }
+    Modal(onWillDismiss = { if (!submitting) onDismiss() }) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(SlockColor.ShadowBlack.copy(alpha = 0.36f))
+                    .clickable(enabled = !submitting, onClick = onDismiss),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier =
+                    Modifier
+                        .padding(SlockSpacing.Md)
+                        .widthIn(min = 280.dp, max = 380.dp)
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .clickable(enabled = false, onClick = {})
+                        .padding(SlockSpacing.Md),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                Text(
+                    text = "Create channel",
+                    style = SlockType.PageTitle,
+                    color = SlockColor.TextBlack
+                )
+                Text(
+                    text = "Create a workspace channel and optionally add people or agents.",
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray
+                )
+                SharedCreateChannelField(
+                    label = "Channel name",
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = "project-updates",
+                    enabled = !submitting,
+                    autoFocus = true
+                )
+                SharedCreateChannelField(
+                    label = "Description",
+                    value = description,
+                    onValueChange = { description = it },
+                    placeholder = "Optional channel purpose",
+                    enabled = !submitting,
+                    maxLines = 3,
+                    autoFocus = false
+                )
+                SharedCreateChannelMemberPicker(
+                    loading = membersLoading,
+                    members = selectableMembers,
+                    selectedKeys = selectedMemberKeys,
+                    enabled = !submitting,
+                    onToggle = { key ->
+                        selectedMemberKeys =
+                            if (key in selectedMemberKeys) {
+                                selectedMemberKeys - key
+                            } else {
+                                selectedMemberKeys + key
+                            }
+                    }
+                )
+                if (!errorMessage.isNullOrBlank()) {
+                    Text(
+                        text = "Error: $errorMessage",
+                        style = SlockType.Caption,
+                        color = SlockColor.AccentRed
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Spacer(Modifier.weight(1f))
+                    SharedCreateChannelButton(
+                        label = "Cancel",
+                        enabled = !submitting,
+                        primary = false,
+                        onClick = onDismiss
+                    )
+                    SharedCreateChannelButton(
+                        label = if (submitting) "Creating..." else "Create",
+                        enabled = canSubmit,
+                        primary = true,
+                        onClick = {
+                            val selectedMembers =
+                                selectableMembers.filter { it.memberSelectionKey in selectedMemberKeys }
+                            onSubmit(
+                                name,
+                                description,
+                                selectedMembers.filter { it.kind == MemberKind.Agent }.map { it.id.value },
+                                selectedMembers.filter { it.kind == MemberKind.Human }.map { it.id.value }
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SharedCreateChannelMemberPicker(
+    loading: Boolean,
+    members: List<MemberProfile>,
+    selectedKeys: Set<String>,
+    enabled: Boolean,
+    onToggle: (String) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = "Members and agents",
+            style = SlockType.SectionLabel,
+            color = SlockColor.TextBlack
+        )
+        when {
+            loading ->
+                Text(
+                    text = "Loading members...",
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray
+                )
+            members.isEmpty() ->
+                Text(
+                    text = "No members available to add now.",
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray
+                )
+            else ->
+                LazyColumn(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 156.dp)
+                            .background(SlockColor.SurfaceCream.copy(alpha = 0.55f))
+                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                            .padding(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    members.take(12).forEach { member ->
+                        item(key = member.memberSelectionKey) {
+                            SharedCreateChannelMemberRow(
+                                member = member,
+                                selected = member.memberSelectionKey in selectedKeys,
+                                enabled = enabled,
+                                onClick = { onToggle(member.memberSelectionKey) }
+                            )
+                        }
+                    }
+                    if (members.size > 12) {
+                        item {
+                            Text(
+                                text = "+${members.size - 12} more available after creation",
+                                style = SlockType.Caption,
+                                color = SlockColor.TextMutedGray,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+        }
+    }
+}
+
+@Composable
+private fun SharedCreateChannelMemberRow(
+    member: MemberProfile,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val background = if (selected) SlockColor.BrandYellow.copy(alpha = 0.75f) else SlockColor.SurfaceWhite
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(background)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = 8.dp, vertical = 7.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = if (selected) "✓" else "+",
+            style = SlockType.SectionLabel,
+            color = SlockColor.TextBlack
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = member.displayName,
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "${member.kind.name.lowercase()} · @${member.handle}",
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+private val MemberProfile.memberSelectionKey: String
+    get() = "${kind.name}:${id.value}"
+
+@Composable
+private fun SharedCreateChannelField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    enabled: Boolean,
+    autoFocus: Boolean,
+    maxLines: Int = 1
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = label,
+            style = SlockType.SectionLabel,
+            color = SlockColor.TextBlack
+        )
+        TextField(
+            value = value,
+            onValueChange = { if (enabled) onValueChange(it) },
+            placeholder = placeholder,
+            placeholderColor = SlockColor.TextMutedGray,
+            autoFocus = autoFocus,
+            maxLines = maxLines,
+            textStyle = SlockType.Input.copy(color = SlockColor.TextBlack),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 40.dp)
+                    .background(SlockColor.AppBgLightBlue.copy(alpha = 0.6f))
+                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                    .padding(horizontal = SlockSpacing.Sm, vertical = 8.dp)
+        )
+    }
+}
+
+@Composable
+private fun SharedCreateChannelButton(
+    label: String,
+    enabled: Boolean,
+    primary: Boolean,
+    onClick: () -> Unit
+) {
+    val background =
+        when {
+            !enabled -> SlockColor.TextMutedGray.copy(alpha = 0.22f)
+            primary -> SlockColor.BrandYellow
+            else -> SlockColor.SurfaceWhite
+        }
+    Box(
+        modifier =
+            Modifier
+                .background(background)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = SlockSpacing.Md, vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = SlockType.SectionLabel,
+            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
+        )
+    }
+}
+
 private fun SharedHomeNotification.toHomeNotificationItem(): SlockHomeNotificationItem =
     SlockHomeNotificationItem(
         id = id,
@@ -2530,7 +2961,8 @@ private fun SharedHomeSessionShell(
     onServerBadgeClick: () -> Unit,
     onServerSwitcherDismiss: () -> Unit,
     onServerSelected: (String) -> Unit,
-    onCreateServerClick: () -> Unit
+    onCreateServerClick: () -> Unit,
+    onCreateChannelClick: () -> Unit
 ) {
     val currentServer = session.currentServerSummary()
     SlockStructuralHomeShell(
@@ -2548,7 +2980,8 @@ private fun SharedHomeSessionShell(
         onServerBadgeClick = onServerBadgeClick,
         onServerSwitcherDismiss = onServerSwitcherDismiss,
         onServerSelected = onServerSelected,
-        onCreateServerClick = onCreateServerClick
+        onCreateServerClick = onCreateServerClick,
+        onCreateChannelClick = onCreateChannelClick
     )
 }
 
