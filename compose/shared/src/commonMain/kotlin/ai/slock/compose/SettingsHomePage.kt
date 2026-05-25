@@ -2621,7 +2621,7 @@ internal fun buildAppShellThreadPayload(
     KuiklyThreadScreenPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
         title = conversation.name.ifBlank { "Thread" },
-        subtitle = conversation.subtitle ?: conversation.channelId?.value,
+        subtitle = conversation.subtitle?.takeIf { it.isNotBlank() },
         status = "loading",
         sourceThreadId = conversation.threadId.value,
         selectedTab = "chat",

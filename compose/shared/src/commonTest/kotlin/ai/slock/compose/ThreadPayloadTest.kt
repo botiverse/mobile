@@ -182,6 +182,26 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun sharedShellThreadRouteOmitsSubtitleWhenChannelDescriptionIsMissing() {
+        val payload =
+            buildAppShellThreadPayload(
+                ConversationSummary(
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    kind = ConversationKind.Channel,
+                    name = "general",
+                    subtitle = null,
+                    joined = true,
+                    memberCount = 7,
+                    permissions = ConversationPermissions(canSend = true)
+                )
+            )
+
+        assertEquals("general", payload.title)
+        assertEquals(null, payload.subtitle)
+    }
+
+    @Test
     fun buildsSharedThreadPayloadFromBridgeMessagesResponse() {
         val base =
             KuiklyThreadScreenPayload(
