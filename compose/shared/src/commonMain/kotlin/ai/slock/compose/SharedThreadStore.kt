@@ -2,9 +2,13 @@ package ai.slock.compose
 
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesResponse
+import ai.slock.compose.data.ChannelFilesSnapshot
 import ai.slock.compose.data.ComposeLocalWriteThrough
+import ai.slock.compose.data.ConversationRepository
 import ai.slock.compose.data.ReadReceiptResult
 import ai.slock.compose.data.ScreenError
+import ai.slock.compose.data.DataRequestPriority
+import ai.slock.compose.data.MemberRepository
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SlockThreadApi
 import ai.slock.compose.data.SlockThreadApiClient
@@ -42,11 +46,13 @@ import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.SyncResumeResponse
+import ai.slock.compose.model.formatSlockTimestampLabel
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,19 +61,26 @@ import kotlinx.coroutines.launch
 internal class SharedThreadDataSource(
     private val api: SlockThreadApi,
     private val sessionStore: SlockAuthSessionStore,
-    private val localWriteThrough: ComposeLocalWriteThrough? = null
+    private val localWriteThrough: ComposeLocalWriteThrough? = null,
+    private val memberRepository: MemberRepository? = null,
+    private val conversationRepository: ConversationRepository? = null
 ) {
     constructor(
         networkApi: SharedThreadNetworkApi,
         sessionStore: SlockAuthSessionStore,
-        localWriteThrough: ComposeLocalWriteThrough? = null
+        localWriteThrough: ComposeLocalWriteThrough? = null,
+        memberRepository: MemberRepository? = null,
+        conversationRepository: ConversationRepository? = null
     ) : this(
         api = SlockThreadApiClient(networkApi),
         sessionStore = sessionStore,
-        localWriteThrough = localWriteThrough
+        localWriteThrough = localWriteThrough,
+        memberRepository = memberRepository,
+        conversationRepository = conversationRepository
     )
 
     private val payloadCache = mutableMapOf<String, KuiklyThreadScreenPayload>()
+    private val senderProfilesCache = mutableMapOf<String, Map<String, MemberProfile>>()
 
     suspend fun readSession(): StoredAuthSession? = sessionStore.readSession()
 
@@ -98,7 +111,10 @@ internal class SharedThreadDataSource(
         )
     }
 
-    suspend fun fetchThreadPayload(basePayload: KuiklyThreadScreenPayload): DataResult<KuiklyThreadScreenPayload> {
+    suspend fun fetchThreadPayload(
+        basePayload: KuiklyThreadScreenPayload,
+        persistResult: Boolean = true
+    ): DataResult<KuiklyThreadScreenPayload> {
         val threadId =
             basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
                 ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
@@ -124,10 +140,17 @@ internal class SharedThreadDataSource(
                 basePayload = basePayload,
                 bodyText = page.rawBodyText,
                 session = session
-            )
+            ).withCachedSenderProfiles(session)
         cachePayload(payload)
-        writeCachedPayload(payload)
+        if (persistResult) {
+            writeCachedPayload(payload)
+        }
         return DataResult.Content(payload)
+    }
+
+    suspend fun enrichSenderProfiles(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+        val session = readSession() ?: return payload
+        return payload.withSenderProfiles(session)
     }
 
     suspend fun fetchOlderThreadPayload(
@@ -160,6 +183,45 @@ internal class SharedThreadDataSource(
 
     suspend fun attachmentUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget> =
         api.attachmentUrl(attachmentId)
+
+    suspend fun fetchFilesPayload(
+        basePayload: KuiklyThreadScreenPayload,
+        cursor: String? = null,
+        currentPayload: KuiklyThreadFilesPayload? = null
+    ): DataResult<KuiklyThreadFilesPayload> {
+        val repository =
+            conversationRepository
+                ?: return DataResult.Error(ScreenError(code = "thread_files_unavailable", retryable = false))
+        val threadId =
+            basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
+                ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+        return when (val result = repository.getChannelFiles(ChannelId(threadId), cursor = cursor)) {
+            is DataResult.Content ->
+                DataResult.Content(
+                    result.data.toKuiklyThreadFilesPayload(
+                        basePayload = basePayload,
+                        currentPayload = currentPayload,
+                        append = cursor != null
+                    )
+                )
+            is DataResult.Empty ->
+                DataResult.Content(
+                    currentPayload
+                        ?.takeIf { cursor != null && it.items.isNotEmpty() }
+                        ?.copy(status = "content", hasMore = false, loadingMore = false, nextCursor = null, errorCode = null)
+                        ?: KuiklyThreadFilesPayload(
+                            instanceId = basePayload.instanceId,
+                            status = "empty",
+                            items = emptyList(),
+                            hasMore = false,
+                            loadingMore = false,
+                            nextCursor = null
+                        )
+                )
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
 
     suspend fun saveMessage(messageId: String): DataResult<Unit> {
         if (messageId.isBlank()) {
@@ -320,8 +382,38 @@ internal class SharedThreadDataSource(
                 basePayload = basePayload,
                 bodyText = page.rawBodyText,
                 session = session
-            )
+            ).withCachedSenderProfiles(session)
         )
+    }
+
+    private suspend fun KuiklyThreadScreenPayload.withSenderProfiles(
+        session: StoredAuthSession
+    ): KuiklyThreadScreenPayload {
+        val repository = memberRepository ?: return this
+        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return this
+        senderProfilesCache[serverId.value]?.let { profilesById ->
+            return withSenderProfiles(profilesById)
+        }
+        val result =
+            try {
+                repository.getMembers(DataRequestPriority.Visible, serverId)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return this
+            }
+        if (result !is DataResult.Content) return this
+        val profilesById = result.data.members.associateBy { it.id.value }
+        senderProfilesCache[serverId.value] = profilesById
+        return withSenderProfiles(profilesById)
+    }
+
+    private fun KuiklyThreadScreenPayload.withCachedSenderProfiles(
+        session: StoredAuthSession
+    ): KuiklyThreadScreenPayload {
+        val serverId = session.currentServerId?.takeIf { it.isNotBlank() } ?: return this
+        val profilesById = senderProfilesCache[serverId] ?: return this
+        return withSenderProfiles(profilesById)
     }
 }
 
@@ -340,6 +432,7 @@ private fun ThreadApiResult<Unit>.toUnitDataResult(fallbackCode: String): DataRe
     }
 
 private const val SharedThreadPageSize = 50
+private const val SharedThreadFirstFrameDelayMillis = 16L
 
 internal data class SharedThreadState(
     val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
@@ -429,20 +522,12 @@ internal class SharedThreadStore(
 
     private suspend fun start(initialPayload: KuiklyThreadScreenPayload) {
         dataSource.cachePayload(initialPayload)
-        val session = dataSource.readSession()
         val threadId = initialPayload.sourceThreadId?.takeIf { it.isNotBlank() }
         val cached = threadId?.let(dataSource::cachedPayload)?.withRouteContext(initialPayload)
         val current = _state.value.payload.takeIf { it.sourceThreadId == threadId && it.hasRenderableThreadContent() }
-        val persistentCached =
-            if (cached == null && current == null) {
-                dataSource.readCachedPayload(initialPayload)
-            } else {
-                null
-            }
         val visiblePayload =
             cached
                 ?: current
-                ?: persistentCached
                 ?: if (threadId == null) {
                     initialPayload
                 } else {
@@ -451,23 +536,39 @@ internal class SharedThreadStore(
         _state.value =
             SharedThreadState(
                 payload = visiblePayload,
-                highlightedMentions = session.threadSelfMentionNames()
+                highlightedMentions = emptySet()
             )
-        if (threadId != null) {
-            refresh(initialPayload)
+        delay(SharedThreadFirstFrameDelayMillis)
+        val session = dataSource.readSession()
+        if (threadId == null || _state.value.payload.sourceThreadId == threadId) {
+            _state.value = _state.value.copy(highlightedMentions = session.threadSelfMentionNames())
         }
+        if (threadId == null) {
+            return
+        }
+        if (cached == null && current == null && !visiblePayload.hasRenderableThreadContent()) {
+            val persistentCached = dataSource.readCachedPayload(initialPayload)
+            if (persistentCached != null && _state.value.payload.sourceThreadId == threadId) {
+                _state.value = _state.value.copy(payload = persistentCached.withRouteContext(initialPayload))
+            }
+        }
+        refresh(initialPayload)
     }
 
     private suspend fun refresh(basePayload: KuiklyThreadScreenPayload) {
         val existing = _state.value.payload
+        val hasRenderableContent = existing.hasRenderableThreadContent()
         val loadingBase =
-            if (existing.hasRenderableThreadContent()) {
+            if (hasRenderableContent) {
                 existing.withRouteContext(basePayload)
             } else {
                 basePayload.copy(status = "loading", errorCode = null)
             }
         _state.value = _state.value.copy(payload = loadingBase)
-        val result = dataSource.fetchThreadPayload(basePayload)
+        if (!hasRenderableContent) {
+            delay(SharedThreadFirstFrameDelayMillis)
+        }
+        val result = dataSource.fetchThreadPayload(basePayload, persistResult = false)
         _state.value =
             when (result) {
                 is DataResult.Content ->
@@ -479,6 +580,24 @@ internal class SharedThreadStore(
                 is DataResult.NoPermission ->
                     _state.value.copy(payload = _state.value.payload.asRefreshFailed(result.blocker.code))
             }
+        if (result is DataResult.Content) {
+            val visiblePayload = result.data.withRouteContext(basePayload)
+            dataSource.cachePayload(visiblePayload)
+            writeCachedPayloadAfterFrame(visiblePayload)
+            val enrichedPayload = dataSource.enrichSenderProfiles(visiblePayload)
+            if (enrichedPayload != visiblePayload) {
+                _state.value = _state.value.copy(payload = enrichedPayload)
+                dataSource.cachePayload(enrichedPayload)
+                writeCachedPayloadAfterFrame(enrichedPayload)
+            }
+        }
+    }
+
+    private fun writeCachedPayloadAfterFrame(payload: KuiklyThreadScreenPayload) {
+        scope.launch {
+            delay(SharedThreadFirstFrameDelayMillis)
+            dataSource.writeCachedPayload(payload)
+        }
     }
 
     private suspend fun applyRealtimeEvent(
@@ -609,6 +728,57 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
         emptyTitle = base.emptyTitle,
         emptyDetail = base.emptyDetail
     )
+
+private fun ChannelFilesSnapshot.toKuiklyThreadFilesPayload(
+    basePayload: KuiklyThreadScreenPayload,
+    currentPayload: KuiklyThreadFilesPayload?,
+    append: Boolean
+): KuiklyThreadFilesPayload {
+    val incoming = items.map { item ->
+        val attachment = item.attachment
+        KuiklyThreadFileItem(
+            attachmentId = attachment.id.value,
+            name = attachment.name,
+            sizeLabel = attachment.sizeLabel,
+            createdAtLabel = basePayload.formatFilesTimestampLabel(item.createdAt.orEmpty()),
+            sourceLabel = item.filesSourceLabel(),
+            mimeType = attachment.mimeType,
+            thumbnailUrl = attachment.thumbnailUrl
+        )
+    }
+    val merged =
+        if (append) {
+            currentPayload.orEmptyFilesPayload(basePayload).items + incoming
+        } else {
+            incoming
+        }.distinctBy { item -> item.attachmentId }
+    return KuiklyThreadFilesPayload(
+        instanceId = basePayload.instanceId,
+        status = if (merged.isEmpty()) "empty" else "content",
+        items = merged,
+        hasMore = hasMore,
+        loadingMore = false,
+        nextCursor = nextCursor,
+        errorCode = null
+    )
+}
+
+private fun KuiklyThreadFilesPayload?.orEmptyFilesPayload(basePayload: KuiklyThreadScreenPayload): KuiklyThreadFilesPayload =
+    this ?: KuiklyThreadFilesPayload(instanceId = basePayload.instanceId)
+
+private fun ai.slock.compose.data.ChannelFileItem.filesSourceLabel(): String =
+    sourceParentMessageShortId
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "Thread #$it" }
+        ?: sourceType
+            ?.takeIf { it.isNotBlank() }
+            ?.replaceFirstChar { char -> char.uppercaseChar() }
+            .orEmpty()
+
+private fun KuiklyThreadScreenPayload.formatFilesTimestampLabel(value: String): String =
+    todayEpochDay?.let { today ->
+        formatSlockTimestampLabel(value, localOffsetMinutes, today)
+    } ?: value
 
 private fun KuiklyThreadScreenPayload.hasRenderableThreadContent(): Boolean =
     messages.isNotEmpty() || originMessage != null || tasks.isNotEmpty()
@@ -828,6 +998,32 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(update: KuiklyThreadMess
         taskStatus = update.taskStatus ?: taskStatus,
         taskAssigneeName = update.taskAssigneeName ?: taskAssigneeName,
         attachments = update.attachments.ifEmpty { attachments }
+    )
+
+private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): KuiklyThreadMessageItem {
+    profile ?: return this
+    val profileAvatarWireValue = profile.avatar?.wireValue ?: profile.avatarUrl
+    val isAgent = profile.kind == MemberKind.Agent || authorKind.equals("agent", ignoreCase = true)
+    return copy(
+        authorName = authorName.takeUnless { it.isBlank() || it == authorId || it == "Unknown" } ?: profile.displayName,
+        authorKind =
+            when (profile.kind) {
+                MemberKind.Agent -> "agent"
+                MemberKind.Human -> "human"
+                else -> authorKind
+            },
+        avatarLabel = profile.avatarLabel.ifBlank { avatarLabel },
+        avatarWireValue = avatarWireValue ?: profileAvatarWireValue,
+        gravatarHash = if (isAgent) null else gravatarHash ?: profile.gravatarHash
+    )
+}
+
+private fun KuiklyThreadScreenPayload.withSenderProfiles(
+    profilesById: Map<String, MemberProfile>
+): KuiklyThreadScreenPayload =
+    copy(
+        messages = messages.map { it.withSenderProfile(profilesById[it.authorId]) },
+        originMessage = originMessage?.withSenderProfile(profilesById[originMessage.authorId])
     )
 
 private fun KuiklyThreadMessageItem.toTaskItemOrNull(): KuiklyThreadTaskItem? {

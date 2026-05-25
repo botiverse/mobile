@@ -31,6 +31,10 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 
+private const val SlockFilterPopoverWidthValue = 260f
+private const val SlockFilterPopoverEstimatedHeightValue = 360f
+private const val SlockFilterPopoverViewportGapValue = 8f
+
 /**
  * Generic option shown by [SlockFilterPopover]. `id` must be stable across recompositions
  * — it's the LazyColumn key and the selection identity used by `selectedIds`.
@@ -77,17 +81,29 @@ internal fun SlockFilterPopover(
     headerSlot: (@Composable () -> Unit)? = null
 ) {
     var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
+    var overlayWidth by remember { mutableStateOf(0f) }
+    var overlayHeight by remember { mutableStateOf(0f) }
     val localAnchor = Offset(anchor.x - overlayOrigin.x, anchor.y - overlayOrigin.y)
-    val popoverWidth = 260.dp
-    val xClamped = localAnchor.x.coerceAtLeast(8f)
-    val yClamped = (localAnchor.y + 6f).coerceAtLeast(8f)
+    val popoverWidth = SlockFilterPopoverWidthValue.dp
+    val maxX =
+        (overlayWidth - SlockFilterPopoverWidthValue - SlockFilterPopoverViewportGapValue)
+            .coerceAtLeast(SlockFilterPopoverViewportGapValue)
+    val maxY =
+        (overlayHeight - SlockFilterPopoverEstimatedHeightValue - SlockFilterPopoverViewportGapValue)
+            .coerceAtLeast(SlockFilterPopoverViewportGapValue)
+    val xClamped = localAnchor.x.coerceIn(SlockFilterPopoverViewportGapValue, maxX)
+    val yClamped = (localAnchor.y + 6f).coerceIn(SlockFilterPopoverViewportGapValue, maxY)
     val filtered =
         if (searchText.isBlank()) options
         else options.filter { it.label.contains(searchText, ignoreCase = true) }
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .onGloballyPositioned { overlayOrigin = it.positionInRoot() }
+            .onGloballyPositioned {
+                overlayOrigin = it.positionInRoot()
+                overlayWidth = it.size.width.toFloat()
+                overlayHeight = it.size.height.toFloat()
+            }
             .clickable(onClick = onDismiss),
         contentAlignment = Alignment.TopStart
     ) {

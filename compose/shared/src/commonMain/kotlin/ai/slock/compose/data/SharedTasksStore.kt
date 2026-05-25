@@ -348,10 +348,14 @@ fun TasksContent.visibleContent(
     showChannelFilter: Boolean
 ): TasksVisibleContent {
     val channelOptions =
-        tasks
-            .mapNotNull { it.channelName }
-            .distinct()
-            .sorted()
+        if (showChannelFilter) {
+            tasks
+                .mapNotNull { it.channelName }
+                .distinct()
+                .sorted()
+        } else {
+            emptyList()
+        }
     // Derive the assignee option pool from the loaded tasks so we don't need a separate
     // members fetch. Each MemberProfile that ever appears as a claimer becomes a chip
     // option; identical IDs collapse so the popover doesn't show duplicates. Sorted by
@@ -367,25 +371,35 @@ fun TasksContent.visibleContent(
         } else {
             emptySet()
         }
-    val availableAssigneeIds = assigneeOptions.map { it.id.value }.toSet()
+    val availableAssigneeIds = assigneeOptions.mapTo(mutableSetOf()) { it.id.value }
     val selectedAssigneeIds =
         presentationState.selectedAssigneeIds.filter { it in availableAssigneeIds }.toSet()
     val channelScopedTasks =
-        tasks.filter { task ->
-            selectedChannels.isEmpty() || task.channelName in selectedChannels
+        if (selectedChannels.isEmpty()) {
+            tasks
+        } else {
+            tasks.filter { task -> task.channelName in selectedChannels }
         }
     val channelScopedContent =
-        copy(
-            summaryCounts = channelScopedTasks.summaryCounts(),
-            tasks = channelScopedTasks
-        )
+        if (channelScopedTasks === tasks) {
+            this
+        } else {
+            copy(
+                summaryCounts = channelScopedTasks.summaryCounts(),
+                tasks = channelScopedTasks
+            )
+        }
     val assigneeScopedTasks =
-        channelScopedTasks.filter { task ->
-            selectedAssigneeIds.isEmpty() || (task.assignee?.id?.value in selectedAssigneeIds)
+        if (selectedAssigneeIds.isEmpty()) {
+            channelScopedTasks
+        } else {
+            channelScopedTasks.filter { task -> task.assignee?.id?.value in selectedAssigneeIds }
         }
     val filteredTasks =
-        assigneeScopedTasks.filter { task ->
-            selectedFilter == null || task.status == selectedFilter
+        if (selectedFilter == null) {
+            assigneeScopedTasks
+        } else {
+            assigneeScopedTasks.filter { task -> task.status == selectedFilter }
         }
     val filteredContent = channelScopedContent.copy(tasks = filteredTasks)
     return TasksVisibleContent(
@@ -644,7 +658,13 @@ private fun TasksContent.withTaskStatus(
 }
 
 fun List<TaskSummary>.summaryCounts(): Map<TaskStatus, Int> =
-    TaskStatus.entries.associateWith { status -> count { it.status == status } }
+    mutableMapOf<TaskStatus, Int>()
+        .also { counts ->
+            TaskStatus.entries.forEach { status -> counts[status] = 0 }
+            forEach { task ->
+                counts[task.status] = (counts[task.status] ?: 0) + 1
+            }
+        }
 
 private fun String.tasksMeaningfulTitle(taskNumber: Int?): String? {
     val trimmed = trim()

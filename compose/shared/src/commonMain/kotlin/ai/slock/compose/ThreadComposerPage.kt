@@ -399,8 +399,8 @@ internal fun ThreadComposerContent(
     ) {
         Column(
             modifier = Modifier
-                .width(342.dp)
-                .padding(start = 12.dp, top = 14.dp, end = 12.dp, bottom = 12.dp),
+                .fillMaxWidth()
+                .padding(top = 10.dp, bottom = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             payload.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->

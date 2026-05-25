@@ -88,12 +88,13 @@ private val MiniActionIconSize = 16.dp
 private val CountPillMinWidth = 18.dp
 private val CountPillHeight = 16.dp
 private val HomeUnreadBadgeRadius = 4.dp
-private val HomeUnreadBadgeTextOffsetY = (-1).dp
+private val HomeUnreadBadgeTextOffsetY = 0.dp
 private val HomeListHorizontalPadding = SlockSpacing.Md
 private val HomePanelShadowOffset = 4.dp
 private val HomeTiltedBadgeSlant = 3.dp
 private const val SharedListDefaultBeyondBoundsItemCount = 3
 private const val SharedListMaxBeyondBoundsItemCount = 96
+private const val HomeListMaxBeyondBoundsItemCount = 18
 
 @Page(SLOCK_HOME_PAGE, supportInLocal = true)
 internal class ComposeSlockHomePage : ai.slock.compose.base.BasePager() {
@@ -468,6 +469,7 @@ fun SlockStructuralHomeShell(
     var activeSortMenu by remember(currentServerId) { mutableStateOf<SlockHomeSortSection?>(null) }
     var sortMenuAnchor by remember(currentServerId) { mutableStateOf(Offset.Zero) }
     var refreshIndicatorTimedOut by remember { mutableStateOf(false) }
+    var pullRefreshActive by remember { mutableStateOf(false) }
     LaunchedEffect(currentServerId, channelSortMode, dmSortMode) {
         channelSortModeState = SlockSidebarSortMode.fromWireValue(channelSortMode)
         directMessageSortMode = SlockSidebarSortMode.fromWireValue(dmSortMode)
@@ -493,6 +495,8 @@ fun SlockStructuralHomeShell(
         )
     val listState = rememberLazyListState()
     val pullToRefreshState = rememberPullToRefreshState(indicatorRefreshing)
+    val sidebarInteractionsEnabled = !(indicatorRefreshing || pullRefreshActive)
+    val disabledListAction: () -> Unit = {}
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     Column(
         modifier = modifier.fillMaxSize().background(SlockColor.AppBgLightBlue).padding(outerPadding)
@@ -513,7 +517,7 @@ fun SlockStructuralHomeShell(
                         state = listState,
                         modifier = Modifier.fillMaxSize().bouncesEnable(false),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
-                        beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
+                        beyondBoundsItemCount = homeListBeyondBoundsItemCount(lazyItemCount)
                     ) {
                         if (contentRefreshEnabled) {
                             pullToRefreshItem(
@@ -526,6 +530,9 @@ fun SlockStructuralHomeShell(
                                 scrollState = listState,
                                 refreshThreshold = 64.dp
                             ) { pullProgress, isRefreshing, _ ->
+                                LaunchedEffect(pullProgress, isRefreshing, indicatorRefreshing) {
+                                    pullRefreshActive = pullProgress > 0.01f || isRefreshing || indicatorRefreshing
+                                }
                                 HomePullRefreshIndicator(
                                     pullProgress = pullProgress,
                                     refreshing = isRefreshing || indicatorRefreshing
@@ -533,31 +540,33 @@ fun SlockStructuralHomeShell(
                             }
                         }
                         item { Spacer(Modifier.height(SlockSpacing.Md)) }
-                        item { SidebarActionRow("search", labels.search, selected = searchSelected, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = onSearchClick) }
+                        item { SidebarActionRow("search", labels.search, selected = searchSelected, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClick else null) }
                         item {
                             SidebarActivityRow(
                                 labels.inbox,
                                 inboxUnreadCount.takeIf { it > 0 }?.toString(),
                                 selected = activitySelected,
                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                onClick = onInboxClick
+                                onClick = if (sidebarInteractionsEnabled) onInboxClick else null
                             )
                         }
-                        item { SidebarActionRow("bookmark", labels.saved, selected = savedSelected, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = onSavedClick) }
+                        item { SidebarActionRow("bookmark", labels.saved, selected = savedSelected, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = if (sidebarInteractionsEnabled) onSavedClick else null) }
                         item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                         item {
                             SidebarSectionHeader(
                                 labels.channels,
                                 channels.size,
                                 channelsExpanded,
-                                { channelsExpanded = it },
+                                { if (sidebarInteractionsEnabled) channelsExpanded = it },
                                 { anchor ->
-                                    activeSortMenu = if (activeSortMenu == SlockHomeSortSection.Channels) null else SlockHomeSortSection.Channels
-                                    sortMenuAnchor = anchor
+                                    if (sidebarInteractionsEnabled) {
+                                        activeSortMenu = if (activeSortMenu == SlockHomeSortSection.Channels) null else SlockHomeSortSection.Channels
+                                        sortMenuAnchor = anchor
+                                    }
                                 },
                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                             ) {
-                                HeaderIconAction("plus", labels.addChannel, onCreateChannelClick)
+                                HeaderIconAction("plus", labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction)
                             }
                         }
                         if (channelsExpanded) {
@@ -570,7 +579,7 @@ fun SlockStructuralHomeShell(
                                     badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     interactionState = if (channel.id == selectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
-                                    onClick = { onChannelClick(channel.id) }
+                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null
                                 )
                             }
                         }
@@ -579,10 +588,12 @@ fun SlockStructuralHomeShell(
                                 labels.directMessages,
                                 directMessages.size,
                                 directMessagesExpanded,
-                                { directMessagesExpanded = it },
+                                { if (sidebarInteractionsEnabled) directMessagesExpanded = it },
                                 { anchor ->
-                                    activeSortMenu = if (activeSortMenu == SlockHomeSortSection.DirectMessages) null else SlockHomeSortSection.DirectMessages
-                                    sortMenuAnchor = anchor
+                                    if (sidebarInteractionsEnabled) {
+                                        activeSortMenu = if (activeSortMenu == SlockHomeSortSection.DirectMessages) null else SlockHomeSortSection.DirectMessages
+                                        sortMenuAnchor = anchor
+                                    }
                                 },
                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                 action = null
@@ -601,7 +612,7 @@ fun SlockStructuralHomeShell(
                                     hasDraft = dm.hasDraft,
                                     badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
                                     interactionState = if (dm.id == selectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
-                                    onClick = { onChannelClick(dm.id) }
+                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(dm.id) }) else null
                                 )
                             }
                         }
@@ -658,6 +669,12 @@ internal fun sharedListBeyondBoundsItemCount(itemCount: Int): Int =
     itemCount.coerceIn(
         minimumValue = SharedListDefaultBeyondBoundsItemCount,
         maximumValue = SharedListMaxBeyondBoundsItemCount
+    )
+
+private fun homeListBeyondBoundsItemCount(itemCount: Int): Int =
+    itemCount.coerceIn(
+        minimumValue = SharedListDefaultBeyondBoundsItemCount,
+        maximumValue = HomeListMaxBeyondBoundsItemCount
     )
 
 internal fun homeLazyItemCount(

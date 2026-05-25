@@ -11,6 +11,8 @@ import { KuiklyRenderCallback } from '@kuikly-open/render';
 import util from '@ohos.util';
 import fs from '@ohos.file.fs';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
+import { SlockOhosClipboard } from '../SlockOhosClipboard';
+import { SlockOhosDiagnostics } from '../SlockOhosDiagnostics';
 
 interface OhosPickedThreadAttachment {
   fileName: string;
@@ -59,7 +61,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         break;
       }
       case KRBridgeModule.COPY_TO_PASTE_BOARD: {
-        this.copyToPasteboard();
+        this.copyToPasteboard(params);
         break;
       }
       case KRBridgeModule.TOAST: {
@@ -129,8 +131,18 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   private openPage() {
   }
 
-  // TODO copy to paste board
-  private copyToPasteboard() {
+  private copyToPasteboard(params: KRAny) {
+    const payload = this.parseRecord(params);
+    const contentValue = payload['content'];
+    if (typeof contentValue !== 'string' || contentValue.length === 0) {
+      return;
+    }
+    try {
+      SlockOhosClipboard.copyText(contentValue);
+      SlockOhosDiagnostics.record('SlockClipboard', 'copy_to_pasteboard');
+    } catch (error) {
+      console.error(`KuiklyRender copyToPasteboard failed ${JSON.stringify(error)}`);
+    }
   }
 
   // TODO open toast
@@ -160,6 +172,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     if (params == null) {
       return
     }
+    const payload = this.parseRecord(params);
+    const contentValue = payload['content'];
+    const content = typeof contentValue === 'string' ? contentValue : JSON.stringify(params);
+    SlockOhosDiagnostics.record('KuiklyRender', content);
     console.log(`KuiklyRender ${JSON.stringify(params)}`,)
   }
 
@@ -394,14 +410,24 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const channelId = (records["channelId"] as string | undefined) ?? "";
       const imageOnlyValue = records["imageOnly"];
       const imageOnly = imageOnlyValue === true || imageOnlyValue === "true";
+      SlockOhosDiagnostics.record(
+        "ThreadAttachmentUpload",
+        `start imageOnly=${imageOnly} channelIdPresent=${channelId.length > 0}`
+      );
+
       if (channelId.length === 0) {
         callback(this.threadAttachmentError(400, "missing_channel_id", "Missing channel id"));
         return;
       }
 
       const uris = await this.pickThreadAttachmentUris(imageOnly).catch((error: BusinessError) => {
+        SlockOhosDiagnostics.record(
+          "ThreadAttachmentUpload",
+          `picker_failed code=${error.code ?? -1} message=${error.message ?? ""}`
+        );
         throw new Error(error.message ?? "Attachment picker unavailable");
       });
+      SlockOhosDiagnostics.record("ThreadAttachmentUpload", `picker_result count=${uris.length}`);
       if (uris.length === 0) {
         callback({ "code": 204, "bodyText": "" });
         return;
@@ -411,11 +437,17 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const accessToken = ((session?.["accessToken"] as string | undefined) ?? "").trim();
       const serverId = this.currentServerId(session);
       if (accessToken.length === 0 || serverId.length === 0) {
+        SlockOhosDiagnostics.record(
+          "ThreadAttachmentUpload",
+          `auth_missing hasToken=${accessToken.length > 0} hasServer=${serverId.length > 0}`
+        );
         callback(this.threadAttachmentError(401, "auth_required", "Auth required"));
         return;
       }
 
       const files = this.readPickedThreadAttachments(uris, imageOnly);
+      const byteCount = files.reduce((sum: number, file: OhosPickedThreadAttachment) => sum + file.bytes.byteLength, 0);
+      SlockOhosDiagnostics.record("ThreadAttachmentUpload", `read_files count=${files.length} bytes=${byteCount}`);
       if (files.length === 0) {
         callback(this.threadAttachmentError(400, "attachment_read_failed", "No readable attachments"));
         return;
@@ -424,10 +456,16 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       callback(await this.uploadThreadAttachments(channelId, accessToken, serverId, files));
     } catch (error) {
       const businessError = error as BusinessError;
+      const message = businessError.message ?? `${error}`;
+      const pickerUnavailable = message === "Attachment picker unavailable";
+      SlockOhosDiagnostics.record(
+        "ThreadAttachmentUpload",
+        `failed code=${businessError.code ?? -1} picker=${pickerUnavailable} message=${message}`
+      );
       callback(this.threadAttachmentError(
         0,
-        businessError.message === "Attachment picker unavailable" ? "attachment_picker_unavailable" : "attachment_upload_failed",
-        businessError.message ?? `${error}`
+        pickerUnavailable ? "attachment_picker_unavailable" : "attachment_upload_failed",
+        message
       ));
     }
   }
@@ -508,6 +546,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const body = this.multipartThreadAttachmentBody(boundary, channelId, files);
     const request = http.createHttp();
     try {
+      SlockOhosDiagnostics.record(
+        "ThreadAttachmentUpload",
+        `upload_start files=${files.length} bytes=${body.byteLength}`
+      );
       const response = await request.request("https://api.slock.ai/api/attachments/upload", {
         method: http.RequestMethod.POST,
         header: {
@@ -522,6 +564,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       });
       const responseCode = Number(response.responseCode ?? 0);
       const responseBody = this.httpResultToString(response.result);
+      SlockOhosDiagnostics.record(
+        "ThreadAttachmentUpload",
+        `upload_result code=${responseCode} success=${responseCode >= 200 && responseCode < 300} bodyLength=${responseBody.length}`
+      );
       return {
         "code": responseCode,
         "bodyText": responseCode >= 200 && responseCode < 300 ? responseBody : "",

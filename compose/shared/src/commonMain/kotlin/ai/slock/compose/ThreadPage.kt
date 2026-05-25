@@ -8,12 +8,18 @@ import ai.slock.compose.data.parseSharedThreadUploadedAttachments
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklyRelationalStore
+import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.RelationalComposeLocalDataStore
+import ai.slock.compose.data.RealConversationRepository
+import ai.slock.compose.data.RealMemberRepository
+import ai.slock.compose.data.ScreenError
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.data.SharedTasksRouteIntent
+import ai.slock.compose.data.TasksUiState
 import ai.slock.compose.data.toTasksUiStateForThreadTasks
+import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
@@ -92,6 +98,8 @@ internal const val THREAD_PAGE = "compose_thread"
 private const val THREAD_MESSAGE_VISUAL_PAGE = "compose_thread_message_visual"
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesPageSize = 50
+private const val ThreadMessagesDefaultBeyondBoundsItemCount = 2
+private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 
 @Page(THREAD_PAGE, supportInLocal = true)
@@ -269,6 +277,13 @@ private fun KuiklyThreadScreenPayload.findMarkdownTaskId(tag: ThreadMarkdownTag)
         }?.taskId
 }
 
+private fun KuiklyThreadScreenPayload.findTaskParentMessage(taskId: String): KuiklyThreadMessageItem? =
+    messages.firstOrNull { message ->
+        message.id == taskId || message.taskId == taskId
+    } ?: originMessage?.takeIf { message ->
+        message.id == taskId || message.taskId == taskId
+    }
+
 private enum class KuiklyThreadTab(val wireValue: String, val label: String) {
     Chat("chat", "Chat"),
     Tasks("tasks", "Tasks"),
@@ -325,10 +340,28 @@ private fun ThreadPageScreen() {
         }
     val dataSource =
         remember {
+            val networkClient =
+                KuiklySlockNetworkClient(
+                    sessionStore = authStore,
+                    networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
+                    warningLogger = { message -> bridge.log("kuikly_network $message") }
+                )
             SharedThreadDataSource(
                 networkApi = BridgeThreadApi(bridge, authStore),
                 sessionStore = authStore,
-                localWriteThrough = localWriteThrough
+                localWriteThrough = localWriteThrough,
+                memberRepository =
+                    RealMemberRepository(
+                        sessionStore = authStore,
+                        networkClient = networkClient,
+                        logger = { message -> bridge.log("thread_member_repository $message") }
+                    ),
+                conversationRepository =
+                    RealConversationRepository(
+                        sessionStore = authStore,
+                        networkClient = networkClient,
+                        warningLogger = { message -> bridge.log("thread_conversation_repository $message") }
+                    )
             )
         }
     SharedThreadRouteContent(
@@ -417,8 +450,16 @@ internal fun SharedThreadRouteContent(
         threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
     }
 
-    val filesPayload = remember(payload.filesPayload, payload.instanceId) {
+    val routeFilesPayload = remember(payload.filesPayload, payload.instanceId) {
         parseThreadFilesPayload(payload.filesPayload, payload.instanceId)
+    }
+    var filesPayload by remember(payload.instanceId) { mutableStateOf(routeFilesPayload) }
+    var filesRequestInFlight by remember(payload.instanceId) { mutableStateOf(false) }
+    LaunchedEffect(payload.instanceId, payload.filesPayload) {
+        val rawFilesPayload = payload.filesPayload.trim()
+        if (rawFilesPayload.isNotBlank() && rawFilesPayload != "{}") {
+            filesPayload = routeFilesPayload
+        }
     }
     val renderedComposerPayload = remember(payload.composerPayload, payload.instanceId) {
         parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId)
@@ -491,6 +532,64 @@ internal fun SharedThreadRouteContent(
     val renderedPayload = remember(payload) {
         payload.withSharedShellEventCapabilities()
     }
+    fun loadThreadFiles(reason: String, cursor: String? = null) {
+        if (filesRequestInFlight || (cursor != null && filesPayload.loadingMore)) return
+        val requestBasePayload = renderedPayload
+        filesRequestInFlight = true
+        filesPayload =
+            if (cursor != null) {
+                filesPayload.copy(loadingMore = true, errorCode = null)
+            } else {
+                filesPayload.copy(status = "loading", loadingMore = false, errorCode = null)
+            }
+        coroutineScope.launch {
+            val result =
+                runCatching {
+                    dataSource.fetchFilesPayload(
+                        basePayload = requestBasePayload,
+                        cursor = cursor,
+                        currentPayload = filesPayload
+                    )
+                }.getOrElse {
+                    DataResult.Error(ScreenError(code = "thread_files_network", retryable = true))
+                }
+            if (requestBasePayload.sourceThreadId == renderedPayload.sourceThreadId) {
+                filesPayload =
+                    when (result) {
+                        is DataResult.Content -> result.data
+                        is DataResult.Empty ->
+                            filesPayload.copy(
+                                status = if (filesPayload.items.isEmpty()) "empty" else "content",
+                                hasMore = false,
+                                loadingMore = false,
+                                nextCursor = null,
+                                errorCode = null
+                            )
+                        is DataResult.Error ->
+                            filesPayload.copy(
+                                status = if (filesPayload.items.isEmpty()) "error" else "content",
+                                loadingMore = false,
+                                errorCode = result.error.code
+                            )
+                        is DataResult.NoPermission ->
+                            filesPayload.copy(
+                                status = "no_permission",
+                                loadingMore = false,
+                                errorCode = result.blocker.requiredCapability ?: result.blocker.code
+                            )
+                    }
+            }
+            filesRequestInFlight = false
+            bridge.log(
+                "thread_files_result reason=$reason threadId=${requestBasePayload.sourceThreadId.orEmpty()} cursor=${cursor.orEmpty()} status=${filesPayload.status} items=${filesPayload.items.size} hasMore=${filesPayload.hasMore} error=${filesPayload.errorCode.orEmpty()}"
+            )
+        }
+    }
+    LaunchedEffect(renderedPayload.sourceThreadId, renderedPayload.selectedTab) {
+        if (renderedPayload.selectedTab == KuiklyThreadTab.Files.wireValue && filesPayload.shouldFetchInitialFiles()) {
+            loadThreadFiles("initial_tab")
+        }
+    }
     LaunchedEffect(renderedPayload) {
         bridge.log(
             "thread_render instanceId=${renderedPayload.instanceId} status=${renderedPayload.status} tab=${renderedPayload.selectedTab} messages=${renderedPayload.messages.size} tasks=${renderedPayload.tasks.size}"
@@ -558,7 +657,19 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "openTask" && !itemId.isNullOrBlank() -> {
-                    bridge.toast("Task #${itemId.takeLast(6)}")
+                    val parentMessage = renderedPayload.findTaskParentMessage(itemId)
+                    if (parentMessage == null) {
+                        bridge.toast("Unable to open task")
+                        return@ThreadPageContent
+                    }
+                    coroutineScope.launch {
+                        when (val result = dataSource.createOrOpenReplyThread(renderedPayload, parentMessage)) {
+                            is DataResult.Content -> onOpenThreadPayload(result.data)
+                            is DataResult.Empty,
+                            is DataResult.Error,
+                            is DataResult.NoPermission -> bridge.toast("Unable to open task")
+                        }
+                    }
                 }
                 action == "openMarkdownUrl" && !itemId.isNullOrBlank() -> {
                     bridge.openUrl(itemId, null)
@@ -626,7 +737,18 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "selectTab" -> {
-                    // The shared shell owns tab state locally. There is no fullscreen host event to forward.
+                    if (tab == KuiklyThreadTab.Files.wireValue && filesPayload.shouldFetchInitialFiles()) {
+                        loadThreadFiles("tab_select")
+                    }
+                }
+                action == "loadMoreFiles" -> {
+                    val cursor = filesPayload.nextCursor?.takeIf { it.isNotBlank() }
+                    if (cursor != null && filesPayload.hasMore) {
+                        loadThreadFiles("load_more", cursor)
+                    }
+                }
+                action == "retryFiles" -> {
+                    loadThreadFiles("retry")
                 }
                 action == "loadOlder" || action == "retryLoadOlder" -> {
                     threadViewModel.dispatch(SharedThreadIntent.LoadOlder)
@@ -801,6 +923,9 @@ private suspend fun openSharedThreadAttachment(
     }
 }
 
+private fun KuiklyThreadFilesPayload.shouldFetchInitialFiles(): Boolean =
+    status == "loading" || (status == "error" && items.isEmpty())
+
 private fun KuiklyThreadScreenPayload.appShellComposerPayload(
     seedText: String,
     seedAsTask: Boolean,
@@ -918,6 +1043,8 @@ private fun ThreadPageContent(
     var activeModal by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var activeMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var composerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(0f) }
+    var selectedTasksFilter by remember(payload.instanceId) { mutableStateOf<TaskStatus?>(null) }
+    val tasksTabCache = remember(payload.instanceId) { ThreadTasksTabCache() }
     val openMarkdownTag: (ThreadMarkdownTag) -> Unit = { tag ->
         when (tag.kind) {
             ThreadMarkdownTagKind.UserMention -> {
@@ -989,8 +1116,11 @@ private fun ThreadPageContent(
                     KuiklyThreadTab.Tasks ->
                         ThreadTasksTab(
                             tasks = payload.tasks,
+                            selectedFilter = selectedTasksFilter,
+                            cache = tasksTabCache,
                             openTaskEnabled = payload.showTaskOpenActions,
                             onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                            onSelectedFilterChange = { selectedTasksFilter = it },
                             onStatusChange = { taskId, status -> onThreadEvent("setTaskStatus", taskId, null, status.name) }
                         )
                     KuiklyThreadTab.Files ->
@@ -1015,9 +1145,9 @@ private fun ThreadPageContent(
                     Box(
                         modifier = Modifier.fillMaxWidth()
                             .padding(
-                                start = SlockSpacing.Md,
+                                start = SlockSpacing.Sm,
                                 top = SlockSpacing.Sm,
-                                end = SlockSpacing.Md,
+                                end = SlockSpacing.Sm,
                                 bottom = SlockSpacing.Sm + composerKeyboardInsetDp.dp
                             )
                     ) {
@@ -1338,7 +1468,7 @@ private fun ThreadMessagesList(
             state = listState,
             modifier = Modifier.fillMaxSize().padding(vertical = 2.dp).bouncesEnable(false),
             verticalArrangement = Arrangement.Bottom,
-            beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
+            beyondBoundsItemCount = threadMessagesBeyondBoundsItemCount(lazyItemCount)
         ) {
             if (payload.originStatus != "none") {
                 item(key = payload.originListItemKey()) {
@@ -1497,6 +1627,12 @@ internal fun threadMessagesLazyItemCount(
         (if (canLoadMoreBefore) 1 else 0) +
         messagesCount.coerceAtLeast(0) +
         (if (canLoadMoreAfter) 1 else 0)
+
+private fun threadMessagesBeyondBoundsItemCount(itemCount: Int): Int =
+    itemCount.coerceIn(
+        minimumValue = ThreadMessagesDefaultBeyondBoundsItemCount,
+        maximumValue = ThreadMessagesMaxBeyondBoundsItemCount
+    )
 
 private fun KuiklyThreadScreenPayload.originListItemKey(): String =
     "thread-page:origin:${originParentMessageId ?: originMessage?.id ?: instanceId}"
@@ -2473,9 +2609,9 @@ private fun ThreadMessageAvatar(
     showStatus: Boolean,
     onClick: () -> Unit
 ) {
-    val imageUrl =
+    val avatarSource =
         remember(avatarWireValue, gravatarHash) {
-            avatarWireValue?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+            avatarWireValue?.takeIf { it.isNotBlank() }
                 ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
         }
     Box(
@@ -2488,7 +2624,7 @@ private fun ThreadMessageAvatar(
             statusSize = 10.dp
         ) {
             SlockAvatar(
-                avatarWireValue = imageUrl ?: avatarWireValue,
+                avatarWireValue = avatarSource,
                 label = avatarLabel,
                 avatarSize = 40.dp
             )
@@ -2762,16 +2898,14 @@ private fun ThreadAttachmentChip(
 @Composable
 private fun ThreadTasksTab(
     tasks: List<KuiklyThreadTaskItem>,
+    selectedFilter: TaskStatus?,
+    cache: ThreadTasksTabCache,
     openTaskEnabled: Boolean,
     onOpenTask: (String) -> Unit,
+    onSelectedFilterChange: (TaskStatus?) -> Unit,
     onStatusChange: (String, TaskStatus) -> Unit
 ) {
-    var selectedFilter by remember(tasks) { mutableStateOf<TaskStatus?>(null) }
-    val taskSummaries = remember(tasks) { tasks.map { it.toTaskSummary() } }
-    val state =
-        remember(taskSummaries, selectedFilter) {
-            taskSummaries.toTasksUiStateForThreadTasks().copy(selectedFilter = selectedFilter)
-        }
+    val state = cache.uiState(tasks, selectedFilter)
     SharedTasksPanel(
         state = state,
         showHeader = false,
@@ -2787,13 +2921,38 @@ private fun ThreadTasksTab(
                 SharedTasksRouteIntent.Refresh,
                 SharedTasksRouteIntent.ClearNavigationError -> Unit
                 is SharedTasksRouteIntent.SelectFilter ->
-                    selectedFilter = intent.status
+                    onSelectedFilterChange(intent.status)
                 is SharedTasksRouteIntent.UpdateStatus ->
                     onStatusChange(intent.task.id.value, intent.status)
                 is SharedTasksRouteIntent.CreateTasks -> Unit
             }
         }
     )
+}
+
+private class ThreadTasksTabCache {
+    private var sourceTasks: List<KuiklyThreadTaskItem>? = null
+    private var summaries: List<TaskSummary> = emptyList()
+    private var cachedFilter: TaskStatus? = null
+    private var cachedState: TasksUiState? = null
+
+    fun uiState(tasks: List<KuiklyThreadTaskItem>, selectedFilter: TaskStatus?): TasksUiState {
+        if (sourceTasks !== tasks) {
+            sourceTasks = tasks
+            summaries = tasks.map { it.toTaskSummary() }
+            cachedState = null
+        }
+        val existing = cachedState
+        if (existing != null && cachedFilter == selectedFilter) {
+            return existing
+        }
+        return summaries.toTasksUiStateForThreadTasks()
+            .copy(selectedFilter = selectedFilter)
+            .also {
+                cachedFilter = selectedFilter
+                cachedState = it
+            }
+    }
 }
 
 private fun KuiklyThreadTaskItem.toTaskSummary(): TaskSummary =
@@ -2805,7 +2964,7 @@ private fun KuiklyThreadTaskItem.toTaskSummary(): TaskSummary =
         assignee =
             assigneeName?.trim()?.takeIf { it.isNotBlank() }?.let { displayName ->
                 MemberProfile(
-                    id = MemberId("thread-task-assignee-${id}"),
+                    id = MemberId("thread-task-assignee-${displayName.threadTaskAssigneeKey()}"),
                     displayName = displayName,
                     handle = displayName,
                     kind = MemberKind.Human
@@ -2813,6 +2972,12 @@ private fun KuiklyThreadTaskItem.toTaskSummary(): TaskSummary =
             },
         updatedAtLabel = updatedAtLabel
     )
+
+private fun String.threadTaskAssigneeKey(): String =
+    trim()
+        .lowercase()
+        .filter { it.isLetterOrDigit() || it == '@' || it == '.' || it == '-' || it == '_' }
+        .ifBlank { "unknown" }
 
 @Composable
 private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {

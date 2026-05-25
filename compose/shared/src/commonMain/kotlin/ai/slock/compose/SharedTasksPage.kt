@@ -72,14 +72,16 @@ import com.tencent.kuikly.core.pager.Pager
 internal fun SharedTasksScreen(
     state: TasksUiState,
     onIntent: (SharedTasksRouteIntent) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenTask: ((TaskSummary) -> Unit)? = null
 ) {
     SharedTasksPanel(
         state = state,
         onIntent = onIntent,
         modifier = modifier,
         showHeader = true,
-        showChannelFilter = true
+        showChannelFilter = true,
+        onOpenTask = onOpenTask
     )
 }
 
@@ -272,10 +274,12 @@ private fun SharedTasksLoadedBodyContent(
     // boardColumns always covers every TaskStatus so the user can see empty columns
     // (you can't drop a task into a column that doesn't exist). renderLimit = 0 means
     // "include all tasks per column" — pagination would be a separate feature.
-    val boardColumns = visibleContent.filteredContent.boardColumns(renderLimit = 0)
+    val boardColumns = remember(visibleContent.filteredContent) {
+        visibleContent.filteredContent.boardColumns(renderLimit = 0)
+    }
     // For list mode we hide totally-empty status groups; otherwise the screen looks
     // like a wall of "No X tasks" headers.
-    val listColumns = boardColumns.filter { it.totalCount > 0 }
+    val listColumns = remember(boardColumns) { boardColumns.filter { it.totalCount > 0 } }
     val collapsedStatuses = presentationState.collapsedStatuses
     val listRows = remember(listColumns, collapsedStatuses) {
         listColumns.flatMap { column ->
@@ -302,6 +306,12 @@ private fun SharedTasksLoadedBodyContent(
     var channelAnchor by remember { mutableStateOf(Offset.Zero) }
     var assigneeAnchor by remember { mutableStateOf(Offset.Zero) }
     var createDialogOpen by remember { mutableStateOf(false) }
+    val channelFilterOptions = remember(visibleContent.channelOptions) {
+        visibleContent.channelOptions.map { name -> SlockFilterOption(id = name, label = name, icon = "hash") }
+    }
+    val assigneeFilterOptions = remember(visibleContent.assigneeOptions) {
+        visibleContent.assigneeOptions.map { SlockFilterOption(id = it.id.value, label = it.displayName, icon = "user") }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -444,7 +454,7 @@ private fun SharedTasksLoadedBodyContent(
                     searchPlaceholder = "Search channels",
                     searchText = presentationState.channelSearch,
                     onSearchChange = { presentationState = presentationState.reduce(TasksPresentationIntent.SetChannelSearch(it)) },
-                    options = visibleContent.channelOptions.map { name -> SlockFilterOption(id = name, label = name, icon = "hash") },
+                    options = channelFilterOptions,
                     selectedIds = visibleContent.selectedChannelNames,
                     onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleChannel(id)) },
                     onClear = { presentationState = presentationState.reduce(TasksPresentationIntent.ClearChannels) },
@@ -457,7 +467,7 @@ private fun SharedTasksLoadedBodyContent(
                     searchPlaceholder = "Search assignees",
                     searchText = presentationState.assigneeSearch,
                     onSearchChange = { presentationState = presentationState.reduce(TasksPresentationIntent.SetAssigneeSearch(it)) },
-                    options = visibleContent.assigneeOptions.map { SlockFilterOption(id = it.id.value, label = it.displayName, icon = "user") },
+                    options = assigneeFilterOptions,
                     selectedIds = visibleContent.selectedAssigneeIds,
                     onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleAssignee(id)) },
                     onClear = { presentationState = presentationState.reduce(TasksPresentationIntent.ClearAssignees) },
@@ -650,6 +660,7 @@ private fun AnchoredFilterChip(
         SharedTasksFilterChip(
             label = label,
             iconName = iconName,
+            trailingIconName = "chevron-down",
             active = active,
             enabled = enabled,
             onClick = { onClick(anchor) }
@@ -935,6 +946,7 @@ private fun SharedTasksPillButton(
 private fun SharedTasksFilterChip(
     label: String,
     iconName: String? = null,
+    trailingIconName: String? = null,
     active: Boolean,
     enabled: Boolean = true,
     count: Int? = null,
@@ -973,6 +985,9 @@ private fun SharedTasksFilterChip(
                         .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
                 maxLines = 1
             )
+        }
+        trailingIconName?.let {
+            SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
         }
     }
 }

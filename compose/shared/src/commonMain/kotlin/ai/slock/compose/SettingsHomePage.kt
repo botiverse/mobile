@@ -40,6 +40,7 @@ import ai.slock.compose.data.SharedSettingsIntent
 import ai.slock.compose.data.SharedSettingsState
 import ai.slock.compose.data.SharedSettingsViewModel
 import ai.slock.compose.data.ScreenLoadState
+import ai.slock.compose.data.isRefreshing
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.realtime.RealtimeEventMapper
 import ai.slock.compose.data.parseSlockHome
@@ -47,10 +48,18 @@ import ai.slock.compose.data.BridgeThreadApi
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.RealMemberRepository
+import ai.slock.compose.data.RealSettingsRepository
 import ai.slock.compose.data.kuiklyNotificationPreferenceRepository
+import ai.slock.compose.data.SettingsComputerAgentSnapshot
+import ai.slock.compose.data.SettingsComputerDetailSnapshot
+import ai.slock.compose.data.SettingsComputerSnapshot
+import ai.slock.compose.data.SettingsComputerWorkspaceSnapshot
+import ai.slock.compose.data.SettingsComputersSnapshot
 import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
+import ai.slock.compose.model.ConversationKind
+import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.DirectMessageCreated
@@ -71,6 +80,8 @@ import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.SyncResumeResponse
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadUpdated
+import ai.slock.compose.model.TaskStatus
+import ai.slock.compose.model.TaskSummary
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -140,6 +151,7 @@ private const val HomeDestinationSaved = "saved"
 private const val SettingsDestinationHome = "home"
 private const val SettingsDestinationAccount = "account"
 private const val SettingsDestinationComputers = "computers"
+private const val SettingsDestinationComputerDetail = "computerDetail"
 private const val SettingsDestinationServer = "server"
 private const val SettingsDestinationBilling = "billing"
 private const val SettingsDestinationMobile = "mobile"
@@ -397,6 +409,7 @@ private fun appShellBottomTabs(selectedKey: String): List<SlockBottomTabItemPayl
 private fun SlockAppShellContent() {
     var selectedTab by remember { mutableStateOf("home") }
     var selectedSettingsDestination by remember { mutableStateOf(SettingsDestinationHome) }
+    var selectedSettingsComputerId by remember { mutableStateOf<String?>(null) }
     var selectedHomeDestination by remember { mutableStateOf<String?>(null) }
     var selectedHomeConversationId by remember { mutableStateOf<String?>(null) }
     val pager = LocalActivity.current.getPager() as Pager
@@ -430,12 +443,26 @@ private fun SlockAppShellContent() {
             )
         }
     val membersApi = remember { BridgeMembersApi(bridge, authStore) }
+    val appShellNetworkClient =
+        remember {
+            KuiklySlockNetworkClient(
+                sessionStore = authStore,
+                networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
+                warningLogger = { message -> bridge.log("kuikly_network $message") }
+            )
+        }
     val threadDataSource =
         remember {
             SharedThreadDataSource(
                 networkApi = BridgeThreadApi(bridge, authStore),
                 sessionStore = authStore,
-                localWriteThrough = localWriteThrough
+                localWriteThrough = localWriteThrough,
+                memberRepository =
+                    RealMemberRepository(
+                        sessionStore = authStore,
+                        networkClient = appShellNetworkClient,
+                        logger = { message -> bridge.log("thread_member_repository $message") }
+                    )
             )
         }
     val tasksDataSource =
@@ -451,6 +478,7 @@ private fun SlockAppShellContent() {
             kuiklyNotificationPreferenceRepository(pager, notificationPreferenceEvents)
         }
     val notificationPreferenceScope = rememberCoroutineScope()
+    val appShellScope = rememberCoroutineScope()
     var notificationPreferenceSnapshot by remember {
         mutableStateOf(NotificationPreferenceSnapshot(enabled = false))
     }
@@ -458,6 +486,13 @@ private fun SlockAppShellContent() {
         remember {
             SharedSettingsDataSource(
                 sessionStore = authStore,
+                settingsRepository =
+                    RealSettingsRepository(
+                        sessionStore = authStore,
+                        networkClient = appShellNetworkClient,
+                        logger = { message -> bridge.log("shared_settings_repository $message") },
+                        warningLogger = { message -> bridge.log("shared_settings_repository_warning $message") }
+                    ),
                 platformCapabilities = settingsCapabilities
             )
         }
@@ -518,6 +553,7 @@ private fun SlockAppShellContent() {
             authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
             selectedTab = "home"
             selectedSettingsDestination = SettingsDestinationHome
+            selectedSettingsComputerId = null
             selectedHomeConversationId = null
             activeThreadPayload = null
             threadBackStack = emptyList()
@@ -545,6 +581,8 @@ private fun SlockAppShellContent() {
                 onReady = { session ->
                     authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session))
                     selectedTab = "home"
+                    selectedSettingsDestination = SettingsDestinationHome
+                    selectedSettingsComputerId = null
                     selectedHomeDestination = null
                     selectedHomeConversationId = null
                     activeThreadPayload = null
@@ -553,6 +591,8 @@ private fun SlockAppShellContent() {
                 onSignOut = {
                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
                     selectedTab = "home"
+                    selectedSettingsDestination = SettingsDestinationHome
+                    selectedSettingsComputerId = null
                     selectedHomeDestination = null
                     selectedHomeConversationId = null
                     activeThreadPayload = null
@@ -623,7 +663,12 @@ private fun SlockAppShellContent() {
             return true
         }
         if (selectedTab == "settings" && selectedSettingsDestination != SettingsDestinationHome) {
-            selectedSettingsDestination = SettingsDestinationHome
+            if (selectedSettingsDestination == SettingsDestinationComputerDetail) {
+                selectedSettingsDestination = SettingsDestinationComputers
+            } else {
+                selectedSettingsDestination = SettingsDestinationHome
+            }
+            selectedSettingsComputerId = null
             return true
         }
         if (selectedTab == "home" && selectedHomeDestination != null) {
@@ -633,6 +678,7 @@ private fun SlockAppShellContent() {
         if (selectedTab != "home") {
             selectedTab = "home"
             selectedSettingsDestination = SettingsDestinationHome
+            selectedSettingsComputerId = null
             selectedHomeDestination = null
             return true
         }
@@ -738,7 +784,17 @@ private fun SlockAppShellContent() {
                                 onSettingsIntent = settingsViewModel::dispatch,
                                 membersApi = membersApi,
                                 selectedDestination = selectedSettingsDestination,
-                                onDestinationChange = { selectedSettingsDestination = it },
+                                selectedComputerId = selectedSettingsComputerId,
+                                onDestinationChange = {
+                                    selectedSettingsDestination = it
+                                    if (it != SettingsDestinationComputerDetail) {
+                                        selectedSettingsComputerId = null
+                                    }
+                                },
+                                onOpenComputer = { computerId ->
+                                    selectedSettingsComputerId = computerId
+                                    selectedSettingsDestination = SettingsDestinationComputerDetail
+                                },
                                 onOpenRouter = { jumpPage(pager, "router") },
                                 onSettingsAction = { action, itemId ->
                                     bridge.settingsEvent("shared-shell-settings", action, itemId)
@@ -747,6 +803,7 @@ private fun SlockAppShellContent() {
                                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
                                     selectedTab = "home"
                                     selectedSettingsDestination = SettingsDestinationHome
+                                    selectedSettingsComputerId = null
                                     selectedHomeDestination = null
                                     selectedHomeConversationId = null
                                     activeThreadPayload = null
@@ -756,7 +813,18 @@ private fun SlockAppShellContent() {
                         }
                         "tasks" -> SharedTasksScreen(
                             state = tasksState,
-                            onIntent = tasksViewModel::dispatch
+                            onIntent = tasksViewModel::dispatch,
+                            onOpenTask = { task ->
+                                appShellScope.launch {
+                                    openAppShellTaskThread(
+                                        task = task,
+                                        dataSource = threadDataSource,
+                                        timeContext = threadTimeContext,
+                                        onOpenThreadPayload = { payload -> openThreadPayload(payload) },
+                                        onFailure = { bridge.toast("Unable to open task") }
+                                    )
+                                }
+                            }
                         )
                         "members" -> SharedMembersScreen(bridge)
                         else ->
@@ -789,6 +857,18 @@ private fun SlockAppShellContent() {
                                         navController.navigate(AppShellRouteThread)
                                     }
                                 )
+                            } else if (selectedHomeDestination == HomeDestinationActivity) {
+                                SharedHomeActivityScreen(
+                                    bridge = bridge,
+                                    authStore = authStore,
+                                    onOpenConversation = { conversation ->
+                                        selectedHomeDestination = null
+                                        selectedHomeConversationId = conversation.threadId.value
+                                        activeThreadPayload = buildAppShellThreadPayload(conversation, threadTimeContext)
+                                        threadBackStack = emptyList()
+                                        navController.navigate(AppShellRouteThread)
+                                    }
+                                )
                             } else {
                                 SharedHomeDestinationPlaceholder(selectedHomeDestination ?: HomeDestinationActivity)
                             }
@@ -803,6 +883,7 @@ private fun SlockAppShellContent() {
                         }
                         if (it != "settings") {
                             selectedSettingsDestination = SettingsDestinationHome
+                            selectedSettingsComputerId = null
                         }
                     },
                     modifier = Modifier
@@ -826,14 +907,22 @@ private fun SettingsAppShellContent(
     onSettingsIntent: (SharedSettingsIntent) -> Unit,
     membersApi: BridgeMembersApi,
     selectedDestination: String,
+    selectedComputerId: String?,
     onDestinationChange: (String) -> Unit,
+    onOpenComputer: (String) -> Unit,
     onOpenRouter: () -> Unit,
     onSettingsAction: (String, String?) -> Unit,
     onLogout: () -> Unit
 ) {
-    LaunchedEffect(selectedDestination) {
-        selectedDestination.toSharedSettingsDestination()?.let { destination ->
-            onSettingsIntent(SharedSettingsIntent.OpenDestination(destination))
+    LaunchedEffect(selectedDestination, selectedComputerId) {
+        if (selectedDestination == SettingsDestinationComputerDetail) {
+            selectedComputerId?.takeIf { it.isNotBlank() }?.let { computerId ->
+                onSettingsIntent(SharedSettingsIntent.OpenComputer(computerId))
+            }
+        } else {
+            selectedDestination.toSharedSettingsDestination()?.let { destination ->
+                onSettingsIntent(SharedSettingsIntent.OpenDestination(destination))
+            }
         }
     }
 
@@ -897,7 +986,13 @@ private fun SettingsAppShellContent(
         title = settingsDestinationTitle(selectedDestination),
         subtitle = settingsDestinationSubtitle(selectedDestination),
         iconName = settingsDestinationIcon(selectedDestination),
-        onBack = { onDestinationChange(SettingsDestinationHome) }
+        onBack = {
+            if (selectedDestination == SettingsDestinationComputerDetail) {
+                onDestinationChange(SettingsDestinationComputers)
+            } else {
+                onDestinationChange(SettingsDestinationHome)
+            }
+        }
     ) {
         when (selectedDestination) {
             SettingsDestinationAccount ->
@@ -907,7 +1002,22 @@ private fun SettingsAppShellContent(
                     }
                 }
             SettingsDestinationComputers ->
-                SettingsComputersContent(appShellComputersPayload()) { _, _ -> }
+                SettingsComputersContent(settingsState.computers.toComputersPayload(settingsState.isRefreshing(SharedSettingsDestination.Computers))) { action, itemId ->
+                    when (action) {
+                        "openComputer" -> itemId?.takeIf { it.isNotBlank() }?.let(onOpenComputer)
+                        "addComputer" -> onSettingsAction(action, itemId)
+                        else -> onSettingsAction(action, itemId)
+                    }
+                }
+            SettingsDestinationComputerDetail ->
+                SettingsComputerDetailContent(settingsState.computerDetail.toComputerDetailPayload(selectedComputerId)) { action, itemId ->
+                    when (action) {
+                        "retryWorkspaces", "retryAgents" ->
+                            selectedComputerId?.takeIf { it.isNotBlank() }?.let { onSettingsIntent(SharedSettingsIntent.OpenComputer(it)) }
+                        "openAgent" -> onSettingsAction(action, itemId)
+                        else -> onSettingsAction(action, itemId)
+                    }
+                }
             SettingsDestinationStorage ->
                 SettingsStorageContent(appShellStoragePayload()) { _, _ -> }
             SettingsDestinationBilling ->
@@ -1299,13 +1409,151 @@ private fun appShellAccountPayload(session: StoredAuthSession?): KuiklySettingsA
     )
 }
 
-private fun appShellComputersPayload(): KuiklySettingsComputersPayload =
+private fun ScreenLoadState<SettingsComputersSnapshot>.toComputersPayload(
+    refreshing: Boolean
+): KuiklySettingsComputersPayload =
+    when (this) {
+        is ScreenLoadState.Content ->
+            data.toComputersPayload(refreshing)
+        is ScreenLoadState.Error ->
+            KuiklySettingsComputersPayload(
+                instanceId = "shared-shell-settings-computers",
+                status = "error",
+                emptyTitle = "Unable to load computers",
+                emptyDetail = error.code
+            )
+        is ScreenLoadState.NoPermission ->
+            KuiklySettingsComputersPayload(
+                instanceId = "shared-shell-settings-computers",
+                status = "error",
+                emptyTitle = "No access to computers",
+                emptyDetail = blocker.code
+            )
+        is ScreenLoadState.Empty ->
+            KuiklySettingsComputersPayload(
+                instanceId = "shared-shell-settings-computers",
+                status = "empty",
+                emptyTitle = "No computers yet",
+                emptyDetail = "Connect a desktop daemon to see it here."
+            )
+        ScreenLoadState.Loading ->
+            KuiklySettingsComputersPayload(
+                instanceId = "shared-shell-settings-computers",
+                status = "loading",
+                emptyTitle = "Loading computers",
+                emptyDetail = "Fetching connected machines from this server."
+            )
+    }
+
+private fun SettingsComputersSnapshot.toComputersPayload(refreshing: Boolean): KuiklySettingsComputersPayload =
     KuiklySettingsComputersPayload(
         instanceId = "shared-shell-settings-computers",
-        computers = emptyList(),
-        emptyTitle = "Computers are moving to shared Settings",
-        emptyDetail = "The shared Computers API and detail route will be connected in the next Settings migration slice."
+        status = if (refreshing) "refreshing" else "content",
+        computers = computers.map { it.toComputerItem() },
+        canAddComputer = canAddComputer,
+        addComputerUnavailableReason = addComputerUnavailableReason,
+        latestDaemonVersion = latestDaemonVersion
     )
+
+private fun ScreenLoadState<SettingsComputerDetailSnapshot>.toComputerDetailPayload(
+    selectedComputerId: String?
+): KuiklySettingsComputerDetailPayload =
+    when (this) {
+        is ScreenLoadState.Content ->
+            data.toComputerDetailPayload()
+        is ScreenLoadState.Error ->
+            loadingComputerDetailPayload(
+                selectedComputerId = selectedComputerId,
+                name = "Unable to load computer",
+                workspacesErrorCode = error.code,
+                workspacesRetryable = error.retryable,
+                agentsErrorCode = error.code,
+                agentsRetryable = error.retryable
+            )
+        is ScreenLoadState.NoPermission ->
+            loadingComputerDetailPayload(
+                selectedComputerId = selectedComputerId,
+                name = "No access to computer",
+                workspacesErrorCode = blocker.code,
+                workspacesRetryable = false,
+                agentsErrorCode = blocker.code,
+                agentsRetryable = false
+            )
+        is ScreenLoadState.Empty ->
+            loadingComputerDetailPayload(
+                selectedComputerId = selectedComputerId,
+                name = "Computer unavailable"
+            )
+        ScreenLoadState.Loading ->
+            loadingComputerDetailPayload(
+                selectedComputerId = selectedComputerId,
+                name = "Loading computer"
+            )
+    }
+
+private fun SettingsComputerDetailSnapshot.toComputerDetailPayload(): KuiklySettingsComputerDetailPayload =
+    KuiklySettingsComputerDetailPayload(
+        instanceId = "shared-shell-settings-computer-${computer.id}",
+        computer = computer.toComputerItem(),
+        workspaces = workspaces.map { it.toWorkspaceItem() },
+        agents = agents.map { it.toAgentItem() },
+        workspacesErrorCode = workspacesError?.code,
+        workspacesRetryable = workspacesError?.retryable ?: false,
+        agentsErrorCode = agentsError?.code,
+        agentsRetryable = agentsError?.retryable ?: false
+    )
+
+private fun loadingComputerDetailPayload(
+    selectedComputerId: String?,
+    name: String,
+    workspacesErrorCode: String? = null,
+    workspacesRetryable: Boolean = false,
+    agentsErrorCode: String? = null,
+    agentsRetryable: Boolean = false
+): KuiklySettingsComputerDetailPayload =
+    KuiklySettingsComputerDetailPayload(
+        instanceId = "shared-shell-settings-computer-${selectedComputerId.orEmpty()}",
+        computer = KuiklySettingsComputerItem(id = selectedComputerId.orEmpty(), name = name),
+        workspacesErrorCode = workspacesErrorCode,
+        workspacesRetryable = workspacesRetryable,
+        agentsErrorCode = agentsErrorCode,
+        agentsRetryable = agentsRetryable
+    )
+
+private fun SettingsComputerSnapshot.toComputerItem(): KuiklySettingsComputerItem =
+    KuiklySettingsComputerItem(
+        id = id,
+        name = name,
+        daemonVersion = daemonVersion,
+        online = online,
+        hostname = hostname,
+        platform = platform,
+        lastSeenLabel = lastSeenLabel
+    )
+
+private fun SettingsComputerWorkspaceSnapshot.toWorkspaceItem(): KuiklySettingsWorkspaceItem =
+    KuiklySettingsWorkspaceItem(
+        id = id,
+        name = name,
+        path = path,
+        statusLabel = statusLabel,
+        lastActiveLabel = lastActiveLabel
+    )
+
+private fun SettingsComputerAgentSnapshot.toAgentItem(): KuiklySettingsAgentItem {
+    val profile = memberProfile
+    return KuiklySettingsAgentItem(
+        id = id,
+        name = name,
+        statusLabel = statusLabel,
+        ownerLabel = ownerLabel,
+        displayName = profile?.displayName,
+        handle = profile?.handle,
+        description = profile?.description,
+        presenceLabel = profile?.presence?.name,
+        roleLabel = profile?.roleDescription
+    )
+}
 
 private fun appShellStoragePayload(): KuiklySettingsStoragePayload =
     KuiklySettingsStoragePayload(
@@ -1579,6 +1827,7 @@ private fun settingsDestinationTitle(destination: String): String =
     when (destination) {
         SettingsDestinationAccount -> "Account"
         SettingsDestinationComputers -> "Computers"
+        SettingsDestinationComputerDetail -> "Computer"
         SettingsDestinationServer -> "Server"
         SettingsDestinationBilling -> "Billing"
         SettingsDestinationMobile -> "Mobile"
@@ -1592,6 +1841,7 @@ private fun settingsDestinationSubtitle(destination: String): String =
     when (destination) {
         SettingsDestinationAccount -> "Profile and sign out"
         SettingsDestinationComputers -> "Connected machines"
+        SettingsDestinationComputerDetail -> "Machine details"
         SettingsDestinationServer -> "Workspace controls"
         SettingsDestinationBilling -> "Plan and usage"
         SettingsDestinationMobile -> "Phone and language"
@@ -1605,6 +1855,7 @@ private fun settingsDestinationIcon(destination: String): String =
     when (destination) {
         SettingsDestinationAccount -> "user"
         SettingsDestinationComputers -> "monitor"
+        SettingsDestinationComputerDetail -> "monitor"
         SettingsDestinationServer -> "users"
         SettingsDestinationBilling -> "shield-check"
         SettingsDestinationMobile -> "smartphone"
@@ -1618,6 +1869,7 @@ private fun String.toSharedSettingsDestination(): SharedSettingsDestination? =
     when (this) {
         SettingsDestinationAccount -> SharedSettingsDestination.Account
         SettingsDestinationComputers -> SharedSettingsDestination.Computers
+        SettingsDestinationComputerDetail -> SharedSettingsDestination.ComputerDetail
         SettingsDestinationServer -> SharedSettingsDestination.Server
         SettingsDestinationBilling -> SharedSettingsDestination.Billing
         SettingsDestinationMobile -> SharedSettingsDestination.Mobile
@@ -2176,6 +2428,10 @@ private fun SharedHomeScreen(
                     }
                 }.toSharedSwitcherItem()
             }.ifEmpty { listOf(snapshot.server.toSharedSwitcherItem()) }
+            val conversationsByThreadId =
+                remember(snapshot.channels, snapshot.directMessages) {
+                    (snapshot.channels + snapshot.directMessages).associateBy { it.threadId.value }
+                }
             SlockStructuralHomeShell(
                 currentServerName = snapshot.server.name,
                 currentServerId = snapshot.server.id.value,
@@ -2225,14 +2481,12 @@ private fun SharedHomeScreen(
                     onIntent(SharedHomeIntent.DismissNotification(notification.id))
                 },
                 onChannelClick = { threadId ->
-                    val conversation =
-                        (snapshot.channels + snapshot.directMessages)
-                            .firstOrNull { it.threadId.value == threadId }
+                    val conversation = conversationsByThreadId[threadId]
                     if (conversation == null) {
                         bridge.toast("Conversation is no longer available")
                     } else {
-                        onIntent(SharedHomeIntent.SelectConversation(threadId))
                         onOpenConversation(conversation)
+                        onIntent(SharedHomeIntent.SelectConversation(threadId))
                     }
                 }
             )
@@ -2398,6 +2652,106 @@ internal fun buildAppShellThreadPayload(
                 )
             )
     )
+
+private suspend fun openAppShellTaskThread(
+    task: TaskSummary,
+    dataSource: SharedThreadDataSource,
+    timeContext: AppShellThreadTimeContext?,
+    onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit,
+    onFailure: () -> Unit
+) {
+    val channelId = task.channelId
+    val parentMessage = task.toAppShellTaskParentMessage()
+    if (channelId != null && parentMessage != null) {
+        val channelPayload =
+            buildAppShellThreadPayload(
+                ConversationSummary(
+                    threadId = ThreadId(channelId.value),
+                    channelId = channelId,
+                    kind = ConversationKind.Channel,
+                    name = task.channelName?.takeIf { it.isNotBlank() } ?: "Channel",
+                    joined = true,
+                    permissions = ConversationPermissions(canSend = true, canAttach = true, canCreateTask = true)
+                ),
+                timeContext
+            )
+        when (val result = dataSource.createOrOpenReplyThread(channelPayload, parentMessage)) {
+            is ai.slock.compose.data.DataResult.Content -> {
+                onOpenThreadPayload(result.data)
+                return
+            }
+            is ai.slock.compose.data.DataResult.Empty,
+            is ai.slock.compose.data.DataResult.Error,
+            is ai.slock.compose.data.DataResult.NoPermission -> Unit
+        }
+    }
+
+    val threadId = task.threadId?.value?.takeIf { it.isNotBlank() }
+    if (threadId != null) {
+        onOpenThreadPayload(
+            KuiklyThreadScreenPayload(
+                instanceId = "shared-shell-task-thread-$threadId",
+                title = task.tasksDisplayTitleForAppShell(),
+                subtitle = task.channelName,
+                status = "loading",
+                sourceThreadId = threadId,
+                selectedTab = "chat",
+                navigationLabel = "Back",
+                showModeTabs = false,
+                showReplyActions = false,
+                showOpenInChannelAction = true,
+                originMessage = parentMessage,
+                originParentMessageId = parentMessage?.id,
+                originStatus = if (parentMessage != null) "loaded" else "idle",
+                localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
+                todayEpochDay = timeContext?.todayEpochDay,
+                showMembersAction = false,
+                showSettingsAction = false
+            )
+        )
+    } else {
+        onFailure()
+    }
+}
+
+private fun TaskSummary.toAppShellTaskParentMessage(): KuiklyThreadMessageItem? {
+    val messageId = messageId?.value?.takeIf { it.isNotBlank() } ?: id.value.takeIf { it.isNotBlank() } ?: return null
+    val author = creator ?: assignee
+    val authorName = author?.displayName?.takeIf { it.isNotBlank() } ?: "Task"
+    return KuiklyThreadMessageItem(
+        id = messageId,
+        authorId = author?.id?.value ?: "",
+        authorName = authorName,
+        authorKind =
+            when (author?.kind) {
+                MemberKind.Agent -> "agent"
+                MemberKind.Human -> "human"
+                else -> ""
+            },
+        avatarLabel = author.avatarLabelOrName(authorName),
+        body = title,
+        taskId = id.value,
+        taskNumber = taskNumber,
+        taskStatus = status.toTaskStatusWireValue(),
+        taskAssigneeName = assignee?.displayName
+    )
+}
+
+private fun MemberProfile?.avatarLabelOrName(fallbackName: String): String =
+    this?.avatarLabel?.takeIf { it.isNotBlank() }
+        ?: fallbackName.take(1).uppercase()
+
+private fun TaskStatus.toTaskStatusWireValue(): String =
+    when (this) {
+        TaskStatus.Todo -> "todo"
+        TaskStatus.InProgress -> "in_progress"
+        TaskStatus.InReview -> "in_review"
+        TaskStatus.Done -> "done"
+        TaskStatus.Closed -> "closed"
+    }
+
+private fun TaskSummary.tasksDisplayTitleForAppShell(): String =
+    taskNumber?.let { "#$it" } ?: title.ifBlank { "Task" }
 
 private fun decodeSharedShellRealtimeEvent(
     eventData: JSONObject,

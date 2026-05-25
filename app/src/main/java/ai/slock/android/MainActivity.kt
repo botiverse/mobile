@@ -454,9 +454,6 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
 
-        // Install crash dump handler for debugging
-        setupCrashDumpHandler()
-
         ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger.d(
                 "SlockBoot",
                 "main_activity_on_create buildMarker=auth-unread-diagnostics-v2"
@@ -508,56 +505,6 @@ class MainActivity : ComponentActivity() {
             }
         }
         SlockPerformanceDiagnostics.install(window)
-    }
-
-    private fun setupCrashDumpHandler() {
-        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            try {
-                // Build crash info
-                val crashInfo = buildString {
-                    appendLine("Crash at: ${java.util.Date()}")
-                    appendLine("Thread: ${thread.name}")
-                    appendLine("Exception: ${throwable.javaClass.name}")
-                    appendLine("Message: ${throwable.message}")
-                    appendLine()
-                    appendLine("Stack trace:")
-                    appendLine(android.util.Log.getStackTraceString(throwable))
-                }
-
-                // Write to file
-                val crashDir = getExternalFilesDir(null)?.resolve("crashes")
-                crashDir?.mkdirs()
-                val timestamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
-                        .format(java.util.Date())
-                val crashFile = crashDir?.resolve("crash-$timestamp.txt")
-                crashFile?.writeText(crashInfo)
-                android.util.Log.e("SlockCrashDump", "Crash dump written to: ${crashFile?.absolutePath}")
-
-                // Copy to clipboard
-                try {
-                    val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
-                            as android.content.ClipboardManager
-                    val clip = android.content.ClipData.newPlainText("Crash Info", crashInfo)
-                    clipboard.setPrimaryClip(clip)
-                    android.util.Log.e("SlockCrashDump", "Crash info copied to clipboard")
-
-                    // Show toast on main thread
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        android.widget.Toast.makeText(
-                            this,
-                            "Crash info copied to clipboard",
-                            android.widget.Toast.LENGTH_LONG
-                        ).show()
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("SlockCrashDump", "Failed to copy to clipboard", e)
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("SlockCrashDump", "Failed to write crash dump", e)
-            }
-            defaultHandler?.uncaughtException(thread, throwable)
-        }
     }
 }
 

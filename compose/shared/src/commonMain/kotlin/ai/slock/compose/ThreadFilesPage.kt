@@ -49,6 +49,7 @@ internal data class KuiklyThreadFilesPayload(
     val items: List<KuiklyThreadFileItem> = emptyList(),
     val hasMore: Boolean = false,
     val loadingMore: Boolean = false,
+    val nextCursor: String? = null,
     val errorCode: String? = null,
     val emptyTitle: String = "No files yet",
     val emptyDetail: String = "Files shared in this thread will show up here."
