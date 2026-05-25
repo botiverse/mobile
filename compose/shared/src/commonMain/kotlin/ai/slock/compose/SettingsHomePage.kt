@@ -24,6 +24,7 @@ import ai.slock.compose.data.SharedTasksRouteIntent
 import ai.slock.compose.data.SharedTasksViewModel
 import ai.slock.compose.data.SharedHomeContentState
 import ai.slock.compose.data.SharedHomeDataSource
+import ai.slock.compose.data.HomeSnapshot
 import ai.slock.compose.data.SharedHomeIntent
 import ai.slock.compose.data.SharedHomeState
 import ai.slock.compose.data.SharedHomeTopAction
@@ -42,6 +43,8 @@ import ai.slock.compose.data.SharedSettingsViewModel
 import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.isRefreshing
 import ai.slock.compose.data.StoredAuthSession
+import ai.slock.compose.data.StoredAuthServer
+import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.realtime.RealtimeEventMapper
 import ai.slock.compose.data.parseSlockHome
 import ai.slock.compose.data.BridgeThreadApi
@@ -172,6 +175,7 @@ const val BOTTOM_TAB_BAR_SMOKE_PAGE = "compose_bottom_tabbar_smoke"
 const val BOTTOM_TAB_BAR_VISUAL_PAGE = "compose_bottom_tabbar_visual"
 private const val SETTINGS_ROW_VISUAL_PAGE = "compose_settings_row_visual"
 private const val SETTINGS_PAGE_VISUAL_PAGE = "compose_settings_page_visual"
+private const val HOME_SEARCH_VISUAL_PAGE = "compose_home_search_visual"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 
 private const val AppShellRouteMain = "main"
@@ -242,6 +246,14 @@ internal class ComposeSettingsPageVisualPage : ai.slock.compose.base.BasePager()
     override fun willInit() {
         super.willInit()
         setContent { SettingsPageVisualContent() }
+    }
+}
+
+@Page(HOME_SEARCH_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeHomeSearchVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSearchVisualContent() }
     }
 }
 
@@ -4696,6 +4708,222 @@ private fun SettingsPageVisualContent() {
                 onEvent = {}
             )
         }
+    }
+}
+
+private val homeSearchVisualServer = ServerSummary(
+    id = ServerId("srv_design"),
+    name = "Slock Design",
+    slug = "slock-design",
+    role = "owner",
+    plan = "pro",
+    unreadCount = 24
+)
+
+private val homeSearchVisualMember = MemberProfile(
+    id = MemberId("user_artin"),
+    displayName = "Artin",
+    handle = "artin",
+    kind = MemberKind.Human,
+    presence = Presence.Active
+)
+
+private val homeSearchVisualSession = StoredAuthSession(
+    user =
+        StoredAuthUser(
+            id = "user_artin",
+            email = "artin@slock.test",
+            name = "artin",
+            displayName = "Artin",
+            emailVerified = true
+        ),
+    accessToken = "visual-token",
+    refreshToken = "visual-refresh",
+    selectedServerId = "srv_design",
+    selectedServerSlug = "slock-design",
+    servers =
+        listOf(
+            StoredAuthServer(
+                id = "srv_design",
+                name = "Slock Design",
+                slug = "slock-design",
+                role = "owner",
+                plan = "pro"
+            )
+        )
+)
+
+private val homeSearchVisualChannels = listOf(
+    ConversationSummary(
+        threadId = ThreadId("thread_design"),
+        channelId = ChannelId("ch_design"),
+        kind = ConversationKind.Channel,
+        name = "design",
+        subtitle = "Product and UI decisions",
+        unreadCount = 3,
+        unreadCountKnown = true,
+        lastMessagePreview = "Search parity now covers sender filters and results.",
+        lastMessageAt = "10:38",
+        lastMessageSenderName = "Product UX Designer",
+        memberCount = 18
+    ),
+    ConversationSummary(
+        threadId = ThreadId("thread_android"),
+        channelId = ChannelId("ch_android"),
+        kind = ConversationKind.Channel,
+        name = "android-artifacts",
+        subtitle = "Builds and screenshots",
+        lastMessagePreview = "Uploaded Android visual report with Search and Saved cases.",
+        lastMessageAt = "09:58",
+        lastMessageSenderName = "Android Developer",
+        memberCount = 8
+    )
+)
+
+private val homeSearchVisualDirectMessages = listOf(
+    ConversationSummary(
+        threadId = ThreadId("dm_android"),
+        channelId = ChannelId("dm_android"),
+        kind = ConversationKind.DirectMessage,
+        name = "Android Developer",
+        subtitle = "Android implementation owner",
+        lastMessagePreview = "Search visual case is ready for comparison.",
+        lastMessageAt = "09:42",
+        lastMessageSenderName = "Android Developer",
+        presence = Presence.Active,
+        agentStatus = AgentStatus.Working
+    )
+)
+
+private val homeSearchVisualHomeState = SharedHomeState(
+    content =
+        SharedHomeContentState.Content(
+            snapshot =
+                HomeSnapshot(
+                    server = homeSearchVisualServer,
+                    currentMember = homeSearchVisualMember,
+                    channels = homeSearchVisualChannels,
+                    directMessages = homeSearchVisualDirectMessages,
+                    unreadTotal = 7
+                ),
+            session = homeSearchVisualSession
+        ),
+    selectedTopAction = SharedHomeTopAction.Search
+)
+
+private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
+    query = "android",
+    sort = SearchSort.Recent,
+    timeRange = SearchTimeRange.Last7Days,
+    myMessagesOnly = false,
+    selectedSenderId = "user_artin",
+    senderFilters =
+        listOf(
+            SearchSenderFilterItem(
+                id = "user_artin",
+                label = "Artin",
+                handle = "artin",
+                kind = MemberKind.Human,
+                isSelf = true
+            ),
+            SearchSenderFilterItem(
+                id = "agent_android",
+                label = "Android Developer",
+                handle = "Android-Developer",
+                kind = MemberKind.Agent
+            )
+        ),
+    selectedChannelId = "ch_design",
+    items =
+        listOf(
+            InboxItem(
+                key = "search-thread-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread_msg_agent_reply"),
+                channelName = "thread",
+                lastMessageId = MessageId("msg_search_thread_1"),
+                lastMessagePreview = "Android search parity now covers sender filters, time ranges, and entity results.",
+                lastMessageAt = "10:38",
+                lastMessageSenderName = "Android Developer",
+                threadChannelId = ChannelId("thread_msg_agent_reply"),
+                parentChannelId = ChannelId("ch_design"),
+                parentChannelName = "design",
+                parentChannelKind = ConversationKind.Channel,
+                parentMessageId = MessageId("msg_agent_reply"),
+                parentMessagePreview = "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。",
+                latestActivityMessageId = MessageId("msg_search_thread_1"),
+                latestActivityPreview = "Android search parity now covers sender filters, time ranges, and entity results.",
+                latestActivityAt = "10:38",
+                latestActivitySenderName = "Android Developer",
+                replyCount = 5,
+                participantIds = listOf(MemberId("user_artin"), MemberId("agent_android")),
+                taskNumber = 154,
+                taskStatus = TaskStatus.InReview,
+                taskClaimedByName = "KMP-专家"
+            ),
+            InboxItem(
+                key = "search-thread-2",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread_msg_agent_reply"),
+                channelName = "thread",
+                lastMessageId = MessageId("msg_search_thread_2"),
+                lastMessagePreview = "Search needs to match Android and React behavior before visual review.",
+                lastMessageAt = "10:31",
+                lastMessageSenderName = "artin",
+                threadChannelId = ChannelId("thread_msg_agent_reply"),
+                parentChannelId = ChannelId("ch_design"),
+                parentChannelName = "design",
+                parentChannelKind = ConversationKind.Channel,
+                parentMessageId = MessageId("msg_agent_reply"),
+                parentMessagePreview = "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。",
+                latestActivityMessageId = MessageId("msg_search_thread_2"),
+                latestActivityPreview = "Search needs to match Android and React behavior before visual review.",
+                latestActivityAt = "10:31",
+                latestActivitySenderName = "artin",
+                replyCount = 5,
+                participantIds = listOf(MemberId("user_artin"), MemberId("agent_android")),
+                taskNumber = 154,
+                taskStatus = TaskStatus.InReview,
+                taskClaimedByName = "KMP-专家"
+            ),
+            InboxItem(
+                key = "search-channel-1",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("ch_android"),
+                channelName = "android-artifacts",
+                lastMessageId = MessageId("msg_search_channel_1"),
+                lastMessagePreview = "Uploaded Android visual report with Search and Saved cases.",
+                lastMessageAt = "09:58",
+                lastMessageSenderName = "Android Developer",
+                latestActivityMessageId = MessageId("msg_search_channel_1"),
+                latestActivityPreview = "Uploaded Android visual report with Search and Saved cases.",
+                latestActivityAt = "09:58",
+                latestActivitySenderName = "Android Developer"
+            )
+        ),
+    totalCount = 8,
+    searched = true,
+    hasMore = true,
+    nextOffset = 3
+)
+
+@Composable
+private fun HomeSearchVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .width(342.dp)
+                .height(620.dp)
+                .background(SlockColor.SurfaceWhite)
+    ) {
+        SharedHomeSearchPanel(
+            state = homeSearchVisualSearchState,
+            homeState = homeSearchVisualHomeState,
+            onIntent = {},
+            onOpenItem = {},
+            onOpenEntity = {},
+            bottomContentPadding = 12.dp
+        )
     }
 }
 
