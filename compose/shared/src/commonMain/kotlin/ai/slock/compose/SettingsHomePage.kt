@@ -1058,6 +1058,9 @@ private fun SlockAppShellContent() {
                                     state = homeSearchSavedState.search,
                                     homeState = homeState,
                                     onIntent = homeSearchSavedViewModel::dispatch,
+                                    onClose = {
+                                        selectedHomeDestination = null
+                                    },
                                     onOpenItem = { item ->
                                         selectedHomeDestination = null
                                         selectedHomeConversationId = item.toConversationSummary().threadId.value
@@ -3064,6 +3067,10 @@ private fun SharedHomeSearchPanel(
     state: SharedHomeSearchPanelState,
     homeState: SharedHomeState,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
+    onClose: (() -> Unit)? = null,
+    interactiveSearchField: Boolean = true,
+    includeTopSafeArea: Boolean = true,
+    showSenderFilter: Boolean = true,
     onOpenItem: (InboxItem) -> Unit,
     onOpenEntity: (SearchEntityResult) -> Unit,
     bottomContentPadding: Dp,
@@ -3091,24 +3098,18 @@ private fun SharedHomeSearchPanel(
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             item {
-                SharedHomePanelHeader(
-                    title = "Search",
-                    subtitle = "Search channels, DMs, people, agents, and message history.",
-                    iconName = "search",
-                    actionLabel = if (state.loading) "Searching..." else "Search",
-                    actionEnabled = state.query.isNotBlank() && !state.loading,
-                    onAction = { onIntent(SharedHomeSearchSavedIntent.SubmitSearch) }
-                )
-            }
-            item {
-                SharedHomePanelSearchField(
+                SharedHomeSearchToolbar(
                     query = state.query,
                     loading = state.loading,
                     onQueryChange = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged(it)) },
-                    onSubmit = { onIntent(SharedHomeSearchSavedIntent.SubmitSearch) }
+                    onSubmit = { onIntent(SharedHomeSearchSavedIntent.SubmitSearch) },
+                    onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
+                    onClose = onClose,
+                    interactive = interactiveSearchField,
+                    includeTopSafeArea = includeTopSafeArea
                 )
             }
             item {
@@ -3119,29 +3120,34 @@ private fun SharedHomeSearchPanel(
                     channelAnchorChanged = { channelAnchor = it },
                     timeAnchorChanged = { timeAnchor = it },
                     onOpenFilter = { openFilterId = it },
-                    onIntent = onIntent
+                    onIntent = onIntent,
+                    showSenderFilter = showSenderFilter
                 )
             }
             item {
-                SharedHomePanelStatus(
-                    loading = state.loading,
-                    loadingText = "Searching messages...",
-                    errorCode = state.errorCode,
-                    noPermissionCode = state.noPermissionCode,
-                    empty = state.empty || (!state.searched && state.items.isEmpty() && entityResults.isEmpty()),
-                    emptyTitle = if (state.searched) "No matching results" else "Start with a search query",
-                    emptyDetail =
-                        if (state.searched) {
-                            "Try another query, sender, channel, or time range."
-                        } else {
-                            "Search results will appear here after you submit a query."
-                        },
-                    onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSearch) }
-                )
+                if (state.loading || state.errorCode != null || state.noPermissionCode != null || state.empty || (!state.searched && state.items.isEmpty() && entityResults.isEmpty())) {
+                    SharedHomePanelStatus(
+                        loading = state.loading,
+                        loadingText = "Searching messages...",
+                        errorCode = state.errorCode,
+                        noPermissionCode = state.noPermissionCode,
+                        empty = state.empty || (!state.searched && state.items.isEmpty() && entityResults.isEmpty()),
+                        emptyTitle = if (state.searched) "No matching results" else "Start with a search query",
+                        emptyDetail =
+                            if (state.searched) {
+                                "Try another query, sender, channel, or time range."
+                            } else {
+                                "Search results will appear here after you submit a query."
+                            },
+                        onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSearch) }
+                    )
+                } else {
+                    SharedHomeSearchResultsCount(state.totalCount + entityResults.size)
+                }
             }
             if (entityResults.isNotEmpty()) {
                 item {
-                    SharedHomeSearchSectionLabel("Channels, DMs, people, and agents")
+                    SharedHomeSearchSectionLabel("Channels & DMs")
                 }
                 items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
                     SharedHomeSearchEntityRow(
@@ -3159,10 +3165,8 @@ private fun SharedHomeSearchPanel(
                 when (group) {
                     is HomeSearchResultGroup.Message -> {
                         item(key = group.item.key) {
-                            SharedHomeInboxResultRow(
+                            SharedHomeSearchMessageResultRow(
                                 item = group.item,
-                                actionLabel = "Open",
-                                onAction = { onOpenItem(group.item) },
                                 onOpen = { onOpenItem(group.item) }
                             )
                         }
@@ -3249,6 +3253,103 @@ private fun SharedHomeSearchPanel(
                     multiSelect = false
                 )
             else -> Unit
+        }
+    }
+}
+
+@Composable
+private fun SharedHomeSearchToolbar(
+    query: String,
+    loading: Boolean,
+    onQueryChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onClear: () -> Unit,
+    onClose: (() -> Unit)?,
+    interactive: Boolean = true,
+    includeTopSafeArea: Boolean = true
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(
+                    start = 14.dp,
+                    top = (if (includeTopSafeArea) slockTopSafeAreaPadding() else 0.dp) + 12.dp,
+                    end = 14.dp,
+                    bottom = 12.dp
+                ),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (onClose != null) {
+            Button(
+                onClick = onClose,
+                modifier =
+                    Modifier
+                        .size(34.dp)
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+            ) {
+                SlockLucideIcon("arrow-left", color = "#FF000000", modifier = Modifier.size(16.dp))
+            }
+        }
+        Box(
+            modifier =
+                Modifier
+                    .size(38.dp)
+                    .background(SlockColor.BrandYellow)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            SlockLucideIcon("search", color = "#FF000000", modifier = Modifier.size(18.dp))
+        }
+        Row(
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = 38.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(start = 11.dp, top = 7.dp, end = 7.dp, bottom = 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (interactive) {
+                TextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    placeholder = "Search channels, DMs, messages...",
+                    placeholderColor = SlockColor.TextMutedGray,
+                    autoFocus = false,
+                    maxLines = 1,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank() && !loading) onSubmit() }),
+                    textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                Text(
+                    text = query.ifBlank { "Search channels, DMs, messages..." },
+                    style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    color = if (query.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Button(
+                enabled = interactive && query.isNotBlank(),
+                onClick = onClear,
+                modifier =
+                    Modifier
+                        .size(24.dp)
+                        .background(if (interactive && query.isNotBlank()) SlockColor.SurfaceWhite else SlockColor.EmptyStateGray.copy(alpha = 0.35f))
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            ) {
+                SlockLucideIcon("x", color = "#FF000000", modifier = Modifier.size(12.dp))
+            }
         }
     }
 }
@@ -3409,7 +3510,8 @@ private fun SharedHomeSearchFilters(
     channelAnchorChanged: (Offset) -> Unit,
     timeAnchorChanged: (Offset) -> Unit,
     onOpenFilter: (String) -> Unit,
-    onIntent: (SharedHomeSearchSavedIntent) -> Unit
+    onIntent: (SharedHomeSearchSavedIntent) -> Unit,
+    showSenderFilter: Boolean = true
 ) {
     val hasActiveFilters =
         state.myMessagesOnly ||
@@ -3418,76 +3520,122 @@ private fun SharedHomeSearchFilters(
             state.timeRange != SearchTimeRange.Any
     val selectedSender = state.senderFilters.firstOrNull { it.id == state.selectedSenderId }
     val selectedChannel = channelFilters.firstOrNull { it.id == state.selectedChannelId }
-    LazyRow(
+    Column(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item {
-            SharedHomeFilterChip(
-                label =
-                    when {
-                        selectedSender != null -> "FROM: ${selectedSender.displayLabel}"
-                        state.myMessagesOnly -> "FROM: ME"
-                        else -> "FROM"
-                    },
-                selected = state.myMessagesOnly || state.selectedSenderId != null,
-                enabled = true,
-                modifier = Modifier.onGloballyPositioned { senderAnchorChanged(it.positionInRoot()) },
-                onClick = { onOpenFilter("sender") }
-            )
-        }
-        item {
-            SharedHomeFilterChip(
-                label = "MY MESSAGES",
-                selected = state.myMessagesOnly,
-                enabled = true,
-                onClick = { onIntent(SharedHomeSearchSavedIntent.SetMyMessagesOnly(!state.myMessagesOnly)) }
-            )
-        }
-        item {
-            SharedHomeFilterChip(
-                label = selectedChannel?.label ?: "CHANNEL",
-                selected = state.selectedChannelId != null,
-                enabled = true,
-                modifier = Modifier.onGloballyPositioned { channelAnchorChanged(it.positionInRoot()) },
-                onClick = { onOpenFilter("channel") }
-            )
-        }
-        item {
-            SharedHomeFilterChip(
-                label = state.timeRange.label,
-                selected = state.timeRange != SearchTimeRange.Any,
-                enabled = true,
-                modifier = Modifier.onGloballyPositioned { timeAnchorChanged(it.positionInRoot()) },
-                onClick = { onOpenFilter("time") }
-            )
-        }
-        if (hasActiveFilters) {
-            item {
+        if (showSenderFilter) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    SharedHomeFilterChip(
+                        label = "My messages",
+                        selected = state.myMessagesOnly,
+                        enabled = true,
+                        dense = true,
+                        onClick = { onIntent(SharedHomeSearchSavedIntent.SetMyMessagesOnly(!state.myMessagesOnly)) }
+                    )
+                }
+                item {
+                    SharedHomeFilterChip(
+                        label = selectedSender?.displayLabel ?: "From",
+                        selected = state.selectedSenderId != null,
+                        enabled = true,
+                        dense = true,
+                        modifier = Modifier.onGloballyPositioned { senderAnchorChanged(it.positionInRoot()) },
+                        onClick = { onOpenFilter("sender") }
+                    )
+                }
+                item {
+                    SharedHomeFilterChip(
+                        label = selectedChannel?.label ?: "Channel",
+                        selected = state.selectedChannelId != null,
+                        enabled = true,
+                        dense = true,
+                        modifier = Modifier.onGloballyPositioned { channelAnchorChanged(it.positionInRoot()) },
+                        onClick = { onOpenFilter("channel") }
+                    )
+                }
+                item {
+                    SharedHomeFilterChip(
+                        label = state.timeRange.label,
+                        selected = state.timeRange != SearchTimeRange.Any,
+                        enabled = true,
+                        dense = true,
+                        modifier = Modifier.onGloballyPositioned { timeAnchorChanged(it.positionInRoot()) },
+                        onClick = { onOpenFilter("time") }
+                    )
+                }
+                if (hasActiveFilters) {
+                    item {
+                        SharedHomeFilterChip(
+                            label = "Clear all",
+                            selected = false,
+                            enabled = true,
+                            dense = true,
+                            onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) }
+                        )
+                    }
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 SharedHomeFilterChip(
-                    label = "CLEAR ALL",
-                    selected = false,
+                    label = "My messages",
+                    selected = state.myMessagesOnly,
                     enabled = true,
-                    onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) }
+                    dense = true,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onIntent(SharedHomeSearchSavedIntent.SetMyMessagesOnly(!state.myMessagesOnly)) }
+                )
+                SharedHomeFilterChip(
+                    label = selectedChannel?.label ?: "Channel",
+                    selected = state.selectedChannelId != null,
+                    enabled = true,
+                    dense = true,
+                    modifier = Modifier.weight(1f).onGloballyPositioned { channelAnchorChanged(it.positionInRoot()) },
+                    onClick = { onOpenFilter("channel") }
                 )
             }
         }
-        item {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (!showSenderFilter) {
+                SharedHomeFilterChip(
+                    label = state.timeRange.label,
+                    selected = state.timeRange != SearchTimeRange.Any,
+                    enabled = true,
+                    dense = true,
+                    modifier = Modifier.weight(1f).onGloballyPositioned { timeAnchorChanged(it.positionInRoot()) },
+                    onClick = { onOpenFilter("time") }
+                )
+            }
             SharedHomeFilterChip(
-                label = "RELEVANCE",
+                label = "Relevant",
                 selected = state.sort == SearchSort.Relevance,
                 enabled = true,
+                modifier = Modifier.weight(1f),
                 onClick = { onIntent(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Relevance)) }
             )
-        }
-        item {
             SharedHomeFilterChip(
-                label = "RECENT",
+                label = "Recent",
                 selected = state.sort == SearchSort.Recent,
                 enabled = true,
+                modifier = Modifier.weight(1f),
                 onClick = { onIntent(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Recent)) }
             )
         }
@@ -3663,13 +3811,27 @@ private fun SharedHomeInboxResultRow(
 }
 
 @Composable
+private fun SharedHomeSearchResultsCount(totalResults: Int) {
+    Text(
+        text = "$totalResults results",
+        style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 1.4.sp),
+        color = SlockColor.TextMutedGray,
+        maxLines = 1,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 12.dp)
+    )
+}
+
+@Composable
 private fun SharedHomeSearchSectionLabel(label: String) {
     Text(
         text = label.uppercase(),
-        style = SlockType.Caption,
+        style = SlockType.Caption.copy(letterSpacing = 1.6.sp),
         color = SlockColor.TextMutedGray,
         maxLines = 1,
-        modifier = Modifier.padding(horizontal = 18.dp, vertical = 2.dp)
+        modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
     )
 }
 
@@ -3681,19 +3843,19 @@ private fun SharedHomeSearchEntityRow(
     Row(
         modifier =
             Modifier
-                .padding(horizontal = 18.dp)
+                .padding(horizontal = 16.dp, vertical = 4.dp)
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .clickable(onClick = onOpen)
-                .padding(SlockSpacing.Md),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier =
                 Modifier
-                    .size(34.dp)
+                    .size(32.dp)
                     .background(SlockColor.BrandYellow)
                     .border(SlockStroke.Thin, SlockColor.BorderBlack),
             contentAlignment = Alignment.Center
@@ -3707,13 +3869,13 @@ private fun SharedHomeSearchEntityRow(
                         SearchEntityType.DirectMessage -> "mail"
                     },
                 color = "#FF000000",
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(15.dp)
             )
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 text = result.title,
-                style = SlockType.SectionLabel,
+                style = SlockType.SectionLabel.copy(fontSize = 14.sp, lineHeight = 17.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -3726,8 +3888,29 @@ private fun SharedHomeSearchEntityRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        SharedHomePanelButton(label = "Open", selected = false, onClick = onOpen)
+        SharedHomeEntityTypeBadge(result.type)
     }
+}
+
+@Composable
+private fun SharedHomeEntityTypeBadge(type: SearchEntityType) {
+    Text(
+        text =
+            when (type) {
+                SearchEntityType.Channel -> "Channel"
+                SearchEntityType.DirectMessage -> "DM"
+                SearchEntityType.Human -> "DM"
+                SearchEntityType.Agent -> "DM"
+            },
+        style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 10.sp),
+        color = SlockColor.TextMutedGray,
+        maxLines = 1,
+        modifier =
+            Modifier
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .padding(horizontal = 5.dp, vertical = 2.dp)
+    )
 }
 
 @Composable
@@ -3742,22 +3925,23 @@ private fun SharedHomeThreadResultGroup(
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(bottom = 0.dp)
     ) {
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.AccentPink.copy(alpha = 0.14f))
+                    .background(SlockColor.AccentPink.copy(alpha = 0.20f))
                     .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                    .padding(SlockSpacing.Sm),
+                    .padding(horizontal = 11.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
             SlockLucideIcon("message-square", color = "#FF000000", modifier = Modifier.size(15.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = "Thread · ${group.items.size} hits",
-                    style = SlockType.Caption,
+                    text = "#${group.items.firstOrNull()?.parentChannelName ?: group.items.firstOrNull()?.channelName ?: "unknown"} · ${group.items.size} hits",
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 13.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1
                 )
@@ -3771,14 +3955,130 @@ private fun SharedHomeThreadResultGroup(
             }
         }
         group.items.forEach { item ->
-            SharedHomeInboxResultRow(
+            SharedHomeSearchMessageResultRow(
                 item = item,
-                actionLabel = "Open",
-                onAction = { onOpenItem(item) },
+                nested = true,
                 onOpen = { onOpenItem(item) }
             )
         }
     }
+}
+
+@Composable
+private fun SharedHomeSearchMessageResultRow(
+    item: InboxItem,
+    nested: Boolean = false,
+    onOpen: () -> Unit
+) {
+    val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview ?: "No preview"
+    val sourceLabel = searchResultSourceLabel(item)
+    val sender = item.latestActivitySenderName ?: item.lastMessageSenderName
+    val time = item.latestActivityAt ?: item.lastMessageAt
+    Column(
+        modifier =
+            Modifier
+                .let {
+                    if (nested) {
+                        it
+                            .fillMaxWidth()
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Thin, SlockColor.EmptyStateGray)
+                    } else {
+                        it
+                            .padding(horizontal = 18.dp, vertical = 4.dp)
+                            .fillMaxWidth()
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.EmptyStateGray)
+                    }
+                }
+                .clickable(onClick = onOpen)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = sourceLabel,
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 13.sp),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (item.kind == InboxItemKind.Thread) {
+                SharedHomeMiniMetaBadge("thread", "message-square")
+            }
+            if (!sender.isNullOrBlank()) {
+                Text(
+                    text = sender,
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 13.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+            Text(
+                text = time ?: "",
+                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1
+            )
+        }
+        Text(
+            text = preview,
+            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+            color = SlockColor.TextBlack.copy(alpha = 0.72f),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (item.replyCount > 0 || item.taskNumber != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (item.replyCount > 0) {
+                    SharedHomeMiniMetaBadge("${item.replyCount} replies", "message-square")
+                }
+                item.taskNumber?.let {
+                    SharedHomeMiniMetaBadge("task #$it", "square-check-big")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SharedHomeMiniMetaBadge(label: String, iconName: String) {
+    Row(
+        modifier =
+            Modifier
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .padding(horizontal = 5.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockLucideIcon(iconName, color = "#99000000", modifier = Modifier.size(10.dp))
+        Text(
+            text = label,
+            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+private fun searchResultSourceLabel(item: InboxItem): String {
+    val name =
+        if (item.kind == InboxItemKind.Thread) {
+            item.parentChannelName ?: item.channelName
+        } else {
+            item.channelName
+        }
+    return if (item.kind == InboxItemKind.DirectMessage) "@$name" else "#$name"
 }
 
 @Composable
@@ -3809,6 +4109,7 @@ private fun SharedHomeFilterChip(
     selected: Boolean,
     enabled: Boolean,
     modifier: Modifier = Modifier,
+    dense: Boolean = false,
     onClick: () -> Unit
 ) {
     SharedHomePanelButton(
@@ -3816,6 +4117,7 @@ private fun SharedHomeFilterChip(
         enabled = enabled,
         selected = selected,
         modifier = modifier,
+        dense = dense,
         onClick = onClick
     )
 }
@@ -3826,6 +4128,7 @@ private fun SharedHomePanelButton(
     enabled: Boolean = true,
     selected: Boolean,
     modifier: Modifier = Modifier,
+    dense: Boolean = false,
     onClick: () -> Unit
 ) {
     val background =
@@ -3841,11 +4144,11 @@ private fun SharedHomePanelButton(
             modifier
                 .background(background)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 11.dp, vertical = 7.dp)
+                .padding(horizontal = if (dense) 5.dp else 11.dp, vertical = if (dense) 6.dp else 7.dp)
     ) {
         Text(
             text = label,
-            style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 13.sp),
+            style = SlockType.SectionLabel.copy(fontSize = if (dense) 9.sp else 11.sp, lineHeight = if (dense) 11.sp else 13.sp),
             color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -4782,16 +5085,16 @@ private val homeSearchVisualChannels = listOf(
 
 private val homeSearchVisualDirectMessages = listOf(
     ConversationSummary(
-        threadId = ThreadId("dm_android"),
-        channelId = ChannelId("dm_android"),
+        threadId = ThreadId("dm_product"),
+        channelId = ChannelId("dm_product"),
         kind = ConversationKind.DirectMessage,
-        name = "Android Developer",
-        subtitle = "Android implementation owner",
-        lastMessagePreview = "Search visual case is ready for comparison.",
+        name = "Product UX Designer",
+        subtitle = "Product review owner",
+        lastMessagePreview = "Search visual case needs visual review.",
         lastMessageAt = "09:42",
-        lastMessageSenderName = "Android Developer",
+        lastMessageSenderName = "Product UX Designer",
         presence = Presence.Active,
-        agentStatus = AgentStatus.Working
+        agentStatus = AgentStatus.Idle
     )
 )
 
@@ -4813,10 +5116,10 @@ private val homeSearchVisualHomeState = SharedHomeState(
 
 private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
     query = "android",
-    sort = SearchSort.Recent,
-    timeRange = SearchTimeRange.Last7Days,
+    sort = SearchSort.Relevance,
+    timeRange = SearchTimeRange.Any,
     myMessagesOnly = false,
-    selectedSenderId = "user_artin",
+    selectedSenderId = null,
     senderFilters =
         listOf(
             SearchSenderFilterItem(
@@ -4833,7 +5136,7 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
                 kind = MemberKind.Agent
             )
         ),
-    selectedChannelId = "ch_design",
+    selectedChannelId = null,
     items =
         listOf(
             InboxItem(
@@ -4901,7 +5204,7 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
                 latestActivitySenderName = "Android Developer"
             )
         ),
-    totalCount = 8,
+    totalCount = 3,
     searched = true,
     hasMore = true,
     nextOffset = 3
@@ -4913,6 +5216,10 @@ private fun HomeSearchVisualContent() {
         state = homeSearchVisualSearchState,
         homeState = homeSearchVisualHomeState,
         onIntent = {},
+        onClose = {},
+        interactiveSearchField = false,
+        includeTopSafeArea = false,
+        showSenderFilter = false,
         onOpenItem = {},
         onOpenEntity = {},
         bottomContentPadding = 12.dp,

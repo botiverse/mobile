@@ -100,7 +100,8 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "home.search.results",
             pageName = "compose_home_search_visual",
-            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 342, heightDp = 620)
+            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 342, heightDp = 620),
+            settleMs = 4_500
         )
     }
 

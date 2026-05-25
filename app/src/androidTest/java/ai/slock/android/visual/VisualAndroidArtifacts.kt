@@ -1,6 +1,9 @@
 package ai.slock.android.visual
 
+import android.content.ContentValues
+import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.io.FileInputStream
@@ -24,6 +27,10 @@ internal object VisualAndroidArtifacts {
         )
 
     fun mirrorFile(file: File) {
+        runShell("mkdir -p $PublicOutputPath && rm -f $PublicOutputPath/${file.name}")
+        if (mirrorWithMediaStore(file)) {
+            return
+        }
         val outputDir = publicOutputDir()
         outputDir.mkdirs()
         val destination = File(outputDir, file.name)
@@ -41,10 +48,37 @@ internal object VisualAndroidArtifacts {
     }
 
     fun deleteCaseArtifacts(caseId: String) {
+        runShell("rm -f $PublicOutputPath/${caseId}*")
         publicOutputDir()
             .listFiles()
             ?.filter { file -> file.name.startsWith(caseId) }
             ?.forEach { file -> file.delete() }
+    }
+
+    private fun mirrorWithMediaStore(file: File): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return false
+        }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val resolver = context.contentResolver
+        val values =
+            ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, file.name)
+                put(MediaStore.Downloads.RELATIVE_PATH, "Download/slock-visual-testing/android")
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return false
+        return try {
+            resolver.openOutputStream(uri)?.use { output ->
+                file.inputStream().use { input -> input.copyTo(output) }
+            } ?: return false
+            values.clear()
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+            true
+        } catch (_: IOException) {
+            false
+        }
     }
 
     private fun runShell(command: String): String {
