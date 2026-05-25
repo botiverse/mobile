@@ -1,3 +1,6 @@
 [submodule "third_party/slock-source"]
 	path = third_party/slock-source
 	url = https://github.com/botiverse/slock.git
+[submodule ".agents/skills/kuikly-ui-framework/references/KuiklyUI"]
+	path = .agents/skills/kuikly-ui-framework/references/KuiklyUI
+	url = https://github.com/Tencent-TDS/KuiklyUI.git
