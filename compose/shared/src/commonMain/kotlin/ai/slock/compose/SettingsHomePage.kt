@@ -116,6 +116,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
@@ -762,11 +763,7 @@ private fun SlockAppShellContent() {
         }
         composable(AppShellRouteMain) {
             Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = slockAppBottomTabBarContentInset(bottomSafeArea))
-                ) {
+                Box(modifier = Modifier.fillMaxSize()) {
                     when (selectedTab) {
                         "settings" -> {
                             SettingsAppShellContent(
@@ -855,7 +852,8 @@ private fun SlockAppShellContent() {
                                         activeThreadPayload = buildAppShellThreadPayload(conversation, threadTimeContext)
                                         threadBackStack = emptyList()
                                         navController.navigate(AppShellRouteThread)
-                                    }
+                                    },
+                                    bottomContentPadding = slockAppBottomTabBarContentInset(bottomSafeArea)
                                 )
                             } else if (selectedHomeDestination == HomeDestinationActivity) {
                                 SharedHomeActivityScreen(
@@ -2366,7 +2364,8 @@ private fun SharedHomeScreen(
     onOpenSearch: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenSaved: () -> Unit,
-    onOpenConversation: (ConversationSummary) -> Unit
+    onOpenConversation: (ConversationSummary) -> Unit,
+    bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     LaunchedEffect(Unit) {
         onIntent(SharedHomeIntent.Start)
@@ -2387,6 +2386,7 @@ private fun SharedHomeScreen(
                     session = current.session,
                     serverSwitcherExpanded = serverSwitcherExpanded,
                     contentRefreshing = true,
+                    bottomContentPadding = bottomContentPadding,
                     onRefresh = { onIntent(SharedHomeIntent.Refresh) },
                     onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                     onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
@@ -2404,6 +2404,7 @@ private fun SharedHomeScreen(
                 session = current.session,
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 contentRefreshing = false,
+                bottomContentPadding = bottomContentPadding,
                 onRefresh = { onIntent(SharedHomeIntent.Refresh) },
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                 onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
@@ -2452,6 +2453,7 @@ private fun SharedHomeScreen(
                 savedSelected = state.selectedTopAction == SharedHomeTopAction.Saved,
                 notifications = state.notifications.map { it.toHomeNotificationItem() },
                 showBottomBar = false,
+                bottomContentPadding = bottomContentPadding,
                 outerPadding = 0.dp,
                 contentRefreshing = current.contentRefreshing,
                 onContentRefresh = { onIntent(SharedHomeIntent.Refresh) },
@@ -2518,6 +2520,7 @@ private fun SharedHomeSessionShell(
     session: StoredAuthSession,
     serverSwitcherExpanded: Boolean,
     contentRefreshing: Boolean,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
     onRefresh: () -> Unit,
     onServerBadgeClick: () -> Unit,
     onServerSwitcherDismiss: () -> Unit,
@@ -2533,6 +2536,7 @@ private fun SharedHomeSessionShell(
         directMessages = emptyList(),
         serverSwitcherExpanded = serverSwitcherExpanded,
         showBottomBar = false,
+        bottomContentPadding = bottomContentPadding,
         outerPadding = 0.dp,
         contentRefreshing = contentRefreshing,
         onContentRefresh = onRefresh,
@@ -2985,7 +2989,6 @@ private fun BottomTabBarSmokeContent() {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = slockAppBottomTabBarContentInset(bottomSafeArea))
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),

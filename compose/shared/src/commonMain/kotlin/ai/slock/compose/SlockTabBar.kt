@@ -69,7 +69,8 @@ private enum class SlockAppTabBarRenderer {
 }
 
 private val SlockSharedBottomTabBarHeight = 58.dp
-private val SlockOhosHdsBottomTabBarHostHeight = 92.dp
+private val SlockOhosHdsBottomTabBarDockHeight = 50.dp
+private val SlockOhosHdsBottomTabBarHostHeight = SlockOhosHdsBottomTabBarDockHeight + SlockSpacing.Md
 private val SlockBottomTabBarFloatingMargin = SlockSpacing.Md
 
 @Composable
@@ -79,7 +80,7 @@ internal fun slockAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {
             SlockAppTabBarRenderer.OhosHdsImmersive -> SlockOhosHdsBottomTabBarHostHeight
             SlockAppTabBarRenderer.SharedCompose -> SlockSharedBottomTabBarHeight
         }
-    return hostHeight + bottomSafeArea + SlockBottomTabBarFloatingMargin
+    return hostHeight + bottomSafeArea + SlockSpacing.Lg
 }
 
 @Composable
@@ -217,20 +218,13 @@ private fun SlockOhosHdsBottomTabBarHost(
             .fillMaxWidth()
             .height(SlockOhosHdsBottomTabBarHostHeight + bottomSafeArea)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(bottomSafeArea)
-                .background(SlockColor.SurfaceWhite)
-                .align(Alignment.BottomCenter)
-        )
         SlockOhosHdsTabBar(
             items = items,
             onSelect = onSelect,
             bottomSafeArea = 0.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(50.dp)
+                .height(SlockOhosHdsBottomTabBarDockHeight)
                 .align(Alignment.TopCenter)
         )
     }
