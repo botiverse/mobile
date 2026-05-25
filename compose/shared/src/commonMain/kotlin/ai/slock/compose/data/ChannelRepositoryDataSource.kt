@@ -62,7 +62,7 @@ class RealChannelRepository(
 ) : ChannelRepository {
     private val directMessageCacheMutex = Mutex()
     private var directMessageCache: CachedDirectMessages? = null
-    private val conversationSummaryCacheLock = Any()
+    private val conversationSummaryCacheMutex = Mutex()
     private var conversationSummaryCache: CachedConversationSummaries? = null
     private val homeDataSource =
         SharedHomeDataSource(
@@ -342,12 +342,12 @@ class RealChannelRepository(
             merged
         }
 
-    private fun rememberConversationSummaries(
+    private suspend fun rememberConversationSummaries(
         serverId: ServerId,
         conversations: List<ConversationSummary>
     ) {
         if (conversations.isEmpty()) return
-        synchronized(conversationSummaryCacheLock) {
+        conversationSummaryCacheMutex.withLock {
             val existing = conversationSummaryCache?.takeIf { it.serverId == serverId }?.summaries.orEmpty()
             val merged = existing.toMutableMap()
             conversations.forEach { conversation ->
@@ -358,8 +358,8 @@ class RealChannelRepository(
         }
     }
 
-    private fun removeConversationSummary(serverId: ServerId, channelId: ChannelId) {
-        synchronized(conversationSummaryCacheLock) {
+    private suspend fun removeConversationSummary(serverId: ServerId, channelId: ChannelId) {
+        conversationSummaryCacheMutex.withLock {
             val existing = conversationSummaryCache?.takeIf { it.serverId == serverId }?.summaries ?: return
             val filtered =
                 existing.filterValues { summary ->
@@ -369,10 +369,10 @@ class RealChannelRepository(
         }
     }
 
-    private fun List<ConversationSummary>.withCachedConversationSummaries(serverId: ServerId): List<ConversationSummary> =
-        synchronized(conversationSummaryCacheLock) {
+    private suspend fun List<ConversationSummary>.withCachedConversationSummaries(serverId: ServerId): List<ConversationSummary> =
+        conversationSummaryCacheMutex.withLock {
             val cached = conversationSummaryCache?.takeIf { it.serverId == serverId }?.summaries.orEmpty()
-            if (cached.isEmpty()) return@synchronized this
+            if (cached.isEmpty()) return@withLock this
             map { conversation ->
                 val key = conversation.cacheKey()
                 if (key == null) conversation else cached[key]?.mergeConversationSummary(conversation) ?: conversation
@@ -393,7 +393,7 @@ class RealChannelRepository(
         block: suspend () -> HomeNetworkResponse,
         emptyWhen: (T) -> Boolean = { false },
         source: String,
-        mapper: (String) -> T
+        mapper: suspend (String) -> T
     ): DataResult<T> {
         var statusCode: Int? = null
         return try {

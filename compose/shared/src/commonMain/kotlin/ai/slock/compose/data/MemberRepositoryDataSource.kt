@@ -8,10 +8,7 @@ import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.SlockWorkspaceFileKind
 import ai.slock.compose.model.SlockWorkspaceNode
-import ai.slock.compose.network.KmpHttpResponse
 import ai.slock.compose.network.MultipartFile
-import ai.slock.compose.network.SlockApiClient
-import ai.slock.compose.network.SlockRequestPriority
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -40,37 +37,6 @@ interface SlockNetworkClient {
         files: List<MultipartFile>
     ): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
-}
-
-class KtorSlockNetworkClient(
-    private val client: SlockApiClient
-) : SlockNetworkClient {
-    override suspend fun request(
-        priority: DataRequestPriority,
-        path: String,
-        method: String,
-        query: List<Pair<String, String>>,
-        serverIdOverride: ServerId?,
-        bodyText: String?
-    ): HomeNetworkResponse =
-        client.authenticatedRequest(
-            priority = priority.toNetworkPriority(),
-            method = method,
-            path = path,
-            query = query,
-        body = bodyText
-    ).toHomeNetworkResponse()
-
-    override suspend fun uploadAttachments(
-        priority: DataRequestPriority,
-        channelId: ChannelId,
-        files: List<MultipartFile>
-    ): HomeNetworkResponse =
-        client.uploadAttachments(
-            priority = priority.toNetworkPriority(),
-            channelId = channelId.value,
-            files = files
-        ).toHomeNetworkResponse()
 }
 
 private suspend fun SlockNetworkClient.serverMembers(priority: DataRequestPriority, serverId: ServerId): HomeNetworkResponse =
@@ -644,16 +610,6 @@ private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> =
         in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
         else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
     }
-
-private fun DataRequestPriority.toNetworkPriority(): SlockRequestPriority =
-    when (this) {
-        DataRequestPriority.Foreground -> SlockRequestPriority.Foreground
-        DataRequestPriority.Visible -> SlockRequestPriority.Visible
-        DataRequestPriority.Background -> SlockRequestPriority.Background
-    }
-
-private fun KmpHttpResponse.toHomeNetworkResponse(): HomeNetworkResponse =
-    HomeNetworkResponse(code = code, bodyText = bodyText, errorBodyText = errorBodyText)
 
 private fun mergeAgentActivityEntries(existing: List<AgentActivityEntry>, incoming: List<AgentActivityEntry>): List<AgentActivityEntry> {
     val merged = LinkedHashMap<String, AgentActivityEntry>()

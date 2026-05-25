@@ -184,6 +184,9 @@ internal class SlockKuiklyIslandHost(
                     legacyIslandEventsEnabled = true
             )
         }
+        kuiklyRenderExport.moduleExport(SlockKuiklyNetworkModule.MODULE_NAME) {
+            SlockKuiklyNetworkModule()
+        }
     }
 
     override fun registerExternalRenderView(kuiklyRenderExport: IKuiklyRenderExport) {

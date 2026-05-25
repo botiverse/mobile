@@ -1,11 +1,5 @@
 package ai.slock.compose.network
 
-import io.ktor.client.*
-import io.ktor.client.request.*
-import io.ktor.client.request.forms.*
-import io.ktor.client.statement.*
-import io.ktor.http.*
-
 /**
  * Represents a file to be uploaded in a multipart form
  */
@@ -45,36 +39,3 @@ data class MultipartFormData(
     val files: List<MultipartFile>,
     val fields: Map<String, String> = emptyMap()  // other form fields (e.g., "channelId")
 )
-
-/**
- * Submits multipart form data to the specified URL
- */
-suspend fun HttpClient.submitMultipart(
-    url: String,
-    formData: MultipartFormData
-): HttpResponse {
-    return submitFormWithBinaryData(
-        url = url,
-        formData = formData {
-            // Add text fields
-            formData.fields.forEach { (key, value) ->
-                append(key, value)
-            }
-
-            // Add file parts
-            formData.files.forEach { file ->
-                append(
-                    key = file.name,
-                    value = file.bytes,
-                    headers = Headers.build {
-                        append(HttpHeaders.ContentType, file.mimeType)
-                        append(
-                            HttpHeaders.ContentDisposition,
-                            "filename=\"${file.fileName}\""
-                        )
-                    }
-                )
-            }
-        }
-    )
-}

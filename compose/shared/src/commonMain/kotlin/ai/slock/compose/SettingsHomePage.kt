@@ -44,7 +44,11 @@ import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.realtime.RealtimeEventMapper
 import ai.slock.compose.data.parseSlockHome
 import ai.slock.compose.data.BridgeThreadApi
+import ai.slock.compose.data.DataRequestPriority
+import ai.slock.compose.data.KuiklySlockNetworkClient
+import ai.slock.compose.data.RealMemberRepository
 import ai.slock.compose.data.kuiklyNotificationPreferenceRepository
+import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ConversationSummary
@@ -110,8 +114,6 @@ import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
@@ -1895,7 +1897,20 @@ private fun AppShellAuthErrorContent(
 @Composable
 private fun SharedMembersScreen(bridge: ai.slock.compose.base.BridgeModule) {
     val authStore = remember { KuiklyAuthSessionStore(KuiklyRelationalStore(bridge)) }
-    val membersApi = remember { BridgeMembersApi(bridge, authStore) }
+    val pager = LocalActivity.current.getPager() as Pager
+    val memberRepository =
+        remember {
+            RealMemberRepository(
+                sessionStore = authStore,
+                networkClient =
+                    KuiklySlockNetworkClient(
+                        sessionStore = authStore,
+                        networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
+                        warningLogger = { message -> bridge.log("kuikly_network $message") }
+                    ),
+                logger = { message -> bridge.log("members_repository $message") }
+            )
+        }
     var state by remember { mutableStateOf<SharedMembersUiState>(SharedMembersUiState.Loading) }
 
     LaunchedEffect(Unit) {
@@ -1908,24 +1923,17 @@ private fun SharedMembersScreen(bridge: ai.slock.compose.base.BridgeModule) {
                 state = SharedMembersUiState.Error("server_required")
                 return@LaunchedEffect
             }
-            val (response, agentsResponse) =
-                coroutineScope {
-                    val membersDeferred = async { membersApi.serverMembers(serverId) }
-                    val agentsDeferred = async { membersApi.agents(serverId) }
-                    membersDeferred.await() to agentsDeferred.await()
-                }
+            val response = memberRepository.getMembers(DataRequestPriority.Visible, ServerId(serverId))
             state =
-                if (response.isSuccessful) {
-                    val members = response.bodyText?.let(::parseSharedMembers).orEmpty()
-                    val agents =
-                        if (agentsResponse.isSuccessful) {
-                            agentsResponse.bodyText?.let(::parseSharedAgents).orEmpty()
-                        } else {
-                            emptyList()
-                        }
-                    SharedMembersUiState.Content(server, mergeSharedMembers(members, agents))
-                } else {
-                    SharedMembersUiState.Error(response.errorBodyText?.takeIf { it.isNotBlank() } ?: "members_network")
+                when (response) {
+                    is ai.slock.compose.data.DataResult.Content ->
+                        SharedMembersUiState.Content(response.data.server, response.data.members)
+                    is ai.slock.compose.data.DataResult.Empty ->
+                        SharedMembersUiState.Content(server, emptyList())
+                    is ai.slock.compose.data.DataResult.NoPermission ->
+                        SharedMembersUiState.Error(response.blocker.code)
+                    is ai.slock.compose.data.DataResult.Error ->
+                        SharedMembersUiState.Error(response.error.code)
                 }
         } catch (cancellation: CancellationException) {
             throw cancellation

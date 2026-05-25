@@ -1,5 +1,6 @@
 package ai.slock.compose.base
 
+import ai.slock.compose.network.SlockNetworkModule
 import com.tencent.kuikly.compose.ComposeContainer
 import com.tencent.kuikly.core.module.Module
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
@@ -11,6 +12,7 @@ internal abstract class BasePager : ComposeContainer() {
     override fun createExternalModules(): Map<String, Module>? {
         val externalModules = hashMapOf<String, Module>()
         externalModules[BridgeModule.MODULE_NAME] = BridgeModule()
+        externalModules[SlockNetworkModule.MODULE_NAME] = SlockNetworkModule()
         return externalModules
     }
 

@@ -46,7 +46,6 @@ kotlin {
 
     sourceSets {
         val commonMain by getting {
-            kotlin.exclude("**/network/**")
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
             dependencies {
                 implementation("com.tencent.kuikly-open:core:${Version.getKuiklyOhosVersion()}")

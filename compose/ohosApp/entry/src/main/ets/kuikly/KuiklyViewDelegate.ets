@@ -1,5 +1,6 @@
 import {
   IKuiklyViewDelegate,
+  KRMonitorType,
   KRRecord,
   KRRenderModuleExportCreator,
   KRRenderViewExportCreator
@@ -7,12 +8,7 @@ import {
 import { SlockLucideIconView } from './components/SlockLucideIconView';
 import { SlockOhosHdsTabBarView } from './components/SlockOhosHdsTabBarView';
 import { KRBridgeModule } from './modules/KRBridgeModule';
-
-export enum KRMonitorType {
-  LAUNCH = 1 << 0,
-  FRAME = 1 << 1,
-  MEMORY = 1 << 2,
-}
+import { SlockNetworkModule } from './modules/SlockNetworkModule';
 
 export class KuiklyViewDelegate extends IKuiklyViewDelegate {
   private static readonly PERFORMANCE_LOG_TAG: string = 'SlockKuiklyPerf';
@@ -28,6 +24,7 @@ export class KuiklyViewDelegate extends IKuiklyViewDelegate {
   getCustomRenderModuleCreatorRegisterMap(): Map<string, KRRenderModuleExportCreator> {
     const map: Map<string, KRRenderModuleExportCreator> = new Map();
     map.set(KRBridgeModule.MODULE_NAME, () => new KRBridgeModule());
+    map.set(SlockNetworkModule.MODULE_NAME, () => new SlockNetworkModule());
     return map;
   }
 

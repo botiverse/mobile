@@ -80,7 +80,7 @@ class NetworkPriorityCallSiteTest {
     @Test
     fun sharedSlockApiClientRequiresExplicitPriorityAndDoesNotUseRuntimeGuard() {
         val root = findRepoRoot()
-        val file = File(root, "compose/shared/src/commonMain/kotlin/ai/slock/compose/network/SlockApiClient.kt")
+        val file = File(root, "compose/shared/src/androidMain/kotlin/ai/slock/compose/network/SlockApiClient.android.kt")
         val text = file.readText()
         val publicClientMethods =
                 Regex("""^\s*suspend fun (\w+)\(([^)]*)\): KmpHttpResponse""", RegexOption.MULTILINE)
@@ -117,7 +117,7 @@ class NetworkPriorityCallSiteTest {
         val file = File(root, "compose/shared/src/commonMain/kotlin/ai/slock/compose/data/MemberRepositoryDataSource.kt")
         val text = file.readText()
         val start = text.indexOf("interface SlockNetworkClient {")
-        val end = text.indexOf("\n}\n\nclass KtorSlockNetworkClient", start)
+        val end = text.indexOf("\n}\n\nprivate suspend fun", start)
         val networkClientBody = text.substring(start, end)
         val offenders =
                 Regex("""^\s*suspend fun (\w+)\(([^)]*)\)""", RegexOption.MULTILINE)
