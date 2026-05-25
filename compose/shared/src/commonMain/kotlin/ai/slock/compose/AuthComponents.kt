@@ -303,6 +303,7 @@ internal fun AuthActionButton(
         Box(Modifier.fillMaxSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
         Button(
             onClick = if (enabled && !loading) onClick else ({}),
+            enabled = enabled && !loading,
             modifier = Modifier
                 .fillMaxSize()
                 .background(buttonBackground)

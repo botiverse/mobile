@@ -2095,6 +2095,7 @@ private fun AppShellServerRow(
         Box(Modifier.fillMaxSize().background(SlockColor.ShadowBlack).padding(0.dp))
         Button(
             onClick = if (enabled) onClick else ({}),
+            enabled = enabled,
             modifier = Modifier
                 .fillMaxSize()
                 .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)

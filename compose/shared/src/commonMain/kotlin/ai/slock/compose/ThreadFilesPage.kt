@@ -305,6 +305,7 @@ private fun ThreadFilesLoadMore(loading: Boolean, onClick: () -> Unit) {
     ) {
         Button(
             onClick = if (!loading) onClick else ({}),
+            enabled = !loading,
             modifier = Modifier
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .padding(horizontal = 18.dp, vertical = 10.dp)

@@ -292,6 +292,21 @@ fun Modifier.touchListener(
 
 enum class TouchType { Down, Move, Up }
 
+private object SlockPressTokens {
+    val ButtonOffset = 2.dp
+}
+
+private fun Modifier.slockPressedOffset(
+    pressed: Boolean,
+    pressOffset: Dp
+): Modifier {
+    return if (pressed && pressOffset > 0.dp) {
+        this.offset(x = pressOffset, y = pressOffset)
+    } else {
+        this
+    }
+}
+
 /**
  * 创建一个 Modal 实例。Modal 是一个自定义的模态窗口组件，用于在当前页面上显示一个浮动窗口。
  * 当模态窗口显示时，用户无法与背景页面进行交互，只能与模态窗口内的内容进行交互。
@@ -332,32 +347,55 @@ internal fun Button(
     onClick: () -> Unit = {},
     onClick2: (Offset) -> Unit = {},
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    pressFeedback: Boolean = true,
+    pressOffset: Dp = SlockPressTokens.ButtonOffset,
     content: (@Composable () -> Unit) = {}
 ) {
     var rootPosition by remember { mutableStateOf(Offset.Zero) }
+    var pressed by remember { mutableStateOf(false) }
     val onClickUpdate = rememberUpdatedState(onClick)
     val onClick2Update = rememberUpdatedState(onClick2)
+    val enabledUpdate = rememberUpdatedState(enabled)
     val density = LocalDensity.current
     Box(
         modifier = Modifier
             .onGloballyPositioned {
                 rootPosition = it.positionInRoot()
             }
-            .pointerInput(Unit) {
-                detectTapGestures { offset ->
-                    // 获取点击的相对于 Box 的坐标
-                    val clickedPositionInBox = offset
-                    // 转换为相对于根节点的位置
-                    val clickedPositionInRoot = with(density) {
-                        Offset(
-                            (clickedPositionInBox.x + rootPosition.x).toDp().value,
-                            (clickedPositionInBox.y + rootPosition.y).toDp().value
-                        )
+            .pointerInput(enabled, pressFeedback) {
+                detectTapGestures(
+                    onPress = {
+                        if (enabledUpdate.value && pressFeedback) {
+                            pressed = true
+                            try {
+                                tryAwaitRelease()
+                            } finally {
+                                pressed = false
+                            }
+                        }
+                    },
+                    onTap = { offset ->
+                        if (enabledUpdate.value) {
+                            // 获取点击的相对于 Box 的坐标
+                            val clickedPositionInBox = offset
+                            // 转换为相对于根节点的位置
+                            val clickedPositionInRoot = with(density) {
+                                Offset(
+                                    (clickedPositionInBox.x + rootPosition.x).toDp().value,
+                                    (clickedPositionInBox.y + rootPosition.y).toDp().value
+                                )
+                            }
+                            onClickUpdate.value.invoke()
+                            onClick2Update.value.invoke(clickedPositionInRoot)
+                        }
                     }
-                    onClickUpdate.value.invoke()
-                    onClick2Update.value.invoke(clickedPositionInRoot)
-                }
-            } then modifier, contentAlignment = Alignment.Center) {
+                )
+            }
+            .then(modifier)
+            .slockPressedOffset(pressed = pressed && enabled, pressOffset = pressOffset),
+        contentAlignment = Alignment.Center
+    ) {
         content()
     }
 }

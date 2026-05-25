@@ -916,28 +916,34 @@ private fun SharedTasksPillButton(
             Modifier
                 .padding(end = if (selected) 2.dp else 0.dp, bottom = if (selected) 2.dp else 0.dp)
                 .widthIn(min = 44.dp)
-                .heightIn(min = 30.dp)
-                .clickable(enabled = enabled, onClick = onClick),
+                .heightIn(min = 30.dp),
         contentAlignment = Alignment.Center
     ) {
         if (selected) {
             Box(Modifier.matchParentSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
         }
-        Box(
+        Button(
+            onClick = onClick,
+            enabled = enabled,
             modifier = Modifier
                 .matchParentSize()
-                .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
-                .border(SlockStroke.Default, if (enabled) SlockColor.BorderBlack else SlockColor.EmptyStateGray, RoundedCornerShape(SlockRadius.Xs))
-                .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
-            contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = label.uppercase(),
-                style = SlockType.SectionLabel,
-                color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
+                    .border(SlockStroke.Default, if (enabled) SlockColor.BorderBlack else SlockColor.EmptyStateGray, RoundedCornerShape(SlockRadius.Xs))
+                    .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = label.uppercase(),
+                    style = SlockType.SectionLabel,
+                    color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -952,42 +958,46 @@ private fun SharedTasksFilterChip(
     count: Int? = null,
     onClick: () -> Unit
 ) {
-    Row(
+    Button(
+        onClick = onClick,
+        enabled = enabled,
         modifier =
             Modifier
                 .heightIn(min = 30.dp)
                 .background(if (active) SlockColor.AccentCyan else SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, if (enabled) SlockColor.BorderBlack else SlockColor.EmptyStateGray)
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
-        iconName?.let {
-            SlockLucideIcon(it, modifier = Modifier.size(14.dp), color = "#FF000000")
-        }
-        Text(
-            text = label.uppercase(),
-            style = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
-            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        count?.let {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            iconName?.let {
+                SlockLucideIcon(it, modifier = Modifier.size(14.dp), color = "#FF000000")
+            }
             Text(
-                text = it.toString(),
-                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 10.sp),
-                color = SlockColor.TextBlack,
-                modifier =
-                    Modifier
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                        .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
-                maxLines = 1
+                text = label.uppercase(),
+                style = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-        }
-        trailingIconName?.let {
-            SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
+            count?.let {
+                Text(
+                    text = it.toString(),
+                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 10.sp),
+                    color = SlockColor.TextBlack,
+                    modifier =
+                        Modifier
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                            .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
+                    maxLines = 1
+                )
+            }
+            trailingIconName?.let {
+                SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
+            }
         }
     }
 }
@@ -1026,23 +1036,26 @@ private fun SharedTasksSegmentButton(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    Row(
+    Button(
+        onClick = onClick,
         modifier =
             Modifier
                 .heightIn(min = 30.dp)
                 .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                .clickable(onClick = onClick)
-                .padding(horizontal = SlockSpacing.Sm, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(horizontal = SlockSpacing.Sm, vertical = 6.dp)
     ) {
-        SlockLucideIcon(iconName, modifier = Modifier.size(12.dp), color = "#FF000000")
-        Text(
-            text = label.uppercase(),
-            style = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 1
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            SlockLucideIcon(iconName, modifier = Modifier.size(12.dp), color = "#FF000000")
+            Text(
+                text = label.uppercase(),
+                style = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1
+            )
+        }
     }
 }
 

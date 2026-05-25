@@ -347,9 +347,10 @@ private fun PlanActionButton(
             current -> SlockColor.AccentLime
             enabled -> SlockColor.AccentPink
             else -> SlockColor.EmptyStateGray
-        }
+    }
     Button(
         onClick = if (enabled) onClick else ({}),
+        enabled = enabled,
         modifier = Modifier.fillMaxWidth().height(42.dp).background(background).border(SlockStroke.Default, SlockColor.BorderBlack)
     ) {
         Text(

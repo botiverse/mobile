@@ -214,6 +214,7 @@ private fun SettingsStorageButton(
 ) {
     Button(
         onClick = if (enabled && !loading) onClick else ({}),
+        enabled = enabled && !loading,
         modifier = Modifier.fillMaxWidth()
             .height(44.dp)
             .background(if (enabled && !loading) SlockColor.SurfaceWhite else SlockColor.EmptyStateGray)

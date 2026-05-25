@@ -696,6 +696,7 @@ private fun ComposerIconButton(
         )
         Button(
             onClick = if (enabled) onClick else ({}),
+            enabled = enabled,
             modifier = Modifier
                 .size(28.dp)
                 .background(activeColor)
