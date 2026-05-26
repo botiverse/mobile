@@ -8,6 +8,7 @@ import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.compose.data.AuthApiResult
 import ai.slock.compose.data.AuthLoginResponse
 import ai.slock.compose.data.AuthRefreshResponse
+import ai.slock.compose.data.AuthSocialCompleteResponse
 import ai.slock.compose.data.SlockAuthApi
 import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthUser
@@ -652,6 +653,12 @@ class RealtimeRepositoryTest {
         private val refreshFailure: Throwable? = null
     ) : SlockAuthApi {
         override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
+            AuthApiResult.Failure(404)
+
+        override suspend fun completeSocialLogin(
+            provider: String,
+            bodyText: String
+        ): AuthApiResult<AuthSocialCompleteResponse> =
             AuthApiResult.Failure(404)
 
         override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =

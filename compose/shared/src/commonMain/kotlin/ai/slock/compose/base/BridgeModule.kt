@@ -117,6 +117,15 @@ internal class BridgeModule : Module() {
             }
         }
 
+    suspend fun socialAuth(provider: String): JSONObject? =
+        suspendCoroutine { continuation ->
+            val methodArgs = JSONObject()
+            methodArgs.put("provider", provider)
+            callNativeMethod(SOCIAL_AUTH, methodArgs) {
+                continuation.resume(it)
+            }
+        }
+
     fun composerEvent(
         instanceId: String,
         action: String,
@@ -458,6 +467,7 @@ internal class BridgeModule : Module() {
         const val DATE_FORMATTER = "dateFormatter"
         const val REPORT_REALTIME = "reportRealTime"
         const val AUTH_REQUEST = "authRequest"
+        const val SOCIAL_AUTH = "socialAuth"
         const val RELATIONAL_STORE = "relationalStore"
         const val REPORT_PAGE_COST_TIME_FOR_CACHE = "reportPageCostTimeForCache"
         const val REPORT_PAGE_COST_TIME_FOR_SUCCESS = "reportPageCostTimeForSuccess"

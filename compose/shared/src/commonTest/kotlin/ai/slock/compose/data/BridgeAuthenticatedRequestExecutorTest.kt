@@ -92,6 +92,12 @@ class BridgeAuthenticatedRequestExecutorTest {
         override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
             error("not used")
 
+        override suspend fun completeSocialLogin(
+            provider: String,
+            bodyText: String
+        ): AuthApiResult<AuthSocialCompleteResponse> =
+            error("not used")
+
         override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
             error("not used")
 

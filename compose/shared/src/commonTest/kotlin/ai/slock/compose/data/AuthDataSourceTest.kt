@@ -77,6 +77,25 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun googleSocialCompleteWritesStoredSessionAndFetchesServers() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.completeSocialLogin("google", "social-code")
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("""{"code":"social-code"}""", api.socialCompleteBody)
+        assertEquals("google", api.socialCompleteProvider)
+        assertEquals("Bearer social-access", api.currentUserAuthorization)
+        assertEquals("Bearer social-access", api.serversAuthorization)
+        assertEquals("user-1", store.readSession()?.user?.id)
+        assertEquals("social-access", store.readSession()?.accessToken)
+        assertEquals("social-refresh", store.readSession()?.refreshToken)
+        assertEquals("server-1", store.readSession()?.selectedServerId)
+    }
+
+    @Test
     fun registerAndForgotPasswordUseSharedDtoBodies() = runBlocking {
         val store = InMemorySlockAuthSessionStore()
         val api = FakeAuthApi()
@@ -187,6 +206,11 @@ class AuthDataSourceTest {
                 {"user":{"id":"user-1","email":"user@slock.ai","displayName":"Artin"},"accessToken":"access-token","refreshToken":"refresh-token"}
                 """.trimIndent()
             ),
+        private val socialCompleteResponse: AuthNetworkResponse =
+            AuthNetworkResponse(
+                200,
+                """{"provider":"google","mode":"login","accessToken":"social-access","refreshToken":"social-refresh"}"""
+            ),
         private val serversResponse: AuthNetworkResponse =
             AuthNetworkResponse(
                 200,
@@ -214,6 +238,12 @@ class AuthDataSourceTest {
             private set
         var forgotPasswordBody: String? = null
             private set
+        var socialCompleteProvider: String? = null
+            private set
+        var socialCompleteBody: String? = null
+            private set
+        var currentUserAuthorization: String? = null
+            private set
         var serversAuthorization: String? = null
             private set
         var createServerBody: String? = null
@@ -222,6 +252,12 @@ class AuthDataSourceTest {
         override suspend fun login(bodyText: String): AuthNetworkResponse {
             loginBody = bodyText
             return loginResponse
+        }
+
+        override suspend fun completeSocialLogin(provider: String, bodyText: String): AuthNetworkResponse {
+            socialCompleteProvider = provider
+            socialCompleteBody = bodyText
+            return socialCompleteResponse
         }
 
         override suspend fun register(bodyText: String): AuthNetworkResponse {
@@ -234,8 +270,10 @@ class AuthDataSourceTest {
             return AuthNetworkResponse(200, """{"ok":true,"message":"sent"}""")
         }
 
-        override suspend fun currentUser(authorization: String): AuthNetworkResponse =
-            if (currentUserResponses.size > 1) currentUserResponses.removeFirst() else currentUserResponses.first()
+        override suspend fun currentUser(authorization: String): AuthNetworkResponse {
+            currentUserAuthorization = authorization
+            return if (currentUserResponses.size > 1) currentUserResponses.removeFirst() else currentUserResponses.first()
+        }
 
         override suspend fun refresh(bodyText: String): AuthNetworkResponse =
             refreshResponse

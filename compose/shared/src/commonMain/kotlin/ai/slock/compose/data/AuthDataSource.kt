@@ -55,6 +55,51 @@ class SharedAuthDataSource(
         return SharedAuthResult.Success(session)
     }
 
+    suspend fun completeSocialLogin(provider: String, code: String): SharedAuthResult<StoredAuthSession> {
+        val normalizedProvider = provider.trim().lowercase()
+        if (normalizedProvider != "google") {
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "This sign-in provider is not available on this device."
+            )
+        }
+        if (code.isBlank()) {
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "Google sign-in did not return an authorization code."
+            )
+        }
+
+        val body = authJson.encodeToString(AuthSocialCompleteRequestBody(code = code.trim()))
+        val tokens =
+            when (val response = api.completeSocialLogin(normalizedProvider, body)) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> return response.toSharedAuthFailure()
+            }
+        val user =
+            when (val response = api.currentUser("Bearer ${tokens.accessToken}")) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> return response.toSharedAuthFailure()
+            }
+        val servers =
+            when (val response = api.servers("Bearer ${tokens.accessToken}")) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> emptyList()
+            }
+        val selectedServer = servers.firstOrNull()
+        val session =
+            StoredAuthSession(
+                user = user,
+                accessToken = tokens.accessToken,
+                refreshToken = tokens.refreshToken,
+                selectedServerId = selectedServer?.id,
+                selectedServerSlug = selectedServer?.slug,
+                servers = servers
+            )
+        sessionStore.saveSession(session)
+        return SharedAuthResult.Success(session)
+    }
+
     suspend fun register(
         name: String,
         email: String,
@@ -295,6 +340,7 @@ class SharedAuthDataSource(
  */
 interface SlockAuthApi {
     suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse>
+    suspend fun completeSocialLogin(provider: String, bodyText: String): AuthApiResult<AuthSocialCompleteResponse>
     suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse>
     suspend fun forgotPassword(email: String): AuthApiResult<Unit>
     suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser>
@@ -310,6 +356,15 @@ class SlockAuthApiClient(
     override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
         transport.login(authJson.encodeToString(AuthLoginRequestBody(email = email, password = password)))
             .mapAuthBody("auth_login_contract_mismatch", AuthLoginResponseDto.serializer()) { it.toDomain() }
+
+    override suspend fun completeSocialLogin(
+        provider: String,
+        bodyText: String
+    ): AuthApiResult<AuthSocialCompleteResponse> =
+        transport.completeSocialLogin(provider, bodyText)
+            .mapAuthBody("auth_social_complete_contract_mismatch", AuthSocialCompleteResponseDto.serializer()) {
+                it.toDomain()
+            }
 
     override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
         transport.register(authJson.encodeToString(AuthRegisterRequestBody(email = email, password = password, name = name)))
@@ -346,6 +401,7 @@ class SlockAuthApiClient(
 
 interface SlockAuthTransport {
     suspend fun login(bodyText: String): AuthNetworkResponse
+    suspend fun completeSocialLogin(provider: String, bodyText: String): AuthNetworkResponse
     suspend fun register(bodyText: String): AuthNetworkResponse
     suspend fun forgotPassword(bodyText: String): AuthNetworkResponse
     suspend fun currentUser(authorization: String): AuthNetworkResponse
@@ -366,6 +422,11 @@ sealed interface AuthApiResult<out T> {
 
 data class AuthLoginResponse(
     val user: StoredAuthUser,
+    val accessToken: String,
+    val refreshToken: String
+)
+
+data class AuthSocialCompleteResponse(
     val accessToken: String,
     val refreshToken: String
 )
@@ -405,6 +466,11 @@ enum class SharedAuthErrorCode {
 data class AuthLoginRequestBody(
     val email: String,
     val password: String
+)
+
+@kotlinx.serialization.Serializable
+data class AuthSocialCompleteRequestBody(
+    val code: String
 )
 
 @kotlinx.serialization.Serializable
@@ -520,6 +586,15 @@ private data class AuthLoginResponseDto(
 
 private fun AuthLoginResponseDto.toDomain(): AuthLoginResponse =
     AuthLoginResponse(user = user, accessToken = accessToken, refreshToken = refreshToken)
+
+@Serializable
+private data class AuthSocialCompleteResponseDto(
+    val accessToken: String,
+    val refreshToken: String,
+)
+
+private fun AuthSocialCompleteResponseDto.toDomain(): AuthSocialCompleteResponse =
+    AuthSocialCompleteResponse(accessToken = accessToken, refreshToken = refreshToken)
 
 @Serializable
 private data class AuthRefreshResponseDto(

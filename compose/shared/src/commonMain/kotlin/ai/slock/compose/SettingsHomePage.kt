@@ -2134,10 +2134,15 @@ private fun AppShellAuthGateContent(
     authDataSource: SharedAuthDataSource,
     onSignedIn: (StoredAuthSession) -> Unit
 ) {
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     var mode by remember { mutableStateOf("login") }
     val reducer = remember { LoginFormReducer() }
     var state by remember { mutableStateOf(LoginFormState()) }
     var pendingLogin by remember { mutableStateOf<PendingAppShellLogin?>(null) }
+    var pendingSocialAuth by remember { mutableStateOf<PendingAppShellSocialAuth?>(null) }
+    var socialSubmittingProvider by remember { mutableStateOf<AuthProvider?>(null) }
+    val socialProviders = remember(pager.pageData.params.toString()) { pager.appShellSocialAuthProviders() }
 
     LaunchedEffect(pendingLogin) {
         val effect = pendingLogin ?: return@LaunchedEffect
@@ -2154,6 +2159,24 @@ private fun AppShellAuthGateContent(
                 state = state.copy(submitting = false, errorMessage = result.message)
             SharedAuthResult.Unauthenticated ->
                 state = state.copy(submitting = false, errorMessage = "Sign in failed. Try again.")
+        }
+    }
+
+    LaunchedEffect(pendingSocialAuth) {
+        val effect = pendingSocialAuth ?: return@LaunchedEffect
+        val response = runCatching { bridge.socialAuth(effect.provider.appShellProviderId()) }.getOrNull()
+        pendingSocialAuth = null
+        socialSubmittingProvider = null
+        val code = response?.optString("code").orEmpty().toIntOrNull()
+        if (code == 0 || response?.optString("status") == "error") {
+            state = state.copy(
+                submitting = false,
+                errorMessage =
+                    response?.optString("message").takeUnless { it.isNullOrBlank() }
+                        ?: "Google sign-in is unavailable. Try email sign-in."
+            )
+        } else {
+            state = state.copy(submitting = false, errorMessage = null)
         }
     }
 
@@ -2187,6 +2210,8 @@ private fun AppShellAuthGateContent(
                 password = state.password,
                 submitting = state.submitting,
                 errorMessage = state.errorMessage,
+                socialProviders = socialProviders,
+                socialSubmittingProvider = socialSubmittingProvider,
                 onEmailChange = { state = reducer.reduce(state, LoginFormEvent.EmailChanged(it)).state },
                 onPasswordChange = { state = reducer.reduce(state, LoginFormEvent.PasswordChanged(it)).state },
                 onSubmit = {
@@ -2204,6 +2229,15 @@ private fun AppShellAuthGateContent(
                         null -> Unit
                     }
                 },
+                onSocialSignIn = { provider ->
+                    state = state.copy(submitting = false, errorMessage = null)
+                    socialSubmittingProvider = provider
+                    pendingSocialAuth =
+                        PendingAppShellSocialAuth(
+                            nonce = (pendingSocialAuth?.nonce ?: 0) + 1,
+                            provider = provider
+                        )
+                },
                 onForgotPassword = { mode = "forgot" },
                 onCreateAccount = { mode = "register" }
             )
@@ -2215,6 +2249,29 @@ private data class PendingAppShellLogin(
     val email: String,
     val password: String
 )
+
+private data class PendingAppShellSocialAuth(
+    val nonce: Int,
+    val provider: AuthProvider
+)
+
+private fun Pager.appShellSocialAuthProviders(): Set<AuthProvider> =
+    pageData.params.optString("slockSocialAuthProviders")
+        .split(',')
+        .mapNotNull { raw ->
+            when (raw.trim().lowercase()) {
+                "google" -> AuthProvider.Google
+                "github" -> AuthProvider.GitHub
+                else -> null
+            }
+        }
+        .toSet()
+
+private fun AuthProvider.appShellProviderId(): String =
+    when (this) {
+        AuthProvider.Google -> "google"
+        AuthProvider.GitHub -> "github"
+    }
 
 @Composable
 private fun AppShellServerGateContent(

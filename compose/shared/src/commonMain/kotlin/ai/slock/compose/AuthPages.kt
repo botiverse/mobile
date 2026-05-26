@@ -49,6 +49,7 @@ const val FORGOT_PASSWORD_PAGE = "compose_forgot_password"
 private const val AUTH_LOGIN_INPUTS_VISUAL_PAGE = "compose_auth_login_inputs"
 private const val AUTH_REGISTER_INPUTS_VISUAL_PAGE = "compose_auth_register_inputs"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
+private const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
 
 @Page(LOGIN_PAGE, supportInLocal = true)
 internal class ComposeLoginPage : ai.slock.compose.base.BasePager() {
@@ -104,6 +105,9 @@ private fun LoginScreen() {
     val reducer = remember { LoginFormReducer() }
     var state by remember { mutableStateOf(LoginFormState()) }
     var pendingLogin by remember { mutableStateOf<PendingLogin?>(null) }
+    var pendingSocialAuth by remember { mutableStateOf<PendingSocialAuth?>(null) }
+    var socialSubmittingProvider by remember { mutableStateOf<AuthProvider?>(null) }
+    val socialProviders = remember(pager.pageData.params.toString()) { pager.socialAuthProviders() }
 
     LaunchedEffect(pendingLogin) {
         val effect = pendingLogin ?: return@LaunchedEffect
@@ -123,11 +127,32 @@ private fun LoginScreen() {
         }
     }
 
+    LaunchedEffect(pendingSocialAuth) {
+        val effect = pendingSocialAuth ?: return@LaunchedEffect
+        val providerId = effect.provider.providerId()
+        val response = runCatching { bridge.socialAuth(providerId) }.getOrNull()
+        pendingSocialAuth = null
+        socialSubmittingProvider = null
+        val code = response?.optString("code").orEmpty().toIntOrNull()
+        if (code == 0 || response?.optString("status") == "error") {
+            state = state.copy(
+                submitting = false,
+                errorMessage =
+                    response?.optString("message").takeUnless { it.isNullOrBlank() }
+                        ?: "Google sign-in is unavailable. Try email sign-in."
+            )
+        } else {
+            state = state.copy(submitting = false, errorMessage = null)
+        }
+    }
+
     LoginContent(
         email = state.email,
         password = state.password,
         submitting = state.submitting,
         errorMessage = state.errorMessage,
+        socialProviders = socialProviders,
+        socialSubmittingProvider = socialSubmittingProvider,
         onEmailChange = { state = reducer.reduce(state, LoginFormEvent.EmailChanged(it)).state },
         onPasswordChange = { state = reducer.reduce(state, LoginFormEvent.PasswordChanged(it)).state },
         onSubmit = {
@@ -145,6 +170,15 @@ private fun LoginScreen() {
                 null -> Unit
             }
         },
+        onSocialSignIn = { provider ->
+            state = state.copy(submitting = false, errorMessage = null)
+            socialSubmittingProvider = provider
+            pendingSocialAuth =
+                PendingSocialAuth(
+                    nonce = (pendingSocialAuth?.nonce ?: 0) + 1,
+                    provider = provider
+                )
+        },
         onForgotPassword = { pager.openAuthPage(FORGOT_PASSWORD_PAGE) },
         onCreateAccount = { pager.openAuthPage(REGISTER_PAGE) }
     )
@@ -154,6 +188,11 @@ private data class PendingLogin(
     val nonce: Int,
     val email: String,
     val password: String
+)
+
+private data class PendingSocialAuth(
+    val nonce: Int,
+    val provider: AuthProvider
 )
 
 @Composable
@@ -253,13 +292,17 @@ internal fun LoginContent(
     password: String,
     submitting: Boolean,
     errorMessage: String?,
+    socialProviders: Set<AuthProvider> = emptySet(),
+    socialSubmittingProvider: AuthProvider? = null,
     onEmailChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onSubmit: () -> Unit,
+    onSocialSignIn: (AuthProvider) -> Unit = {},
     onForgotPassword: () -> Unit,
     onCreateAccount: () -> Unit
 ) {
-    val canSubmit = email.isNotBlank() && password.isNotBlank() && !submitting
+    val formBusy = submitting || socialSubmittingProvider != null
+    val canSubmit = email.isNotBlank() && password.isNotBlank() && !formBusy
     AuthScaffold {
         AuthCenterMark()
         Text(
@@ -273,7 +316,7 @@ internal fun LoginContent(
                 onValueChange = onEmailChange,
                 label = "Email",
                 required = true,
-                enabled = !submitting,
+                enabled = !formBusy,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { onSubmit() })
             )
@@ -282,7 +325,7 @@ internal fun LoginContent(
                 onValueChange = onPasswordChange,
                 label = "Password",
                 required = true,
-                enabled = !submitting,
+                enabled = !formBusy,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { onSubmit() })
             )
@@ -295,23 +338,31 @@ internal fun LoginContent(
                 loading = submitting,
                 preserveDisabledVisual = true
             )
-            AuthDivider()
-            AuthActionButton(
-                text = "Continue with Google",
-                onClick = {},
-                tone = AuthButtonTone.White,
-                enabled = false,
-                preserveDisabledVisual = true,
-                leadingContent = { AuthProviderIcon(AuthProvider.Google) }
-            )
-            AuthActionButton(
-                text = "Continue with GitHub",
-                onClick = {},
-                tone = AuthButtonTone.Black,
-                enabled = false,
-                preserveDisabledVisual = true,
-                leadingContent = { AuthProviderIcon(AuthProvider.GitHub) }
-            )
+            if (socialProviders.isNotEmpty()) {
+                AuthDivider()
+                if (AuthProvider.Google in socialProviders) {
+                    AuthActionButton(
+                        text = if (socialSubmittingProvider == AuthProvider.Google) "Opening Google" else "Continue with Google",
+                        onClick = { onSocialSignIn(AuthProvider.Google) },
+                        tone = AuthButtonTone.White,
+                        enabled = !formBusy,
+                        loading = socialSubmittingProvider == AuthProvider.Google,
+                        preserveDisabledVisual = true,
+                        leadingContent = { AuthProviderIcon(AuthProvider.Google) }
+                    )
+                }
+                if (AuthProvider.GitHub in socialProviders) {
+                    AuthActionButton(
+                        text = if (socialSubmittingProvider == AuthProvider.GitHub) "Opening GitHub" else "Continue with GitHub",
+                        onClick = { onSocialSignIn(AuthProvider.GitHub) },
+                        tone = AuthButtonTone.Black,
+                        enabled = !formBusy,
+                        loading = socialSubmittingProvider == AuthProvider.GitHub,
+                        preserveDisabledVisual = true,
+                        leadingContent = { AuthProviderIcon(AuthProvider.GitHub) }
+                    )
+                }
+            }
             AuthTextLink("Forgot password?") { onForgotPassword() }
             AuthInlineAction("No account?", "Create one") { onCreateAccount() }
         }
@@ -505,9 +556,30 @@ private fun Pager.openAuthPage(pageName: String) {
     val pageData =
         JSONObject().apply {
             put("pageName", pageName)
+            this@openAuthPage.pageData.params.optString(AUTH_SOCIAL_PROVIDERS_KEY)
+                .takeIf { it.isNotBlank() }
+                ?.let { put(AUTH_SOCIAL_PROVIDERS_KEY, it) }
             if (pageName == SLOCK_APP_SHELL_PAGE) {
                 put(AUTH_REPLACE_CURRENT_PAGE, true)
             }
         }
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
 }
+
+private fun Pager.socialAuthProviders(): Set<AuthProvider> =
+    pageData.params.optString(AUTH_SOCIAL_PROVIDERS_KEY)
+        .split(',')
+        .mapNotNull { raw ->
+            when (raw.trim().lowercase()) {
+                AuthProvider.Google.providerId() -> AuthProvider.Google
+                AuthProvider.GitHub.providerId() -> AuthProvider.GitHub
+                else -> null
+            }
+        }
+        .toSet()
+
+private fun AuthProvider.providerId(): String =
+    when (this) {
+        AuthProvider.Google -> "google"
+        AuthProvider.GitHub -> "github"
+    }

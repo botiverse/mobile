@@ -30,6 +30,13 @@ class KtorAuthApi(
     override suspend fun login(bodyText: String): AuthNetworkResponse =
         request(method = HttpMethod.Post, path = "auth/login", body = bodyText)
 
+    override suspend fun completeSocialLogin(provider: String, bodyText: String): AuthNetworkResponse =
+        request(
+            method = HttpMethod.Post,
+            path = "auth/${provider.trim().lowercase()}/complete",
+            body = bodyText
+        )
+
     override suspend fun register(bodyText: String): AuthNetworkResponse =
         request(method = HttpMethod.Post, path = "auth/register", body = bodyText)
 

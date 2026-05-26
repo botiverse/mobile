@@ -24,6 +24,9 @@ class AuthApiClient(
     suspend fun login(body: String): KmpHttpResponse =
         request(HttpMethod.Post, "auth/login", body = body)
 
+    suspend fun completeSocialLogin(provider: String, body: String): KmpHttpResponse =
+        request(HttpMethod.Post, "auth/${provider.trim().lowercase()}/complete", body = body)
+
     suspend fun register(body: String): KmpHttpResponse =
         request(HttpMethod.Post, "auth/register", body = body)
 

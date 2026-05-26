@@ -86,6 +86,7 @@ import java.io.DataOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -452,10 +453,11 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             clearTask: Boolean = false
         ) {
             SlockKuiklyAdapters.init(context.applicationContext)
+            val hostPageData = pageData.withAndroidAuthCapabilities(pageName)
             val starter =
                     Intent(context, SlockKuiklyActivity::class.java)
                             .putExtra(KEY_PAGE_NAME, pageName)
-                            .putExtra(KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(pageData).text)
+                            .putExtra(KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(hostPageData).text)
             if (clearTask) {
                 starter.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             } else if (context !is Activity) {
@@ -475,6 +477,13 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         internal fun shouldReplaceCurrentPage(pageData: JSONObject): Boolean {
             return pageData.optBoolean(KEY_REPLACE_CURRENT_PAGE, false)
         }
+
+        private fun JSONObject.withAndroidAuthCapabilities(pageName: String): JSONObject =
+                JSONObject(toString()).apply {
+                    if (pageName == PAGE_LOGIN || pageName == PAGE_APP_SHELL) {
+                        put("slockSocialAuthProviders", "google")
+                    }
+                }
     }
 }
 
@@ -969,6 +978,10 @@ internal class SlockKuiklyBridgeModule(
                 authRequest(params, callback)
                 null
             }
+            "socialAuth" -> {
+                socialAuth(params, callback)
+                null
+            }
             "relationalStore" -> {
                 relationalStore(params, callback)
                 null
@@ -1390,6 +1403,46 @@ internal class SlockKuiklyBridgeModule(
             }
         }
         return null
+    }
+
+    private fun socialAuth(params: String?, callback: KuiklyRenderCallback?) {
+        val provider = JSONObject(params ?: "{}").optString("provider").trim().lowercase()
+        if (provider != "google") {
+            callback?.invoke(
+                    mapOf(
+                            "code" to 0,
+                            "status" to "error",
+                            "message" to "This sign-in provider is not available on Android yet"
+                    )
+            )
+            return
+        }
+        val returnTo = URLEncoder.encode("/", StandardCharsets.UTF_8.name())
+        val url = "${AndroidAuthApiFactory.BASE_URL.trimEnd('/')}/auth/google/start?returnTo=$returnTo"
+        val intent =
+                Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+        runCatching {
+            appContext.startActivity(intent)
+        }.onSuccess {
+            callback?.invoke(mapOf("code" to 202, "status" to "started"))
+        }.onFailure { throwable ->
+            val message =
+                    if (throwable is ActivityNotFoundException) {
+                        "No browser can open Google sign-in"
+                    } else {
+                        "Unable to open Google sign-in"
+                    }
+            Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show()
+            callback?.invoke(
+                    mapOf(
+                            "code" to 0,
+                            "status" to "error",
+                            "message" to message
+                    )
+            )
+        }
     }
 
     private fun authRequest(params: String?, callback: KuiklyRenderCallback?) {

@@ -397,6 +397,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CoroutineScope
@@ -468,6 +469,7 @@ class MainActivity : ComponentActivity() {
                         SlockColor.SurfaceWhite.toArgb()
                 )
         )
+        handleSocialAuthCallback(intent)
         setContent {
             SlockTheme {
                 SlockTestBuildFrame(show = BuildConfig.SHOW_TEST_BUILD_BADGE) {
@@ -506,7 +508,60 @@ class MainActivity : ComponentActivity() {
         }
         SlockPerformanceDiagnostics.install(window)
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleSocialAuthCallback(intent)
+    }
+
+    private fun handleSocialAuthCallback(intent: Intent?): Boolean {
+        val uri = intent?.data ?: return false
+        if (!uri.isSlockSocialAuthCallback()) return false
+        setIntent(Intent(this, MainActivity::class.java))
+        val provider = uri.getQueryParameter("provider").orEmpty().lowercase()
+        if (provider != "google") {
+            Toast.makeText(this, "This sign-in provider is not available on Android yet", Toast.LENGTH_SHORT).show()
+            return true
+        }
+        val error = uri.getQueryParameter("error") ?: uri.getQueryParameter("error_description")
+        if (!error.isNullOrBlank()) {
+            Toast.makeText(this, error, Toast.LENGTH_SHORT).show()
+            return true
+        }
+        val code = uri.getQueryParameter("code")
+        if (code.isNullOrBlank()) {
+            Toast.makeText(this, "Google sign-in did not return an authorization code", Toast.LENGTH_SHORT).show()
+            return true
+        }
+        lifecycleScope.launch {
+            val result =
+                    withContext(Dispatchers.IO) {
+                        SharedAuthDataSource(
+                                api = AndroidAuthApiFactory.createAuthApi(),
+                                sessionStore = EncryptedAuthSessionStore(applicationContext)
+                        ).completeSocialLogin(provider = provider, code = code)
+                    }
+            when (result) {
+                is SharedAuthResult.Success -> {
+                    Toast.makeText(this@MainActivity, "Signed in with Google", Toast.LENGTH_SHORT).show()
+                    SlockKuiklyActivity.startAppShell(this@MainActivity, clearTask = true)
+                    finish()
+                }
+                is SharedAuthResult.Failure ->
+                    Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
+                SharedAuthResult.Unauthenticated ->
+                    Toast.makeText(this@MainActivity, "Google sign-in failed. Try again.", Toast.LENGTH_SHORT).show()
+            }
+        }
+        return true
+    }
 }
+
+private fun Uri.isSlockSocialAuthCallback(): Boolean =
+        scheme == "https" &&
+                host == "app.slock.ai" &&
+                getQueryParameter("auth_callback") == "social"
 
 @Composable
 private fun SlockTestBuildFrame(show: Boolean, content: @Composable () -> Unit) {

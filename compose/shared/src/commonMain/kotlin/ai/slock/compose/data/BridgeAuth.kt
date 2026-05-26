@@ -27,6 +27,9 @@ internal class BridgeAuthApi(
     override suspend fun login(bodyText: String): AuthNetworkResponse =
         request(path = "auth/login", method = "POST", bodyText = bodyText)
 
+    override suspend fun completeSocialLogin(provider: String, bodyText: String): AuthNetworkResponse =
+        request(path = "auth/${provider.trim().lowercase()}/complete", method = "POST", bodyText = bodyText)
+
     override suspend fun register(bodyText: String): AuthNetworkResponse =
         request(path = "auth/register", method = "POST", bodyText = bodyText)
 
