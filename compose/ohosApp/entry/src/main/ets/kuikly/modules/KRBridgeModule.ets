@@ -10,6 +10,7 @@ import { KuiklyRenderBaseModule } from '@kuikly-open/render';
 import { KuiklyRenderCallback } from '@kuikly-open/render';
 import util from '@ohos.util';
 import fs from '@ohos.file.fs';
+import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
 import { SlockOhosClipboard } from '../SlockOhosClipboard';
 import { SlockOhosDiagnostics } from '../SlockOhosDiagnostics';
@@ -37,6 +38,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly READ_ASSET_FILE = "readAssetFile";
   static readonly AUTH_REQUEST = "authRequest";
   static readonly RELATIONAL_STORE = "relationalStore";
+  static readonly MOTION_CAPABILITY = "motionCapability";
   static readonly SETTINGS_CAPABILITY = "settingsCapability";
   static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
 
@@ -104,6 +106,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.RELATIONAL_STORE: {
         this.relationalStore(params, callback);
+        break;
+      }
+      case KRBridgeModule.MOTION_CAPABILITY: {
+        this.motionCapability(params, callback);
         break;
       }
       case KRBridgeModule.SETTINGS_CAPABILITY: {
@@ -187,6 +193,14 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       return;
     }
     slockOhosRealtimeBridge.handleCommand(this.parseRecord(params));
+  }
+
+  private motionCapability(params: KRAny, callback: KuiklyRenderCallback) {
+    if (params == null) {
+      callback({ "status": "error", "code": "missing_motion_params" });
+      return;
+    }
+    callback(slockOhosMotionBridge.handleCommand(this.parseRecord(params)));
   }
 
   private localServeTime(params: KRAny, callback: KuiklyRenderCallback) {

@@ -149,6 +149,36 @@ internal class BridgeModule : Module() {
             }
         }
 
+    suspend fun motionCapability(command: JSONObject): JSONObject? =
+        suspendCoroutine { continuation ->
+            callNativeMethod(MOTION_CAPABILITY, command) {
+                continuation.resume(it)
+            }
+        }
+
+    fun motionStartOperatingHand() {
+        motionCommand("startOperatingHand")
+    }
+
+    fun motionStopOperatingHand() {
+        motionCommand("stopOperatingHand")
+    }
+
+    suspend fun motionGetRecentOperatingHand(): JSONObject? =
+        motionCapability(JSONObject().apply { put("action", "getRecentOperatingHand") })
+
+    fun motionStartHoldingHand() {
+        motionCommand("startHoldingHand")
+    }
+
+    fun motionStopHoldingHand() {
+        motionCommand("stopHoldingHand")
+    }
+
+    fun motionStopAll() {
+        motionCommand("stopAll")
+    }
+
     suspend fun settingsCapability(command: JSONObject): JSONObject? =
         suspendCoroutine { continuation ->
             callNativeMethod("settingsCapability", command) {
@@ -454,6 +484,14 @@ internal class BridgeModule : Module() {
         ).toString()
     }
 
+    private fun motionCommand(action: String) {
+        callNativeMethod(
+            MOTION_CAPABILITY,
+            JSONObject().apply { put("action", action) },
+            null
+        )
+    }
+
     companion object {
         const val MODULE_NAME = "HRBridgeModule"
         const val OPEN_PAGE = "openPage"
@@ -469,6 +507,8 @@ internal class BridgeModule : Module() {
         const val AUTH_REQUEST = "authRequest"
         const val SOCIAL_AUTH = "socialAuth"
         const val RELATIONAL_STORE = "relationalStore"
+        const val MOTION_CAPABILITY = "motionCapability"
+        const val MOTION_EVENT = "slockMotionEvent"
         const val REPORT_PAGE_COST_TIME_FOR_CACHE = "reportPageCostTimeForCache"
         const val REPORT_PAGE_COST_TIME_FOR_SUCCESS = "reportPageCostTimeForSuccess"
         const val REPORT_PAGE_COST_TIME_FOR_ERROR = "reportPageCostTimeForError"
