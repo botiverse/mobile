@@ -5,7 +5,9 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Bitmap
 import android.os.Build
+import android.os.SystemClock
 import android.app.Activity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -110,9 +112,12 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "home.search.channel-dropdown",
             pageName = "compose_home_search_visual",
-            pageData = JSONObject().put("openFilterId", "channel"),
             crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 342, heightDp = 420),
-            settleMs = 4_500
+            settleMs = 4_500,
+            beforeScreenshot = {
+                tapDp(252f, 88f)
+                Thread.sleep(600)
+            }
         )
     }
 
@@ -208,7 +213,8 @@ class KmpVisualScreenshotCaptureTest {
         pageName: String,
         crop: VisualCrop,
         pageData: JSONObject? = null,
-        settleMs: Long = 1_500
+        settleMs: Long = 1_500,
+        beforeScreenshot: (() -> Unit)? = null
     ) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
@@ -223,6 +229,8 @@ class KmpVisualScreenshotCaptureTest {
             scenario.onActivity { applyVisualFullscreen(it) }
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             Thread.sleep(settleMs)
+            beforeScreenshot?.invoke()
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             val screenshot =
                 requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()) {
                     "Unable to capture KMP visual screenshot for $caseId"
@@ -477,6 +485,17 @@ class KmpVisualScreenshotCaptureTest {
             uniqueColors = counts.size,
             dominantRatio = if (total == 0) 1f else dominant.toFloat() / total.toFloat()
         )
+    }
+
+    private fun tapDp(xDp: Float, yDp: Float) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val density = instrumentation.targetContext.resources.displayMetrics.density
+        val x = xDp * density
+        val y = yDp * density
+        val downTime = SystemClock.uptimeMillis()
+        instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0))
+        instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime + 80L, MotionEvent.ACTION_UP, x, y, 0))
+        instrumentation.waitForIdleSync()
     }
 
     private fun writeFailureArtifacts(
