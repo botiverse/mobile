@@ -392,8 +392,8 @@ internal fun Button(
                     }
                 )
             }
-            .then(modifier)
-            .slockPressedOffset(pressed = pressed && enabled, pressOffset = pressOffset),
+            .slockPressedOffset(pressed = pressed && enabled, pressOffset = pressOffset)
+            .then(modifier),
         contentAlignment = Alignment.Center
     ) {
         content()
