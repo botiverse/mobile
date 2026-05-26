@@ -483,38 +483,19 @@ private fun MembersDetailContent(
 
 @Composable
 private fun MembersDetailHeader(title: String, onBack: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = SlockSize.PageHeaderHeight)
-            .background(SlockColor.BrandYellow)
-            .padding(top = slockTopSafeAreaPadding())
-            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(MembersActionSize)
-                .clickable(onClick = onBack),
-            contentAlignment = Alignment.Center
-        ) {
-            SlockLucideIcon("arrow-left", Modifier.size(MembersActionIconSize))
+    SlockTopPageHeader(
+        title = title,
+        subtitle = "Member details",
+        leadingContent = {
+            Box(
+                modifier = Modifier
+                    .size(MembersActionSize)
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon("arrow-left", Modifier.size(MembersActionIconSize))
+            }
         }
-        Text(
-            text = title,
-            style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(SlockStroke.Default)
-            .background(SlockColor.BorderBlack)
     )
 }
 
@@ -684,29 +665,10 @@ private fun MembersDetailField(label: String, value: String) {
 
 @Composable
 private fun MembersPageHeader(title: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = SlockSize.PageHeaderHeight)
-            .background(SlockColor.BrandYellow)
-            .padding(top = slockTopSafeAreaPadding())
-            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-    ) {
-        Text(
-            text = title,
-            style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(SlockStroke.Default)
-            .background(SlockColor.BorderBlack)
+    SlockTopPageHeader(
+        title = title,
+        subtitle = "Workspace members",
+        iconName = "users"
     )
 }
 

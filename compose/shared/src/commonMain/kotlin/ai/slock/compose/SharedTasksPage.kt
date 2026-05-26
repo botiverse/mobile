@@ -120,8 +120,8 @@ internal fun SharedTasksPanel(
         when (val loadState = displayState) {
             ScreenLoadState.Loading ->
                 SharedTasksStateBody(
-                    title = "Loading tasks",
-                    detail = "Fetching shared tasks from the selected server.",
+                    title = "Loading...",
+                    detail = "",
                     loading = true
                 )
             is ScreenLoadState.Content ->
@@ -156,46 +156,11 @@ internal fun SharedTasksPanel(
 
 @Composable
 private fun SharedTasksHeader() {
-    val topSafeArea = slockTopSafeAreaPadding()
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = topSafeArea + SlockSize.PageHeaderHeight)
-                .background(SlockColor.BrandYellow)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(
-                    start = 20.dp,
-                    top = topSafeArea + SlockSpacing.Sm,
-                    end = 20.dp,
-                    bottom = SlockSpacing.Sm
-                ),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Box(
-            modifier = Modifier.size(SlockSize.HeaderIcon).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            SlockLucideIcon("square-check-big", modifier = Modifier.size(18.dp), color = "#FF000000")
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Tasks",
-                style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = "Channel tasks",
-                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack.copy(alpha = 0.5f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
+    SlockTopPageHeader(
+        title = "Tasks",
+        subtitle = "Channel tasks",
+        iconName = "square-check-big"
+    )
 }
 
 @Composable
@@ -1087,6 +1052,10 @@ private fun SharedTasksStateBody(
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null
 ) {
+    if (loading) {
+        SlockCenteredLoading(message = title)
+        return
+    }
     Column(
         modifier =
             Modifier

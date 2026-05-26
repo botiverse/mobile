@@ -7,9 +7,12 @@ import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
+import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
@@ -19,11 +22,94 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
 
 private val SectionChevronSize = 12.dp
 private val HeaderActionShadowOffset = 2.dp
+
+@Composable
+internal fun SlockTopPageHeader(
+    title: String,
+    subtitle: String? = null,
+    iconName: String? = null,
+    iconBackground: Color = SlockColor.BrandYellow,
+    modifier: Modifier = Modifier,
+    leadingContent: (@Composable BoxScope.() -> Unit)? = null,
+    trailingContent: (@Composable BoxScope.() -> Unit)? = null
+) {
+    val topSafeArea = slockTopSafeAreaPadding()
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(topSafeArea + SlockSize.PageHeaderHeight)
+                .background(SlockColor.BrandYellow)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(start = 20.dp, top = topSafeArea, end = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        when {
+            leadingContent != null ->
+                Box(
+                    modifier = Modifier.size(SlockSize.HeaderIcon),
+                    contentAlignment = Alignment.Center,
+                    content = leadingContent
+                )
+            iconName != null ->
+                Box(
+                    modifier =
+                        Modifier
+                            .size(SlockSize.HeaderIcon)
+                            .background(iconBackground)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    contentAlignment = Alignment.Center
+                ) {
+                    SlockLucideIcon(iconName, modifier = Modifier.size(18.dp), color = "#FF000000")
+                }
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = title,
+                style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            subtitle?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextBlack.copy(alpha = 0.55f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        if (trailingContent != null) {
+            Box(content = trailingContent)
+        }
+    }
+}
+
+@Composable
+internal fun SlockCenteredLoading(message: String = "Loading...") {
+    Box(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = message,
+            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
 
 @Composable
 internal fun SlockCollapsibleSectionHeader(

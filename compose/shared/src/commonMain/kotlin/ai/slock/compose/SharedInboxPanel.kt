@@ -126,8 +126,8 @@ internal fun SharedHomeActivityScreen(
         when (val current = state) {
             SharedActivityPanelState.Loading ->
                 SharedActivityStateBody(
-                    title = "Loading activity",
-                    detail = "Fetching unread conversations from the selected server.",
+                    title = "Loading...",
+                    detail = "",
                     loading = true
                 )
             is SharedActivityPanelState.Error ->
@@ -165,50 +165,19 @@ private fun SharedActivityHeader(
     refreshing: Boolean,
     onRefresh: () -> Unit
 ) {
-    val topSafeArea = slockTopSafeAreaPadding()
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(topSafeArea + SlockSize.PageHeaderHeight)
-                .background(SlockColor.BrandYellow)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(start = 20.dp, top = topSafeArea, end = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(SlockSize.HeaderIcon)
-                    .background(SlockColor.AccentPink)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            SlockLucideIcon("activity", modifier = Modifier.size(18.dp), color = "#FF000000")
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Activity",
-                style = SlockType.PageTitle.withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = if (totalUnreadCount > 0) "$totalUnreadCount unread" else "All caught up",
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+    SlockTopPageHeader(
+        title = "Activity",
+        subtitle = if (totalUnreadCount > 0) "$totalUnreadCount unread" else "All caught up",
+        iconName = "activity",
+        iconBackground = SlockColor.AccentPink,
+        trailingContent = {
+            SharedActivitySmallButton(
+                label = if (refreshing) "..." else "Refresh",
+                iconName = "refresh-cw",
+                onClick = onRefresh
             )
         }
-        SharedActivitySmallButton(
-            label = if (refreshing) "..." else "Refresh",
-            iconName = "refresh-cw",
-            onClick = onRefresh
-        )
-    }
+    )
 }
 
 @Composable
@@ -389,6 +358,10 @@ private fun SharedActivityStateBody(
     actionLabel: String? = null,
     onAction: () -> Unit = {}
 ) {
+    if (loading) {
+        SlockCenteredLoading(message = title)
+        return
+    }
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

@@ -1593,35 +1593,23 @@ private fun SettingsDetailShell(
     onBack: () -> Unit,
     content: @Composable () -> Unit
 ) {
-    val topSafeArea = slockTopSafeAreaPadding()
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .padding(start = 20.dp, top = topSafeArea + 16.dp, end = 20.dp, bottom = 14.dp),
-            verticalAlignment = com.tencent.kuikly.compose.ui.Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Button(
-                onClick = onBack,
-                modifier = Modifier
-                    .size(28.dp)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-            ) {
-                SlockLucideIcon("arrow-left", modifier = Modifier.size(16.dp))
+        SlockTopPageHeader(
+            title = title,
+            subtitle = subtitle,
+            iconName = iconName,
+            leadingContent = {
+                Button(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                ) {
+                    SlockLucideIcon("arrow-left", modifier = Modifier.size(16.dp))
+                }
             }
-            Text(
-                title,
-                style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             content()
         }
@@ -2577,11 +2565,14 @@ private fun SharedMembersScreen(bridge: ai.slock.compose.base.BridgeModule) {
 
     when (val current = state) {
         SharedMembersUiState.Loading ->
-            AppShellPlaceholderContent(
-                title = "Members",
-                subtitle = "Loading...",
-                iconName = "users"
-            )
+            Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+                SlockTopPageHeader(
+                    title = "Members",
+                    subtitle = "Workspace members",
+                    iconName = "users"
+                )
+                SlockCenteredLoading()
+            }
         is SharedMembersUiState.Error ->
             AppShellPlaceholderContent(
                 title = "Members",
@@ -5699,39 +5690,29 @@ internal fun SettingsHomeContent(
     payload: KuiklySettingsHomePayload,
     onSelect: (String) -> Unit
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        item {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(top = slockTopSafeAreaPadding()).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    payload.title,
-                    style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                payload.subtitle.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        it,
-                        style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        SlockTopPageHeader(
+            title = payload.title,
+            subtitle = payload.subtitle.takeIf { it.isNotBlank() } ?: "Preferences",
+            iconName = "settings"
+        )
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            item {
+                Spacer(Modifier.height(SlockSpacing.Md))
             }
-        }
-        item {
-            SlockVerticalTabBar(
-                items = payload.items,
-                showSelection = payload.showSelection,
-                onSelect = onSelect
-            )
+            item {
+                SlockVerticalTabBar(
+                    items = payload.items,
+                    showSelection = payload.showSelection,
+                    onSelect = onSelect
+                )
+            }
+            item {
+                Spacer(Modifier.height(SlockSpacing.Md))
+            }
         }
     }
 }
