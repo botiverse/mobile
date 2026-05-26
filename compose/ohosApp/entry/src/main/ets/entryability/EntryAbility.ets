@@ -1,16 +1,27 @@
 import AbilityConstant from '@ohos.app.ability.AbilityConstant';
+import { bundleManager } from '@kit.AbilityKit';
+import deviceInfo from '@ohos.deviceInfo';
+import fs from '@ohos.file.fs';
 import font from '@ohos.font';
 import hilog from '@ohos.hilog';
+import util from '@ohos.util';
 import UIAbility from '@ohos.app.ability.UIAbility';
 import Want from '@ohos.app.ability.Want';
 import window from '@ohos.window';
 import { KuiklyRenderAdapterManager } from '@kuikly-open/render';
+import { AppVersionMode, Bugly, BuglyBuilder, ModuleName } from 'bugly';
 import { LogAdapter } from '../kuikly/adapter/LogAdapter';
 import { RouterAdapter } from '../kuikly/adapter/RouterAdapter';
 import { SlockOhosCrashReporter } from './SlockOhosCrashReporter';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
 const SAFE_AREA_BOTTOM_PX = 'slockSafeAreaBottomPx';
+const BUGLY_APP_ID = '00d93a6322';
+const BUGLY_APP_KEY = '852c8bcc-3e5c-4447-88d9-b3f90abf5f57';
+const BUGLY_APP_CHANNEL = 'ohos';
+const BUGLY_DEBUG_MODE = false;
+const BUGLY_DEVICE_DIR = 'bugly';
+const BUGLY_DEVICE_ID_FILE = 'device_id.txt';
 const SLOCK_FONT_NAMES: string[] = [
   'space_grotesk',
   'space_grotesk_regular',
@@ -22,8 +33,11 @@ const SLOCK_FONT_NAMES: string[] = [
 ];
 
 export default class EntryAbility extends UIAbility {
+  private static buglyInitialized: boolean = false;
+
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
+    this.initBugly();
     SlockOhosCrashReporter.install(this.context);
   }
 
@@ -95,5 +109,76 @@ export default class EntryAbility extends UIAbility {
   onBackground(): void {
     // Ability has back to background
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onBackground');
+  }
+
+  private initBugly(): void {
+    if (EntryAbility.buglyInitialized) {
+      return;
+    }
+    try {
+      const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
+      const builder = new BuglyBuilder();
+      builder.appId = BUGLY_APP_ID;
+      builder.appKey = BUGLY_APP_KEY;
+      builder.deviceId = this.resolveBuglyDeviceId();
+      builder.platform = BuglyBuilder.PLATFORM_PRO;
+      builder.appVersion = bundleInfo.versionName;
+      builder.appVersionMode = BUGLY_DEBUG_MODE ? AppVersionMode.DEBUG : AppVersionMode.RELEASE;
+      builder.buildNum = `${bundleInfo.versionCode}`;
+      builder.appChannel = BUGLY_APP_CHANNEL;
+      builder.deviceModel = `${deviceInfo.manufacture} ${deviceInfo.productModel}`.trim();
+      builder.debugMode = BUGLY_DEBUG_MODE;
+      builder.sdkLogMode = BUGLY_DEBUG_MODE;
+      builder.initDelay = 0;
+      builder.enableJsCrashProtect = false;
+      builder.enablePerfModules = ModuleName.AllModules;
+      Bugly.init(this.context.getApplicationContext(), builder);
+      EntryAbility.buglyInitialized = true;
+      hilog.info(0x0000, 'testTag', '%{public}s', 'Bugly initialized');
+    } catch (err) {
+      hilog.error(0x0000, 'testTag', 'Failed to initialize Bugly. Cause: %{public}s', JSON.stringify(err) ?? '');
+    }
+  }
+
+  private resolveBuglyDeviceId(): string {
+    const buglyDir = `${this.context.filesDir}/${BUGLY_DEVICE_DIR}`;
+    const deviceIdPath = `${buglyDir}/${BUGLY_DEVICE_ID_FILE}`;
+    const savedDeviceId = this.readTextFile(deviceIdPath).trim();
+    if (savedDeviceId.length > 0) {
+      return savedDeviceId;
+    }
+    const generatedDeviceId = `ohos-${Date.now()}-${Math.floor(Math.random() * 0xFFFFFFFFFFFF).toString(16)}`;
+    try {
+      fs.mkdirSync(buglyDir, true);
+      const file = fs.openSync(deviceIdPath, fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.WRITE_ONLY);
+      try {
+        fs.writeSync(file.fd, generatedDeviceId);
+      } finally {
+        fs.closeSync(file);
+      }
+    } catch (err) {
+      hilog.warn(0x0000, 'testTag', 'Failed to persist Bugly device ID. Cause: %{public}s', JSON.stringify(err) ?? '');
+    }
+    return generatedDeviceId;
+  }
+
+  private readTextFile(filePath: string): string {
+    try {
+      const file = fs.openSync(filePath, fs.OpenMode.READ_ONLY);
+      try {
+        const stat = fs.statSync(file.fd);
+        if (stat.size <= 0) {
+          return '';
+        }
+        const buffer = new ArrayBuffer(stat.size);
+        const readLength = fs.readSync(file.fd, buffer);
+        const decoder = new util.TextDecoder('utf-8');
+        return decoder.decodeWithStream(new Uint8Array(buffer, 0, readLength));
+      } finally {
+        fs.closeSync(file);
+      }
+    } catch (err) {
+      return '';
+    }
   }
 }
