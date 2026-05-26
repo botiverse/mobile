@@ -203,7 +203,7 @@ private val SearchControlsHorizontalPadding = 16.dp
 private val SearchMessagesHorizontalPadding = 16.dp
 private val SearchControlShadowOffset = 2.dp
 private val SearchPopoverBorderColor = SlockColor.EmptyStateGray
-private val SearchPopoverShadowColor = SlockColor.TextBlack.copy(alpha = 0.16f)
+private val SearchPopoverShadowColor = Color.Transparent
 
 @Page(SETTINGS_HOME_PAGE, supportInLocal = true)
 internal class ComposeSettingsHomePage : ai.slock.compose.base.BasePager() {

@@ -59,6 +59,7 @@ internal fun SlockBaseMenuOverlay(
 ) {
     if (items.isEmpty()) return
     var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
+    val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else SlockBaseMenuShadowOffset
     val localAnchor = Offset(anchor.x - overlayOrigin.x, anchor.y - overlayOrigin.y)
     val menuX = (localAnchor.x - SlockBaseMenuFallbackWidth + SlockBaseMenuTriggerNudge).coerceAtLeast(SlockBaseMenuAnchorGap)
     val menuY = (localAnchor.y + SlockBaseMenuTriggerNudge).coerceAtLeast(SlockBaseMenuAnchorGap)
@@ -72,14 +73,16 @@ internal fun SlockBaseMenuOverlay(
         Box(
             modifier = Modifier
                 .offset(x = menuX, y = menuY)
-                .padding(end = SlockBaseMenuShadowOffset, bottom = SlockBaseMenuShadowOffset)
+                .padding(end = shadowOffset, bottom = shadowOffset)
         ) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .offset(x = SlockBaseMenuShadowOffset, y = SlockBaseMenuShadowOffset)
-                    .background(surfaceShadowColor)
-            )
+            if (shadowOffset > 0.dp) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .offset(x = shadowOffset, y = shadowOffset)
+                        .background(surfaceShadowColor)
+                )
+            }
             Column(
                 modifier = Modifier
                     .width(SlockBaseMenuWidth)

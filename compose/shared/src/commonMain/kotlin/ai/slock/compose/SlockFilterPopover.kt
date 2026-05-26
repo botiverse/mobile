@@ -92,6 +92,7 @@ internal fun SlockFilterPopover(
     var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
     var overlayWidth by remember { mutableStateOf(0f) }
     var overlayHeight by remember { mutableStateOf(0f) }
+    val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else 4.dp
     val localAnchor = Offset(anchor.x - overlayOrigin.x, anchor.y - overlayOrigin.y)
     val popoverWidth = widthDp.dp
     val maxX =
@@ -119,14 +120,16 @@ internal fun SlockFilterPopover(
         Box(
             modifier = Modifier
                 .offset(x = xClamped.dp, y = yClamped.dp)
-                .padding(end = 4.dp, bottom = 4.dp)
+                .padding(end = shadowOffset, bottom = shadowOffset)
         ) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .offset(x = 4.dp, y = 4.dp)
-                    .background(surfaceShadowColor)
-            )
+            if (shadowOffset > 0.dp) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .offset(x = shadowOffset, y = shadowOffset)
+                        .background(surfaceShadowColor)
+                )
+            }
             Column(
                 modifier = Modifier
                     .width(popoverWidth)
