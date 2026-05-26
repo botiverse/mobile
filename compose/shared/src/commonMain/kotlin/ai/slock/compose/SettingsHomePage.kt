@@ -3419,91 +3419,150 @@ private fun SharedHomeSearchToolbar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (onClose != null) {
-            SharedHomeSearchControlSurface(
-                enabled = true,
-                onClick = onClose,
-                background = SlockColor.SurfaceWhite,
-                borderColor = SlockColor.BorderBlack,
-                shadowColor = SlockColor.ShadowBlack,
-                modifier = Modifier.size(36.dp)
+            Box(
+                modifier =
+                    Modifier
+                        .size(36.dp)
+                        .padding(end = SearchControlShadowOffset, bottom = SearchControlShadowOffset)
             ) {
-                SlockLucideIcon("arrow-left", color = "#FF000000", modifier = Modifier.size(16.dp))
+                Box(
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .offset(x = SearchControlShadowOffset, y = SearchControlShadowOffset)
+                            .background(SlockColor.ShadowBlack)
+                )
+                Button(
+                    onClick = onClose,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                ) {
+                    SlockLucideIcon("arrow-left", color = "#FF000000", modifier = Modifier.size(16.dp))
+                }
             }
         }
-        SharedHomeSearchControlSurface(
-            enabled = true,
-            onClick = {},
-            background = SlockColor.BrandYellow,
-            borderColor = SlockColor.BorderBlack,
-            shadowColor = SlockColor.ShadowBlack,
-            modifier = Modifier.size(38.dp)
+        Box(
+            modifier =
+                Modifier
+                    .size(38.dp)
+                    .padding(end = SearchControlShadowOffset, bottom = SearchControlShadowOffset)
         ) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .offset(x = SearchControlShadowOffset, y = SearchControlShadowOffset)
+                        .background(SlockColor.ShadowBlack)
+            )
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(SlockColor.BrandYellow)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
                 SlockLucideIcon("search", color = "#FF000000", modifier = Modifier.size(18.dp))
             }
         }
-        SharedHomeSearchControlSurface(
-            enabled = true,
-            onClick = {},
-            background = SlockColor.SurfaceWhite,
-            borderColor = SlockColor.BorderBlack,
-            shadowColor = SlockColor.ShadowBlack,
+        Box(
             modifier =
                 Modifier
                     .weight(1f)
                     .heightIn(min = 38.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 11.dp, top = 7.dp, end = 7.dp, bottom = 7.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (interactive) {
-                TextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    placeholder = "Search channels, DMs, messages...",
-                    placeholderColor = SlockColor.TextMutedGray,
-                    autoFocus = false,
-                    maxLines = 1,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank() && !loading) onSubmit() }),
-                    textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
-                Text(
-                    text = query.ifBlank { "Search channels, DMs, messages..." },
-                    style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp),
-                    color = if (query.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            SharedHomeSearchControlSurface(
-                enabled = interactive && query.isNotBlank(),
-                onClick = onClear,
-                background = if (interactive && query.isNotBlank()) SlockColor.SurfaceWhite else SlockColor.EmptyStateGray.copy(alpha = 0.35f),
-                borderColor = SlockColor.BorderBlack,
-                shadowColor = if (interactive && query.isNotBlank()) SlockColor.ShadowBlack else Color.Transparent,
-                modifier = Modifier.size(24.dp)
-            ) {
-                SlockLucideIcon("x", color = "#FF000000", modifier = Modifier.size(12.dp))
-            }
-            Text(
-                text = "ESC",
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
+            Box(
                 modifier =
                     Modifier
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                        .matchParentSize()
+                        .offset(x = SearchControlShadowOffset, y = SearchControlShadowOffset)
+                        .background(SlockColor.ShadowBlack)
             )
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .padding(start = 11.dp, top = 7.dp, end = 7.dp, bottom = 7.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (interactive) {
+                    TextField(
+                        value = query,
+                        onValueChange = onQueryChange,
+                        placeholder = "Search channels, DMs, messages...",
+                        placeholderColor = SlockColor.TextMutedGray,
+                        autoFocus = false,
+                        maxLines = 1,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank() && !loading) onSubmit() }),
+                        textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+                    Text(
+                        text = query.ifBlank { "Search channels, DMs, messages..." },
+                        style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                        color = if (query.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Box(
+                    modifier =
+                        Modifier
+                            .size(24.dp)
+                            .padding(
+                                end = if (interactive && query.isNotBlank()) SearchControlShadowOffset else 0.dp,
+                                bottom = if (interactive && query.isNotBlank()) SearchControlShadowOffset else 0.dp
+                            )
+                ) {
+                    if (interactive && query.isNotBlank()) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .matchParentSize()
+                                    .offset(x = SearchControlShadowOffset, y = SearchControlShadowOffset)
+                                    .background(SlockColor.ShadowBlack)
+                        )
+                    }
+                    Button(
+                        enabled = interactive && query.isNotBlank(),
+                        onClick = onClear,
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .background(
+                                    if (interactive && query.isNotBlank()) {
+                                        SlockColor.SurfaceWhite
+                                    } else {
+                                        SlockColor.EmptyStateGray.copy(alpha = 0.35f)
+                                    }
+                                )
+                                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                    ) {
+                        SlockLucideIcon("x", color = "#FF000000", modifier = Modifier.size(12.dp))
+                    }
+                }
+                Text(
+                    text = "ESC",
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    modifier =
+                        Modifier
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                )
+            }
         }
-    }
     }
 }
 

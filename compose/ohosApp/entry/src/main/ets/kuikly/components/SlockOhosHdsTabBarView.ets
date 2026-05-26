@@ -13,9 +13,15 @@ const kBottomSafeArea = 'bottomSafeArea';
 const kSelect = 'select';
 const kSeparator = '\u001F';
 
-const kDockHeight = 50;
+const kDockHeight = 60;
+const kDockSideMargin = 18;
+const kDockBottomMargin = 16;
+const kDockHostHeight = 96;
+const kAnimationDuration = 240;
 const kItemHeight = 44;
 const kIconSize = 18;
+const kGradientMaskColor = '#66F1F3F5';
+const kGradientMaskHeight = 92;
 
 interface SlockHdsTabItem {
   key: string;
@@ -159,12 +165,17 @@ export struct SlockOhosHdsTabBar {
       .barPosition(BarPosition.End)
       .barMode(BarMode.Fixed)
       .scrollable(false)
-      .animationDuration(0)
+      .animationDuration(kAnimationDuration)
       .barHeight(kDockHeight)
       .barOverlap(true)
       .barFloatingStyle({
-        barSideMargin: 20,
-        barBottomMargin: 0,
+        barSideMargin: kDockSideMargin,
+        barBottomMargin: kDockBottomMargin,
+        adaptToHandedness: true,
+        gradientMask: {
+          maskColor: kGradientMaskColor,
+          maskHeight: kGradientMaskHeight,
+        },
         thermoCtrl: true,
         systemMaterialEffect: {
           materialType: hdsMaterial.MaterialType.ADAPTIVE,
@@ -179,11 +190,11 @@ export struct SlockOhosHdsTabBar {
       })
       .divider({ mode: DividerMode.NONE })
       .width('100%')
-      .height(`${kDockHeight}vp`)
+      .height(`${kDockHostHeight}vp`)
       .backgroundColor('#00FFFFFF')
     }
     .width('100%')
-    .height(`${kDockHeight}vp`)
+    .height(`${kDockHostHeight}vp`)
   }
 
   @Builder

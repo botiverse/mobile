@@ -9,7 +9,7 @@ import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
 const SAFE_AREA_BOTTOM_PX = 'slockSafeAreaBottomPx';
 const DEFAULT_PAGE_NAME = 'compose_slock_app_shell';
-const HDS_MIN_API_VERSION = 20;
+const HDS_MIN_API_VERSION = 23;
 const HDS_TAB_BAR_SYSCAP = 'SystemCapability.UIDesign.HDSComponent.Core';
 
 @Entry
