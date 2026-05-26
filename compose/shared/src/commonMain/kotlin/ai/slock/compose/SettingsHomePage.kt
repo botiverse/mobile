@@ -3610,6 +3610,7 @@ private fun SharedHomeSearchFilters(
                         selected = state.selectedChannelId != null,
                         enabled = true,
                         uppercase = selectedChannel == null,
+                        leadingIconName = "hash",
                         trailingIconName = "chevron-down",
                         modifier = Modifier.onGloballyPositioned { channelAnchorChanged(it.positionInRoot()) },
                         onClick = { onOpenFilter("channel") }
@@ -3621,6 +3622,7 @@ private fun SharedHomeSearchFilters(
                         selected = state.timeRange != SearchTimeRange.Any,
                         enabled = true,
                         uppercase = state.timeRange == SearchTimeRange.Any,
+                        leadingIconName = "calendar",
                         trailingIconName = "chevron-down",
                         modifier = Modifier.onGloballyPositioned { timeAnchorChanged(it.positionInRoot()) },
                         onClick = { onOpenFilter("time") }
@@ -3655,8 +3657,9 @@ private fun SharedHomeSearchFilters(
                     selected = state.selectedChannelId != null,
                     enabled = true,
                     uppercase = selectedChannel == null,
+                    leadingIconName = "hash",
                     trailingIconName = "chevron-down",
-                    modifier = Modifier.weight(1f).onGloballyPositioned { channelAnchorChanged(it.positionInRoot()) },
+                    modifier = Modifier.onGloballyPositioned { channelAnchorChanged(it.positionInRoot()) },
                     onClick = { onOpenFilter("channel") }
                 )
             }
@@ -3672,14 +3675,15 @@ private fun SharedHomeSearchFilters(
                     selected = state.timeRange != SearchTimeRange.Any,
                     enabled = true,
                     uppercase = state.timeRange == SearchTimeRange.Any,
+                    leadingIconName = "calendar",
                     trailingIconName = "chevron-down",
-                    modifier = Modifier.weight(1f).onGloballyPositioned { timeAnchorChanged(it.positionInRoot()) },
+                    modifier = Modifier.onGloballyPositioned { timeAnchorChanged(it.positionInRoot()) },
                     onClick = { onOpenFilter("time") }
                 )
             }
+            Spacer(Modifier.weight(1f))
             SharedHomeSearchSortSegmentedControl(
                 sort = state.sort,
-                modifier = Modifier.weight(1f),
                 onSortChange = { onIntent(SharedHomeSearchSavedIntent.SetSearchSort(it)) }
             )
             if (!showSenderFilter && hasActiveFilters) {
@@ -4181,6 +4185,7 @@ private fun SharedHomeSearchFilterChip(
     enabled: Boolean,
     modifier: Modifier = Modifier,
     uppercase: Boolean = true,
+    leadingIconName: String? = null,
     trailingIconName: String? = null,
     onClick: () -> Unit
 ) {
@@ -4188,7 +4193,13 @@ private fun SharedHomeSearchFilterChip(
         when {
             !enabled -> SlockColor.TextMutedGray.copy(alpha = 0.18f)
             selected -> SlockColor.BrandYellow
-            else -> SlockColor.AppBgLightBlue.copy(alpha = 0.58f)
+            else -> SlockColor.SurfaceWhite
+        }
+    val contentColor =
+        when {
+            !enabled -> SlockColor.TextMutedGray
+            selected -> SlockColor.TextBlack
+            else -> SlockColor.TextMutedGray
         }
     Button(
         enabled = enabled,
@@ -4203,6 +4214,9 @@ private fun SharedHomeSearchFilterChip(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            leadingIconName?.let {
+                SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = if (selected) "#FF000000" else "#99000000")
+            }
             Text(
                 text = if (uppercase) label.uppercase() else label,
                 style =
@@ -4211,12 +4225,12 @@ private fun SharedHomeSearchFilterChip(
                         lineHeight = 12.sp,
                         letterSpacing = 0.9.sp
                     ),
-                color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                color = contentColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             trailingIconName?.let {
-                SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
+                SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = if (selected) "#FF000000" else "#99000000")
             }
         }
     }
