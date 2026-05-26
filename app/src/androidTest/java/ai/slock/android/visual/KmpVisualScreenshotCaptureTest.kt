@@ -106,6 +106,17 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeSearchChannelDropdown() {
+        captureKmpComponentCase(
+            caseId = "home.search.channel-dropdown",
+            pageName = "compose_home_search_visual",
+            pageData = JSONObject().put("openFilterId", "channel"),
+            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 342, heightDp = 420),
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureSettingsRowStates() {
         captureKmpComponentCase(
             caseId = "settings.row.states",
