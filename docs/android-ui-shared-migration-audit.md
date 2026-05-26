@@ -1,10 +1,92 @@
 # Android UI/Theme Shared Migration Audit
 
-Date: 2026-05-21
+Date: 2026-05-26
 
 ## Goal
 
-Android should stop carrying product UI that already belongs to the shared Kuikly shell. New KMP work should move reusable UI and business state to `compose/shared/commonMain`; Android should keep only platform host capabilities, temporary native fallback, and real Android test harness.
+Android should stop carrying product visual theme/tokens/components that belong to
+the shared Kuikly shell. New KMP work should move reusable UI and business state
+to `compose/shared/commonMain`; Android should keep only platform host
+capabilities, Activity/system adapters, native render adapters, and tests that
+exercise real product paths.
+
+The target end state is explicit: Android should not own Slock product theme.
+There may still be an Android host wrapper theme to satisfy Compose/Activity
+runtime, but Slock colors, typography, shadows, buttons, badges, tab bars, and
+route chrome should be driven from shared tokens/components.
+
+## 2026-05-26 Re-Audit Summary
+
+The Android product theme is **not yet fully removable**. The repo still has
+runtime product callers from `MainActivity.kt` into Android-owned UI/theme:
+
+- `MainActivity.kt` imports `ai.slock.android.ui.theme.*`,
+  `ai.slock.android.ui.components.*`, and `ai.slock.android.ui.icons.LucideIcons`.
+- `MainActivity.kt` still directly renders native product screens:
+  `ThreadScreen`, `InboxScreen`, `SettingsHomeScreen`, and several Settings
+  detail screens.
+- Those native screens in turn import Android `SlockColor`, `SlockType`,
+  `SlockSpacing`, `SlockShadow`, and Android components such as `SlockButton`,
+  `SlockTextField`, `SlockModal`, `SlockKeySurface`, and `SlockPageHeader`.
+
+So the current answer is: Android should not own final theme, but deleting
+`app/src/main/java/ai/slock/android/ui/theme` today would break runtime
+screens and connected tests. The remaining work is to remove those runtime
+callers, not to blindly delete token files.
+
+Use this command to reproduce the current dependency inventory:
+
+```bash
+scripts/audit_android_theme_ownership.sh
+```
+
+### Current Runtime Callers To Remove Or Replace
+
+These are the main remaining runtime roots that keep Android product theme alive:
+
+| Root | Current reason it keeps Android theme | Required exit |
+| --- | --- | --- |
+| `SlockAdaptiveAppScaffold` / bottom bar in `MainActivity.kt` | Android still owns app-level scaffold/background/tab shell in the native host | Let shared app shell own tab/scaffold chrome; Android host only embeds it and passes safe-area/system capability |
+| `ThreadScreen` | Legacy Android Thread route still used for some route/fallback/test paths | Finish shared Thread route parity and remove native Thread screen from product runtime; keep only tests until replaced |
+| `InboxScreen` | Inbox route remains native Compose UI | Move Inbox list/filter/actions to shared store/page, then remove Android screen/theme usage |
+| Settings home/detail native screens | Some Settings sections still render native rows/cards/actions | Continue Settings #35-#39 shared MVI/page migration; delete native Settings screens once shared sections replace them |
+| `SlockTestBuildFrame`, restore/error/empty host fragments in `MainActivity.kt` | Host still paints small branded fragments during startup/error | Replace with shared splash/error components or make them plain host-only wrappers with no product token ownership |
+| Android visual tests under `app/src/androidTest/java/ai/slock/android/visual` | Some visual cases still import Android components/tokens directly | Keep only cases that render true shared product routes; move component baselines to shared providers or mark pending |
+
+### Keep Android-Owned
+
+These should stay Android-specific even after product theme exits:
+
+- Activity/window/system-bar effects and permission launchers.
+- Android Kuikly render adapters, image adapters, Google sign-in/credential
+  capability, file picker, share sheet, notification/system settings, and other
+  host capabilities.
+- `ui/system/SystemBarColor.kt` or its eventual host-only equivalent.
+- Minimal Android host theme needed for Activity/Compose runtime scaffolding,
+  as long as it does not define product colors/spacing/typography.
+
+### Move Out Of Android
+
+These should not remain Android-owned in the final architecture:
+
+- `SlockColor`, `SlockType`, `SlockSpacing`, `SlockStroke`, `SlockRadius`,
+  `SlockShadow`, `slockHardShadow`, and other product visual tokens.
+- Product components: buttons, inputs, modals, badges, page headers, bottom tab
+  bars, avatars/status indicators, menus/popovers, empty/error/loading blocks.
+- Route UI for Home, Thread, Inbox, Tasks, Members, Settings, Search/Saved, and
+  auth.
+
+### Safe Cleanup Rule
+
+Only delete an Android UI/theme file after both checks are true:
+
+1. `scripts/audit_android_theme_ownership.sh` shows no runtime product caller.
+2. The equivalent shared route/component exists in `compose/shared/commonMain`
+   and is used by Android and OHOS.
+
+If a file is used only by connected visual tests, either retarget the test to a
+real shared route or mark that visual case pending before deleting the native
+component.
 
 
 ## Shared ViewModel Lifecycle Rule
