@@ -153,6 +153,49 @@ internal class SharedThreadDataSource(
         return payload.withSenderProfiles(session)
     }
 
+    suspend fun enrichThreadMembers(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+        val repository = memberRepository ?: return payload
+        val threadId = payload.sourceThreadId?.takeIf { it.isNotBlank() } ?: return payload
+        val channelMembers =
+            try {
+                repository.getChannelMembers(DataRequestPriority.Visible, ChannelId(threadId))
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return payload
+            }
+        if (channelMembers !is DataResult.Content) return payload
+        val members = channelMembers.data.members.distinctBy { it.memberKey }
+        val memberKeys = members.map { it.memberKey }.toSet()
+        val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        val candidates =
+            if (serverId == null) {
+                payload.memberCandidates
+            } else {
+                try {
+                    when (val result = repository.getMembers(DataRequestPriority.Visible, serverId)) {
+                        is DataResult.Content ->
+                            result.data.members
+                                .filterNot { it.memberKey in memberKeys }
+                                .map { it.toKuiklyThreadMemberItem() }
+                        is DataResult.Empty,
+                        is DataResult.Error,
+                        is DataResult.NoPermission -> payload.memberCandidates
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    payload.memberCandidates
+                }
+            }
+        return payload.copy(
+            membersCount = members.size,
+            members = members.map { it.toKuiklyThreadMemberItem() },
+            memberCandidates = candidates,
+            canAddMembers = channelMembers.data.canAddMembers
+        )
+    }
+
     suspend fun fetchOlderThreadPayload(
         basePayload: KuiklyThreadScreenPayload,
         beforeSeq: Long
@@ -582,10 +625,14 @@ internal class SharedThreadStore(
             }
         if (result is DataResult.Content) {
             val visiblePayload = result.data.withRouteContext(basePayload)
-            dataSource.cachePayload(visiblePayload)
-            writeCachedPayloadAfterFrame(visiblePayload)
-            val enrichedPayload = dataSource.enrichSenderProfiles(visiblePayload)
-            if (enrichedPayload != visiblePayload) {
+            val membersPayload = dataSource.enrichThreadMembers(visiblePayload)
+            dataSource.cachePayload(membersPayload)
+            writeCachedPayloadAfterFrame(membersPayload)
+            if (membersPayload != visiblePayload) {
+                _state.value = _state.value.copy(payload = membersPayload)
+            }
+            val enrichedPayload = dataSource.enrichSenderProfiles(membersPayload)
+            if (enrichedPayload != membersPayload) {
                 _state.value = _state.value.copy(payload = enrichedPayload)
                 dataSource.cachePayload(enrichedPayload)
                 writeCachedPayloadAfterFrame(enrichedPayload)
@@ -727,6 +774,26 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
         composerPayload = base.composerPayload.ifBlank { composerPayload },
         emptyTitle = base.emptyTitle,
         emptyDetail = base.emptyDetail
+    )
+
+private val MemberProfile.memberKey: String
+    get() = "${kind.name}:${id.value}"
+
+private fun MemberProfile.toKuiklyThreadMemberItem(): KuiklyThreadMemberItem =
+    KuiklyThreadMemberItem(
+        id = id.value,
+        displayName = displayName,
+        handle = handle,
+        roleLabel =
+            roleDescription
+                ?: when (kind) {
+                    MemberKind.Agent -> "Agent"
+                    MemberKind.Human -> "Member"
+                    MemberKind.System -> "System"
+                },
+        avatarUrl = avatarUrl,
+        avatarLabel = avatarLabel,
+        kind = kind.name.lowercase()
     )
 
 private fun ChannelFilesSnapshot.toKuiklyThreadFilesPayload(

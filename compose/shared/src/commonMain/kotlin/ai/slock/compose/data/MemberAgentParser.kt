@@ -34,6 +34,23 @@ private data class WireServerMember(
 )
 
 @Serializable
+private data class WireServerMembersResponse(
+    val members: List<WireServerMember> = emptyList(),
+    val items: List<WireServerMember> = emptyList(),
+    val results: List<WireServerMember> = emptyList(),
+)
+
+@Serializable
+private data class WireServerMembersDataListResponse(
+    val data: List<WireServerMember> = emptyList(),
+)
+
+@Serializable
+private data class WireServerMembersDataResponse(
+    val data: WireServerMembersResponse = WireServerMembersResponse(),
+)
+
+@Serializable
 private data class WireChannelMembers(
     val humans: List<WireChannelHuman> = emptyList(),
     val agents: List<WireAgent> = emptyList(),
@@ -76,6 +93,23 @@ private data class WireAgent(
 )
 
 @Serializable
+private data class WireAgentsResponse(
+    val agents: List<WireAgent> = emptyList(),
+    val items: List<WireAgent> = emptyList(),
+    val results: List<WireAgent> = emptyList(),
+)
+
+@Serializable
+private data class WireAgentsDataListResponse(
+    val data: List<WireAgent> = emptyList(),
+)
+
+@Serializable
+private data class WireAgentsDataResponse(
+    val data: WireAgentsResponse = WireAgentsResponse(),
+)
+
+@Serializable
 private data class WireAgentCreatedSummary(
     val id: String,
     val name: String,
@@ -111,15 +145,13 @@ fun parseSharedServerMemberSnapshot(
 ): MemberSnapshot? = runCatching {
     MemberSnapshot(
         server = server,
-        members = memberAgentJson.decodeFromString(ListSerializer(WireServerMember.serializer()), bodyText)
-            .map { it.toMemberProfile() }
+        members = decodeServerMembers(bodyText)
             .distinctBy { it.id.value },
     )
 }.getOrNull()
 
 fun parseSharedSettingsAgentsAsMembers(bodyText: String): List<MemberProfile>? = runCatching {
-    memberAgentJson.decodeFromString(ListSerializer(WireAgent.serializer()), bodyText)
-        .map { it.toMemberProfile() }
+    decodeAgents(bodyText)
         .distinctBy { it.id.value }
 }.getOrNull()
 
@@ -394,6 +426,38 @@ fun parseSharedChannelMemberSnapshot(
         canAddMembers = true,
     )
 }.getOrNull()
+
+private fun decodeServerMembers(bodyText: String): List<MemberProfile> =
+    decodeCandidates(
+        { memberAgentJson.decodeFromString(ListSerializer(WireServerMember.serializer()), bodyText) },
+        { memberAgentJson.decodeFromString(WireServerMembersResponse.serializer(), bodyText).allMembers },
+        { memberAgentJson.decodeFromString(WireServerMembersDataListResponse.serializer(), bodyText).data },
+        { memberAgentJson.decodeFromString(WireServerMembersDataResponse.serializer(), bodyText).data.allMembers },
+        { listOf(memberAgentJson.decodeFromString(WireServerMember.serializer(), bodyText)) }
+    ).map { it.toMemberProfile() }
+
+private fun decodeAgents(bodyText: String): List<MemberProfile> =
+    decodeCandidates(
+        { memberAgentJson.decodeFromString(ListSerializer(WireAgent.serializer()), bodyText) },
+        { memberAgentJson.decodeFromString(WireAgentsResponse.serializer(), bodyText).allAgents },
+        { memberAgentJson.decodeFromString(WireAgentsDataListResponse.serializer(), bodyText).data },
+        { memberAgentJson.decodeFromString(WireAgentsDataResponse.serializer(), bodyText).data.allAgents },
+        { listOf(memberAgentJson.decodeFromString(WireAgent.serializer(), bodyText)) }
+    ).map { it.toMemberProfile() }
+
+private val WireServerMembersResponse.allMembers: List<WireServerMember>
+    get() = members + items + results
+
+private val WireAgentsResponse.allAgents: List<WireAgent>
+    get() = agents + items + results
+
+private fun <T> decodeCandidates(vararg candidates: () -> List<T>): List<T> {
+    candidates.forEach { candidate ->
+        val decoded = runCatching(candidate).getOrNull().orEmpty()
+        if (decoded.isNotEmpty()) return decoded
+    }
+    return emptyList()
+}
 
 fun parseSharedChannelMemberActionResult(
     bodyText: String,

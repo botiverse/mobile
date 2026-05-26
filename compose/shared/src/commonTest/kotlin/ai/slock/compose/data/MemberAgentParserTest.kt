@@ -64,6 +64,56 @@ class MemberAgentParserTest {
     }
 
     @Test
+    fun agentsListAcceptsWrappedAgentsPayload() {
+        val members = parseSharedSettingsAgentsAsMembers(
+            """
+            {
+              "data": {
+                "agents": [
+                  {
+                    "id": "agent-1",
+                    "name": "builder",
+                    "displayName": "Builder",
+                    "status": "online"
+                  }
+                ]
+              }
+            }
+            """.trimIndent()
+        )
+
+        val profile = assertNotNull(members).single()
+        assertEquals("agent-1", profile.id.value)
+        assertEquals("Builder", profile.displayName)
+    }
+
+    @Test
+    fun serverMembersAcceptsWrappedMembersPayload() {
+        val snapshot = parseSharedServerMemberSnapshot(
+            bodyText =
+                """
+                {
+                  "members": [
+                    {
+                      "userId": "user-1",
+                      "name": "artin",
+                      "displayName": "Artin"
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            server = ai.slock.compose.model.ServerSummary(
+                id = ai.slock.compose.model.ServerId("server-1"),
+                name = "Slock"
+            )
+        )
+
+        val profile = assertNotNull(snapshot).members.single()
+        assertEquals("user-1", profile.id.value)
+        assertEquals("Artin", profile.displayName)
+    }
+
+    @Test
     fun workspaceLookupReadsRuntimeProfileSummaryCurrent() {
         val lookup = parseSharedAgentWorkspaceLookup(
             """

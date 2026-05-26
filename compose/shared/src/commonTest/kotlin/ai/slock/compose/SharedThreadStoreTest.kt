@@ -1,10 +1,26 @@
 package ai.slock.compose
 
 import ai.slock.compose.data.ComposeLocalWriteThrough
+import ai.slock.compose.data.AddChannelMemberRequest
+import ai.slock.compose.data.AgentActivitySnapshot
+import ai.slock.compose.data.AgentDetailSnapshot
+import ai.slock.compose.data.AgentDmSnapshot
+import ai.slock.compose.data.AgentProfileUpdateRequest
+import ai.slock.compose.data.AgentReminderSnapshot
+import ai.slock.compose.data.AgentSkillsSnapshot
+import ai.slock.compose.data.AgentWorkspaceChildrenSnapshot
+import ai.slock.compose.data.AgentWorkspaceFilePreviewSnapshot
+import ai.slock.compose.data.AgentWorkspaceSnapshot
+import ai.slock.compose.data.AgentWorkspaceTreeSnapshot
+import ai.slock.compose.data.ChannelMemberActionResult
+import ai.slock.compose.data.ChannelMemberSnapshot
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.HomeNetworkResponse
 import ai.slock.compose.data.InMemoryComposeLocalDataStore
 import ai.slock.compose.data.InMemorySlockAuthSessionStore
+import ai.slock.compose.data.MemberRepository
+import ai.slock.compose.data.MemberSnapshot
+import ai.slock.compose.data.RemoveChannelMemberRequest
 import ai.slock.compose.data.SharedThreadNetworkApi
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
@@ -21,6 +37,7 @@ import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
+import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -78,6 +95,53 @@ class SharedThreadStoreTest {
         assertEquals("content", payload.status)
         assertEquals("network body", payload.messages.single().body)
         assertEquals(2, api.channelMessageCalls)
+        scope.cancel()
+    }
+
+    @Test
+    fun successfulFetchEnrichesThreadMembersFromRepository() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val memberRepository =
+            FakeMemberRepository(
+                serverMembers =
+                    listOf(
+                        member("u1", "Artin"),
+                        MemberProfile(
+                            id = MemberId("agent-2"),
+                            displayName = "Cindy",
+                            handle = "cindy",
+                            kind = MemberKind.Agent,
+                            presence = Presence.Active
+                        )
+                    ),
+                channelMembers =
+                    listOf(
+                        member("u1", "Artin"),
+                        MemberProfile(
+                            id = MemberId("agent-1"),
+                            displayName = "Android Bot",
+                            handle = "android-bot",
+                            kind = MemberKind.Agent,
+                            presence = Presence.Active
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                memberRepository = memberRepository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        val payload = store.state.value.payload
+        assertEquals(2, payload.membersCount)
+        assertEquals(listOf("u1", "agent-1"), payload.members.map { it.id })
+        assertEquals(listOf("agent-2"), payload.memberCandidates.map { it.id })
+        assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
         scope.cancel()
     }
 
@@ -555,6 +619,105 @@ class SharedThreadStoreTest {
         }
     }
 
+    private class FakeMemberRepository(
+        private val serverMembers: List<MemberProfile> = emptyList(),
+        private val channelMembers: List<MemberProfile> = emptyList()
+    ) : MemberRepository {
+        val channelMemberRequests: MutableList<ChannelId> = mutableListOf()
+
+        override suspend fun getMembers(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            serverId: ServerId
+        ): DataResult<MemberSnapshot> =
+            DataResult.Content(
+                MemberSnapshot(
+                    server = ai.slock.compose.model.ServerSummary(id = serverId, name = "Slock"),
+                    members = serverMembers
+                )
+            )
+
+        override suspend fun getChannelMembers(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            channelId: ChannelId
+        ): DataResult<ChannelMemberSnapshot> {
+            channelMemberRequests += channelId
+            return DataResult.Content(
+                ChannelMemberSnapshot(
+                    channelId = channelId,
+                    members = channelMembers,
+                    canAddMembers = true
+                )
+            )
+        }
+
+        override suspend fun getMemberProfile(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            memberId: MemberId
+        ): DataResult<MemberProfile> = error("unused")
+
+        override suspend fun updateAgentProfile(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            request: AgentProfileUpdateRequest
+        ): DataResult<MemberProfile> = error("unused")
+
+        override suspend fun getAgentDetail(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentDetailSnapshot> = error("unused")
+
+        override suspend fun getAgentDirectMessages(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentDmSnapshot> = error("unused")
+
+        override suspend fun getAgentReminders(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentReminderSnapshot> = error("unused")
+
+        override suspend fun getAgentActivity(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentActivitySnapshot> = error("unused")
+
+        override suspend fun getAgentWorkspaces(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentWorkspaceSnapshot> = error("unused")
+
+        override suspend fun getAgentWorkspaceTree(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentWorkspaceTreeSnapshot> = error("unused")
+
+        override suspend fun getAgentWorkspaceChildren(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            agentId: MemberId,
+            dirPath: String
+        ): DataResult<AgentWorkspaceChildrenSnapshot> = error("unused")
+
+        override suspend fun readAgentWorkspaceFile(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            agentId: MemberId,
+            path: String
+        ): DataResult<AgentWorkspaceFilePreviewSnapshot> = error("unused")
+
+        override suspend fun getAgentSkills(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentSkillsSnapshot> = error("unused")
+
+        override suspend fun addChannelMember(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            request: AddChannelMemberRequest
+        ): DataResult<ChannelMemberActionResult> = error("unused")
+
+        override suspend fun removeChannelMember(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            request: RemoveChannelMemberRequest
+        ): DataResult<ChannelMemberActionResult> = error("unused")
+    }
+
     private fun basePayload(): KuiklyThreadScreenPayload =
         KuiklyThreadScreenPayload(
             instanceId = "shared-shell-thread-channel-1",
@@ -575,7 +738,8 @@ class SharedThreadStoreTest {
         StoredAuthSession(
             user = StoredAuthUser(id = "u1", email = "artin@slock.ai", displayName = "Artin"),
             accessToken = "access",
-            refreshToken = "refresh"
+            refreshToken = "refresh",
+            selectedServerId = "server-1"
         )
 
     private fun member(id: String, name: String): MemberProfile =

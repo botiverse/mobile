@@ -1628,7 +1628,12 @@ private fun ThreadHeaderIconButton(icon: String, onClick: () -> Unit) {
 
 @Composable
 private fun ThreadMembersHeaderButton(count: Int, onClick: () -> Unit) {
-    SlockHeaderIconAction(icon = "users", contentDescription = "Members", onClick = onClick, label = count.toString())
+    SlockHeaderIconAction(
+        icon = "users",
+        contentDescription = "Members",
+        onClick = onClick,
+        label = count.takeIf { it > 0 }?.toString().orEmpty()
+    )
 }
 
 @Composable
