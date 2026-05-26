@@ -40,6 +40,28 @@ Use this command to reproduce the current dependency inventory:
 scripts/audit_android_theme_ownership.sh
 ```
 
+## 2026-05-27 Cleanup Slice
+
+Removed one Android-only component visual baseline that no longer represented a
+runtime product path:
+
+- Deleted `ui/components/SlockMemberComponents.kt`.
+- Removed the old Android native component screenshot harness:
+  `VisualScreenshotCaptureTest.kt` and `VisualScreenshotCases.kt`.
+
+Reason: `SlockMemberRow` / `SlockMemberKind` / `SlockPresence` had no runtime
+callers; the only remaining usage was the old Android component screenshot
+harness. That harness also kept native Android token/button/input baselines alive
+after visual validation moved to shared route captures such as
+`KmpVisualScreenshotCaptureTest`. Real Members and avatar/status parity now
+belong to shared routes and shared visual providers, so keeping these
+Android-only component cases would preserve a second product implementation
+without a runtime owner.
+
+The broader Android theme tree is still not removable until `MainActivity` and
+the remaining native Thread/Inbox/Settings routes stop importing Android
+product components/tokens.
+
 ### Current Runtime Callers To Remove Or Replace
 
 These are the main remaining runtime roots that keep Android product theme alive:
