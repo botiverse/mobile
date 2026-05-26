@@ -120,7 +120,19 @@ internal data class MessageContextSummary(
     val messageCount: Int,
     val historyLimited: Boolean
 )
-internal data class MessageMutationSummary(val messageId: String, val reactionCount: Int)
+internal data class MessageMutationSummary(
+    val messageId: String,
+    val reactions: List<MessageReactionSummary>
+) {
+    val reactionCount: Int get() = reactions.size
+}
+
+internal data class MessageReactionSummary(
+    val emoji: String,
+    val count: Int,
+    val reactorIds: List<String>,
+    val reactorNames: List<String>
+)
 
 private inline fun <Wire, T> HomeNetworkResponse.mapFilesBody(
     contractCode: String,
@@ -145,7 +157,20 @@ private inline fun <Wire, T> HomeNetworkResponse.mapFilesBody(
 private fun HomeNetworkResponse.mapMessageMutation(contractCode: String): DataResult<MessageMutationSummary> =
     mapFilesBody(contractCode, MessageMutationResponseDto.serializer()) { wire ->
         val id = wire.id.takeIf { it.isNotBlank() } ?: return@mapFilesBody null
-        MessageMutationSummary(messageId = id, reactionCount = wire.reactions.size)
+        MessageMutationSummary(
+            messageId = id,
+            reactions =
+                wire.reactions.map { reaction ->
+                    val emoji = reaction.emoji.takeIf { it.isNotBlank() } ?: return@mapFilesBody null
+                    if (reaction.count < 0) return@mapFilesBody null
+                    MessageReactionSummary(
+                        emoji = emoji,
+                        count = reaction.count,
+                        reactorIds = reaction.reactorIds,
+                        reactorNames = reaction.reactorNames
+                    )
+                }
+        )
     }
 
 // ── Wire DTOs ──
@@ -195,7 +220,15 @@ private data class MessageContextResponseDto(
 @Serializable
 private data class MessageMutationResponseDto(
     val id: String,
-    val reactions: List<JsonObject> = emptyList(),
+    val reactions: List<MessageReactionDto> = emptyList(),
+)
+
+@Serializable
+private data class MessageReactionDto(
+    val emoji: String,
+    val count: Int,
+    val reactorIds: List<String> = emptyList(),
+    val reactorNames: List<String> = emptyList(),
 )
 
 @Serializable

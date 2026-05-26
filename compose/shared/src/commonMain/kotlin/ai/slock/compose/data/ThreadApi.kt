@@ -124,6 +124,7 @@ internal class SlockThreadApiClient(
                     threadChannelId = ChannelId(tid),
                     parentMessageId = wire.parentMessageId?.let(::MessageId),
                     changed = wire.created ?: false,
+                    replyCount = wire.replyCount ?: 0,
                 )
             }
 }
@@ -199,6 +200,7 @@ private data class CreateOrOpenThreadResponseDto(
     val threadChannelId: String,
     val parentMessageId: String? = null,
     val created: Boolean? = null,
+    val replyCount: Int? = null,
 )
 
 // ── Request bodies ──

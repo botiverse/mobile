@@ -83,12 +83,15 @@ class ThreadApiTest {
     fun createThreadRequiresCanonicalThreadChannelId() = runBlocking {
         val api =
             SlockThreadApiClient(
-                FakeThreadNetworkApi(createThreadBody = """{"threadChannelId":"thread-1","parentMessageId":"m1","created":true}""")
+                FakeThreadNetworkApi(createThreadBody = """{"threadChannelId":"thread-1","parentMessageId":"m1","created":true,"replyCount":2}""")
             )
 
         val result = api.createOrOpenThread("channel-1", "m1")
 
-        assertEquals("thread-1", assertIs<ThreadApiResult.Success<ThreadActionResult>>(result).data.threadChannelId.value)
+        val action = assertIs<ThreadApiResult.Success<ThreadActionResult>>(result).data
+        assertEquals("thread-1", action.threadChannelId.value)
+        assertEquals("m1", action.parentMessageId?.value)
+        assertEquals(2, action.replyCount)
     }
 
     @Test

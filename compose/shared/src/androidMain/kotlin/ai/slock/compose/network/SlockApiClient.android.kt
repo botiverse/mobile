@@ -30,8 +30,25 @@ class SlockApiClient(
     suspend fun settingsAccount(priority: SlockRequestPriority): KmpHttpResponse = get(priority, "auth/me")
     suspend fun updateSettingsAccount(priority: SlockRequestPriority, body: String): KmpHttpResponse = patch(priority, "auth/me", body)
     suspend fun settingsMachines(priority: SlockRequestPriority, serverId: String): KmpHttpResponse = get(priority, "servers/$serverId/machines")
+    suspend fun registerMachine(priority: SlockRequestPriority, serverId: String, body: String): KmpHttpResponse =
+        post(priority, "servers/$serverId/machines", body)
+    suspend fun renameMachine(priority: SlockRequestPriority, serverId: String, machineId: String, body: String): KmpHttpResponse =
+        patch(priority, "servers/$serverId/machines/$machineId", body)
+    suspend fun deleteMachine(priority: SlockRequestPriority, serverId: String, machineId: String): KmpHttpResponse =
+        delete(priority, "servers/$serverId/machines/$machineId")
+    suspend fun rotateMachineKey(priority: SlockRequestPriority, serverId: String, machineId: String): KmpHttpResponse =
+        post(priority, "servers/$serverId/machines/$machineId/rotate-key")
     suspend fun settingsMachineWorkspaces(priority: SlockRequestPriority, serverId: String, machineId: String): KmpHttpResponse =
         get(priority, "servers/$serverId/machines/$machineId/workspaces")
+    suspend fun machineRuntimeModels(priority: SlockRequestPriority, serverId: String, machineId: String, runtime: String): KmpHttpResponse =
+        get(priority, "servers/$serverId/machines/$machineId/runtime-models/$runtime")
+    suspend fun deleteMachineWorkspace(
+        priority: SlockRequestPriority,
+        serverId: String,
+        machineId: String,
+        directoryName: String
+    ): KmpHttpResponse =
+        delete(priority, "servers/$serverId/machines/$machineId/workspaces/$directoryName")
     suspend fun settingsAgents(priority: SlockRequestPriority): KmpHttpResponse = get(priority, "agents")
     suspend fun agentDetail(priority: SlockRequestPriority, agentId: String): KmpHttpResponse = get(priority, "agents/$agentId")
     suspend fun createAgent(priority: SlockRequestPriority, body: String): KmpHttpResponse = post(priority, "agents", body)

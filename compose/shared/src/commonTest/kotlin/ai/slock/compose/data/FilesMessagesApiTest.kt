@@ -30,7 +30,10 @@ class FilesMessagesApiTest {
         assertEquals("https://api.slock.test/api/attachments/attachment-1/html-preview", assertIs<DataResult.Content<AttachmentUrlTarget>>(html).data.url)
         assertEquals(1, assertIs<DataResult.Content<MessageSearchPage>>(search).data.resultCount)
         assertEquals("channel-1", assertIs<DataResult.Content<MessageContextSummary>>(context).data.channelId)
-        assertEquals("message-1", assertIs<DataResult.Content<MessageMutationSummary>>(addReaction).data.messageId)
+        val addSummary = assertIs<DataResult.Content<MessageMutationSummary>>(addReaction).data
+        assertEquals("message-1", addSummary.messageId)
+        assertEquals("👀", addSummary.reactions.single().emoji)
+        assertEquals(listOf("user-1"), addSummary.reactions.single().reactorIds)
         assertEquals("message-1", assertIs<DataResult.Content<MessageMutationSummary>>(removeReaction).data.messageId)
         assertEquals(
             listOf(
@@ -85,7 +88,7 @@ class FilesMessagesApiTest {
         private val contextBody: String =
             """{"channelId":"channel-1","targetMessageId":"message-1","messages":[{"id":"message-1"}],"historyLimited":false}""",
         private val reactionBody: String =
-            """{"id":"message-1","content":"hello","reactions":[{"emoji":"👀"}]}"""
+            """{"id":"message-1","content":"hello","reactions":[{"emoji":"👀","count":1,"reactorIds":["user-1"],"reactorNames":["Artin"]}]}"""
     ) : SlockFilesMessagesApi {
         val calls = mutableListOf<String>()
 

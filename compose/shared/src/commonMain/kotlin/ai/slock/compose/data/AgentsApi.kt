@@ -160,7 +160,18 @@ internal class SlockAgentsApiClient(
 }
 
 internal data class AgentsPage(val agentCount: Int)
-internal data class AgentSummary(val id: String, val name: String, val status: String?)
+internal data class AgentSummary(
+    val id: String,
+    val name: String,
+    val displayName: String?,
+    val status: String?,
+    val model: String?,
+    val runtime: String?,
+    val machineId: String?,
+    val activity: String?,
+    val activityDetail: String?,
+    val deletedAt: String?
+)
 internal data class AgentCommandResult(val ok: Boolean)
 internal data class AgentDmPage(val itemCount: Int)
 internal data class AgentActivityPage(val entryCount: Int)
@@ -211,11 +222,28 @@ private data class AgentWireDto(
     val name: String,
     val displayName: String? = null,
     val status: String? = null,
+    val model: String? = null,
+    val runtime: String? = null,
+    val machineId: String? = null,
+    val activity: String? = null,
+    val activityDetail: String? = null,
+    val deletedAt: String? = null,
 )
 
 private fun AgentWireDto.toSummary(): AgentSummary? {
     if (id.isBlank() || name.isBlank()) return null
-    return AgentSummary(id = id, name = name, status = status)
+    return AgentSummary(
+        id = id,
+        name = name,
+        displayName = displayName,
+        status = status,
+        model = model,
+        runtime = runtime,
+        machineId = machineId,
+        activity = activity,
+        activityDetail = activityDetail,
+        deletedAt = deletedAt
+    )
 }
 
 @Serializable

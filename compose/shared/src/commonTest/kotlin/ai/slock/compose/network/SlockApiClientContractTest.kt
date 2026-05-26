@@ -118,6 +118,38 @@ class SlockApiClientContractTest {
     }
 
     @Test
+    fun computerRoutesUseCanonicalMachineUpstreamContracts() = runBlocking {
+        val requests = mutableListOf<HttpRequestData>()
+        val client = apiClient(requests)
+
+        client.settingsMachines(SlockRequestPriority.Visible, "server-1")
+        client.registerMachine(SlockRequestPriority.Visible, "server-1", """{"name":"Maria"}""")
+        client.renameMachine(SlockRequestPriority.Visible, "server-1", "machine-1", """{"name":"Maria Laptop"}""")
+        client.deleteMachine(SlockRequestPriority.Visible, "server-1", "machine-1")
+        client.rotateMachineKey(SlockRequestPriority.Visible, "server-1", "machine-1")
+        client.settingsMachineWorkspaces(SlockRequestPriority.Visible, "server-1", "machine-1")
+        client.machineRuntimeModels(SlockRequestPriority.Visible, "server-1", "machine-1", "claude")
+        client.deleteMachineWorkspace(SlockRequestPriority.Visible, "server-1", "machine-1", "agent-old")
+
+        assertEquals("GET", requests[0].method.value)
+        assertEquals("/api/servers/server-1/machines", requests[0].url.encodedPath)
+        assertEquals("POST", requests[1].method.value)
+        assertEquals("/api/servers/server-1/machines", requests[1].url.encodedPath)
+        assertEquals("PATCH", requests[2].method.value)
+        assertEquals("/api/servers/server-1/machines/machine-1", requests[2].url.encodedPath)
+        assertEquals("DELETE", requests[3].method.value)
+        assertEquals("/api/servers/server-1/machines/machine-1", requests[3].url.encodedPath)
+        assertEquals("POST", requests[4].method.value)
+        assertEquals("/api/servers/server-1/machines/machine-1/rotate-key", requests[4].url.encodedPath)
+        assertEquals("GET", requests[5].method.value)
+        assertEquals("/api/servers/server-1/machines/machine-1/workspaces", requests[5].url.encodedPath)
+        assertEquals("GET", requests[6].method.value)
+        assertEquals("/api/servers/server-1/machines/machine-1/runtime-models/claude", requests[6].url.encodedPath)
+        assertEquals("DELETE", requests[7].method.value)
+        assertEquals("/api/servers/server-1/machines/machine-1/workspaces/agent-old", requests[7].url.encodedPath)
+    }
+
+    @Test
     fun announcementsAndRemindersUseCanonicalUpstreamContracts() = runBlocking {
         val requests = mutableListOf<HttpRequestData>()
         val client = apiClient(requests)
