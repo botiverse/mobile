@@ -96,6 +96,25 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun googleIdTokenCompleteWritesStoredSessionAndFetchesServers() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.completeGoogleIdTokenLogin("native-id-token", nonce = "nonce-1")
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("""{"idToken":"native-id-token","nonce":"nonce-1"}""", api.socialCompleteBody)
+        assertEquals("google", api.socialCompleteProvider)
+        assertEquals("Bearer social-access", api.currentUserAuthorization)
+        assertEquals("Bearer social-access", api.serversAuthorization)
+        assertEquals("user-1", store.readSession()?.user?.id)
+        assertEquals("social-access", store.readSession()?.accessToken)
+        assertEquals("social-refresh", store.readSession()?.refreshToken)
+        assertEquals("server-1", store.readSession()?.selectedServerId)
+    }
+
+    @Test
     fun registerAndForgotPasswordUseSharedDtoBodies() = runBlocking {
         val store = InMemorySlockAuthSessionStore()
         val api = FakeAuthApi()

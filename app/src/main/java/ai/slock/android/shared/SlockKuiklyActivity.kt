@@ -42,6 +42,9 @@ import ai.slock.android.R
 import ai.slock.compose.data.StoredAuthSession as AuthSession
 import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
+import ai.slock.android.core.data.auth.GoogleSocialAuthGateway
+import ai.slock.android.core.data.auth.GoogleSocialAuthResult
+import ai.slock.android.core.data.auth.completeGoogleSocialAuth
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
@@ -50,6 +53,8 @@ import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.android.core.data.realtime.SocketIoSocketTransport
 import ai.slock.compose.data.RealtimeRepository
 import ai.slock.compose.data.RealtimeSubscription
+import ai.slock.compose.data.SharedAuthDataSource
+import ai.slock.compose.data.SharedAuthResult
 import ai.slock.android.core.model.DirectMessageCreated
 import ai.slock.android.core.model.Heartbeat
 import ai.slock.android.core.model.MemberKind
@@ -92,9 +97,11 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -107,6 +114,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private var realtimeServerId: ServerId? = null
     private var realtimeLastSeq: Long = 0L
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
+    private val googleSocialAuthGateway = GoogleSocialAuthGateway()
     private val threadImageAttachmentPickerLauncher: ActivityResultLauncher<String> =
             registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
                 handleThreadAttachmentPickerResult(uris)
@@ -213,6 +221,77 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                             )
                     )
                 }
+    }
+
+    internal fun requestGoogleNativeSocialAuth(callback: KuiklyRenderCallback?): Boolean {
+        if (!googleSocialAuthGateway.isNativeConfigured()) return false
+
+        lifecycleScope.launch {
+            val nativeResult = googleSocialAuthGateway.signIn(this@SlockKuiklyActivity)
+            when (nativeResult) {
+                is GoogleSocialAuthResult.IdToken -> {
+                    val result =
+                            withContext(Dispatchers.IO) {
+                                SharedAuthDataSource(
+                                        api = AndroidAuthApiFactory.createAuthApi(),
+                                        sessionStore = EncryptedAuthSessionStore(applicationContext)
+                                ).completeGoogleSocialAuth(nativeResult)
+                            }
+                    when (result) {
+                        is SharedAuthResult.Success -> {
+                            callback?.invoke(mapOf("code" to 200, "status" to "success"))
+                            Toast.makeText(
+                                    this@SlockKuiklyActivity,
+                                    "Signed in with Google",
+                                    Toast.LENGTH_SHORT
+                            ).show()
+                            SlockKuiklyActivity.startAppShell(
+                                    this@SlockKuiklyActivity,
+                                    clearTask = true
+                            )
+                            finish()
+                        }
+                        is SharedAuthResult.Failure -> {
+                            callback?.invoke(
+                                    mapOf(
+                                            "code" to 0,
+                                            "status" to "error",
+                                            "message" to result.message
+                                    )
+                            )
+                        }
+                        SharedAuthResult.Unauthenticated -> {
+                            callback?.invoke(
+                                    mapOf(
+                                            "code" to 0,
+                                            "status" to "error",
+                                            "message" to "Google sign-in failed. Try again."
+                                    )
+                            )
+                        }
+                    }
+                }
+                GoogleSocialAuthResult.Cancelled -> {
+                    callback?.invoke(
+                            mapOf(
+                                    "code" to 0,
+                                    "status" to "cancelled",
+                                    "message" to "Google sign-in canceled."
+                            )
+                    )
+                }
+                is GoogleSocialAuthResult.Failure -> {
+                    callback?.invoke(
+                            mapOf(
+                                    "code" to 0,
+                                    "status" to "error",
+                                    "message" to nativeResult.message
+                            )
+                    )
+                }
+            }
+        }
+        return true
     }
 
     private fun handleThreadAttachmentPickerResult(uris: List<Uri>) {
@@ -1417,6 +1496,9 @@ internal class SlockKuiklyBridgeModule(
             )
             return
         }
+        val hostActivity = activity as? SlockKuiklyActivity
+        if (hostActivity?.requestGoogleNativeSocialAuth(callback) == true) return
+
         val returnTo = URLEncoder.encode("/", StandardCharsets.UTF_8.name())
         val url = "${AndroidAuthApiFactory.BASE_URL.trimEnd('/')}/auth/google/start?returnTo=$returnTo"
         val intent =

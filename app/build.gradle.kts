@@ -5,6 +5,13 @@ plugins {
     alias(libs.plugins.sqldelight)
 }
 
+val googleServerClientId =
+    providers.gradleProperty("SLOCK_GOOGLE_SERVER_CLIENT_ID")
+        .orElse(providers.environmentVariable("SLOCK_GOOGLE_SERVER_CLIENT_ID"))
+        .getOrElse("")
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+
 android {
     namespace = "ai.slock.android"
     compileSdk {
@@ -21,6 +28,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "false")
+        buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
     }
 
     buildTypes {
@@ -86,6 +94,9 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
     implementation(libs.androidx.recyclerview)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.googleid)
     implementation(libs.okhttp)
     implementation(libs.gson)
     implementation(libs.socket.io.client)

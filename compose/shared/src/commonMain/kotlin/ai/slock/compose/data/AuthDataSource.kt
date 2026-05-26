@@ -71,8 +71,36 @@ class SharedAuthDataSource(
         }
 
         val body = authJson.encodeToString(AuthSocialCompleteRequestBody(code = code.trim()))
+        return completeSocialLoginWithBody(normalizedProvider, body)
+    }
+
+    suspend fun completeGoogleIdTokenLogin(
+        idToken: String,
+        nonce: String? = null
+    ): SharedAuthResult<StoredAuthSession> {
+        if (idToken.isBlank()) {
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "Google sign-in did not return an ID token."
+            )
+        }
+
+        val body =
+            authJson.encodeToString(
+                AuthSocialCompleteRequestBody(
+                    idToken = idToken.trim(),
+                    nonce = nonce?.takeIf { it.isNotBlank() }
+                )
+            )
+        return completeSocialLoginWithBody("google", body)
+    }
+
+    private suspend fun completeSocialLoginWithBody(
+        provider: String,
+        body: String
+    ): SharedAuthResult<StoredAuthSession> {
         val tokens =
-            when (val response = api.completeSocialLogin(normalizedProvider, body)) {
+            when (val response = api.completeSocialLogin(provider, body)) {
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> return response.toSharedAuthFailure()
             }
@@ -470,7 +498,9 @@ data class AuthLoginRequestBody(
 
 @kotlinx.serialization.Serializable
 data class AuthSocialCompleteRequestBody(
-    val code: String
+    val code: String? = null,
+    val idToken: String? = null,
+    val nonce: String? = null
 )
 
 @kotlinx.serialization.Serializable
