@@ -383,7 +383,8 @@ private fun String.normalizeMarkdownInlineCodeText(): String =
 fun slockMarkdownAnnotator(
     content: String,
     highlightedMentions: Set<String> = emptySet(),
-    onOpenTag: (ThreadMarkdownTag) -> Unit = {}
+    onOpenTag: (ThreadMarkdownTag) -> Unit = {},
+    resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null
 ): MarkdownAnnotator {
     val highlightedMentionKeys = highlightedMentions.mapTo(mutableSetOf()) { threadMarkdownMentionKey(it) }
     val inlineTagMatches = content.threadInlineTagMatches()
@@ -433,7 +434,9 @@ fun slockMarkdownAnnotator(
         },
         inlineContent = {
             inlineTagById.mapValues { (_, match) ->
-                val label = threadMarkdownTagDisplayLabel(match.tag.label)
+                val label =
+                    resolveTagLabel?.invoke(match.tag)?.takeIf { it.isNotBlank() }
+                        ?: threadMarkdownTagDisplayLabel(match.tag.label)
                 InlineTextContent(
                     Placeholder(
                         width = slockMarkdownInlineChipWidthSp(label),
@@ -449,12 +452,7 @@ fun slockMarkdownAnnotator(
                         ) {
                             SlockMarkdownMentionText(label)
                         } else {
-                            val chipColor =
-                                if (highlightedMentionById.containsKey(match.id)) {
-                                    SlockColor.BrandYellow
-                                } else {
-                                    slockMarkdownTagColor(match.tag.kind)
-                                }
+                            val chipColor = slockMarkdownTagColor(match.tag.kind)
                             SlockMarkdownInlineChip(label, chipColor)
                         }
                     }
@@ -482,7 +480,8 @@ fun SlockMarkdownBody(
     textStyle: TextStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
     highlightedMentions: Set<String> = emptySet(),
     onOpenTag: (ThreadMarkdownTag) -> Unit = {},
-    onOpenUrl: (String) -> Unit = {}
+    onOpenUrl: (String) -> Unit = {},
+    resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null
 ) {
     val content = body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
     CompositionLocalProvider(
@@ -505,7 +504,8 @@ fun SlockMarkdownBody(
             annotator = slockMarkdownAnnotator(
                 content,
                 highlightedMentions = highlightedMentions,
-                onOpenTag = onOpenTag
+                onOpenTag = onOpenTag,
+                resolveTagLabel = resolveTagLabel
             ),
             padding = markdownPadding(
                 block = 0.dp,
@@ -592,10 +592,10 @@ private fun String.slockInlineTextWidthUnits(): Int =
 
 private fun slockMarkdownTagColor(kind: ThreadMarkdownTagKind): Color =
     when (kind) {
-        ThreadMarkdownTagKind.ChannelThread -> SlockColor.AccentCyan.copy(alpha = 0.3f)
-        ThreadMarkdownTagKind.Channel -> SlockColor.AccentPink.copy(alpha = 0.3f)
-        ThreadMarkdownTagKind.Task -> SlockColor.BrandYellow.copy(alpha = 0.4f)
-        ThreadMarkdownTagKind.UserMention -> SlockColor.BrandYellow
+        ThreadMarkdownTagKind.ChannelThread -> SlockColor.AccentCyan
+        ThreadMarkdownTagKind.Channel -> SlockColor.AccentCyan
+        ThreadMarkdownTagKind.Task -> SlockColor.AccentOrange
+        ThreadMarkdownTagKind.UserMention -> SlockColor.AccentLavender
     }
 
 @Composable

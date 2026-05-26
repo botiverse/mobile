@@ -26,6 +26,7 @@ import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.markdown.ThreadMarkdownTag
 import ai.slock.compose.markdown.ThreadMarkdownTagKind
+import ai.slock.compose.markdown.threadMarkdownTagDisplayLabel
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -97,6 +98,7 @@ import kotlinx.serialization.json.Json
 
 internal const val THREAD_PAGE = "compose_thread"
 private const val THREAD_MESSAGE_VISUAL_PAGE = "compose_thread_message_visual"
+private const val THREAD_MESSAGE_ROW_VISUAL_PAGE = "compose_thread_message_row_visual"
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesPageSize = 50
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
@@ -112,6 +114,14 @@ internal class ComposeThreadPage : ai.slock.compose.base.BasePager() {
 
 @Page(THREAD_MESSAGE_VISUAL_PAGE, supportInLocal = true)
 internal class ComposeThreadMessageVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadMessageVisualScreen() }
+    }
+}
+
+@Page(THREAD_MESSAGE_ROW_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeThreadMessageRowVisualPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { ThreadMessageVisualScreen() }
@@ -260,6 +270,31 @@ private fun KuiklyThreadScreenPayload.findMarkdownMentionMember(tag: ThreadMarkd
     }
 }
 
+internal fun KuiklyThreadScreenPayload.resolveMarkdownTagDisplayLabel(tag: ThreadMarkdownTag): String =
+    when (tag.kind) {
+        ThreadMarkdownTagKind.UserMention ->
+            findMarkdownMentionMember(tag)
+                ?.displayName
+                ?.trim()
+                ?.removePrefix("@")
+                ?.takeIf { it.isNotBlank() }
+                ?.let { "@$it" }
+                ?: threadMarkdownTagDisplayLabel(tag.label)
+        else -> threadMarkdownTagDisplayLabel(tag.label)
+    }
+
+internal fun KuiklyThreadScreenPayload.resolveTaskAssigneeDisplayName(
+    value: String?
+): String? {
+    val normalized = value?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() } ?: return null
+    return members.firstOrNull { member ->
+        member.id.equals(normalized, ignoreCase = true) ||
+            member.handle.removePrefix("@").equals(normalized, ignoreCase = true) ||
+            member.displayName.equals(normalized, ignoreCase = true)
+    }?.displayName?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
+        ?: normalized
+}
+
 private fun KuiklyThreadScreenPayload.findMarkdownTaskId(tag: ThreadMarkdownTag): String? {
     val key = tag.label.removePrefix("#").trim()
     val taskNumber = key.toIntOrNull()
@@ -391,25 +426,123 @@ private fun ThreadMessageVisualScreen() {
     val message = payload.messages.firstOrNull()
     Column(modifier = Modifier.width(342.dp).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
         if (message != null) {
-            ThreadMessageCard(
+            ThreadMessageVisualCard(
                 message = message,
                 highlightedMentions = emptySet(),
-                showReplyAction = payload.showReplyActions,
-                taskOpenEnabled = payload.showTaskOpenActions,
-                taskStatusActionsEnabled = payload.showTaskStatusActions,
+                resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName),
+                resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
                 timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
-                onShowActions = {},
-                onOpenMember = {},
-                onOpenThread = {},
-                onOpenTask = {},
-                onTaskStatusChange = { _, _ -> },
-                onOpenAttachment = {},
                 onOpenMarkdownTag = {},
                 onOpenMarkdownUrl = {},
                 outerPadding = 0.dp
             )
         }
     }
+}
+
+@Composable
+private fun ThreadMessageVisualCard(
+    message: KuiklyThreadMessageItem,
+    highlightedMentions: Set<String> = emptySet(),
+    resolvedTaskAssigneeName: String? = null,
+    resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
+    timestampLabel: String = message.timestampLabel,
+    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
+    onOpenMarkdownUrl: (String) -> Unit,
+    outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Md
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .padding(horizontal = outerPadding, vertical = SlockSpacing.Sm)
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceCream)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(SlockSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ThreadMessageStaticAvatar(
+                    avatarLabel = message.avatarLabel,
+                    avatarWireValue = message.resolvedThreadAvatarWireValue(),
+                    gravatarHash = message.gravatarHash,
+                    showStatus = message.showsAgentStatusIndicator()
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    Row(
+                        modifier = Modifier.threadMessageContentWidth(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                    ) {
+                        Text(
+                            text = message.authorName,
+                            style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 220.dp)
+                        )
+                        Text(
+                            text = timestampLabel,
+                            style =
+                                SlockType.Caption.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    color = SlockColor.TextBlack.copy(alpha = 0.4f)
+                                ),
+                            color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (message.body.isNotBlank()) {
+                        Box(modifier = Modifier.threadMessageContentWidth(1f)) {
+                            SlockMarkdownBody(
+                                body = message.body,
+                                textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                                highlightedMentions = highlightedMentions,
+                                resolveTagLabel = resolveMarkdownTagLabel,
+                                onOpenTag = onOpenMarkdownTag,
+                                onOpenUrl = onOpenMarkdownUrl
+                            )
+                        }
+                    }
+                    Box(modifier = Modifier.threadMessageContentWidth(1f)) {
+                        ThreadMessageAttachments(
+                            attachments = message.attachments,
+                            alignEnd = false,
+                            onOpenAttachment = {}
+                        )
+                    }
+                    Box(modifier = Modifier.threadMessageContentWidth(1f)) {
+                        ThreadMessageFooterMeta(
+                            message = message,
+                            showReplyAction = true,
+                            taskOpenEnabled = false,
+                            taskStatusActionsEnabled = false,
+                            resolvedTaskAssigneeName = resolvedTaskAssigneeName,
+                            alignEnd = false,
+                            onOpenThread = {},
+                            onOpenTask = {},
+                            onTaskStatusChange = { _, _ -> }
+                        )
+                    }
+                }
+            }
+        }
 }
 
 @Composable
@@ -1537,6 +1670,8 @@ private fun ThreadMessagesList(
                         highlightedMentions = highlightedMentions,
                         showReplyAction = payload.showReplyActions,
                         timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
+                        resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName),
+                        resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
                         taskOpenEnabled = payload.showTaskOpenActions,
                         taskStatusActionsEnabled = payload.showTaskStatusActions,
                         onOpenThread = { onThreadEvent("openMessageThread", message.id, null, null) },
@@ -1553,6 +1688,8 @@ private fun ThreadMessagesList(
                         highlightedMentions = highlightedMentions,
                         alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                         showReplyAction = payload.showReplyActions,
+                        resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName),
+                        resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
                         taskOpenEnabled = payload.showTaskOpenActions,
                         taskStatusActionsEnabled = payload.showTaskStatusActions,
                         onShowActions = { anchor ->
@@ -1873,6 +2010,8 @@ private fun ThreadSystemMessageRow(
     highlightedMentions: Set<String>,
     showReplyAction: Boolean,
     timestampLabel: String,
+    resolvedTaskAssigneeName: String?,
+    resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
     taskOpenEnabled: Boolean,
     taskStatusActionsEnabled: Boolean,
     onOpenThread: () -> Unit,
@@ -1902,6 +2041,7 @@ private fun ThreadSystemMessageRow(
             ThreadSystemMessageExpandedContent(
                 message = message,
                 highlightedMentions = highlightedMentions,
+                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl
             )
@@ -1911,6 +2051,7 @@ private fun ThreadSystemMessageRow(
             showReplyAction = showReplyAction,
             taskOpenEnabled = taskOpenEnabled,
             taskStatusActionsEnabled = taskStatusActionsEnabled,
+            resolvedTaskAssigneeName = resolvedTaskAssigneeName,
             alignEnd = false,
             onOpenThread = onOpenThread,
             onOpenTask = onOpenTask,
@@ -1923,6 +2064,7 @@ private fun ThreadSystemMessageRow(
 private fun ThreadSystemMessageExpandedContent(
     message: KuiklyThreadMessageItem,
     highlightedMentions: Set<String>,
+    resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit
 ) {
@@ -1943,6 +2085,7 @@ private fun ThreadSystemMessageExpandedContent(
             body = message.body.sanitizeThreadSystemText(),
             textStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp, color = SlockColor.TextBlack),
             highlightedMentions = highlightedMentions,
+            resolveTagLabel = resolveMarkdownTagLabel,
             onOpenTag = onOpenMarkdownTag,
             onOpenUrl = onOpenMarkdownUrl
         )
@@ -1979,6 +2122,8 @@ private fun ThreadMessageCard(
     highlightedMentions: Set<String> = emptySet(),
     alignOwnMessageRight: Boolean = false,
     showReplyAction: Boolean = true,
+    resolvedTaskAssigneeName: String? = null,
+    resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     taskOpenEnabled: Boolean = true,
     taskStatusActionsEnabled: Boolean = true,
     timestampLabel: String = message.timestampLabel,
@@ -2073,6 +2218,7 @@ private fun ThreadMessageCard(
                                 body = message.body,
                                 textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
                                 highlightedMentions = highlightedMentions,
+                                resolveTagLabel = resolveMarkdownTagLabel,
                                 onOpenTag = onOpenMarkdownTag,
                                 onOpenUrl = onOpenMarkdownUrl
                             )
@@ -2091,6 +2237,7 @@ private fun ThreadMessageCard(
                             showReplyAction = showReplyAction,
                             taskOpenEnabled = taskOpenEnabled,
                             taskStatusActionsEnabled = taskStatusActionsEnabled,
+                            resolvedTaskAssigneeName = resolvedTaskAssigneeName,
                             alignEnd = alignOwnMessageRight,
                             onOpenThread = { onOpenThread(message.id) },
                             onOpenTask = onOpenTask,
@@ -2177,6 +2324,7 @@ private fun ThreadMessageFooterMeta(
     showReplyAction: Boolean,
     taskOpenEnabled: Boolean,
     taskStatusActionsEnabled: Boolean,
+    resolvedTaskAssigneeName: String? = null,
     alignEnd: Boolean,
     onOpenThread: () -> Unit,
     onOpenTask: (String) -> Unit,
@@ -2200,12 +2348,13 @@ private fun ThreadMessageFooterMeta(
             if (alignEnd) Arrangement.spacedBy(6.dp, Alignment.End) else Arrangement.spacedBy(6.dp)
     ) {
         if (hasTask) {
-            val label = threadMessageTaskMetaLabel(message) ?: "Task"
+            val label = threadMessageTaskMetaLabel(message, resolvedTaskAssigneeName) ?: "Task"
             val selectedStatus = message.taskStatus.threadTaskStatusOption()
             ThreadMetaChip(
                 label = label,
                 icon = null,
                 color = selectedStatus.color,
+                modifier = Modifier.weight(1f, fill = false).widthIn(max = 260.dp),
                 onClick = if (taskOpenEnabled || taskStatusActionsEnabled) {
                     { statusSheetOpen = true }
                 } else {
@@ -2238,6 +2387,7 @@ private fun ThreadMessageFooterMeta(
                 label = replyLabel,
                 icon = "message-square",
                 color = SlockColor.AppBgLightBlue,
+                modifier = Modifier.widthIn(max = 220.dp),
                 onClick = onOpenThread
             )
         }
@@ -2250,9 +2400,17 @@ private fun ThreadMessageFooterMeta(
     }
 }
 
-internal fun threadMessageTaskMetaLabel(message: KuiklyThreadMessageItem): String? {
+internal fun threadMessageTaskMetaLabel(
+    message: KuiklyThreadMessageItem,
+    resolvedTaskAssigneeName: String? = null
+): String? {
     val number = message.taskNumber?.let { "#$it" }
-    val assignee = message.taskAssigneeName?.trim()?.takeIf { it.isNotBlank() }?.removePrefix("@")
+    val assignee =
+        resolvedTaskAssigneeName
+            ?.trim()
+            ?.removePrefix("@")
+            ?.takeIf { it.isNotBlank() }
+            ?: message.taskAssigneeName?.trim()?.takeIf { it.isNotBlank() }?.removePrefix("@")
     if (number == null && assignee == null && message.taskStatus.isNullOrBlank() && message.taskId.isNullOrBlank()) {
         return null
     }
@@ -2763,6 +2921,36 @@ private fun ThreadMessageAvatar(
         }
     Box(
         modifier = Modifier.size(40.dp).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockAvatarWithStatus(
+            statusColor = if (showStatus) SlockColor.AccentLime else null,
+            avatarSize = 40.dp,
+            statusSize = 10.dp
+        ) {
+            SlockAvatar(
+                avatarWireValue = avatarSource,
+                label = avatarLabel,
+                avatarSize = 40.dp
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadMessageStaticAvatar(
+    avatarLabel: String,
+    avatarWireValue: String?,
+    gravatarHash: String?,
+    showStatus: Boolean
+) {
+    val avatarSource =
+        remember(avatarWireValue, gravatarHash) {
+            avatarWireValue?.takeIf { it.isNotBlank() }
+                ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
+        }
+    Box(
+        modifier = Modifier.size(40.dp),
         contentAlignment = Alignment.Center
     ) {
         SlockAvatarWithStatus(

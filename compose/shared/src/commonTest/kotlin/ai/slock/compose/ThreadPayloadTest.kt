@@ -9,6 +9,8 @@ import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.ThreadId
+import ai.slock.compose.markdown.ThreadMarkdownTag
+import ai.slock.compose.markdown.ThreadMarkdownTagKind
 import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
@@ -540,6 +542,64 @@ class ThreadPayloadTest {
         assertEquals(2, message.replyCount)
         assertEquals("#163 @Android-Developer-2", threadMessageTaskMetaLabel(message))
         assertEquals("2 replies", threadMessageRepliesMetaLabel(message))
+    }
+
+    @Test
+    fun resolvesThreadMentionAndAssigneeDisplayNamesFromMembers() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "thread-1",
+                      "members": [
+                        {
+                          "id": "agent_android",
+                          "displayName": "Android Developer",
+                          "handle": "Android-Developer",
+                          "kind": "agent"
+                        },
+                        {
+                          "id": "user_artin",
+                          "displayName": "Artin",
+                          "handle": "artin",
+                          "kind": "human"
+                        }
+                      ],
+                      "messages": [
+                        {
+                          "id": "m1",
+                          "authorId": "agent_android",
+                          "authorName": "Android Developer",
+                          "body": "Ping @agent_android and @user_artin",
+                          "replyCount": 5,
+                          "taskId": "task-1",
+                          "taskNumber": 10,
+                          "taskStatus": "InReview",
+                          "taskAssigneeName": "agent_android"
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                fallbackPageData = "{}",
+                instanceId = "fallback"
+            )
+
+        val message = payload.messages.first()
+        assertEquals(
+            "@Android Developer",
+            payload.resolveMarkdownTagDisplayLabel(
+                ThreadMarkdownTag("@agent_android", ThreadMarkdownTagKind.UserMention)
+            )
+        )
+        assertEquals("Android Developer", payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName))
+        assertEquals(
+            "#10 @Android Developer",
+            threadMessageTaskMetaLabel(
+                message,
+                payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName)
+            )
+        )
     }
 
     @Test

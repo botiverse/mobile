@@ -52,7 +52,7 @@ class KmpVisualScreenshotCaptureTest {
     fun captureThreadMessageRow() {
         captureKmpComponentCase(
             caseId = "thread.message.row",
-            pageName = "compose_thread_message_visual",
+            pageName = "compose_thread_message_row_visual",
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row")
@@ -366,6 +366,26 @@ class KmpVisualScreenshotCaptureTest {
             .put("showMessageSaveAction", false)
             .put("showTaskOpenActions", true)
             .put("showTaskStatusActions", false)
+            .put(
+                "members",
+                JSONArray()
+                    .put(
+                        JSONObject()
+                            .put("id", "agent_android")
+                            .put("displayName", "Android Developer")
+                            .put("handle", "Android-Developer")
+                            .put("kind", "agent")
+                            .put("avatarLabel", "AD")
+                    )
+                    .put(
+                        JSONObject()
+                            .put("id", "user_artin")
+                            .put("displayName", "Artin")
+                            .put("handle", "artin")
+                            .put("kind", "human")
+                            .put("avatarLabel", "AR")
+                    )
+            )
             .put("messages", JSONArray().put(threadMessageRow()))
 
     private fun threadMessageRow(): JSONObject =
@@ -379,7 +399,7 @@ class KmpVisualScreenshotCaptureTest {
             .put("messageType", "Chat")
             .put(
                 "body",
-                "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。关联 #design 和 @Product-UX-Designer。"
+                "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。关联 #design 和 @agent_android，请 @user_artin 过一眼。"
             )
             .put("replyCount", 5)
             .put("unreadReplyCount", 2)
@@ -387,7 +407,7 @@ class KmpVisualScreenshotCaptureTest {
             .put("taskId", "task_msg_10")
             .put("taskNumber", 10)
             .put("taskStatus", "in_review")
-            .put("taskAssigneeName", "Android-Developer")
+            .put("taskAssigneeName", "agent_android")
             .put(
                 "reactions",
                 JSONArray()
