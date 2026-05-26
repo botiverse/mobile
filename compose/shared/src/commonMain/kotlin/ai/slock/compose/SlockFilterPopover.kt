@@ -30,10 +30,12 @@ import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
 
 private const val SlockFilterPopoverWidthValue = 260f
 private const val SlockFilterPopoverEstimatedHeightValue = 360f
 private const val SlockFilterPopoverViewportGapValue = 8f
+private const val SlockFilterPopoverVerticalOffsetValue = 46f
 
 /**
  * Generic option shown by [SlockFilterPopover]. `id` must be stable across recompositions
@@ -77,6 +79,9 @@ internal fun SlockFilterPopover(
     onToggle: (String) -> Unit,
     onClear: () -> Unit,
     onDismiss: () -> Unit,
+    widthDp: Float = SlockFilterPopoverWidthValue,
+    horizontalOffsetDp: Float = 0f,
+    verticalOffsetDp: Float = SlockFilterPopoverVerticalOffsetValue,
     multiSelect: Boolean = true,
     headerSlot: (@Composable () -> Unit)? = null
 ) {
@@ -84,15 +89,15 @@ internal fun SlockFilterPopover(
     var overlayWidth by remember { mutableStateOf(0f) }
     var overlayHeight by remember { mutableStateOf(0f) }
     val localAnchor = Offset(anchor.x - overlayOrigin.x, anchor.y - overlayOrigin.y)
-    val popoverWidth = SlockFilterPopoverWidthValue.dp
+    val popoverWidth = widthDp.dp
     val maxX =
-        (overlayWidth - SlockFilterPopoverWidthValue - SlockFilterPopoverViewportGapValue)
+        (overlayWidth - widthDp - SlockFilterPopoverViewportGapValue)
             .coerceAtLeast(SlockFilterPopoverViewportGapValue)
     val maxY =
         (overlayHeight - SlockFilterPopoverEstimatedHeightValue - SlockFilterPopoverViewportGapValue)
             .coerceAtLeast(SlockFilterPopoverViewportGapValue)
-    val xClamped = localAnchor.x.coerceIn(SlockFilterPopoverViewportGapValue, maxX)
-    val yClamped = (localAnchor.y + 6f).coerceIn(SlockFilterPopoverViewportGapValue, maxY)
+    val xClamped = (localAnchor.x + horizontalOffsetDp).coerceIn(SlockFilterPopoverViewportGapValue, maxX)
+    val yClamped = (localAnchor.y + verticalOffsetDp).coerceIn(SlockFilterPopoverViewportGapValue, maxY)
     val filtered =
         if (searchText.isBlank()) options
         else options.filter { it.label.contains(searchText, ignoreCase = true) }
@@ -128,7 +133,11 @@ internal fun SlockFilterPopover(
                     .padding(SlockSpacing.Sm),
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
             ) {
-                Text(text = title.uppercase(), style = SlockType.SectionLabel, color = SlockColor.TextBlack)
+                Text(
+                    text = title.uppercase(),
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 1.0.sp),
+                    color = SlockColor.TextMutedGray
+                )
                 headerSlot?.invoke()
                 TextField(
                     value = searchText,
@@ -139,10 +148,10 @@ internal fun SlockFilterPopover(
                     maxLines = 1,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 32.dp)
-                        .background(SlockColor.AppBgLightBlue.copy(alpha = 0.6f))
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                        .padding(horizontal = SlockSpacing.Sm, vertical = 6.dp)
+                        .heightIn(min = 34.dp)
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.22f))
+                        .padding(horizontal = 10.dp, vertical = 7.dp)
                 )
                 if (filtered.isEmpty()) {
                     Text(
@@ -160,31 +169,44 @@ internal fun SlockFilterPopover(
                             items(filtered.size, key = { i -> filtered[i].id }) { index ->
                                 val option = filtered[index]
                                 val selected = option.id in selectedIds
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(min = 34.dp)
-                                        .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                                        .clickable {
-                                            onToggle(option.id)
-                                            if (!multiSelect) onDismiss()
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 36.dp)
+                                            .background(if (selected) SlockColor.AppBgLightBlue.copy(alpha = 0.28f) else SlockColor.SurfaceWhite)
+                                            .clickable {
+                                                onToggle(option.id)
+                                                if (!multiSelect) onDismiss()
+                                            }
+                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Box(modifier = Modifier.size(14.dp), contentAlignment = Alignment.Center) {
+                                            if (selected) SlockLucideIcon("check", modifier = Modifier.size(13.dp), color = "#CC000000")
                                         }
-                                        .padding(horizontal = SlockSpacing.Sm, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-                                ) {
-                                    Box(modifier = Modifier.size(14.dp), contentAlignment = Alignment.Center) {
-                                        if (selected) SlockLucideIcon("check", modifier = Modifier.size(14.dp), color = "#FF000000")
+                                        option.icon?.let {
+                                            SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#80000000")
+                                        }
+                                        Text(
+                                            text = option.label,
+                                            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 15.sp),
+                                            color = SlockColor.TextBlack.copy(alpha = 0.78f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
                                     }
-                                    option.icon?.let { SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000") }
-                                    Text(
-                                        text = option.label,
-                                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                                        color = SlockColor.TextBlack,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                    if (index < filtered.lastIndex) {
+                                        Box(
+                                            modifier =
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .heightIn(min = SlockStroke.Thin)
+                                                    .background(SlockColor.BorderBlack.copy(alpha = 0.08f))
+                                        )
+                                    }
                                 }
                             }
                         }

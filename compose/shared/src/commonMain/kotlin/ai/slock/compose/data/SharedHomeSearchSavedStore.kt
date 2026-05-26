@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.Presence
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MessageId
@@ -546,7 +547,10 @@ data class SearchSenderFilterItem(
     val label: String,
     val handle: String,
     val kind: MemberKind,
-    val isSelf: Boolean = false
+    val isSelf: Boolean = false,
+    val avatarWireValue: String? = null,
+    val presence: Presence? = null,
+    val agentStatus: ai.slock.compose.model.AgentStatus? = null
 )
 
 private fun List<MemberProfile>.toSearchSenderFilters(currentUserId: String): List<SearchSenderFilterItem> =
@@ -556,7 +560,10 @@ private fun List<MemberProfile>.toSearchSenderFilters(currentUserId: String): Li
             label = member.displayName.ifBlank { member.handle.ifBlank { member.id.value } },
             handle = member.handle,
             kind = member.kind,
-            isSelf = member.id.value == currentUserId
+            isSelf = member.id.value == currentUserId,
+            avatarWireValue = member.avatar?.wireValue ?: member.avatarUrl,
+            presence = member.presence,
+            agentStatus = member.agentStatus
         )
     }
         .distinctBy { "${it.kind}:${it.id}" }

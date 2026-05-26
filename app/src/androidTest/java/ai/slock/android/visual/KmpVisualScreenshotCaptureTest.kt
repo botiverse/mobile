@@ -111,13 +111,9 @@ class KmpVisualScreenshotCaptureTest {
     fun captureHomeSearchChannelDropdown() {
         captureKmpComponentCase(
             caseId = "home.search.channel-dropdown",
-            pageName = "compose_home_search_visual",
+            pageName = "compose_home_search_channel_dropdown_visual",
             crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 342, heightDp = 420),
-            settleMs = 4_500,
-            beforeScreenshot = {
-                tapDp(252f, 88f)
-                Thread.sleep(600)
-            }
+            settleMs = 4_500
         )
     }
 
