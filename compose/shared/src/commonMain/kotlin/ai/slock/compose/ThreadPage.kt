@@ -73,6 +73,7 @@ import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
@@ -596,6 +597,7 @@ internal fun SharedThreadRouteContent(
         filesPayload = filesPayload,
         composerPayload = composerPayload,
         highlightedMentions = threadState.highlightedMentions,
+        diagnosticsLogger = { bridge.log(it) },
         onBack = onBack,
         onThreadEvent = { action, itemId, attachmentId, tab ->
             when {
@@ -1029,6 +1031,7 @@ private fun ThreadPageContent(
     filesPayload: KuiklyThreadFilesPayload,
     composerPayload: KuiklyThreadComposerPayload,
     highlightedMentions: Set<String>,
+    diagnosticsLogger: (String) -> Unit = {},
     onBack: () -> Unit,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
@@ -1107,7 +1110,8 @@ private fun ThreadPageContent(
                             highlightedMentions = highlightedMentions,
                             onThreadEvent = onThreadEvent,
                             onOpenMarkdownTag = openMarkdownTag,
-                            onOpenMarkdownUrl = openMarkdownUrl
+                            onOpenMarkdownUrl = openMarkdownUrl,
+                            diagnosticsLogger = diagnosticsLogger
                         )
                     KuiklyThreadTab.Tasks ->
                         ThreadTasksTab(
@@ -1383,7 +1387,8 @@ private fun ThreadChatTab(
     highlightedMentions: Set<String>,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
-    onOpenMarkdownUrl: (String) -> Unit
+    onOpenMarkdownUrl: (String) -> Unit,
+    diagnosticsLogger: (String) -> Unit = {}
 ) {
     when (payload.status) {
         "loading" -> ThreadStateMessage("Loading thread…", null)
@@ -1402,7 +1407,8 @@ private fun ThreadChatTab(
                 highlightedMentions = highlightedMentions,
                 onThreadEvent = onThreadEvent,
                 onOpenMarkdownTag = onOpenMarkdownTag,
-                onOpenMarkdownUrl = onOpenMarkdownUrl
+                onOpenMarkdownUrl = onOpenMarkdownUrl,
+                diagnosticsLogger = diagnosticsLogger
             )
     }
 }
@@ -1413,7 +1419,8 @@ private fun ThreadMessagesList(
     highlightedMentions: Set<String>,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
-    onOpenMarkdownUrl: (String) -> Unit
+    onOpenMarkdownUrl: (String) -> Unit,
+    diagnosticsLogger: (String) -> Unit = {}
 ) {
     if (payload.messages.isEmpty()) {
         ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
@@ -1551,6 +1558,9 @@ private fun ThreadMessagesList(
                         onShowActions = { anchor ->
                             actionMenuAnchor = anchor
                             actionMessageId = message.id
+                            diagnosticsLogger(
+                                "thread_message_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
+                            )
                         },
                         onOpenMember = { onThreadEvent("openMember", it, null, null) },
                         onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
@@ -1628,7 +1638,8 @@ private fun ThreadMessagesList(
                     onTaskStatusChange = { action ->
                         actionMessageId = null
                         onThreadEvent(action, message.taskId, null, null)
-                    }
+                    },
+                    diagnosticsLogger = diagnosticsLogger
                 )
             }
         }
@@ -2480,7 +2491,8 @@ private fun ThreadMessageActionMenu(
     onReply: () -> Unit,
     onCopy: () -> Unit,
     onSave: () -> Unit,
-    onTaskStatusChange: (String) -> Unit
+    onTaskStatusChange: (String) -> Unit,
+    diagnosticsLogger: (String) -> Unit = {}
 ) {
     val actions =
         buildList {
@@ -2504,22 +2516,24 @@ private fun ThreadMessageActionMenu(
             }
         }
     val density = LocalDensity.current
+    var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
     var overlaySize by remember { mutableStateOf(Size.Zero) }
     var menuSize by remember { mutableStateOf(Size.Zero) }
     val menuWidth = menuSize.width.takeIf { it > 0f } ?: ThreadMessageMenuWidth.value
     val menuHeight = menuSize.height.takeIf { it > 0f } ?: ThreadMessageMenuFallbackHeight
+    val localAnchor = Offset(anchor.x - overlayOrigin.x, anchor.y - overlayOrigin.y)
     val menuX =
         if (overlaySize.width > 0f) {
             coerceThreadMessageMenuOffset(
-                value = anchor.x - ThreadMessageMenuHorizontalNudge,
+                value = localAnchor.x - ThreadMessageMenuHorizontalNudge,
                 min = ThreadMessageMenuAnchorGap,
                 max = overlaySize.width - menuWidth - ThreadMessageMenuAnchorGap
             )
         } else {
-            anchor.x.coerceAtLeast(ThreadMessageMenuAnchorGap)
+            localAnchor.x.coerceAtLeast(ThreadMessageMenuAnchorGap)
         }
-    val preferredBelowY = anchor.y + ThreadMessageMenuAnchorGap
-    val preferredAboveY = anchor.y - menuHeight - ThreadMessageMenuAnchorGap
+    val preferredBelowY = localAnchor.y + ThreadMessageMenuAnchorGap
+    val preferredAboveY = localAnchor.y - menuHeight - ThreadMessageMenuAnchorGap
     val maxY =
         if (overlaySize.height > 0f) {
             overlaySize.height - menuHeight - ThreadMessageMenuAnchorGap
@@ -2540,11 +2554,20 @@ private fun ThreadMessageActionMenu(
                 max = maxY
             )
         }
+    LaunchedEffect(message.id, anchor, overlayOrigin, overlaySize, menuSize, menuX, menuY) {
+        diagnosticsLogger(
+            "thread_message_menu_position messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y} " +
+                "overlayX=${overlayOrigin.x} overlayY=${overlayOrigin.y} localX=${localAnchor.x} localY=${localAnchor.y} " +
+                "overlayW=${overlaySize.width} overlayH=${overlaySize.height} menuW=$menuWidth menuH=$menuHeight " +
+                "finalX=$menuX finalY=$menuY"
+        )
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
             .clickable(onClick = onDismiss)
             .onGloballyPositioned { coordinates ->
+                overlayOrigin = coordinates.positionInRoot()
                 overlaySize = coordinates.size.toDpSize(density)
             },
         contentAlignment = Alignment.TopStart
