@@ -25,6 +25,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -83,6 +84,9 @@ internal fun SlockFilterPopover(
     horizontalOffsetDp: Float = 0f,
     verticalOffsetDp: Float = SlockFilterPopoverVerticalOffsetValue,
     multiSelect: Boolean = true,
+    surfaceBorderColor: Color = SlockColor.BorderBlack,
+    surfaceShadowColor: Color = SlockColor.ShadowBlack,
+    selectedRowColor: Color = SlockColor.AppBgLightBlue.copy(alpha = 0.28f),
     headerSlot: (@Composable () -> Unit)? = null
 ) {
     var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
@@ -121,13 +125,13 @@ internal fun SlockFilterPopover(
                 modifier = Modifier
                     .matchParentSize()
                     .offset(x = 4.dp, y = 4.dp)
-                    .background(SlockColor.ShadowBlack)
+                    .background(surfaceShadowColor)
             )
             Column(
                 modifier = Modifier
                     .width(popoverWidth)
                     .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .border(SlockStroke.Default, surfaceBorderColor)
                     // Swallow taps inside the card so the scrim dismiss doesn't fire.
                     .clickable(enabled = false, onClick = {})
                     .padding(SlockSpacing.Sm),
@@ -174,7 +178,7 @@ internal fun SlockFilterPopover(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .heightIn(min = 36.dp)
-                                            .background(if (selected) SlockColor.AppBgLightBlue.copy(alpha = 0.28f) else SlockColor.SurfaceWhite)
+                                            .background(if (selected) selectedRowColor else SlockColor.SurfaceWhite)
                                             .clickable {
                                                 onToggle(option.id)
                                                 if (!multiSelect) onDismiss()
@@ -217,7 +221,7 @@ internal fun SlockFilterPopover(
                         modifier = Modifier
                             .heightIn(min = 28.dp)
                             .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .border(SlockStroke.Default, surfaceBorderColor)
                             .clickable(onClick = onClear)
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,

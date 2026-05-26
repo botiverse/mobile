@@ -129,6 +129,7 @@ import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
+import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
@@ -198,6 +199,11 @@ private const val SettingsDestinationAbout = "about"
 private const val SettingsDestinationDiagnostics = "diagnostics"
 private const val SettingsDestinationRouter = "router"
 private const val AppShellRealtimeEvent = "slockRealtimeEvent"
+private val SearchControlsHorizontalPadding = 16.dp
+private val SearchMessagesHorizontalPadding = 16.dp
+private val SearchControlShadowOffset = 2.dp
+private val SearchPopoverBorderColor = SlockColor.EmptyStateGray
+private val SearchPopoverShadowColor = SlockColor.TextBlack.copy(alpha = 0.16f)
 
 @Page(SETTINGS_HOME_PAGE, supportInLocal = true)
 internal class ComposeSettingsHomePage : ai.slock.compose.base.BasePager() {
@@ -3333,6 +3339,8 @@ private fun SharedHomeSearchPanel(
                     onClear = { onIntent(SharedHomeSearchSavedIntent.SetSearchSender(null)) },
                     onDismiss = { openFilterId = null },
                     multiSelect = false,
+                    surfaceBorderColor = SearchPopoverBorderColor,
+                    surfaceShadowColor = SearchPopoverShadowColor,
                     headerSlot = {
                         if (state.senderFiltersLoading) {
                             Text("Loading senders...", style = SlockType.Caption, color = SlockColor.TextMutedGray)
@@ -3357,7 +3365,9 @@ private fun SharedHomeSearchPanel(
                     onDismiss = { openFilterId = null },
                     widthDp = 204f,
                     horizontalOffsetDp = -2f,
-                    multiSelect = false
+                    multiSelect = false,
+                    surfaceBorderColor = SearchPopoverBorderColor,
+                    surfaceShadowColor = SearchPopoverShadowColor
                 )
             "time" ->
                 SlockBaseMenuOverlay(
@@ -3370,7 +3380,10 @@ private fun SharedHomeSearchPanel(
                             onIntent(SharedHomeSearchSavedIntent.SetSearchTimeRange(it))
                         }
                         openFilterId = null
-                    }
+                    },
+                    surfaceBorderColor = SearchPopoverBorderColor,
+                    surfaceShadowColor = SearchPopoverShadowColor,
+                    selectedRowColor = SlockColor.AccentCyan.copy(alpha = 0.45f)
                 )
             else -> Unit
         }
@@ -3589,7 +3602,7 @@ private fun SharedHomePanelSearchField(
     Row(
         modifier =
             Modifier
-                .padding(horizontal = 18.dp)
+                .padding(horizontal = SearchControlsHorizontalPadding)
                 .fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically
@@ -3649,7 +3662,7 @@ private fun SharedHomeSearchFilters(
     ) {
         if (showSenderFilter) {
             LazyRow(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 item {
@@ -3708,7 +3721,7 @@ private fun SharedHomeSearchFilters(
             }
         } else {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -3731,7 +3744,7 @@ private fun SharedHomeSearchFilters(
             }
         }
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -3817,7 +3830,7 @@ private fun SharedHomePanelMessage(
     Row(
         modifier =
             Modifier
-                .padding(horizontal = 18.dp)
+                .padding(horizontal = SearchMessagesHorizontalPadding)
                 .fillMaxWidth()
                 .background(tone.copy(alpha = 0.42f))
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
@@ -3941,7 +3954,7 @@ private fun SharedHomeSearchResultsCount(totalResults: Int) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 12.dp)
+                .padding(horizontal = SearchMessagesHorizontalPadding, vertical = 12.dp)
     )
 }
 
@@ -3952,7 +3965,7 @@ private fun SharedHomeSearchSectionLabel(label: String) {
         style = SlockType.Caption.copy(letterSpacing = 1.6.sp),
         color = SlockColor.TextMutedGray,
         maxLines = 1,
-        modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
+        modifier = Modifier.padding(horizontal = SearchMessagesHorizontalPadding, vertical = 8.dp)
     )
 }
 
@@ -4026,71 +4039,85 @@ private fun SharedHomeThreadResultGroup(
     val firstItem = group.items.firstOrNull()
     val sourceLabel = searchResultSourceLabel(firstItem ?: return)
     val latestTime = firstItem.latestActivityAt ?: firstItem.lastMessageAt
-    Column(
+    Box(
         modifier =
             Modifier
-                .padding(horizontal = 18.dp)
+                .padding(horizontal = SearchMessagesHorizontalPadding)
+                .padding(end = SearchControlShadowOffset, bottom = SearchControlShadowOffset)
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
     ) {
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .offset(x = SearchControlShadowOffset, y = SearchControlShadowOffset)
+                    .background(SlockColor.ShadowBlack)
+        )
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.AccentPink.copy(alpha = 0.08f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .background(SlockColor.AccentPink.copy(alpha = 0.08f))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                SharedHomeMiniMetaBadge("Thread", "message-square", compact = true)
-                Text(
-                    text = sourceLabel,
-                    style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "${group.items.size} hits",
-                    style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1
-                )
-                Spacer(Modifier.weight(1f))
-                if (!latestTime.isNullOrBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SharedHomeMiniMetaBadge("Thread", "message-square", compact = true)
                     Text(
-                        text = latestTime,
+                        text = sourceLabel,
+                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "${group.items.size} hits",
                         style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
                         color = SlockColor.TextMutedGray,
                         maxLines = 1
                     )
+                    Spacer(Modifier.weight(1f))
+                    if (!latestTime.isNullOrBlank()) {
+                        Text(
+                            text = latestTime,
+                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                            color = SlockColor.TextMutedGray,
+                            maxLines = 1
+                        )
+                    }
                 }
+                Text(
+                    text = group.title,
+                    style = SlockType.SectionLabel.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            Text(
-                text = group.title,
-                style = SlockType.SectionLabel.copy(fontSize = 13.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(SlockStroke.Thin)
+                        .background(SlockColor.EmptyStateGray)
+            )
+            SharedHomeSearchMessageResultRow(
+                item = firstItem,
+                nested = true,
+                onOpen = { onOpenItem(firstItem) }
             )
         }
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(SlockStroke.Default)
-                    .background(SlockColor.BorderBlack)
-        )
-        SharedHomeSearchMessageResultRow(
-            item = firstItem,
-            nested = true,
-            onOpen = { onOpenItem(firstItem) }
-        )
     }
 }
 
@@ -4113,7 +4140,7 @@ private fun SharedHomeSearchMessageResultRow(
                             .fillMaxWidth()
                     } else {
                         it
-                            .padding(horizontal = 18.dp, vertical = 4.dp)
+                            .padding(horizontal = SearchMessagesHorizontalPadding, vertical = 4.dp)
                             .fillMaxWidth()
                             .background(SlockColor.SurfaceWhite)
                             .border(SlockStroke.Default, SlockColor.EmptyStateGray)
@@ -4128,9 +4155,7 @@ private fun SharedHomeSearchMessageResultRow(
             horizontalArrangement = Arrangement.spacedBy(if (nested) 6.dp else 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (nested) {
-                Spacer(Modifier.weight(1f))
-            } else {
+            if (!nested) {
                 Text(
                     text = searchResultSourceLabel(item),
                     style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 13.sp),
@@ -4146,7 +4171,7 @@ private fun SharedHomeSearchMessageResultRow(
             if (!sender.isNullOrBlank()) {
                 SharedHomeSearchSenderMeta(
                     sender = sender,
-                    modifier = if (nested) Modifier else Modifier.weight(1f),
+                    modifier = Modifier.weight(1f),
                     compact = compactMeta
                 )
             } else {
@@ -4224,7 +4249,7 @@ private fun SharedHomeLoadMoreRow(
     Box(
         modifier =
             Modifier
-                .padding(horizontal = 18.dp)
+                .padding(horizontal = SearchMessagesHorizontalPadding)
                 .fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
@@ -4279,14 +4304,11 @@ private fun SharedHomeSearchFilterChip(
             selected -> SlockColor.TextBlack
             else -> SlockColor.TextBlack.copy(alpha = 0.62f)
         }
-    Button(
+    SharedHomeSearchControlSurface(
         enabled = enabled,
         onClick = onClick,
-        modifier =
-            modifier
-                .background(background)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 11.dp, vertical = 8.dp)
+        modifier = modifier,
+        background = background
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -4320,21 +4342,34 @@ private fun SharedHomeSearchSortSegmentedControl(
     modifier: Modifier = Modifier,
     onSortChange: (SearchSort) -> Unit
 ) {
-    Row(
-        modifier = modifier.border(SlockStroke.Default, SlockColor.BorderBlack),
-        verticalAlignment = Alignment.CenterVertically
+    Box(
+        modifier =
+            modifier
+                .padding(end = SearchControlShadowOffset, bottom = SearchControlShadowOffset)
     ) {
-        SharedHomeSearchSortSegmentButton(
-            label = "Relevant",
-            selected = sort == SearchSort.Relevance,
-            onClick = { onSortChange(SearchSort.Relevance) }
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .offset(x = SearchControlShadowOffset, y = SearchControlShadowOffset)
+                    .background(SlockColor.ShadowBlack)
         )
-        Box(Modifier.width(SlockStroke.Default).height(30.dp).background(SlockColor.BorderBlack))
-        SharedHomeSearchSortSegmentButton(
-            label = "Recent",
-            selected = sort == SearchSort.Recent,
-            onClick = { onSortChange(SearchSort.Recent) }
-        )
+        Row(
+            modifier = Modifier.background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SharedHomeSearchSortSegmentButton(
+                label = "Relevant",
+                selected = sort == SearchSort.Relevance,
+                onClick = { onSortChange(SearchSort.Relevance) }
+            )
+            Box(Modifier.width(SlockStroke.Default).height(32.dp).background(SlockColor.BorderBlack))
+            SharedHomeSearchSortSegmentButton(
+                label = "Recent",
+                selected = sort == SearchSort.Recent,
+                onClick = { onSortChange(SearchSort.Recent) }
+            )
+        }
     }
 }
 
@@ -4349,9 +4384,9 @@ private fun SharedHomeSearchSortSegmentButton(
         onClick = onClick,
         modifier =
             modifier
-                .heightIn(min = 30.dp)
+                .heightIn(min = 32.dp)
                 .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                .padding(horizontal = 11.dp, vertical = 6.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Text(
             text = label.uppercase(),
@@ -4359,6 +4394,46 @@ private fun SharedHomeSearchSortSegmentButton(
             color = SlockColor.TextBlack,
             maxLines = 1
         )
+    }
+}
+
+@Composable
+private fun SharedHomeSearchControlSurface(
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    background: Color,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier =
+            modifier
+                .padding(end = SearchControlShadowOffset, bottom = SearchControlShadowOffset)
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .offset(x = SearchControlShadowOffset, y = SearchControlShadowOffset)
+                    .background(
+                        if (enabled) {
+                            SlockColor.ShadowBlack
+                        } else {
+                            SlockColor.ShadowBlack.copy(alpha = 0.18f)
+                        }
+                    )
+        )
+        Button(
+            enabled = enabled,
+            onClick = onClick,
+            modifier =
+                Modifier
+                    .background(background)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(horizontal = 11.dp, vertical = 8.dp)
+        ) {
+            content()
+        }
     }
 }
 

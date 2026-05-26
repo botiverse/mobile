@@ -24,6 +24,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -51,6 +52,9 @@ internal fun SlockBaseMenuOverlay(
     selectedId: String,
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit,
+    surfaceBorderColor: Color = SlockColor.BorderBlack,
+    surfaceShadowColor: Color = SlockColor.ShadowBlack,
+    selectedRowColor: Color = SlockColor.BrandYellow,
     modifier: Modifier = Modifier
 ) {
     if (items.isEmpty()) return
@@ -74,19 +78,20 @@ internal fun SlockBaseMenuOverlay(
                 modifier = Modifier
                     .matchParentSize()
                     .offset(x = SlockBaseMenuShadowOffset, y = SlockBaseMenuShadowOffset)
-                    .background(SlockColor.ShadowBlack)
+                    .background(surfaceShadowColor)
             )
             Column(
                 modifier = Modifier
                     .width(SlockBaseMenuWidth)
                     .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .border(SlockStroke.Default, surfaceBorderColor)
             ) {
                 items.forEach { item ->
                     val selected = item.id == selectedId
                     SlockBaseMenuRow(
                         item = item,
                         selected = selected,
+                        selectedRowColor = selectedRowColor,
                         onClick = { onSelect(item.id) }
                     )
                 }
@@ -99,6 +104,7 @@ internal fun SlockBaseMenuOverlay(
 private fun SlockBaseMenuRow(
     item: SlockBaseMenuItem,
     selected: Boolean,
+    selectedRowColor: Color,
     onClick: () -> Unit
 ) {
     Button(
@@ -106,7 +112,7 @@ private fun SlockBaseMenuRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(SlockBaseMenuRowHeight)
-            .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+            .background(if (selected) selectedRowColor else SlockColor.SurfaceWhite)
             .padding(horizontal = 12.dp)
     ) {
         Row(
