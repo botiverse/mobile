@@ -69,6 +69,52 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun selectServerLoadsUnreadSummaryForSelectedServerOnly() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = ServerUnreadHomeApi(
+            unreadByServerId =
+                mapOf(
+                    "server-1" to 3,
+                    "server-2" to 11
+                )
+        )
+        val store = SharedHomeStore(
+            authStore = sessionStore,
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = sessionStore,
+                    api = api,
+                    parseHome = ::parseSlockHome
+                ),
+            scope = scope
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.SelectServer("server-2"))
+
+        val content = store.state.value.content
+        assertTrue(content is SharedHomeContentState.Content)
+        assertEquals("server-2", content.snapshot.server.id.value)
+        assertEquals(11, content.snapshot.unreadTotal)
+        assertEquals(11, content.snapshot.server.unreadCount)
+        assertEquals(
+            listOf(
+                "channels:server-1",
+                "dms:server-1",
+                "unread:server-1",
+                "summary:server-1",
+                "channels:server-2",
+                "dms:server-2",
+                "unread:server-2",
+                "summary:server-2"
+            ),
+            api.calls
+        )
+        scope.cancel()
+    }
+
+    @Test
     fun unauthenticatedSessionBecomesErrorState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
@@ -327,6 +373,61 @@ class SharedHomeStoreTest {
                     else -> "{}"
                 }
             return HomeNetworkResponse(code = 200, bodyText = body)
+        }
+    }
+
+    private class ServerUnreadHomeApi(
+        private val unreadByServerId: Map<String, Int>
+    ) : SlockHomeApi {
+        val calls = mutableListOf<String>()
+
+        override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
+            error("server-specific overload should be used")
+
+        override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse =
+            error("server-specific overload should be used")
+
+        override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
+            error("server-specific overload should be used")
+
+        override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
+            error("server-specific overload should be used")
+
+        override suspend fun channels(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
+            calls += "channels:${serverId.value}"
+            return HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """
+                    [
+                      {"id":"${serverId.value}-channel","name":"${serverId.value} channel","type":"channel","joined":true}
+                    ]
+                    """.trimIndent()
+            )
+        }
+
+        override suspend fun directMessages(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
+            calls += "dms:${serverId.value}"
+            return HomeNetworkResponse(code = 200, bodyText = "[]")
+        }
+
+        override suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
+            calls += "unread:${serverId.value}"
+            return HomeNetworkResponse(code = 200, bodyText = """{"${serverId.value}-channel":1}""")
+        }
+
+        override suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
+            calls += "summary:${serverId.value}"
+            val unread = unreadByServerId[serverId.value] ?: 0
+            return HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """
+                    [
+                      {"serverId":"${serverId.value}","totalUnreadCount":$unread}
+                    ]
+                    """.trimIndent()
+            )
         }
     }
 

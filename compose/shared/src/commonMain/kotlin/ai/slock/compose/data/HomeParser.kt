@@ -63,6 +63,17 @@ private data class DMChannelWireDto(
     val peerGravatarHash: String? = null
 )
 
+@Serializable
+private data class ServerUnreadSummaryWireDto(
+    val serverId: String,
+    val totalUnreadCount: Int = 0,
+    val channelUnreadCount: Int = 0,
+    val directMessageUnreadCount: Int = 0,
+    val mentionCount: Int = 0,
+    val taskUnreadCount: Int = 0,
+    val updatedAt: String? = null
+)
+
 fun parseSlockHome(
     payload: HomeNetworkPayload,
     session: StoredAuthSession,
@@ -106,11 +117,17 @@ fun parseSlockHome(
     val unreadCounts = decodeUnread(payload.unreadCounts.bodyText)
     val channelsWithUnread = channels.applyUnreadCounts(unreadCounts)
     val dmsWithUnread = directMessages.applyUnreadCounts(unreadCounts)
-    val unreadTotal = channelsWithUnread.sumOf { it.unreadCount } + dmsWithUnread.sumOf { it.unreadCount }
+    val channelUnreadTotal = channelsWithUnread.sumOf { it.unreadCount } + dmsWithUnread.sumOf { it.unreadCount }
+    val serverUnreadTotal =
+        decodeServerUnreadSummary(payload.serverUnreadSummary.bodyText)
+            .firstOrNull { it.serverId == currentServer.id.value }
+            ?.totalUnreadCount
+    val unreadTotal = serverUnreadTotal ?: channelUnreadTotal
+    val server = currentServer.copy(unreadCount = unreadTotal)
 
     return DataResult.Content(
         HomeSnapshot(
-            server = currentServer,
+            server = server,
             currentMember = currentMember,
             channels = channelsWithUnread,
             directMessages = dmsWithUnread,
@@ -234,6 +251,16 @@ private fun decodeUnread(body: String?): Map<ChannelId, Int> {
             .mapKeys { (key, _) -> ChannelId(key) }
     } catch (_: SerializationException) {
         emptyMap()
+    }
+}
+
+private fun decodeServerUnreadSummary(body: String?): List<ServerUnreadSummaryWireDto> {
+    val trimmed = body?.trim().orEmpty()
+    if (trimmed.isEmpty()) return emptyList()
+    return try {
+        homeJson.decodeFromString(ListSerializer(ServerUnreadSummaryWireDto.serializer()), trimmed)
+    } catch (_: SerializationException) {
+        emptyList()
     }
 }
 

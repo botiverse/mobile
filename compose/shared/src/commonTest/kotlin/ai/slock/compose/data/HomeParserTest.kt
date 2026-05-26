@@ -84,6 +84,52 @@ class HomeParserTest {
     }
 
     @Test
+    fun usesSelectedServerUnreadSummaryForInboxTotal() {
+        val result =
+            parseSlockHome(
+                payload =
+                    HomeNetworkPayload(
+                        serverId = ServerId("server-1"),
+                        channels =
+                            HomeNetworkResponse(
+                                code = 200,
+                                bodyText =
+                                    """
+                                    [
+                                      {"id":"channel-1","name":"native","type":"channel","joined":true}
+                                    ]
+                                    """.trimIndent()
+                            ),
+                        directMessages = HomeNetworkResponse(code = 200, bodyText = "[]"),
+                        unreadCounts = HomeNetworkResponse(code = 200, bodyText = """{"channel-1":4}"""),
+                        serverUnreadSummary =
+                            HomeNetworkResponse(
+                                code = 200,
+                                bodyText =
+                                    """
+                                    [
+                                      {
+                                        "serverId": "server-1",
+                                        "totalUnreadCount": 9,
+                                        "channelUnreadCount": 4,
+                                        "directMessageUnreadCount": 1,
+                                        "mentionCount": 2,
+                                        "taskUnreadCount": 3
+                                      }
+                                    ]
+                                    """.trimIndent()
+                            )
+                    ),
+                session = sampleSession()
+            )
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(4, result.data.channels.single().unreadCount)
+        assertEquals(9, result.data.unreadTotal)
+        assertEquals(9, result.data.server.unreadCount)
+    }
+
+    @Test
     fun dropsArchivedChannels() {
         val result =
             parseSlockHome(
