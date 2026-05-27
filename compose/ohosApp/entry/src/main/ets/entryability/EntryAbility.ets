@@ -12,6 +12,8 @@ import { KuiklyRenderAdapterManager } from '@kuikly-open/render';
 import { AppVersionMode, Bugly, BuglyBuilder, ModuleName } from 'bugly';
 import { LogAdapter } from '../kuikly/adapter/LogAdapter';
 import { RouterAdapter } from '../kuikly/adapter/RouterAdapter';
+import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
+import { SlockBuglyCrashListener, SlockOhosBuglyDiagnostics } from './SlockOhosBuglyDiagnostics';
 import { SlockOhosCrashReporter } from './SlockOhosCrashReporter';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
@@ -38,6 +40,7 @@ export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
     this.initBugly();
+    this.reportLastExitReason(launchParam);
     SlockOhosCrashReporter.install(this.context);
   }
 
@@ -118,25 +121,52 @@ export default class EntryAbility extends UIAbility {
     try {
       const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
       const builder = new BuglyBuilder();
+      const deviceId = this.resolveBuglyDeviceId();
+      const deviceModel = `${deviceInfo.manufacture} ${deviceInfo.productModel}`.trim();
       builder.appId = BUGLY_APP_ID;
       builder.appKey = BUGLY_APP_KEY;
-      builder.deviceId = this.resolveBuglyDeviceId();
+      builder.deviceId = deviceId;
       builder.platform = BuglyBuilder.PLATFORM_PRO;
       builder.appVersion = bundleInfo.versionName;
       builder.appVersionMode = BUGLY_DEBUG_MODE ? AppVersionMode.DEBUG : AppVersionMode.RELEASE;
       builder.buildNum = `${bundleInfo.versionCode}`;
       builder.appChannel = BUGLY_APP_CHANNEL;
-      builder.deviceModel = `${deviceInfo.manufacture} ${deviceInfo.productModel}`.trim();
+      builder.deviceModel = deviceModel;
       builder.debugMode = BUGLY_DEBUG_MODE;
       builder.sdkLogMode = BUGLY_DEBUG_MODE;
       builder.initDelay = 0;
+      builder.crashListener = new SlockBuglyCrashListener();
       builder.enableJsCrashProtect = false;
+      builder.enablePrivacyInfoAuthorized = true;
       builder.enablePerfModules = ModuleName.AllModules;
       Bugly.init(this.context.getApplicationContext(), builder);
+      Bugly.setCrashMonitorAble(true, true);
+      SlockOhosBuglyDiagnostics.init(this.context, {
+        appId: BUGLY_APP_ID,
+        appKey: BUGLY_APP_KEY,
+        deviceId,
+        appVersion: bundleInfo.versionName,
+        deviceModel,
+        debugMode: BUGLY_DEBUG_MODE,
+      });
+      SlockOhosDiagnostics.setPersistentRecorder((tag: string, message: string): void => {
+        SlockOhosBuglyDiagnostics.record(tag, message);
+      });
       EntryAbility.buglyInitialized = true;
       hilog.info(0x0000, 'testTag', '%{public}s', 'Bugly initialized');
     } catch (err) {
       hilog.error(0x0000, 'testTag', 'Failed to initialize Bugly. Cause: %{public}s', JSON.stringify(err) ?? '');
+    }
+  }
+
+  private reportLastExitReason(launchParam: AbilityConstant.LaunchParam): void {
+    if (!EntryAbility.buglyInitialized) {
+      return;
+    }
+    try {
+      Bugly.postLastExitReason('EntryAbility', launchParam);
+    } catch (err) {
+      hilog.warn(0x0000, 'testTag', 'Failed to report Bugly last exit reason. Cause: %{public}s', JSON.stringify(err) ?? '');
     }
   }
 

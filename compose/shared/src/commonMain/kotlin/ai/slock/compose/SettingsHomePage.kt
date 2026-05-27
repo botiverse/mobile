@@ -1272,7 +1272,16 @@ private fun SettingsAppShellContent(
                 }
             }
             SharedSettingsEffect.SendFeedback -> {
-                settingsCapabilities.sendFeedback()
+                val ok = settingsCapabilities.sendFeedback()
+                if (ok) {
+                    onSettingsIntent(SharedSettingsIntent.Refresh)
+                }
+            }
+            is SharedSettingsEffect.RunBuglyCrashMonitorAction -> {
+                val ok = settingsCapabilities.buglyCrashMonitorAction(effect.action)
+                if (ok) {
+                    onSettingsIntent(SharedSettingsIntent.Refresh)
+                }
             }
             SharedSettingsEffect.RequestNotificationPermission -> {
                 val result = settingsCapabilities.requestNotificationPermission()
@@ -1378,7 +1387,8 @@ private fun SettingsAppShellContent(
                     onCopyLogs = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
                     onShareLogs = { onSettingsIntent(SharedSettingsIntent.ShareDiagnostics) },
                     onClearLogs = { onSettingsIntent(SharedSettingsIntent.ClearDiagnostics) },
-                    onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
+                    onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) },
+                    onBuglyCrashAction = { action -> onSettingsIntent(SharedSettingsIntent.RunBuglyCrashMonitorAction(action)) }
                 )
             else ->
                 SettingsSharedPlaceholder(
@@ -1567,7 +1577,8 @@ private fun SharedSettingsDiagnosticsContent(
     onCopyLogs: () -> Unit,
     onShareLogs: () -> Unit,
     onClearLogs: () -> Unit,
-    onSendFeedback: () -> Unit
+    onSendFeedback: () -> Unit,
+    onBuglyCrashAction: (String) -> Unit
 ) {
     val entries =
         when (state) {
@@ -1581,6 +1592,10 @@ private fun SharedSettingsDiagnosticsContent(
             "shareLogs" -> onShareLogs()
             "clearLogs" -> onClearLogs()
             "feedback" -> onSendFeedback()
+            "buglyPostTestError",
+            "buglyTestJsCrash",
+            "buglyTestCppCrash",
+            "buglyTestFreeze" -> onBuglyCrashAction(action)
         }
     }
 }
@@ -2063,7 +2078,7 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(): KuiklySharedSettingsPa
                             KuiklySharedSettingsRow("diagnostics", "clipboard-list", "Diagnostics log", "Open sanitized runtime logs.", status = "Open", enabled = true),
                             KuiklySharedSettingsRow("copyBuild", "copy", "Copy version/build", buildSummary(), status = "Copy", enabled = true),
                             KuiklySharedSettingsRow("openSlock", "external-link", "Open Slock", "Open app.slock.ai in the system browser.", status = "Open", enabled = true),
-                            KuiklySharedSettingsRow("feedback", "message-square-plus", "Send feedback", "Open the host feedback/share flow with diagnostics.", status = "Send", enabled = true)
+                            KuiklySharedSettingsRow("feedback", "message-square-plus", "Upload diagnostics", "Send sanitized logs to Bugly for support.", status = "Upload", enabled = true)
                         )
                 )
             )
@@ -2125,8 +2140,18 @@ private fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                         listOf(
                             KuiklySharedSettingsRow("copyLogs", "copy", "Copy logs", "Copy sanitized diagnostics to the clipboard.", status = if (logsAvailable) "Copy" else "Disabled", enabled = logsAvailable),
                             KuiklySharedSettingsRow("shareLogs", "share", "Share logs", "Open the native share sheet with sanitized diagnostics.", status = if (logsAvailable) "Share" else "Disabled", enabled = logsAvailable),
-                            KuiklySharedSettingsRow("feedback", "message-square-plus", "Send feedback", "Open the host feedback/share flow with diagnostics.", status = "Send", enabled = true),
+                            KuiklySharedSettingsRow("feedback", "message-square-plus", "Upload diagnostics", "Send sanitized logs to Bugly for support.", status = "Upload", enabled = true),
                             KuiklySharedSettingsRow("clearLogs", "trash-2", "Clear logs", "Clear the sanitized local diagnostics buffer.", status = if (logsAvailable) "Clear" else "Disabled", enabled = logsAvailable)
+                        )
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Bugly validation",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow("buglyPostTestError", "bug", "Report test error", "Post a non-crashing custom error with diagnostics attached.", status = "Report", enabled = true),
+                            KuiklySharedSettingsRow("buglyTestJsCrash", "triangle-alert", "Simulate JS crash", "Crash the app to verify Bugly crash upload after restart.", status = "Crash", enabled = true),
+                            KuiklySharedSettingsRow("buglyTestCppCrash", "triangle-alert", "Simulate native crash", "Crash the app to verify native crash upload after restart.", status = "Crash", enabled = true),
+                            KuiklySharedSettingsRow("buglyTestFreeze", "timer", "Simulate freeze", "Trigger Bugly AppFreeze validation from the SDK.", status = "Freeze", enabled = true)
                         )
                 ),
                 KuiklySharedSettingsSection(title = "Log", rows = logRows)

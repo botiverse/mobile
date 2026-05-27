@@ -18,13 +18,21 @@ export class SlockOhosDiagnostics {
   ];
 
   private static entries: SlockOhosDiagnosticEntry[] = [];
+  private static persistentRecorder: ((tag: string, message: string) => void) | null = null;
+
+  static setPersistentRecorder(recorder: ((tag: string, message: string) => void) | null): void {
+    SlockOhosDiagnostics.persistentRecorder = recorder;
+  }
 
   static record(tag: string, message: string, timestampMillis: number = Date.now()): void {
+    const safeTag = SlockOhosDiagnostics.sanitize(tag).slice(0, 48);
+    const safeMessage = SlockOhosDiagnostics.sanitize(message).slice(0, 280);
     SlockOhosDiagnostics.entries.push({
       timestampMillis,
-      tag: SlockOhosDiagnostics.sanitize(tag).slice(0, 48),
-      message: SlockOhosDiagnostics.sanitize(message).slice(0, 280),
+      tag: safeTag,
+      message: safeMessage,
     });
+    SlockOhosDiagnostics.persistentRecorder?.(safeTag, safeMessage);
     if (SlockOhosDiagnostics.entries.length > SlockOhosDiagnostics.MAX_ENTRIES) {
       SlockOhosDiagnostics.entries.splice(
         0,
@@ -41,6 +49,10 @@ export class SlockOhosDiagnostics {
     return SlockOhosDiagnostics.recent(limit)
       .map((entry: SlockOhosDiagnosticEntry) => `${entry.timestampMillis} ${entry.tag}: ${entry.message}`)
       .join('\n');
+  }
+
+  static clear(): void {
+    SlockOhosDiagnostics.entries = [];
   }
 
   static sanitize(value: string): string {

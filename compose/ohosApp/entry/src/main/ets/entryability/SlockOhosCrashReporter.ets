@@ -4,6 +4,7 @@ import fs from '@ohos.file.fs';
 import hilog from '@ohos.hilog';
 import { SlockOhosClipboard } from '../kuikly/SlockOhosClipboard';
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
+import { SlockOhosBuglyDiagnostics } from './SlockOhosBuglyDiagnostics';
 
 const TAG: string = 'SlockOhosCrashReporter';
 const CRASH_LOG_MAX_CHARS: number = 180000;
@@ -44,6 +45,13 @@ export class SlockOhosCrashReporter {
     } catch (error) {
       hilog.error(0x0000, TAG, 'Failed to write crash log: %{public}s', SlockOhosCrashReporter.safeString(error));
     }
+    SlockOhosBuglyDiagnostics.storeCrashRelatedError(
+      context,
+      `SlockOhos${reason}`,
+      SlockOhosDiagnostics.sanitize(errorText).slice(0, 2000),
+      SlockOhosDiagnostics.sanitize(errorText),
+      crashLog,
+    );
     try {
       SlockOhosClipboard.copyText(crashLog);
       hilog.error(0x0000, TAG, '%{public}s', 'Crash log copied to pasteboard');

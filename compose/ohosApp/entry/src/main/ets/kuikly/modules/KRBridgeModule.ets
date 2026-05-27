@@ -1,4 +1,4 @@
-import { common } from '@kit.AbilityKit';
+import { bundleManager, common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { relationalStore } from '@kit.ArkData';
 import { picker, fileUri } from '@kit.CoreFileKit';
@@ -10,6 +10,8 @@ import { KuiklyRenderBaseModule } from '@kuikly-open/render';
 import { KuiklyRenderCallback } from '@kuikly-open/render';
 import util from '@ohos.util';
 import fs from '@ohos.file.fs';
+import deviceInfo from '@ohos.deviceInfo';
+import { SlockOhosBuglyDiagnostics } from '../../entryability/SlockOhosBuglyDiagnostics';
 import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
 import { SlockOhosClipboard } from '../SlockOhosClipboard';
@@ -19,6 +21,12 @@ interface OhosPickedThreadAttachment {
   fileName: string;
   mimeType: string;
   bytes: Uint8Array;
+}
+
+interface OhosDiagnosticEntryPayload {
+  timestampLabel: string;
+  tag: string;
+  message: string;
 }
 
 export class KRBridgeModule extends KuiklyRenderBaseModule {
@@ -302,6 +310,48 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const records = this.parseRecord(params);
       const action = records["action"] as string;
       switch (action) {
+        case "loadAbout": {
+          callback(await this.loadAboutCapability());
+          return;
+        }
+        case "loadDiagnostics": {
+          callback(this.loadDiagnosticsCapability());
+          return;
+        }
+        case "copyDiagnostics": {
+          callback(this.copyDiagnosticsCapability());
+          return;
+        }
+        case "shareDiagnostics": {
+          callback(this.copyDiagnosticsCapability());
+          return;
+        }
+        case "clearDiagnostics": {
+          SlockOhosDiagnostics.clear();
+          SlockOhosDiagnostics.record("Settings", "diagnostics_cleared");
+          callback({ "status": "ok", "code": "diagnostics_cleared" });
+          return;
+        }
+        case "sendFeedback": {
+          callback(this.uploadBuglyDiagnosticsCapability());
+          return;
+        }
+        case "buglyPostTestError": {
+          callback(this.postBuglyTestErrorCapability());
+          return;
+        }
+        case "buglyTestJsCrash": {
+          callback(SlockOhosBuglyDiagnostics.testCrash("js"));
+          return;
+        }
+        case "buglyTestCppCrash": {
+          callback(SlockOhosBuglyDiagnostics.testCrash("cpp"));
+          return;
+        }
+        case "buglyTestFreeze": {
+          callback(SlockOhosBuglyDiagnostics.testCrash("freeze"));
+          return;
+        }
         case "requestNotificationPermission": {
           callback(await this.requestNotificationPermissionCapability());
           return;
@@ -331,6 +381,67 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     } catch (error) {
       callback(this.notificationCapabilityError("settings_capability_failed", error));
     }
+  }
+
+  private async loadAboutCapability(): Promise<Record<string, Object>> {
+    const context = getContext(this) as common.UIAbilityContext;
+    const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
+    const session = await this.readStoredAuthSession().catch((_error: BusinessError) => null);
+    const user = (session?.["user"] as Record<string, Object> | undefined) ?? null;
+    const server = this.currentServer(session);
+    const notificationsEnabled = await notificationManager.isNotificationEnabled().catch((_error: BusinessError) => false);
+    return {
+      "status": "ok",
+      "appName": "Slock",
+      "versionLabel": bundleInfo.versionName,
+      "buildLabel": `${bundleInfo.versionCode}`,
+      "packageName": bundleInfo.name,
+      "signedInUserLabel": this.bestUserLabel(user),
+      "selectedServerLabel": this.bestServerLabel(server),
+      "sessionStatusLabel": session == null ? "Signed out" : "Signed in",
+      "socketStatusLabel": "Shared shell",
+      "notificationStatusLabel": notificationsEnabled ? "Enabled" : "Disabled",
+      "deviceLabel": `${deviceInfo.manufacture} ${deviceInfo.productModel}`.trim(),
+      "platformLabel": `${deviceInfo.osFullName} / ${deviceInfo.displayVersion} / API ${deviceInfo.sdkApiVersion}`,
+      "filesDir": context.filesDir
+    };
+  }
+
+  private loadDiagnosticsCapability(): Record<string, Object> {
+    const entries: Array<OhosDiagnosticEntryPayload> = SlockOhosDiagnostics.recent(500).map((entry): OhosDiagnosticEntryPayload => {
+      return {
+        "timestampLabel": new Date(entry.timestampMillis).toString(),
+        "tag": entry.tag,
+        "message": entry.message
+      };
+    });
+    return { "status": "ok", "entries": entries };
+  }
+
+  private copyDiagnosticsCapability(): Record<string, Object> {
+    const context = getContext(this) as common.UIAbilityContext;
+    SlockOhosClipboard.copyText(SlockOhosBuglyDiagnostics.exportDiagnosticsText(context));
+    SlockOhosDiagnostics.record("Settings", "diagnostics_copied");
+    return { "status": "ok", "code": "diagnostics_copied" };
+  }
+
+  private uploadBuglyDiagnosticsCapability(): Record<string, Object> {
+    const context = getContext(this) as common.UIAbilityContext;
+    const result = SlockOhosBuglyDiagnostics.uploadDiagnostics(context);
+    if (result["status"] === "ok") {
+      SlockOhosDiagnostics.record("Settings", "diagnostics_upload_requested");
+    }
+    return result;
+  }
+
+  private postBuglyTestErrorCapability(): Record<string, Object> {
+    const extraData = SlockOhosBuglyDiagnostics.exportDiagnosticsText(getContext(this) as common.UIAbilityContext);
+    return SlockOhosBuglyDiagnostics.reportCaughtError(
+      "SlockManualBuglyError",
+      "Manual Bugly custom error from Settings",
+      "at Settings.Diagnostics.UploadCrashMonitorValidation",
+      extraData
+    );
   }
 
   private async requestNotificationPermissionCapability(): Promise<Record<string, Object>> {
@@ -528,6 +639,35 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       return "";
     }
     return ((servers[0]["id"] as string | undefined) ?? "").trim();
+  }
+
+  private currentServer(session: Record<string, Object> | null): Record<string, Object> | null {
+    if (session == null) {
+      return null;
+    }
+    const servers = (session["servers"] as Array<Record<string, Object>> | undefined) ?? [];
+    if (servers.length === 0) {
+      return null;
+    }
+    const selectedServerId = ((session["selectedServerId"] as string | undefined) ?? "").trim();
+    return servers.find((server: Record<string, Object>) => {
+      return ((server["id"] as string | undefined) ?? "") === selectedServerId;
+    }) ?? servers[0];
+  }
+
+  private bestUserLabel(user: Record<string, Object> | null): string {
+    if (user == null) {
+      return "";
+    }
+    return ((user["name"] as string | undefined) ?? (user["displayName"] as string | undefined) ??
+      (user["email"] as string | undefined) ?? "").trim();
+  }
+
+  private bestServerLabel(server: Record<string, Object> | null): string {
+    if (server == null) {
+      return "";
+    }
+    return ((server["name"] as string | undefined) ?? (server["id"] as string | undefined) ?? "").trim();
   }
 
   private readPickedThreadAttachments(uris: Array<string>, imageOnly: boolean): Array<OhosPickedThreadAttachment> {
