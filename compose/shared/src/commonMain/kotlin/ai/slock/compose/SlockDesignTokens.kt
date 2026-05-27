@@ -18,6 +18,7 @@ internal object SlockColor {
     val AccentLavender = Color(0xFFBBAFE6)
     val AccentLime = Color(0xFFA9D877)
     val AccentRed = Color(0xFFF97264)
+    val AccentStone = Color(0xFFC0B9B1)
     val SurfaceWhite = Color(0xFFFFFFFF)
     val SurfaceCream = Color(0xFFFFFAEF)
     val AppBgLightBlue = Color(0xFFE6F8FF)

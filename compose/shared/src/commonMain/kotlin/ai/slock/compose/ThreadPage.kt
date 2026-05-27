@@ -81,6 +81,7 @@ import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Density
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -2524,7 +2525,8 @@ private fun ThreadMessageFooterMeta(
                 }
             ThreadMetaChip(
                 label = label,
-                icon = null,
+                icon = selectedStatus.icon,
+                iconSize = selectedStatus.iconSize,
                 color = selectedStatus.color,
                 modifier = Modifier.weight(1f, fill = false).widthIn(max = 260.dp),
                 onClick = taskChipClick
@@ -2535,7 +2537,8 @@ private fun ThreadMessageFooterMeta(
             ThreadMetaChip(
                 label = replyLabel,
                 icon = "message-square",
-                color = SlockColor.AppBgLightBlue,
+                iconSize = 12.dp,
+                color = SlockColor.AccentCyan.copy(alpha = 0.2f),
                 modifier = Modifier.widthIn(max = 220.dp),
                 onClick = { _ -> onOpenThread() }
             )
@@ -2587,7 +2590,8 @@ private data class ThreadTaskStatusOption(
     val key: String,
     val label: String,
     val icon: String,
-    val color: Color
+    val color: Color,
+    val iconSize: Dp = 10.dp
 )
 
 private val threadTaskStatusOptions =
@@ -2596,7 +2600,7 @@ private val threadTaskStatusOptions =
         ThreadTaskStatusOption("InProgress", "In progress", "play", SlockColor.AccentCyan),
         ThreadTaskStatusOption("InReview", "In review", "eye", SlockColor.AccentLavender),
         ThreadTaskStatusOption("Done", "Done", "circle-check-big", SlockColor.AccentLime),
-        ThreadTaskStatusOption("Closed", "Closed", "ban", SlockColor.AccentRed)
+        ThreadTaskStatusOption("Closed", "Closed", "ban", SlockColor.AccentStone)
     )
 
 private val ThreadTaskStatusMenuItems: List<SlockBaseMenuItem> =
@@ -2671,6 +2675,7 @@ private fun String.decodeBasicHtmlEntities(): String =
 private fun ThreadMetaChip(
     label: String,
     icon: String?,
+    iconSize: Dp = 10.dp,
     color: Color,
     onClick: ((Offset) -> Unit)?,
     modifier: Modifier = Modifier
@@ -2680,20 +2685,21 @@ private fun ThreadMetaChip(
         enabled = onClick != null,
         pressFeedback = onClick != null,
         modifier = modifier
+            .heightIn(min = 20.dp)
             .border(SlockStroke.Thin, SlockColor.BorderBlack)
             .background(color)
-            .padding(horizontal = 6.dp, vertical = 3.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             icon?.takeIf { it.isNotBlank() }?.let {
-                SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
+                SlockLucideIcon(it, modifier = Modifier.size(iconSize), color = "#FF000000")
             }
             Text(
                 text = label,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
