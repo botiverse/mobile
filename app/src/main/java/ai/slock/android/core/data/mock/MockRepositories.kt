@@ -17,6 +17,9 @@ import ai.slock.compose.data.AgentSkillGroup
 import ai.slock.compose.data.AgentSkillPathGroup
 import ai.slock.compose.data.AgentSkillSummary
 import ai.slock.compose.data.AgentSkillsSnapshot
+import ai.slock.compose.data.AgentLifecycleActionResult
+import ai.slock.compose.data.AgentMachineAssignmentRequest
+import ai.slock.compose.data.AgentResetRequest
 import ai.slock.compose.data.AgentWorkspaceSnapshot
 import ai.slock.compose.data.AgentWorkspaceChildrenSnapshot
 import ai.slock.compose.data.AgentWorkspaceFilePreviewSnapshot
@@ -54,6 +57,14 @@ import ai.slock.compose.data.SendMessageResult
 import ai.slock.compose.data.ServerListSnapshot
 import ai.slock.compose.data.ServerRepository
 import ai.slock.compose.data.SettingsComputerDetailSnapshot
+import ai.slock.compose.data.SettingsComputerActionResult
+import ai.slock.compose.data.SettingsComputerKeyRotationResult
+import ai.slock.compose.data.SettingsComputerRegisterRequest
+import ai.slock.compose.data.SettingsComputerRegistrationResult
+import ai.slock.compose.data.SettingsComputerRenameRequest
+import ai.slock.compose.data.SettingsComputerRuntimeModelsSnapshot
+import ai.slock.compose.data.SettingsComputerSnapshot
+import ai.slock.compose.data.SettingsComputerWorkspaceDeleteRequest
 import ai.slock.compose.data.SettingsComputersSnapshot
 import ai.slock.compose.data.SettingsBillingCurrentPlanSnapshot
 import ai.slock.compose.data.SettingsBillingPlanSnapshot
@@ -160,6 +171,64 @@ class MockSettingsRepository(
         resultFor(scenario, EmptyReason.NoSettingsAvailable) {
             MockSeedData.settingsComputerDetailSnapshot.copy(
                 computer = MockSeedData.settingsComputerDetailSnapshot.computer.copy(id = machineId)
+            )
+        }
+
+    override suspend fun registerComputer(
+        request: SettingsComputerRegisterRequest
+    ): DataResult<SettingsComputerRegistrationResult> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            SettingsComputerRegistrationResult(
+                machine = MockSeedData.settingsComputersSnapshot.computers.first().copy(
+                    id = request.name.ifBlank { "mock-computer" }.lowercase().replace(" ", "-"),
+                    name = request.name.ifBlank { "Mock computer" }
+                ),
+                apiKeyPrefix = "slock_mock"
+            )
+        }
+
+    override suspend fun renameComputer(
+        request: SettingsComputerRenameRequest
+    ): DataResult<SettingsComputerSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            MockSeedData.settingsComputersSnapshot.computers.first().copy(
+                id = request.machineId,
+                name = request.name
+            )
+        }
+
+    override suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            SettingsComputerActionResult(machineId = machineId, success = true, action = "delete")
+        }
+
+    override suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            SettingsComputerKeyRotationResult(machineId = machineId, apiKeyPrefix = "slock_rotated")
+        }
+
+    override suspend fun getComputerRuntimeModels(
+        machineId: String,
+        runtime: String
+    ): DataResult<SettingsComputerRuntimeModelsSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            SettingsComputerRuntimeModelsSnapshot(
+                machineId = machineId,
+                runtime = runtime,
+                models = listOf("gpt-5", "gpt-5-mini"),
+                defaultModel = "gpt-5"
+            )
+        }
+
+    override suspend fun deleteComputerWorkspace(
+        request: SettingsComputerWorkspaceDeleteRequest
+    ): DataResult<SettingsComputerActionResult> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            SettingsComputerActionResult(
+                machineId = request.machineId,
+                success = true,
+                action = "delete_workspace",
+                directoryName = request.directoryName
             )
         }
 
@@ -617,6 +686,56 @@ class MockMemberRepository(
         agentId: MemberId
     ): DataResult<AgentSkillsSnapshot> =
         resultFor(scenario, EmptyReason.NoMembers) { mockAgentSkills(agentId) }
+
+    override suspend fun startAgent(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentLifecycleActionResult> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            AgentLifecycleActionResult(agentId = agentId, success = true, action = "start")
+        }
+
+    override suspend fun stopAgent(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentLifecycleActionResult> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            AgentLifecycleActionResult(agentId = agentId, success = true, action = "stop")
+        }
+
+    override suspend fun resetAgent(
+        priority: DataRequestPriority,
+        request: AgentResetRequest
+    ): DataResult<AgentLifecycleActionResult> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            AgentLifecycleActionResult(
+                agentId = request.agentId,
+                success = true,
+                action = "reset",
+                resetMode = request.mode
+            )
+        }
+
+    override suspend fun deleteAgent(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentLifecycleActionResult> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            AgentLifecycleActionResult(agentId = agentId, success = true, action = "delete")
+        }
+
+    override suspend fun assignAgentMachine(
+        priority: DataRequestPriority,
+        request: AgentMachineAssignmentRequest
+    ): DataResult<AgentLifecycleActionResult> =
+        resultFor(scenario, EmptyReason.NoMembers) {
+            AgentLifecycleActionResult(
+                agentId = request.agentId,
+                success = true,
+                action = "assign_machine",
+                machineId = request.machineId
+            )
+        }
 
     override suspend fun getChannelMembers(
         priority: DataRequestPriority,

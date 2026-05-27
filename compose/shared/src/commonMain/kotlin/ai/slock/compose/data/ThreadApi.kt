@@ -98,7 +98,7 @@ internal class SlockThreadApiClient(
             .mapThreadBody(
                 "thread_attachment_url_contract_mismatch",
                 ThreadAttachmentUrlResponseDto.serializer()
-            ) { wire, _ ->
+            ) { wire ->
                 val url = wire.url.takeIf { it.isNotBlank() } ?: return@mapThreadBody null
                 ThreadAttachmentOpenTarget(url = url, expiresAt = wire.expiresAt)
             }
@@ -114,7 +114,7 @@ internal class SlockThreadApiClient(
 
     override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): ThreadApiResult<ThreadActionResult> =
         transport.createOrOpenThread(channelId, parentMessageId)
-            .mapThreadBody("thread_create_contract_mismatch", CreateOrOpenThreadResponseDto.serializer()) { wire, _ ->
+            .mapThreadBody("thread_create_contract_mismatch", CreateOrOpenThreadResponseDto.serializer()) { wire ->
                 val tid = wire.threadChannelId.takeIf { it.isNotBlank() } ?: return@mapThreadBody null
                 ThreadActionResult(
                     threadChannelId = ChannelId(tid),
