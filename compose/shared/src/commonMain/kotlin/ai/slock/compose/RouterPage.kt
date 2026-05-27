@@ -38,6 +38,8 @@ import ai.slock.compose.data.KeyValueRouterPreferenceRepository
 import ai.slock.compose.data.kuiklySharedPreferenceStore
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 
+private const val SLOCK_NATIVE_ICON_GALLERY_PAGE = "native_icon_gallery"
+
 @Page("router", supportInLocal = true)
 internal class ComposeRoutePager : BasePager() {
 
@@ -134,6 +136,12 @@ internal fun ComposeRouteImpl() {
             jumpPage(localPager, SLOCK_LUCIDE_ICON_GALLERY_PAGE)
         }) {
             Text("Lucide图标预览")
+        }
+
+        Button({
+            jumpPage(localPager, SLOCK_NATIVE_ICON_GALLERY_PAGE)
+        }) {
+            Text("Native SVG/Path 图标预览")
         }
 
         Button({

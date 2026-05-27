@@ -5,6 +5,7 @@ import { KuiklyViewDelegate } from '../kuikly/KuiklyViewDelegate';
 import globalNativeManager from '../kuikly/MyNativeManager';
 import slockOhosMotionBridge from '../kuikly/SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
+import { SLOCK_NATIVE_ICON_GALLERY_PAGE, SlockNativeIconGallery } from './SlockNativeIconGallery';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
 const SAFE_AREA_BOTTOM_PX = 'slockSafeAreaBottomPx';
@@ -33,23 +34,27 @@ struct Index {
 
   build() {
     Stack() {
-      Kuikly({
-        useOhSharedPreferences: true,
-        pagerName: this.pageName ?? DEFAULT_PAGE_NAME,
-        pagerData: this.pageDataWithSafeArea(),
-        delegate: this.kuiklyViewDelegate,
-        nativeManager: globalNativeManager,
-        onControllerReadyCallback: (controller: KRNativeRenderController) => {
-          this.controller = controller;
-          slockOhosMotionBridge.setController(controller);
-          slockOhosRealtimeBridge.setController(controller);
-        },
-        onRenderException: (exception: Error, reason: ErrorReason) => {
-          this.exception = `${exception.name}:\n${exception.message}`;
-        },
-      })
-      if (this.exception) {
-        Text(this.exception)
+      if (this.pageName === SLOCK_NATIVE_ICON_GALLERY_PAGE) {
+        SlockNativeIconGallery({ safeAreaTopPx: this.safeAreaTopPx })
+      } else {
+        Kuikly({
+          useOhSharedPreferences: true,
+          pagerName: this.pageName ?? DEFAULT_PAGE_NAME,
+          pagerData: this.pageDataWithSafeArea(),
+          delegate: this.kuiklyViewDelegate,
+          nativeManager: globalNativeManager,
+          onControllerReadyCallback: (controller: KRNativeRenderController) => {
+            this.controller = controller;
+            slockOhosMotionBridge.setController(controller);
+            slockOhosRealtimeBridge.setController(controller);
+          },
+          onRenderException: (exception: Error, reason: ErrorReason) => {
+            this.exception = `${exception.name}:\n${exception.message}`;
+          },
+        })
+        if (this.exception) {
+          Text(this.exception)
+        }
       }
     }
     .width('100%')

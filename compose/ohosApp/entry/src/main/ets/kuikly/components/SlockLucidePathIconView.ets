@@ -50,17 +50,18 @@ export struct SlockLucidePathIcon {
     Stack() {
       ForEach(this.renderView.entries(), (entry: SlockLucidePathEntry) => {
         Path({
-          width: entry.viewportWidth,
-          height: entry.viewportHeight,
+          width: `${entry.viewportWidth}px`,
+          height: `${entry.viewportHeight}px`,
           commands: entry.commands,
         })
-          .width('100%')
-          .height('100%')
+          .width(`${entry.viewportWidth}px`)
+          .height(`${entry.viewportHeight}px`)
           .fill(pathPaint(this.renderView.iconColor, entry.fillOpacity))
           .stroke(pathPaint(this.renderView.iconColor, entry.strokeOpacity))
-          .strokeWidth(entry.strokeOpacity > 0 ? entry.strokeWidth : 0)
+          .strokeWidth(entry.strokeOpacity > 0 ? `${entry.strokeWidth}px` : 0)
           .strokeLineCap(entry.strokeLineCap)
           .strokeLineJoin(entry.strokeLineJoin)
+          .scale({ x: vp2px(1), y: vp2px(1) })
           .antiAlias(true)
       }, (entry: SlockLucidePathEntry) => `${entry.commands}:${entry.strokeWidth}`)
     }

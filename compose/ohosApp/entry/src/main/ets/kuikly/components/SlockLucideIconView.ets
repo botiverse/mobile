@@ -56,8 +56,7 @@ export struct SlockLucideIcon {
       .height('100%')
       .objectFit(ImageFit.Contain)
       .interpolation(ImageInterpolation.High)
-      .supportSvg2(true)
-      .fillColor(this.renderView.iconColor);
+      .supportSvg2(true);
   }
 }
 

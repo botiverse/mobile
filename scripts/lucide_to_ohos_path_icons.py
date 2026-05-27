@@ -62,6 +62,20 @@ BRAND_SVGS = {
         "logo-lockup-dark.svg",
     ),
 }
+NORMALIZED_VIEWPORT = 24.0
+PATH_TOKEN_RE = re.compile(r"[AaCcHhLlMmQqSsTtVvZz]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?")
+PATH_COMMAND_ARITY = {
+    "M": 2,
+    "L": 2,
+    "H": 1,
+    "V": 1,
+    "C": 6,
+    "S": 4,
+    "Q": 4,
+    "T": 2,
+    "A": 7,
+    "Z": 0,
+}
 
 
 def ets_string(value):
@@ -149,19 +163,123 @@ def stroke_width(path):
         return 0.0
 
 
+def format_number(value):
+    if abs(value) < 0.000001:
+        value = 0.0
+    text = f"{value:.4f}".rstrip("0").rstrip(".")
+    return text or "0"
+
+
+def normalize_path_data(path_data, viewport_width, viewport_height):
+    scale = NORMALIZED_VIEWPORT / max(viewport_width, viewport_height)
+    offset_x = (NORMALIZED_VIEWPORT - viewport_width * scale) / 2.0
+    offset_y = (NORMALIZED_VIEWPORT - viewport_height * scale) / 2.0
+    tokens = PATH_TOKEN_RE.findall(path_data)
+    result = []
+    index = 0
+    command = None
+    while index < len(tokens):
+        token = tokens[index]
+        if re.fullmatch(r"[AaCcHhLlMmQqSsTtVvZz]", token):
+            command = token
+            result.append(command)
+            index += 1
+            if command.upper() == "Z":
+                command = None
+            continue
+        if command is None:
+            result.append(token)
+            index += 1
+            continue
+
+        arity = PATH_COMMAND_ARITY[command.upper()]
+        if arity == 0 or index + arity > len(tokens):
+            result.append(token)
+            index += 1
+            continue
+
+        values = tokens[index:index + arity]
+        transformed = transform_command_values(command, values, scale, offset_x, offset_y)
+        result.extend(transformed)
+        index += arity
+        if command == "M":
+            command = "L"
+        elif command == "m":
+            command = "l"
+    return " ".join(result), viewport_width * scale, viewport_height * scale
+
+
+def transform_command_values(command, values, scale, offset_x, offset_y):
+    absolute = command.isupper()
+    upper = command.upper()
+
+    def transform_x(raw):
+        value = float(raw) * scale
+        return value + offset_x if absolute else value
+
+    def transform_y(raw):
+        value = float(raw) * scale
+        return value + offset_y if absolute else value
+
+    if upper in ("M", "L", "T"):
+        return [format_number(transform_x(values[0])), format_number(transform_y(values[1]))]
+    if upper == "H":
+        value = float(values[0]) * scale
+        if absolute:
+            value += offset_x
+        return [format_number(value)]
+    if upper == "V":
+        value = float(values[0]) * scale
+        if absolute:
+            value += offset_y
+        return [format_number(value)]
+    if upper in ("S", "Q"):
+        return [
+            format_number(transform_x(values[0])),
+            format_number(transform_y(values[1])),
+            format_number(transform_x(values[2])),
+            format_number(transform_y(values[3])),
+        ]
+    if upper == "C":
+        return [
+            format_number(transform_x(values[0])),
+            format_number(transform_y(values[1])),
+            format_number(transform_x(values[2])),
+            format_number(transform_y(values[3])),
+            format_number(transform_x(values[4])),
+            format_number(transform_y(values[5])),
+        ]
+    if upper == "A":
+        return [
+            format_number(float(values[0]) * scale),
+            format_number(float(values[1]) * scale),
+            values[2],
+            values[3],
+            values[4],
+            format_number(transform_x(values[5])),
+            format_number(transform_y(values[6])),
+        ]
+    return values
+
+
 def entry_expr(path, viewport_width, viewport_height):
     has_fill = bool(path.get("fillColor"))
     has_stroke = bool(path.get("strokeColor"))
+    commands, normalized_width, normalized_height = normalize_path_data(
+        path["pathData"],
+        viewport_width,
+        viewport_height,
+    )
     return (
         "    {\n"
-        f"      commands: '{ets_string(path['pathData'])}',\n"
+        f"      commands: '{ets_string(commands)}',\n"
         f"      fillOpacity: {1 if has_fill else 0},\n"
         f"      strokeOpacity: {1 if has_stroke else 0},\n"
-        f"      strokeWidth: {stroke_width(path):g},\n"
+        f"      strokeWidth: {stroke_width(path) * (NORMALIZED_VIEWPORT / max(viewport_width, viewport_height)):g},\n"
         f"      strokeLineCap: {line_cap_expr(path.get('strokeLineCap'))},\n"
         f"      strokeLineJoin: {line_join_expr(path.get('strokeLineJoin'))},\n"
-        f"      viewportWidth: {viewport_width:g},\n"
-        f"      viewportHeight: {viewport_height:g},\n"
+        f"      viewportWidth: {normalized_width:g},\n"
+        f"      viewportHeight: {normalized_height:g},\n"
         "    }"
     )
 
