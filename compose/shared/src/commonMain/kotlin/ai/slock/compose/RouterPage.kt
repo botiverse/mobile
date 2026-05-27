@@ -131,12 +131,6 @@ internal fun ComposeRouteImpl() {
         )
 
         Button({
-            jumpPage(localPager, "image_adapter")
-        }) {
-            Text("ImageAdapter基准测试")
-        }
-
-        Button({
             jumpPage(localPager, SLOCK_LUCIDE_ICON_GALLERY_PAGE)
         }) {
             Text("Lucide图标预览")
