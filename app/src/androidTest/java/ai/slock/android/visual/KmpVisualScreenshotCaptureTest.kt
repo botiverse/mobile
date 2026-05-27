@@ -118,6 +118,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeSavedResults() {
+        captureKmpComponentCase(
+            caseId = "home.saved.results",
+            pageName = "compose_home_saved_visual",
+            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 342, heightDp = 620),
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureChannelMembersPanel() {
         captureKmpComponentCase(
             caseId = "channel.members.panel",

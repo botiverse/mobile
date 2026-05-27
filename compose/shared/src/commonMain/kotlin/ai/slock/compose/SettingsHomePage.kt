@@ -201,6 +201,7 @@ private const val SETTINGS_ROW_VISUAL_PAGE = "compose_settings_row_visual"
 private const val SETTINGS_PAGE_VISUAL_PAGE = "compose_settings_page_visual"
 private const val HOME_SEARCH_VISUAL_PAGE = "compose_home_search_visual"
 private const val HOME_SEARCH_CHANNEL_DROPDOWN_VISUAL_PAGE = "compose_home_search_channel_dropdown_visual"
+private const val HOME_SAVED_VISUAL_PAGE = "compose_home_saved_visual"
 private const val HOME_CREATE_CHANNEL_DIALOG_VISUAL_PAGE = "compose_home_create_channel_dialog_visual"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 
@@ -351,6 +352,14 @@ internal class ComposeHomeSearchChannelDropdownVisualPage : ai.slock.compose.bas
     override fun willInit() {
         super.willInit()
         setContent { HomeSearchVisualContent(initialOpenFilterId = "channel") }
+    }
+}
+
+@Page(HOME_SAVED_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeHomeSavedVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSavedVisualContent() }
     }
 }
 
@@ -3922,7 +3931,8 @@ private fun SharedHomeSavedPanel(
     state: SharedHomeSavedPanelState,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     onOpenItem: (InboxItem) -> Unit,
-    bottomContentPadding: Dp
+    bottomContentPadding: Dp,
+    includeTopSafeArea: Boolean = true
 ) {
     LaunchedEffect(Unit) {
         onIntent(SharedHomeSearchSavedIntent.OpenSaved)
@@ -3941,7 +3951,8 @@ private fun SharedHomeSavedPanel(
                 iconName = "bookmark",
                 actionLabel = if (state.loading) "Loading..." else "Refresh",
                 actionEnabled = !state.loading,
-                onAction = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) }
+                onAction = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) },
+                includeTopSafeArea = includeTopSafeArea
             )
         }
         item {
@@ -3987,13 +3998,15 @@ private fun SharedHomePanelHeader(
     iconName: String,
     actionLabel: String,
     actionEnabled: Boolean,
-    onAction: () -> Unit
+    onAction: () -> Unit,
+    includeTopSafeArea: Boolean = true
 ) {
+    val topPadding = if (includeTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(start = 18.dp, top = slockTopSafeAreaPadding() + 18.dp, end = 18.dp, bottom = 8.dp),
+                .padding(start = 18.dp, top = topPadding + 18.dp, end = 18.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -6009,6 +6022,66 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
     nextOffset = 3
 )
 
+private val homeSavedVisualState = SharedHomeSavedPanelState(
+    items =
+        listOf(
+            InboxItem(
+                key = "saved-channel-report",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("ch_android"),
+                channelName = "android-artifacts",
+                lastMessageId = MessageId("msg_saved_report"),
+                lastMessagePreview = "Uploaded Android visual report with Search and Saved cases. The latest run still needs Product UX review before we mark it done.",
+                lastMessageAt = "13:58",
+                lastMessageSenderName = "Android Developer",
+                latestActivityMessageId = MessageId("msg_saved_report"),
+                latestActivityPreview = "Uploaded Android visual report with Search and Saved cases. The latest run still needs Product UX review before we mark it done.",
+                latestActivityAt = "13:58",
+                latestActivitySenderName = "Android Developer"
+            ),
+            InboxItem(
+                key = "saved-thread-reply",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread_msg_agent_reply"),
+                channelName = "thread",
+                lastMessageId = MessageId("msg_saved_thread_reply"),
+                lastMessagePreview = "Search visual parity should keep the real React SavedPanel as the source, not a hand-built preview shell.",
+                lastMessageAt = "14:31",
+                lastMessageSenderName = "artin",
+                threadChannelId = ChannelId("thread_msg_agent_reply"),
+                parentChannelId = ChannelId("ch_design"),
+                parentChannelName = "design",
+                parentChannelKind = ConversationKind.Channel,
+                parentMessageId = MessageId("msg_agent_reply"),
+                parentMessagePreview = "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。",
+                latestActivityMessageId = MessageId("msg_saved_thread_reply"),
+                latestActivityPreview = "Search visual parity should keep the real React SavedPanel as the source, not a hand-built preview shell.",
+                latestActivityAt = "14:31",
+                latestActivitySenderName = "artin",
+                replyCount = 5,
+                participantIds = listOf(MemberId("user_artin"), MemberId("agent_android"))
+            ),
+            InboxItem(
+                key = "saved-dm-checklist",
+                kind = InboxItemKind.DirectMessage,
+                channelId = ChannelId("dm_android"),
+                channelName = "Android Developer",
+                lastMessageId = MessageId("msg_saved_dm"),
+                lastMessagePreview = "Please keep this saved checklist around for the next connected visual-testing run.",
+                lastMessageAt = "14:44",
+                lastMessageSenderName = "Android Developer",
+                latestActivityMessageId = MessageId("msg_saved_dm"),
+                latestActivityPreview = "Please keep this saved checklist around for the next connected visual-testing run.",
+                latestActivityAt = "14:44",
+                latestActivitySenderName = "Android Developer"
+            )
+        ),
+    totalCount = 3,
+    loaded = true,
+    hasMore = true,
+    nextOffset = 3
+)
+
 @Composable
 private fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -6046,6 +6119,19 @@ private fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
                 multiSelect = false
             )
         }
+    }
+}
+
+@Composable
+private fun HomeSavedVisualContent() {
+    Box(modifier = Modifier.width(342.dp).height(620.dp)) {
+        SharedHomeSavedPanel(
+            state = homeSavedVisualState,
+            onIntent = {},
+            onOpenItem = {},
+            bottomContentPadding = 12.dp,
+            includeTopSafeArea = false
+        )
     }
 }
 
