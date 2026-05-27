@@ -3,7 +3,7 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
 import ai.slock.compose.data.BridgeThreadApi
-import ai.slock.compose.data.appendSharedThreadSentMessageFromResponse
+import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.parseSharedThreadUploadedAttachments
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KuiklyAuthSessionStore
@@ -1153,7 +1153,7 @@ internal fun SharedThreadRouteContent(
                                     return@launch
                                 }
                             }
-                        if (sentPage.rawBodyText.isBlank()) {
+                        if (sentPage.messages.isEmpty()) {
                             composerSending = false
                             composerDraftText = draftText
                             composerDraftAsTask = draftAsTask
@@ -1167,13 +1167,13 @@ internal fun SharedThreadRouteContent(
                             }.getOrNull()
                         if (refreshed is ai.slock.compose.data.DataResult.Content) {
                             threadViewModel.dispatch(SharedThreadIntent.SetPayload(refreshed.data))
-                        } else if (sentPage.rawBodyText.isNotBlank()) {
+                        } else if (sentPage.messages.isNotEmpty()) {
                             val session = dataSource.readSession()
                             threadViewModel.dispatch(
                                 SharedThreadIntent.SetPayload(
-                                    appendSharedThreadSentMessageFromResponse(
+                                    appendSharedThreadSentMessageFromPage(
                                         basePayload = payload,
-                                        bodyText = sentPage.rawBodyText,
+                                        page = sentPage,
                                         session = session
                                     )
                                 )

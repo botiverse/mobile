@@ -14,8 +14,12 @@ import ai.slock.compose.markdown.ThreadMarkdownTagKind
 import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
-import ai.slock.compose.data.appendSharedThreadSentMessageFromResponse
-import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesResponse
+import ai.slock.compose.data.ThreadMessagesPage
+import ai.slock.compose.data.WireAttachment
+import ai.slock.compose.data.WireMessage
+import ai.slock.compose.data.WireReaction
+import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
+import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesPage
 import ai.slock.compose.data.parseSharedThreadUploadedAttachments
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
@@ -283,40 +287,45 @@ class ThreadPayloadTest {
             )
 
         val payload =
-            buildSharedThreadPayloadFromMessagesResponse(
+            buildSharedThreadPayloadFromMessagesPage(
                 basePayload = base,
                 session = session,
-                bodyText =
-                    """
-                    {
-                      "messages": [
-                        {
-                          "id": "m1",
-                          "channelId": "channel-1",
-                          "senderType": "user",
-                          "senderId": "u1",
-                          "senderName": "Artin",
-                          "messageType": "chat",
-                          "content": "hello from shared route",
-                          "createdAt": "2026-05-19T16:00:00Z",
-                          "replyCount": 3,
-                          "unreadReplyCount": 2,
-                          "firstUnreadReplyMessageId": "reply-2",
-                          "taskStatus": "in_review",
-                          "taskNumber": 42,
-                          "claimedByName": "Android-Developer-2",
-                          "attachments": [
-                            {"id": "a1", "filename": "log.txt", "mimeType": "text/plain", "sizeBytes": 12},
-                            {"id": "a2", "filename": "screen.png", "mimeType": "image/png", "sizeBytes": 2048, "thumbnailUrl": "https://cdn.example/screen.png"}
-                          ],
-                          "reactions": [
-                            {"emoji": "👍", "count": 2, "reactorIds": ["u1"], "reactorNames": ["Artin"]}
-                          ]
-                        }
-                      ],
-                      "historyLimited": false
-                    }
-                    """.trimIndent()
+                page =
+                    ThreadMessagesPage(
+                        messages =
+                            listOf(
+                                WireMessage(
+                                    id = "m1",
+                                    channelId = "channel-1",
+                                    senderType = "user",
+                                    senderId = "u1",
+                                    senderName = "Artin",
+                                    messageType = "chat",
+                                    content = "hello from shared route",
+                                    createdAt = "2026-05-19T16:00:00Z",
+                                    replyCount = 3,
+                                    unreadReplyCount = 2,
+                                    firstUnreadReplyMessageId = "reply-2",
+                                    taskStatus = "in_review",
+                                    taskNumber = 42,
+                                    claimedByName = "Android-Developer-2",
+                                    attachments =
+                                        listOf(
+                                            WireAttachment(id = "a1", filename = "log.txt", mimeType = "text/plain", sizeBytes = 12),
+                                            WireAttachment(
+                                                id = "a2",
+                                                filename = "screen.png",
+                                                mimeType = "image/png",
+                                                sizeBytes = 2048,
+                                                thumbnailUrl = "https://cdn.example/screen.png"
+                                            )
+                                        ),
+                                    reactions = listOf(WireReaction(emoji = "👍", count = 2, reactorIds = listOf("u1"), reactorNames = listOf("Artin")))
+                                )
+                            ),
+                        canLoadMoreBefore = false,
+                        canLoadMoreAfter = null
+                    )
             )
 
         assertEquals("content", payload.status)
@@ -359,26 +368,26 @@ class ThreadPayloadTest {
             )
 
         val payload =
-            buildSharedThreadPayloadFromMessagesResponse(
+            buildSharedThreadPayloadFromMessagesPage(
                 basePayload = base,
                 session = session,
-                bodyText =
-                    """
-                    {
-                      "messages": [
-                        {
-                          "id": "m1",
-                          "channelId": "channel-1",
-                          "senderType": "user",
-                          "senderId": "u1",
-                          "senderName": "Artin",
-                          "content": "directory author",
-                          "createdAt": "2026-05-19T16:00:00Z"
-                        }
-                      ],
-                      "historyLimited": false
-                    }
-                    """.trimIndent()
+                page =
+                    ThreadMessagesPage(
+                        messages =
+                            listOf(
+                                WireMessage(
+                                    id = "m1",
+                                    channelId = "channel-1",
+                                    senderType = "user",
+                                    senderId = "u1",
+                                    senderName = "Artin",
+                                    content = "directory author",
+                                    createdAt = "2026-05-19T16:00:00Z"
+                                )
+                            ),
+                        canLoadMoreBefore = false,
+                        canLoadMoreAfter = null
+                    )
             )
 
         val message = payload.messages.single()
@@ -406,26 +415,26 @@ class ThreadPayloadTest {
             )
 
         val payload =
-            buildSharedThreadPayloadFromMessagesResponse(
+            buildSharedThreadPayloadFromMessagesPage(
                 basePayload = base,
                 session = session,
-                bodyText =
-                    """
-                    {
-                      "messages": [
-                        {
-                          "id": "m1",
-                          "channelId": "channel-1",
-                          "senderType": "agent",
-                          "senderId": "agent-android",
-                          "senderName": "Android Developer",
-                          "content": "agent visual row",
-                          "createdAt": "2026-05-19T16:00:00Z"
-                        }
-                      ],
-                      "historyLimited": false
-                    }
-                    """.trimIndent()
+                page =
+                    ThreadMessagesPage(
+                        messages =
+                            listOf(
+                                WireMessage(
+                                    id = "m1",
+                                    channelId = "channel-1",
+                                    senderType = "agent",
+                                    senderId = "agent-android",
+                                    senderName = "Android Developer",
+                                    content = "agent visual row",
+                                    createdAt = "2026-05-19T16:00:00Z"
+                                )
+                            ),
+                        canLoadMoreBefore = false,
+                        canLoadMoreAfter = null
+                    )
             )
 
         val message = payload.messages.single()
@@ -461,21 +470,26 @@ class ThreadPayloadTest {
             )
 
         val payload =
-            appendSharedThreadSentMessageFromResponse(
+            appendSharedThreadSentMessageFromPage(
                 basePayload = base,
                 session = session,
-                bodyText =
-                    """
-                    {
-                      "id": "m2",
-                      "channelId": "channel-1",
-                      "senderType": "user",
-                      "senderId": "u1",
-                      "senderName": "Artin",
-                      "content": "sent from shared composer",
-                      "createdAt": "2026-05-19T16:00:00Z"
-                    }
-                    """.trimIndent()
+                page =
+                    ThreadMessagesPage(
+                        messages =
+                            listOf(
+                                WireMessage(
+                                    id = "m2",
+                                    channelId = "channel-1",
+                                    senderType = "user",
+                                    senderId = "u1",
+                                    senderName = "Artin",
+                                    content = "sent from shared composer",
+                                    createdAt = "2026-05-19T16:00:00Z"
+                                )
+                            ),
+                        canLoadMoreBefore = null,
+                        canLoadMoreAfter = null
+                    )
             )
 
         assertEquals("content", payload.status)

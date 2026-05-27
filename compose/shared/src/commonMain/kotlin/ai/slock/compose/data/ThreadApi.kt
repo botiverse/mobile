@@ -9,7 +9,6 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
 
 private val threadApiJson = Json {
     ignoreUnknownKeys = true
@@ -53,10 +52,9 @@ internal class SlockThreadApiClient(
 ) : SlockThreadApi {
     override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): ThreadApiResult<ThreadMessagesPage> =
         transport.channelMessages(threadId = threadId, limit = limit, beforeSeq = beforeSeq)
-            .mapThreadBody("thread_messages_contract_mismatch", ChannelMessagesResponseDto.serializer()) { wire, body ->
+            .mapThreadBody("thread_messages_contract_mismatch", ChannelMessagesResponseDto.serializer()) { wire ->
                 ThreadMessagesPage(
-                    rawBodyText = body,
-                    messageCount = wire.messages.size,
+                    messages = wire.messages,
                     canLoadMoreBefore = wire.historyLimited,
                     canLoadMoreAfter = null,
                 )
@@ -66,11 +64,10 @@ internal class SlockThreadApiClient(
         transport.messageSync(channelId = channelId, sinceSeq = sinceSeq, limit = limit)
             .mapThreadBody(
                 "thread_sync_contract_mismatch",
-                ListSerializer(JsonObject.serializer())
-            ) { wire, body ->
+                ListSerializer(WireMessage.serializer())
+            ) { wire ->
                 ThreadMessagesPage(
-                    rawBodyText = body,
-                    messageCount = wire.size,
+                    messages = wire,
                     canLoadMoreBefore = null,
                     canLoadMoreAfter = false,
                 )
@@ -87,11 +84,10 @@ internal class SlockThreadApiClient(
             body = body,
             asTask = asTask,
             attachmentIds = attachmentIds
-        ).mapThreadBody("thread_send_contract_mismatch", SendMessageResponseDto.serializer()) { wire, bodyText ->
+        ).mapThreadBody("thread_send_contract_mismatch", WireMessage.serializer()) { wire ->
             if (wire.id.isBlank() || wire.content.isBlank()) return@mapThreadBody null
             ThreadMessagesPage(
-                rawBodyText = bodyText,
-                messageCount = 1,
+                messages = listOf(wire),
                 canLoadMoreBefore = null,
                 canLoadMoreAfter = null,
             )
@@ -139,11 +135,13 @@ internal sealed interface ThreadApiResult<out T> {
 }
 
 internal data class ThreadMessagesPage(
-    internal val rawBodyText: String,
-    val messageCount: Int,
+    val messages: List<WireMessage>,
     val canLoadMoreBefore: Boolean?,
     val canLoadMoreAfter: Boolean?
-)
+) {
+    val messageCount: Int
+        get() = messages.size
+}
 
 internal data class ThreadAttachmentOpenTarget(
     val url: String,
@@ -156,7 +154,7 @@ private fun HomeNetworkResponse.toThreadApiFailure(): ThreadApiResult.Failure =
 private inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
     contractCode: String,
     serializer: KSerializer<Wire>,
-    crossinline transform: (Wire, String) -> T?,
+    crossinline transform: (Wire) -> T?,
 ): ThreadApiResult<T> {
     if (!isSuccessful) return toThreadApiFailure()
     val body = bodyText?.takeIf { it.isNotBlank() }
@@ -166,7 +164,7 @@ private inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
     } catch (_: SerializationException) {
         return ThreadApiResult.Failure(code = code, contractCode = contractCode)
     }
-    val value = transform(wire, body)
+    val value = transform(wire)
         ?: return ThreadApiResult.Failure(code = code, contractCode = contractCode)
     return ThreadApiResult.Success(value)
 }
@@ -178,15 +176,8 @@ private fun HomeNetworkResponse.mapThreadUnit(): ThreadApiResult<Unit> =
 
 @Serializable
 private data class ChannelMessagesResponseDto(
-    val messages: List<JsonObject>,
+    val messages: List<WireMessage>,
     val historyLimited: Boolean? = null,
-)
-
-@Serializable
-private data class SendMessageResponseDto(
-    val id: String,
-    val content: String,
-    val seq: Long? = null,
 )
 
 @Serializable

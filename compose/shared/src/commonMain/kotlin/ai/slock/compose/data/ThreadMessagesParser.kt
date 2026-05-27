@@ -7,10 +7,7 @@ import ai.slock.compose.KuiklyThreadScreenPayload
 import ai.slock.compose.SharedThreadComposerAttachment
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
 
 /**
  * Strict, React-aligned parsers for the thread message timeline + attachment
@@ -46,7 +43,7 @@ private val threadMessagesJson = Json {
 }
 
 @Serializable
-private data class WireMessage(
+internal data class WireMessage(
     val id: String,
     val seq: Long? = null,
     val channelId: String? = null,
@@ -74,7 +71,7 @@ private data class WireMessage(
 )
 
 @Serializable
-private data class WireAttachment(
+internal data class WireAttachment(
     val id: String,
     val filename: String = "",
     val mimeType: String = "",
@@ -86,7 +83,7 @@ private data class WireAttachment(
 )
 
 @Serializable
-private data class WireReaction(
+internal data class WireReaction(
     val emoji: String,
     val count: Int = 0,
     val reactorIds: List<String> = emptyList(),
@@ -94,7 +91,7 @@ private data class WireReaction(
 )
 
 @Serializable
-private data class WireMessagesResponse(
+internal data class WireMessagesResponse(
     val messages: List<WireMessage> = emptyList(),
     val historyLimited: Boolean = false,
 )
@@ -126,75 +123,31 @@ internal fun parseSharedThreadUploadedAttachments(
     }.getOrElse { emptyList() }
 }
 
-internal fun buildSharedThreadPayloadFromMessagesResponse(
+internal fun buildSharedThreadPayloadFromMessagesPage(
     basePayload: KuiklyThreadScreenPayload,
-    bodyText: String,
-    session: StoredAuthSession?
-): KuiklyThreadScreenPayload =
-    runCatching {
-        // GET /api/messages returns `{messages, historyLimited}`. The sync route
-        // returns a bare JSON array of messages. Decode once and normalize.
-        val element = threadMessagesJson.parseToJsonElement(bodyText)
-        val (wires: List<WireMessage>, historyLimited: Boolean) =
-            when {
-                element is JsonObject && "messages" in element -> {
-                    val decoded =
-                        threadMessagesJson
-                            .decodeFromJsonElement(WireMessagesResponse.serializer(), element)
-                    decoded.messages to decoded.historyLimited
-                }
-                element is JsonArray ->
-                    threadMessagesJson
-                        .decodeFromJsonElement(ListSerializer(WireMessage.serializer()), element) to false
-                else ->
-                    listOf(
-                        threadMessagesJson
-                            .decodeFromJsonElement(WireMessage.serializer(), element)
-                    ) to false
-            }
-        val currentUserId = session?.user?.id
-        val messages = wires.map { it.toMessageItem(currentUserId) }
-        basePayload.copy(
-            status = if (messages.isEmpty()) "empty" else "content",
-            messages = messages,
-            canLoadMoreBefore = basePayload.canLoadMoreBefore || historyLimited,
-            canLoadMoreAfter = basePayload.canLoadMoreAfter,
-            errorCode = null
-        )
-    }.getOrElse {
-        basePayload.copy(status = "error", errorCode = "thread_payload_parse_failed")
-    }
-
-internal fun appendSharedThreadSentMessageFromResponse(
-    basePayload: KuiklyThreadScreenPayload,
-    bodyText: String,
+    page: ThreadMessagesPage,
     session: StoredAuthSession?
 ): KuiklyThreadScreenPayload {
-    // POST /api/messages returns a single Message row, the GET returns
-    // `{messages:[...]}`. Decode the body once as a JsonElement and normalize
-    // both into List<WireMessage> via the appropriate serializer.
+    val currentUserId = session?.user?.id
+    val messages = page.messages.map { it.toMessageItem(currentUserId) }
+    return basePayload.copy(
+        status = if (messages.isEmpty()) "empty" else "content",
+        messages = messages,
+        canLoadMoreBefore = basePayload.canLoadMoreBefore || (page.canLoadMoreBefore ?: false),
+        canLoadMoreAfter = page.canLoadMoreAfter ?: basePayload.canLoadMoreAfter,
+        errorCode = null
+    )
+}
+
+internal fun appendSharedThreadSentMessageFromPage(
+    basePayload: KuiklyThreadScreenPayload,
+    page: ThreadMessagesPage,
+    session: StoredAuthSession?
+): KuiklyThreadScreenPayload {
     val sent =
-        runCatching {
-            val element = threadMessagesJson.parseToJsonElement(bodyText)
-            val wires: List<WireMessage> =
-                when {
-                    element is JsonObject && "messages" in element ->
-                        threadMessagesJson
-                            .decodeFromJsonElement(WireMessagesResponse.serializer(), element)
-                            .messages
-                    element is JsonArray ->
-                        threadMessagesJson
-                            .decodeFromJsonElement(ListSerializer(WireMessage.serializer()), element)
-                    else ->
-                        listOf(
-                            threadMessagesJson
-                                .decodeFromJsonElement(WireMessage.serializer(), element)
-                        )
-                }
-            val currentUserId = session?.user?.id
-            val existing = basePayload.messages.map { it.id }.toSet()
-            wires.map { it.toMessageItem(currentUserId) }.filterNot { it.id in existing }
-        }.getOrElse { emptyList() }
+        page.messages
+            .map { it.toMessageItem(session?.user?.id) }
+            .filterNot { it.id in basePayload.messages.map { message -> message.id }.toSet() }
 
     return if (sent.isEmpty()) {
         basePayload.copy(errorCode = null)

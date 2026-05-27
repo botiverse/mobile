@@ -31,9 +31,11 @@ import ai.slock.compose.data.SharedThreadNetworkApi
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.ThreadActionResult
+import ai.slock.compose.data.ThreadMessagesPage
 import ai.slock.compose.data.ThreadSnapshot
 import ai.slock.compose.data.ThreadListSnapshot
-import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesResponse
+import ai.slock.compose.data.WireMessage
+import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesPage
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
@@ -905,9 +907,14 @@ class SharedThreadStoreTest {
         )
 
     private fun contentPayload(body: String): KuiklyThreadScreenPayload =
-        buildSharedThreadPayloadFromMessagesResponse(
+        buildSharedThreadPayloadFromMessagesPage(
             basePayload = basePayload(),
-            bodyText = messagesResponse(body),
+            page =
+                ThreadMessagesPage(
+                    messages = listOf(WireMessage(id = "m1", channelId = "channel-1", senderType = "user", senderId = "u1", senderName = "Artin", content = body)),
+                    canLoadMoreBefore = false,
+                    canLoadMoreAfter = null
+                ),
             session = sampleSession()
         )
 

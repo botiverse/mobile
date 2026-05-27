@@ -3,7 +3,7 @@ package ai.slock.compose
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.EmptyReason
 import ai.slock.compose.data.ThreadActionResult
-import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesResponse
+import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesPage
 import ai.slock.compose.data.ChannelFilesSnapshot
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.ConversationRepository
@@ -148,9 +148,9 @@ internal class SharedThreadDataSource(
                             return response.toThreadDataError("thread_network")
                     }
                 DataResult.Content(
-                    buildSharedThreadPayloadFromMessagesResponse(
+                    buildSharedThreadPayloadFromMessagesPage(
                         basePayload = basePayload,
-                        bodyText = page.rawBodyText,
+                        page = page,
                         session = session
                     ).withCachedSenderProfiles(session)
                 )
@@ -475,9 +475,9 @@ internal class SharedThreadDataSource(
                         return response.toThreadDataError("thread_${source}_network")
                 }
             DataResult.Content(
-                buildSharedThreadPayloadFromMessagesResponse(
+                buildSharedThreadPayloadFromMessagesPage(
                     basePayload = basePayload,
-                    bodyText = page.rawBodyText,
+                    page = page,
                     session = session
                 ).withCachedSenderProfiles(session)
             )
