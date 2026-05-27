@@ -103,6 +103,11 @@ import ai.slock.compose.data.SettingsComputerWorkspaceSnapshot
 import ai.slock.compose.data.SettingsComputersSnapshot
 import ai.slock.compose.data.SettingsMobileSelectionSnapshot
 import ai.slock.compose.data.SettingsMobileSnapshot
+import ai.slock.compose.data.SettingsServerAdminSnapshot
+import ai.slock.compose.data.SettingsServerInviteSnapshot
+import ai.slock.compose.data.SettingsServerJoinLinkSnapshot
+import ai.slock.compose.data.SettingsServerOnboardingSnapshot
+import ai.slock.compose.data.SettingsServerSectionSnapshot
 import ai.slock.compose.data.SettingsServerSnapshot
 import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.AgentStatus
@@ -1432,16 +1437,20 @@ private fun SettingsAppShellContent(
     ) {
         when (selectedDestination) {
             SettingsDestinationAccount ->
-                SettingsAccountContent(settingsState.account.toAccountPayload(session), applyTopSafeArea = false) { action ->
+                SettingsAccountContent(
+                    settingsState.account.toAccountPayload(session, settingsState.actionState),
+                    applyTopSafeArea = false
+                ) { action, value ->
                     when (action) {
                         "logout" -> onSettingsIntent(SharedSettingsIntent.Logout)
                         "saveProfile" -> {
                             val account = (settingsState.account as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
+                            val displayName = value.orEmpty().trim()
                             if (account != null) {
                                 onSettingsIntent(
                                     SharedSettingsIntent.UpdateProfile(
                                         AccountProfileUpdateRequest(
-                                            displayName = account.profile.displayName,
+                                            displayName = displayName.ifBlank { account.profile.displayName },
                                             handle = account.profile.handle,
                                             email = account.profile.email
                                         )
@@ -1838,10 +1847,15 @@ private fun appShellSettingsHomePayload(
     )
 
 private fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
-    session: StoredAuthSession?
+    session: StoredAuthSession?,
+    actionState: ai.slock.compose.data.SharedSettingsActionState? = null
 ): KuiklySettingsAccountPayload {
     val account = (this as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
-    return account?.toAccountPayload() ?: appShellAccountPayload(session)
+    return (account?.toAccountPayload() ?: appShellAccountPayload(session))
+        .copy(
+            saveInProgress = actionState?.action == "saveProfile" && actionState.inProgress,
+            saveErrorCode = actionState?.errorCode.takeIf { actionState?.action == "saveProfile" }
+        )
 }
 
 private fun AccountSettingsSnapshot.toAccountPayload(): KuiklySettingsAccountPayload =
@@ -1869,7 +1883,8 @@ private fun AccountSettingsSnapshot.toAccountPayload(): KuiklySettingsAccountPay
                             ConnectedAccountStatus.Failed -> "failed"
                         }
                 )
-            }
+            },
+        canEditProfile = canEditProfile
     )
 
 private fun appShellAccountPayload(session: StoredAuthSession?): KuiklySettingsAccountPayload {
@@ -2099,6 +2114,14 @@ private fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(session: S
     val fallbackPlan = session?.currentServerSummary()?.plan?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Hobby"
     return KuiklySettingsBillingPayload(
         instanceId = "shared-shell-settings-billing",
+        status =
+            when (this) {
+                ScreenLoadState.Loading -> "loading"
+                is ScreenLoadState.NoPermission -> "noPermission"
+                is ScreenLoadState.Error,
+                is ScreenLoadState.Empty -> "error"
+                is ScreenLoadState.Content -> "content"
+            },
         currentPlan =
             KuiklySettingsCurrentPlan(
                 planName = billing?.currentPlan?.planName ?: fallbackPlan,
@@ -2140,27 +2163,7 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
             is ScreenLoadState.Empty -> "Workspace settings unavailable: ${reason.name}"
             is ScreenLoadState.Content -> "Shared workspace settings are backed by typed repository snapshots."
         }
-    val administrationRows =
-        snapshot?.sections.orEmpty()
-            .filter { it.key in setOf("admins", "billing", "pending_invites", "join_links", "onboarding_agent") }
-            .map {
-                KuiklySharedSettingsRow(
-                    key = it.key,
-                    iconName =
-                        when (it.key) {
-                            "admins" -> "shield"
-                            "billing" -> "credit-card"
-                            "pending_invites" -> "mail-plus"
-                            "join_links" -> "link-2"
-                            "onboarding_agent" -> "bot"
-                            else -> "badge-info"
-                        },
-                    title = it.title,
-                    detail = it.detail,
-                    status = it.state.name,
-                    enabled = false
-                )
-            }
+    val sectionsByKey = snapshot?.sections.orEmpty().associateBy { it.key }
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-server",
         title = "Server",
@@ -2179,24 +2182,133 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
                         )
                 ),
                 KuiklySharedSettingsSection(
-                    title = "Administration",
-                    rows = administrationRows.ifEmpty {
-                        listOf(
-                            KuiklySharedSettingsRow("serverUnavailable", "users", "Workspace admin sections", "No server snapshot loaded yet.", status = "Unavailable", enabled = false)
-                        )
-                    }
+                    title = "Admins",
+                    rows = snapshot?.admins.toAdminRows(sectionsByKey["admins"])
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Pending Invites",
+                    rows = snapshot?.pendingInvites.toInviteRows(sectionsByKey["pending_invites"])
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Join Links",
+                    rows = snapshot?.joinLinks.toJoinLinkRows(sectionsByKey["join_links"])
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Onboarding",
+                    rows = snapshot?.onboarding.toOnboardingRows(sectionsByKey["onboarding_agent"])
                 ),
                 KuiklySharedSettingsSection(
                     title = "Plan and danger",
                     rows =
-                        listOf(
-                            KuiklySharedSettingsRow("billingSummary", "shield-check", "Plan", "Current workspace billing and usage summary from typed settings snapshot.", status = plan),
-                            KuiklySharedSettingsRow("danger", "triangle-alert", "Danger actions", "Delete workspace contract is wired; destructive action remains disabled in shared UI until confirm flow lands.", status = "Disabled")
-                        )
+                        snapshot.toPlanAndDangerRows(sectionsByKey["billing"], sectionsByKey["danger"], plan)
                 )
             )
     )
 }
+
+private fun List<SettingsServerAdminSnapshot>?.toAdminRows(section: SettingsServerSectionSnapshot?): List<KuiklySharedSettingsRow> {
+    val admins = this.orEmpty()
+    if (admins.isEmpty()) {
+        return listOf(section.toPlaceholderRow("admins", "shield", "Admins", "No admins returned by the typed settings snapshot."))
+    }
+    return admins.map { admin ->
+        KuiklySharedSettingsRow(
+            key = "admin:${admin.id}",
+            iconName = "shield",
+            title = admin.name,
+            detail = admin.detail.orEmpty().ifBlank { "Workspace administrator" },
+            status = admin.role?.replaceFirstChar { it.uppercase() }.orEmpty(),
+            enabled = false
+        )
+    }
+}
+
+private fun List<SettingsServerInviteSnapshot>?.toInviteRows(section: SettingsServerSectionSnapshot?): List<KuiklySharedSettingsRow> {
+    val invites = this.orEmpty()
+    if (invites.isEmpty()) {
+        return listOf(section.toPlaceholderRow("pendingInvites", "mail-plus", "Pending invites", "No pending invites returned by the typed settings snapshot."))
+    }
+    return invites.map { invite ->
+        KuiklySharedSettingsRow(
+            key = "invite:${invite.id}",
+            iconName = "mail-plus",
+            title = invite.email,
+            detail = listOfNotNull(invite.inviterName?.let { "Invited by $it" }, invite.createdAtLabel).joinToString(" · "),
+            status = "Pending",
+            enabled = false
+        )
+    }
+}
+
+private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(section: SettingsServerSectionSnapshot?): List<KuiklySharedSettingsRow> {
+    val links = this.orEmpty()
+    if (links.isEmpty()) {
+        return listOf(section.toPlaceholderRow("joinLinks", "link-2", "Join links", "No join links returned by the typed settings snapshot."))
+    }
+    return links.map { link ->
+        KuiklySharedSettingsRow(
+            key = "joinLink:${link.id}",
+            iconName = "link-2",
+            title = link.label,
+            detail = listOfNotNull(link.url, link.maxUsesLabel, link.expiresAtLabel).joinToString(" · "),
+            status = link.usageLabel.orEmpty(),
+            enabled = false
+        )
+    }
+}
+
+private fun SettingsServerOnboardingSnapshot?.toOnboardingRows(section: SettingsServerSectionSnapshot?): List<KuiklySharedSettingsRow> =
+    listOf(
+        this?.let { onboarding ->
+            KuiklySharedSettingsRow(
+                key = "onboarding",
+                iconName = "bot",
+                title = "Onboarding Agent",
+                detail = onboarding.detail,
+                status = onboarding.statusLabel,
+                enabled = false
+            )
+        } ?: section.toPlaceholderRow("onboarding", "bot", "Onboarding Agent", "No onboarding settings returned by the typed settings snapshot.")
+    )
+
+private fun SettingsServerSnapshot?.toPlanAndDangerRows(
+    billingSection: SettingsServerSectionSnapshot?,
+    dangerSection: SettingsServerSectionSnapshot?,
+    fallbackPlan: String
+): List<KuiklySharedSettingsRow> =
+    listOf(
+        KuiklySharedSettingsRow(
+            key = "billingSummary",
+            iconName = "shield-check",
+            title = "Plan",
+            detail = billingSection?.detail ?: "Current workspace billing and usage summary from typed settings snapshot.",
+            status = this?.usageRows?.firstOrNull()?.value ?: fallbackPlan,
+            enabled = false
+        ),
+        KuiklySharedSettingsRow(
+            key = "danger",
+            iconName = "triangle-alert",
+            title = dangerSection?.title ?: "Danger actions",
+            detail = dangerSection?.detail ?: "Delete workspace contract is wired; destructive action remains disabled in shared UI until confirm flow lands.",
+            status = dangerSection?.state?.name ?: "Disabled",
+            enabled = false
+        )
+    )
+
+private fun SettingsServerSectionSnapshot?.toPlaceholderRow(
+    key: String,
+    iconName: String,
+    title: String,
+    fallbackDetail: String
+): KuiklySharedSettingsRow =
+    KuiklySharedSettingsRow(
+        key = key,
+        iconName = iconName,
+        title = this?.title ?: title,
+        detail = this?.detail ?: fallbackDetail,
+        status = this?.state?.name ?: "Unavailable",
+        enabled = false
+    )
 
 private fun MemberProfile.isWorkspaceAdmin(): Boolean {
     val role = roleDescription.orEmpty().lowercase()
@@ -5837,7 +5949,7 @@ private fun SettingsPageVisualContent() {
                         connectedAccounts = emptyList()
                     ),
                 applyTopSafeArea = false,
-                onEvent = {}
+                onEvent = { _, _ -> }
             )
         }
     }

@@ -104,6 +104,37 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun serverAndBillingLoadTypedSnapshotsThroughCommonStore() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(
+                billingResult = DataResult.Content(billingSnapshot()),
+                serverResult = DataResult.Content(serverSnapshot())
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Billing))
+        val billing = assertIs<ScreenLoadState.Content<SettingsBillingSnapshot>>(store.state.value.billing).data
+        assertEquals("Team", billing.currentPlan.planName)
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Server))
+        val server = assertIs<ScreenLoadState.Content<SettingsServerSnapshot>>(store.state.value.server).data
+        assertEquals("Slock Community", server.profile.name)
+        assertEquals(listOf("Admin"), server.admins.map { it.name })
+        assertEquals(listOf("billing", "pending_invites", "join_links", "onboarding_agent"), server.sections.map { it.key })
+        assertEquals(listOf("billing", "server"), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun refreshFailureKeepsExistingContentAndReportsRouteError() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository = FakeSettingsRepository(computersResult = DataResult.Content(computersSnapshot("machine-1")))
@@ -625,6 +656,41 @@ class SharedSettingsStoreTest {
             sections = emptyList()
         )
     }
+
+    private fun billingSnapshot(): SettingsBillingSnapshot =
+        SettingsBillingSnapshot(
+            currentPlan =
+                SettingsBillingCurrentPlanSnapshot(
+                    planName = "Team",
+                    usageRows = listOf(SettingsPlanUsageSnapshot("Members", "8 / 20"))
+                ),
+            plans =
+                listOf(
+                    SettingsBillingPlanSnapshot(
+                        name = "Team",
+                        price = "$12 / user",
+                        features = listOf("Shared workspaces"),
+                        current = true
+                    )
+                )
+        )
+
+    private fun serverSnapshot(): SettingsServerSnapshot =
+        SettingsServerSnapshot(
+            profile = SettingsServerProfileSnapshot(name = "Slock Community", slug = "slock", canSave = true),
+            sections =
+                listOf(
+                    SettingsServerSectionSnapshot("billing", "Plan & Billing", "Current plan: Team", SettingsSectionAvailability.Available),
+                    SettingsServerSectionSnapshot("pending_invites", "Pending Invites", "1 pending invite", SettingsSectionAvailability.Available),
+                    SettingsServerSectionSnapshot("join_links", "Join Links", "1 active link", SettingsSectionAvailability.Available),
+                    SettingsServerSectionSnapshot("onboarding_agent", "Onboarding Agent", "Enabled", SettingsSectionAvailability.Available)
+                ),
+            admins = listOf(SettingsServerAdminSnapshot(id = "user-admin", name = "Admin", role = "owner")),
+            usageRows = listOf(SettingsPlanUsageSnapshot("Messages", "100")),
+            pendingInvites = listOf(SettingsServerInviteSnapshot(id = "invite-1", email = "invitee@slock.test")),
+            joinLinks = listOf(SettingsServerJoinLinkSnapshot(id = "link-1", label = "Invite link")),
+            onboarding = SettingsServerOnboardingSnapshot(setupModalReminderOptOut = false, statusLabel = "Enabled", detail = "Agent onboarding enabled.")
+        )
 
     private fun mobileSnapshot(): SettingsMobileSnapshot =
         SettingsMobileSnapshot(

@@ -3,6 +3,7 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -68,7 +69,10 @@ internal data class KuiklySettingsAccountPayload(
     val logoutDetail: String = "Sign out of this device. You can sign back in anytime.",
     val logoutLabel: String = "Log out",
     val changePasswordTitle: String = "Change password",
-    val changePasswordSubtitle: String = "Requires current password before saving a new one"
+    val changePasswordSubtitle: String = "Requires current password before saving a new one",
+    val canEditProfile: Boolean = true,
+    val saveInProgress: Boolean = false,
+    val saveErrorCode: String? = null
 )
 
 @Serializable
@@ -116,8 +120,8 @@ private fun SettingsAccountScreen() {
     LaunchedEffect(payload) {
         bridge.log("settings_account_render instanceId=${payload.instanceId} connected=${payload.connectedAccounts.size}")
     }
-    SettingsAccountContent(payload) { action ->
-        bridge.settingsEvent(payload.instanceId, action, null)
+    SettingsAccountContent(payload) { action, value ->
+        bridge.settingsEvent(payload.instanceId, action, value)
     }
 }
 
@@ -135,7 +139,7 @@ private fun rememberAccountPayload(payload: String, instanceId: String): KuiklyS
 internal fun SettingsAccountContent(
     payload: KuiklySettingsAccountPayload,
     applyTopSafeArea: Boolean = true,
-    onEvent: (String) -> Unit
+    onEvent: (String, String?) -> Unit
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     LazyColumn(
@@ -152,7 +156,7 @@ internal fun SettingsAccountContent(
         if (payload.connectedAccounts.isNotEmpty()) {
             item { SettingsConnectedAccounts(payload) }
         }
-        item { SettingsLogoutAction(payload.logoutDetail, payload.logoutLabel) { onEvent("logout") } }
+        item { SettingsLogoutAction(payload.logoutDetail, payload.logoutLabel) { onEvent("logout", null) } }
     }
 }
 
@@ -177,9 +181,11 @@ private fun SettingsAccountSectionHeader(title: String) {
 @Composable
 private fun SettingsAccountProfileCard(
     payload: KuiklySettingsAccountPayload,
-    onEvent: (String) -> Unit
+    onEvent: (String, String?) -> Unit
 ) {
     val profile = payload.profile
+    val displayNameState = remember(profile.displayName) { mutableStateOf(profile.displayName) }
+    val displayName = displayNameState.value
     SettingsAccountHardShadowCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Box(
@@ -215,14 +221,32 @@ private fun SettingsAccountProfileCard(
         )
         SettingsProfileTextField(
             label = "Display Name",
-            value = profile.displayName,
+            value = displayName,
             placeholder = payload.displayNamePlaceholder,
-            muted = false
+            muted = !payload.canEditProfile || payload.saveInProgress,
+            editable = payload.canEditProfile && !payload.saveInProgress,
+            onValueChange = { displayNameState.value = it }
         )
         SettingsEmailField(payload.emailLabel, profile.email, payload.emailPlaceholder, profile.verified, payload.verifiedLabel)
-        SettingsProfileSaveButton(payload.saveChangesLabel, onClick = { onEvent("saveProfile") })
+        SettingsProfileSaveButton(
+            text =
+                when {
+                    payload.saveInProgress -> "Saving"
+                    payload.saveErrorCode != null -> "Retry"
+                    else -> payload.saveChangesLabel
+                },
+            enabled = payload.canEditProfile && !payload.saveInProgress,
+            onClick = { onEvent("saveProfile", displayName.trim()) }
+        )
+        payload.saveErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
+            Text(
+                "Profile save failed: $code",
+                style = SlockType.Caption.copy(color = SlockColor.AccentRed),
+                color = SlockColor.AccentRed
+            )
+        }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-        SettingsPasswordDisclosure(payload.changePasswordTitle) { onEvent("changePassword") }
+        SettingsPasswordDisclosure(payload.changePasswordTitle) { onEvent("changePassword", null) }
     }
 }
 
@@ -231,7 +255,9 @@ private fun SettingsProfileTextField(
     label: String,
     value: String,
     placeholder: String,
-    muted: Boolean
+    muted: Boolean,
+    editable: Boolean = false,
+    onValueChange: (String) -> Unit = {}
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Text(label, style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
@@ -245,13 +271,26 @@ private fun SettingsProfileTextField(
                     .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                value.ifBlank { placeholder },
-                style = SlockType.Input.copy(fontSize = 15.sp, lineHeight = 18.sp, color = if (muted || value.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack),
-                color = if (muted || value.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (editable) {
+                TextField(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = value,
+                    placeholder = placeholder,
+                    autoFocus = false,
+                    onValueChange = onValueChange,
+                    textStyle = SlockType.Input.copy(fontSize = 15.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                    placeholderColor = SlockColor.TextMutedGray,
+                    maxLines = 1
+                )
+            } else {
+                Text(
+                    value.ifBlank { placeholder },
+                    style = SlockType.Input.copy(fontSize = 15.sp, lineHeight = 18.sp, color = if (muted || value.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack),
+                    color = if (muted || value.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -282,9 +321,15 @@ private fun SettingsEmailField(
 }
 
 @Composable
-private fun SettingsProfileSaveButton(text: String, onClick: () -> Unit) {
+private fun SettingsProfileSaveButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
     Box(
-        modifier = Modifier.width(96.dp).height(32.dp).clickable(onClick = onClick).background(SlockColor.AccentPink).border(SlockStroke.Default, SlockColor.BorderBlack),
+        modifier =
+            Modifier
+                .width(96.dp)
+                .height(32.dp)
+                .clickable(enabled = enabled, onClick = onClick)
+                .background(if (enabled) SlockColor.AccentPink else SlockColor.EmptyStateGray)
+                .border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
         Text(text, style = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
