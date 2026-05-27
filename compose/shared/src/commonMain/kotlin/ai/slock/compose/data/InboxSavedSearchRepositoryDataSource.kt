@@ -52,6 +52,12 @@ private suspend fun SlockNetworkClient.unsaveMessage(
 ): HomeNetworkResponse =
     request(priority, "channels/saved/${messageId.value}", method = "DELETE")
 
+private suspend fun SlockNetworkClient.checkSavedMessages(
+    priority: DataRequestPriority,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "channels/saved/check", method = "POST", bodyText = bodyText)
+
 private suspend fun SlockNetworkClient.searchMessages(
     priority: DataRequestPriority,
     query: String,
@@ -134,7 +140,7 @@ class RealSavedRepository(
     private val sessionStore: SlockAuthSessionStore,
     private val networkClient: SlockNetworkClient,
     private val warningLogger: (String) -> Unit = {}
-) : SavedRepository {
+) : SavedRepository, SavedStatusRepository {
     override suspend fun loadInitial(serverId: ServerId, limit: Int): DataResult<SavedSnapshot> =
         load(serverId, limit, offset = 0)
 
@@ -155,6 +161,30 @@ class RealSavedRepository(
         messageId: MessageId
     ): DataResult<SavedMessageMutationResult> =
         mutateSavedMessage(serverId, messageId, save = false)
+
+    override suspend fun checkSavedMessages(
+        serverId: ServerId,
+        messageIds: List<MessageId>
+    ): DataResult<SavedMessageStatusSnapshot> {
+        sessionStore.serverContext(serverId) ?: return authRequired()
+        val normalizedIds = messageIds.map { it.value.trim() }.filter { it.isNotBlank() }.distinct()
+        if (normalizedIds.isEmpty()) return DataResult.Empty(EmptyReason.NoInboxItems)
+        return executeInboxLike(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = {
+                networkClient.checkSavedMessages(
+                    DataRequestPriority.Visible,
+                    buildSharedSavedMessageCheckBody(normalizedIds)
+                )
+            },
+            source = "saved_check",
+            warningLogger = warningLogger,
+            mapper = { bodyText ->
+                parseSharedSavedMessageStatus(bodyText)
+                    ?: throw IllegalStateException("Saved status response missing savedIds list")
+            }
+        )
+    }
 
     private suspend fun mutateSavedMessage(
         serverId: ServerId,
@@ -251,6 +281,14 @@ class RealSearchRepository(
         )
     }
 }
+
+@Serializable
+private data class SavedMessageCheckRequestBody(
+    val messageIds: List<String>
+)
+
+private fun buildSharedSavedMessageCheckBody(messageIds: List<String>): String =
+    inboxSavedSearchRepositoryJson.encodeToString(SavedMessageCheckRequestBody(messageIds = messageIds))
 
 @Serializable
 data class SaveMessageRequestBody(val messageId: String)

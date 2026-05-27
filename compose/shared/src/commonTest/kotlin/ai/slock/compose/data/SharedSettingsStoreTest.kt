@@ -64,6 +64,46 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun accountSaveIntentUsesSettingsRepository() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(
+                accountResult =
+                    DataResult.Content(
+                        AccountSettingsSnapshot(
+                            profile =
+                                AccountProfileSnapshot(
+                                    userId = "user-1",
+                                    displayName = "New Name",
+                                    handle = "@new",
+                                    email = "new@slock.ai",
+                                    avatarLabel = "NN",
+                                    verified = true
+                                ),
+                            connectedAccounts = emptyList()
+                        )
+                    )
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Account))
+        store.accept(SharedSettingsIntent.UpdateProfile(AccountProfileUpdateRequest("New Name", "@new", "new@slock.ai")))
+
+        val account = assertIs<ScreenLoadState.Content<AccountSettingsSnapshot>>(store.state.value.account).data
+        assertEquals("New Name", account.profile.displayName)
+        assertEquals(listOf("account", "updateProfile:New Name"), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun refreshFailureKeepsExistingContentAndReportsRouteError() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository = FakeSettingsRepository(computersResult = DataResult.Content(computersSnapshot("machine-1")))
@@ -341,8 +381,10 @@ class SharedSettingsStoreTest {
             return accountResult
         }
 
-        override suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot> =
-            accountResult
+        override suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot> {
+            calls += "updateProfile:${request.displayName}"
+            return accountResult
+        }
 
         override suspend fun getComputers(): DataResult<SettingsComputersSnapshot> {
             calls += "computers"

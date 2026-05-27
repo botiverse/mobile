@@ -59,6 +59,29 @@ interface SettingsServerActionRepository {
     suspend fun setServerMute(enabled: Boolean): DataResult<SettingsMobileSnapshot>
 }
 
+interface SettingsServerManagementRepository {
+    suspend fun updateServerOnboarding(
+        request: SettingsServerOnboardingUpdateRequest
+    ): DataResult<SettingsServerOnboardingSnapshot>
+
+    suspend fun getServerTranslationSettings(): DataResult<SettingsServerTranslationSnapshot>
+    suspend fun updateServerTranslationSettings(
+        request: SettingsServerTranslationUpdateRequest
+    ): DataResult<SettingsServerTranslationSnapshot>
+
+    suspend fun getServerSidebarOrder(): DataResult<SettingsServerSidebarOrderSnapshot>
+    suspend fun updateServerSidebarOrder(
+        request: SettingsServerSidebarOrderUpdateRequest
+    ): DataResult<SettingsServerSidebarOrderSnapshot>
+
+    suspend fun updateServerMemberRole(
+        request: SettingsServerMemberRoleUpdateRequest
+    ): DataResult<SettingsServerActionResult>
+
+    suspend fun removeServerMember(memberId: String): DataResult<SettingsServerActionResult>
+    suspend fun leaveServer(): DataResult<SettingsServerActionResult>
+}
+
 interface ConversationRepository {
     suspend fun getThread(
         threadId: ThreadId,
@@ -260,6 +283,13 @@ interface SavedRepository {
     ): DataResult<SavedMessageMutationResult>
 }
 
+interface SavedStatusRepository {
+    suspend fun checkSavedMessages(
+        serverId: ServerId,
+        messageIds: List<MessageId>
+    ): DataResult<SavedMessageStatusSnapshot>
+}
+
 interface SearchRepository {
     suspend fun search(
         serverId: ServerId,
@@ -339,6 +369,34 @@ data class SettingsServerDeleteRequest(
 data class SettingsServerJoinLinkCreateRequest(
     val expiresAt: String? = null,
     val maxUses: Int? = null
+)
+
+data class SettingsServerOnboardingUpdateRequest(
+    val setupModalReminderOptOut: Boolean
+)
+
+data class SettingsServerTranslationUpdateRequest(
+    val translationEnabled: Boolean
+)
+
+data class SettingsServerSidebarOrderUpdateRequest(
+    val channelOrder: List<String>? = null,
+    val agentOrder: List<String>? = null,
+    val dmOrder: List<String>? = null,
+    val channelSortMode: String? = null,
+    val dmSortMode: String? = null,
+    val pinnedSortMode: String? = null,
+    val pinnedChannelIds: List<String>? = null,
+    val pinnedAgentIds: List<String>? = null,
+    val pinnedOrder: List<String>? = null,
+    val hiddenDmIds: List<String>? = null,
+    val channelPanelTabOrder: List<String>? = null,
+    val agentPanelTabOrder: List<String>? = null
+)
+
+data class SettingsServerMemberRoleUpdateRequest(
+    val memberId: String,
+    val role: String
 )
 
 data class SettingsServerActionResult(

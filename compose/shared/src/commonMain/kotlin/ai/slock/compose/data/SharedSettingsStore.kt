@@ -120,6 +120,7 @@ sealed interface SharedSettingsIntent {
     data object RequestNotificationPermission : SharedSettingsIntent
     data object OpenNotificationSettings : SharedSettingsIntent
     data object SendTestNotification : SharedSettingsIntent
+    data class UpdateProfile(val request: AccountProfileUpdateRequest) : SharedSettingsIntent
     data class SetNotificationPreference(val enabled: Boolean) : SharedSettingsIntent
     data class SetServerMute(val enabled: Boolean) : SharedSettingsIntent
     data class CompleteSystemNotificationAction(
@@ -190,6 +191,9 @@ class SharedSettingsDataSource(
         settingsRepository?.getAccount()
             ?: sessionStore.readSession()?.toAccountSettingsSnapshot()?.let { DataResult.Content(it) }
             ?: DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
+
+    suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot> =
+        settingsRepository?.updateProfile(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun loadComputers(): DataResult<SettingsComputersSnapshot> =
         settingsRepository?.getComputers() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -430,6 +434,13 @@ class SharedSettingsStore(
                         actionState = SharedSettingsActionState(MOBILE_ACTION_TEST_NOTIFICATION, inProgress = true),
                         effect = SharedSettingsEffect.SendTestNotification
                     )
+            is SharedSettingsIntent.UpdateProfile -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState("saveProfile", inProgress = true)
+                    )
+                dataSource.updateProfile(intent.request).applyAccountActionResult("saveProfile")
+            }
             is SharedSettingsIntent.CompleteSystemNotificationAction ->
                 completeSystemNotificationAction(intent.action, intent.result)
             is SharedSettingsIntent.SetNotificationPreference -> {
@@ -620,6 +631,25 @@ class SharedSettingsStore(
             )
     }
 
+    private fun DataResult<AccountSettingsSnapshot>.applyAccountActionResult(action: String) {
+        val nextAccount = toScreenLoadState()
+        _state.value =
+            _state.value.copy(
+                account =
+                    when (nextAccount) {
+                        is ScreenLoadState.Content -> nextAccount
+                        else -> _state.value.account
+                    },
+                actionState =
+                    SharedSettingsActionState(
+                        action = action,
+                        inProgress = false,
+                        errorCode = nextAccount.routeErrorCode()
+                    ),
+                routeErrorCode = nextAccount.routeErrorCode()
+            )
+    }
+
     private suspend fun <T> DataResult<T>.applyToState(
         destination: SharedSettingsDestination,
         update: SharedSettingsState.(ScreenLoadState<T>) -> SharedSettingsState
@@ -667,6 +697,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.RequestNotificationPermission,
             SharedSettingsIntent.OpenNotificationSettings,
             SharedSettingsIntent.SendTestNotification,
+            is SharedSettingsIntent.UpdateProfile,
             is SharedSettingsIntent.SetNotificationPreference,
             is SharedSettingsIntent.SetServerMute,
             is SharedSettingsIntent.CompleteSystemNotificationAction,

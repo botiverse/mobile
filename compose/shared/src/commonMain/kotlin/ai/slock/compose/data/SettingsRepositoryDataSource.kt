@@ -9,6 +9,7 @@ import kotlinx.serialization.json.Json
 private val settingsRepositoryJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
+    explicitNulls = false
 }
 
 private suspend fun SlockNetworkClient.settingsAccount(priority: DataRequestPriority): HomeNetworkResponse =
@@ -60,6 +61,60 @@ private suspend fun SlockNetworkClient.settingsServerOnboarding(
     serverId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/onboarding-settings", serverIdOverride = ServerId(serverId))
+
+private suspend fun SlockNetworkClient.updateSettingsServerOnboarding(
+    priority: DataRequestPriority,
+    serverId: String,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/onboarding-settings", method = "PATCH", serverIdOverride = ServerId(serverId), bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.settingsServerTranslation(
+    priority: DataRequestPriority,
+    serverId: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/translation-settings", serverIdOverride = ServerId(serverId))
+
+private suspend fun SlockNetworkClient.updateSettingsServerTranslation(
+    priority: DataRequestPriority,
+    serverId: String,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/translation-settings", method = "PATCH", serverIdOverride = ServerId(serverId), bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.settingsServerSidebarOrder(
+    priority: DataRequestPriority,
+    serverId: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/sidebar-order", serverIdOverride = ServerId(serverId))
+
+private suspend fun SlockNetworkClient.updateSettingsServerSidebarOrder(
+    priority: DataRequestPriority,
+    serverId: String,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/sidebar-order", method = "PATCH", serverIdOverride = ServerId(serverId), bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.updateSettingsServerMemberRole(
+    priority: DataRequestPriority,
+    serverId: String,
+    memberId: String,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/members/$memberId", method = "PATCH", serverIdOverride = ServerId(serverId), bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.deleteSettingsServerMember(
+    priority: DataRequestPriority,
+    serverId: String,
+    memberId: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/members/$memberId", method = "DELETE", serverIdOverride = ServerId(serverId))
+
+private suspend fun SlockNetworkClient.leaveSettingsServer(
+    priority: DataRequestPriority,
+    serverId: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/leave", method = "POST", serverIdOverride = ServerId(serverId))
 
 private suspend fun SlockNetworkClient.updateSettingsServerProfile(
     priority: DataRequestPriority,
@@ -132,7 +187,7 @@ class RealSettingsRepository(
     private val networkClient: SlockNetworkClient,
     private val logger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
-) : SettingsRepository, SettingsServerActionRepository {
+) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
     private val computersApiClient = SlockComputersApiClient(SlockComputersNetworkApi(networkClient))
 
     override suspend fun getAccount(): DataResult<AccountSettingsSnapshot> {
@@ -544,6 +599,80 @@ class RealSettingsRepository(
         return settingsDeleteServer(server.id)
     }
 
+    override suspend fun updateServerOnboarding(
+        request: SettingsServerOnboardingUpdateRequest
+    ): DataResult<SettingsServerOnboardingSnapshot> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_server")
+            )
+        }
+        return settingsUpdateServerOnboarding(server.id, request)
+    }
+
+    override suspend fun getServerTranslationSettings(): DataResult<SettingsServerTranslationSnapshot> {
+        val server = selectedServer() ?: return serverRequired()
+        return fetchServerTranslation(server.id)
+    }
+
+    override suspend fun updateServerTranslationSettings(
+        request: SettingsServerTranslationUpdateRequest
+    ): DataResult<SettingsServerTranslationSnapshot> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_server")
+            )
+        }
+        return settingsUpdateServerTranslation(server.id, request)
+    }
+
+    override suspend fun getServerSidebarOrder(): DataResult<SettingsServerSidebarOrderSnapshot> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        return fetchServerSidebarOrder(serverId)
+    }
+
+    override suspend fun updateServerSidebarOrder(
+        request: SettingsServerSidebarOrderUpdateRequest
+    ): DataResult<SettingsServerSidebarOrderSnapshot> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        if (!request.hasAtLeastOneField()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return settingsUpdateServerSidebarOrder(serverId, request)
+    }
+
+    override suspend fun updateServerMemberRole(
+        request: SettingsServerMemberRoleUpdateRequest
+    ): DataResult<SettingsServerActionResult> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "change_member_roles")
+            )
+        }
+        val memberId = request.memberId.trim()
+        val role = request.role.trim()
+        if (memberId.isBlank() || role.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return settingsUpdateServerMemberRole(server.id, memberId, role)
+    }
+
+    override suspend fun removeServerMember(memberId: String): DataResult<SettingsServerActionResult> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_members")
+            )
+        }
+        val normalizedMemberId = memberId.trim()
+        if (normalizedMemberId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return settingsRemoveServerMember(server.id, normalizedMemberId)
+    }
+
+    override suspend fun leaveServer(): DataResult<SettingsServerActionResult> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        return settingsLeaveServer(serverId)
+    }
+
     override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> {
         sessionStore.readSession() ?: return authRequired()
         val serverMute =
@@ -709,6 +838,88 @@ class RealSettingsRepository(
             }
         )
 
+    private suspend fun settingsUpdateServerOnboarding(
+        serverId: String,
+        request: SettingsServerOnboardingUpdateRequest
+    ): DataResult<SettingsServerOnboardingSnapshot> =
+        executeTypedSettings(
+            source = "settings_server_onboarding_settings_update",
+            contractCode = "settings_server_onboarding_contract_mismatch",
+            block = {
+                networkClient.updateSettingsServerOnboarding(
+                    DataRequestPriority.Foreground,
+                    serverId,
+                    buildSharedSettingsServerOnboardingUpdateBody(request)
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedSettingsServerOnboarding(bodyText)
+                    ?: settingsContractMismatch("settings_server_onboarding_contract_mismatch")
+            }
+        )
+
+    private suspend fun fetchServerTranslation(serverId: String): DataResult<SettingsServerTranslationSnapshot> =
+        executeTypedSettings(
+            source = "settings_server_translation_settings",
+            contractCode = "settings_server_translation_contract_mismatch",
+            block = { networkClient.settingsServerTranslation(DataRequestPriority.Visible, serverId) },
+            mapper = { bodyText ->
+                parseSharedSettingsTranslation(bodyText)
+                    ?: settingsContractMismatch("settings_server_translation_contract_mismatch")
+            }
+        )
+
+    private suspend fun settingsUpdateServerTranslation(
+        serverId: String,
+        request: SettingsServerTranslationUpdateRequest
+    ): DataResult<SettingsServerTranslationSnapshot> =
+        executeTypedSettings(
+            source = "settings_server_translation_settings_update",
+            contractCode = "settings_server_translation_contract_mismatch",
+            block = {
+                networkClient.updateSettingsServerTranslation(
+                    DataRequestPriority.Foreground,
+                    serverId,
+                    buildSharedSettingsServerTranslationUpdateBody(request)
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedSettingsTranslation(bodyText)
+                    ?: settingsContractMismatch("settings_server_translation_contract_mismatch")
+            }
+        )
+
+    private suspend fun fetchServerSidebarOrder(serverId: String): DataResult<SettingsServerSidebarOrderSnapshot> =
+        executeTypedSettings(
+            source = "settings_server_sidebar_order",
+            contractCode = "settings_server_sidebar_order_contract_mismatch",
+            block = { networkClient.settingsServerSidebarOrder(DataRequestPriority.Visible, serverId) },
+            mapper = { bodyText ->
+                parseSharedSettingsSidebarOrder(bodyText)
+                    ?: settingsContractMismatch("settings_server_sidebar_order_contract_mismatch")
+            }
+        )
+
+    private suspend fun settingsUpdateServerSidebarOrder(
+        serverId: String,
+        request: SettingsServerSidebarOrderUpdateRequest
+    ): DataResult<SettingsServerSidebarOrderSnapshot> =
+        executeTypedSettings(
+            source = "settings_server_sidebar_order_update",
+            contractCode = "settings_server_sidebar_order_contract_mismatch",
+            block = {
+                networkClient.updateSettingsServerSidebarOrder(
+                    DataRequestPriority.Foreground,
+                    serverId,
+                    buildSharedSettingsServerSidebarOrderUpdateBody(request)
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedSettingsSidebarOrder(bodyText)
+                    ?: settingsContractMismatch("settings_server_sidebar_order_contract_mismatch")
+            }
+        )
+
     private suspend fun fetchServerInvites(serverId: String): DataResult<List<SettingsServerInviteSnapshot>> =
         executeTypedSettings(
             source = "settings_server_invites",
@@ -828,6 +1039,53 @@ class RealSettingsRepository(
             mapper = { bodyText ->
                 parseSharedSettingsServerDeleted(bodyText)
                     ?: settingsContractMismatch("settings_server_delete_contract_mismatch")
+            }
+        )
+
+    private suspend fun settingsUpdateServerMemberRole(
+        serverId: String,
+        memberId: String,
+        role: String
+    ): DataResult<SettingsServerActionResult> =
+        executeTypedSettings(
+            source = "settings_server_member_role_update",
+            contractCode = "settings_server_member_role_contract_mismatch",
+            block = {
+                networkClient.updateSettingsServerMemberRole(
+                    DataRequestPriority.Foreground,
+                    serverId,
+                    memberId,
+                    buildSharedSettingsServerMemberRoleUpdateBody(role)
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedSettingsServerAction(bodyText)
+                    ?: settingsContractMismatch("settings_server_member_role_contract_mismatch")
+            }
+        )
+
+    private suspend fun settingsRemoveServerMember(
+        serverId: String,
+        memberId: String
+    ): DataResult<SettingsServerActionResult> =
+        executeTypedSettings(
+            source = "settings_server_member_remove",
+            contractCode = "settings_server_member_remove_contract_mismatch",
+            block = { networkClient.deleteSettingsServerMember(DataRequestPriority.Foreground, serverId, memberId) },
+            mapper = { bodyText ->
+                parseSharedSettingsServerAction(bodyText)
+                    ?: settingsContractMismatch("settings_server_member_remove_contract_mismatch")
+            }
+        )
+
+    private suspend fun settingsLeaveServer(serverId: String): DataResult<SettingsServerActionResult> =
+        executeTypedSettings(
+            source = "settings_server_leave",
+            contractCode = "settings_server_leave_contract_mismatch",
+            block = { networkClient.leaveSettingsServer(DataRequestPriority.Foreground, serverId) },
+            mapper = { bodyText ->
+                parseSharedSettingsServerAction(bodyText)
+                    ?: settingsContractMismatch("settings_server_leave_contract_mismatch")
             }
         )
 
@@ -1161,6 +1419,20 @@ private fun String.toSettingsSlug(): String =
         .trim('-')
         .ifBlank { "server" }
 
+private fun SettingsServerSidebarOrderUpdateRequest.hasAtLeastOneField(): Boolean =
+    channelOrder != null ||
+        agentOrder != null ||
+        dmOrder != null ||
+        channelSortMode != null ||
+        dmSortMode != null ||
+        pinnedSortMode != null ||
+        pinnedChannelIds != null ||
+        pinnedAgentIds != null ||
+        pinnedOrder != null ||
+        hiddenDmIds != null ||
+        channelPanelTabOrder != null ||
+        agentPanelTabOrder != null
+
 @Serializable
 data class AccountProfileUpdateRequestBody(
     val displayName: String,
@@ -1202,6 +1474,72 @@ fun buildSharedSettingsServerJoinLinkCreateBody(request: SettingsServerJoinLinkC
             maxUses = request.maxUses
         )
     )
+
+@Serializable
+data class SettingsServerOnboardingUpdateRequestBody(
+    val setupModalReminderOptOut: Boolean
+)
+
+fun buildSharedSettingsServerOnboardingUpdateBody(request: SettingsServerOnboardingUpdateRequest): String =
+    settingsRepositoryJson.encodeToString(
+        SettingsServerOnboardingUpdateRequestBody(
+            setupModalReminderOptOut = request.setupModalReminderOptOut
+        )
+    )
+
+@Serializable
+data class SettingsServerTranslationUpdateRequestBody(
+    val translationEnabled: Boolean
+)
+
+fun buildSharedSettingsServerTranslationUpdateBody(request: SettingsServerTranslationUpdateRequest): String =
+    settingsRepositoryJson.encodeToString(
+        SettingsServerTranslationUpdateRequestBody(
+            translationEnabled = request.translationEnabled
+        )
+    )
+
+@Serializable
+data class SettingsServerSidebarOrderUpdateRequestBody(
+    val channelOrder: List<String>? = null,
+    val agentOrder: List<String>? = null,
+    val dmOrder: List<String>? = null,
+    val channelSortMode: String? = null,
+    val dmSortMode: String? = null,
+    val pinnedSortMode: String? = null,
+    val pinnedChannelIds: List<String>? = null,
+    val pinnedAgentIds: List<String>? = null,
+    val pinnedOrder: List<String>? = null,
+    val hiddenDmIds: List<String>? = null,
+    val channelPanelTabOrder: List<String>? = null,
+    val agentPanelTabOrder: List<String>? = null
+)
+
+fun buildSharedSettingsServerSidebarOrderUpdateBody(request: SettingsServerSidebarOrderUpdateRequest): String =
+    settingsRepositoryJson.encodeToString(
+        SettingsServerSidebarOrderUpdateRequestBody(
+            channelOrder = request.channelOrder,
+            agentOrder = request.agentOrder,
+            dmOrder = request.dmOrder,
+            channelSortMode = request.channelSortMode,
+            dmSortMode = request.dmSortMode,
+            pinnedSortMode = request.pinnedSortMode,
+            pinnedChannelIds = request.pinnedChannelIds,
+            pinnedAgentIds = request.pinnedAgentIds,
+            pinnedOrder = request.pinnedOrder,
+            hiddenDmIds = request.hiddenDmIds,
+            channelPanelTabOrder = request.channelPanelTabOrder,
+            agentPanelTabOrder = request.agentPanelTabOrder
+        )
+    )
+
+@Serializable
+data class SettingsServerMemberRoleUpdateRequestBody(
+    val role: String
+)
+
+fun buildSharedSettingsServerMemberRoleUpdateBody(role: String): String =
+    settingsRepositoryJson.encodeToString(SettingsServerMemberRoleUpdateRequestBody(role = role))
 
 @Serializable
 data class SettingsServerMuteRequestBody(

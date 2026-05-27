@@ -193,6 +193,63 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
+    fun serverManagementContractsUseConfirmedShapes() = runBlocking {
+        val network =
+            FakeSettingsNetworkClient(
+                onboardingJson = """{"setupModalReminderOptOut":false}""",
+                translationJson = """{"translationEnabled":true,"translationAvailable":true,"canManageTranslation":true}""",
+                sidebarOrderJson = """{"channelOrder":["channel-1"],"agentOrder":["agent-1"],"dmOrder":["dm-1"],"channelSortMode":"manual","dmSortMode":"recent","pinnedSortMode":"az","pinnedChannelIds":["channel-1"],"pinnedAgentIds":["agent-1"],"pinnedOrder":["channel-1","agent-1"],"hiddenDmIds":["dm-2"],"channelPanelTabOrder":["channels","threads"],"agentPanelTabOrder":["agents","dms"]}""",
+                onboardingUpdateJson = """{"setupModalReminderOptOut":true}""",
+                translationUpdateJson = """{"translationEnabled":false,"translationAvailable":true,"canManageTranslation":true}""",
+                sidebarOrderUpdateJson = """{"channelOrder":["channel-2"],"agentOrder":[],"dmOrder":[],"channelSortMode":"az","dmSortMode":"manual","pinnedSortMode":"manual","pinnedChannelIds":[],"pinnedAgentIds":[],"pinnedOrder":[],"hiddenDmIds":[],"channelPanelTabOrder":["threads","channels"],"agentPanelTabOrder":["dms","agents"]}""",
+                memberRoleUpdateJson = """{"ok":true}""",
+                removeMemberJson = """{"ok":true}""",
+                leaveServerJson = """{"ok":true}"""
+            )
+        val repository = RealSettingsRepository(sampleStore(), network)
+
+        val onboarding = repository.updateServerOnboarding(SettingsServerOnboardingUpdateRequest(setupModalReminderOptOut = true))
+        val translation = repository.getServerTranslationSettings()
+        val updatedTranslation = repository.updateServerTranslationSettings(SettingsServerTranslationUpdateRequest(translationEnabled = false))
+        val sidebar = repository.getServerSidebarOrder()
+        val updatedSidebar =
+            repository.updateServerSidebarOrder(
+                SettingsServerSidebarOrderUpdateRequest(
+                    channelOrder = listOf("channel-2"),
+                    channelSortMode = "az",
+                    channelPanelTabOrder = listOf("threads", "channels"),
+                    agentPanelTabOrder = listOf("dms", "agents")
+                )
+            )
+        val memberRole = repository.updateServerMemberRole(SettingsServerMemberRoleUpdateRequest(memberId = "member-2", role = "admin"))
+        val removedMember = repository.removeServerMember("member-3")
+        val leftServer = repository.leaveServer()
+
+        assertTrue(onboarding is DataResult.Content)
+        assertEquals(true, onboarding.data.setupModalReminderOptOut)
+        assertEquals("""{"setupModalReminderOptOut":true}""", network.onboardingBodies.single())
+        assertTrue(translation is DataResult.Content)
+        assertEquals(true, translation.data.translationEnabled)
+        assertEquals("Enabled", translation.data.statusLabel)
+        assertTrue(updatedTranslation is DataResult.Content)
+        assertEquals(false, updatedTranslation.data.translationEnabled)
+        assertEquals("""{"translationEnabled":false}""", network.translationBodies.single())
+        assertTrue(sidebar is DataResult.Content)
+        assertEquals(listOf("channel-1"), sidebar.data.channelOrder)
+        assertEquals("recent", sidebar.data.dmSortMode)
+        assertTrue(updatedSidebar is DataResult.Content)
+        assertEquals(listOf("channel-2"), updatedSidebar.data.channelOrder)
+        assertEquals("""{"channelOrder":["channel-2"],"channelSortMode":"az","channelPanelTabOrder":["threads","channels"],"agentPanelTabOrder":["dms","agents"]}""", network.sidebarBodies.single())
+        assertTrue(memberRole is DataResult.Content)
+        assertEquals("member-2", network.updatedMemberRoleMemberId)
+        assertEquals("""{"role":"admin"}""", network.memberRoleBodies.single())
+        assertTrue(removedMember is DataResult.Content)
+        assertEquals("member-3", network.deletedMemberId)
+        assertTrue(leftServer is DataResult.Content)
+        assertEquals(1, network.leaveServerCallCount)
+    }
+
+    @Test
     fun computersUseSelectedServerMachinesEndpointAndMapCanonicalFields() = runBlocking {
         val logs = mutableListOf<String>()
         val network =
@@ -393,6 +450,11 @@ class SettingsRepositoryDataSourceTest {
         private val usageJson: String = """{"machines":0,"agents":0,"channels":0}""",
         private val billingSubscriptionJson: String = """{"subscription":null,"stripeConfigured":false}""",
         private val onboardingJson: String = """{"setupModalReminderOptOut":false}""",
+        private val onboardingUpdateJson: String = onboardingJson,
+        private val translationJson: String = """{"translationEnabled":false,"translationAvailable":false,"canManageTranslation":false}""",
+        private val translationUpdateJson: String = translationJson,
+        private val sidebarOrderJson: String = """{"channelOrder":[],"agentOrder":[],"dmOrder":[],"channelSortMode":"manual","dmSortMode":"manual","pinnedSortMode":"manual","pinnedChannelIds":[],"pinnedAgentIds":[],"pinnedOrder":[],"hiddenDmIds":[],"channelPanelTabOrder":[],"agentPanelTabOrder":[]}""",
+        private val sidebarOrderUpdateJson: String = sidebarOrderJson,
         private val inviteJson: String = """{"id":"invite-1","email":"new@slock.ai"}""",
         private val invitesJson: String = """[]""",
         private val notificationSettingsJson: String = """{"serverPushMuted":false}""",
@@ -411,6 +473,9 @@ class SettingsRepositoryDataSourceTest {
         private val rotateMachineKeyJson: String = """{"apiKey":"sk_machine_rot987"}""",
         private val runtimeModelsJson: String = """{"models":["sonnet","opus"],"default":"sonnet"}""",
         private val commandJson: String = """{"ok":true}""",
+        private val memberRoleUpdateJson: String = commandJson,
+        private val removeMemberJson: String = commandJson,
+        private val leaveServerJson: String = commandJson,
         private val machinesResponseCode: Int? = null,
         private val workspacesResponseCode: Int? = null,
         private val agentsResponseCode: Int? = null,
@@ -433,12 +498,22 @@ class SettingsRepositoryDataSourceTest {
             private set
         var deletedJoinLinkId: String? = null
             private set
+        var deletedMemberId: String? = null
+            private set
         var deletedWorkspaceDirectoryName: String? = null
+            private set
+        var updatedMemberRoleMemberId: String? = null
+            private set
+        var leaveServerCallCount: Int = 0
             private set
         val accountUpdateBodies = mutableListOf<String>()
         val inviteBodies = mutableListOf<String>()
         val joinLinkBodies = mutableListOf<String>()
         val notificationSettingsBodies = mutableListOf<String>()
+        val onboardingBodies = mutableListOf<String>()
+        val translationBodies = mutableListOf<String>()
+        val sidebarBodies = mutableListOf<String>()
+        val memberRoleBodies = mutableListOf<String>()
         val registerBodies = mutableListOf<String>()
         val renameBodies = mutableListOf<String>()
 
@@ -503,6 +578,22 @@ class SettingsRepositoryDataSourceTest {
                     response(billingSubscriptionJson)
                 normalized.matches(Regex("""servers/[^/]+/onboarding-settings""")) && method == "GET" ->
                     response(onboardingJson)
+                normalized.matches(Regex("""servers/[^/]+/onboarding-settings""")) && method == "PATCH" -> {
+                    onboardingBodies += bodyText.orEmpty()
+                    response(onboardingUpdateJson)
+                }
+                normalized.matches(Regex("""servers/[^/]+/translation-settings""")) && method == "GET" ->
+                    response(translationJson)
+                normalized.matches(Regex("""servers/[^/]+/translation-settings""")) && method == "PATCH" -> {
+                    translationBodies += bodyText.orEmpty()
+                    response(translationUpdateJson)
+                }
+                normalized.matches(Regex("""servers/[^/]+/sidebar-order""")) && method == "GET" ->
+                    response(sidebarOrderJson)
+                normalized.matches(Regex("""servers/[^/]+/sidebar-order""")) && method == "PATCH" -> {
+                    sidebarBodies += bodyText.orEmpty()
+                    response(sidebarOrderUpdateJson)
+                }
                 normalized.matches(Regex("""servers/[^/]+/notification-settings""")) && method == "GET" ->
                     response("""{"serverPushMuted":$currentServerPushMuted}""")
                 normalized.matches(Regex("""servers/[^/]+/notification-settings""")) && method == "PATCH" -> {
@@ -533,6 +624,19 @@ class SettingsRepositoryDataSourceTest {
                 normalized.matches(Regex("""servers/[^/]+/join-links/[^/]+""")) && method == "DELETE" -> {
                     deletedJoinLinkId = normalized.split("/")[3]
                     response(joinLinkDeleteJson)
+                }
+                normalized.matches(Regex("""servers/[^/]+/members/[^/]+""")) && method == "PATCH" -> {
+                    updatedMemberRoleMemberId = normalized.split("/")[3]
+                    memberRoleBodies += bodyText.orEmpty()
+                    response(memberRoleUpdateJson)
+                }
+                normalized.matches(Regex("""servers/[^/]+/members/[^/]+""")) && method == "DELETE" -> {
+                    deletedMemberId = normalized.split("/")[3]
+                    response(removeMemberJson)
+                }
+                normalized.matches(Regex("""servers/[^/]+/leave""")) && method == "POST" -> {
+                    leaveServerCallCount += 1
+                    response(leaveServerJson)
                 }
                 normalized.matches(Regex("""servers/[^/]+""")) && method == "DELETE" ->
                     response("""{"ok":true}""")

@@ -78,6 +78,9 @@ import ai.slock.compose.data.SharedHomeSavedPanelState
 import ai.slock.compose.data.SharedHomeSearchPanelState
 import ai.slock.compose.data.SharedHomeSearchSavedIntent
 import ai.slock.compose.data.SharedHomeSearchSavedViewModel
+import ai.slock.compose.data.AccountProfileUpdateRequest
+import ai.slock.compose.data.AccountSettingsSnapshot
+import ai.slock.compose.data.ConnectedAccountStatus
 import ai.slock.compose.data.InboxItem
 import ai.slock.compose.data.kuiklyNotificationPreferenceRepository
 import ai.slock.compose.data.kuiklySharedPreferenceStore
@@ -198,6 +201,7 @@ private const val SETTINGS_ROW_VISUAL_PAGE = "compose_settings_row_visual"
 private const val SETTINGS_PAGE_VISUAL_PAGE = "compose_settings_page_visual"
 private const val HOME_SEARCH_VISUAL_PAGE = "compose_home_search_visual"
 private const val HOME_SEARCH_CHANNEL_DROPDOWN_VISUAL_PAGE = "compose_home_search_channel_dropdown_visual"
+private const val HOME_CREATE_CHANNEL_DIALOG_VISUAL_PAGE = "compose_home_create_channel_dialog_visual"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 
 private const val AppShellRouteMain = "main"
@@ -347,6 +351,14 @@ internal class ComposeHomeSearchChannelDropdownVisualPage : ai.slock.compose.bas
     override fun willInit() {
         super.willInit()
         setContent { HomeSearchVisualContent(initialOpenFilterId = "channel") }
+    }
+}
+
+@Page(HOME_CREATE_CHANNEL_DIALOG_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeHomeCreateChannelDialogVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeCreateChannelDialogVisualContent() }
     }
 }
 
@@ -1399,9 +1411,24 @@ private fun SettingsAppShellContent(
     ) {
         when (selectedDestination) {
             SettingsDestinationAccount ->
-                SettingsAccountContent(appShellAccountPayload(session), applyTopSafeArea = false) { action ->
-                    if (action == "logout") {
-                        onSettingsIntent(SharedSettingsIntent.Logout)
+                SettingsAccountContent(settingsState.account.toAccountPayload(session), applyTopSafeArea = false) { action ->
+                    when (action) {
+                        "logout" -> onSettingsIntent(SharedSettingsIntent.Logout)
+                        "saveProfile" -> {
+                            val account = (settingsState.account as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
+                            if (account != null) {
+                                onSettingsIntent(
+                                    SharedSettingsIntent.UpdateProfile(
+                                        AccountProfileUpdateRequest(
+                                            displayName = account.profile.displayName,
+                                            handle = account.profile.handle,
+                                            email = account.profile.email
+                                        )
+                                    )
+                                )
+                            }
+                        }
+                        else -> onSettingsAction(action, null)
                     }
                 }
             SettingsDestinationComputers ->
@@ -1787,6 +1814,41 @@ private fun appShellSettingsHomePayload(
                     selected = selectedDestination == SettingsDestinationRouter
                 )
             )
+    )
+
+private fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
+    session: StoredAuthSession?
+): KuiklySettingsAccountPayload {
+    val account = (this as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
+    return account?.toAccountPayload() ?: appShellAccountPayload(session)
+}
+
+private fun AccountSettingsSnapshot.toAccountPayload(): KuiklySettingsAccountPayload =
+    KuiklySettingsAccountPayload(
+        instanceId = "shared-shell-settings-account",
+        profile =
+            KuiklySettingsAccountProfile(
+                displayName = profile.displayName,
+                handle = profile.handle,
+                email = profile.email,
+                avatarLabel = profile.avatarLabel,
+                verified = profile.verified,
+                roleLabel = profile.roleLabel.orEmpty()
+            ),
+        connectedAccounts =
+            connectedAccounts.map {
+                KuiklySettingsConnectedAccount(
+                    provider = it.provider,
+                    identifier = it.identifier,
+                    status =
+                        when (it.status) {
+                            ConnectedAccountStatus.Connected -> "connected"
+                            ConnectedAccountStatus.NotConnected -> "notConnected"
+                            ConnectedAccountStatus.Loading -> "loading"
+                            ConnectedAccountStatus.Failed -> "failed"
+                        }
+                )
+            }
     )
 
 private fun appShellAccountPayload(session: StoredAuthSession?): KuiklySettingsAccountPayload {
@@ -3178,12 +3240,17 @@ private fun SharedCreateChannelDialog(
     membersLoading: Boolean,
     members: List<MemberProfile>,
     errorMessage: String?,
+    initialName: String = "",
+    initialDescription: String = "",
+    initialSelectedMemberKeys: Set<String> = emptySet(),
     onDismiss: () -> Unit,
     onSubmit: (String, String?, List<String>, List<String>) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var selectedMemberKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var name by remember(initialName) { mutableStateOf(initialName) }
+    var description by remember(initialDescription) { mutableStateOf(initialDescription) }
+    var selectedMemberKeys by remember(initialSelectedMemberKeys) {
+        mutableStateOf(initialSelectedMemberKeys)
+    }
     val canSubmit = name.isNotBlank() && !submitting
     val selectableMembers = members.filter { it.kind == MemberKind.Human || it.kind == MemberKind.Agent }
     Modal(onWillDismiss = { if (!submitting) onDismiss() }) {
@@ -5804,10 +5871,47 @@ private val homeSearchVisualHomeState = SharedHomeState(
     selectedTopAction = SharedHomeTopAction.Search
 )
 
+private val homeCreateChannelVisualMembers = listOf(
+        MemberProfile(
+            id = MemberId("user_artin"),
+            displayName = "Artin",
+            handle = "artin",
+            kind = MemberKind.Human,
+            avatarLabel = "AR",
+            presence = Presence.Active
+        ),
+        MemberProfile(
+            id = MemberId("user_product"),
+            displayName = "Product UX Designer",
+            handle = "Product-UX-Designer",
+            kind = MemberKind.Human,
+            avatarLabel = "PU",
+            presence = Presence.Active
+        ),
+        MemberProfile(
+            id = MemberId("agent_android"),
+            displayName = "Android Developer",
+            handle = "Android-Developer",
+            kind = MemberKind.Agent,
+            avatarLabel = "AD",
+            presence = Presence.Active,
+            agentStatus = AgentStatus.Working
+        ),
+        MemberProfile(
+            id = MemberId("agent_kmp"),
+            displayName = "KMP-专家",
+            handle = "KMP-专家",
+            kind = MemberKind.Agent,
+            avatarLabel = "K",
+            presence = Presence.Active,
+            agentStatus = AgentStatus.Idle
+        )
+)
+
 private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
-    query = "android",
-    sort = SearchSort.Relevance,
-    timeRange = SearchTimeRange.Any,
+        query = "android",
+        sort = SearchSort.Relevance,
+        timeRange = SearchTimeRange.Any,
     myMessagesOnly = false,
     selectedSenderId = null,
     senderFilters =
@@ -5942,6 +6046,31 @@ private fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
                 multiSelect = false
             )
         }
+    }
+}
+
+@Composable
+private fun HomeCreateChannelDialogVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+    ) {
+        SharedCreateChannelDialog(
+            submitting = false,
+            membersLoading = false,
+            members = homeCreateChannelVisualMembers,
+            errorMessage = null,
+            initialName = "android-artifacts",
+            initialDescription = "Build reports, screenshots, release blockers",
+            initialSelectedMemberKeys = setOf(
+                homeCreateChannelVisualMembers[0].memberSelectionKey,
+                homeCreateChannelVisualMembers[2].memberSelectionKey
+            ),
+            onDismiss = {},
+            onSubmit = { _, _, _, _ -> }
+        )
     }
 }
 

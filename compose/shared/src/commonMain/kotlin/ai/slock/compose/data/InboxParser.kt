@@ -232,6 +232,22 @@ fun parseSharedSavedItems(bodyText: String): SharedSavedItems? = runCatching {
     )
 }.getOrNull()
 
+@Serializable
+private data class WireSavedCheckResponse(
+    val savedIds: List<String> = emptyList()
+)
+
+fun parseSharedSavedMessageStatus(bodyText: String): SavedMessageStatusSnapshot? = runCatching {
+    val decoded = inboxJson.decodeFromString(WireSavedCheckResponse.serializer(), bodyText)
+    SavedMessageStatusSnapshot(
+        savedIds =
+            decoded.savedIds
+                .filter { it.isNotBlank() }
+                .map(::MessageId)
+                .toSet()
+    )
+}.getOrNull()
+
 private fun WireSavedEntry.toInboxItem(): InboxItem {
     val itemKind = when (channelType) {
         "dm" -> InboxItemKind.DirectMessage

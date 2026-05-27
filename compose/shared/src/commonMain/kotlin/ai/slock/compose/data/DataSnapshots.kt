@@ -326,6 +326,10 @@ data class SavedMessageMutationResult(
     val messageId: MessageId
 )
 
+data class SavedMessageStatusSnapshot(
+    val savedIds: Set<MessageId>
+)
+
 data class SearchSnapshot(
     val server: ServerSummary,
     val query: String,
@@ -509,6 +513,29 @@ data class SettingsServerOnboardingSnapshot(
     val setupModalReminderOptOut: Boolean,
     val statusLabel: String,
     val detail: String
+)
+
+data class SettingsServerTranslationSnapshot(
+    val translationEnabled: Boolean,
+    val translationAvailable: Boolean,
+    val canManageTranslation: Boolean,
+    val statusLabel: String,
+    val detail: String
+)
+
+data class SettingsServerSidebarOrderSnapshot(
+    val channelOrder: List<String> = emptyList(),
+    val agentOrder: List<String> = emptyList(),
+    val dmOrder: List<String> = emptyList(),
+    val channelSortMode: String = "manual",
+    val dmSortMode: String = "manual",
+    val pinnedSortMode: String = "manual",
+    val pinnedChannelIds: List<String> = emptyList(),
+    val pinnedAgentIds: List<String> = emptyList(),
+    val pinnedOrder: List<String> = emptyList(),
+    val hiddenDmIds: List<String> = emptyList(),
+    val channelPanelTabOrder: List<String> = emptyList(),
+    val agentPanelTabOrder: List<String> = emptyList()
 )
 
 data class SettingsMobileSnapshot(

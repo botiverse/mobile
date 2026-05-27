@@ -207,6 +207,22 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertEquals(listOf("message-2"), network.unsavedMessageIds)
     }
 
+    @Test
+    fun savedCheckUsesBatchStatusContract() = runBlocking {
+        val network = FakeInboxNetworkClient(savedCheckJson = """{"savedIds":["message-1","message-3"]}""")
+        val repository = RealSavedRepository(sampleStore(), network)
+
+        val checked =
+            repository.checkSavedMessages(
+                ServerId("server-1"),
+                listOf(ai.slock.compose.model.MessageId("message-1"), ai.slock.compose.model.MessageId("message-2"), ai.slock.compose.model.MessageId("message-3"))
+            )
+
+        assertTrue(checked is DataResult.Content)
+        assertEquals(setOf("message-1", "message-3"), checked.data.savedIds.map { it.value }.toSet())
+        assertEquals(listOf("""{"messageIds":["message-1","message-2","message-3"]}"""), network.savedCheckBodies)
+    }
+
     private fun sampleStore(): SlockAuthSessionStore =
         InMemorySlockAuthSessionStore(
             StoredAuthSession(
@@ -233,11 +249,13 @@ class InboxSavedSearchRepositoryDataSourceTest {
     private class FakeInboxNetworkClient(
         var inboxJson: String = """{"items":[]}""",
         var savedJson: String = """{"saved":[]}""",
-        var searchJson: String = """{"results":[]}"""
+        var searchJson: String = """{"results":[]}""",
+        var savedCheckJson: String = """{"savedIds":[]}"""
     ) : SlockNetworkClient {
         val inboxCalls = mutableListOf<InboxCall>()
         val searchCalls = mutableListOf<SearchCall>()
         val saveBodies = mutableListOf<String>()
+        val savedCheckBodies = mutableListOf<String>()
         val unsavedMessageIds = mutableListOf<String>()
 
         override suspend fun request(
@@ -264,6 +282,10 @@ class InboxSavedSearchRepositoryDataSourceTest {
                 normalized == "channels/saved" && method == "POST" -> {
                     saveBodies += bodyText.orEmpty()
                     ok("""{"ok":true}""")
+                }
+                normalized == "channels/saved/check" && method == "POST" -> {
+                    savedCheckBodies += bodyText.orEmpty()
+                    ok(savedCheckJson)
                 }
                 normalized.startsWith("channels/saved/") && method == "DELETE" -> {
                     unsavedMessageIds += normalized.removePrefix("channels/saved/")

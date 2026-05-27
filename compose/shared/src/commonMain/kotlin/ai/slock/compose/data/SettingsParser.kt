@@ -288,6 +288,68 @@ fun parseSharedSettingsServerOnboarding(bodyText: String): SettingsServerOnboard
 }.getOrNull()
 
 @Serializable
+private data class WireSettingsTranslationSettings(
+    val translationEnabled: Boolean,
+    val translationAvailable: Boolean,
+    val canManageTranslation: Boolean,
+)
+
+fun parseSharedSettingsTranslation(bodyText: String): SettingsServerTranslationSnapshot? = runCatching {
+    val settings = settingsJson.decodeFromString(WireSettingsTranslationSettings.serializer(), bodyText)
+    SettingsServerTranslationSnapshot(
+        translationEnabled = settings.translationEnabled,
+        translationAvailable = settings.translationAvailable,
+        canManageTranslation = settings.canManageTranslation,
+        statusLabel =
+            when {
+                !settings.translationAvailable -> "Unavailable"
+                settings.translationEnabled -> "Enabled"
+                else -> "Disabled"
+            },
+        detail =
+            when {
+                !settings.translationAvailable -> "Translation provider is not configured for this deployment."
+                settings.translationEnabled -> "Server message translation is enabled."
+                else -> "Server message translation is disabled."
+            }
+    )
+}.getOrNull()
+
+@Serializable
+private data class WireSettingsSidebarOrder(
+    val channelOrder: List<String> = emptyList(),
+    val agentOrder: List<String> = emptyList(),
+    val dmOrder: List<String> = emptyList(),
+    val channelSortMode: String = "manual",
+    val dmSortMode: String = "manual",
+    val pinnedSortMode: String = "manual",
+    val pinnedChannelIds: List<String> = emptyList(),
+    val pinnedAgentIds: List<String> = emptyList(),
+    val pinnedOrder: List<String> = emptyList(),
+    val hiddenDmIds: List<String> = emptyList(),
+    val channelPanelTabOrder: List<String> = emptyList(),
+    val agentPanelTabOrder: List<String> = emptyList(),
+)
+
+fun parseSharedSettingsSidebarOrder(bodyText: String): SettingsServerSidebarOrderSnapshot? = runCatching {
+    val order = settingsJson.decodeFromString(WireSettingsSidebarOrder.serializer(), bodyText)
+    SettingsServerSidebarOrderSnapshot(
+        channelOrder = order.channelOrder,
+        agentOrder = order.agentOrder,
+        dmOrder = order.dmOrder,
+        channelSortMode = order.channelSortMode,
+        dmSortMode = order.dmSortMode,
+        pinnedSortMode = order.pinnedSortMode,
+        pinnedChannelIds = order.pinnedChannelIds,
+        pinnedAgentIds = order.pinnedAgentIds,
+        pinnedOrder = order.pinnedOrder,
+        hiddenDmIds = order.hiddenDmIds,
+        channelPanelTabOrder = order.channelPanelTabOrder,
+        agentPanelTabOrder = order.agentPanelTabOrder,
+    )
+}.getOrNull()
+
+@Serializable
 private data class WireSettingsServerProfileUpdate(
     val id: String,
     val name: String,
