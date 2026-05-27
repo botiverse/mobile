@@ -544,6 +544,7 @@ private fun ThreadMessageVisualCard(
             }
         }
 }
+}
 
 @Composable
 internal fun SharedThreadRouteContent(
