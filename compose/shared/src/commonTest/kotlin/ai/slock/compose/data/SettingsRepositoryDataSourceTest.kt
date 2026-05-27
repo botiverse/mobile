@@ -305,6 +305,41 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(logs.none { it.contains("Bearer") || it.contains("token", ignoreCase = true) })
     }
 
+    @Test
+    fun computerActionsAndRuntimeModelsUseTypedMachineEndpoints() = runBlocking {
+        val network = FakeSettingsNetworkClient()
+        val repository = RealSettingsRepository(sampleStore(), network)
+
+        val register = repository.registerComputer(SettingsComputerRegisterRequest("Builder Mac"))
+        val rename = repository.renameComputer(SettingsComputerRenameRequest("machine-1", "Builder Mac 2"))
+        val rotate = repository.rotateComputerKey("machine-1")
+        val runtimeModels = repository.getComputerRuntimeModels("machine-1", "claude")
+        val deleteWorkspace = repository.deleteComputerWorkspace(SettingsComputerWorkspaceDeleteRequest("machine-1", "agent-old"))
+        val deleteComputer = repository.deleteComputer("machine-1")
+
+        assertTrue(register is DataResult.Content)
+        assertEquals("machine-9", register.data.machine.id)
+        assertEquals("sk_machine_ab", register.data.apiKeyPrefix)
+        assertTrue(rename is DataResult.Content)
+        assertEquals("Builder Mac 2", rename.data.name)
+        assertTrue(rotate is DataResult.Content)
+        assertEquals("sk_machine_ro", rotate.data.apiKeyPrefix)
+        assertTrue(runtimeModels is DataResult.Content)
+        assertEquals(listOf("sonnet", "opus"), runtimeModels.data.models)
+        assertEquals("sonnet", runtimeModels.data.defaultModel)
+        assertTrue(deleteWorkspace is DataResult.Content)
+        assertEquals("delete_workspace", deleteWorkspace.data.action)
+        assertTrue(deleteComputer is DataResult.Content)
+        assertEquals("delete", deleteComputer.data.action)
+        assertEquals("""{"name":"Builder Mac"}""", network.registerBodies.single())
+        assertEquals("""{"name":"Builder Mac 2"}""", network.renameBodies.single())
+        assertEquals("server-1", network.runtimeModelsServerId)
+        assertEquals("machine-1", network.runtimeModelsMachineId)
+        assertEquals("claude", network.runtimeModelsRuntime)
+        assertEquals("agent-old", network.deletedWorkspaceDirectoryName)
+        assertEquals("machine-1", network.deletedMachineId)
+    }
+
     private class FakeSettingsNetworkClient(
         private val accountJson: String = """{"id":"user-1","email":"user@slock.ai","name":"slock-user","displayName":"Slock User"}""",
         private val membersJson: String = """[]""",
@@ -315,6 +350,13 @@ class SettingsRepositoryDataSourceTest {
         private val machinesJson: String = """{"machines":[]}""",
         private val workspacesJson: String = """[]""",
         private val agentsJson: String = """[]""",
+        private val registerMachineJson: String =
+            """{"machine":{"id":"machine-9","name":"Builder Mac","status":"offline","daemonVersion":null,"hostname":null,"os":null},"apiKey":"sk_machine_abc123"}""",
+        private val renameMachineJson: String =
+            """{"id":"machine-1","name":"Builder Mac 2","status":"online","daemonVersion":"1.5.0","hostname":"builder.local","os":"macOS"}""",
+        private val rotateMachineKeyJson: String = """{"apiKey":"sk_machine_rot987"}""",
+        private val runtimeModelsJson: String = """{"models":["sonnet","opus"],"default":"sonnet"}""",
+        private val commandJson: String = """{"ok":true}""",
         private val machinesResponseCode: Int? = null,
         private val workspacesResponseCode: Int? = null,
         private val agentsResponseCode: Int? = null,
@@ -324,8 +366,20 @@ class SettingsRepositoryDataSourceTest {
             private set
         var workspacesMachineId: String? = null
             private set
+        var runtimeModelsServerId: String? = null
+            private set
+        var runtimeModelsMachineId: String? = null
+            private set
+        var runtimeModelsRuntime: String? = null
+            private set
+        var deletedMachineId: String? = null
+            private set
+        var deletedWorkspaceDirectoryName: String? = null
+            private set
         val accountUpdateBodies = mutableListOf<String>()
         val inviteBodies = mutableListOf<String>()
+        val registerBodies = mutableListOf<String>()
+        val renameBodies = mutableListOf<String>()
 
         override suspend fun request(
             priority: DataRequestPriority,
@@ -347,10 +401,36 @@ class SettingsRepositoryDataSourceTest {
                     machinesServerId = normalized.split("/")[1]
                     response(machinesJson, machinesResponseCode ?: responseCode)
                 }
+                normalized.matches(Regex("""servers/[^/]+/machines""")) && method == "POST" -> {
+                    registerBodies += bodyText.orEmpty()
+                    response(registerMachineJson)
+                }
+                normalized.matches(Regex("""servers/[^/]+/machines/[^/]+$""")) && method == "PATCH" -> {
+                    renameBodies += bodyText.orEmpty()
+                    response(renameMachineJson)
+                }
+                normalized.matches(Regex("""servers/[^/]+/machines/[^/]+$""")) && method == "DELETE" -> {
+                    deletedMachineId = normalized.split("/")[3]
+                    response(commandJson)
+                }
+                normalized.matches(Regex("""servers/[^/]+/machines/[^/]+/rotate-key""")) && method == "POST" ->
+                    response(rotateMachineKeyJson)
                 normalized.matches(Regex("""servers/[^/]+/machines/[^/]+/workspaces""")) && method == "GET" -> {
                     val parts = normalized.split("/")
                     workspacesMachineId = parts[3]
                     response(workspacesJson, workspacesResponseCode ?: responseCode)
+                }
+                normalized.matches(Regex("""servers/[^/]+/machines/[^/]+/workspaces/[^/]+""")) && method == "DELETE" -> {
+                    val parts = normalized.split("/")
+                    deletedWorkspaceDirectoryName = parts[5]
+                    response(commandJson)
+                }
+                normalized.matches(Regex("""servers/[^/]+/machines/[^/]+/runtime-models/[^/]+""")) && method == "GET" -> {
+                    val parts = normalized.split("/")
+                    runtimeModelsServerId = parts[1]
+                    runtimeModelsMachineId = parts[3]
+                    runtimeModelsRuntime = parts[5]
+                    response(runtimeModelsJson)
                 }
                 normalized == "agents" && method == "GET" ->
                     response(agentsJson, agentsResponseCode ?: responseCode)

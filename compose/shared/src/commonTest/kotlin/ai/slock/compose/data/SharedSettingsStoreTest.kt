@@ -191,6 +191,27 @@ class SharedSettingsStoreTest {
             return computerDetailResult
         }
 
+        override suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult> =
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+        override suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot> =
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+        override suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult> =
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+        override suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult> =
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+        override suspend fun getComputerRuntimeModels(
+            machineId: String,
+            runtime: String
+        ): DataResult<SettingsComputerRuntimeModelsSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+        override suspend fun deleteComputerWorkspace(
+            request: SettingsComputerWorkspaceDeleteRequest
+        ): DataResult<SettingsComputerActionResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
         override suspend fun getBilling(): DataResult<SettingsBillingSnapshot> {
             calls += "billing"
             return billingResult

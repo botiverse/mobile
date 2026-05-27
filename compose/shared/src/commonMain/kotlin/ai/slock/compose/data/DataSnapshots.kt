@@ -124,10 +124,25 @@ data class MemberSnapshot(
 
 data class AgentDetailSnapshot(
     val agentId: MemberId,
+    val summary: AgentDetailSummary? = null,
     val directMessages: List<AgentDmSummary>,
     val reminders: List<AgentReminderSummary>,
     val activity: List<AgentActivityEntry>,
     val skills: AgentSkillsSnapshot = AgentSkillsSnapshot(agentId = agentId)
+)
+
+data class AgentDetailSummary(
+    val id: String,
+    val name: String,
+    val displayName: String? = null,
+    val status: String? = null,
+    val runtime: String? = null,
+    val model: String? = null,
+    val machineId: String? = null,
+    val machineName: String? = null,
+    val activity: String? = null,
+    val activityDetail: String? = null,
+    val deletedAt: String? = null
 )
 
 data class AgentDmSnapshot(

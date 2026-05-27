@@ -127,6 +127,7 @@ class RealMemberRepository(
     private val warningLogger: (String) -> Unit = {},
     private val logger: (String) -> Unit = {}
 ) : MemberRepository {
+    private val agentsApiClient = SlockAgentsApiClient(SlockAgentsNetworkApi(networkClient))
     private val agentActivityCacheMutex = Mutex()
     private val agentActivityCache = mutableMapOf<MemberId, List<AgentActivityEntry>>()
 
@@ -218,11 +219,13 @@ class RealMemberRepository(
 
     override suspend fun getAgentDetail(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentDetailSnapshot> {
         currentContext() ?: return authRequired()
+        val summary = agentsApiClient.agent(agentId)
         val directMessages = getAgentDirectMessages(priority, agentId)
         val reminders = getAgentReminders(priority, agentId)
         val activity = getAgentActivity(priority, agentId)
         val skills = getAgentSkills(priority, agentId)
         return when {
+            summary is DataResult.Content &&
             directMessages is DataResult.Content &&
                 reminders is DataResult.Content &&
                 activity is DataResult.Content &&
@@ -230,21 +233,26 @@ class RealMemberRepository(
                 DataResult.Content(
                     AgentDetailSnapshot(
                         agentId = agentId,
+                        summary = summary.data.toAgentDetailSummary(),
                         directMessages = directMessages.data.directMessages,
                         reminders = reminders.data.reminders,
                         activity = activity.data.activity,
                         skills = skills.data
                     )
                 )
+            summary is DataResult.NoPermission -> summary
+            summary is DataResult.Error -> summary
             directMessages is DataResult.NoPermission -> directMessages
             reminders is DataResult.NoPermission -> reminders
             activity is DataResult.NoPermission -> activity
             skills is DataResult.NoPermission -> skills
+            summary is DataResult.Empty -> summary
             directMessages is DataResult.Error -> directMessages
             reminders is DataResult.Error -> reminders
             activity is DataResult.Error -> activity
             skills is DataResult.Error -> skills
-            directMessages is DataResult.Empty &&
+            summary is DataResult.Empty &&
+                directMessages is DataResult.Empty &&
                 reminders is DataResult.Empty &&
                 activity is DataResult.Empty &&
                 skills is DataResult.Empty -> DataResult.Empty(EmptyReason.NoMembers)
@@ -435,6 +443,66 @@ class RealMemberRepository(
         )
     }
 
+    override suspend fun startAgent(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentLifecycleActionResult> {
+        currentContext() ?: return authRequired()
+        if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        return agentsApiClient.startAgent(agentId).toLifecycleActionResult(agentId = agentId, action = "start")
+    }
+
+    override suspend fun stopAgent(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentLifecycleActionResult> {
+        currentContext() ?: return authRequired()
+        if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        return agentsApiClient.stopAgent(agentId).toLifecycleActionResult(agentId = agentId, action = "stop")
+    }
+
+    override suspend fun resetAgent(
+        priority: DataRequestPriority,
+        request: AgentResetRequest
+    ): DataResult<AgentLifecycleActionResult> {
+        currentContext() ?: return authRequired()
+        if (request.agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        return agentsApiClient.resetAgent(
+            request.agentId,
+            buildResetAgentBody(request.mode.wireValue)
+        ).toLifecycleActionResult(
+            agentId = request.agentId,
+            action = "reset",
+            resetMode = request.mode
+        )
+    }
+
+    override suspend fun deleteAgent(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentLifecycleActionResult> {
+        currentContext() ?: return authRequired()
+        if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        return agentsApiClient.deleteAgent(agentId).toLifecycleActionResult(agentId = agentId, action = "delete")
+    }
+
+    override suspend fun assignAgentMachine(
+        priority: DataRequestPriority,
+        request: AgentMachineAssignmentRequest
+    ): DataResult<AgentLifecycleActionResult> {
+        currentContext() ?: return authRequired()
+        if (request.agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        val machineId = request.machineId?.trim()?.takeIf { it.isNotBlank() }
+        return agentsApiClient.assignMachine(
+            request.agentId,
+            buildAssignAgentMachineBody(machineId)
+        ).toLifecycleActionResult(
+            agentId = request.agentId,
+            action = "assign_machine",
+            machineId = machineId
+        )
+    }
+
     override suspend fun getChannelMembers(priority: DataRequestPriority, channelId: ChannelId): DataResult<ChannelMemberSnapshot> {
         currentContext() ?: return authRequired()
         val result =
@@ -609,6 +677,43 @@ private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> =
         403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
         in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
         else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
+    }
+
+private fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
+    AgentDetailSummary(
+        id = id,
+        name = name,
+        displayName = displayName,
+        status = status,
+        runtime = runtime,
+        model = model,
+        machineId = machineId,
+        machineName = machineName,
+        activity = activity,
+        activityDetail = activityDetail,
+        deletedAt = deletedAt
+    )
+
+private fun DataResult<AgentCommandResult>.toLifecycleActionResult(
+    agentId: MemberId,
+    action: String,
+    resetMode: AgentResetMode? = null,
+    machineId: String? = null
+): DataResult<AgentLifecycleActionResult> =
+    when (this) {
+        is DataResult.Content ->
+            DataResult.Content(
+                AgentLifecycleActionResult(
+                    agentId = agentId,
+                    success = data.ok,
+                    action = action,
+                    resetMode = resetMode,
+                    machineId = machineId
+                )
+            )
+        is DataResult.Empty -> DataResult.Empty(reason)
+        is DataResult.Error -> DataResult.Error(error)
+        is DataResult.NoPermission -> DataResult.NoPermission(blocker)
     }
 
 private fun mergeAgentActivityEntries(existing: List<AgentActivityEntry>, incoming: List<AgentActivityEntry>): List<AgentActivityEntry> {

@@ -45,6 +45,130 @@ internal interface SlockAgentsApi {
     suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse
 }
 
+internal class SlockAgentsNetworkApi(
+    private val networkClient: SlockNetworkClient
+) : SlockAgentsApi {
+    override suspend fun agents(): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "agents"
+        )
+
+    override suspend fun agent(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "agents/${agentId.value}"
+        )
+
+    override suspend fun createAgent(body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents",
+            method = "POST",
+            bodyText = body
+        )
+
+    override suspend fun updateAgent(agentId: MemberId, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}",
+            method = "PATCH",
+            bodyText = body
+        )
+
+    override suspend fun startAgent(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/start",
+            method = "POST"
+        )
+
+    override suspend fun stopAgent(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/stop",
+            method = "POST"
+        )
+
+    override suspend fun resetAgent(agentId: MemberId, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/reset",
+            method = "POST",
+            bodyText = body
+        )
+
+    override suspend fun deleteAgent(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}",
+            method = "DELETE"
+        )
+
+    override suspend fun assignMachine(agentId: MemberId, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/assign-machine",
+            method = "POST",
+            bodyText = body
+        )
+
+    override suspend fun agentDirectMessages(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "agents/${agentId.value}/agent-dms"
+        )
+
+    override suspend fun agentActivityLog(agentId: MemberId, limit: Int): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "agents/${agentId.value}/activity-log",
+            query = listOf("limit" to limit.toString())
+        )
+
+    override suspend fun agentWorkspaceFiles(agentId: MemberId, dirPath: String?): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "agents/${agentId.value}/workspace-files",
+            query = listOfNotNull(dirPath?.let { "dirPath" to it })
+        )
+
+    override suspend fun readAgentWorkspaceFile(agentId: MemberId, path: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "agents/${agentId.value}/workspace-files/read",
+            query = listOf("path" to path)
+        )
+
+    override suspend fun agentSkills(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "agents/${agentId.value}/skills"
+        )
+
+    override suspend fun agentScopes(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "agents/${agentId.value}/scopes"
+        )
+
+    override suspend fun updateAgentScopes(agentId: MemberId, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/scopes",
+            method = "PUT",
+            bodyText = body
+        )
+
+    override suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/bootstrap-tokens",
+            method = "POST",
+            bodyText = body
+        )
+}
+
 internal class SlockAgentsApiClient(
     private val transport: SlockAgentsApi
 ) {
@@ -52,7 +176,7 @@ internal class SlockAgentsApiClient(
         transport.agents().mapAgentsBody(
             "agents_list_contract_mismatch",
             ListSerializer(AgentWireDto.serializer())
-        ) { wire -> AgentsPage(agentCount = wire.size) }
+        ) { wire -> AgentsPage(agents = wire.mapNotNull { it.toSummary() }) }
 
     suspend fun agent(agentId: MemberId): DataResult<AgentSummary> =
         transport.agent(agentId).mapAgentsBody(
@@ -159,7 +283,10 @@ internal class SlockAgentsApiClient(
         }
 }
 
-internal data class AgentsPage(val agentCount: Int)
+internal data class AgentsPage(val agents: List<AgentSummary>) {
+    val agentCount: Int
+        get() = agents.size
+}
 internal data class AgentSummary(
     val id: String,
     val name: String,
@@ -168,6 +295,7 @@ internal data class AgentSummary(
     val model: String?,
     val runtime: String?,
     val machineId: String?,
+    val machineName: String?,
     val activity: String?,
     val activityDetail: String?,
     val deletedAt: String?
@@ -192,7 +320,7 @@ private inline fun <Wire, T> HomeNetworkResponse.mapAgentsBody(
     crossinline transform: (Wire) -> T?,
 ): DataResult<T> {
     if (!isSuccessful) {
-        return DataResult.Error(ScreenError(code = contractCode, retryable = code >= 500))
+        return toAgentsDataError()
     }
     val body = bodyText?.takeIf { it.isNotBlank() }
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
@@ -205,6 +333,14 @@ private inline fun <Wire, T> HomeNetworkResponse.mapAgentsBody(
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
     return DataResult.Content(value)
 }
+
+private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> =
+    when (code) {
+        401 -> DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+        403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
+        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
+        else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
+    }
 
 private fun HomeNetworkResponse.mapAgentsCommand(contractCode: String): DataResult<AgentCommandResult> =
     mapAgentsBody(contractCode, AgentCommandResponseDto.serializer()) { wire ->
@@ -228,23 +364,39 @@ private data class AgentWireDto(
     val activity: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
+    val runtimeProfile: AgentRuntimeProfileDto? = null,
 )
 
 private fun AgentWireDto.toSummary(): AgentSummary? {
     if (id.isBlank() || name.isBlank()) return null
+    val currentProfile = runtimeProfile?.current
     return AgentSummary(
         id = id,
         name = name,
         displayName = displayName,
         status = status,
-        model = model,
-        runtime = runtime,
-        machineId = machineId,
+        model = model ?: currentProfile?.model,
+        runtime = runtime ?: currentProfile?.runtime,
+        machineId = machineId ?: currentProfile?.machineId,
+        machineName = currentProfile?.machineName,
         activity = activity,
         activityDetail = activityDetail,
         deletedAt = deletedAt
     )
 }
+
+@Serializable
+private data class AgentRuntimeProfileDto(
+    val current: AgentRuntimeProfileCurrentDto? = null
+)
+
+@Serializable
+private data class AgentRuntimeProfileCurrentDto(
+    val machineId: String? = null,
+    val machineName: String? = null,
+    val runtime: String? = null,
+    val model: String? = null
+)
 
 @Serializable
 private data class AgentCommandResponseDto(val ok: Boolean)

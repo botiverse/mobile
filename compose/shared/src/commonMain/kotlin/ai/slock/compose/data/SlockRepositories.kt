@@ -35,6 +35,15 @@ interface SettingsRepository {
     suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot>
     suspend fun getComputers(): DataResult<SettingsComputersSnapshot>
     suspend fun getComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot>
+    suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult>
+    suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot>
+    suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult>
+    suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult>
+    suspend fun getComputerRuntimeModels(
+        machineId: String,
+        runtime: String
+    ): DataResult<SettingsComputerRuntimeModelsSnapshot>
+    suspend fun deleteComputerWorkspace(request: SettingsComputerWorkspaceDeleteRequest): DataResult<SettingsComputerActionResult>
     suspend fun getBilling(): DataResult<SettingsBillingSnapshot>
     suspend fun getServerSettings(): DataResult<SettingsServerSnapshot>
     suspend fun updateServerProfile(request: SettingsServerProfileUpdateRequest): DataResult<SettingsServerSnapshot>
@@ -141,6 +150,26 @@ interface MemberRepository {
         priority: DataRequestPriority,
         agentId: MemberId
     ): DataResult<AgentSkillsSnapshot>
+    suspend fun startAgent(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentLifecycleActionResult>
+    suspend fun stopAgent(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentLifecycleActionResult>
+    suspend fun resetAgent(
+        priority: DataRequestPriority,
+        request: AgentResetRequest
+    ): DataResult<AgentLifecycleActionResult>
+    suspend fun deleteAgent(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentLifecycleActionResult>
+    suspend fun assignAgentMachine(
+        priority: DataRequestPriority,
+        request: AgentMachineAssignmentRequest
+    ): DataResult<AgentLifecycleActionResult>
     suspend fun getChannelMembers(
         priority: DataRequestPriority,
         channelId: ChannelId
@@ -305,6 +334,44 @@ data class SettingsServerActionResult(
     val message: String? = null
 )
 
+data class SettingsComputerRegisterRequest(
+    val name: String
+)
+
+data class SettingsComputerRenameRequest(
+    val machineId: String,
+    val name: String
+)
+
+data class SettingsComputerWorkspaceDeleteRequest(
+    val machineId: String,
+    val directoryName: String
+)
+
+data class SettingsComputerRegistrationResult(
+    val machine: SettingsComputerSnapshot,
+    val apiKeyPrefix: String
+)
+
+data class SettingsComputerKeyRotationResult(
+    val machineId: String,
+    val apiKeyPrefix: String
+)
+
+data class SettingsComputerRuntimeModelsSnapshot(
+    val machineId: String,
+    val runtime: String,
+    val models: List<String>,
+    val defaultModel: String? = null
+)
+
+data class SettingsComputerActionResult(
+    val machineId: String,
+    val success: Boolean,
+    val action: String,
+    val directoryName: String? = null
+)
+
 data class CreateServerRequest(
     val name: String,
     val slug: String? = null,
@@ -334,6 +401,30 @@ data class AgentProfileUpdateRequest(
     val agentId: MemberId,
     val displayName: String,
     val description: String?
+)
+
+enum class AgentResetMode(val wireValue: String) {
+    Session("session"),
+    Restart("restart"),
+    Full("full")
+}
+
+data class AgentResetRequest(
+    val agentId: MemberId,
+    val mode: AgentResetMode
+)
+
+data class AgentMachineAssignmentRequest(
+    val agentId: MemberId,
+    val machineId: String?
+)
+
+data class AgentLifecycleActionResult(
+    val agentId: MemberId,
+    val success: Boolean,
+    val action: String,
+    val resetMode: AgentResetMode? = null,
+    val machineId: String? = null
 )
 
 data class ChannelMemberActionResult(

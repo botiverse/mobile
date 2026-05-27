@@ -108,6 +108,7 @@ internal class SlockComputersApiClient(
             ComputersListResponseDto.serializer()
         ) { wire ->
             ComputerListSummary(
+                machines = wire.machines.mapNotNull { it.toSummary() },
                 machineCount = wire.machines.size,
                 latestDaemonVersion = wire.latestDaemonVersion,
                 onlineCount = wire.machines.count { it.status == "online" }
@@ -148,6 +149,7 @@ internal class SlockComputersApiClient(
             kotlinx.serialization.builtins.ListSerializer(ComputerWorkspaceDto.serializer())
         ) { wire ->
             ComputerWorkspacePage(
+                workspaces = wire.mapNotNull { it.toSummary() },
                 itemCount = wire.size,
                 activeCount = wire.count { it.status == "active" },
                 orphanCount = wire.count { it.status == "orphan" }
@@ -160,6 +162,7 @@ internal class SlockComputersApiClient(
             ComputerRuntimeModelsResponseDto.serializer()
         ) { wire ->
             ComputerRuntimeModelsSummary(
+                models = wire.models,
                 runtime = runtime,
                 modelCount = wire.models.size,
                 defaultModel = wire.defaultModel
@@ -176,6 +179,7 @@ internal class SlockComputersApiClient(
 }
 
 internal data class ComputerListSummary(
+    val machines: List<ComputerSummary>,
     val machineCount: Int,
     val onlineCount: Int,
     val latestDaemonVersion: String?
@@ -192,8 +196,27 @@ internal data class ComputerSummary(
 
 internal data class ComputerRegistrationSummary(val machine: ComputerSummary, val apiKeyPrefix: String)
 internal data class ComputerApiKeyRotationSummary(val apiKeyPrefix: String)
-internal data class ComputerWorkspacePage(val itemCount: Int, val activeCount: Int, val orphanCount: Int)
-internal data class ComputerRuntimeModelsSummary(val runtime: String, val modelCount: Int, val defaultModel: String?)
+internal data class ComputerWorkspaceSummary(
+    val directoryName: String,
+    val totalSizeBytes: Long,
+    val fileCount: Int,
+    val status: String,
+    val lastModified: String?,
+    val agentName: String?,
+    val agentStatus: String?
+)
+internal data class ComputerWorkspacePage(
+    val workspaces: List<ComputerWorkspaceSummary>,
+    val itemCount: Int,
+    val activeCount: Int,
+    val orphanCount: Int
+)
+internal data class ComputerRuntimeModelsSummary(
+    val runtime: String,
+    val models: List<String>,
+    val modelCount: Int,
+    val defaultModel: String?
+)
 internal data class ComputerCommandResult(val ok: Boolean)
 
 private inline fun <Wire, T> HomeNetworkResponse.mapComputersBody(
@@ -202,7 +225,7 @@ private inline fun <Wire, T> HomeNetworkResponse.mapComputersBody(
     crossinline transform: (Wire) -> T?,
 ): DataResult<T> {
     if (!isSuccessful) {
-        return DataResult.Error(ScreenError(code = contractCode, retryable = code >= 500))
+        return toComputersDataError()
     }
     val body = bodyText?.takeIf { it.isNotBlank() }
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
@@ -215,6 +238,14 @@ private inline fun <Wire, T> HomeNetworkResponse.mapComputersBody(
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
     return DataResult.Content(value)
 }
+
+private fun <T> HomeNetworkResponse.toComputersDataError(): DataResult<T> =
+    when (code) {
+        401 -> DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+        403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
+        in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
+        else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
+    }
 
 private fun HomeNetworkResponse.mapComputersCommand(contractCode: String): DataResult<ComputerCommandResult> =
     mapComputersBody(contractCode, ComputerCommandResponseDto.serializer()) { wire ->
@@ -264,9 +295,23 @@ private data class ComputerWorkspaceDto(
     val totalSizeBytes: Long,
     val fileCount: Int,
     val status: String,
+    val lastModified: String? = null,
     val agentName: String? = null,
     val agentStatus: String? = null
 )
+
+private fun ComputerWorkspaceDto.toSummary(): ComputerWorkspaceSummary? {
+    if (directoryName.isBlank() || status.isBlank()) return null
+    return ComputerWorkspaceSummary(
+        directoryName = directoryName,
+        totalSizeBytes = totalSizeBytes,
+        fileCount = fileCount,
+        status = status,
+        lastModified = lastModified,
+        agentName = agentName,
+        agentStatus = agentStatus
+    )
+}
 
 @Serializable
 private data class ComputerRuntimeModelsResponseDto(

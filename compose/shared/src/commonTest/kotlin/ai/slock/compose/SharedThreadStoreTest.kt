@@ -782,6 +782,31 @@ class SharedThreadStoreTest {
             agentId: MemberId
         ): DataResult<AgentSkillsSnapshot> = error("unused")
 
+        override suspend fun startAgent(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentLifecycleActionResult> = error("unused")
+
+        override suspend fun stopAgent(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentLifecycleActionResult> = error("unused")
+
+        override suspend fun resetAgent(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            request: AgentResetRequest
+        ): DataResult<AgentLifecycleActionResult> = error("unused")
+
+        override suspend fun deleteAgent(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            agentId: MemberId
+        ): DataResult<AgentLifecycleActionResult> = error("unused")
+
+        override suspend fun assignAgentMachine(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            request: AgentMachineAssignmentRequest
+        ): DataResult<AgentLifecycleActionResult> = error("unused")
+
         override suspend fun addChannelMember(
             priority: ai.slock.compose.data.DataRequestPriority,
             request: AddChannelMemberRequest

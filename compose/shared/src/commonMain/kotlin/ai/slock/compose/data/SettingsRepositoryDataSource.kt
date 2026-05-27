@@ -87,6 +87,8 @@ class RealSettingsRepository(
     private val logger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
 ) : SettingsRepository {
+    private val computersApiClient = SlockComputersApiClient(SlockComputersNetworkApi(networkClient))
+
     override suspend fun getAccount(): DataResult<AccountSettingsSnapshot> {
         val session = sessionStore.readSession() ?: return authRequired()
         return executeSettings(
@@ -182,6 +184,86 @@ class RealSettingsRepository(
                 agentsError = agentsError
             )
         )
+    }
+
+    override suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        val normalizedName = request.name.trim()
+        if (normalizedName.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return computersApiClient.registerMachine(ServerId(serverId), normalizedName).mapComputerResult { summary ->
+            SettingsComputerRegistrationResult(
+                machine = summary.machine.toSettingsComputerSnapshot(),
+                apiKeyPrefix = summary.apiKeyPrefix
+            )
+        }
+    }
+
+    override suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        val machineId = request.machineId.trim()
+        val normalizedName = request.name.trim()
+        if (machineId.isBlank() || normalizedName.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return computersApiClient.renameMachine(ServerId(serverId), machineId, normalizedName).mapComputerResult {
+            it.toSettingsComputerSnapshot()
+        }
+    }
+
+    override suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        val normalizedMachineId = machineId.trim()
+        if (normalizedMachineId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return computersApiClient.deleteMachine(ServerId(serverId), normalizedMachineId).mapComputerResult {
+            SettingsComputerActionResult(
+                machineId = normalizedMachineId,
+                success = it.ok,
+                action = "delete"
+            )
+        }
+    }
+
+    override suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        val normalizedMachineId = machineId.trim()
+        if (normalizedMachineId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return computersApiClient.rotateMachineKey(ServerId(serverId), normalizedMachineId).mapComputerResult {
+            SettingsComputerKeyRotationResult(
+                machineId = normalizedMachineId,
+                apiKeyPrefix = it.apiKeyPrefix
+            )
+        }
+    }
+
+    override suspend fun getComputerRuntimeModels(
+        machineId: String,
+        runtime: String
+    ): DataResult<SettingsComputerRuntimeModelsSnapshot> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        val normalizedMachineId = machineId.trim()
+        val normalizedRuntime = runtime.trim()
+        if (normalizedMachineId.isBlank() || normalizedRuntime.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return computersApiClient.runtimeModels(ServerId(serverId), normalizedMachineId, normalizedRuntime).mapComputerResult {
+            SettingsComputerRuntimeModelsSnapshot(
+                machineId = normalizedMachineId,
+                runtime = it.runtime,
+                models = it.models,
+                defaultModel = it.defaultModel
+            )
+        }
+    }
+
+    override suspend fun deleteComputerWorkspace(request: SettingsComputerWorkspaceDeleteRequest): DataResult<SettingsComputerActionResult> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        val machineId = request.machineId.trim()
+        val directoryName = request.directoryName.trim()
+        if (machineId.isBlank() || directoryName.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return computersApiClient.deleteMachineWorkspace(ServerId(serverId), machineId, directoryName).mapComputerResult {
+            SettingsComputerActionResult(
+                machineId = machineId,
+                success = it.ok,
+                action = "delete_workspace",
+                directoryName = directoryName
+            )
+        }
     }
 
     override suspend fun getBilling(): DataResult<SettingsBillingSnapshot> {
@@ -380,37 +462,30 @@ class RealSettingsRepository(
     }
 
     private suspend fun settingsComputers(serverId: String): DataResult<SettingsComputersSnapshot> =
-        executeTypedSettings(
-            source = "settings_machines",
-            contractCode = "settings_machines_contract_mismatch",
-            block = { networkClient.settingsMachines(DataRequestPriority.Visible, serverId) },
-            mapper = { bodyText ->
-                val snapshot = parseSharedSettingsComputers(bodyText)
-                    ?: settingsContractMismatch("settings_machines_contract_mismatch")
-                if (snapshot.computers.isEmpty()) {
-                    warningLogger("empty_items source=settings_machines stage=list_extract root=machines")
-                }
-                snapshot
+        computersApiClient.machines(ServerId(serverId)).mapComputerResult { summary ->
+            val computers = summary.machines.map { it.toSettingsComputerSnapshot() }
+            if (computers.isEmpty()) {
+                warningLogger("empty_items source=settings_machines stage=list_extract root=machines")
             }
-        )
+            SettingsComputersSnapshot(
+                computers = computers,
+                canAddComputer = false,
+                addComputerUnavailableReason = null,
+                latestDaemonVersion = summary.latestDaemonVersion
+            )
+        }
 
     private suspend fun settingsMachineWorkspaces(
         serverId: String,
         machineId: String
     ): DataResult<List<SettingsComputerWorkspaceSnapshot>> =
-        executeTypedSettings(
-            source = "settings_machine_workspaces",
-            contractCode = "settings_machine_workspaces_contract_mismatch",
-            block = { networkClient.settingsMachineWorkspaces(DataRequestPriority.Visible, serverId, machineId) },
-            mapper = { bodyText ->
-                val workspaces = parseSharedSettingsMachineWorkspaces(bodyText)
-                    ?: settingsContractMismatch("settings_machine_workspaces_contract_mismatch")
-                if (workspaces.isEmpty()) {
-                    warningLogger("empty_items source=settings_machine_workspaces stage=list_extract root=array")
-                }
-                workspaces
+        computersApiClient.machineWorkspaces(ServerId(serverId), machineId).mapComputerResult { page ->
+            val workspaces = page.workspaces.map { it.toSettingsWorkspaceSnapshot() }
+            if (workspaces.isEmpty()) {
+                warningLogger("empty_items source=settings_machine_workspaces stage=list_extract root=array")
             }
-        )
+            workspaces
+        }
 
     private suspend fun settingsComputerAgents(machineId: String): DataResult<List<SettingsComputerAgentSnapshot>> =
         executeSettings(
@@ -689,6 +764,26 @@ private fun List<SettingsComputerAgentSnapshot>.enrichWithMembers(
     }
 }
 
+private fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapshot =
+    SettingsComputerSnapshot(
+        id = id,
+        name = name,
+        daemonVersion = daemonVersion.orEmpty(),
+        online = status == "online",
+        hostname = hostname,
+        platform = os,
+        lastSeenLabel = null
+    )
+
+private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =
+    SettingsComputerWorkspaceSnapshot(
+        id = directoryName,
+        name = directoryName,
+        path = directoryName,
+        statusLabel = status,
+        lastActiveLabel = lastModified
+    )
+
 private fun <T> DataResult<T>.mapSettingsDetailError(
     serverId: String,
     machineId: String
@@ -725,6 +820,14 @@ private fun <T> DataResult<T>.toSettingsSectionErrorSnapshot(): SettingsSectionE
         is DataResult.Content, is DataResult.Empty -> null
         is DataResult.Error -> SettingsSectionErrorSnapshot(code = error.code, retryable = error.retryable)
         is DataResult.NoPermission -> SettingsSectionErrorSnapshot(code = blocker.code, retryable = false)
+    }
+
+private fun <T, R> DataResult<T>.mapComputerResult(transform: (T) -> R): DataResult<R> =
+    when (this) {
+        is DataResult.Content -> DataResult.Content(transform(data))
+        is DataResult.Empty -> DataResult.Empty(reason)
+        is DataResult.Error -> DataResult.Error(error)
+        is DataResult.NoPermission -> DataResult.NoPermission(blocker)
     }
 
 private fun <T> DataResult<T>.logMachineDetailSection(
