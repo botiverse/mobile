@@ -1664,19 +1664,34 @@ private fun SettingsDetailShell(
             subtitle = subtitle,
             iconName = iconName,
             leadingContent = {
-                Button(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .size(28.dp)
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
-                ) {
-                    SlockLucideIcon("arrow-left", modifier = Modifier.size(16.dp))
-                }
+                SettingsDetailBackButton(onBack)
             }
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             content()
+        }
+    }
+}
+
+@Composable
+private fun SettingsDetailBackButton(onBack: () -> Unit) {
+    Box(modifier = Modifier.size(30.dp)) {
+        Box(
+            modifier =
+                Modifier
+                    .size(28.dp)
+                    .offset(x = 2.dp, y = 2.dp)
+                    .background(SlockColor.ShadowBlack)
+        )
+        Button(
+            onClick = onBack,
+            modifier =
+                Modifier
+                    .size(28.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+        ) {
+            SlockLucideIcon("arrow-left", modifier = Modifier.size(16.dp))
         }
     }
 }
