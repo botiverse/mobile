@@ -62,6 +62,32 @@ The broader Android theme tree is still not removable until `MainActivity` and
 the remaining native Thread/Inbox/Settings routes stop importing Android
 product components/tokens.
 
+## 2026-05-27 Icon Ownership Check
+
+Product UI icons should use the shared Lucide path. Current shared/KMP routes do
+that through `SlockLucideIcon` and named shared icons, with Android/OHOS renderers
+providing the platform drawing bridge.
+
+The remaining Android `ui/icons/LucideIcons.kt` file is still generated from the
+same Lucide catalog and is kept only as an Android `ImageVector` bridge for
+legacy native Compose routes and the shared `SlockLucideIconRenderView`. It is
+not a separate product icon style, but it should disappear once native
+Thread/Inbox/Settings fallback screens no longer need Android `ImageVector`
+icons.
+
+Non-Lucide drawable resources that still exist are intentionally outside the
+shared product icon set:
+
+- `ic_google.xml` and `ic_github.xml` are third-party brand marks used by the
+  remaining native account screen.
+- launcher and splash assets are app branding, not route/action icons.
+- benchmark/local assets used by `ImageAdapterBenchmarks.kt` are not product UI.
+
+Deleted unused `ic_chevron_down.xml`; there were no remaining `R.drawable`
+callers. Future chevrons should use Lucide `chevron-down` through shared route
+components, or through the temporary generated Android Lucide bridge only while
+a legacy native route still exists.
+
 ### Current Runtime Callers To Remove Or Replace
 
 These are the main remaining runtime roots that keep Android product theme alive:
