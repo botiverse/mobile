@@ -69,18 +69,18 @@ private enum class SlockAppTabBarRenderer {
 }
 
 private val SlockSharedBottomTabBarHeight = 58.dp
-private val SlockOhosHdsBottomTabBarDockHeight = 60.dp
-private val SlockOhosHdsBottomTabBarHostHeight = 96.dp
+private val SlockOhosHdsBottomTabBarDockHeight = 56.dp
+private val SlockOhosHdsBottomTabBarHostHeight = 92.dp
 private val SlockBottomTabBarFloatingMargin = SlockSpacing.Md
 
 @Composable
 internal fun slockAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {
-    val hostHeight =
-        when (slockAppTabBarRenderer()) {
-            SlockAppTabBarRenderer.OhosHdsImmersive -> SlockOhosHdsBottomTabBarHostHeight
-            SlockAppTabBarRenderer.SharedCompose -> SlockSharedBottomTabBarHeight
-        }
-    return hostHeight + bottomSafeArea + SlockSpacing.Lg
+    return when (slockAppTabBarRenderer()) {
+        // OHOS HDS dock already floats above the system gesture area; adding the host safe area
+        // again here creates an extra blank strip below the dock and pushes content too far up.
+        SlockAppTabBarRenderer.OhosHdsImmersive -> SlockOhosHdsBottomTabBarHostHeight + SlockSpacing.Lg
+        SlockAppTabBarRenderer.SharedCompose -> SlockSharedBottomTabBarHeight + bottomSafeArea + SlockSpacing.Lg
+    }
 }
 
 @Composable
@@ -225,7 +225,7 @@ private fun SlockOhosHdsBottomTabBarHost(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(SlockOhosHdsBottomTabBarHostHeight)
-                .align(Alignment.TopCenter)
+                .align(Alignment.BottomCenter)
         )
     }
 }

@@ -193,7 +193,7 @@ internal fun SlockFilterPopover(
                         placeholder = searchPlaceholder,
                         placeholderColor = SlockColor.TextMutedGray,
                         textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                        autoFocus = true,
+                        autoFocus = false,
                         maxLines = 1,
                         modifier = Modifier
                             .fillMaxWidth()

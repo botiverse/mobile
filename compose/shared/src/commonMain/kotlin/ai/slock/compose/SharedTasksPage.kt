@@ -3,6 +3,7 @@ package ai.slock.compose
 import ai.slock.compose.components.SegmentedControl
 import ai.slock.compose.components.SegmentedControlOption
 import ai.slock.compose.components.SlockAnchoredMetaChip
+import ai.slock.compose.components.SlockAnchoredToolbarChip
 import ai.slock.compose.components.SlockToolbarChip
 import ai.slock.compose.data.KeyValueTasksViewPreferenceRepository
 import ai.slock.compose.data.ScreenLoadState
@@ -573,7 +574,7 @@ private fun SharedTasksToolbar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (showChannelFilter) {
-                AnchoredFilterChip(
+                SlockAnchoredToolbarChip(
                     label = if (selectedChannels.isEmpty()) "Channel" else "Channel · ${selectedChannels.size}",
                     iconName = "hash",
                     active = openFilterId == "channel" || selectedChannels.isNotEmpty(),
@@ -581,7 +582,7 @@ private fun SharedTasksToolbar(
                     onClick = onChannelChipClick
                 )
             }
-            AnchoredFilterChip(
+            SlockAnchoredToolbarChip(
                 label = if (selectedAssigneeIds.isEmpty()) "Assignee" else "Assignee · ${selectedAssigneeIds.size}",
                 iconName = "user",
                 active = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
@@ -607,34 +608,6 @@ private fun SharedTasksToolbar(
                 )
             }
         }
-    }
-}
-
-/** Chip that reports its on-screen position so an overlay popover can anchor below it. */
-@Composable
-private fun AnchoredFilterChip(
-    label: String,
-    iconName: String?,
-    active: Boolean,
-    enabled: Boolean = true,
-    onClick: (Offset) -> Unit
-) {
-    var anchor by remember { mutableStateOf(Offset.Zero) }
-    Box(
-        modifier = Modifier.onGloballyPositioned { coords ->
-            // Anchor near the bottom-left of the chip so the popover hangs off its base.
-            val root = coords.positionInRoot()
-            anchor = Offset(root.x, root.y + coords.size.height)
-        }
-    ) {
-        SlockToolbarChip(
-            label = label,
-            iconName = iconName,
-            trailingIconName = "chevron-down",
-            active = active,
-            enabled = enabled,
-            onClick = { onClick(anchor) }
-        )
     }
 }
 

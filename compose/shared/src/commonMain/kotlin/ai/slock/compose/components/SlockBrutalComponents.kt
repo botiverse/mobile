@@ -37,11 +37,14 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
+import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -621,6 +624,7 @@ internal fun SlockToolbarChip(
     trailingIconName: String? = null,
     active: Boolean = false,
     enabled: Boolean = true,
+    uppercase: Boolean = true,
     count: Int? = null,
     activeBackgroundColor: Color = SlockColor.AccentCyan,
     inactiveBackgroundColor: Color = SlockColor.SurfaceWhite
@@ -643,7 +647,7 @@ internal fun SlockToolbarChip(
                 SlockLucideIcon(it, modifier = Modifier.size(14.dp), color = "#FF000000")
             }
             Text(
-                text = label.uppercase(),
+                text = if (uppercase) label.uppercase() else label,
                 style = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
                 color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                 maxLines = 1,
@@ -666,6 +670,43 @@ internal fun SlockToolbarChip(
                 SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
             }
         }
+    }
+}
+
+@Composable
+internal fun SlockAnchoredToolbarChip(
+    label: String,
+    onClick: (Offset) -> Unit,
+    modifier: Modifier = Modifier,
+    iconName: String? = null,
+    trailingIconName: String? = "chevron-down",
+    active: Boolean = false,
+    enabled: Boolean = true,
+    uppercase: Boolean = true,
+    count: Int? = null,
+    activeBackgroundColor: Color = SlockColor.AccentCyan,
+    inactiveBackgroundColor: Color = SlockColor.SurfaceWhite
+) {
+    var anchor by remember { mutableStateOf(Offset.Zero) }
+    Box(
+        modifier =
+            modifier.onGloballyPositioned { coords ->
+                val root = coords.positionInRoot()
+                anchor = Offset(root.x, root.y + coords.size.height)
+            }
+    ) {
+        SlockToolbarChip(
+            label = label,
+            iconName = iconName,
+            trailingIconName = trailingIconName,
+            active = active,
+            enabled = enabled,
+            uppercase = uppercase,
+            count = count,
+            activeBackgroundColor = activeBackgroundColor,
+            inactiveBackgroundColor = inactiveBackgroundColor,
+            onClick = { onClick(anchor) }
+        )
     }
 }
 

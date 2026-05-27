@@ -13,13 +13,13 @@ const kBottomSafeArea = 'bottomSafeArea';
 const kSelect = 'select';
 const kSeparator = '\u001F';
 
-const kDockHeight = 60;
+const kDockHeight = 56;
 const kDockSideMargin = 18;
-const kDockBottomMargin = 16;
-const kDockHostHeight = 96;
+const kDockBottomMargin = 18;
+const kDockHostHeight = 92;
 const kAnimationDuration = 240;
-const kItemHeight = 44;
-const kIconSize = 18;
+const kItemHeight = 40;
+const kIconSize = 17;
 const kGradientMaskColor = '#66F1F3F5';
 const kGradientMaskHeight = 92;
 
