@@ -1,5 +1,6 @@
 package ai.slock.compose
 
+import ai.slock.compose.components.SlockAnchoredMetaChip
 import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
 import ai.slock.compose.data.BridgeThreadApi
@@ -2523,9 +2524,9 @@ private fun ThreadMessageFooterMeta(
                     taskOpenEnabled -> { _ -> message.taskId?.let(onOpenTask) }
                     else -> null
                 }
-            ThreadMetaChip(
+            SlockAnchoredMetaChip(
                 label = label,
-                icon = selectedStatus.icon,
+                iconName = selectedStatus.icon,
                 iconSize = selectedStatus.iconSize,
                 color = selectedStatus.color,
                 modifier = Modifier.weight(1f, fill = false).widthIn(max = 260.dp),
@@ -2534,9 +2535,9 @@ private fun ThreadMessageFooterMeta(
         }
         if (hasReplies) {
             val replyLabel = threadMessageRepliesMetaLabel(message)
-            ThreadMetaChip(
+            SlockAnchoredMetaChip(
                 label = replyLabel,
-                icon = "message-square",
+                iconName = "message-square",
                 iconSize = 12.dp,
                 color = SlockColor.AccentCyan.copy(alpha = 0.2f),
                 modifier = Modifier.widthIn(max = 220.dp),
@@ -2670,43 +2671,6 @@ private fun String.decodeBasicHtmlEntities(): String =
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
-
-@Composable
-private fun ThreadMetaChip(
-    label: String,
-    icon: String?,
-    iconSize: Dp = 10.dp,
-    color: Color,
-    onClick: ((Offset) -> Unit)?,
-    modifier: Modifier = Modifier
-) {
-    Button(
-        onClick2 = { anchor -> onClick?.invoke(anchor) },
-        enabled = onClick != null,
-        pressFeedback = onClick != null,
-        modifier = modifier
-            .heightIn(min = 20.dp)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .background(color)
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-        ) {
-            icon?.takeIf { it.isNotBlank() }?.let {
-                SlockLucideIcon(it, modifier = Modifier.size(iconSize), color = "#FF000000")
-            }
-            Text(
-                text = label,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
 
 private data class ThreadMessageMenuAction(
     val label: String,

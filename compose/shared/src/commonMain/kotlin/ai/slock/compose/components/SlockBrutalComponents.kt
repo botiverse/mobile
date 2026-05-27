@@ -1,7 +1,9 @@
 package ai.slock.compose.components
 
+import ai.slock.compose.Button as SlockAnchorButton
 import ai.slock.compose.SlockColor
 import ai.slock.compose.SlockLucideIcon
+import ai.slock.compose.SlockSpacing
 import ai.slock.compose.SlockStroke
 import ai.slock.compose.SlockType
 import ai.slock.compose.TextField
@@ -65,6 +67,44 @@ internal data class SegmentedControlOption(
     val iconName: String? = null,
     val count: Int? = null
 )
+
+@Composable
+internal fun SlockAnchoredMetaChip(
+    label: String,
+    iconName: String?,
+    color: Color,
+    onClick: ((com.tencent.kuikly.compose.ui.geometry.Offset) -> Unit)?,
+    modifier: Modifier = Modifier,
+    iconSize: Dp = 10.dp
+) {
+    SlockAnchorButton(
+        onClick2 = { anchor -> onClick?.invoke(anchor) },
+        enabled = onClick != null,
+        pressFeedback = onClick != null,
+        modifier =
+            modifier
+                .heightIn(min = 20.dp)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .background(color)
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            iconName?.takeIf { it.isNotBlank() }?.let {
+                SlockLucideIcon(it, modifier = Modifier.size(iconSize), color = "#FF000000")
+            }
+            Text(
+                text = label,
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
 
 @Composable
 internal fun SlockBrutalSectionLabel(

@@ -2,6 +2,7 @@ package ai.slock.compose
 
 import ai.slock.compose.components.SegmentedControl
 import ai.slock.compose.components.SegmentedControlOption
+import ai.slock.compose.components.SlockAnchoredMetaChip
 import ai.slock.compose.components.SlockToolbarChip
 import ai.slock.compose.data.KeyValueTasksViewPreferenceRepository
 import ai.slock.compose.data.ScreenLoadState
@@ -825,23 +826,14 @@ private fun SharedTaskCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                // Wrap the badge in its own anchored click target so tapping the pill
-                // surfaces the status menu inline without needing a long-press. Mirrors the
-                // React TaskCard pencil affordance.
-                var badgeAnchor by remember { mutableStateOf(Offset.Zero) }
-                Box(
-                    modifier = Modifier
-                        .onGloballyPositioned { coords ->
-                            val root = coords.positionInRoot()
-                            badgeAnchor = Offset(root.x, root.y + coords.size.height)
-                        }
-                        .clickable(enabled = !updating) { onStatusBadgeClick(badgeAnchor) }
-                ) {
-                    SharedTasksStatusLabel(
-                        status = task.status,
-                        label = if (updating) "Updating" else task.status.label
-                    )
-                }
+                // Use the same anchored Button(onClick2) model as thread meta chips so the
+                // status pill reliably wins the tap instead of the parent card gesture.
+                SlockAnchoredMetaChip(
+                    label = if (updating) "Updating" else task.status.label.uppercase(),
+                    iconName = task.status.iconName,
+                    color = task.status.color,
+                    onClick = if (updating) null else onStatusBadgeClick
+                )
             }
         }
     }
