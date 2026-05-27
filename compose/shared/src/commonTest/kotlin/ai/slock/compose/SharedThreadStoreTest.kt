@@ -5,8 +5,11 @@ import ai.slock.compose.data.AddChannelMemberRequest
 import ai.slock.compose.data.AgentActivitySnapshot
 import ai.slock.compose.data.AgentDetailSnapshot
 import ai.slock.compose.data.AgentDmSnapshot
+import ai.slock.compose.data.AgentLifecycleActionResult
+import ai.slock.compose.data.AgentMachineAssignmentRequest
 import ai.slock.compose.data.AgentProfileUpdateRequest
 import ai.slock.compose.data.AgentReminderSnapshot
+import ai.slock.compose.data.AgentResetRequest
 import ai.slock.compose.data.AgentSkillsSnapshot
 import ai.slock.compose.data.AgentWorkspaceChildrenSnapshot
 import ai.slock.compose.data.AgentWorkspaceFilePreviewSnapshot

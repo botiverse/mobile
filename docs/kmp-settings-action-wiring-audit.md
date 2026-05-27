@@ -16,8 +16,8 @@ headers. Actions must go through `SharedSettingsIntent`, `SharedSettingsEffect`,
 | --- | --- | --- |
 | Settings Home | Wired | Continue using shared home nav. |
 | Account | Partial | task #38 |
-| Computers | Missing/partial | task #35 |
-| Computer detail | Missing/partial | task #35 |
+| Computers | Wired/disabled | task #35 complete; keep add-computer disabled until product route/capability exists. |
+| Computer detail | Wired/read-only | task #35 complete; keep agent rows read-only until Members/Agent navigation is explicit. |
 | Server | Partial | task #38 / task #39 |
 | Billing | Partial | task #38 |
 | Mobile | Partial | task #36 |
@@ -42,10 +42,10 @@ longer uses a route-local `pendingLogout` mutable state machine.
 | Account | Save Profile | Inert today. `SettingsAccountContent` emits `saveProfile`, but app shell ignores it and product payload is session-derived. | Add `SaveAccountProfile` intent, data source call to `SettingsRepository.updateProfile`, action state, validation, success/error feedback. | task #38. |
 | Account | Change Password | Inert today. Emits `changePassword`, app shell ignores it. | Either disabled with explicit unavailable copy or a shared effect/navigation to a real password flow. | task #38. |
 | Account | Connected account rows | Display-only. No connect/disconnect action exists in shared shell. | Keep display-only unless API contract is confirmed; if clickable later, add shared intents/effects. | task #38. |
-| Computers | Add computer | Missing in product shell. Payload has `canAddComputer=false`; standalone page could emit `addComputer`, but product shell passes an empty callback. | Keep disabled with reason until add-computer route/capability exists. | task #35. |
-| Computers | Computer row open | Missing in product shell. Product shell passes empty computers and empty callback; store has `OpenComputer`. | Wire real computers payload from `SharedSettingsState.computers`, row click to `SharedSettingsIntent.OpenComputer(machineId)`. | task #35. |
-| Computer detail | Retry workspaces / retry agents | Available only in standalone content; product shell cannot reach real detail route/data yet. | Add detail route wiring and retry intents, preserving partial-section errors. | task #35. |
-| Computer detail | Open agent | Inert in standalone content and absent in product shell. | Either disabled, or shared navigation effect to Members/Agent detail if product wants it. | task #35 or Members follow-up. |
+| Computers | Add computer | Disabled. Product payload keeps `canAddComputer=false` and shows a reason only when repository data provides one. | Keep disabled until add-computer route/capability and confirmation flow exists. | Future Computers mutation follow-up. |
+| Computers | Computer row open | Wired. Product shell maps `SharedSettingsState.computers` into `SettingsComputersContent`; row click opens `SharedSettingsIntent.OpenComputer(machineId)`. | Keep route and repository load in commonMain store/data-source. | task #35 complete. |
+| Computer detail | Retry workspaces / retry agents | Wired. Product shell dispatches `SharedSettingsIntent.OpenComputer(selectedComputerId)` so partial-section errors can retry without leaving detail. | Keep preserving base machine detail when workspace/agent sections fail. | task #35 complete. |
+| Computer detail | Open agent | Intentionally read-only. `KuiklySettingsComputerDetailPayload.canOpenAgents` defaults false so agent rows do not emit inert `openAgent` events. | Add a shared navigation effect to Members/Agent detail before re-enabling clicks. | Members follow-up if needed. |
 | Server | Members/admins counts | Partial. Current route-local state calls `BridgeMembersApi.serverMembers()` directly from UI composition. | Move to `SharedSettingsDataSource.loadServer()` / repository-backed state in commonMain. | task #38. |
 | Server | Pending Invites | Disabled/pending. No action. | Add repository/capability for invite list/create if endpoint is confirmed. | task #39. |
 | Server | Join Links | Disabled/pending. No action. | Add repository/capability for join-link list/create if endpoint is confirmed. | task #39. |
@@ -72,8 +72,9 @@ longer uses a route-local `pendingLogout` mutable state machine.
 
 ## Implementation Split
 
-1. task #35 should wire Computers list/detail first because product rows are
-   currently empty despite common store support.
+1. task #35 wired Computers list/detail through shared state and made Computer
+   detail agent rows read-only until there is an explicit Members/Agent
+   navigation effect.
 2. task #36 should wire Mobile state/action feedback. Three notification
    actions already reach host capability; language/alignment and state snapshots
    still need implementation.

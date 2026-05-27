@@ -69,6 +69,7 @@ internal data class KuiklySettingsComputerDetailPayload(
     val computer: KuiklySettingsComputerItem = KuiklySettingsComputerItem(),
     val workspaces: List<KuiklySettingsWorkspaceItem> = emptyList(),
     val agents: List<KuiklySettingsAgentItem> = emptyList(),
+    val canOpenAgents: Boolean = false,
     val workspacesErrorCode: String? = null,
     val workspacesRetryable: Boolean = false,
     val agentsErrorCode: String? = null,
@@ -221,9 +222,15 @@ internal fun SettingsComputerDetailContent(
             item { SettingsEmptyMessage("No agents", "Agents running on this computer will show up here.") }
         } else {
             items(payload.agents.size, key = { index -> "agent-$index-${payload.agents[index].id}" }) { index ->
-                SettingsAgentCard(payload.agents[index]) {
-                    onEvent("openAgent", payload.agents[index].id)
-                }
+                SettingsAgentCard(
+                    item = payload.agents[index],
+                    onClick =
+                        if (payload.canOpenAgents) {
+                            { onEvent("openAgent", payload.agents[index].id) }
+                        } else {
+                            null
+                        }
+                )
             }
         }
     }
@@ -275,9 +282,13 @@ private fun SettingsWorkspaceCard(item: KuiklySettingsWorkspaceItem) {
 }
 
 @Composable
-private fun SettingsAgentCard(item: KuiklySettingsAgentItem, onClick: () -> Unit) {
+private fun SettingsAgentCard(item: KuiklySettingsAgentItem, onClick: (() -> Unit)?) {
     Row(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).clickable(onClick = onClick).padding(12.dp),
+        modifier = Modifier.fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {

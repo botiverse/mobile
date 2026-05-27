@@ -137,7 +137,7 @@ class SettingsRepositoryDataSourceTest {
         val mobile = repository.getMobileSettings()
 
         assertTrue(computers is DataResult.Error)
-        assertEquals("settings_machines_contract_mismatch", computers.error.code)
+        assertEquals("http_404", computers.error.code)
         assertEquals(false, computers.error.retryable)
         assertTrue(mobile is DataResult.Content)
         assertEquals(true, mobile.data.pushNotifications.available)
@@ -196,7 +196,7 @@ class SettingsRepositoryDataSourceTest {
             ).getComputers()
 
         assertTrue(nestedWrapperResult is DataResult.Error)
-        assertEquals("settings_machines_contract_mismatch", nestedWrapperResult.error.code)
+        assertEquals("computers_list_contract_mismatch", nestedWrapperResult.error.code)
         assertTrue(missingServer is DataResult.NoPermission)
         assertEquals("server_required", missingServer.blocker.code)
     }
@@ -248,7 +248,7 @@ class SettingsRepositoryDataSourceTest {
                     ]
                 """.trimIndent(),
                 workspacesJson = """
-                    [{"directoryName":"Slock","status":"active","lastModified":"2026-05-07T01:01:00Z"}]
+                    [{"directoryName":"Slock","totalSizeBytes":4096,"fileCount":12,"status":"active","lastModified":"2026-05-07T01:01:00Z"}]
                 """.trimIndent(),
                 agentsJson = """
                     [
@@ -319,11 +319,11 @@ class SettingsRepositoryDataSourceTest {
 
         assertTrue(register is DataResult.Content)
         assertEquals("machine-9", register.data.machine.id)
-        assertEquals("sk_machine_ab", register.data.apiKeyPrefix)
+        assertEquals("sk_machine_a", register.data.apiKeyPrefix)
         assertTrue(rename is DataResult.Content)
         assertEquals("Builder Mac 2", rename.data.name)
         assertTrue(rotate is DataResult.Content)
-        assertEquals("sk_machine_ro", rotate.data.apiKeyPrefix)
+        assertEquals("sk_machine_r", rotate.data.apiKeyPrefix)
         assertTrue(runtimeModels is DataResult.Content)
         assertEquals(listOf("sonnet", "opus"), runtimeModels.data.models)
         assertEquals("sonnet", runtimeModels.data.defaultModel)
