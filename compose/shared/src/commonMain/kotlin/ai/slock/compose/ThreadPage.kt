@@ -602,8 +602,7 @@ private fun ThreadMessageVisualCard(
                 Modifier
                     .fillMaxWidth()
                     .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(SlockSpacing.Sm),
+                    .padding(SlockSpacing.Xs),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             Row(
@@ -2318,8 +2317,7 @@ private fun ThreadMessageCard(
                 Modifier
                     .fillMaxWidth()
                     .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(SlockSpacing.Sm),
+                    .padding(SlockSpacing.Xs),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             Row(
