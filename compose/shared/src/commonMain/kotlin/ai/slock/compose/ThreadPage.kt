@@ -230,6 +230,7 @@ internal data class KuiklyThreadMessageItem(
     val systemEventType: String? = null,
     val metadata: Map<String, String> = emptyMap(),
     val body: String = "",
+    val threadChannelId: String? = null,
     val replyCount: Int = 0,
     val unreadReplyCount: Int = 0,
     val firstUnreadReplyMessageId: String? = null,

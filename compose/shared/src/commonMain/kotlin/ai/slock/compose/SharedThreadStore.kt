@@ -1,6 +1,8 @@
 package ai.slock.compose
 
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.EmptyReason
+import ai.slock.compose.data.ThreadActionResult
 import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesResponse
 import ai.slock.compose.data.ChannelFilesSnapshot
 import ai.slock.compose.data.ComposeLocalWriteThrough
@@ -18,6 +20,7 @@ import ai.slock.compose.data.ThreadSnapshot
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.data.ThreadAttachmentOpenTarget
 import ai.slock.compose.data.ThreadMessagesPage
+import ai.slock.compose.data.map
 import ai.slock.compose.model.Attachment
 import ai.slock.compose.model.AttachmentId
 import ai.slock.compose.model.AvatarReference
@@ -121,26 +124,44 @@ internal class SharedThreadDataSource(
         val session =
             readSession()
                 ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
-        val response =
-            try {
-                api.channelMessages(threadId, limit = SharedThreadPageSize)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                return DataResult.Error(ScreenError(code = "thread_network", retryable = true))
-            }
-        val page =
-            when (response) {
-                is ThreadApiResult.Success -> response.data
-                is ThreadApiResult.Failure ->
-                    return response.toThreadDataError("thread_network")
+        val payloadResult =
+            if (conversationRepository != null) {
+                fetchThreadPayloadFromRepository(
+                    session = session,
+                    fallbackCode = "thread_network",
+                    call = { repository -> repository.getThread(ThreadId(threadId)) },
+                    transform = { snapshot -> snapshot.toKuiklyThreadPayload(basePayload, session.user.id) }
+                )
+            } else {
+                val response =
+                    try {
+                        api.channelMessages(threadId, limit = SharedThreadPageSize)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        return DataResult.Error(ScreenError(code = "thread_network", retryable = true))
+                    }
+                val page =
+                    when (response) {
+                        is ThreadApiResult.Success -> response.data
+                        is ThreadApiResult.Failure ->
+                            return response.toThreadDataError("thread_network")
+                    }
+                DataResult.Content(
+                    buildSharedThreadPayloadFromMessagesResponse(
+                        basePayload = basePayload,
+                        bodyText = page.rawBodyText,
+                        session = session
+                    ).withCachedSenderProfiles(session)
+                )
             }
         val payload =
-            buildSharedThreadPayloadFromMessagesResponse(
-                basePayload = basePayload,
-                bodyText = page.rawBodyText,
-                session = session
-            ).withCachedSenderProfiles(session)
+            when (payloadResult) {
+                is DataResult.Content -> payloadResult.data
+                is DataResult.Empty -> return payloadResult
+                is DataResult.Error -> return payloadResult
+                is DataResult.NoPermission -> return payloadResult
+            }
         cachePayload(payload)
         if (persistResult) {
             writeCachedPayload(payload)
@@ -203,6 +224,7 @@ internal class SharedThreadDataSource(
         fetchThreadPage(
             basePayload = basePayload,
             source = "older",
+            repositoryCall = { repository, threadId -> repository.loadOlderMessages(threadId, beforeSeq) },
             call = { threadId -> api.channelMessages(threadId, limit = SharedThreadPageSize, beforeSeq = beforeSeq) }
         )
 
@@ -213,6 +235,7 @@ internal class SharedThreadDataSource(
         fetchThreadPage(
             basePayload = basePayload,
             source = "newer",
+            repositoryCall = { repository, threadId -> repository.loadNewerMessages(threadId, afterSeq) },
             call = { threadId -> api.messageSync(threadId, sinceSeq = afterSeq, limit = SharedThreadPageSize) }
         )
 
@@ -318,22 +341,44 @@ internal class SharedThreadDataSource(
         val parentChannelId =
             basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
                 ?: return DataResult.Error(ScreenError(code = "thread_parent_channel_missing", retryable = false))
-        val response =
-            try {
-                api.createOrOpenThread(parentChannelId, parentMessage.id)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                return DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true))
+        val actionResult =
+            if (conversationRepository != null) {
+                try {
+                    conversationRepository.createOrOpenThread(ChannelId(parentChannelId), MessageId(parentMessage.id))
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    return DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true))
+                }
+            } else {
+                val response =
+                    try {
+                        api.createOrOpenThread(parentChannelId, parentMessage.id)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        return DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true))
+                    }
+                when (response) {
+                    is ThreadApiResult.Success -> DataResult.Content(response.data)
+                    is ThreadApiResult.Failure -> return response.toThreadDataError("thread_reply_network")
+                }
             }
         val action =
-            when (response) {
-                is ThreadApiResult.Success -> response.data
-                is ThreadApiResult.Failure ->
-                    return response.toThreadDataError("thread_reply_network")
+            when (actionResult) {
+                is DataResult.Content -> actionResult.data
+                is DataResult.Empty -> {
+                    return DataResult.Empty(EmptyReason.NoMessages)
+                }
+                is DataResult.Error -> return actionResult
+                is DataResult.NoPermission -> return actionResult
             }
-        val threadChannelId =
-            action.threadChannelId.value
+        val threadChannelId = action.threadChannelId.value
+        val resolvedOrigin =
+            parentMessage.copy(
+                threadChannelId = threadChannelId,
+                replyCount = maxOf(parentMessage.replyCount, action.replyCount)
+            )
         val replyBase =
             basePayload.copy(
                 instanceId = "shared-shell-thread-$threadChannelId",
@@ -346,8 +391,8 @@ internal class SharedThreadDataSource(
                 showModeTabs = false,
                 showReplyActions = false,
                 showOpenInChannelAction = true,
-                originMessage = parentMessage,
-                originParentMessageId = parentMessage.id,
+                originMessage = resolvedOrigin,
+                originParentMessageId = action.parentMessageId?.value ?: parentMessage.id,
                 originStatus = "loaded",
                 messages = emptyList(),
                 canLoadMoreBefore = false,
@@ -356,8 +401,8 @@ internal class SharedThreadDataSource(
         return when (val loaded = fetchThreadPayload(replyBase)) {
             is DataResult.Content -> DataResult.Content(
                 loaded.data.copy(
-                    originMessage = loaded.data.originMessage ?: parentMessage,
-                    originParentMessageId = loaded.data.originParentMessageId ?: parentMessage.id,
+                    originMessage = loaded.data.originMessage ?: resolvedOrigin,
+                    originParentMessageId = loaded.data.originParentMessageId ?: action.parentMessageId?.value ?: parentMessage.id,
                     originStatus = if (loaded.data.originMessage != null) loaded.data.originStatus else "loaded"
                 )
             )
@@ -398,6 +443,7 @@ internal class SharedThreadDataSource(
     private suspend fun fetchThreadPage(
         basePayload: KuiklyThreadScreenPayload,
         source: String,
+        repositoryCall: suspend (ConversationRepository, ThreadId) -> DataResult<ThreadSnapshot>,
         call: suspend (threadId: String) -> ThreadApiResult<ThreadMessagesPage>
     ): DataResult<KuiklyThreadScreenPayload> {
         val threadId =
@@ -406,27 +452,56 @@ internal class SharedThreadDataSource(
         val session =
             readSession()
                 ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
-        val response =
+        return if (conversationRepository != null) {
+            fetchThreadPayloadFromRepository(
+                session = session,
+                fallbackCode = "thread_${source}_network",
+                call = { repository -> repositoryCall(repository, ThreadId(threadId)) },
+                transform = { snapshot -> snapshot.toKuiklyThreadPayload(basePayload, session.user.id) }
+            )
+        } else {
+            val response =
+                try {
+                    call(threadId)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    return DataResult.Error(ScreenError(code = "thread_${source}_network", retryable = true))
+                }
+            val page =
+                when (response) {
+                    is ThreadApiResult.Success -> response.data
+                    is ThreadApiResult.Failure ->
+                        return response.toThreadDataError("thread_${source}_network")
+                }
+            DataResult.Content(
+                buildSharedThreadPayloadFromMessagesResponse(
+                    basePayload = basePayload,
+                    bodyText = page.rawBodyText,
+                    session = session
+                ).withCachedSenderProfiles(session)
+            )
+        }
+    }
+
+    private suspend fun fetchThreadPayloadFromRepository(
+        session: StoredAuthSession,
+        fallbackCode: String,
+        call: suspend (ConversationRepository) -> DataResult<ThreadSnapshot>,
+        transform: (ThreadSnapshot) -> KuiklyThreadScreenPayload
+    ): DataResult<KuiklyThreadScreenPayload> {
+        val repository =
+            conversationRepository
+                ?: return DataResult.Error(ScreenError(code = fallbackCode, retryable = true))
+        val result =
             try {
-                call(threadId)
+                call(repository)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                return DataResult.Error(ScreenError(code = "thread_${source}_network", retryable = true))
+                return DataResult.Error(ScreenError(code = fallbackCode, retryable = true))
             }
-        val page =
-            when (response) {
-                is ThreadApiResult.Success -> response.data
-                is ThreadApiResult.Failure ->
-                    return response.toThreadDataError("thread_${source}_network")
-            }
-        return DataResult.Content(
-            buildSharedThreadPayloadFromMessagesResponse(
-                basePayload = basePayload,
-                bodyText = page.rawBodyText,
-                session = session
-            ).withCachedSenderProfiles(session)
-        )
+        return result.map { snapshot -> transform(snapshot).withCachedSenderProfiles(session) }
     }
 
     private suspend fun KuiklyThreadScreenPayload.withSenderProfiles(
@@ -1057,6 +1132,7 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(update: KuiklyThreadMess
         systemEventType = update.systemEventType ?: systemEventType,
         metadata = update.metadata.ifEmpty { metadata },
         body = update.body.ifBlank { body },
+        threadChannelId = update.threadChannelId ?: threadChannelId,
         replyCount = maxOf(replyCount, update.replyCount),
         unreadReplyCount = maxOf(unreadReplyCount, update.unreadReplyCount),
         firstUnreadReplyMessageId = update.firstUnreadReplyMessageId ?: firstUnreadReplyMessageId,
@@ -1228,6 +1304,7 @@ private fun KuiklyThreadMessageItem.toMessage(
         id = MessageId(id),
         threadId = threadId,
         channelId = channelId,
+        threadChannelId = threadChannelId?.let(::ChannelId),
         author = toMemberProfile(),
         seq = seq,
         timestampLabel = timestampLabel,
@@ -1282,6 +1359,7 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
         systemEventType = systemEventType,
         metadata = metadata,
         body = body,
+        threadChannelId = threadChannelId?.value,
         replyCount = replyCount,
         unreadReplyCount = unreadReplyCount,
         firstUnreadReplyMessageId = firstUnreadReplyMessageId?.value,

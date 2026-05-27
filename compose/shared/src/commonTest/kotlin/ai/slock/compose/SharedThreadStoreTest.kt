@@ -12,8 +12,13 @@ import ai.slock.compose.data.AgentWorkspaceChildrenSnapshot
 import ai.slock.compose.data.AgentWorkspaceFilePreviewSnapshot
 import ai.slock.compose.data.AgentWorkspaceSnapshot
 import ai.slock.compose.data.AgentWorkspaceTreeSnapshot
+import ai.slock.compose.data.AttachmentOpenTarget
+import ai.slock.compose.data.AttachmentUploadRequest
+import ai.slock.compose.data.AttachmentUploadResult
 import ai.slock.compose.data.ChannelMemberActionResult
 import ai.slock.compose.data.ChannelMemberSnapshot
+import ai.slock.compose.data.ChannelFilesSnapshot
+import ai.slock.compose.data.ConversationRepository
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.HomeNetworkResponse
 import ai.slock.compose.data.InMemoryComposeLocalDataStore
@@ -21,10 +26,13 @@ import ai.slock.compose.data.InMemorySlockAuthSessionStore
 import ai.slock.compose.data.MemberRepository
 import ai.slock.compose.data.MemberSnapshot
 import ai.slock.compose.data.RemoveChannelMemberRequest
+import ai.slock.compose.data.SendMessageResult
 import ai.slock.compose.data.SharedThreadNetworkApi
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
+import ai.slock.compose.data.ThreadActionResult
 import ai.slock.compose.data.ThreadSnapshot
+import ai.slock.compose.data.ThreadListSnapshot
 import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesResponse
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
@@ -207,6 +215,26 @@ class SharedThreadStoreTest {
         assertEquals("general", cached?.conversation?.name)
         assertEquals("network body", cached?.messages?.single()?.body)
         assertEquals("Artin", cached?.messages?.single()?.author?.displayName)
+    }
+
+    @Test
+    fun fetchThreadPayloadPrefersConversationRepositorySnapshotWhenAvailable() = runBlocking {
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val repository = FakeConversationRepository(
+            threadResult = DataResult.Content(threadSnapshot(body = "repository body"))
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+
+        val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
+
+        assertEquals(listOf(ThreadId("channel-1")), repository.getThreadRequests)
+        assertEquals(0, api.channelMessageCalls)
+        assertEquals("repository body", payload.messages.single().body)
     }
 
     @Test
@@ -493,6 +521,53 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun createOrOpenReplyThreadUsesRepositoryMetadataForOriginAndPersistentSnapshot() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        val repository = FakeConversationRepository(
+            threadResult =
+                DataResult.Content(
+                    threadSnapshot(
+                        threadId = "thread-m1",
+                        body = "reply body",
+                        id = "reply-1",
+                        seq = 11
+                    )
+                ),
+            createThreadResult =
+                DataResult.Content(
+                    ThreadActionResult(
+                        threadChannelId = ChannelId("thread-m1"),
+                        changed = true,
+                        parentMessageId = MessageId("m1"),
+                        replyCount = 4
+                    )
+                )
+        )
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore),
+                conversationRepository = repository
+            )
+        val base = contentPayload("parent body")
+        val parent = base.messages.single()
+
+        val payload = (dataSource.createOrOpenReplyThread(base, parent) as DataResult.Content).data
+        dataSource.writeCachedPayload(payload)
+
+        val cached = localStore.readThread(ThreadId("thread-m1"))
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests.takeLast(1))
+        assertEquals(0, api.channelMessageCalls)
+        assertEquals(4, payload.originMessage?.replyCount)
+        assertEquals("thread-m1", payload.originMessage?.threadChannelId)
+        assertEquals(4, cached?.parentMessage?.replyCount)
+        assertEquals(ChannelId("thread-m1"), cached?.parentMessage?.threadChannelId)
+    }
+
+    @Test
     fun loadOlderMessagesMergesBeforeVisiblePayloadAndWritesCache() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -718,6 +793,83 @@ class SharedThreadStoreTest {
         ): DataResult<ChannelMemberActionResult> = error("unused")
     }
 
+    private class FakeConversationRepository(
+        var threadResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot()),
+        var olderResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot(body = "older repo body", id = "m5", seq = 5)),
+        var newerResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot(body = "newer repo body", id = "m12", seq = 12)),
+        var createThreadResult: DataResult<ThreadActionResult> =
+            DataResult.Content(
+                ThreadActionResult(
+                    threadChannelId = ChannelId("thread-m1"),
+                    changed = true,
+                    parentMessageId = MessageId("m1"),
+                    replyCount = 1
+                )
+            )
+    ) : ConversationRepository {
+        val getThreadRequests: MutableList<ThreadId> = mutableListOf()
+        val olderRequests: MutableList<Pair<ThreadId, Long>> = mutableListOf()
+        val newerRequests: MutableList<Pair<ThreadId, Long>> = mutableListOf()
+        val createOrOpenRequests: MutableList<Pair<ChannelId, MessageId>> = mutableListOf()
+
+        override suspend fun getThread(
+            threadId: ThreadId,
+            includeFollowedSummaries: Boolean
+        ): DataResult<ThreadSnapshot> {
+            getThreadRequests += threadId
+            return threadResult
+        }
+
+        override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> = error("unused")
+
+        override suspend fun loadOlderMessages(threadId: ThreadId, beforeSeq: Long): DataResult<ThreadSnapshot> {
+            olderRequests += threadId to beforeSeq
+            return olderResult
+        }
+
+        override suspend fun loadNewerMessages(threadId: ThreadId, afterSeq: Long): DataResult<ThreadSnapshot> {
+            newerRequests += threadId to afterSeq
+            return newerResult
+        }
+
+        override suspend fun getChannelThreads(channelId: ChannelId, limit: Int): DataResult<ThreadListSnapshot> = error("unused")
+
+        override suspend fun getFollowedThreads(serverId: ServerId, limit: Int): DataResult<ThreadListSnapshot> = error("unused")
+
+        override suspend fun createOrOpenThread(channelId: ChannelId, parentMessageId: MessageId): DataResult<ThreadActionResult> {
+            createOrOpenRequests += channelId to parentMessageId
+            return createThreadResult
+        }
+
+        override suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult> = error("unused")
+
+        override suspend fun followThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> = error("unused")
+
+        override suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> = error("unused")
+
+        override suspend fun markThreadDone(threadChannelId: ChannelId): DataResult<ThreadActionResult> = error("unused")
+
+        override suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult> = error("unused")
+
+        override suspend fun uploadAttachments(request: AttachmentUploadRequest): DataResult<AttachmentUploadResult> = error("unused")
+
+        override suspend fun getAttachmentOpenTarget(attachmentId: ai.slock.compose.model.AttachmentId): DataResult<AttachmentOpenTarget> =
+            error("unused")
+
+        override suspend fun getChannelFiles(
+            channelId: ChannelId,
+            limit: Int,
+            cursor: String?
+        ): DataResult<ChannelFilesSnapshot> = error("unused")
+
+        override suspend fun sendMessage(
+            channelId: ChannelId,
+            body: String,
+            attachmentIds: List<ai.slock.compose.model.AttachmentId>,
+            asTask: Boolean
+        ): DataResult<SendMessageResult> = error("unused")
+    }
+
     private fun basePayload(): KuiklyThreadScreenPayload =
         KuiklyThreadScreenPayload(
             instanceId = "shared-shell-thread-channel-1",
@@ -752,6 +904,41 @@ class SharedThreadStoreTest {
         )
 
     companion object {
+        private fun threadSnapshot(
+            threadId: String = "channel-1",
+            body: String = "repository body",
+            id: String = "m1",
+            seq: Long = 10
+        ): ThreadSnapshot =
+            ThreadSnapshot(
+                conversation =
+                    ConversationSummary(
+                        threadId = ThreadId(threadId),
+                        channelId = ChannelId(threadId),
+                        kind = ConversationKind.Channel,
+                        name = "general"
+                    ),
+                messages =
+                    listOf(
+                        Message(
+                            id = MessageId(id),
+                            threadId = ThreadId(threadId),
+                            channelId = ChannelId(threadId),
+                            author =
+                                MemberProfile(
+                                    id = MemberId("u1"),
+                                    displayName = "Artin",
+                                    handle = "artin",
+                                    kind = MemberKind.Human,
+                                    presence = Presence.Active
+                                ),
+                            seq = seq,
+                            timestampLabel = "2026-05-19T16:00:00Z",
+                            body = body
+                        )
+                    )
+            )
+
         private fun messagesResponse(
             body: String,
             id: String = "m1",
