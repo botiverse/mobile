@@ -1159,6 +1159,9 @@ private fun SlockAppContent(
     var homeRefreshErrorLabel by remember { mutableStateOf<String?>(null) }
     var homeRefreshRetryNonce by rememberSaveable { mutableStateOf(0) }
     var homeRefreshAutoRetryAttempted by rememberSaveable { mutableStateOf(false) }
+    var homeInitialRefreshAffordanceConsumed by rememberSaveable(currentAuthSession?.user?.id) {
+        mutableStateOf(false)
+    }
     var manualHomeRefreshRequested by rememberSaveable { mutableStateOf(false) }
     var homeResumeRefreshNonce by remember { mutableStateOf(0) }
     var handledHomeResumeRefreshNonce by remember { mutableStateOf(0) }
@@ -6608,14 +6611,19 @@ private fun SlockAppContent(
                             it.channels.isNotEmpty() || it.directMessages.isNotEmpty()
                         } == true
                 val shouldKeepHomeShell = hasVisibleHomeContent || initialHomeContent != null
+                val showInitialHomeRefreshAffordance =
+                        shouldKeepHomeShell &&
+                                !homeInitialRefreshAffordanceConsumed &&
+                                !isManualRefresh
                 val shouldSurfaceHomeRefreshError =
                         isManualRefresh || isSelectedServerRefresh || !shouldKeepHomeShell
                 val showRefreshAffordance =
-                        shouldKeepHomeShell &&
-                                (initialHomeHasCachedConversations ||
-                                        !hasVisibleHomeContent ||
-                                    isManualRefresh ||
-                                    isSelectedServerRefresh)
+                        (showInitialHomeRefreshAffordance &&
+                                (initialHomeHasCachedConversations || !hasVisibleHomeContent)) ||
+                                (shouldKeepHomeShell && isManualRefresh)
+            if (showInitialHomeRefreshAffordance) {
+                homeInitialRefreshAffordanceConsumed = true
+            }
             if (showRefreshAffordance) {
                 homeRefreshInProgress = true
                 homeRefreshError = null

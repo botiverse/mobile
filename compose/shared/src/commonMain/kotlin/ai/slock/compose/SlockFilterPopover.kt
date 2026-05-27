@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,15 +29,17 @@ import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 
 private const val SlockFilterPopoverWidthValue = 220f
 private const val SlockFilterPopoverEstimatedHeightValue = 360f
 private const val SlockFilterPopoverViewportGapValue = 8f
-private const val SlockFilterPopoverVerticalOffsetValue = 46f
+private const val SlockFilterPopoverVerticalOffsetValue = 8f
 
 /**
  * Generic option shown by [SlockFilterPopover]. `id` must be stable across recompositions
@@ -89,9 +92,11 @@ internal fun SlockFilterPopover(
     selectedRowColor: Color = SlockColor.AppBgLightBlue.copy(alpha = 0.28f),
     headerSlot: (@Composable () -> Unit)? = null
 ) {
+    val density = LocalDensity.current
     var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
     var overlayWidth by remember { mutableStateOf(0f) }
     var overlayHeight by remember { mutableStateOf(0f) }
+    var dismissEnabled by remember(anchor, title) { mutableStateOf(false) }
     val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else 4.dp
     val localAnchor = Offset(anchor.x - overlayOrigin.x, anchor.y - overlayOrigin.y)
     val popoverWidth = widthDp.dp
@@ -103,9 +108,16 @@ internal fun SlockFilterPopover(
             .coerceAtLeast(SlockFilterPopoverViewportGapValue)
     val xClamped = (localAnchor.x + horizontalOffsetDp).coerceIn(SlockFilterPopoverViewportGapValue, maxX)
     val yClamped = (localAnchor.y + verticalOffsetDp).coerceIn(SlockFilterPopoverViewportGapValue, maxY)
+    val xOffsetDp = with(density) { xClamped.toDp() }
+    val yOffsetDp = with(density) { yClamped.toDp() }
     val filtered =
         if (searchText.isBlank()) options
         else options.filter { it.label.contains(searchText, ignoreCase = true) }
+    LaunchedEffect(anchor, title) {
+        dismissEnabled = false
+        delay(120)
+        dismissEnabled = true
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -114,12 +126,12 @@ internal fun SlockFilterPopover(
                 overlayWidth = it.size.width.toFloat()
                 overlayHeight = it.size.height.toFloat()
             }
-            .clickable(onClick = onDismiss),
+            .clickable(enabled = dismissEnabled, onClick = onDismiss),
         contentAlignment = Alignment.TopStart
     ) {
         Box(
             modifier = Modifier
-                .offset(x = xClamped.dp, y = yClamped.dp)
+                .offset(x = xOffsetDp, y = yOffsetDp)
                 .padding(end = shadowOffset, bottom = shadowOffset)
         ) {
             if (shadowOffset > 0.dp) {
@@ -135,7 +147,7 @@ internal fun SlockFilterPopover(
                     .width(popoverWidth)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, surfaceBorderColor)
-                    .clickable(enabled = false, onClick = {})
+                    .clickable(onClick = {})
             ) {
                 Row(
                     modifier = Modifier
@@ -180,7 +192,7 @@ internal fun SlockFilterPopover(
                         onValueChange = onSearchChange,
                         placeholder = searchPlaceholder,
                         placeholderColor = SlockColor.TextMutedGray,
-                        autoFocus = true,
+                        autoFocus = false,
                         maxLines = 1,
                         modifier = Modifier
                             .fillMaxWidth()

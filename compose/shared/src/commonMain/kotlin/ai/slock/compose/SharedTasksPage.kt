@@ -1,5 +1,8 @@
 package ai.slock.compose
 
+import ai.slock.compose.components.SegmentedControl
+import ai.slock.compose.components.SegmentedControlOption
+import ai.slock.compose.components.SlockToolbarChip
 import ai.slock.compose.data.KeyValueTasksViewPreferenceRepository
 import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.SharedTasksRouteIntent
@@ -585,7 +588,7 @@ private fun SharedTasksToolbar(
                 onClick = onAssigneeChipClick
             )
             if (anyFilterActive) {
-                SharedTasksFilterChip(
+                SlockToolbarChip(
                     label = "Clear all",
                     iconName = "x",
                     active = false,
@@ -594,10 +597,11 @@ private fun SharedTasksToolbar(
             }
             if (showCreateButton) {
                 Spacer(Modifier.weight(1f))
-                SharedTasksFilterChip(
+                SlockToolbarChip(
                     label = "New Task",
                     iconName = "plus",
                     active = true,
+                    activeBackgroundColor = SlockColor.AccentPink,
                     onClick = onCreateClick
                 )
             }
@@ -622,7 +626,7 @@ private fun AnchoredFilterChip(
             anchor = Offset(root.x, root.y + coords.size.height)
         }
     ) {
-        SharedTasksFilterChip(
+        SlockToolbarChip(
             label = label,
             iconName = iconName,
             trailingIconName = "chevron-down",
@@ -914,114 +918,24 @@ private fun SharedTasksPillButton(
 }
 
 @Composable
-private fun SharedTasksFilterChip(
-    label: String,
-    iconName: String? = null,
-    trailingIconName: String? = null,
-    active: Boolean,
-    enabled: Boolean = true,
-    count: Int? = null,
-    onClick: () -> Unit
-) {
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        modifier =
-            Modifier
-                .heightIn(min = 30.dp)
-                .background(if (active) SlockColor.AccentCyan else SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, if (enabled) SlockColor.BorderBlack else SlockColor.EmptyStateGray)
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            iconName?.let {
-                SlockLucideIcon(it, modifier = Modifier.size(14.dp), color = "#FF000000")
-            }
-            Text(
-                text = label.uppercase(),
-                style = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            count?.let {
-                Text(
-                    text = it.toString(),
-                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 10.sp),
-                    color = SlockColor.TextBlack,
-                    modifier =
-                        Modifier
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                            .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
-                    maxLines = 1
-                )
-            }
-            trailingIconName?.let {
-                SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
-            }
-        }
-    }
-}
-
-@Composable
 private fun SharedTasksSegmentedControl(
     selectedMode: TasksViewMode,
     onModeSelected: (TasksViewMode) -> Unit
 ) {
-    Row(
-        modifier = Modifier.border(SlockStroke.Default, SlockColor.BorderBlack),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        SharedTasksSegmentButton(
-            label = "Board",
-            iconName = "columns-3",
-            selected = selectedMode == TasksViewMode.Board,
-            onClick = { onModeSelected(TasksViewMode.Board) }
-        )
-        Box(Modifier.width(SlockStroke.Default).height(30.dp).background(SlockColor.BorderBlack))
-        SharedTasksSegmentButton(
-            label = "List",
-            // "list" is not in the SlockLucideIcon whitelist; "layout-list" is the
-            // closest registered Lucide glyph and matches the React TasksPanel pick.
-            iconName = "layout-list",
-            selected = selectedMode == TasksViewMode.List,
-            onClick = { onModeSelected(TasksViewMode.List) }
-        )
-    }
-}
-
-@Composable
-private fun SharedTasksSegmentButton(
-    label: String,
-    iconName: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    Button(
-        onClick = onClick,
-        modifier =
-            Modifier
-                .heightIn(min = 30.dp)
-                .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                .padding(horizontal = SlockSpacing.Sm, vertical = 6.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            SlockLucideIcon(iconName, modifier = Modifier.size(12.dp), color = "#FF000000")
-            Text(
-                text = label.uppercase(),
-                style = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1
-            )
+    SegmentedControl(
+        selectedValue = selectedMode.name,
+        options =
+            listOf(
+                SegmentedControlOption(value = TasksViewMode.Board.name, label = "Board", iconName = "columns-3"),
+                SegmentedControlOption(value = TasksViewMode.List.name, label = "List", iconName = "layout-list")
+            ),
+        onValueSelected = { value ->
+            when (value) {
+                TasksViewMode.Board.name -> onModeSelected(TasksViewMode.Board)
+                TasksViewMode.List.name -> onModeSelected(TasksViewMode.List)
+            }
         }
-    }
+    )
 }
 
 @Composable
@@ -1224,7 +1138,7 @@ private fun TasksCreateDialog(
                             .padding(horizontal = SlockSpacing.Sm, vertical = 6.dp)
                     )
                 }
-                SharedTasksFilterChip(
+                SlockToolbarChip(
                     label = "Add another",
                     iconName = "plus",
                     active = false,
@@ -1236,13 +1150,13 @@ private fun TasksCreateDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Spacer(Modifier.weight(1f))
-                    SharedTasksFilterChip(
+                    SlockToolbarChip(
                         label = "Cancel",
                         iconName = null,
                         active = false,
                         onClick = onDismiss
                     )
-                    SharedTasksFilterChip(
+                    SlockToolbarChip(
                         label = if (refreshing) "Creating\u2026" else "Create",
                         iconName = "check",
                         active = true,

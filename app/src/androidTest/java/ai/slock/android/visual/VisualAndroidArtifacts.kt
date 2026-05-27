@@ -61,6 +61,7 @@ internal object VisualAndroidArtifacts {
         }
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val resolver = context.contentResolver
+        deleteExistingMediaStoreDownloads(resolver, file.name)
         val values =
             ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, file.name)
@@ -78,6 +79,30 @@ internal object VisualAndroidArtifacts {
             true
         } catch (_: IOException) {
             false
+        }
+    }
+
+    private fun deleteExistingMediaStoreDownloads(
+        resolver: android.content.ContentResolver,
+        displayName: String
+    ) {
+        val projection = arrayOf(MediaStore.Downloads._ID)
+        val selection =
+            "${MediaStore.Downloads.DISPLAY_NAME} = ? AND ${MediaStore.Downloads.RELATIVE_PATH} = ?"
+        val selectionArgs = arrayOf(displayName, "Download/slock-visual-testing/android")
+        resolver.query(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            projection,
+            selection,
+            selectionArgs,
+            null
+        )?.use { cursor ->
+            val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idIndex)
+                val uri = android.content.ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
+                resolver.delete(uri, null, null)
+            }
         }
     }
 

@@ -1,6 +1,14 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalIconButton
+import ai.slock.compose.components.SlockBrutalPanelShell
+import ai.slock.compose.components.SlockBrutalSearchField
+import ai.slock.compose.components.SlockBrutalSectionLabel
+import ai.slock.compose.components.SlockBrutalTextField
+import ai.slock.compose.components.SegmentedControl
+import ai.slock.compose.components.SegmentedControlOption
 import ai.slock.compose.data.BridgeAnnouncementsRemindersApi
 import ai.slock.compose.data.BridgeAuthApi
 import ai.slock.compose.data.BridgeHomeApi
@@ -961,6 +969,7 @@ private fun SlockAppShellContent() {
     fun submitCreateChannel(
         name: String,
         description: String?,
+        visibility: String,
         agentMemberIds: List<String>,
         userMemberIds: List<String>
     ) {
@@ -978,6 +987,7 @@ private fun SlockAppShellContent() {
                             CreateChannelRequest(
                                 name = trimmedName,
                                 description = description?.trim()?.takeIf { it.isNotBlank() },
+                                visibility = visibility.trim().ifBlank { "public" },
                                 agentMemberIds = agentMemberIds,
                                 userMemberIds = userMemberIds
                             )
@@ -1260,8 +1270,8 @@ private fun SlockAppShellContent() {
                                 createChannelError = null
                             }
                         },
-                        onSubmit = { name, description, agentMemberIds, userMemberIds ->
-                            submitCreateChannel(name, description, agentMemberIds, userMemberIds)
+                        onSubmit = { name, description, visibility, agentMemberIds, userMemberIds ->
+                            submitCreateChannel(name, description, visibility, agentMemberIds, userMemberIds)
                         }
                     )
                 }
@@ -3251,17 +3261,42 @@ private fun SharedCreateChannelDialog(
     errorMessage: String?,
     initialName: String = "",
     initialDescription: String = "",
+    initialVisibility: SharedCreateChannelVisibility = SharedCreateChannelVisibility.Public,
     initialSelectedMemberKeys: Set<String> = emptySet(),
     onDismiss: () -> Unit,
-    onSubmit: (String, String?, List<String>, List<String>) -> Unit
+    onSubmit: (String, String?, String, List<String>, List<String>) -> Unit
 ) {
     var name by remember(initialName) { mutableStateOf(initialName) }
     var description by remember(initialDescription) { mutableStateOf(initialDescription) }
+    var visibility by remember(initialVisibility) { mutableStateOf(initialVisibility) }
+    var memberSearch by remember { mutableStateOf("") }
     var selectedMemberKeys by remember(initialSelectedMemberKeys) {
         mutableStateOf(initialSelectedMemberKeys)
     }
     val canSubmit = name.isNotBlank() && !submitting
     val selectableMembers = members.filter { it.kind == MemberKind.Human || it.kind == MemberKind.Agent }
+    val normalizedMemberSearch = memberSearch.trim().lowercase()
+    val filteredMembers =
+        selectableMembers.filter { member ->
+            if (normalizedMemberSearch.isBlank()) {
+                true
+            } else {
+                val searchableText =
+                    buildString {
+                        append(member.displayName)
+                        append(' ')
+                        append(member.handle)
+                        member.roleDescription?.let {
+                            append(' ')
+                            append(it)
+                        }
+                    }.lowercase()
+                normalizedMemberSearch in searchableText
+            }
+        }
+    val filteredAgentMembers = filteredMembers.filter { it.kind == MemberKind.Agent }
+    val filteredHumanMembers = filteredMembers.filter { it.kind == MemberKind.Human }
+    val hasFilteredMembers = filteredMembers.isNotEmpty()
     Modal(onWillDismiss = { if (!submitting) onDismiss() }) {
         Box(
             modifier =
@@ -3271,112 +3306,188 @@ private fun SharedCreateChannelDialog(
                     .clickable(enabled = !submitting, onClick = onDismiss),
             contentAlignment = Alignment.Center
         ) {
-            Column(
+            Box(
                 modifier =
                     Modifier
                         .padding(SlockSpacing.Md)
-                        .widthIn(min = 280.dp, max = 380.dp)
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .widthIn(min = 312.dp, max = 408.dp)
                         .clickable(enabled = false, onClick = {})
-                        .padding(SlockSpacing.Md),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
-                Text(
-                    text = "Create channel",
-                    style = SlockType.PageTitle,
-                    color = SlockColor.TextBlack
+                Box(
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .offset(x = 4.dp, y = 4.dp)
+                            .background(SlockColor.ShadowBlack)
                 )
-                Text(
-                    text = "Create a workspace channel and optionally add people or agents.",
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray
-                )
-                SharedCreateChannelField(
-                    label = "Channel name",
-                    value = name,
-                    onValueChange = { name = it },
-                    placeholder = "project-updates",
-                    enabled = !submitting,
-                    autoFocus = true
-                )
-                SharedCreateChannelField(
-                    label = "Description",
-                    value = description,
-                    onValueChange = { description = it },
-                    placeholder = "Optional channel purpose",
-                    enabled = !submitting,
-                    maxLines = 3,
-                    autoFocus = false
-                )
-                SharedCreateChannelMemberPicker(
-                    loading = membersLoading,
-                    members = selectableMembers,
-                    selectedKeys = selectedMemberKeys,
-                    enabled = !submitting,
-                    onToggle = { key ->
-                        selectedMemberKeys =
-                            if (key in selectedMemberKeys) {
-                                selectedMemberKeys - key
-                            } else {
-                                selectedMemberKeys + key
-                            }
-                    }
-                )
-                if (!errorMessage.isNullOrBlank()) {
-                    Text(
-                        text = "Error: $errorMessage",
-                        style = SlockType.Caption,
-                        color = SlockColor.AccentRed
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier =
+                        Modifier
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Spacer(Modifier.weight(1f))
-                    SharedCreateChannelButton(
-                        label = "Cancel",
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "CREATE CHANNEL",
+                            style = SlockType.PageTitle.copy(fontSize = 22.sp, lineHeight = 26.sp),
+                            color = SlockColor.TextBlack,
+                            modifier = Modifier.weight(1f)
+                        )
+                        SlockBrutalIconButton(
+                            enabled = !submitting,
+                            iconName = "x",
+                            onClick = onDismiss
+                        )
+                    }
+                    SlockBrutalTextField(
+                        label = "Name",
+                        required = true,
+                        value = name,
+                        onValueChange = { name = it },
+                        placeholder = "e.g. ai-research",
                         enabled = !submitting,
-                        primary = false,
-                        onClick = onDismiss
+                        autoFocus = true
                     )
-                    SharedCreateChannelButton(
-                        label = if (submitting) "Creating..." else "Create",
-                        enabled = canSubmit,
-                        primary = true,
-                        onClick = {
-                            val selectedMembers =
-                                selectableMembers.filter { it.memberSelectionKey in selectedMemberKeys }
-                            onSubmit(
-                                name,
-                                description,
-                                selectedMembers.filter { it.kind == MemberKind.Agent }.map { it.id.value },
-                                selectedMembers.filter { it.kind == MemberKind.Human }.map { it.id.value }
-                            )
+                    SlockBrutalTextField(
+                        label = "Description",
+                        optional = true,
+                        value = description,
+                        onValueChange = { description = it },
+                        placeholder = "What is this channel about?",
+                        enabled = !submitting,
+                        maxLines = 2,
+                        autoFocus = false
+                    )
+                    SharedCreateChannelVisibilityControl(
+                        selected = visibility,
+                        enabled = !submitting,
+                        onSelected = { visibility = it }
+                    )
+                    SharedCreateChannelMemberPicker(
+                        loading = membersLoading,
+                        hasMembers = selectableMembers.isNotEmpty(),
+                        query = memberSearch,
+                        onQueryChange = { memberSearch = it },
+                        filteredAgentMembers = filteredAgentMembers,
+                        filteredHumanMembers = filteredHumanMembers,
+                        hasFilteredMembers = hasFilteredMembers,
+                        selectedKeys = selectedMemberKeys,
+                        enabled = !submitting,
+                        onToggle = { key ->
+                            selectedMemberKeys =
+                                if (key in selectedMemberKeys) {
+                                    selectedMemberKeys - key
+                                } else {
+                                    selectedMemberKeys + key
+                                }
                         }
                     )
+                    if (!errorMessage.isNullOrBlank()) {
+                        Text(
+                            text = "Error: $errorMessage",
+                            style = SlockType.Caption,
+                            color = SlockColor.AccentRed
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Spacer(Modifier.weight(1f))
+                        SlockBrutalActionButton(
+                            label = "Cancel",
+                            enabled = !submitting,
+                            backgroundColor = SlockColor.SurfaceWhite,
+                            onClick = onDismiss
+                        )
+                        SlockBrutalActionButton(
+                            label = if (submitting) "Creating..." else "Create Channel",
+                            enabled = canSubmit,
+                            minWidth = 126.dp,
+                            backgroundColor = SlockColor.AccentPink,
+                            onClick = {
+                                val selectedMembers =
+                                    selectableMembers.filter { it.memberSelectionKey in selectedMemberKeys }
+                                onSubmit(
+                                    name,
+                                    description,
+                                    visibility.wireValue,
+                                    selectedMembers.filter { it.kind == MemberKind.Agent }.map { it.id.value },
+                                    selectedMembers.filter { it.kind == MemberKind.Human }.map { it.id.value }
+                                )
+                            }
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+private enum class SharedCreateChannelVisibility(
+    val wireValue: String,
+    val label: String,
+    val iconName: String
+) {
+    Public("public", "Public", "hash"),
+    Private("private", "Private", "lock");
+
+    companion object {
+        fun fromWireValue(value: String?): SharedCreateChannelVisibility =
+            values().firstOrNull { it.wireValue == value?.trim()?.lowercase() } ?: Public
+    }
+}
+
+@Composable
+private fun SharedCreateChannelVisibilityControl(
+    selected: SharedCreateChannelVisibility,
+    enabled: Boolean,
+    onSelected: (SharedCreateChannelVisibility) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        SlockBrutalSectionLabel(label = "Visibility")
+        SegmentedControl(
+            selectedValue = selected.name,
+            options =
+                SharedCreateChannelVisibility.values().map { option ->
+                    SegmentedControlOption(
+                        value = option.name,
+                        label = option.label,
+                        iconName = option.iconName
+                    )
+                },
+            enabled = enabled,
+            onValueSelected = { value ->
+                SharedCreateChannelVisibility.values()
+                    .firstOrNull { it.name == value }
+                    ?.let(onSelected)
+            }
+        )
+    }
+}
+
 @Composable
 private fun SharedCreateChannelMemberPicker(
     loading: Boolean,
-    members: List<MemberProfile>,
+    hasMembers: Boolean,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    filteredAgentMembers: List<MemberProfile>,
+    filteredHumanMembers: List<MemberProfile>,
+    hasFilteredMembers: Boolean,
     selectedKeys: Set<String>,
     enabled: Boolean,
     onToggle: (String) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = "Members and agents",
-            style = SlockType.SectionLabel,
-            color = SlockColor.TextBlack
-        )
+        SlockBrutalSectionLabel(label = "Members", optional = true)
         when {
             loading ->
                 Text(
@@ -3384,45 +3495,94 @@ private fun SharedCreateChannelMemberPicker(
                     style = SlockType.Caption,
                     color = SlockColor.TextMutedGray
                 )
-            members.isEmpty() ->
+            !hasMembers ->
                 Text(
-                    text = "No members available to add now.",
+                    text = "No members available",
                     style = SlockType.Caption,
                     color = SlockColor.TextMutedGray
                 )
-            else ->
-                LazyColumn(
+            else -> {
+                SlockBrutalSearchField(
+                    value = query,
+                    enabled = enabled,
+                    placeholder = "Search members by name",
+                    onValueChange = onQueryChange
+                )
+                SlockBrutalPanelShell(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 156.dp)
-                            .background(SlockColor.SurfaceCream.copy(alpha = 0.55f))
-                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                            .padding(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                            .height(192.dp)
                 ) {
-                    members.take(12).forEach { member ->
-                        item(key = member.memberSelectionKey) {
-                            SharedCreateChannelMemberRow(
-                                member = member,
-                                selected = member.memberSelectionKey in selectedKeys,
-                                enabled = enabled,
-                                onClick = { onToggle(member.memberSelectionKey) }
+                    if (!hasFilteredMembers) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 18.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No matches for \"${query.trim()}\"",
+                                style = SlockType.Caption,
+                                color = SlockColor.TextMutedGray
                             )
                         }
-                    }
-                    if (members.size > 12) {
-                        item {
-                            Text(
-                                text = "+${members.size - 12} more available after creation",
-                                style = SlockType.Caption,
-                                color = SlockColor.TextMutedGray,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
+                    } else {
+                        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                            if (filteredAgentMembers.isNotEmpty()) {
+                                item(key = "agents-header") {
+                                    SharedCreateChannelMemberSectionLabel("Agents")
+                                }
+                                filteredAgentMembers.forEach { member ->
+                                    item(key = member.memberSelectionKey) {
+                                        SharedCreateChannelMemberRow(
+                                            member = member,
+                                            selected = member.memberSelectionKey in selectedKeys,
+                                            enabled = enabled,
+                                            onClick = { onToggle(member.memberSelectionKey) }
+                                        )
+                                    }
+                                }
+                            }
+                            if (filteredHumanMembers.isNotEmpty()) {
+                                item(key = "humans-header") {
+                                    SharedCreateChannelMemberSectionLabel("Humans")
+                                }
+                                filteredHumanMembers.forEach { member ->
+                                    item(key = member.memberSelectionKey) {
+                                        SharedCreateChannelMemberRow(
+                                            member = member,
+                                            selected = member.memberSelectionKey in selectedKeys,
+                                            enabled = enabled,
+                                            onClick = { onToggle(member.memberSelectionKey) }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
+            }
         }
+    }
+}
+
+@Composable
+private fun SharedCreateChannelMemberSectionLabel(label: String) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite.copy(alpha = 0.5f))
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = label.uppercase(),
+            style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 1.2.sp),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1
+        )
     }
 }
 
@@ -3433,112 +3593,62 @@ private fun SharedCreateChannelMemberRow(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    val background = if (selected) SlockColor.BrandYellow.copy(alpha = 0.75f) else SlockColor.SurfaceWhite
+    val avatarWireValue = member.avatar?.wireValue ?: member.avatarUrl
+    val statusColor =
+        when (member.presence) {
+            Presence.Active -> SlockColor.AccentLime
+            Presence.Away -> SlockColor.BrandYellow
+            Presence.Offline -> SlockColor.EmptyStateGray
+        }
+    val subtitle =
+        member.roleDescription
+            ?.takeIf { it.isNotBlank() }
+            ?: "${member.kind.name.lowercase()} · @${member.handle}"
+    val background = if (selected) SlockColor.AccentPink.copy(alpha = 0.2f) else SlockColor.SurfaceWhite
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .background(background)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
                 .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = 8.dp, vertical = 7.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = if (selected) "✓" else "+",
-            style = SlockType.SectionLabel,
-            color = SlockColor.TextBlack
-        )
+        SlockAvatarWithStatus(statusColor = statusColor, avatarSize = 28.dp, statusSize = 7.dp) {
+            SlockAvatar(
+                avatarWireValue = avatarWireValue,
+                label = member.avatarLabel.ifBlank { member.displayName },
+                avatarSize = 28.dp
+            )
+        }
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
                 text = member.displayName,
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 16.sp),
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 13.sp, lineHeight = 16.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = "${member.kind.name.lowercase()} · @${member.handle}",
-                style = SlockType.Caption,
+                text = subtitle,
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+        if (selected) {
+            SlockLucideIcon("check", modifier = Modifier.size(14.dp), color = "#FF000000")
         }
     }
 }
 
 private val MemberProfile.memberSelectionKey: String
     get() = "${kind.name}:${id.value}"
-
-@Composable
-private fun SharedCreateChannelField(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholder: String,
-    enabled: Boolean,
-    autoFocus: Boolean,
-    maxLines: Int = 1
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            text = label,
-            style = SlockType.SectionLabel,
-            color = SlockColor.TextBlack
-        )
-        TextField(
-            value = value,
-            onValueChange = { if (enabled) onValueChange(it) },
-            placeholder = placeholder,
-            placeholderColor = SlockColor.TextMutedGray,
-            autoFocus = autoFocus,
-            maxLines = maxLines,
-            textStyle = SlockType.Input.copy(color = SlockColor.TextBlack),
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 40.dp)
-                    .background(SlockColor.AppBgLightBlue.copy(alpha = 0.6f))
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                    .padding(horizontal = SlockSpacing.Sm, vertical = 8.dp)
-        )
-    }
-}
-
-@Composable
-private fun SharedCreateChannelButton(
-    label: String,
-    enabled: Boolean,
-    primary: Boolean,
-    onClick: () -> Unit
-) {
-    val background =
-        when {
-            !enabled -> SlockColor.TextMutedGray.copy(alpha = 0.22f)
-            primary -> SlockColor.BrandYellow
-            else -> SlockColor.SurfaceWhite
-        }
-    Box(
-        modifier =
-            Modifier
-                .background(background)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = SlockSpacing.Md, vertical = 8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            style = SlockType.SectionLabel,
-            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
-        )
-    }
-}
 
 private fun SharedHomeNotification.toHomeNotificationItem(): SlockHomeNotificationItem =
     SlockHomeNotificationItem(
@@ -6150,12 +6260,13 @@ private fun HomeCreateChannelDialogVisualContent() {
             errorMessage = null,
             initialName = "android-artifacts",
             initialDescription = "Build reports, screenshots, release blockers",
+            initialVisibility = SharedCreateChannelVisibility.Public,
             initialSelectedMemberKeys = setOf(
                 homeCreateChannelVisualMembers[0].memberSelectionKey,
                 homeCreateChannelVisualMembers[2].memberSelectionKey
             ),
             onDismiss = {},
-            onSubmit = { _, _, _, _ -> }
+            onSubmit = { _, _, _, _, _ -> }
         )
     }
 }

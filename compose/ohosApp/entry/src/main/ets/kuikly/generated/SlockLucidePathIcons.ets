@@ -48,6 +48,7 @@ export const SlockLucidePathIconNames: string[] = [
   'layout-list',
   'link',
   'list-todo',
+  'lock',
   'log-in',
   'log-out',
   'mail',
@@ -1204,6 +1205,29 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'M 4 4 H 8 A 1 1 0 0 1 9 5 V 9 A 1 1 0 0 1 8 10 H 4 A 1 1 0 0 1 3 9 V 5 A 1 1 0 0 1 4 4 Z',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'lock':
+      return [
+    {
+      commands: 'M 5 11 H 19 A 2 2 0 0 1 21 13 V 20 A 2 2 0 0 1 19 22 H 5 A 2 2 0 0 1 3 20 V 13 A 2 2 0 0 1 5 11 Z',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 7 11 V 7 a 5 5 0 0 1 10 0 v 4',
       fillOpacity: 0,
       strokeOpacity: 1,
       strokeWidth: 2,

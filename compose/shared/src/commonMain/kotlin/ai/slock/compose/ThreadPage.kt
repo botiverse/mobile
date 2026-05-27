@@ -1631,14 +1631,14 @@ private fun ThreadPageTabs(
                         .fillMaxHeight()
                         .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
                         .clickable { onSelect(tab) }
-                        .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
+                        .padding(horizontal = SlockSpacing.Sm + SlockSpacing.Xxs, vertical = SlockSpacing.Xs),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.CenterHorizontally)
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm - SlockSpacing.Xxs, Alignment.CenterHorizontally)
                 ) {
-                    SlockLucideIcon(tab.icon, modifier = Modifier.size(18.dp), color = "#FF000000")
+                    SlockLucideIcon(tab.icon, modifier = Modifier.size(16.dp), color = "#FF000000")
                     Text(
                         text = tab.label.uppercase(),
-                        style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                        style = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
                         maxLines = 1
                     )
@@ -1656,8 +1656,8 @@ private fun ThreadPageTabs(
     }
 }
 
-private val ThreadTabWidth = 116.dp
-private val ThreadTabHeight = 38.dp
+private val ThreadTabWidth = 98.dp
+private val ThreadTabHeight = 32.dp
 
 @Composable
 private fun ThreadChatTab(

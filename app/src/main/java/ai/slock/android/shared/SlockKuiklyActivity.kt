@@ -28,7 +28,10 @@ import android.util.Base64
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -135,6 +138,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         SlockKuiklyAdapters.init(applicationContext)
         setContentView(R.layout.activity_slock_kuikly)
         setupImmersiveMode()
+        suppressVisualKeyboard()
         val container = findViewById<ViewGroup>(R.id.slock_kuikly_container)
         val spec = createPageSpec()
         kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
@@ -155,8 +159,16 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
     override fun onResume() {
         super.onResume()
+        suppressVisualKeyboard()
         kuiklyRenderViewDelegator.onResume()
         startRealtimeBridgeIfNeeded()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            suppressVisualKeyboard()
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -434,6 +446,31 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         }
     }
 
+    private fun suppressVisualKeyboard() {
+        if (!isVisualTestingPage()) return
+        window.setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or
+                        WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+        )
+        hideVisualKeyboardNow()
+        window.decorView.post { hideVisualKeyboardNow() }
+    }
+
+    private fun hideVisualKeyboardNow() {
+        currentFocus?.clearFocus()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.hide(WindowInsets.Type.ime())
+        } else {
+            @Suppress("DEPRECATION")
+            (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                    ?.hideSoftInputFromWindow(window.decorView.windowToken, 0)
+        }
+    }
+
+    private fun isVisualTestingPage(): Boolean =
+            intent.getBooleanExtra(KEY_SUPPRESS_SOFT_KEYBOARD, false) ||
+                    (pageName.startsWith("compose_") && pageName.endsWith("_visual"))
+
     private fun startRealtimeBridgeIfNeeded() {
         if (pageName != PAGE_APP_SHELL || realtimeConnectJob != null) return
         val sessionStore = EncryptedAuthSessionStore(applicationContext)
@@ -528,6 +565,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
         private const val KEY_PAGE_NAME = "pageName"
         private const val KEY_PAGE_DATA = "pageData"
+        const val KEY_SUPPRESS_SOFT_KEYBOARD = "slockSuppressSoftKeyboard"
 
         private const val KEY_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
         private const val REALTIME_EVENT_NAME = "slockRealtimeEvent"

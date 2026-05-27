@@ -456,14 +456,16 @@ private class NetworkSlockHomeApi(
 @Serializable
 data class CreateChannelRequestBody(
     val name: String,
-    val description: String? = null
+    val description: String? = null,
+    val visibility: String = "public"
 )
 
 private fun buildCreateChannelBody(request: CreateChannelRequest): String =
     channelRepositoryJson.encodeToString(
         CreateChannelRequestBody(
             name = request.name.trim(),
-            description = request.description?.trim()?.takeIf { it.isNotBlank() }
+            description = request.description?.trim()?.takeIf { it.isNotBlank() },
+            visibility = request.visibility.trim().ifBlank { "public" }
         )
     )
 

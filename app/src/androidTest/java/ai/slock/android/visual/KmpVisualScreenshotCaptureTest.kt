@@ -11,6 +11,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.view.WindowManager
 import ai.slock.android.shared.SlockKuiklyActivity
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -23,7 +24,11 @@ import org.junit.Test
 class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureHomeServerSwitcherOpen() {
-        captureKmpHomeCase("home.server-switcher.open", homeServerSwitcherPageData())
+        captureKmpHomeCase(
+            caseId = "home.server-switcher.open",
+            pageData = homeServerSwitcherPageData(),
+            crop = FULL_VIEWPORT_CROP
+        )
     }
 
     @Test
@@ -31,7 +36,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "navigation.tabbar.states",
             pageName = "compose_bottom_tabbar_visual",
-            crop = VisualCrop(leftDp = 0, topDp = 72, widthDp = 342, heightDp = 53)
+            crop = FULL_VIEWPORT_CROP
         )
     }
 
@@ -44,7 +49,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer")
                     .put("payload", threadComposerPayload().toString()),
-            crop = VisualCrop(leftDp = 24, topDp = 0, widthDp = 342, heightDp = 100)
+            crop = FULL_VIEWPORT_CROP
         )
     }
 
@@ -57,7 +62,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row")
                     .put("payload", threadMessageRowPayload().toString()),
-            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 342, heightDp = 205)
+            crop = FULL_VIEWPORT_CROP
         )
     }
 
@@ -66,7 +71,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "home.channel-row.states",
             pageName = "compose_home_channel_row_visual",
-            crop = VisualCrop(leftDp = 0, topDp = 48, widthDp = 342, heightDp = 154)
+            crop = FULL_VIEWPORT_CROP
         )
     }
 
@@ -75,7 +80,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "home.titlebar.states",
             pageName = "compose_home_titlebar_visual",
-            crop = VisualCrop(leftDp = 0, topDp = 48, widthDp = 342, heightDp = 56)
+            crop = FULL_VIEWPORT_CROP
         )
     }
 
@@ -84,7 +89,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "home.notification-center.states",
             pageName = "compose_home_notification_center_visual",
-            crop = VisualCrop(leftDp = 0, topDp = 48, widthDp = 342, heightDp = 276)
+            crop = FULL_VIEWPORT_CROP
         )
     }
 
@@ -93,7 +98,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "home.top-actions.states",
             pageName = "compose_home_top_actions_visual",
-            crop = VisualCrop(leftDp = 0, topDp = 48, widthDp = 342, heightDp = 128)
+            crop = FULL_VIEWPORT_CROP
         )
     }
 
@@ -102,7 +107,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "home.search.results",
             pageName = "compose_home_search_visual",
-            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 342, heightDp = 620),
+            crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
         )
     }
@@ -112,7 +117,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "home.search.channel-dropdown",
             pageName = "compose_home_search_channel_dropdown_visual",
-            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 342, heightDp = 420),
+            crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
         )
     }
@@ -122,8 +127,18 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "home.saved.results",
             pageName = "compose_home_saved_visual",
-            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 342, heightDp = 620),
+            crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
+        )
+    }
+
+    @Test
+    fun captureHomeCreateChannelDialog() {
+        captureKmpComponentCase(
+            caseId = "home.create-channel.dialog",
+            pageName = "compose_home_create_channel_dialog_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
         )
     }
 
@@ -132,7 +147,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "channel.members.panel",
             pageName = "compose_channel_members_panel_visual",
-            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 390, heightDp = 844),
+            crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
         )
     }
@@ -142,7 +157,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "channel.settings.panel",
             pageName = "compose_channel_settings_panel_visual",
-            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 390, heightDp = 844),
+            crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
         )
     }
@@ -152,7 +167,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "channel.members.add-panel",
             pageName = "compose_channel_add_member_panel_visual",
-            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 390, heightDp = 844),
+            crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
         )
     }
@@ -162,7 +177,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "settings.row.states",
             pageName = "compose_settings_row_visual",
-            crop = VisualCrop(leftDp = 0, topDp = 48, widthDp = 342, heightDp = 332)
+            crop = FULL_VIEWPORT_CROP
         )
     }
 
@@ -171,7 +186,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "settings.page.states",
             pageName = "compose_settings_page_visual",
-            crop = VisualCrop(leftDp = 0, topDp = 48, widthDp = 342, heightDp = 520)
+            crop = FULL_VIEWPORT_CROP
         )
     }
 
@@ -180,7 +195,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "auth.login.inputs",
             pageName = "compose_auth_login_inputs",
-            crop = VisualCrop(leftDp = 24, topDp = 0, widthDp = 342, heightDp = 620),
+            crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
         )
     }
@@ -190,26 +205,32 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "auth.register.inputs",
             pageName = "compose_auth_register_inputs",
-            crop = VisualCrop(leftDp = 24, topDp = 0, widthDp = 342, heightDp = 700),
+            crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
         )
     }
 
-    private fun captureKmpHomeCase(caseId: String, pageData: JSONObject) {
+    private fun captureKmpHomeCase(
+        caseId: String,
+        pageData: JSONObject,
+        crop: VisualCrop = FULL_VIEWPORT_CROP
+    ) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
             Intent(context, SlockKuiklyActivity::class.java)
                 .putExtra("pageName", SlockKuiklyActivity.PAGE_HOME)
                 .putExtra("pageData", pageData.toString())
+                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             scenario.onActivity { applyVisualFullscreen(it) }
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             Thread.sleep(2_500)
+            scenario.onActivity { suppressVisualKeyboard(it) }
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             val screenshot =
                 requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()) {
                     "Unable to capture KMP visual screenshot for $caseId"
                 }
-            val crop = VisualCrop(leftDp = 24, topDp = 60, widthDp = 342, heightDp = 238)
             validateCropBounds(caseId, screenshot, crop)
             val cropped = screenshot.cropDp(crop)
             val normalized = cropped.normalizeToDpPixels(context)
@@ -229,7 +250,7 @@ class KmpVisualScreenshotCaptureTest {
                     imageFile = imageFile,
                     bitmap = normalized,
                     crop = crop,
-                    captureMethod = "full-screen-takeScreenshot-manual-crop-density-resize"
+                    captureMethod = crop.captureMethod
                 )
             )
             mirrorFileForAdbPull(context, imageFile)
@@ -256,6 +277,7 @@ class KmpVisualScreenshotCaptureTest {
         val intent =
             Intent(context, SlockKuiklyActivity::class.java)
                 .putExtra("pageName", pageName)
+                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
                 .apply {
                     if (pageData != null) {
                         putExtra("pageData", pageData.toString())
@@ -266,6 +288,8 @@ class KmpVisualScreenshotCaptureTest {
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             Thread.sleep(settleMs)
             beforeScreenshot?.invoke()
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            scenario.onActivity { suppressVisualKeyboard(it) }
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             val screenshot =
                 requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()) {
@@ -290,7 +314,7 @@ class KmpVisualScreenshotCaptureTest {
                     imageFile = imageFile,
                     bitmap = normalized,
                     crop = crop,
-                    captureMethod = "full-screen-takeScreenshot-manual-crop-density-resize"
+                    captureMethod = crop.captureMethod
                 )
             )
             mirrorFileForAdbPull(context, imageFile)
@@ -306,9 +330,17 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     private fun applyVisualFullscreen(activity: Activity) {
+        activity.window.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+        )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             activity.window.insetsController?.let { controller ->
-                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                controller.hide(
+                    WindowInsets.Type.statusBars() or
+                        WindowInsets.Type.navigationBars() or
+                        WindowInsets.Type.ime()
+                )
                 controller.systemBarsBehavior =
                     WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
@@ -321,6 +353,13 @@ class KmpVisualScreenshotCaptureTest {
                     View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
                     View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        }
+    }
+
+    private fun suppressVisualKeyboard(activity: Activity) {
+        activity.currentFocus?.clearFocus()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            activity.window.insetsController?.hide(WindowInsets.Type.ime())
         }
     }
 
@@ -582,7 +621,7 @@ class KmpVisualScreenshotCaptureTest {
               "systemBars": "hidden",
               "crop": {
                 "mode": "manual-rect",
-                "contract": "component-bounds",
+                "contract": "${crop.contract}",
                 "rect": { "x": ${crop.leftDp}, "y": ${crop.topDp}, "width": ${crop.widthDp}, "height": ${crop.heightDp} }
               },
               "validation": {
@@ -618,7 +657,7 @@ class KmpVisualScreenshotCaptureTest {
               "systemBars": "hidden",
               "crop": {
                 "mode": "manual-rect",
-                "contract": "component-bounds",
+                "contract": "${crop.contract}",
                 "rect": { "x": ${crop.leftDp}, "y": ${crop.topDp}, "width": ${crop.widthDp}, "height": ${crop.heightDp} }
               },
               "capture": {
@@ -659,7 +698,9 @@ class KmpVisualScreenshotCaptureTest {
         val leftDp: Int,
         val topDp: Int,
         val widthDp: Int,
-        val heightDp: Int
+        val heightDp: Int,
+        val contract: String = "component-bounds",
+        val captureMethod: String = "full-screen-takeScreenshot-manual-crop-density-resize"
     )
 
     private data class VisualBitmapStats(
@@ -668,6 +709,16 @@ class KmpVisualScreenshotCaptureTest {
     )
 
     companion object {
+        private val FULL_VIEWPORT_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 844,
+                contract = "viewport-bounds",
+                captureMethod = "full-screen-takeScreenshot-viewport-density-resize"
+            )
+
         @BeforeClass
         @JvmStatic
         fun clearVisualOutputDirectory() {

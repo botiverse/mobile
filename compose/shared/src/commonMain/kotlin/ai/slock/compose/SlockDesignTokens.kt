@@ -30,6 +30,7 @@ internal object SlockColor {
 }
 
 internal object SlockSpacing {
+    val Xxs = 2.dp
     val Xs = 4.dp
     val Sm = 8.dp
     val Md = 16.dp

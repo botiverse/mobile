@@ -12,7 +12,6 @@ import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.extension.RefFunc
 import com.tencent.kuikly.compose.extension.keyboardHeightChange
 import com.tencent.kuikly.compose.extension.nativeRef
-import com.tencent.kuikly.compose.extension.placeHolder
 import com.tencent.kuikly.compose.extension.setProp
 import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
 import com.tencent.kuikly.compose.foundation.ExperimentalFoundationApi
@@ -66,6 +65,7 @@ import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
+import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -450,11 +450,6 @@ internal fun TextField(
                 lastFocus = false
             }
         }
-        .let {
-            if (placeholderColor != null) {
-                it.placeHolder(placeholder, placeholderColor)
-            } else it
-        }
     BasicTextField(
         modifier = updatedModifier,
         value = value,
@@ -464,7 +459,21 @@ internal fun TextField(
         onTextLayout = currentOnTextLayout,
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
-        cursorBrush = cursorBrush
+        cursorBrush = cursorBrush,
+        decorationBox = { innerTextField ->
+            Box(contentAlignment = Alignment.CenterStart) {
+                if (value.isEmpty() && placeholder.isNotEmpty()) {
+                    Text(
+                        text = placeholder,
+                        style = textStyle.copy(color = placeholderColor ?: textStyle.color),
+                        color = placeholderColor ?: textStyle.color,
+                        maxLines = maxLines,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                innerTextField()
+            }
+        }
     )
 
     LaunchedEffect(autoFocus) {
@@ -516,11 +525,6 @@ internal fun TextField(
                 lastFocus = false
             }
         }
-        .let {
-            if (placeholderColor != null) {
-                it.placeHolder(placeholder, placeholderColor)
-            } else it
-        }
     BasicTextField(
         modifier = updatedModifier,
         value = value,
@@ -530,7 +534,21 @@ internal fun TextField(
         onTextLayout = currentOnTextLayout,
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
-        cursorBrush = cursorBrush
+        cursorBrush = cursorBrush,
+        decorationBox = { innerTextField ->
+            Box(contentAlignment = Alignment.CenterStart) {
+                if (value.text.isEmpty() && placeholder.isNotEmpty()) {
+                    Text(
+                        text = placeholder,
+                        style = textStyle.copy(color = placeholderColor ?: textStyle.color),
+                        color = placeholderColor ?: textStyle.color,
+                        maxLines = maxLines,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                innerTextField()
+            }
+        }
     )
 
     LaunchedEffect(autoFocus) {

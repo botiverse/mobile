@@ -451,6 +451,7 @@ data class CreateServerRequest(
 data class CreateChannelRequest(
     val name: String,
     val description: String? = null,
+    val visibility: String = "public",
     val agentMemberIds: List<String> = emptyList(),
     val userMemberIds: List<String> = emptyList()
 )

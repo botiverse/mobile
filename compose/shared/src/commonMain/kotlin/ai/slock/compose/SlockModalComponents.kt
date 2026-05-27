@@ -1,5 +1,16 @@
 package ai.slock.compose
 
+import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalActionSheetRow
+import ai.slock.compose.components.SlockBrutalIconButton
+import ai.slock.compose.components.SlockBrutalListSectionHeader
+import ai.slock.compose.components.SlockBrutalListShell
+import ai.slock.compose.components.SlockBrutalModalHeader
+import ai.slock.compose.components.SlockBrutalModalLayer
+import ai.slock.compose.components.SlockActionSheetRowModel
+import ai.slock.compose.components.SlockModalFieldLabelComponent
+import ai.slock.compose.components.SlockModalShellModel
+import ai.slock.compose.components.SlockModalTextFieldComponent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,33 +52,17 @@ internal fun SlockModalLayer(
     maxWidth: Dp = 384.dp,
     content: @Composable () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SlockColor.TextBlack.copy(alpha = overlayAlpha))
-            .clickable(onClick = onDismiss)
-            .padding(SlockSpacing.Md),
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = maxWidth)
-                .padding(end = 4.dp, bottom = 4.dp)
-                .background(SlockColor.ShadowBlack)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(end = 4.dp, bottom = 4.dp)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-            ) {
-                SlockModalHeader(title = title, subtitle = subtitle, onDismiss = onDismiss)
-                content()
-            }
-        }
-    }
+    SlockBrutalModalLayer(
+        model =
+            SlockModalShellModel(
+                title = title,
+                subtitle = subtitle,
+                overlayAlpha = overlayAlpha,
+                maxWidth = maxWidth
+            ),
+        onDismiss = onDismiss,
+        content = content
+    )
 }
 
 @Composable
@@ -76,34 +71,10 @@ private fun SlockModalHeader(
     subtitle: String,
     onDismiss: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = title,
-                style = SlockType.PageTitle.copy(fontSize = 17.sp, lineHeight = 20.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (subtitle.isNotBlank()) {
-                Text(
-                    text = subtitle,
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-        SlockModalIconButton(icon = "x", onClick = onDismiss)
-    }
+    SlockBrutalModalHeader(
+        model = SlockModalShellModel(title = title, subtitle = subtitle),
+        onDismiss = onDismiss
+    )
 }
 
 @Composable
@@ -111,15 +82,7 @@ internal fun SlockModalIconButton(
     icon: String,
     onClick: () -> Unit
 ) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier
-            .size(34.dp)
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-    ) {
-        SlockLucideIcon(icon, modifier = Modifier.size(17.dp))
-    }
+    SlockBrutalIconButton(iconName = icon, onClick = onClick, size = 34.dp, shadowOffset = 0.dp)
 }
 
 @Composable
@@ -130,64 +93,21 @@ internal fun SlockActionSheetRow(
     destructive: Boolean = false,
     onClick: () -> Unit
 ) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .padding(horizontal = 12.dp, vertical = 10.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .background(if (destructive) SlockColor.AccentRed else SlockColor.BrandYellow)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                SlockLucideIcon(icon, modifier = Modifier.size(17.dp))
-            }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = title,
-                    style = SlockType.ButtonBold,
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (subtitle.isNotBlank()) {
-                    Text(
-                        text = subtitle,
-                        style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-    }
+    SlockBrutalActionSheetRow(
+        model =
+            SlockActionSheetRowModel(
+                title = title,
+                subtitle = subtitle,
+                icon = icon,
+                destructive = destructive
+            ),
+        onClick = onClick
+    )
 }
 
 @Composable
 internal fun SlockModalFieldLabel(label: String, required: Boolean = false) {
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = label,
-            style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
-            color = SlockColor.TextBlack
-        )
-        if (required) {
-            Text(
-                text = "*",
-                style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
-                color = SlockColor.AccentRed
-            )
-        }
-    }
+    SlockModalFieldLabelComponent(label = label, required = required)
 }
 
 @Composable
@@ -205,59 +125,20 @@ internal fun SlockModalTextField(
     maxLines: Int = 1,
     errorText: String? = null
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val borderColor =
-        when {
-            isError -> SlockColor.AccentRed
-            focused -> SlockColor.TextBlack
-            enabled -> SlockColor.BorderBlack
-            else -> SlockColor.TextMutedGray
-        }
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SlockModalFieldLabel(label = label, required = required)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(end = if (focused) 3.dp else 0.dp, bottom = if (focused) 3.dp else 0.dp)
-                .background(if (focused) SlockColor.ShadowBlack else Color.Transparent)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(fieldHeight)
-                    .padding(end = if (focused) 3.dp else 0.dp, bottom = if (focused) 3.dp else 0.dp)
-                    .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
-                    .border(SlockStroke.Default, borderColor)
-                    .padding(horizontal = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (leadingIcon != null) {
-                    SlockLucideIcon(leadingIcon, modifier = Modifier.size(14.dp), color = "#66000000")
-                }
-                TextField(
-                    modifier = Modifier.weight(1f).height((fieldHeight.value - 8f).dp),
-                    value = value,
-                    placeholder = placeholder,
-                    autoFocus = false,
-                    onValueChange = onValueChange,
-                    onFocus = { focused = true },
-                    onBlur = { focused = false },
-                    textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                    placeholderColor = SlockColor.TextMutedGray,
-                    maxLines = maxLines
-                )
-            }
-        }
-        val resolvedError = errorText ?: if (isError) "$label is required." else null
-        if (resolvedError != null) {
-            Text(
-                text = resolvedError,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                color = SlockColor.AccentRed
-            )
-        }
-    }
+    SlockModalTextFieldComponent(
+        label = label,
+        value = value,
+        placeholder = placeholder,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        required = required,
+        isError = isError,
+        leadingIcon = leadingIcon,
+        enabled = enabled,
+        fieldHeight = fieldHeight,
+        maxLines = maxLines,
+        errorText = errorText
+    )
 }
 
 @Composable
@@ -269,36 +150,15 @@ internal fun SlockModalActionButton(
     color: Color = SlockColor.SurfaceWhite,
     enabled: Boolean = true
 ) {
-    Box(
-        modifier = modifier
-            .heightIn(min = 40.dp)
-            .widthIn(min = 82.dp)
-            .padding(end = 4.dp, bottom = 4.dp)
-            .background(SlockColor.ShadowBlack)
-    ) {
-        Button(
-            onClick = onClick,
-            enabled = enabled,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 40.dp)
-                .padding(end = 4.dp, bottom = 4.dp)
-                .background(if (enabled) color else SlockColor.SurfaceCream)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 10.dp)
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockLucideIcon(icon, modifier = Modifier.size(16.dp))
-                Text(
-                    text = label,
-                    style = SlockType.ButtonBold,
-                    color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
+    SlockBrutalActionButton(
+        label = label,
+        leadingIcon = icon,
+        onClick = onClick,
+        modifier = modifier,
+        backgroundColor = color,
+        enabled = enabled,
+        textStyle = SlockType.ButtonBold
+    )
 }
 
 @Composable
@@ -310,24 +170,15 @@ internal fun SlockModalSquareActionButton(
     enabled: Boolean = true,
     size: Dp = 28.dp
 ) {
-    Box(
-        modifier = modifier
-            .size(size)
-            .padding(end = 3.dp, bottom = 3.dp)
-            .background(SlockColor.ShadowBlack)
-    ) {
-        Button(
-            onClick = onClick,
-            enabled = enabled,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(end = 3.dp, bottom = 3.dp)
-                .background(if (enabled) color else SlockColor.SurfaceCream)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-        ) {
-            SlockLucideIcon(icon, modifier = Modifier.size((size.value * 0.45f).dp))
-        }
-    }
+    SlockBrutalIconButton(
+        iconName = icon,
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        backgroundColor = color,
+        size = size,
+        shadowOffset = 3.dp
+    )
 }
 
 @Composable
@@ -335,41 +186,12 @@ internal fun SlockModalListShell(
     height: Dp,
     content: LazyListScope.() -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(height)
-            .padding(end = 4.dp, bottom = 4.dp)
-            .background(SlockColor.ShadowBlack)
-    ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(height)
-                .padding(end = 4.dp, bottom = 4.dp)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
-            verticalArrangement = Arrangement.spacedBy(0.dp),
-            content = content
-        )
-    }
+    SlockBrutalListShell(height = height, content = content)
 }
 
 @Composable
 internal fun SlockModalSectionHeader(label: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(SlockColor.SurfaceWhite.copy(alpha = 0.5f))
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
-        )
-    }
+    SlockBrutalListSectionHeader(label = label)
 }
 
 @Composable

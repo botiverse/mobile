@@ -47,7 +47,6 @@ internal fun SlockTopPageHeader(
                 .fillMaxWidth()
                 .height(topSafeArea + SlockSize.PageHeaderHeight)
                 .background(SlockColor.BrandYellow)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .padding(start = 20.dp, top = topSafeArea, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -93,6 +92,13 @@ internal fun SlockTopPageHeader(
             Box(content = trailingContent)
         }
     }
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(SlockStroke.Default)
+                .background(SlockColor.BorderBlack)
+    )
 }
 
 @Composable

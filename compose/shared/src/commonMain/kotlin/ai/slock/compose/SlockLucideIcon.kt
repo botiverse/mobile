@@ -79,6 +79,7 @@ internal object SlockLucideIcons {
         "layout-list",
         "link",
         "list-todo",
+        "lock",
         "log-in",
         "log-out",
         "mail",
