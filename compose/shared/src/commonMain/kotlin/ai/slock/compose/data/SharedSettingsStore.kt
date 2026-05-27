@@ -130,6 +130,12 @@ sealed interface SharedSettingsIntent {
     data class SetMessageAlignment(val alignment: String) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
+    data class CompleteStorageClear(
+        val target: String,
+        val ok: Boolean,
+        val code: String? = null,
+        val snapshot: SharedSettingsStorageSnapshot? = null
+    ) : SharedSettingsIntent
     data object CopyDiagnostics : SharedSettingsIntent
     data object ShareDiagnostics : SharedSettingsIntent
     data object ClearDiagnostics : SharedSettingsIntent
@@ -156,6 +162,9 @@ sealed interface SharedSettingsEffect {
 interface SharedSettingsPlatformCapabilities {
     suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun clearStorage(target: String): DataResult<SharedSettingsStorageSnapshot> =
+        DataResult.Error(ScreenError("settings_storage_clear_unavailable", retryable = false))
 
     suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -245,6 +254,9 @@ class SharedSettingsDataSource(
 
     suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =
         platformCapabilities.loadStorage()
+
+    suspend fun clearStorage(target: String): DataResult<SharedSettingsStorageSnapshot> =
+        platformCapabilities.clearStorage(target)
 
     suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> =
         platformCapabilities.loadAbout()
@@ -460,6 +472,8 @@ class SharedSettingsStore(
                         actionState = SharedSettingsActionState("clearStorage", itemId = intent.target, inProgress = true),
                         effect = SharedSettingsEffect.ClearStorage(intent.target)
                     )
+            is SharedSettingsIntent.CompleteStorageClear ->
+                completeStorageClear(intent)
             SharedSettingsIntent.CopyDiagnostics ->
                 _state.value = _state.value.copy(effect = SharedSettingsEffect.CopyDiagnostics)
             SharedSettingsIntent.ShareDiagnostics ->
@@ -520,6 +534,50 @@ class SharedSettingsStore(
 
     private suspend fun loadStorage() {
         dataSource.loadStorage().applyToState(SharedSettingsDestination.Storage) { copy(storage = it) }
+    }
+
+    private fun completeStorageClear(intent: SharedSettingsIntent.CompleteStorageClear) {
+        val currentStorage = _state.value.storage
+        val updatedStorage =
+            if (intent.snapshot != null) {
+                ScreenLoadState.Content(
+                    intent.snapshot.copy(
+                        feedback =
+                            intent.snapshot.feedback?.takeIf { it.isNotBlank() }
+                                ?: if (intent.ok) {
+                                    "Storage cleared."
+                                } else {
+                                    intent.code ?: "settings_storage_clear_failed"
+                                }
+                    )
+                )
+            } else if (currentStorage is ScreenLoadState.Content) {
+                ScreenLoadState.Content(
+                    currentStorage.data.copy(
+                        feedback =
+                            if (intent.ok) {
+                                "Storage cleared."
+                            } else {
+                                intent.code ?: "settings_storage_clear_failed"
+                            }
+                    )
+                )
+            } else {
+                currentStorage
+            }
+        _state.value =
+            _state.value.copy(
+                storage = updatedStorage,
+                actionState =
+                    SharedSettingsActionState(
+                        action = "clearStorage",
+                        itemId = intent.target,
+                        inProgress = false,
+                        errorCode = intent.code.takeUnless { intent.ok }
+                    ),
+                routeErrorCode = intent.code.takeUnless { intent.ok },
+                effect = null
+            )
     }
 
     private fun completeSystemNotificationAction(action: String, result: SystemNotificationActionResult) {
@@ -615,6 +673,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetLocale,
             is SharedSettingsIntent.SetMessageAlignment,
             is SharedSettingsIntent.ClearStorage,
+            is SharedSettingsIntent.CompleteStorageClear,
             SharedSettingsIntent.CopyDiagnostics,
             SharedSettingsIntent.ShareDiagnostics,
             SharedSettingsIntent.ClearDiagnostics,

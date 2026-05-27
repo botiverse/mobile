@@ -29,6 +29,14 @@ interface OhosDiagnosticEntryPayload {
   message: string;
 }
 
+interface OhosStorageRowPayload {
+  target: string;
+  title: string;
+  detail: string;
+  sizeLabel: string;
+  clearEnabled: boolean;
+}
+
 export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly MODULE_NAME = "HRBridgeModule";
   static readonly SHOW_ALERT = "showAlert";
@@ -310,6 +318,14 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const records = this.parseRecord(params);
       const action = records["action"] as string;
       switch (action) {
+        case "loadStorage": {
+          callback(this.loadStorageCapability());
+          return;
+        }
+        case "clearStorage": {
+          callback(this.clearStorageCapability(records));
+          return;
+        }
         case "loadAbout": {
           callback(await this.loadAboutCapability());
           return;
@@ -381,6 +397,48 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     } catch (error) {
       callback(this.notificationCapabilityError("settings_capability_failed", error));
     }
+  }
+
+  private loadStorageCapability(feedback: string = ""): Record<string, Object> {
+    const rows: Array<OhosStorageRowPayload> = [
+      {
+        target: "database",
+        title: "Local database",
+        detail: "OHOS storage usage is not exposed through the host capability yet.",
+        sizeLabel: "--",
+        clearEnabled: false
+      },
+      {
+        target: "imageCache",
+        title: "Image cache",
+        detail: "Image cache clearing is not available on OHOS yet.",
+        sizeLabel: "--",
+        clearEnabled: false
+      },
+      {
+        target: "temporaryAndLogs",
+        title: "Temporary files and logs",
+        detail: "Use Diagnostics clear logs for the local diagnostics buffer.",
+        sizeLabel: "--",
+        clearEnabled: false
+      }
+    ];
+    return {
+      "status": "ok",
+      "totalSizeLabel": "Unavailable",
+      "feedback": feedback,
+      "rows": rows
+    };
+  }
+
+  private clearStorageCapability(records: Record<string, Object>): Record<string, Object> {
+    const target = records["target"] as string;
+    SlockOhosDiagnostics.record("Settings", `storage_clear_unsupported target=${target}`);
+    return {
+      "status": "error",
+      "code": "settings_storage_clear_unsupported",
+      "message": "Storage clearing is not available on OHOS yet."
+    };
   }
 
   private async loadAboutCapability(): Promise<Record<string, Object>> {

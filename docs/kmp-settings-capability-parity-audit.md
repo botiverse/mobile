@@ -101,8 +101,8 @@ About or a smoke route.
 | Server page | Partial | React sections are not fully repository-backed in shared shell; mutations/confirmations are missing. | task #38 and task #39. |
 | Billing | Partial | Uses session/static plan data unless repository is wired; no permission/error parity. | task #38. |
 | Mobile | Wired/partial | Notification preference, permission/settings/test notification feedback, locale, and message-alignment local preferences now flow through shared Settings MVI. Server mute remains hidden/disabled until a real API/capability is confirmed. | task #36 complete; future server mute follow-up if needed. |
-| Storage | Partial | Platform capability boundary exists, but product path must prove real snapshot/refresh/clear feedback. | task #37. |
-| About/Diagnostics | Migrated/partial | Core actions are wired; keep checking no inert rows remain and diagnostics state handles empty/error. | task #43 complete; task #44 audits all visible rows. |
+| Storage | Wired/partial | Shared MVI now drives refresh/clear and Android returns live storage snapshots; OHOS exposes explicit unsupported/disabled rows until a native storage API is available. | task #37 complete. |
+| About/Diagnostics | Migrated/wired | Core actions are wired; task #37 reverified the Diagnostics route while keeping copy/share/clear/send-feedback behind shared effects/host capabilities. | task #43 complete; task #44 audits all visible rows. |
 | Loading/cache | Partial | Store preserves existing content on refresh failure, but most real repository/cache sources are not connected. | tasks #35-#39 by slice. |
 | Realtime | Missing | Server/machine/billing updates can go stale unless invalidated/refreshed through store. | Later Settings realtime/cache hardening task. |
 
@@ -119,8 +119,9 @@ About or a smoke route.
    shared intents/state and host notification capabilities. Completed for
    notification preference, permission/settings/test feedback, language, and
    message alignment; server mute remains deferred.
-4. task #37: prove Storage and Diagnostics capabilities are live, including
-   refresh, clear, copy/share, empty, and error states.
+4. task #37: Storage refresh/clear is live through shared MVI and host
+   capabilities; Diagnostics copy/share/clear/send-feedback remains live from
+   task #43 and was reverified.
 5. task #38: wire Account, Billing, and Server API-backed data into
    `SharedSettingsDataSource` for the app shell.
 6. task #39: add Server mutations with shared confirmation/in-progress/error
@@ -144,7 +145,8 @@ Every Settings KMP task must report:
 
 Settings is no longer just a shell: the shared MVI boundary exists and
 About/Diagnostics actions are wired. The remaining risk is capability parity:
-large parts of Account, Computers, Server, Billing, Mobile, and Storage still
-need real repository/capability wiring in the shared product path. Follow the
-task #44 and task #35-#39 sequence rather than adding more route-local Settings
-logic.
+large parts of Account, Server, Billing, and Server mutation flows still need
+real repository/capability wiring in the shared product path. Computers,
+Mobile, Storage, and About/Diagnostics now have their first shared wiring
+slices. Follow the task #44 and task #35-#39 sequence rather than adding more
+route-local Settings logic.

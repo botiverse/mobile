@@ -289,6 +289,43 @@ class SharedSettingsStoreTest {
         scope.cancel()
     }
 
+    @Test
+    fun storageLoadsAndClearCompletionKeepsActionFeedbackInSharedState() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities = FakeSettingsCapabilities()
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        platformCapabilities = capabilities
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Storage))
+        var storage = assertIs<ScreenLoadState.Content<SharedSettingsStorageSnapshot>>(store.state.value.storage).data
+        assertEquals("12.0 MB", storage.totalSizeLabel)
+        assertEquals(listOf("database", "imageCache", "temporaryAndLogs"), storage.rows.map { it.target })
+
+        store.accept(SharedSettingsIntent.ClearStorage("imageCache"))
+        assertEquals(SharedSettingsEffect.ClearStorage("imageCache"), store.state.value.effect)
+        assertEquals(SharedSettingsActionState("clearStorage", "imageCache", inProgress = true), store.state.value.actionState)
+
+        store.accept(
+            SharedSettingsIntent.CompleteStorageClear(
+                "imageCache",
+                ok = true,
+                snapshot = storage.copy(totalSizeLabel = "5.0 MB", feedback = "Cleared imageCache")
+            )
+        )
+        storage = assertIs<ScreenLoadState.Content<SharedSettingsStorageSnapshot>>(store.state.value.storage).data
+        assertEquals("5.0 MB", storage.totalSizeLabel)
+        assertEquals("Cleared imageCache", storage.feedback)
+        assertEquals(SharedSettingsActionState("clearStorage", "imageCache", inProgress = false), store.state.value.actionState)
+        scope.cancel()
+    }
+
     private class FakeSettingsRepository(
         var accountResult: DataResult<AccountSettingsSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var computersResult: DataResult<SettingsComputersSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
@@ -407,6 +444,16 @@ class SharedSettingsStoreTest {
             )
         }
 
+        override suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> {
+            calls += "storage"
+            return DataResult.Content(storageSnapshot())
+        }
+
+        override suspend fun clearStorage(target: String): DataResult<SharedSettingsStorageSnapshot> {
+            calls += "clearStorage:$target"
+            return DataResult.Content(storageSnapshot(feedback = "Cleared $target"))
+        }
+
         override suspend fun loadDiagnostics(): DataResult<SharedSettingsDiagnosticsSnapshot> {
             calls += "diagnostics"
             return DataResult.Content(
@@ -422,6 +469,35 @@ class SharedSettingsStoreTest {
                 )
             )
         }
+
+        private fun storageSnapshot(feedback: String? = null): SharedSettingsStorageSnapshot =
+            SharedSettingsStorageSnapshot(
+                totalSizeLabel = "12.0 MB",
+                rows =
+                    listOf(
+                        SharedSettingsStorageRow(
+                            target = "database",
+                            title = "Local database",
+                            detail = "Local data.",
+                            sizeLabel = "4.0 MB"
+                        ),
+                        SharedSettingsStorageRow(
+                            target = "imageCache",
+                            title = "Image cache",
+                            detail = "Images.",
+                            sizeLabel = "7.0 MB",
+                            clearEnabled = true
+                        ),
+                        SharedSettingsStorageRow(
+                            target = "temporaryAndLogs",
+                            title = "Temporary files and logs",
+                            detail = "Logs.",
+                            sizeLabel = "1.0 MB",
+                            clearEnabled = true
+                        )
+                    ),
+                feedback = feedback
+            )
     }
 
     private class FakeNotificationPreferenceRepository(

@@ -50,6 +50,8 @@ import ai.slock.compose.data.SharedSettingsDiagnosticsSnapshot
 import ai.slock.compose.data.SharedSettingsEffect
 import ai.slock.compose.data.SharedSettingsIntent
 import ai.slock.compose.data.SharedSettingsState
+import ai.slock.compose.data.SharedSettingsStorageRow
+import ai.slock.compose.data.SharedSettingsStorageSnapshot
 import ai.slock.compose.data.SharedSettingsViewModel
 import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.isRefreshing
@@ -1323,6 +1325,47 @@ private fun SettingsAppShellContent(
                 val result = settingsCapabilities.sendTestNotification()
                 onSettingsIntent(SharedSettingsIntent.CompleteSystemNotificationAction(MOBILE_ACTION_TEST_NOTIFICATION, result))
             }
+            is SharedSettingsEffect.ClearStorage -> {
+                val result = settingsCapabilities.clearStorage(effect.target)
+                when (result) {
+                    is DataResult.Content -> {
+                        onSettingsIntent(
+                            SharedSettingsIntent.CompleteStorageClear(
+                                effect.target,
+                                ok = true,
+                                snapshot = result.data
+                            )
+                        )
+                    }
+                    is DataResult.Empty -> {
+                        onSettingsIntent(
+                            SharedSettingsIntent.CompleteStorageClear(
+                                effect.target,
+                                ok = false,
+                                code = result.reason.name
+                            )
+                        )
+                    }
+                    is DataResult.Error -> {
+                        onSettingsIntent(
+                            SharedSettingsIntent.CompleteStorageClear(
+                                effect.target,
+                                ok = false,
+                                code = result.error.code
+                            )
+                        )
+                    }
+                    is DataResult.NoPermission -> {
+                        onSettingsIntent(
+                            SharedSettingsIntent.CompleteStorageClear(
+                                effect.target,
+                                ok = false,
+                                code = result.blocker.code
+                            )
+                        )
+                    }
+                }
+            }
             else -> Unit
         }
         onSettingsIntent(SharedSettingsIntent.ConsumeEffect)
@@ -1379,7 +1422,18 @@ private fun SettingsAppShellContent(
                     }
                 }
             SettingsDestinationStorage ->
-                SettingsStorageContent(appShellStoragePayload()) { _, _ -> }
+                SettingsStorageContent(
+                    settingsState.storage.toStoragePayload(
+                        actionState = settingsState.actionState,
+                        refreshing = settingsState.isRefreshing(SharedSettingsDestination.Storage)
+                    )
+                ) { action, target ->
+                    when (action) {
+                        "refreshStorage" -> onSettingsIntent(SharedSettingsIntent.RefreshStorage)
+                        "clearStorage" -> target?.takeIf { it.isNotBlank() }?.let { onSettingsIntent(SharedSettingsIntent.ClearStorage(it)) }
+                        else -> onSettingsAction(action, target)
+                    }
+                }
             SettingsDestinationBilling ->
                 SettingsBillingContent(settingsState.billing.toBillingPayload(session)) { _, _ -> }
             SettingsDestinationServer ->
@@ -1884,28 +1938,63 @@ private fun SettingsComputerAgentSnapshot.toAgentItem(): KuiklySettingsAgentItem
     )
 }
 
-private fun appShellStoragePayload(): KuiklySettingsStoragePayload =
-    KuiklySettingsStoragePayload(
+private fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    refreshing: Boolean
+): KuiklySettingsStoragePayload {
+    val storage = (this as? ScreenLoadState.Content<SharedSettingsStorageSnapshot>)?.data
+    val statusText =
+        when (this) {
+            ScreenLoadState.Loading -> if (refreshing) "Refreshing storage..." else "Loading storage..."
+            is ScreenLoadState.Empty -> "Storage information is not available on this platform."
+            is ScreenLoadState.Error -> "Storage unavailable: ${this.error.code}"
+            is ScreenLoadState.NoPermission -> "Storage unavailable: ${this.blocker.code}"
+            is ScreenLoadState.Content -> storage?.feedback.orEmpty()
+        }
+    return KuiklySettingsStoragePayload(
         instanceId = "shared-shell-settings-storage",
-        totalSize = "Managed by Android",
+        totalSize = storage?.totalSizeLabel?.takeIf { it.isNotBlank() } ?: if (refreshing) "Refreshing" else "--",
+        feedback = statusText,
         rows =
-            listOf(
-                KuiklySettingsStorageRow(
-                    target = "database",
-                    iconName = "archive",
-                    title = "Local database",
-                    detail = "Messages, task metadata, and server snapshots stored on this device.",
-                    size = "--"
-                ),
-                KuiklySettingsStorageRow(
-                    target = "imageCache",
-                    iconName = "image",
-                    title = "Image cache",
-                    detail = "Downloaded image previews kept for faster viewing.",
-                    size = "--"
+            storage?.rows?.map { row ->
+                row.toStoragePayloadRow(
+                    clearInProgress =
+                        actionState?.action == "clearStorage" &&
+                            actionState.itemId == row.target &&
+                            actionState.inProgress
                 )
-            )
+            }.orEmpty()
     )
+}
+
+private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolean): KuiklySettingsStorageRow =
+    KuiklySettingsStorageRow(
+        target = target,
+        iconName = storageTargetIconName(target),
+        title = title,
+        detail = detail,
+        size = sizeLabel,
+        clearLabel =
+            if (clearEnabled) {
+                when (target) {
+                    "imageCache" -> "Clear image cache"
+                    "temporaryAndLogs" -> "Clear temp files and logs"
+                    else -> "Clear"
+                }
+            } else {
+                ""
+            },
+        clearEnabled = clearEnabled,
+        clearInProgress = clearInProgress
+    )
+
+private fun storageTargetIconName(target: String): String =
+    when (target) {
+        "database" -> "archive"
+        "imageCache" -> "image"
+        "temporaryAndLogs" -> "file-text"
+        else -> "archive"
+    }
 
 private fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(session: StoredAuthSession?): KuiklySettingsBillingPayload {
     val billing = (this as? ScreenLoadState.Content<SettingsBillingSnapshot>)?.data

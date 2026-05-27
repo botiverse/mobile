@@ -21,9 +21,9 @@ headers. Actions must go through `SharedSettingsIntent`, `SharedSettingsEffect`,
 | Server | Partial | task #38 / task #39 |
 | Billing | Partial | task #38 |
 | Mobile | Wired/partial | task #36 complete; server mute remains disabled until API/capability exists. |
-| Storage | Missing/partial | task #37 |
+| Storage | Wired/partial | task #37 complete; Android has live refresh/clear, OHOS renders unsupported rows disabled. |
 | About | Wired | task #43 complete; keep covered by route audit. |
-| Diagnostics | Wired/partial | task #37 for richer diagnostics state, task #43 complete for core actions. |
+| Diagnostics | Wired | task #37/task #43 complete for current copy/share/clear/send-feedback state. |
 
 This change also fixes one small MVI violation found during the audit: Account
 Logout now dispatches `SharedSettingsIntent.Logout`, emits
@@ -60,8 +60,8 @@ longer uses a route-local `pendingLogout` mutable state machine.
 | Mobile | Mute workspace | Disabled/hidden unless the snapshot marks it available. | Add shared preference/server mute state only after API/capability is confirmed. | Future Mobile/server mute follow-up. |
 | Mobile | Language | Wired. Row reads `LocaleRepository`, cycles supported locales, persists selection, and echoes the selected label through shared state. | Keep local preference persistence in commonMain. | task #36 complete. |
 | Mobile | My message alignment | Wired. Row reads `ChatLayoutPreferenceRepository`, cycles supported alignment options, persists selection, and echoes the selected label through shared state. | Keep local preference persistence in commonMain. | task #36 complete. |
-| Storage | Refresh | Inert in product shell. `SettingsStorageContent` emits `refreshStorage`, but app shell passes empty callback. | Wire to `SharedSettingsIntent.RefreshStorage` and real `loadStorage()` capability. | task #37. |
-| Storage | Clear database / image cache | Inert in product shell. Content can emit `clearStorage`, store has `ClearStorage`, but host effect and capability are not connected. | Add `ClearStorage` effect consumption and host capability, with action state and feedback. | task #37. |
+| Storage | Refresh | Wired. Product shell dispatches `SharedSettingsIntent.RefreshStorage`; Android loads a live storage snapshot through host capability, while OHOS reports unsupported rows disabled. | Keep storage state/effects in shared MVI and platform measurement/clear work in host capability. | task #37 complete. |
+| Storage | Clear image cache / temporary files | Wired where supported. Product shell dispatches `SharedSettingsIntent.ClearStorage(target)`, host capability returns an updated snapshot, and shared state records in-progress/success/error feedback. Database remains read-only. | Keep unsupported targets disabled and never leave clear actions clickable without host support. | task #37 complete. |
 | About | Diagnostics row | Wired. Opens Diagnostics destination. | Keep. | task #43 complete. |
 | About | Copy version/build | Wired. Uses host pasteboard. | Keep; consider moving through `SharedSettingsEffect` if more consistent later. | task #43 complete. |
 | About | Open Slock | Wired. Uses host `openUrl`. | Keep. | task #43 complete. |
@@ -80,7 +80,9 @@ longer uses a route-local `pendingLogout` mutable state machine.
    permission/settings/test notification feedback, language, and message
    alignment now flow through commonMain state/intents; server mute stays hidden
    unless a future API/capability marks it available.
-3. task #37 should wire Storage refresh/clear plus richer Diagnostics state.
+3. task #37 wired Storage refresh/clear through shared MVI plus Android/OHOS
+   host capabilities. Diagnostics copy/share/clear/send-feedback remains
+   covered by task #43 and was reverified as part of this slice.
 4. task #38 should pass a real `SettingsRepository` or equivalent shared
    capability into app-shell `SharedSettingsDataSource` for Account, Billing,
    and Server data.

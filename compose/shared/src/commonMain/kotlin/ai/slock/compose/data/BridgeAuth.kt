@@ -308,6 +308,27 @@ internal class BridgeSettingsPlatformCapabilities(
         bridge.openUrl(url)
     }
 
+    override suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> {
+        val response = bridge.settingsCapability(JSONObject().put("action", "loadStorage"))
+        if (response?.optString("status") != "ok") {
+            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_storage_unavailable" }))
+        }
+        return DataResult.Content(response.toStorageSnapshot())
+    }
+
+    override suspend fun clearStorage(target: String): DataResult<SharedSettingsStorageSnapshot> {
+        val response =
+            bridge.settingsCapability(
+                JSONObject()
+                    .put("action", "clearStorage")
+                    .put("target", target)
+            )
+        if (response?.optString("status") != "ok") {
+            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_storage_clear_failed" }))
+        }
+        return DataResult.Content(response.toStorageSnapshot())
+    }
+
     override suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> {
         val response = bridge.settingsCapability(JSONObject().put("action", "loadAbout"))
         if (response?.optString("status") != "ok") {
@@ -377,6 +398,33 @@ internal class BridgeSettingsPlatformCapabilities(
 
     suspend fun sendTestNotification(): SystemNotificationActionResult =
         systemNotificationAction("sendTestNotification")
+
+    private fun JSONObject.toStorageSnapshot(): SharedSettingsStorageSnapshot {
+        val rowsJson = optJSONArray("rows")
+        val rows =
+            buildList {
+                if (rowsJson != null) {
+                    for (index in 0 until rowsJson.length()) {
+                        val row = rowsJson.optJSONObject(index) ?: continue
+                        add(
+                            SharedSettingsStorageRow(
+                                target = row.optString("target"),
+                                title = row.optString("title"),
+                                detail = row.optString("detail"),
+                                sizeLabel = row.optString("sizeLabel").ifBlank { row.optString("size") },
+                                clearEnabled = row.optBoolean("clearEnabled", false),
+                                clearInProgress = row.optBoolean("clearInProgress", false)
+                            )
+                        )
+                    }
+                }
+            }
+        return SharedSettingsStorageSnapshot(
+            totalSizeLabel = optString("totalSizeLabel").ifBlank { optString("totalSize") },
+            rows = rows,
+            feedback = optString("feedback").takeIf { it.isNotBlank() }
+        )
+    }
 
     private suspend fun systemNotificationAction(action: String): SystemNotificationActionResult {
         val response = bridge.settingsCapability(JSONObject().put("action", action))
