@@ -56,11 +56,9 @@ export struct SlockLucidePathIcon {
         })
           .width('100%')
           .height('100%')
-          .fill(this.renderView.iconColor)
-          .fillOpacity(entry.fillOpacity)
-          .stroke(this.renderView.iconColor)
-          .strokeOpacity(entry.strokeOpacity)
-          .strokeWidth(entry.strokeWidth)
+          .fill(pathPaint(this.renderView.iconColor, entry.fillOpacity))
+          .stroke(pathPaint(this.renderView.iconColor, entry.strokeOpacity))
+          .strokeWidth(entry.strokeOpacity > 0 ? entry.strokeWidth : 0)
           .strokeLineCap(entry.strokeLineCap)
           .strokeLineJoin(entry.strokeLineJoin)
           .antiAlias(true)
@@ -90,6 +88,10 @@ function normalizeColor(value: string): ResourceColor {
     return '#' + value.substring(3);
   }
   return value;
+}
+
+function pathPaint(color: ResourceColor, opacity: number): ResourceColor {
+  return opacity > 0 ? color : '#00000000';
 }
 
 @Builder

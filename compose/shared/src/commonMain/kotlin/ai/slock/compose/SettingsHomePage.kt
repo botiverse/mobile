@@ -1709,6 +1709,13 @@ private fun appShellSettingsHomePayload(
                     subtitle = "Version, diagnostics, feedback",
                     iconName = "bug",
                     selected = selectedDestination == SettingsDestinationAbout
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationRouter,
+                    title = "Developer Router",
+                    subtitle = "Open Kuikly route launcher and icon compare",
+                    iconName = "layout-list",
+                    selected = selectedDestination == SettingsDestinationRouter
                 )
             )
     )
