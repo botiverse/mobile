@@ -99,6 +99,9 @@ import kotlinx.serialization.json.Json
 internal const val THREAD_PAGE = "compose_thread"
 private const val THREAD_MESSAGE_VISUAL_PAGE = "compose_thread_message_visual"
 private const val THREAD_MESSAGE_ROW_VISUAL_PAGE = "compose_thread_message_row_visual"
+private const val CHANNEL_MEMBERS_PANEL_VISUAL_PAGE = "compose_channel_members_panel_visual"
+private const val CHANNEL_SETTINGS_PANEL_VISUAL_PAGE = "compose_channel_settings_panel_visual"
+private const val CHANNEL_ADD_MEMBER_PANEL_VISUAL_PAGE = "compose_channel_add_member_panel_visual"
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesPageSize = 50
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
@@ -125,6 +128,30 @@ internal class ComposeThreadMessageRowVisualPage : ai.slock.compose.base.BasePag
     override fun willInit() {
         super.willInit()
         setContent { ThreadMessageVisualScreen() }
+    }
+}
+
+@Page(CHANNEL_MEMBERS_PANEL_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeChannelMembersPanelVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ChannelMembersPanelVisualScreen() }
+    }
+}
+
+@Page(CHANNEL_SETTINGS_PANEL_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeChannelSettingsPanelVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ChannelSettingsPanelVisualScreen() }
+    }
+}
+
+@Page(CHANNEL_ADD_MEMBER_PANEL_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeChannelAddMemberPanelVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ChannelAddMemberPanelVisualScreen() }
     }
 }
 
@@ -439,6 +466,154 @@ private fun ThreadMessageVisualScreen() {
         }
     }
 }
+
+@Composable
+private fun ChannelMembersPanelVisualScreen() {
+    val members = remember { channelPanelVisualMembers() }
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        ThreadMembersModal(
+            members = members,
+            membersCount = members.size,
+            canAddMembers = true,
+            onDismiss = {},
+            onAddMember = {},
+            onManageMember = {}
+        )
+    }
+}
+
+@Composable
+private fun ChannelSettingsPanelVisualScreen() {
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        ThreadSettingsModal(
+            channelName = "design",
+            subtitle = "Visual systems, component polish, and QA review.",
+            actions = channelPanelVisualSettingsActions(),
+            onDismiss = {},
+            onOpenAction = {}
+        )
+    }
+}
+
+@Composable
+private fun ChannelAddMemberPanelVisualScreen() {
+    val members = remember { channelPanelVisualMembers().take(3) }
+    val candidates = remember { channelPanelVisualCandidates() }
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        ThreadAddMemberModal(
+            members = members,
+            candidates = candidates,
+            canAddMembers = true,
+            addMemberStatus = "idle",
+            addMemberErrorCode = null,
+            onDismiss = {},
+            onSubmit = {}
+        )
+    }
+}
+
+private fun channelPanelVisualMembers(): List<KuiklyThreadMemberItem> =
+    listOf(
+        KuiklyThreadMemberItem(
+            id = "agent-product-ux",
+            displayName = "Product UX Designer",
+            handle = "Product-UX-Designer",
+            roleLabel = "Agent · online",
+            avatarLabel = "PX",
+            kind = "agent"
+        ),
+        KuiklyThreadMemberItem(
+            id = "agent-android-dev",
+            displayName = "Android Developer 4",
+            handle = "Android-Developer-4",
+            roleLabel = "Agent · reviewing",
+            avatarLabel = "A4",
+            kind = "agent"
+        ),
+        KuiklyThreadMemberItem(
+            id = "human-artin",
+            displayName = "artin",
+            handle = "artin",
+            roleLabel = "Owner",
+            avatarLabel = "AR",
+            kind = "human"
+        ),
+        KuiklyThreadMemberItem(
+            id = "human-cindy",
+            displayName = "Cindy",
+            handle = "Cindy",
+            roleLabel = "Coordinator",
+            avatarLabel = "CY",
+            kind = "human"
+        ),
+        KuiklyThreadMemberItem(
+            id = "human-qa",
+            displayName = "QA Reviewer",
+            handle = "QA-Tester",
+            roleLabel = "Reviewer",
+            avatarLabel = "QA",
+            kind = "human"
+        )
+    )
+
+private fun channelPanelVisualCandidates(): List<KuiklyThreadMemberItem> =
+    listOf(
+        KuiklyThreadMemberItem(
+            id = "agent-api",
+            displayName = "API Integration Developer",
+            handle = "API-Integration-Developer",
+            roleLabel = "Agent · available",
+            avatarLabel = "AI",
+            kind = "agent"
+        ),
+        KuiklyThreadMemberItem(
+            id = "agent-kmp",
+            displayName = "KMP Expert",
+            handle = "KMP-专家",
+            roleLabel = "Agent · HarmonyOS",
+            avatarLabel = "KM",
+            kind = "agent"
+        ),
+        KuiklyThreadMemberItem(
+            id = "human-designer",
+            displayName = "Visual Reviewer",
+            handle = "visual-reviewer",
+            roleLabel = "Designer",
+            avatarLabel = "VR",
+            kind = "human"
+        ),
+        KuiklyThreadMemberItem(
+            id = "human-ops",
+            displayName = "Ops Lead",
+            handle = "ops",
+            roleLabel = "Admin",
+            avatarLabel = "OL",
+            kind = "human"
+        )
+    ) + channelPanelVisualMembers().take(1)
+
+private fun channelPanelVisualSettingsActions(): List<KuiklyThreadSettingsAction> =
+    listOf(
+        KuiklyThreadSettingsAction(
+            id = "notifications",
+            title = "Notifications",
+            subtitle = "Mentions and channel updates",
+            icon = "bell-ring"
+        ),
+        KuiklyThreadSettingsAction(
+            id = "files",
+            title = "Shared files",
+            subtitle = "View uploaded files and assets",
+            icon = "folder-open"
+        ),
+        KuiklyThreadSettingsAction(
+            id = "archive",
+            title = "Archive channel",
+            subtitle = "Freeze writes and hide from sidebars",
+            icon = "archive",
+            destructive = true
+        )
+    )
 
 @Composable
 private fun ThreadMessageVisualCard(

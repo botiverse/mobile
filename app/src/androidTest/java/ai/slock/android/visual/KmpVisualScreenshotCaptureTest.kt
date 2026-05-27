@@ -118,6 +118,36 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureChannelMembersPanel() {
+        captureKmpComponentCase(
+            caseId = "channel.members.panel",
+            pageName = "compose_channel_members_panel_visual",
+            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 390, heightDp = 844),
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureChannelSettingsPanel() {
+        captureKmpComponentCase(
+            caseId = "channel.settings.panel",
+            pageName = "compose_channel_settings_panel_visual",
+            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 390, heightDp = 844),
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureChannelAddMemberPanel() {
+        captureKmpComponentCase(
+            caseId = "channel.members.add-panel",
+            pageName = "compose_channel_add_member_panel_visual",
+            crop = VisualCrop(leftDp = 0, topDp = 0, widthDp = 390, heightDp = 844),
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureSettingsRowStates() {
         captureKmpComponentCase(
             caseId = "settings.row.states",
