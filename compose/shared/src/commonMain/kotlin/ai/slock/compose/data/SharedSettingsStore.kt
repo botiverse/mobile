@@ -121,6 +121,7 @@ sealed interface SharedSettingsIntent {
     data object OpenNotificationSettings : SharedSettingsIntent
     data object SendTestNotification : SharedSettingsIntent
     data class SetNotificationPreference(val enabled: Boolean) : SharedSettingsIntent
+    data class SetServerMute(val enabled: Boolean) : SharedSettingsIntent
     data class CompleteSystemNotificationAction(
         val action: String,
         val result: SystemNotificationActionResult
@@ -208,6 +209,16 @@ class SharedSettingsDataSource(
         repository.setNotificationEnabled(enabled)
         return loadMobile()
     }
+
+    suspend fun setServerMute(enabled: Boolean): DataResult<SettingsMobileSnapshot> =
+        when (val result =
+            (settingsRepository as? SettingsServerActionRepository)?.setServerMute(enabled)
+                ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)) {
+            is DataResult.Content -> DataResult.Content(result.data.withLocalMobilePreferences())
+            is DataResult.Empty -> result
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
 
     suspend fun setLocale(localeTag: String): DataResult<SettingsMobileSnapshot> {
         val repository =
@@ -416,6 +427,13 @@ class SharedSettingsStore(
                     )
                 dataSource.setNotificationPreference(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_NOTIFICATION_PREFERENCE)
+            }
+            is SharedSettingsIntent.SetServerMute -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_SERVER_MUTE, inProgress = true)
+                    )
+                dataSource.setServerMute(intent.enabled).applyMobileActionResult(MOBILE_ACTION_SERVER_MUTE)
             }
             is SharedSettingsIntent.SetLocale -> {
                 _state.value =
@@ -650,6 +668,7 @@ private fun SharedSettingsState.hasContent(destination: SharedSettingsDestinatio
     }
 
 internal const val MOBILE_ACTION_NOTIFICATION_PREFERENCE = "notificationPreference"
+internal const val MOBILE_ACTION_SERVER_MUTE = "serverMute"
 internal const val MOBILE_ACTION_PERMISSION = "notificationPermission"
 internal const val MOBILE_ACTION_SETTINGS = "openNotificationSettings"
 internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"

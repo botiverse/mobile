@@ -52,6 +52,13 @@ interface SettingsRepository {
     suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot>
 }
 
+interface SettingsServerActionRepository {
+    suspend fun revokeServerInvite(inviteId: String): DataResult<SettingsServerActionResult>
+    suspend fun createServerJoinLink(request: SettingsServerJoinLinkCreateRequest): DataResult<SettingsServerJoinLinkSnapshot>
+    suspend fun revokeServerJoinLink(linkId: String): DataResult<SettingsServerActionResult>
+    suspend fun setServerMute(enabled: Boolean): DataResult<SettingsMobileSnapshot>
+}
+
 interface ConversationRepository {
     suspend fun getThread(
         threadId: ThreadId,
@@ -327,6 +334,11 @@ data class SettingsServerInviteCreateRequest(
 
 data class SettingsServerDeleteRequest(
     val confirmationName: String
+)
+
+data class SettingsServerJoinLinkCreateRequest(
+    val expiresAt: String? = null,
+    val maxUses: Int? = null
 )
 
 data class SettingsServerActionResult(

@@ -261,6 +261,15 @@ fun parseSharedSettingsBillingSubscription(bodyText: String): List<SettingsPlanU
 }.getOrNull()
 
 @Serializable
+private data class WireSettingsNotificationSettings(
+    val serverPushMuted: Boolean,
+)
+
+fun parseSharedSettingsServerNotificationSettings(bodyText: String): Boolean? = runCatching {
+    settingsJson.decodeFromString(WireSettingsNotificationSettings.serializer(), bodyText).serverPushMuted
+}.getOrNull()
+
+@Serializable
 private data class WireSettingsServerOnboarding(
     val setupModalReminderOptOut: Boolean,
 )
@@ -307,11 +316,88 @@ fun parseSharedSettingsServerInviteCreated(bodyText: String): SettingsServerActi
 }.getOrNull()
 
 @Serializable
+private data class WireSettingsPendingInvite(
+    val id: String? = null,
+    val invitedEmail: String? = null,
+    val email: String? = null,
+    val createdAt: String? = null,
+    val inviterName: String? = null,
+)
+
+fun parseSharedSettingsPendingInvites(bodyText: String): List<SettingsServerInviteSnapshot>? = runCatching {
+    settingsJson.decodeFromString(ListSerializer(WireSettingsPendingInvite.serializer()), bodyText)
+        .mapNotNull { invite ->
+            val id = invite.id?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val email =
+                invite.invitedEmail?.takeIf { it.isNotBlank() }
+                    ?: invite.email?.takeIf { it.isNotBlank() }
+                    ?: return@mapNotNull null
+            SettingsServerInviteSnapshot(
+                id = id,
+                email = email,
+                inviterName = invite.inviterName?.takeIf { it.isNotBlank() },
+                createdAtLabel = invite.createdAt?.takeIf { it.isNotBlank() }
+            )
+        }
+}.getOrNull()
+
+@Serializable
+private data class WireSettingsJoinLinkEnvelope(
+    val token: String,
+    val link: WireSettingsJoinLink,
+)
+
+@Serializable
+private data class WireSettingsJoinLink(
+    val id: String? = null,
+    val token: String? = null,
+    val createdAt: String? = null,
+    val expiresAt: String? = null,
+    val maxUses: Int? = null,
+    val useCount: Int? = null,
+    val revokedAt: String? = null,
+)
+
+fun parseSharedSettingsJoinLinks(bodyText: String): List<SettingsServerJoinLinkSnapshot>? = runCatching {
+    settingsJson.decodeFromString(ListSerializer(WireSettingsJoinLink.serializer()), bodyText)
+        .mapNotNull { it.toSettingsServerJoinLinkSnapshot() }
+}.getOrNull()
+
+fun parseSharedSettingsCreatedJoinLink(bodyText: String): SettingsServerJoinLinkSnapshot? = runCatching {
+    val envelope = settingsJson.decodeFromString(WireSettingsJoinLinkEnvelope.serializer(), bodyText)
+    envelope.link.copy(token = envelope.token).toSettingsServerJoinLinkSnapshot()
+}.getOrNull()
+
+private fun WireSettingsJoinLink.toSettingsServerJoinLinkSnapshot(): SettingsServerJoinLinkSnapshot? {
+    val id = id?.takeIf { it.isNotBlank() } ?: return null
+    val tokenValue = token?.takeIf { it.isNotBlank() }
+    val label =
+        tokenValue?.let { token ->
+            if (token.length <= 8) token else "${token.take(8)}…"
+        } ?: "Join link"
+    return SettingsServerJoinLinkSnapshot(
+        id = id,
+        label = label,
+        url = tokenValue?.let { "/join/$it" },
+        maxUsesLabel =
+            maxUses?.let { uses ->
+                if (uses <= 0) null else "$uses max uses"
+            },
+        usageLabel = useCount?.let { "$it uses" },
+        expiresAtLabel = expiresAt?.takeIf { it.isNotBlank() },
+    )
+}
+
+@Serializable
 private data class WireSettingsServerDelete(
     val ok: Boolean,
 )
 
 fun parseSharedSettingsServerDeleted(bodyText: String): SettingsServerActionResult? = runCatching {
+    parseSharedSettingsServerAction(bodyText)
+}.getOrNull()
+
+fun parseSharedSettingsServerAction(bodyText: String): SettingsServerActionResult? = runCatching {
     val deleted = settingsJson.decodeFromString(WireSettingsServerDelete.serializer(), bodyText)
     if (!deleted.ok) return null
     SettingsServerActionResult(success = true)

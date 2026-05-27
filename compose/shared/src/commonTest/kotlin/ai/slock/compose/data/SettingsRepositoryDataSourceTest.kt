@@ -67,7 +67,7 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(billing is DataResult.Content)
         val billingSnapshot = billing.data
         assertEquals("Team", billingSnapshot.currentPlan.planName)
-        assertEquals(3, billingSnapshot.currentPlan.usageRows.size)
+        assertEquals(4, billingSnapshot.currentPlan.usageRows.size)
         assertTrue(billingSnapshot.plans.any { it.current })
         assertTrue(billingSnapshot.plans.any { it.comingSoon })
         assertTrue(denied is DataResult.NoPermission)
@@ -92,7 +92,7 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
-    fun serverSettingsMapsWebConfirmedSectionsWithoutGuessingJoinLinks() = runBlocking {
+    fun serverSettingsMapsWebConfirmedSectionsIncludingInvitesAndJoinLinks() = runBlocking {
         val repository =
             RealSettingsRepository(
                 sampleStore(),
@@ -105,7 +105,10 @@ class SettingsRepositoryDataSourceTest {
                     """.trimIndent(),
                     usageJson = """{"machines":1,"agents":10,"channels":12}""",
                     billingSubscriptionJson = """{"subscription":{"status":"active","currentPeriodEnd":"2026-06-01T00:00:00Z"},"stripeConfigured":true}""",
-                    onboardingJson = """{"setupModalReminderOptOut":true}"""
+                    onboardingJson = """{"setupModalReminderOptOut":true}""",
+                    invitesJson = """[{"id":"invite-1","invitedEmail":"new@slock.ai","createdAt":"2026-05-09T00:00:00Z"}]""",
+                    joinLinksJson = """[{"id":"join-1","token":"token-123456789","createdAt":"2026-05-09T00:00:00Z","expiresAt":"2026-06-01T00:00:00Z","maxUses":10,"useCount":2}]""",
+                    notificationSettingsJson = """{"serverPushMuted":true}"""
                 )
             )
 
@@ -125,13 +128,23 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(serverSnapshot.usageRows.any { it.label == "Billing Status" && it.value == "Active" })
         assertTrue(serverSnapshot.usageRows.any { it.label == "Computers" && it.value == "1" })
         assertEquals(true, serverSnapshot.onboarding?.setupModalReminderOptOut)
-        assertEquals(SettingsSectionAvailability.Empty, serverSnapshot.sections.first { it.key == "join_links" }.state)
+        assertEquals("new@slock.ai", serverSnapshot.pendingInvites.single().email)
+        assertEquals("/join/token-123456789", serverSnapshot.joinLinks.single().url)
+        assertEquals(SettingsSectionAvailability.Available, serverSnapshot.sections.first { it.key == "pending_invites" }.state)
+        assertEquals(SettingsSectionAvailability.Available, serverSnapshot.sections.first { it.key == "join_links" }.state)
         assertTrue(serverSnapshot.sections.all { it.state != SettingsSectionAvailability.Unavailable })
     }
 
     @Test
-    fun computersAndMobileKeepExistingSettingsContracts() = runBlocking {
-        val repository = RealSettingsRepository(sampleStore(), FakeSettingsNetworkClient(responseCode = 404))
+    fun computersAndMobileKeepTypedContracts() = runBlocking {
+        val repository =
+            RealSettingsRepository(
+                sampleStore(),
+                FakeSettingsNetworkClient(
+                    machinesResponseCode = 404,
+                    notificationSettingsJson = """{"serverPushMuted":false}"""
+                )
+            )
 
         val computers = repository.getComputers()
         val mobile = repository.getMobileSettings()
@@ -141,8 +154,42 @@ class SettingsRepositoryDataSourceTest {
         assertEquals(false, computers.error.retryable)
         assertTrue(mobile is DataResult.Content)
         assertEquals(true, mobile.data.pushNotifications.available)
-        assertEquals(false, mobile.data.muteServer.available)
+        assertEquals(true, mobile.data.muteServer.available)
+        assertEquals("Not muted", mobile.data.muteServer.statusLabel)
         assertEquals(true, mobile.data.sendTestEnabled)
+    }
+
+    @Test
+    fun mobileMuteInviteAndJoinLinkActionsUseConfirmedContracts() = runBlocking {
+        val network =
+            FakeSettingsNetworkClient(
+                notificationSettingsJson = """{"serverPushMuted":false}""",
+                inviteDeleteJson = """{"ok":true}""",
+                createJoinLinkJson = """{"token":"created-token","link":{"id":"join-2","createdAt":"2026-05-09T00:00:00Z","expiresAt":"2026-06-01T00:00:00Z","maxUses":5,"useCount":0}}""",
+                joinLinkDeleteJson = """{"ok":true}"""
+            )
+        val repository = RealSettingsRepository(sampleStore(), network)
+
+        val muted = repository.setServerMute(true)
+        val revokedInvite = repository.revokeServerInvite("invite-1")
+        val createdJoinLink = repository.createServerJoinLink(
+            SettingsServerJoinLinkCreateRequest(
+                expiresAt = "2026-06-01T00:00:00Z",
+                maxUses = 5
+            )
+        )
+        val revokedJoinLink = repository.revokeServerJoinLink("join-2")
+
+        assertTrue(muted is DataResult.Content)
+        assertEquals(true, muted.data.muteServer.enabled)
+        assertEquals("""{"serverPushMuted":true}""", network.notificationSettingsBodies.single())
+        assertTrue(revokedInvite is DataResult.Content)
+        assertEquals("invite-1", network.deletedInviteId)
+        assertTrue(createdJoinLink is DataResult.Content)
+        assertEquals("/join/created-token", createdJoinLink.data.url)
+        assertEquals("""{"expiresAt":"2026-06-01T00:00:00Z","maxUses":5}""", network.joinLinkBodies.single())
+        assertTrue(revokedJoinLink is DataResult.Content)
+        assertEquals("join-2", network.deletedJoinLinkId)
     }
 
     @Test
@@ -347,6 +394,13 @@ class SettingsRepositoryDataSourceTest {
         private val billingSubscriptionJson: String = """{"subscription":null,"stripeConfigured":false}""",
         private val onboardingJson: String = """{"setupModalReminderOptOut":false}""",
         private val inviteJson: String = """{"id":"invite-1","email":"new@slock.ai"}""",
+        private val invitesJson: String = """[]""",
+        private val notificationSettingsJson: String = """{"serverPushMuted":false}""",
+        private val createJoinLinkJson: String =
+            """{"token":"join-token","link":{"id":"join-1","createdAt":"2026-05-09T00:00:00Z","expiresAt":null,"maxUses":null,"useCount":0}}""",
+        private val joinLinksJson: String = """[]""",
+        private val inviteDeleteJson: String = """{"ok":true}""",
+        private val joinLinkDeleteJson: String = """{"ok":true}""",
         private val machinesJson: String = """{"machines":[]}""",
         private val workspacesJson: String = """[]""",
         private val agentsJson: String = """[]""",
@@ -362,6 +416,7 @@ class SettingsRepositoryDataSourceTest {
         private val agentsResponseCode: Int? = null,
         private val responseCode: Int = 200
     ) : SlockNetworkClient {
+        private var currentServerPushMuted = notificationSettingsJson.contains("true")
         var machinesServerId: String? = null
             private set
         var workspacesMachineId: String? = null
@@ -374,10 +429,16 @@ class SettingsRepositoryDataSourceTest {
             private set
         var deletedMachineId: String? = null
             private set
+        var deletedInviteId: String? = null
+            private set
+        var deletedJoinLinkId: String? = null
+            private set
         var deletedWorkspaceDirectoryName: String? = null
             private set
         val accountUpdateBodies = mutableListOf<String>()
         val inviteBodies = mutableListOf<String>()
+        val joinLinkBodies = mutableListOf<String>()
+        val notificationSettingsBodies = mutableListOf<String>()
         val registerBodies = mutableListOf<String>()
         val renameBodies = mutableListOf<String>()
 
@@ -442,6 +503,13 @@ class SettingsRepositoryDataSourceTest {
                     response(billingSubscriptionJson)
                 normalized.matches(Regex("""servers/[^/]+/onboarding-settings""")) && method == "GET" ->
                     response(onboardingJson)
+                normalized.matches(Regex("""servers/[^/]+/notification-settings""")) && method == "GET" ->
+                    response("""{"serverPushMuted":$currentServerPushMuted}""")
+                normalized.matches(Regex("""servers/[^/]+/notification-settings""")) && method == "PATCH" -> {
+                    notificationSettingsBodies += bodyText.orEmpty()
+                    currentServerPushMuted = bodyText?.contains("true") == true
+                    response("""{"serverPushMuted":$currentServerPushMuted}""")
+                }
                 normalized.matches(Regex("""servers/[^/]+""")) && method == "PATCH" -> {
                     val serverId = normalized.split("/")[1]
                     response("""{"id":"$serverId","name":"Slock Android"}""")
@@ -449,6 +517,22 @@ class SettingsRepositoryDataSourceTest {
                 normalized.matches(Regex("""servers/[^/]+/invites""")) && method == "POST" -> {
                     inviteBodies += bodyText.orEmpty()
                     response(inviteJson)
+                }
+                normalized.matches(Regex("""servers/[^/]+/invites""")) && method == "GET" ->
+                    response(invitesJson)
+                normalized.matches(Regex("""servers/[^/]+/invites/[^/]+""")) && method == "DELETE" -> {
+                    deletedInviteId = normalized.split("/")[3]
+                    response(inviteDeleteJson)
+                }
+                normalized.matches(Regex("""servers/[^/]+/join-links""")) && method == "POST" -> {
+                    joinLinkBodies += bodyText.orEmpty()
+                    response(createJoinLinkJson)
+                }
+                normalized.matches(Regex("""servers/[^/]+/join-links""")) && method == "GET" ->
+                    response(joinLinksJson)
+                normalized.matches(Regex("""servers/[^/]+/join-links/[^/]+""")) && method == "DELETE" -> {
+                    deletedJoinLinkId = normalized.split("/")[3]
+                    response(joinLinkDeleteJson)
                 }
                 normalized.matches(Regex("""servers/[^/]+""")) && method == "DELETE" ->
                     response("""{"ok":true}""")

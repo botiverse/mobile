@@ -75,18 +75,64 @@ private suspend fun SlockNetworkClient.createSettingsServerInvite(
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/invites", method = "POST", serverIdOverride = ServerId(serverId), bodyText = bodyText)
 
+private suspend fun SlockNetworkClient.settingsServerInvites(
+    priority: DataRequestPriority,
+    serverId: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/invites", serverIdOverride = ServerId(serverId))
+
+private suspend fun SlockNetworkClient.deleteSettingsServerInvite(
+    priority: DataRequestPriority,
+    serverId: String,
+    inviteId: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/invites/$inviteId", method = "DELETE", serverIdOverride = ServerId(serverId))
+
+private suspend fun SlockNetworkClient.createSettingsServerJoinLink(
+    priority: DataRequestPriority,
+    serverId: String,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/join-links", method = "POST", serverIdOverride = ServerId(serverId), bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.settingsServerJoinLinks(
+    priority: DataRequestPriority,
+    serverId: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/join-links", serverIdOverride = ServerId(serverId))
+
+private suspend fun SlockNetworkClient.deleteSettingsServerJoinLink(
+    priority: DataRequestPriority,
+    serverId: String,
+    linkId: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/join-links/$linkId", method = "DELETE", serverIdOverride = ServerId(serverId))
+
 private suspend fun SlockNetworkClient.deleteSettingsServer(
     priority: DataRequestPriority,
     serverId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId", method = "DELETE", serverIdOverride = ServerId(serverId))
 
+private suspend fun SlockNetworkClient.settingsNotificationSettings(
+    priority: DataRequestPriority,
+    serverId: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/notification-settings", serverIdOverride = ServerId(serverId))
+
+private suspend fun SlockNetworkClient.updateSettingsNotificationSettings(
+    priority: DataRequestPriority,
+    serverId: String,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/notification-settings", method = "PATCH", serverIdOverride = ServerId(serverId), bodyText = bodyText)
+
 class RealSettingsRepository(
     private val sessionStore: SlockAuthSessionStore,
     private val networkClient: SlockNetworkClient,
     private val logger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
-) : SettingsRepository {
+) : SettingsRepository, SettingsServerActionRepository {
     private val computersApiClient = SlockComputersApiClient(SlockComputersNetworkApi(networkClient))
 
     override suspend fun getAccount(): DataResult<AccountSettingsSnapshot> {
@@ -274,15 +320,23 @@ class RealSettingsRepository(
             )
         }
         val currentPlanName = server.plan.toPlanDisplayName()
+        val billing = fetchServerBilling()
+        val billingUsageRows =
+            when (billing) {
+                is DataResult.Content -> billing.data
+                is DataResult.Empty -> emptyList()
+                is DataResult.Error -> listOf(SettingsPlanUsageSnapshot(label = "Billing Status", value = billing.error.code))
+                is DataResult.NoPermission -> listOf(SettingsPlanUsageSnapshot(label = "Billing Status", value = billing.blocker.code))
+            }
         return DataResult.Content(
             SettingsBillingSnapshot(
                 currentPlan = SettingsBillingCurrentPlanSnapshot(
                     planName = currentPlanName,
-                    usageRows = listOf(
-                        SettingsPlanUsageSnapshot(label = "Workspace", value = server.name),
-                        SettingsPlanUsageSnapshot(label = "Role", value = server.role.orEmpty().replaceFirstChar { it.uppercase() }),
-                        SettingsPlanUsageSnapshot(label = "Plan source", value = "Selected server")
-                    ),
+                    usageRows =
+                        listOf(
+                            SettingsPlanUsageSnapshot(label = "Workspace", value = server.name),
+                            SettingsPlanUsageSnapshot(label = "Role", value = server.role.orEmpty().replaceFirstChar { it.uppercase() }),
+                        ) + billingUsageRows,
                     trialActive = false
                 ),
                 plans = listOf(
@@ -317,6 +371,18 @@ class RealSettingsRepository(
         val members = fetchServerMembers(serverId)
         val usage = fetchServerUsage(serverId)
         val billing = fetchServerBilling()
+        val invites =
+            if (canManageServer) {
+                fetchServerInvites(serverId)
+            } else {
+                DataResult.NoPermission(PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_invites"))
+            }
+        val joinLinks =
+            if (canManageServer) {
+                fetchServerJoinLinks(serverId)
+            } else {
+                DataResult.NoPermission(PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_invites"))
+            }
         val onboarding =
             if (server.role == "owner") {
                 fetchServerOnboarding(serverId)
@@ -334,6 +400,8 @@ class RealSettingsRepository(
             usage = (usage as? DataResult.Content)?.data.orEmpty(),
             billing = (billing as? DataResult.Content)?.data.orEmpty()
         )
+        val pendingInvites = (invites as? DataResult.Content)?.data.orEmpty()
+        val joinLinkRows = (joinLinks as? DataResult.Content)?.data.orEmpty()
         val onboardingSnapshot = (onboarding as? DataResult.Content)?.data
         val sections = listOf(
             SettingsServerSectionSnapshot(
@@ -351,14 +419,14 @@ class RealSettingsRepository(
             SettingsServerSectionSnapshot(
                 key = "pending_invites",
                 title = "Pending Invites",
-                detail = "Invite creation is confirmed; no pending-invite listing endpoint in upstream source.",
-                state = if (canManageServer) SettingsSectionAvailability.Empty else SettingsSectionAvailability.NoPermission
+                detail = invitesSectionDetail(invites, pendingInvites.size),
+                state = invites.sectionState(pendingInvites.isEmpty())
             ),
             SettingsServerSectionSnapshot(
                 key = "join_links",
                 title = "Join Links",
-                detail = "Upstream source accepts join-link tokens, but no Settings join-link management endpoint is confirmed.",
-                state = SettingsSectionAvailability.Empty
+                detail = joinLinksSectionDetail(joinLinks, joinLinkRows.size),
+                state = joinLinks.sectionState(joinLinkRows.isEmpty())
             ),
             SettingsServerSectionSnapshot(
                 key = "onboarding_agent",
@@ -390,8 +458,8 @@ class RealSettingsRepository(
                 sections = sections,
                 admins = admins,
                 usageRows = usageRows,
-                pendingInvites = emptyList(),
-                joinLinks = emptyList(),
+                pendingInvites = pendingInvites,
+                joinLinks = joinLinkRows,
                 onboarding = onboardingSnapshot
             )
         )
@@ -427,6 +495,42 @@ class RealSettingsRepository(
         return settingsCreateServerInvite(server.id, email)
     }
 
+    override suspend fun revokeServerInvite(inviteId: String): DataResult<SettingsServerActionResult> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_invites")
+            )
+        }
+        val normalizedInviteId = inviteId.trim()
+        if (normalizedInviteId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return settingsDeleteServerInvite(server.id, normalizedInviteId)
+    }
+
+    override suspend fun createServerJoinLink(
+        request: SettingsServerJoinLinkCreateRequest
+    ): DataResult<SettingsServerJoinLinkSnapshot> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_invites")
+            )
+        }
+        return settingsCreateServerJoinLink(server.id, request)
+    }
+
+    override suspend fun revokeServerJoinLink(linkId: String): DataResult<SettingsServerActionResult> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_invites")
+            )
+        }
+        val normalizedLinkId = linkId.trim()
+        if (normalizedLinkId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return settingsDeleteServerJoinLink(server.id, normalizedLinkId)
+    }
+
     override suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult> {
         val server = selectedServer() ?: return serverRequired()
         if (server.role != "owner") {
@@ -442,6 +546,10 @@ class RealSettingsRepository(
 
     override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> {
         sessionStore.readSession() ?: return authRequired()
+        val serverMute =
+            selectedServerId()?.let { serverId ->
+                fetchServerMute(serverId)
+            } ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
         return DataResult.Content(
             SettingsMobileSnapshot(
                 pushNotifications = SettingsMobileToggleSnapshot(
@@ -451,14 +559,35 @@ class RealSettingsRepository(
                     detail = "Notifications can arrive while Slock is in the background. This Android build can preview the local state before the push API is connected."
                 ),
                 muteServer = SettingsMobileToggleSnapshot(
-                    enabled = false,
-                    available = false,
-                    statusLabel = "Not muted",
-                    detail = "Server mute is unavailable until the mobile settings endpoint is confirmed."
+                    enabled = (serverMute as? DataResult.Content)?.data ?: false,
+                    available = serverMute !is DataResult.NoPermission && serverMute !is DataResult.Error && serverMute !is DataResult.Empty,
+                    statusLabel =
+                        if ((serverMute as? DataResult.Content)?.data == true) {
+                            "Muted"
+                        } else {
+                            "Not muted"
+                        },
+                    detail =
+                        when (serverMute) {
+                            is DataResult.Content -> "Stops push notifications from the currently selected workspace."
+                            is DataResult.NoPermission -> "You do not have permission to read workspace notification settings."
+                            is DataResult.Error -> "Workspace notification settings failed to load: ${serverMute.error.code}"
+                            is DataResult.Empty -> "Workspace notification settings are unavailable."
+                        }
                 ),
                 sendTestEnabled = true
             )
         )
+    }
+
+    override suspend fun setServerMute(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        return when (val result = settingsUpdateServerMute(serverId, enabled)) {
+            is DataResult.Content -> getMobileSettings()
+            is DataResult.Empty -> DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            is DataResult.Error -> DataResult.Error(result.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+        }
     }
 
     private suspend fun settingsComputers(serverId: String): DataResult<SettingsComputersSnapshot> =
@@ -580,6 +709,39 @@ class RealSettingsRepository(
             }
         )
 
+    private suspend fun fetchServerInvites(serverId: String): DataResult<List<SettingsServerInviteSnapshot>> =
+        executeTypedSettings(
+            source = "settings_server_invites",
+            contractCode = "settings_server_invites_contract_mismatch",
+            block = { networkClient.settingsServerInvites(DataRequestPriority.Visible, serverId) },
+            mapper = { bodyText ->
+                parseSharedSettingsPendingInvites(bodyText)
+                    ?: settingsContractMismatch("settings_server_invites_contract_mismatch")
+            }
+        )
+
+    private suspend fun fetchServerJoinLinks(serverId: String): DataResult<List<SettingsServerJoinLinkSnapshot>> =
+        executeTypedSettings(
+            source = "settings_server_join_links",
+            contractCode = "settings_server_join_links_contract_mismatch",
+            block = { networkClient.settingsServerJoinLinks(DataRequestPriority.Visible, serverId) },
+            mapper = { bodyText ->
+                parseSharedSettingsJoinLinks(bodyText)
+                    ?: settingsContractMismatch("settings_server_join_links_contract_mismatch")
+            }
+        )
+
+    private suspend fun fetchServerMute(serverId: String): DataResult<Boolean> =
+        executeTypedSettings(
+            source = "settings_server_notification_settings",
+            contractCode = "settings_server_notification_settings_contract_mismatch",
+            block = { networkClient.settingsNotificationSettings(DataRequestPriority.Visible, serverId) },
+            mapper = { bodyText ->
+                parseSharedSettingsServerNotificationSettings(bodyText)
+                    ?: settingsContractMismatch("settings_server_notification_settings_contract_mismatch")
+            }
+        )
+
     private suspend fun settingsUpdateServerProfile(serverId: String, name: String): DataResult<Unit> =
         executeTypedSettings(
             source = "settings_server_profile_update",
@@ -613,6 +775,48 @@ class RealSettingsRepository(
             mapper = { bodyText ->
                 parseSharedSettingsServerInviteCreated(bodyText)
                     ?: settingsContractMismatch("settings_server_invite_contract_mismatch")
+            }
+        )
+
+    private suspend fun settingsDeleteServerInvite(serverId: String, inviteId: String): DataResult<SettingsServerActionResult> =
+        executeTypedSettings(
+            source = "settings_server_invite_delete",
+            contractCode = "settings_server_invite_delete_contract_mismatch",
+            block = { networkClient.deleteSettingsServerInvite(DataRequestPriority.Foreground, serverId, inviteId) },
+            mapper = { bodyText ->
+                parseSharedSettingsServerAction(bodyText)
+                    ?: settingsContractMismatch("settings_server_invite_delete_contract_mismatch")
+            }
+        )
+
+    private suspend fun settingsCreateServerJoinLink(
+        serverId: String,
+        request: SettingsServerJoinLinkCreateRequest
+    ): DataResult<SettingsServerJoinLinkSnapshot> =
+        executeTypedSettings(
+            source = "settings_server_join_link_create",
+            contractCode = "settings_server_join_link_create_contract_mismatch",
+            block = {
+                networkClient.createSettingsServerJoinLink(
+                    DataRequestPriority.Foreground,
+                    serverId,
+                    buildSharedSettingsServerJoinLinkCreateBody(request)
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedSettingsCreatedJoinLink(bodyText)
+                    ?: settingsContractMismatch("settings_server_join_link_create_contract_mismatch")
+            }
+        )
+
+    private suspend fun settingsDeleteServerJoinLink(serverId: String, linkId: String): DataResult<SettingsServerActionResult> =
+        executeTypedSettings(
+            source = "settings_server_join_link_delete",
+            contractCode = "settings_server_join_link_delete_contract_mismatch",
+            block = { networkClient.deleteSettingsServerJoinLink(DataRequestPriority.Foreground, serverId, linkId) },
+            mapper = { bodyText ->
+                parseSharedSettingsServerAction(bodyText)
+                    ?: settingsContractMismatch("settings_server_join_link_delete_contract_mismatch")
             }
         )
 
@@ -695,6 +899,23 @@ private suspend fun <T> executeSettings(
         if (source != null) {
             warningLogger(
                 "parse_failed source=$source stage=response_or_mapper status=${statusCode ?: "unknown"} exception=${exception::class.simpleName}"
+            )
+
+            private suspend fun settingsUpdateServerMute(serverId: String, enabled: Boolean): DataResult<Boolean> =
+            executeTypedSettings(
+                source = "settings_server_notification_settings_update",
+                contractCode = "settings_server_notification_settings_contract_mismatch",
+                block = {
+                    networkClient.updateSettingsNotificationSettings(
+                        DataRequestPriority.Foreground,
+                        serverId,
+                        buildSharedSettingsServerMuteBody(enabled)
+                    )
+                },
+                mapper = { bodyText ->
+                    parseSharedSettingsServerNotificationSettings(bodyText)
+                        ?: settingsContractMismatch("settings_server_notification_settings_contract_mismatch")
+                }
             )
         }
         DataResult.Error(ScreenError(code = "network_parse_failed", retryable = true))
@@ -887,6 +1108,22 @@ private fun onboardingSectionDetail(
         is DataResult.Error -> "Onboarding settings failed to load: ${result.error.code}"
     }
 
+private fun invitesSectionDetail(result: DataResult<List<SettingsServerInviteSnapshot>>, count: Int): String =
+    when (result) {
+        is DataResult.Content -> if (count == 0) "No pending invites." else "$count pending invite${if (count == 1) "" else "s"}"
+        is DataResult.Empty -> "No pending invites."
+        is DataResult.NoPermission -> "Only server owners and admins can view invites."
+        is DataResult.Error -> "Pending invites failed to load: ${result.error.code}"
+    }
+
+private fun joinLinksSectionDetail(result: DataResult<List<SettingsServerJoinLinkSnapshot>>, count: Int): String =
+    when (result) {
+        is DataResult.Content -> if (count == 0) "No active join links." else "$count join link${if (count == 1) "" else "s"}"
+        is DataResult.Empty -> "No active join links."
+        is DataResult.NoPermission -> "Only server owners and admins can view join links."
+        is DataResult.Error -> "Join links failed to load: ${result.error.code}"
+    }
+
 private fun <T> DataResult<T>.sectionState(empty: Boolean): SettingsSectionAvailability =
     when (this) {
         is DataResult.Content -> if (empty) SettingsSectionAvailability.Empty else SettingsSectionAvailability.Available
@@ -951,3 +1188,25 @@ data class SettingsServerInviteCreateRequestBody(val email: String)
 
 fun buildSharedSettingsServerInviteCreateBody(email: String): String =
     settingsRepositoryJson.encodeToString(SettingsServerInviteCreateRequestBody(email))
+
+@Serializable
+data class SettingsServerJoinLinkCreateRequestBody(
+    val expiresAt: String? = null,
+    val maxUses: Int? = null
+)
+
+fun buildSharedSettingsServerJoinLinkCreateBody(request: SettingsServerJoinLinkCreateRequest): String =
+    settingsRepositoryJson.encodeToString(
+        SettingsServerJoinLinkCreateRequestBody(
+            expiresAt = request.expiresAt,
+            maxUses = request.maxUses
+        )
+    )
+
+@Serializable
+data class SettingsServerMuteRequestBody(
+    val serverPushMuted: Boolean
+)
+
+fun buildSharedSettingsServerMuteBody(enabled: Boolean): String =
+    settingsRepositoryJson.encodeToString(SettingsServerMuteRequestBody(serverPushMuted = enabled))

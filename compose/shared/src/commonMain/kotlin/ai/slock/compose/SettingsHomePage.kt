@@ -1378,9 +1378,15 @@ private fun SettingsAppShellContent(
             SettingsDestinationStorage ->
                 SettingsStorageContent(appShellStoragePayload()) { _, _ -> }
             SettingsDestinationBilling ->
-                SettingsBillingContent(appShellBillingPayload(session)) { _, _ -> }
+                SettingsBillingContent(settingsState.billing.toBillingPayload(session)) { _, _ -> }
             SettingsDestinationServer ->
-                SharedServerSettingsContent(session, membersApi, onSettingsAction)
+                SharedSettingsSectionContent(
+                    settingsState.server.toServerPayload(
+                        session = session,
+                        refreshing = settingsState.isRefreshing(SharedSettingsDestination.Server)
+                    ),
+                    onAction = onSettingsAction
+                )
             SettingsDestinationMobile ->
                 SharedSettingsSectionContent(
                     settingsState.mobile.toMobilePayload(
@@ -1391,6 +1397,8 @@ private fun SettingsAppShellContent(
                     when (action) {
                         MOBILE_ACTION_NOTIFICATION_PREFERENCE ->
                             onSettingsIntent(SharedSettingsIntent.SetNotificationPreference(itemId == "true"))
+                        MOBILE_ACTION_SERVER_MUTE ->
+                            onSettingsIntent(SharedSettingsIntent.SetServerMute(itemId == "true"))
                         MOBILE_ACTION_PERMISSION ->
                             onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission)
                         MOBILE_ACTION_SETTINGS ->
@@ -1434,57 +1442,6 @@ private fun SettingsAppShellContent(
                 )
         }
     }
-}
-
-@Composable
-private fun SharedServerSettingsContent(
-    session: StoredAuthSession?,
-    membersApi: BridgeMembersApi,
-    onAction: (String, String?) -> Unit
-) {
-    var state by remember(session?.currentServerId) {
-        mutableStateOf<SharedServerSettingsState>(SharedServerSettingsState.Loading)
-    }
-
-    LaunchedEffect(session?.currentServerId) {
-        val server = session?.currentServerSummary()
-        val serverId = session?.currentServerId
-        if (server == null || serverId.isNullOrBlank()) {
-            state = SharedServerSettingsState.Error("server_required")
-            return@LaunchedEffect
-        }
-        state = SharedServerSettingsState.Loading
-        try {
-            val response = membersApi.serverMembers(serverId)
-            state =
-                if (response.isSuccessful) {
-                    SharedServerSettingsState.Content(
-                        members = response.bodyText?.let(::parseSharedMembers).orEmpty(),
-                        memberErrorCode = null
-                    )
-                } else {
-                    SharedServerSettingsState.Content(
-                        members = emptyList(),
-                        memberErrorCode = response.errorBodyText?.takeIf { it.isNotBlank() } ?: "members_network"
-                    )
-                }
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Throwable) {
-            state = SharedServerSettingsState.Content(emptyList(), "members_network")
-        }
-    }
-
-    SharedSettingsSectionContent(
-        payload = appShellServerPayload(session, state),
-        onAction = onAction
-    )
-}
-
-private sealed interface SharedServerSettingsState {
-    data object Loading : SharedServerSettingsState
-    data class Content(val members: List<MemberProfile>, val memberErrorCode: String?) : SharedServerSettingsState
-    data class Error(val code: String) : SharedServerSettingsState
 }
 
 @Composable
@@ -1940,80 +1897,101 @@ private fun appShellStoragePayload(): KuiklySettingsStoragePayload =
             )
     )
 
-private fun appShellBillingPayload(session: StoredAuthSession?): KuiklySettingsBillingPayload {
-    val plan = session?.currentServerSummary()?.plan?.takeIf { it.isNotBlank() } ?: "Hobby"
+private fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(session: StoredAuthSession?): KuiklySettingsBillingPayload {
+    val billing = (this as? ScreenLoadState.Content<SettingsBillingSnapshot>)?.data
+    val fallbackPlan = session?.currentServerSummary()?.plan?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Hobby"
     return KuiklySettingsBillingPayload(
         instanceId = "shared-shell-settings-billing",
-        currentPlan = KuiklySettingsCurrentPlan(planName = plan.replaceFirstChar { it.uppercase() }),
+        currentPlan =
+            KuiklySettingsCurrentPlan(
+                planName = billing?.currentPlan?.planName ?: fallbackPlan,
+                detail =
+                    billing?.currentPlan?.usageRows
+                        ?.joinToString(" • ") { "${it.label}: ${it.value}" }
+            ),
         plans =
-            listOf(
-                KuiklySettingsBillingPlan(id = plan, name = plan.replaceFirstChar { it.uppercase() }, price = "Current workspace plan", current = true),
-                KuiklySettingsBillingPlan(id = "team", name = "Team", price = "Coming soon", comingSoon = true)
+            billing?.plans?.map { plan ->
+                KuiklySettingsBillingPlan(
+                    id = plan.id,
+                    name = plan.name,
+                    price = plan.priceLabel,
+                    current = plan.current,
+                    comingSoon = plan.comingSoon
+                )
+            } ?: listOf(
+                KuiklySettingsBillingPlan(id = fallbackPlan.lowercase(), name = fallbackPlan, price = "Loading billing snapshot", current = true)
             )
     )
 }
 
-private fun appShellServerPayload(
+private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
     session: StoredAuthSession?,
-    state: SharedServerSettingsState
+    refreshing: Boolean
 ): KuiklySharedSettingsPayload {
     val server = session?.currentServerSummary()
-    val role = server?.role?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Member"
-    val plan = server?.plan?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Unknown"
-    val members =
-        (state as? SharedServerSettingsState.Content)
-            ?.members
-            .orEmpty()
-    val memberErrorCode = (state as? SharedServerSettingsState.Content)?.memberErrorCode
-    val membersStatus =
-        when (state) {
-            SharedServerSettingsState.Loading -> "Loading"
-            is SharedServerSettingsState.Error -> state.code
-            is SharedServerSettingsState.Content ->
-                memberErrorCode?.takeIf { it.isNotBlank() } ?: members.size.toString()
+    val snapshot = (this as? ScreenLoadState.Content<SettingsServerSnapshot>)?.data
+    val role = snapshot?.profile?.role?.takeIf { it.isNotBlank() } ?: server?.role?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Member"
+    val plan = snapshot?.profile?.planName?.takeIf { it.isNotBlank() } ?: server?.plan?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Unknown"
+    val detail =
+        when (this) {
+            ScreenLoadState.Loading -> if (refreshing) "Refreshing workspace settings..." else "Loading workspace settings..."
+            is ScreenLoadState.Error -> "Workspace settings failed to load: ${error.code}"
+            is ScreenLoadState.NoPermission -> "Workspace settings unavailable: ${blocker.code}"
+            is ScreenLoadState.Empty -> "Workspace settings unavailable: ${reason.name}"
+            is ScreenLoadState.Content -> snapshot?.profile?.detail ?: "Shared workspace settings are backed by typed repository snapshots."
         }
-    val adminCount = members.count { it.isWorkspaceAdmin() }
-    val adminStatus =
-        when (state) {
-            SharedServerSettingsState.Loading -> "Loading"
-            is SharedServerSettingsState.Error -> state.code
-            is SharedServerSettingsState.Content ->
-                memberErrorCode?.takeIf { it.isNotBlank() } ?: adminCount.toString()
-        }
+    val administrationRows =
+        snapshot?.sections.orEmpty()
+            .filter { it.key in setOf("admins", "billing", "pending_invites", "join_links", "onboarding_agent") }
+            .map {
+                KuiklySharedSettingsRow(
+                    key = it.key,
+                    iconName =
+                        when (it.key) {
+                            "admins" -> "shield"
+                            "billing" -> "credit-card"
+                            "pending_invites" -> "mail-plus"
+                            "join_links" -> "link-2"
+                            "onboarding_agent" -> "bot"
+                            else -> "badge-info"
+                        },
+                    title = it.title,
+                    detail = it.detail,
+                    status = it.state.name,
+                    enabled = false
+                )
+            }
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-server",
         title = "Server",
         heroIconName = "users",
-        heroLabel = server?.name ?: "Workspace settings",
-        detail = "Shared workspace settings now hydrates server identity and members through the shared bridge. Mutating actions remain host/API follow-ups.",
+        heroLabel = snapshot?.profile?.name ?: server?.name ?: "Workspace settings",
+        detail = detail,
         sections =
             listOf(
                 KuiklySharedSettingsSection(
                     title = "Profile",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("serverName", "badge-info", "Workspace name", server?.name ?: "No selected server", status = "Read only"),
+                            KuiklySharedSettingsRow("serverName", "badge-info", "Workspace name", snapshot?.profile?.detail ?: "Workspace profile", status = snapshot?.profile?.name ?: server?.name ?: "Unknown"),
                             KuiklySharedSettingsRow("serverSlug", "link", "Slug", server?.slug?.let { "/$it" } ?: "Not provided", status = "Read only"),
                             KuiklySharedSettingsRow("serverRole", "shield-check", "Your role", "Permission scope for workspace settings.", status = role)
                         )
                 ),
                 KuiklySharedSettingsSection(
                     title = "Administration",
-                    rows =
+                    rows = administrationRows.ifEmpty {
                         listOf(
-                            KuiklySharedSettingsRow("members", "users", "Members", "Loaded from /servers/{serverId}/members through shared bridge.", status = membersStatus),
-                            KuiklySharedSettingsRow("admins", "shield", "Admins", "Derived from member roles and permission badges.", status = adminStatus),
-                            KuiklySharedSettingsRow("invites", "mail-plus", "Pending invites", "Invite creation/listing will be wired through shared actions.", status = "Pending"),
-                            KuiklySharedSettingsRow("joinLinks", "link-2", "Join links", "Join link management is not exposed in shared yet.", status = "Pending"),
-                            KuiklySharedSettingsRow("onboarding", "bot", "Onboarding agent", "Current onboarding agent id: ${server?.onboardingAgentId ?: "not set"}.", status = "Pending")
+                            KuiklySharedSettingsRow("serverUnavailable", "users", "Workspace admin sections", "No server snapshot loaded yet.", status = "Unavailable", enabled = false)
                         )
+                    }
                 ),
                 KuiklySharedSettingsSection(
                     title = "Plan and danger",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("billing", "shield-check", "Plan", "Billing detail has a shared page; server billing summary still needs API hydrate.", status = plan),
-                            KuiklySharedSettingsRow("danger", "triangle-alert", "Danger actions", "Delete workspace remains disabled until shared confirm + host API wiring is in place.", status = "Disabled")
+                            KuiklySharedSettingsRow("billingSummary", "shield-check", "Plan", "Current workspace billing and usage summary from typed settings snapshot.", status = plan),
+                            KuiklySharedSettingsRow("danger", "triangle-alert", "Danger actions", "Delete workspace contract is wired; destructive action remains disabled in shared UI until confirm flow lands.", status = "Disabled")
                         )
                 )
             )
@@ -2089,12 +2067,13 @@ private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             ),
                             mobile.muteServer.takeIf { it.available }?.let {
                                 KuiklySharedSettingsRow(
-                                    key = "muteServer",
+                                    key = MOBILE_ACTION_SERVER_MUTE,
                                     iconName = "volume-x",
                                     title = "Mute workspace",
                                     detail = it.detail,
-                                    status = it.statusLabel,
-                                    enabled = false
+                                    value = (!it.enabled).toString(),
+                                    status = actionState.statusFor(MOBILE_ACTION_SERVER_MUTE, it.statusLabel),
+                                    enabled = actionState?.inProgress != true
                                 )
                             }
                         )

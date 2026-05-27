@@ -173,6 +173,33 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun mobileServerMuteIntentUsesSettingsRepository() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository,
+                        notificationPreferenceRepository = FakeNotificationPreferenceRepository(),
+                        localeRepository = FakeLocaleRepository(),
+                        chatLayoutPreferenceRepository = FakeChatLayoutPreferenceRepository()
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Mobile))
+        store.accept(SharedSettingsIntent.SetServerMute(true))
+
+        val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(true, mobile.muteServer.enabled)
+        assertEquals("Muted", mobile.muteServer.statusLabel)
+        assertEquals(listOf("mobile", "setServerMute:true"), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun mobileNotificationActionCompletionStoresSuccessAndUnsupportedFeedback() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store =
@@ -269,7 +296,7 @@ class SharedSettingsStoreTest {
         var billingResult: DataResult<SettingsBillingSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var serverResult: DataResult<SettingsServerSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var mobileResult: DataResult<SettingsMobileSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
-    ) : SettingsRepository {
+    ) : SettingsRepository, SettingsServerActionRepository {
         val calls = mutableListOf<String>()
 
         override suspend fun getAccount(): DataResult<AccountSettingsSnapshot> {
@@ -327,11 +354,38 @@ class SharedSettingsStoreTest {
         override suspend fun createServerInvite(request: SettingsServerInviteCreateRequest): DataResult<SettingsServerActionResult> =
             DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
+        override suspend fun revokeServerInvite(inviteId: String): DataResult<SettingsServerActionResult> =
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+        override suspend fun createServerJoinLink(
+            request: SettingsServerJoinLinkCreateRequest
+        ): DataResult<SettingsServerJoinLinkSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+        override suspend fun revokeServerJoinLink(linkId: String): DataResult<SettingsServerActionResult> =
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
         override suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult> =
             DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
         override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> {
             calls += "mobile"
+            return mobileResult
+        }
+
+        override suspend fun setServerMute(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+            calls += "setServerMute:$enabled"
+            val current = (mobileResult as? DataResult.Content)?.data ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            mobileResult =
+                DataResult.Content(
+                    current.copy(
+                        muteServer =
+                            current.muteServer.copy(
+                                enabled = enabled,
+                                available = true,
+                                statusLabel = if (enabled) "Muted" else "Not muted"
+                            )
+                    )
+                )
             return mobileResult
         }
     }
@@ -466,9 +520,9 @@ class SharedSettingsStoreTest {
             muteServer =
                 SettingsMobileToggleSnapshot(
                     enabled = false,
-                    available = false,
-                    statusLabel = "Unavailable",
-                    detail = "Server mute unavailable."
+                    available = true,
+                    statusLabel = "Not muted",
+                    detail = "Server mute available."
                 ),
             sendTestEnabled = true
         )
