@@ -488,7 +488,7 @@ private fun ChannelSettingsPanelVisualScreen() {
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         ThreadSettingsModal(
             channelName = "design",
-            subtitle = "Visual systems, component polish, and QA review.",
+            subtitle = "Product and UI decisions",
             actions = channelPanelVisualSettingsActions(),
             onDismiss = {},
             onOpenAction = {}
@@ -498,7 +498,7 @@ private fun ChannelSettingsPanelVisualScreen() {
 
 @Composable
 private fun ChannelAddMemberPanelVisualScreen() {
-    val members = remember { channelPanelVisualMembers().take(3) }
+    val members = remember { channelPanelVisualMembers() }
     val candidates = remember { channelPanelVisualCandidates() }
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         ThreadAddMemberModal(
@@ -507,6 +507,7 @@ private fun ChannelAddMemberPanelVisualScreen() {
             canAddMembers = true,
             addMemberStatus = "idle",
             addMemberErrorCode = null,
+            initialSelectedId = "user_designer",
             onDismiss = {},
             onSubmit = {}
         )
@@ -516,43 +517,19 @@ private fun ChannelAddMemberPanelVisualScreen() {
 private fun channelPanelVisualMembers(): List<KuiklyThreadMemberItem> =
     listOf(
         KuiklyThreadMemberItem(
-            id = "agent-product-ux",
-            displayName = "Product UX Designer",
-            handle = "Product-UX-Designer",
-            roleLabel = "Agent · online",
-            avatarLabel = "PX",
+            id = "agent_android",
+            displayName = "Android Developer",
+            handle = "Android-Developer",
+            roleLabel = "Online",
+            avatarLabel = "AD",
             kind = "agent"
         ),
         KuiklyThreadMemberItem(
-            id = "agent-android-dev",
-            displayName = "Android Developer 4",
-            handle = "Android-Developer-4",
-            roleLabel = "Agent · reviewing",
-            avatarLabel = "A4",
-            kind = "agent"
-        ),
-        KuiklyThreadMemberItem(
-            id = "human-artin",
-            displayName = "artin",
+            id = "user_artin",
+            displayName = "Artin",
             handle = "artin",
-            roleLabel = "Owner",
-            avatarLabel = "AR",
-            kind = "human"
-        ),
-        KuiklyThreadMemberItem(
-            id = "human-cindy",
-            displayName = "Cindy",
-            handle = "Cindy",
-            roleLabel = "Coordinator",
-            avatarLabel = "CY",
-            kind = "human"
-        ),
-        KuiklyThreadMemberItem(
-            id = "human-qa",
-            displayName = "QA Reviewer",
-            handle = "QA-Tester",
-            roleLabel = "Reviewer",
-            avatarLabel = "QA",
+            roleLabel = "Project owner",
+            avatarLabel = "A",
             kind = "human"
         )
     )
@@ -560,58 +537,44 @@ private fun channelPanelVisualMembers(): List<KuiklyThreadMemberItem> =
 private fun channelPanelVisualCandidates(): List<KuiklyThreadMemberItem> =
     listOf(
         KuiklyThreadMemberItem(
-            id = "agent-api",
-            displayName = "API Integration Developer",
-            handle = "API-Integration-Developer",
-            roleLabel = "Agent · available",
-            avatarLabel = "AI",
+            id = "agent_reviewer",
+            displayName = "Review Agent",
+            handle = "Review-Agent",
+            roleLabel = "online",
+            avatarLabel = "RA",
             kind = "agent"
         ),
         KuiklyThreadMemberItem(
-            id = "agent-kmp",
-            displayName = "KMP Expert",
-            handle = "KMP-专家",
-            roleLabel = "Agent · HarmonyOS",
-            avatarLabel = "KM",
-            kind = "agent"
-        ),
-        KuiklyThreadMemberItem(
-            id = "human-designer",
-            displayName = "Visual Reviewer",
-            handle = "visual-reviewer",
-            roleLabel = "Designer",
-            avatarLabel = "VR",
-            kind = "human"
-        ),
-        KuiklyThreadMemberItem(
-            id = "human-ops",
-            displayName = "Ops Lead",
-            handle = "ops",
+            id = "user_designer",
+            displayName = "Product UX Designer",
+            handle = "Product-UX-Designer",
             roleLabel = "Admin",
-            avatarLabel = "OL",
+            avatarLabel = "PU",
             kind = "human"
         )
-    ) + channelPanelVisualMembers().take(1)
+    )
 
 private fun channelPanelVisualSettingsActions(): List<KuiklyThreadSettingsAction> =
     listOf(
         KuiklyThreadSettingsAction(
-            id = "notifications",
-            title = "Notifications",
-            subtitle = "Mentions and channel updates",
-            icon = "bell-ring"
-        ),
-        KuiklyThreadSettingsAction(
-            id = "files",
-            title = "Shared files",
-            subtitle = "View uploaded files and assets",
-            icon = "folder-open"
+            id = "visibility",
+            title = "Make Private",
+            subtitle = "Restrict this channel to selected members",
+            icon = "lock",
+            destructive = true
         ),
         KuiklyThreadSettingsAction(
             id = "archive",
-            title = "Archive channel",
+            title = "Archive Channel",
             subtitle = "Freeze writes and hide from sidebars",
             icon = "archive",
+            destructive = true
+        ),
+        KuiklyThreadSettingsAction(
+            id = "delete",
+            title = "Delete Channel",
+            subtitle = "Permanently remove this channel",
+            icon = "trash",
             destructive = true
         )
     )
@@ -3471,7 +3434,7 @@ private fun ThreadMembersModal(
         onDismiss = onDismiss
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            ThreadMemberListShell {
+            ThreadMemberListShell(height = threadMemberListHeight(agents.size, humans.size)) {
                 if (members.isEmpty()) {
                     item {
                         ThreadModalEmptyState(
@@ -3507,7 +3470,7 @@ private fun ThreadMembersModal(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     SlockLucideIcon("user-plus", modifier = Modifier.size(17.dp))
                     Text(
-                        text = "+ Add Member",
+                        text = "Add Member",
                         style = SlockType.ButtonBold,
                         color = if (canAddMembers) SlockColor.TextBlack else SlockColor.TextMutedGray
                     )
@@ -3524,14 +3487,14 @@ private fun ThreadAddMemberModal(
     canAddMembers: Boolean,
     addMemberStatus: String,
     addMemberErrorCode: String?,
+    initialSelectedId: String? = null,
     onDismiss: () -> Unit,
     onSubmit: (KuiklyThreadMemberItem) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
-    var selectedId by remember(candidates) { mutableStateOf<String?>(null) }
+    var selectedId by remember(candidates, initialSelectedId) { mutableStateOf(initialSelectedId) }
     var localError by remember { mutableStateOf(false) }
     val currentKeys = remember(members) { members.map { it.memberKey }.toSet() }
-    val selected = candidates.firstOrNull { it.id == selectedId }
     val normalizedQuery = query.trim()
     val filteredCandidates =
         candidates
@@ -3557,7 +3520,8 @@ private fun ThreadAddMemberModal(
     SlockModalLayer(
         title = "ADD MEMBER",
         subtitle = errorText.orEmpty(),
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        overlayAlpha = 0.82f
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ThreadPanelFieldLabel("Search")
@@ -3586,7 +3550,7 @@ private fun ThreadAddMemberModal(
                     maxLines = 1
                 )
             }
-            ThreadMemberListShell(height = 288) {
+            ThreadMemberListShell(height = threadMemberListHeight(agentCandidates.size, humanCandidates.size)) {
                 if (filteredCandidates.isEmpty()) {
                     item {
                         ThreadModalEmptyState(
@@ -3606,8 +3570,9 @@ private fun ThreadAddMemberModal(
                                 alreadyJoined = alreadyJoined,
                                 enabled = !blocked && !adding && !alreadyJoined,
                                 onClick = {
-                                    selectedId = if (selectedId == member.id) null else member.id
+                                    selectedId = member.id
                                     localError = false
+                                    onSubmit(member)
                                 }
                             )
                         }
@@ -3623,33 +3588,23 @@ private fun ThreadAddMemberModal(
                                 alreadyJoined = alreadyJoined,
                                 enabled = !blocked && !adding && !alreadyJoined,
                                 onClick = {
-                                    selectedId = if (selectedId == member.id) null else member.id
+                                    selectedId = member.id
                                     localError = false
+                                    onSubmit(member)
                                 }
                             )
                         }
                     }
                 }
             }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ThreadModalActionButton(
-                    label = if (adding) "Adding" else "Add selected",
-                    icon = "user-plus",
-                    color = SlockColor.AccentPink,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        if (adding || blocked) return@ThreadModalActionButton
-                        val member = selected
-                        if (member == null || member.memberKey in currentKeys) {
-                            localError = true
-                        } else {
-                            onSubmit(member)
-                        }
-                    }
-                )
-            }
         }
     }
+}
+
+private fun threadMemberListHeight(agentCount: Int, humanCount: Int, maxHeight: Int = 288): Int {
+    val sectionCount = listOf(agentCount, humanCount).count { it > 0 }
+    val rowCount = agentCount + humanCount
+    return (sectionCount * 29 + rowCount * 46 + 6).coerceIn(92, maxHeight)
 }
 
 @Composable
@@ -3713,11 +3668,7 @@ private fun ThreadMemberRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            val meta =
-                listOf(
-                    member.handle.takeIf { it.isNotBlank() }?.let { "@$it" },
-                    member.roleLabel.takeIf { it.isNotBlank() }
-                ).filterNotNull().joinToString(" · ")
+            val meta = member.roleLabel.takeIf { it.isNotBlank() }.orEmpty()
             if (meta.isNotBlank()) {
                 Text(
                     text = meta,
@@ -3727,6 +3678,15 @@ private fun ThreadMemberRow(
                     overflow = TextOverflow.Ellipsis
                 )
             }
+        }
+        Button(
+            onClick = onClick,
+            modifier = Modifier
+                .size(26.dp)
+                .background(Color(0xFFFFF2F2))
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+        ) {
+            SlockLucideIcon("x", modifier = Modifier.size(13.dp))
         }
     }
 }
@@ -3855,8 +3815,8 @@ private fun ThreadMemberCandidateRow(
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        ThreadMemberAvatar(member = member, sizeDp = 30)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        ThreadMemberAvatar(member = member, sizeDp = 26)
+        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
                 text = member.displayName,
                 style = SlockType.Body.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 18.sp),
@@ -3864,16 +3824,9 @@ private fun ThreadMemberCandidateRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = listOf(member.handle.takeIf { it.isNotBlank() }?.let { "@$it" }, member.roleLabel)
-                    .filterNotNull()
-                    .filter { it.isNotBlank() }
-                    .joinToString(" · "),
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (member.kind.equals("agent", ignoreCase = true)) {
+                Box(modifier = Modifier.size(8.dp).background(SlockColor.AccentLime).border(SlockStroke.Thin, SlockColor.BorderBlack))
+            }
         }
         when {
             selected -> SlockLucideIcon("check", modifier = Modifier.size(14.dp), color = "#FF000000")
@@ -3892,6 +3845,7 @@ private enum class ThreadSettingsDangerAction(
     val buttonLabel: String,
     val color: Color
 ) {
+    Visibility("visibility", "MAKE CHANNEL PRIVATE", "lock", "Make Private", SlockColor.AccentOrange),
     Leave("leave", "LEAVE CHANNEL", "log-out", "Leave Channel", SlockColor.AccentOrange),
     Archive("archive", "ARCHIVE CHANNEL", "archive", "Archive Channel", SlockColor.AccentOrange),
     Delete("delete", "DELETE CHANNEL", "trash", "Delete Channel", SlockColor.AccentRed)
@@ -3935,6 +3889,9 @@ private fun ThreadSettingsModal(
         }
     val dangerActions = effectiveActions.mapNotNull { action ->
         when (action.id) {
+            "visibility",
+            "make-private",
+            "make_public" -> ThreadSettingsDangerAction.Visibility
             "leave" -> ThreadSettingsDangerAction.Leave
             "archive" -> ThreadSettingsDangerAction.Archive
             "delete" -> ThreadSettingsDangerAction.Delete
@@ -3994,6 +3951,18 @@ private fun ThreadSettingsModal(
         } else {
             Column(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 when (activeDanger) {
+                    ThreadSettingsDangerAction.Visibility -> {
+                        Text(
+                            text = "Update #$channelName visibility?",
+                            style = SlockType.Body,
+                            color = SlockColor.TextBlack
+                        )
+                        Text(
+                            text = "This changes who can find and join the channel.",
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                            color = SlockColor.TextMutedGray
+                        )
+                    }
                     ThreadSettingsDangerAction.Leave -> {
                         Text(
                             text = "Leave #$channelName? You will be removed from this channel, but the channel itself will remain.",
@@ -4036,7 +4005,10 @@ private fun ThreadSettingsModal(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ThreadModalActionButton(label = "Back", icon = "arrow-left", onClick = { dangerAction = null })
                     Spacer(modifier = Modifier.weight(1f))
-                    val enabled = activeDanger == ThreadSettingsDangerAction.Leave || confirmationMatches
+                    val enabled =
+                        activeDanger == ThreadSettingsDangerAction.Leave ||
+                            activeDanger == ThreadSettingsDangerAction.Visibility ||
+                            confirmationMatches
                     ThreadModalActionButton(
                         label = activeDanger.buttonLabel,
                         icon = activeDanger.icon,

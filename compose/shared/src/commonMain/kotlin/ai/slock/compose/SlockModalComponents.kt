@@ -17,6 +17,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -25,12 +26,14 @@ internal fun SlockModalLayer(
     title: String,
     subtitle: String = "",
     onDismiss: () -> Unit,
+    overlayAlpha: Float = 0.58f,
+    maxWidth: Dp = 384.dp,
     content: @Composable () -> Unit
 ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(SlockColor.TextBlack.copy(alpha = 0.18f))
+            .background(SlockColor.TextBlack.copy(alpha = overlayAlpha))
             .clickable(onClick = onDismiss)
             .padding(SlockSpacing.Md),
         contentAlignment = Alignment.Center
@@ -38,14 +41,14 @@ internal fun SlockModalLayer(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 420.dp)
-                .padding(end = 6.dp, bottom = 6.dp)
+                .widthIn(max = maxWidth)
+                .padding(end = 4.dp, bottom = 4.dp)
                 .background(SlockColor.ShadowBlack)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(end = 6.dp, bottom = 6.dp)
+                    .padding(end = 4.dp, bottom = 4.dp)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
             ) {
