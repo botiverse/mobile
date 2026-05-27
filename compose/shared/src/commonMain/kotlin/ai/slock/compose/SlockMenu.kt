@@ -54,7 +54,7 @@ internal fun SlockBaseMenuOverlay(
     onSelect: (String) -> Unit,
     surfaceBorderColor: Color = SlockColor.BorderBlack,
     surfaceShadowColor: Color = SlockColor.ShadowBlack,
-    selectedRowColor: Color = SlockColor.BrandYellow,
+    selectedRowColor: Color = SlockColor.AccentCyan.copy(alpha = 0.45f),
     modifier: Modifier = Modifier
 ) {
     if (items.isEmpty()) return
@@ -123,11 +123,6 @@ private fun SlockBaseMenuRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            Box(modifier = Modifier.size(14.dp), contentAlignment = Alignment.Center) {
-                if (selected) {
-                    SlockLucideIcon("check", modifier = Modifier.size(14.dp), color = "#FF000000")
-                }
-            }
             Text(
                 text = item.label.uppercase(),
                 style = SlockType.Caption.copy(
@@ -138,11 +133,11 @@ private fun SlockBaseMenuRow(
                 ),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
-            Spacer(Modifier.weight(1f))
             item.icon?.takeIf { it.isNotBlank() }?.let { icon ->
-                SlockLucideIcon(icon, modifier = Modifier.size(12.dp), color = "#FF000000")
+                SlockLucideIcon(icon, modifier = Modifier.size(12.dp), color = "#80000000")
             }
         }
     }

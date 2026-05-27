@@ -33,7 +33,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
-private const val SlockFilterPopoverWidthValue = 260f
+private const val SlockFilterPopoverWidthValue = 220f
 private const val SlockFilterPopoverEstimatedHeightValue = 360f
 private const val SlockFilterPopoverViewportGapValue = 8f
 private const val SlockFilterPopoverVerticalOffsetValue = 46f
@@ -135,43 +135,70 @@ internal fun SlockFilterPopover(
                     .width(popoverWidth)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, surfaceBorderColor)
-                    // Swallow taps inside the card so the scrim dismiss doesn't fire.
                     .clickable(enabled = false, onClick = {})
-                    .padding(SlockSpacing.Sm),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
             ) {
-                Text(
-                    text = title.uppercase(),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 1.0.sp),
-                    color = SlockColor.TextMutedGray
-                )
-                headerSlot?.invoke()
-                TextField(
-                    value = searchText,
-                    onValueChange = onSearchChange,
-                    placeholder = searchPlaceholder,
-                    placeholderColor = SlockColor.TextMutedGray,
-                    autoFocus = false,
-                    maxLines = 1,
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 34.dp)
                         .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.22f))
-                        .padding(horizontal = 10.dp, vertical = 7.dp)
-                )
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.1f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title.uppercase(),
+                        style = SlockType.Caption.copy(
+                            fontSize = 10.sp,
+                            lineHeight = 12.sp,
+                            letterSpacing = 0.9.sp
+                        ).withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.TextMutedGray
+                    )
+                    Box(modifier = Modifier.weight(1f))
+                    if (multiSelect && selectedIds.isNotEmpty()) {
+                        Text(
+                            text = "CLEAR",
+                            style = SlockType.Caption.copy(
+                                fontSize = 10.sp,
+                                lineHeight = 12.sp,
+                                letterSpacing = 0.9.sp
+                            ).withSlockFontWeight(FontWeight.Bold),
+                            color = SlockColor.TextMutedGray,
+                            modifier = Modifier.clickable(onClick = onClear)
+                        )
+                    }
+                }
+                headerSlot?.invoke()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.1f))
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                ) {
+                    TextField(
+                        value = searchText,
+                        onValueChange = onSearchChange,
+                        placeholder = searchPlaceholder,
+                        placeholderColor = SlockColor.TextMutedGray,
+                        autoFocus = true,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 36.dp)
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .padding(horizontal = 8.dp, vertical = 8.dp)
+                    )
+                }
                 if (filtered.isEmpty()) {
                     Text(
                         text = "No matches",
                         style = SlockType.Caption,
                         color = SlockColor.TextMutedGray,
-                        modifier = Modifier.padding(SlockSpacing.Sm)
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)
                     )
                 } else {
-                    // Cap inner LazyColumn height so the popover never exceeds a sane size.
-                    // Heuristic: ~7 rows of 34.dp + padding. The LazyColumn itself handles
-                    // scrolling beyond that.
-                    Box(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
+                    Box(modifier = Modifier.fillMaxWidth().heightIn(max = 256.dp)) {
                         LazyColumn {
                             items(filtered.size, key = { i -> filtered[i].id }) { index ->
                                 val option = filtered[index]
@@ -186,57 +213,41 @@ internal fun SlockFilterPopover(
                                                 onToggle(option.id)
                                                 if (!multiSelect) onDismiss()
                                             }
-                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Box(modifier = Modifier.size(14.dp), contentAlignment = Alignment.Center) {
-                                            if (selected) SlockLucideIcon("check", modifier = Modifier.size(13.dp), color = "#CC000000")
-                                        }
                                         option.icon?.let {
-                                            SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#80000000")
+                                            Box(modifier = Modifier.size(16.dp), contentAlignment = Alignment.Center) {
+                                                SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#80000000")
+                                            }
                                         }
                                         Text(
                                             text = option.label,
-                                            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 15.sp),
-                                            color = SlockColor.TextBlack.copy(alpha = 0.78f),
+                                            style = SlockType.Caption.copy(
+                                                fontSize = 12.sp,
+                                                lineHeight = 16.sp
+                                            ).withSlockFontWeight(FontWeight.Bold),
+                                            color = SlockColor.TextBlack,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                             modifier = Modifier.weight(1f)
                                         )
+                                        if (selected) {
+                                            SlockLucideIcon("check", modifier = Modifier.size(12.dp), color = "#FF000000")
+                                        }
                                     }
                                     if (index < filtered.lastIndex) {
                                         Box(
-                                            modifier =
-                                                Modifier
-                                                    .fillMaxWidth()
-                                                    .heightIn(min = SlockStroke.Thin)
-                                                    .background(SlockColor.BorderBlack.copy(alpha = 0.08f))
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(min = SlockStroke.Thin)
+                                                .background(SlockColor.BorderBlack.copy(alpha = 0.1f))
                                         )
                                     }
                                 }
                             }
                         }
-                    }
-                }
-                if (multiSelect && selectedIds.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .heightIn(min = 28.dp)
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, surfaceBorderColor)
-                            .clickable(onClick = onClear)
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        SlockLucideIcon("x", modifier = Modifier.size(12.dp), color = "#FF000000")
-                        Text(
-                            text = "Clear".uppercase(),
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.TextBlack,
-                            maxLines = 1
-                        )
                     }
                 }
             }

@@ -3371,8 +3371,8 @@ private fun SharedHomeSearchPanel(
             "channel" ->
                 SlockFilterPopover(
                     anchor = channelAnchor,
-                    title = "Channel",
-                    searchPlaceholder = "Search channels or DMs",
+                    title = "Channels",
+                    searchPlaceholder = "Search...",
                     searchText = channelSearch,
                     onSearchChange = { channelSearch = it },
                     options = channelFilters.map { SlockFilterOption(it.id, it.label, it.icon) },
@@ -3382,8 +3382,7 @@ private fun SharedHomeSearchPanel(
                     },
                     onClear = { onIntent(SharedHomeSearchSavedIntent.SetSearchChannel(null)) },
                     onDismiss = { openFilterId = null },
-                    widthDp = 204f,
-                    horizontalOffsetDp = -2f,
+                    widthDp = 220f,
                     multiSelect = false,
                     surfaceBorderColor = SearchPopoverBorderColor,
                     surfaceShadowColor = SearchPopoverShadowColor
@@ -3391,7 +3390,7 @@ private fun SharedHomeSearchPanel(
             "time" ->
                 SlockBaseMenuOverlay(
                     anchor = timeAnchor,
-                    items = SearchTimeRange.entries.map { SlockBaseMenuItem(it.key, it.label, "calendar") },
+                    items = SearchTimeRange.entries.map { SlockBaseMenuItem(it.key, it.label) },
                     selectedId = state.timeRange.key,
                     onDismiss = { openFilterId = null },
                     onSelect = { key ->
@@ -4571,19 +4570,13 @@ private data class SearchChannelFilterItem(
 
 private fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannelFilterItem> {
     val snapshot = (state.content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
-    return (snapshot.channels + snapshot.directMessages)
+    return snapshot.channels
         .mapNotNull { conversation ->
             val channelId = conversation.channelId?.value ?: return@mapNotNull null
-            val label =
-                when (conversation.kind) {
-                    ConversationKind.Channel -> "#${conversation.name}"
-                    ConversationKind.DirectMessage -> conversation.name
-                    else -> conversation.name
-                }
             SearchChannelFilterItem(
                 id = channelId,
-                label = label,
-                icon = if (conversation.kind == ConversationKind.DirectMessage) "mail" else "hash"
+                label = "#${conversation.name}",
+                icon = "hash"
             )
         }
         .distinctBy { it.id }
@@ -5667,8 +5660,8 @@ private fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
         if (openFilterId == "channel") {
             SlockFilterPopover(
                 anchor = Offset(132f, 58f),
-                title = "Channel",
-                searchPlaceholder = "Search channels or DMs",
+                title = "Channels",
+                searchPlaceholder = "Search...",
                 searchText = "",
                 onSearchChange = {},
                 options = channelFilters.map { SlockFilterOption(it.id, it.label, it.icon) },
@@ -5676,8 +5669,7 @@ private fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
                 onToggle = {},
                 onClear = {},
                 onDismiss = {},
-                widthDp = 204f,
-                horizontalOffsetDp = -2f,
+                widthDp = 220f,
                 multiSelect = false
             )
         }
