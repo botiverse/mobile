@@ -8,7 +8,6 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
@@ -38,7 +37,7 @@ internal class SlockLucideIconGalleryPage : ComposeContainer() {
 @Composable
 private fun SlockLucideIconGalleryScreen() {
     val statusBarHeight = LocalActivity.current.pageData.statusBarHeight
-    val rows = SlockLucideIcons.Names.chunked(4)
+    val names = SlockLucideIconCompareSet.Names
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -54,36 +53,48 @@ private fun SlockLucideIconGalleryScreen() {
                     color = SlockColor.TextBlack
                 )
                 Text(
-                    text = "${SlockLucideIcons.Names.size} icons",
+                    text = "${names.size} icons · SVG left · PATH right",
                     style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray
                 )
             }
         }
-        items(rows.size, key = { rows[it].joinToString("|") }) { rowIndex ->
-            IconGalleryRow(rows[rowIndex])
+        items(names.size, key = { names[it] }) { index ->
+            IconCompareRow(names[index])
         }
     }
 }
 
 @Composable
-private fun IconGalleryRow(names: List<String>) {
+private fun IconCompareRow(name: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        repeat(4) { index ->
-            if (index < names.size) {
-                IconGalleryTile(name = names[index], modifier = Modifier.weight(1f))
-            } else {
-                Spacer(modifier = Modifier.weight(1f))
-            }
+        Text(
+            text = name,
+            style = SlockType.Body.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1.15f)
+        )
+        IconGalleryTile(label = "SVG", modifier = Modifier.weight(1f)) {
+            SlockLucideIcon(name = name, modifier = Modifier.fillMaxSize())
+        }
+        IconGalleryTile(label = "PATH", modifier = Modifier.weight(1f)) {
+            SlockLucidePathIcon(name = name, modifier = Modifier.fillMaxSize())
         }
     }
 }
 
 @Composable
-private fun IconGalleryTile(name: String, modifier: Modifier = Modifier) {
+private fun IconGalleryTile(
+    label: String,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -97,10 +108,10 @@ private fun IconGalleryTile(name: String, modifier: Modifier = Modifier) {
                 .padding(14.dp),
             contentAlignment = Alignment.Center
         ) {
-            SlockLucideIcon(name = name, modifier = Modifier.fillMaxSize())
+            content()
         }
         Text(
-            text = name,
+            text = label,
             style = SlockType.Body.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             maxLines = 1,

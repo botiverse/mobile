@@ -407,6 +407,10 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             SlockLucideIconRenderView.VIEW_NAME,
             renderViewExportCreator = { context -> SlockLucideIconRenderView(context) }
         )
+        kuiklyRenderExport.renderViewExport(
+            "SlockLucidePathIconView",
+            renderViewExportCreator = { context -> SlockLucideIconRenderView(context) }
+        )
     }
 
     private fun createPageSpec(): SlockKuiklyPageSpec {

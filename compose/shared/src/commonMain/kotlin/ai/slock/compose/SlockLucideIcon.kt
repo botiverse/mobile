@@ -19,6 +19,18 @@ internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Ev
     }
 }
 
+internal class SlockLucidePathIconView : DeclarativeBaseView<SlockLucideIconAttr, Event>() {
+    override fun createAttr(): SlockLucideIconAttr = SlockLucideIconAttr()
+
+    override fun createEvent(): Event = Event()
+
+    override fun viewName(): String = VIEW_NAME
+
+    companion object {
+        const val VIEW_NAME = "SlockLucidePathIconView"
+    }
+}
+
 internal class SlockLucideIconAttr : Attr() {
     fun name(value: String): SlockLucideIconAttr {
         "name" with value
@@ -93,6 +105,10 @@ internal object SlockLucideIcons {
     )
 }
 
+internal object SlockLucideIconCompareSet {
+    val Names: List<String> = listOf("slock-icon", "slock-lockup") + SlockLucideIcons.Names
+}
+
 @Composable
 internal fun SlockLucideIcon(
     name: String,
@@ -101,6 +117,30 @@ internal fun SlockLucideIcon(
 ) {
     MakeKuiklyComposeNode<SlockLucideIconView>(
         factory = { SlockLucideIconView() },
+        modifier = modifier,
+        viewInit = {
+            getViewAttr().run {
+                name(name)
+                color(color)
+            }
+        },
+        viewUpdate = { view ->
+            view.getViewAttr().run {
+                name(name)
+                color(color)
+            }
+        }
+    )
+}
+
+@Composable
+internal fun SlockLucidePathIcon(
+    name: String,
+    modifier: Modifier = Modifier,
+    color: String = "#FF000000"
+) {
+    MakeKuiklyComposeNode<SlockLucidePathIconView>(
+        factory = { SlockLucidePathIconView() },
         modifier = modifier,
         viewInit = {
             getViewAttr().run {
