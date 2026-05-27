@@ -3467,37 +3467,31 @@ private fun ThreadMembersModal(
     val humans = members.filter { !it.kind.equals("agent", ignoreCase = true) }
     SlockModalLayer(
         title = "MEMBERS (${membersCount.takeIf { it > 0 } ?: members.size})",
-        subtitle = if (canAddMembers) "Manage people in this conversation" else "You do not have permission to add members.",
+        subtitle = "",
         onDismiss = onDismiss
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(
-                modifier = Modifier.fillMaxWidth()
-                    .heightIn(max = 360.dp)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .background(SlockColor.SurfaceWhite)
-                    .padding(10.dp)
-            ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            ThreadMemberListShell {
                 if (members.isEmpty()) {
-                    ThreadModalEmptyState(
-                        title = "No member details loaded",
-                        detail = "Refresh this conversation and try again."
-                    )
+                    item {
+                        ThreadModalEmptyState(
+                            title = "No members",
+                            detail = "Refresh this conversation and try again."
+                        )
+                    }
                 } else {
-                    LazyColumn(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (agents.isNotEmpty()) {
-                            item { ThreadMemberSectionHeader("AGENTS", agents.size) }
-                            items(agents.size, key = { agents[it].memberKey }) { index ->
-                                val member = agents[index]
-                                ThreadMemberRow(member = member, onClick = { onManageMember(member.id) })
-                            }
+                    if (agents.isNotEmpty()) {
+                        item { ThreadMemberSectionHeader("Agents") }
+                        items(agents.size, key = { agents[it].memberKey }) { index ->
+                            val member = agents[index]
+                            ThreadMemberRow(member = member, onClick = { onManageMember(member.id) })
                         }
-                        if (humans.isNotEmpty()) {
-                            item { ThreadMemberSectionHeader("HUMANS", humans.size) }
-                            items(humans.size, key = { humans[it].memberKey }) { index ->
-                                val member = humans[index]
-                                ThreadMemberRow(member = member, onClick = { onManageMember(member.id) })
-                            }
+                    }
+                    if (humans.isNotEmpty()) {
+                        item { ThreadMemberSectionHeader("Humans") }
+                        items(humans.size, key = { humans[it].memberKey }) { index ->
+                            val member = humans[index]
+                            ThreadMemberRow(member = member, onClick = { onManageMember(member.id) })
                         }
                     }
                 }
@@ -3505,7 +3499,7 @@ private fun ThreadMembersModal(
             Button(
                 onClick = { if (canAddMembers) onAddMember() },
                 modifier = Modifier.fillMaxWidth()
-                    .heightIn(min = 44.dp)
+                    .heightIn(min = 38.dp)
                     .background(if (canAddMembers) SlockColor.AccentPink else SlockColor.SurfaceCream)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .padding(horizontal = 12.dp)
@@ -3562,20 +3556,25 @@ private fun ThreadAddMemberModal(
         }
     SlockModalLayer(
         title = "ADD MEMBER",
-        subtitle = errorText ?: "Choose a user or agent to add",
+        subtitle = errorText.orEmpty(),
         onDismiss = onDismiss
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(
+        Column(modifier = Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ThreadPanelFieldLabel("Search")
+            Row(
                 modifier = Modifier.fillMaxWidth()
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .height(42.dp)
+                    .border(SlockStroke.Default, if (blocked) SlockColor.TextMutedGray else SlockColor.BorderBlack)
                     .background(if (blocked) SlockColor.SurfaceCream else SlockColor.SurfaceWhite)
-                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                SlockLucideIcon("search", modifier = Modifier.size(14.dp), color = "#66000000")
                 TextField(
-                    modifier = Modifier.fillMaxWidth().height(32.dp),
+                    modifier = Modifier.weight(1f).height(34.dp),
                     value = query,
-                    placeholder = "Search users or agents",
+                    placeholder = "Name",
                     autoFocus = false,
                     onValueChange = {
                         query = it
@@ -3587,10 +3586,7 @@ private fun ThreadAddMemberModal(
                     maxLines = 1
                 )
             }
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().height(260.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            ThreadMemberListShell(height = 288) {
                 if (filteredCandidates.isEmpty()) {
                     item {
                         ThreadModalEmptyState(
@@ -3600,7 +3596,7 @@ private fun ThreadAddMemberModal(
                     }
                 } else {
                     if (agentCandidates.isNotEmpty()) {
-                        item { ThreadMemberSectionHeader("AGENTS", agentCandidates.size) }
+                        item { ThreadMemberSectionHeader("Agents") }
                         items(agentCandidates.size, key = { agentCandidates[it].memberKey }) { index ->
                             val member = agentCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
@@ -3617,7 +3613,7 @@ private fun ThreadAddMemberModal(
                         }
                     }
                     if (humanCandidates.isNotEmpty()) {
-                        item { ThreadMemberSectionHeader("HUMANS", humanCandidates.size) }
+                        item { ThreadMemberSectionHeader("Humans") }
                         items(humanCandidates.size, key = { humanCandidates[it].memberKey }) { index ->
                             val member = humanCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
@@ -3636,12 +3632,11 @@ private fun ThreadAddMemberModal(
                 }
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ThreadModalActionButton(label = "Back", icon = "arrow-left", onClick = onDismiss)
-                Spacer(modifier = Modifier.weight(1f))
                 ThreadModalActionButton(
                     label = if (adding) "Adding" else "Add selected",
                     icon = "user-plus",
                     color = SlockColor.AccentPink,
+                    modifier = Modifier.weight(1f),
                     onClick = {
                         if (adding || blocked) return@ThreadModalActionButton
                         val member = selected
@@ -3658,24 +3653,40 @@ private fun ThreadAddMemberModal(
 }
 
 @Composable
-private fun ThreadMemberSectionHeader(label: String, count: Int) {
+private fun ThreadMemberListShell(
+    height: Int = 288,
+    content: com.tencent.kuikly.compose.foundation.lazy.LazyListScope.() -> Unit
+) {
+    Box(
+        modifier = Modifier.fillMaxWidth()
+            .height(height.dp)
+            .padding(end = 4.dp, bottom = 4.dp)
+            .background(SlockColor.ShadowBlack)
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth()
+                .height(height.dp)
+                .padding(end = 4.dp, bottom = 4.dp)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
+            content = content
+        )
+    }
+}
+
+@Composable
+private fun ThreadMemberSectionHeader(label: String) {
     Row(
         modifier = Modifier.fillMaxWidth()
-            .background(SlockColor.AppBgLightBlue)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .padding(horizontal = 8.dp, vertical = 5.dp),
+            .background(SlockColor.SurfaceWhite.copy(alpha = 0.5f))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
             style = SlockType.SectionLabel.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = count.toString(),
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextMutedGray
+            color = SlockColor.TextBlack
         )
     }
 }
@@ -3687,17 +3698,17 @@ private fun ThreadMemberRow(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth()
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .background(SlockColor.SurfaceWhite)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        ThreadMemberAvatar(member = member, sizeDp = 36)
+        ThreadMemberAvatar(member = member, sizeDp = 30)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = member.displayName,
-                style = SlockType.ButtonBold,
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 18.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -3710,14 +3721,13 @@ private fun ThreadMemberRow(
             if (meta.isNotBlank()) {
                 Text(
                     text = meta,
-                    style = SlockType.Caption,
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 15.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
         }
-        SlockLucideIcon("chevron-right", modifier = Modifier.size(16.dp))
     }
 }
 
@@ -3833,24 +3843,23 @@ private fun ThreadMemberCandidateRow(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth()
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
             .background(
                 when {
                     alreadyJoined -> SlockColor.SurfaceCream
-                    selected -> SlockColor.AccentLime
+                    selected -> SlockColor.BrandYellow
                     else -> SlockColor.SurfaceWhite
                 }
             )
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        ThreadMemberAvatar(member = member, sizeDp = 34)
+        ThreadMemberAvatar(member = member, sizeDp = 30)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = member.displayName,
-                style = SlockType.ButtonBold,
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 18.sp),
                 color = if (alreadyJoined) SlockColor.TextMutedGray else SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -3866,15 +3875,10 @@ private fun ThreadMemberCandidateRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        Text(
-            text = when {
-                alreadyJoined -> "Joined"
-                selected -> "Selected"
-                else -> "Add"
-            },
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.W600),
-            color = SlockColor.TextBlack
-        )
+        when {
+            selected -> SlockLucideIcon("check", modifier = Modifier.size(14.dp), color = "#FF000000")
+            alreadyJoined -> Text(text = "Joined", style = SlockType.Caption, color = SlockColor.TextMutedGray)
+        }
     }
 }
 
@@ -3937,27 +3941,15 @@ private fun ThreadSettingsModal(
             else -> null
         }?.let { it to action }
     }
-    val nonDangerActions = effectiveActions.filter { action ->
-        action.id != "leave" && action.id != "archive" && action.id != "delete"
-    }
     val activeDanger = dangerAction
     val confirmationMatches = confirmationName.trim() == channelName.trim()
     SlockModalLayer(
         title = activeDanger?.title ?: "EDIT CHANNEL",
-        subtitle = if (activeDanger == null) "#$channelName" else "Confirm the channel action",
+        subtitle = if (activeDanger == null) "" else "Confirm the channel action",
         onDismiss = onDismiss
     ) {
         if (activeDanger == null) {
-            Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                nonDangerActions.forEach { action ->
-                    SlockActionSheetRow(
-                        title = action.title,
-                        subtitle = action.subtitle,
-                        icon = action.icon,
-                        destructive = false,
-                        onClick = { onOpenAction(action.id) }
-                    )
-                }
+            Column(modifier = Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 ThreadSettingsTextField(
                     label = "Name",
                     value = name,
@@ -3970,28 +3962,33 @@ private fun ThreadSettingsModal(
                     value = description,
                     placeholder = "What is this channel for?",
                     onValueChange = { description = it },
-                    required = false
+                    required = false,
+                    fieldHeight = 66,
+                    maxLines = 2
                 )
-                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    dangerActions.forEach { (danger, action) ->
-                        SlockActionSheetRow(
-                            title = action.title,
-                            subtitle = action.subtitle,
-                            icon = action.icon.ifBlank { danger.icon },
-                            destructive = true,
-                            onClick = { dangerAction = danger }
-                        )
-                    }
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ThreadModalActionButton(label = "Cancel", icon = "x", onClick = onDismiss)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Spacer(modifier = Modifier.weight(1f))
+                    ThreadModalActionButton(label = "Cancel", icon = "x", onClick = onDismiss)
                     ThreadModalActionButton(
                         label = "Save Changes",
                         icon = "check",
                         color = SlockColor.AccentPink,
                         onClick = onDismiss
                     )
+                }
+                if (dangerActions.isNotEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
+                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        dangerActions.forEach { (danger, action) ->
+                            ThreadModalActionButton(
+                                label = action.title,
+                                icon = action.icon.ifBlank { danger.icon },
+                                color = danger.color,
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = { dangerAction = danger }
+                            )
+                        }
+                    }
                 }
             }
         } else {
@@ -4063,30 +4060,27 @@ private fun ThreadSettingsTextField(
     placeholder: String,
     onValueChange: (String) -> Unit,
     required: Boolean,
-    isError: Boolean = required && value.isBlank()
+    isError: Boolean = required && value.isBlank(),
+    fieldHeight: Int = 42,
+    maxLines: Int = 1
 ) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(text = label, style = SlockType.ButtonBold, color = SlockColor.TextBlack)
-            if (required) {
-                Text(text = "*", style = SlockType.ButtonBold, color = SlockColor.AccentRed)
-            }
-        }
+        ThreadPanelFieldLabel(label = label, required = required)
         Box(
             modifier = Modifier.fillMaxWidth()
                 .border(SlockStroke.Default, if (isError) SlockColor.AccentRed else SlockColor.BorderBlack)
                 .background(SlockColor.SurfaceWhite)
-                .padding(horizontal = 10.dp, vertical = 8.dp)
+                .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
             TextField(
-                modifier = Modifier.fillMaxWidth().height(32.dp),
+                modifier = Modifier.fillMaxWidth().height(fieldHeight.dp),
                 value = value,
                 placeholder = placeholder,
                 autoFocus = false,
                 onValueChange = onValueChange,
                 textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
                 placeholderColor = SlockColor.TextMutedGray,
-                maxLines = 1
+                maxLines = maxLines
             )
         }
         if (isError) {
@@ -4100,15 +4094,34 @@ private fun ThreadSettingsTextField(
 }
 
 @Composable
+private fun ThreadPanelFieldLabel(label: String, required: Boolean = false) {
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = label,
+            style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
+            color = SlockColor.TextBlack
+        )
+        if (required) {
+            Text(
+                text = "*",
+                style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
+                color = SlockColor.AccentRed
+            )
+        }
+    }
+}
+
+@Composable
 private fun ThreadModalActionButton(
     label: String,
     icon: String,
     onClick: () -> Unit,
-    color: Color = SlockColor.SurfaceWhite
+    color: Color = SlockColor.SurfaceWhite,
+    modifier: Modifier = Modifier
 ) {
     Button(
         onClick = onClick,
-        modifier = Modifier
+        modifier = modifier
             .heightIn(min = 38.dp)
             .widthIn(min = 78.dp)
             .background(color)
