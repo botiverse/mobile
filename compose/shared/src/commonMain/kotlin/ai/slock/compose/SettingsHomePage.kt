@@ -8,10 +8,20 @@ import ai.slock.compose.data.BridgeMembersApi
 import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
 import ai.slock.compose.data.BridgeTasksApi
 import ai.slock.compose.data.ComposeLocalWriteThrough
+import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
+import ai.slock.compose.data.KeyValueLocalePreferenceStore
 import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklyNotificationPreferenceEvents
 import ai.slock.compose.data.KuiklyRelationalStore
+import ai.slock.compose.data.MOBILE_ACTION_LANGUAGE
+import ai.slock.compose.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
+import ai.slock.compose.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
+import ai.slock.compose.data.MOBILE_ACTION_PERMISSION
+import ai.slock.compose.data.MOBILE_ACTION_SETTINGS
+import ai.slock.compose.data.MOBILE_ACTION_TEST_NOTIFICATION
 import ai.slock.compose.data.NotificationPreferenceSnapshot
+import ai.slock.compose.data.PersistentChatLayoutPreferenceRepository
+import ai.slock.compose.data.PersistentLocaleRepository
 import ai.slock.compose.data.RelationalComposeLocalDataStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthErrorCode
@@ -67,12 +77,15 @@ import ai.slock.compose.data.SharedHomeSearchSavedIntent
 import ai.slock.compose.data.SharedHomeSearchSavedViewModel
 import ai.slock.compose.data.InboxItem
 import ai.slock.compose.data.kuiklyNotificationPreferenceRepository
+import ai.slock.compose.data.kuiklySharedPreferenceStore
 import ai.slock.compose.data.savedMessageIdOrNull
 import ai.slock.compose.data.SettingsComputerAgentSnapshot
 import ai.slock.compose.data.SettingsComputerDetailSnapshot
 import ai.slock.compose.data.SettingsComputerSnapshot
 import ai.slock.compose.data.SettingsComputerWorkspaceSnapshot
 import ai.slock.compose.data.SettingsComputersSnapshot
+import ai.slock.compose.data.SettingsMobileSelectionSnapshot
+import ai.slock.compose.data.SettingsMobileSnapshot
 import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
@@ -617,6 +630,15 @@ private fun SlockAppShellContent() {
             )
         }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
+    val sharedPreferenceStore = remember(pager) { kuiklySharedPreferenceStore(pager) }
+    val localeRepository =
+        remember(sharedPreferenceStore) {
+            PersistentLocaleRepository(KeyValueLocalePreferenceStore(sharedPreferenceStore))
+        }
+    val chatLayoutPreferenceRepository =
+        remember(sharedPreferenceStore) {
+            PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore))
+        }
     val notificationPreferenceEvents = remember(pager) { KuiklyNotificationPreferenceEvents(pager) }
     val notificationPreferenceRepository =
         remember(pager, notificationPreferenceEvents) {
@@ -638,6 +660,9 @@ private fun SlockAppShellContent() {
                         logger = { message -> bridge.log("shared_settings_repository $message") },
                         warningLogger = { message -> bridge.log("shared_settings_repository_warning $message") }
                     ),
+                notificationPreferenceRepository = notificationPreferenceRepository,
+                localeRepository = localeRepository,
+                chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
                 platformCapabilities = settingsCapabilities
             )
         }
@@ -1285,15 +1310,15 @@ private fun SettingsAppShellContent(
             }
             SharedSettingsEffect.RequestNotificationPermission -> {
                 val result = settingsCapabilities.requestNotificationPermission()
-                if (result.ok) {
-                    onSettingsIntent(SharedSettingsIntent.Refresh)
-                }
+                onSettingsIntent(SharedSettingsIntent.CompleteSystemNotificationAction(MOBILE_ACTION_PERMISSION, result))
             }
             SharedSettingsEffect.OpenNotificationSettings -> {
-                settingsCapabilities.openNotificationSettings()
+                val result = settingsCapabilities.openNotificationSettings()
+                onSettingsIntent(SharedSettingsIntent.CompleteSystemNotificationAction(MOBILE_ACTION_SETTINGS, result))
             }
             SharedSettingsEffect.SendTestNotification -> {
-                settingsCapabilities.sendTestNotification()
+                val result = settingsCapabilities.sendTestNotification()
+                onSettingsIntent(SharedSettingsIntent.CompleteSystemNotificationAction(MOBILE_ACTION_TEST_NOTIFICATION, result))
             }
             else -> Unit
         }
@@ -1357,16 +1382,27 @@ private fun SettingsAppShellContent(
             SettingsDestinationServer ->
                 SharedServerSettingsContent(session, membersApi, onSettingsAction)
             SettingsDestinationMobile ->
-                SharedSettingsSectionContent(appShellMobilePayload(notificationPreferenceSnapshot.enabled)) { action, itemId ->
+                SharedSettingsSectionContent(
+                    settingsState.mobile.toMobilePayload(
+                        actionState = settingsState.actionState,
+                        refreshing = settingsState.isRefreshing(SharedSettingsDestination.Mobile)
+                    )
+                ) { action, itemId ->
                     when (action) {
-                        "notificationPreference" ->
-                            onToggleNotificationPreference()
-                        "notificationPermission" ->
+                        MOBILE_ACTION_NOTIFICATION_PREFERENCE ->
+                            onSettingsIntent(SharedSettingsIntent.SetNotificationPreference(itemId == "true"))
+                        MOBILE_ACTION_PERMISSION ->
                             onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission)
-                        "openNotificationSettings" ->
+                        MOBILE_ACTION_SETTINGS ->
                             onSettingsIntent(SharedSettingsIntent.OpenNotificationSettings)
-                        "sendTestNotification" ->
+                        MOBILE_ACTION_TEST_NOTIFICATION ->
                             onSettingsIntent(SharedSettingsIntent.SendTestNotification)
+                        MOBILE_ACTION_LANGUAGE ->
+                            itemId?.takeIf { it.isNotBlank() }?.let { onSettingsIntent(SharedSettingsIntent.SetLocale(it)) }
+                        MOBILE_ACTION_MESSAGE_ALIGNMENT ->
+                            itemId?.takeIf { it.isNotBlank() }?.let {
+                                onSettingsIntent(SharedSettingsIntent.SetMessageAlignment(it))
+                            }
                         else -> onSettingsAction(action, itemId)
                     }
                 }
@@ -1994,43 +2030,177 @@ private fun MemberProfile.isWorkspaceAdmin(): Boolean {
         }
 }
 
-private fun appShellMobilePayload(notificationsEnabledByUser: Boolean): KuiklySharedSettingsPayload =
-    KuiklySharedSettingsPayload(
+private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    refreshing: Boolean
+): KuiklySharedSettingsPayload {
+    val mobile =
+        (this as? ScreenLoadState.Content<SettingsMobileSnapshot>)?.data
+            ?: return appShellMobilePlaceholderPayload(this, refreshing)
+    return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-mobile",
         title = "Mobile",
         heroIconName = "smartphone",
         heroLabel = "Mobile preferences",
-        detail = "Shared mobile settings contract for platform capabilities. Host-specific permission and locale adapters still need to attach.",
+        detail =
+            if (refreshing) {
+                "Refreshing mobile settings..."
+            } else {
+                "Notification controls and local preferences are backed by shared Settings MVI."
+            },
         sections =
             listOf(
                 KuiklySharedSettingsSection(
                     title = "Notifications",
                     rows =
-                        listOf(
+                        listOfNotNull(
                             KuiklySharedSettingsRow(
-                                "notificationPreference",
-                                "bell-ring",
-                                "Notification preference",
-                                "Stored in Kuikly SharedPreferences and broadcast through Kuikly Notify.",
-                                status = if (notificationsEnabledByUser) "Enabled" else "Off",
-                                enabled = true
+                                key = MOBILE_ACTION_NOTIFICATION_PREFERENCE,
+                                iconName = "bell-ring",
+                                title = "Notification preference",
+                                detail = mobile.pushNotifications.detail,
+                                value = (!mobile.pushNotifications.enabled).toString(),
+                                status = actionState.statusFor(MOBILE_ACTION_NOTIFICATION_PREFERENCE, mobile.pushNotifications.statusLabel),
+                                enabled = mobile.pushNotifications.available && actionState?.inProgress != true
                             ),
-                            KuiklySharedSettingsRow("notificationPermission", "bell", "Push permission", "Request or refresh the platform notification permission through the shared host capability.", status = "Request", enabled = true),
-                            KuiklySharedSettingsRow("openNotificationSettings", "settings", "System notification settings", "Open the platform notification settings page from the shared KMP action.", status = "Open", enabled = true),
-                            KuiklySharedSettingsRow("sendTestNotification", "send", "Send test notification", "Post a local system notification through the platform host capability.", status = "Send", enabled = true),
-                            KuiklySharedSettingsRow("muteServer", "volume-x", "Mute workspace", "Server mute state/action is not in shared yet.", status = "Pending")
+                            KuiklySharedSettingsRow(
+                                key = MOBILE_ACTION_PERMISSION,
+                                iconName = "bell",
+                                title = "Push permission",
+                                detail = mobile.notificationPermission.detail,
+                                status = actionState.statusFor(MOBILE_ACTION_PERMISSION, mobile.notificationPermission.statusLabel),
+                                enabled = mobile.notificationPermission.available && actionState?.inProgress != true
+                            ),
+                            KuiklySharedSettingsRow(
+                                key = MOBILE_ACTION_SETTINGS,
+                                iconName = "settings",
+                                title = "System notification settings",
+                                detail = mobile.notificationSettings.detail,
+                                status = actionState.statusFor(MOBILE_ACTION_SETTINGS, mobile.notificationSettings.statusLabel),
+                                enabled = mobile.notificationSettings.available && actionState?.inProgress != true
+                            ),
+                            KuiklySharedSettingsRow(
+                                key = MOBILE_ACTION_TEST_NOTIFICATION,
+                                iconName = "send",
+                                title = "Send test notification",
+                                detail = mobile.testNotification.detail,
+                                status = actionState.statusFor(MOBILE_ACTION_TEST_NOTIFICATION, mobile.testNotification.statusLabel),
+                                enabled = mobile.testNotification.available && actionState?.inProgress != true
+                            ),
+                            mobile.muteServer.takeIf { it.available }?.let {
+                                KuiklySharedSettingsRow(
+                                    key = "muteServer",
+                                    iconName = "volume-x",
+                                    title = "Mute workspace",
+                                    detail = it.detail,
+                                    status = it.statusLabel,
+                                    enabled = false
+                                )
+                            }
                         )
                 ),
                 KuiklySharedSettingsSection(
                     title = "Local preferences",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("language", "languages", "Language", "Locale selection needs shared preference state and host persistence.", status = "Pending"),
-                            KuiklySharedSettingsRow("messageAlignment", "align-horizontal-space-around", "My message alignment", "Personal chat layout preference should move into shared state.", status = "Pending")
+                            mobile.localePreference.toMobileSelectionRow(
+                                key = MOBILE_ACTION_LANGUAGE,
+                                iconName = "languages",
+                                title = "Language",
+                                fallbackStatus = "Unsupported",
+                                actionState = actionState
+                            ),
+                            mobile.messageAlignmentPreference.toMobileSelectionRow(
+                                key = MOBILE_ACTION_MESSAGE_ALIGNMENT,
+                                iconName = "align-horizontal-space-around",
+                                title = "My message alignment",
+                                fallbackStatus = "Unsupported",
+                                actionState = actionState
+                            )
                         )
                 )
             )
     )
+}
+
+private fun appShellMobilePlaceholderPayload(
+    state: ScreenLoadState<SettingsMobileSnapshot>,
+    refreshing: Boolean
+): KuiklySharedSettingsPayload {
+    val status =
+        when (state) {
+            ScreenLoadState.Loading -> if (refreshing) "Refreshing" else "Loading"
+            is ScreenLoadState.Empty -> "Unavailable"
+            is ScreenLoadState.Error -> "Error"
+            is ScreenLoadState.NoPermission -> "No permission"
+            is ScreenLoadState.Content -> "Ready"
+        }
+    val detail =
+        when (state) {
+            is ScreenLoadState.Error -> state.error.code
+            is ScreenLoadState.NoPermission -> state.blocker.code
+            is ScreenLoadState.Empty -> state.reason.name
+            else -> "Loading shared mobile settings."
+        }
+    return KuiklySharedSettingsPayload(
+        instanceId = "shared-shell-settings-mobile-placeholder",
+        title = "Mobile",
+        heroIconName = "smartphone",
+        heroLabel = "Mobile preferences",
+        detail = detail,
+        sections =
+            listOf(
+                KuiklySharedSettingsSection(
+                    title = "Status",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow(
+                                key = "mobileStatus",
+                                iconName = "smartphone",
+                                title = "Mobile settings",
+                                detail = detail,
+                                status = status,
+                                enabled = false
+                            )
+                        )
+                )
+            )
+    )
+}
+
+private fun SettingsMobileSelectionSnapshot.toMobileSelectionRow(
+    key: String,
+    iconName: String,
+    title: String,
+    fallbackStatus: String,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?
+): KuiklySharedSettingsRow {
+    val nextOption =
+        options.dropWhile { it.key != selectedKey }.drop(1).firstOrNull()
+            ?: options.firstOrNull()
+    return KuiklySharedSettingsRow(
+        key = key,
+        iconName = iconName,
+        title = title,
+        detail =
+            if (available && nextOption != null) {
+                "$detail Next: ${nextOption.label}."
+            } else {
+                detail
+            },
+        value = nextOption?.key.orEmpty(),
+        status = actionState.statusFor(key, statusLabel.ifBlank { fallbackStatus }),
+        enabled = available && nextOption != null && actionState?.inProgress != true
+    )
+}
+
+private fun ai.slock.compose.data.SharedSettingsActionState?.statusFor(action: String, fallback: String): String =
+    when {
+        this == null || this.action != action -> fallback
+        inProgress -> "Loading"
+        errorCode != null -> "Error"
+        else -> "Saved"
+    }
 
 private fun appShellAboutFallback(session: StoredAuthSession?): SharedSettingsAboutSnapshot =
     SharedSettingsAboutSnapshot(

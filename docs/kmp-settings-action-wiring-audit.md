@@ -20,7 +20,7 @@ headers. Actions must go through `SharedSettingsIntent`, `SharedSettingsEffect`,
 | Computer detail | Wired/read-only | task #35 complete; keep agent rows read-only until Members/Agent navigation is explicit. |
 | Server | Partial | task #38 / task #39 |
 | Billing | Partial | task #38 |
-| Mobile | Partial | task #36 |
+| Mobile | Wired/partial | task #36 complete; server mute remains disabled until API/capability exists. |
 | Storage | Missing/partial | task #37 |
 | About | Wired | task #43 complete; keep covered by route audit. |
 | Diagnostics | Wired/partial | task #37 for richer diagnostics state, task #43 complete for core actions. |
@@ -53,12 +53,13 @@ longer uses a route-local `pendingLogout` mutable state machine.
 | Server | Delete workspace / Danger | Disabled. No shared confirmation/action state yet. | Add commonMain confirmation, typed delete request, in-progress/error/success effects. | task #39. |
 | Billing | Current plan / usage | Partial. Product shell derives from auth session/static cards, not repository state. | Wire `SharedSettingsState.billing` from `SettingsRepository.getBilling()`. | task #38. |
 | Billing | Choose Plan | Effectively disabled today because product payload only exposes current plan and coming-soon plans; standalone content can emit `choosePlan`, but product shell ignores it. | Keep disabled/no-permission until billing mutation contract exists. | task #38. |
-| Mobile | Push permission | Wired to `SharedSettingsIntent.RequestNotificationPermission` and host `settingsCapability`. | Move permission snapshot/loading/error into `SharedSettingsState.mobile`, not static "Request". | task #36. |
-| Mobile | Open system notification settings | Wired to `SharedSettingsIntent.OpenNotificationSettings` and host capability. | Keep. Also surface result/error state in shared state. | task #36. |
-| Mobile | Send test notification | Wired to `SharedSettingsIntent.SendTestNotification` and host capability. | Keep. Add action feedback/error state. | task #36. |
-| Mobile | Mute workspace | Disabled/pending. | Add shared preference/server mute state only after API/capability is confirmed. | task #36. |
-| Mobile | Language | Disabled/pending. | Add `SetLocale` UI, shared preference snapshot, host persistence adapter. Store/effect already has `SetLocale`. | task #36. |
-| Mobile | My message alignment | Disabled/pending. | Add `SetMessageAlignment` UI, shared preference snapshot, host persistence adapter. Store/effect already has `SetMessageAlignment`. | task #36. |
+| Mobile | Notification preference | Wired. `SharedSettingsDataSource` loads/saves the Kuikly notification preference repository and echoes enabled/off through `SharedSettingsState.mobile`. | Keep preference reads/writes in commonMain; host only owns platform notification delivery. | task #36 complete. |
+| Mobile | Push permission | Wired to `SharedSettingsIntent.RequestNotificationPermission` and host `settingsCapability`. | Loading, success, error, and unsupported results are reflected back through `CompleteSystemNotificationAction` into `SharedSettingsState.mobile`. | task #36 complete. |
+| Mobile | Open system notification settings | Wired to `SharedSettingsIntent.OpenNotificationSettings` and host capability. | Loading/success/error/unsupported feedback is stored in shared Mobile state. | task #36 complete. |
+| Mobile | Send test notification | Wired to `SharedSettingsIntent.SendTestNotification` and host capability. | Loading/success/error/unsupported feedback is stored in shared Mobile state. | task #36 complete. |
+| Mobile | Mute workspace | Disabled/hidden unless the snapshot marks it available. | Add shared preference/server mute state only after API/capability is confirmed. | Future Mobile/server mute follow-up. |
+| Mobile | Language | Wired. Row reads `LocaleRepository`, cycles supported locales, persists selection, and echoes the selected label through shared state. | Keep local preference persistence in commonMain. | task #36 complete. |
+| Mobile | My message alignment | Wired. Row reads `ChatLayoutPreferenceRepository`, cycles supported alignment options, persists selection, and echoes the selected label through shared state. | Keep local preference persistence in commonMain. | task #36 complete. |
 | Storage | Refresh | Inert in product shell. `SettingsStorageContent` emits `refreshStorage`, but app shell passes empty callback. | Wire to `SharedSettingsIntent.RefreshStorage` and real `loadStorage()` capability. | task #37. |
 | Storage | Clear database / image cache | Inert in product shell. Content can emit `clearStorage`, store has `ClearStorage`, but host effect and capability are not connected. | Add `ClearStorage` effect consumption and host capability, with action state and feedback. | task #37. |
 | About | Diagnostics row | Wired. Opens Diagnostics destination. | Keep. | task #43 complete. |
@@ -75,9 +76,10 @@ longer uses a route-local `pendingLogout` mutable state machine.
 1. task #35 wired Computers list/detail through shared state and made Computer
    detail agent rows read-only until there is an explicit Members/Agent
    navigation effect.
-2. task #36 should wire Mobile state/action feedback. Three notification
-   actions already reach host capability; language/alignment and state snapshots
-   still need implementation.
+2. task #36 wired Mobile state/action feedback. Notification preference,
+   permission/settings/test notification feedback, language, and message
+   alignment now flow through commonMain state/intents; server mute stays hidden
+   unless a future API/capability marks it available.
 3. task #37 should wire Storage refresh/clear plus richer Diagnostics state.
 4. task #38 should pass a real `SettingsRepository` or equivalent shared
    capability into app-shell `SharedSettingsDataSource` for Account, Billing,

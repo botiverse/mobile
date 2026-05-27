@@ -100,7 +100,7 @@ About or a smoke route.
 | Computer detail | Missing/partial | Store has `ComputerDetail`, but product shell still needs real route/open-detail wiring and retry/inline errors. | task #35. |
 | Server page | Partial | React sections are not fully repository-backed in shared shell; mutations/confirmations are missing. | task #38 and task #39. |
 | Billing | Partial | Uses session/static plan data unless repository is wired; no permission/error parity. | task #38. |
-| Mobile | Missing/partial | Notification permission, test notification, locale, and local preference controls still need host capabilities and shared intents. | task #36. |
+| Mobile | Wired/partial | Notification preference, permission/settings/test notification feedback, locale, and message-alignment local preferences now flow through shared Settings MVI. Server mute remains hidden/disabled until a real API/capability is confirmed. | task #36 complete; future server mute follow-up if needed. |
 | Storage | Partial | Platform capability boundary exists, but product path must prove real snapshot/refresh/clear feedback. | task #37. |
 | About/Diagnostics | Migrated/partial | Core actions are wired; keep checking no inert rows remain and diagnostics state handles empty/error. | task #43 complete; task #44 audits all visible rows. |
 | Loading/cache | Partial | Store preserves existing content on refresh failure, but most real repository/cache sources are not connected. | tasks #35-#39 by slice. |
@@ -116,7 +116,9 @@ About or a smoke route.
 2. task #35: restore Computers list/detail through shared MVI and repository or
    capability wiring.
 3. task #36: restore Mobile notification and local preference controls through
-   shared intents/effects and host capabilities.
+   shared intents/state and host notification capabilities. Completed for
+   notification preference, permission/settings/test feedback, language, and
+   message alignment; server mute remains deferred.
 4. task #37: prove Storage and Diagnostics capabilities are live, including
    refresh, clear, copy/share, empty, and error states.
 5. task #38: wire Account, Billing, and Server API-backed data into

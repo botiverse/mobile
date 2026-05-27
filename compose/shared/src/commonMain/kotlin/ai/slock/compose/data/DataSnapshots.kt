@@ -514,7 +514,53 @@ data class SettingsServerOnboardingSnapshot(
 data class SettingsMobileSnapshot(
     val pushNotifications: SettingsMobileToggleSnapshot,
     val muteServer: SettingsMobileToggleSnapshot,
-    val sendTestEnabled: Boolean = false
+    val sendTestEnabled: Boolean = false,
+    val notificationPermission: SettingsMobileActionSnapshot =
+        SettingsMobileActionSnapshot(
+            available = false,
+            statusLabel = "Unsupported",
+            detail = "Notification permission is not available on this platform."
+        ),
+    val notificationSettings: SettingsMobileActionSnapshot =
+        SettingsMobileActionSnapshot(
+            available = false,
+            statusLabel = "Unsupported",
+            detail = "System notification settings are not available on this platform."
+        ),
+    val testNotification: SettingsMobileActionSnapshot =
+        SettingsMobileActionSnapshot(
+            available = false,
+            statusLabel = "Unsupported",
+            detail = "Test notifications are not available on this platform."
+        ),
+    val localePreference: SettingsMobileSelectionSnapshot =
+        SettingsMobileSelectionSnapshot(
+            selectedKey = AppLocale.Default.languageTag,
+            selectedLabel = AppLocale.Default.englishLabel,
+            statusLabel = AppLocale.Default.englishLabel,
+            detail = "Stored locally on this device.",
+            options =
+                AppLocale.entries.map {
+                    SettingsMobileSelectionOptionSnapshot(
+                        key = it.languageTag,
+                        label = it.englishLabel
+                    )
+                }
+        ),
+    val messageAlignmentPreference: SettingsMobileSelectionSnapshot =
+        SettingsMobileSelectionSnapshot(
+            selectedKey = MyMessageAlignmentPreference.Default.storageKey,
+            selectedLabel = "Left",
+            statusLabel = "Left",
+            detail = "Stored locally on this device.",
+            options =
+                MyMessageAlignmentPreference.entries.map {
+                    SettingsMobileSelectionOptionSnapshot(
+                        key = it.storageKey,
+                        label = it.name
+                    )
+                }
+        )
 )
 
 data class SettingsMobileToggleSnapshot(
@@ -522,6 +568,26 @@ data class SettingsMobileToggleSnapshot(
     val available: Boolean,
     val statusLabel: String,
     val detail: String
+)
+
+data class SettingsMobileActionSnapshot(
+    val available: Boolean,
+    val statusLabel: String,
+    val detail: String
+)
+
+data class SettingsMobileSelectionSnapshot(
+    val selectedKey: String,
+    val selectedLabel: String,
+    val statusLabel: String,
+    val detail: String,
+    val options: List<SettingsMobileSelectionOptionSnapshot>,
+    val available: Boolean = true
+)
+
+data class SettingsMobileSelectionOptionSnapshot(
+    val key: String,
+    val label: String
 )
 
 enum class SettingsSectionAvailability {
