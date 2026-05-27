@@ -610,6 +610,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.OpenNotificationSettings,
             SharedSettingsIntent.SendTestNotification,
             is SharedSettingsIntent.SetNotificationPreference,
+            is SharedSettingsIntent.SetServerMute,
             is SharedSettingsIntent.CompleteSystemNotificationAction,
             is SharedSettingsIntent.SetLocale,
             is SharedSettingsIntent.SetMessageAlignment,

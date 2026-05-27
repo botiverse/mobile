@@ -17,6 +17,7 @@ import ai.slock.compose.data.MOBILE_ACTION_LANGUAGE
 import ai.slock.compose.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import ai.slock.compose.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
 import ai.slock.compose.data.MOBILE_ACTION_PERMISSION
+import ai.slock.compose.data.MOBILE_ACTION_SERVER_MUTE
 import ai.slock.compose.data.MOBILE_ACTION_SETTINGS
 import ai.slock.compose.data.MOBILE_ACTION_TEST_NOTIFICATION
 import ai.slock.compose.data.NotificationPreferenceSnapshot
@@ -80,12 +81,14 @@ import ai.slock.compose.data.kuiklyNotificationPreferenceRepository
 import ai.slock.compose.data.kuiklySharedPreferenceStore
 import ai.slock.compose.data.savedMessageIdOrNull
 import ai.slock.compose.data.SettingsComputerAgentSnapshot
+import ai.slock.compose.data.SettingsBillingSnapshot
 import ai.slock.compose.data.SettingsComputerDetailSnapshot
 import ai.slock.compose.data.SettingsComputerSnapshot
 import ai.slock.compose.data.SettingsComputerWorkspaceSnapshot
 import ai.slock.compose.data.SettingsComputersSnapshot
 import ai.slock.compose.data.SettingsMobileSelectionSnapshot
 import ai.slock.compose.data.SettingsMobileSnapshot
+import ai.slock.compose.data.SettingsServerSnapshot
 import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
@@ -1905,16 +1908,19 @@ private fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(session: S
         currentPlan =
             KuiklySettingsCurrentPlan(
                 planName = billing?.currentPlan?.planName ?: fallbackPlan,
-                detail =
+                usageRows =
                     billing?.currentPlan?.usageRows
-                        ?.joinToString(" • ") { "${it.label}: ${it.value}" }
+                        ?.map { KuiklySettingsPlanUsageRow(label = it.label, value = it.value) }
+                        .orEmpty(),
+                trialActive = billing?.currentPlan?.trialActive ?: false
             ),
         plans =
             billing?.plans?.map { plan ->
                 KuiklySettingsBillingPlan(
-                    id = plan.id,
+                    id = plan.name.lowercase().replace(" ", "-"),
                     name = plan.name,
-                    price = plan.priceLabel,
+                    price = plan.price,
+                    features = plan.features,
                     current = plan.current,
                     comingSoon = plan.comingSoon
                 )
@@ -1930,15 +1936,15 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
 ): KuiklySharedSettingsPayload {
     val server = session?.currentServerSummary()
     val snapshot = (this as? ScreenLoadState.Content<SettingsServerSnapshot>)?.data
-    val role = snapshot?.profile?.role?.takeIf { it.isNotBlank() } ?: server?.role?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Member"
-    val plan = snapshot?.profile?.planName?.takeIf { it.isNotBlank() } ?: server?.plan?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Unknown"
+    val role = server?.role?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Member"
+    val plan = server?.plan?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Unknown"
     val detail =
         when (this) {
             ScreenLoadState.Loading -> if (refreshing) "Refreshing workspace settings..." else "Loading workspace settings..."
             is ScreenLoadState.Error -> "Workspace settings failed to load: ${error.code}"
             is ScreenLoadState.NoPermission -> "Workspace settings unavailable: ${blocker.code}"
             is ScreenLoadState.Empty -> "Workspace settings unavailable: ${reason.name}"
-            is ScreenLoadState.Content -> snapshot?.profile?.detail ?: "Shared workspace settings are backed by typed repository snapshots."
+            is ScreenLoadState.Content -> "Shared workspace settings are backed by typed repository snapshots."
         }
     val administrationRows =
         snapshot?.sections.orEmpty()
@@ -1973,8 +1979,8 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
                     title = "Profile",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("serverName", "badge-info", "Workspace name", snapshot?.profile?.detail ?: "Workspace profile", status = snapshot?.profile?.name ?: server?.name ?: "Unknown"),
-                            KuiklySharedSettingsRow("serverSlug", "link", "Slug", server?.slug?.let { "/$it" } ?: "Not provided", status = "Read only"),
+                            KuiklySharedSettingsRow("serverName", "badge-info", "Workspace name", "Current selected workspace profile.", status = snapshot?.profile?.name ?: server?.name ?: "Unknown"),
+                            KuiklySharedSettingsRow("serverSlug", "link", "Slug", snapshot?.profile?.slug?.let { "/$it" } ?: server?.slug?.let { "/$it" } ?: "Not provided", status = if (snapshot?.profile?.canSave == true) "Editable" else "Read only"),
                             KuiklySharedSettingsRow("serverRole", "shield-check", "Your role", "Permission scope for workspace settings.", status = role)
                         )
                 ),

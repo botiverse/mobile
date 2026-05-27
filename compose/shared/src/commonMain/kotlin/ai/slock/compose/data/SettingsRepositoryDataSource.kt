@@ -839,6 +839,23 @@ class RealSettingsRepository(
         val selectedId = session.currentServerId ?: return null
         return session.servers.firstOrNull { it.id == selectedId }
     }
+
+    private suspend fun settingsUpdateServerMute(serverId: String, enabled: Boolean): DataResult<Boolean> =
+        executeTypedSettings(
+            source = "settings_server_notification_settings_update",
+            contractCode = "settings_server_notification_settings_contract_mismatch",
+            block = {
+                networkClient.updateSettingsNotificationSettings(
+                    DataRequestPriority.Foreground,
+                    serverId,
+                    buildSharedSettingsServerMuteBody(enabled)
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedSettingsServerNotificationSettings(bodyText)
+                    ?: settingsContractMismatch("settings_server_notification_settings_contract_mismatch")
+            }
+        )
 }
 
 private data class SettingsContractMismatch(val code: String) : IllegalArgumentException(code)
@@ -899,23 +916,6 @@ private suspend fun <T> executeSettings(
         if (source != null) {
             warningLogger(
                 "parse_failed source=$source stage=response_or_mapper status=${statusCode ?: "unknown"} exception=${exception::class.simpleName}"
-            )
-
-            private suspend fun settingsUpdateServerMute(serverId: String, enabled: Boolean): DataResult<Boolean> =
-            executeTypedSettings(
-                source = "settings_server_notification_settings_update",
-                contractCode = "settings_server_notification_settings_contract_mismatch",
-                block = {
-                    networkClient.updateSettingsNotificationSettings(
-                        DataRequestPriority.Foreground,
-                        serverId,
-                        buildSharedSettingsServerMuteBody(enabled)
-                    )
-                },
-                mapper = { bodyText ->
-                    parseSharedSettingsServerNotificationSettings(bodyText)
-                        ?: settingsContractMismatch("settings_server_notification_settings_contract_mismatch")
-                }
             )
         }
         DataResult.Error(ScreenError(code = "network_parse_failed", retryable = true))
