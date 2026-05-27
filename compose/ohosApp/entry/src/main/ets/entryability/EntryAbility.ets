@@ -41,6 +41,8 @@ const SLOCK_FONTS: SlockFontResource[] = [
 
 export default class EntryAbility extends UIAbility {
   private static buglyInitialized: boolean = false;
+  private static fontModuleRegistered: boolean = false;
+  private static uiFontsRegistered: boolean = false;
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
@@ -75,26 +77,44 @@ export default class EntryAbility extends UIAbility {
         hilog.error(0x0000, 'testTag', 'Failed to load the content. Cause: %{public}s', JSON.stringify(err) ?? '');
         return;
       }
+      this.registerSlockFonts(mainWindow);
       hilog.info(0x0000, 'testTag', 'Succeeded in loading the content. Data: %{public}s', JSON.stringify(data) ?? '');
     });
   }
 
-  private registerSlockFonts(): void {
-    const uiFont = this.context.windowStage.getMainWindowSync().getUIContext().getFont();
-    SLOCK_FONTS.forEach((fontResource: SlockFontResource) => {
-      try {
-        font.registerFont({
-          familyName: fontResource.familyName,
-          familySrc: fontResource.familySrc,
-        });
-        uiFont.registerFont({
-          familyName: fontResource.familyName,
-          familySrc: fontResource.familySrc,
-        });
-      } catch (err) {
-        hilog.warn(0x0000, 'testTag', 'Failed to register font %{public}s. Cause: %{public}s', fontResource.familyName, JSON.stringify(err) ?? '');
-      }
-    });
+  private registerSlockFonts(mainWindow?: window.Window): void {
+    if (!EntryAbility.fontModuleRegistered) {
+      SLOCK_FONTS.forEach((fontResource: SlockFontResource) => {
+        try {
+          font.registerFont({
+            familyName: fontResource.familyName,
+            familySrc: fontResource.familySrc,
+          });
+        } catch (err) {
+          hilog.warn(0x0000, 'testTag', 'Failed to register font module %{public}s. Cause: %{public}s', fontResource.familyName, JSON.stringify(err) ?? '');
+        }
+      });
+      EntryAbility.fontModuleRegistered = true;
+    }
+    if (mainWindow === undefined || EntryAbility.uiFontsRegistered) {
+      return;
+    }
+    try {
+      const uiFont = mainWindow.getUIContext().getFont();
+      SLOCK_FONTS.forEach((fontResource: SlockFontResource) => {
+        try {
+          uiFont.registerFont({
+            familyName: fontResource.familyName,
+            familySrc: fontResource.familySrc,
+          });
+        } catch (err) {
+          hilog.warn(0x0000, 'testTag', 'Failed to register UI font %{public}s. Cause: %{public}s', fontResource.familyName, JSON.stringify(err) ?? '');
+        }
+      });
+      EntryAbility.uiFontsRegistered = true;
+    } catch (err) {
+      hilog.warn(0x0000, 'testTag', 'Skip UI font registration until UIContext is ready. Cause: %{public}s', JSON.stringify(err) ?? '');
+    }
   }
 
   private updateSafeAreaStorage(mainWindow: window.Window): void {
