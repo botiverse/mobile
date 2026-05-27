@@ -14,9 +14,11 @@ import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.ThreadId
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -255,6 +257,45 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun startRefreshWithExistingContentStaysSilent() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = BlockingHomeApi()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = api),
+            scope = scope
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        val initialContent = store.state.value.content
+        assertTrue(initialContent is SharedHomeContentState.Content)
+        assertEquals(false, initialContent.contentRefreshing)
+
+        val blockedStart = api.blockNextChannels()
+        val startJob = launch { store.accept(SharedHomeIntent.Start) }
+        blockedStart.awaitStarted()
+
+        val routeReturnContent = store.state.value.content
+        assertTrue(routeReturnContent is SharedHomeContentState.Content)
+        assertEquals(false, routeReturnContent.contentRefreshing)
+
+        blockedStart.release()
+        startJob.join()
+
+        val blockedRefresh = api.blockNextChannels()
+        val refreshJob = launch { store.accept(SharedHomeIntent.Refresh) }
+        blockedRefresh.awaitStarted()
+
+        val manualRefreshContent = store.state.value.content
+        assertTrue(manualRefreshContent is SharedHomeContentState.Content)
+        assertEquals(true, manualRefreshContent.contentRefreshing)
+
+        blockedRefresh.release()
+        refreshJob.join()
+        scope.cancel()
+    }
+
+    @Test
     fun channelCreatedOptimisticallyAddsAndSelectsChannel() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
@@ -373,6 +414,56 @@ class SharedHomeStoreTest {
                     else -> "{}"
                 }
             return HomeNetworkResponse(code = 200, bodyText = body)
+        }
+    }
+
+    private class BlockingHomeApi : SlockHomeApi {
+        private var channelBlock: BlockingCall? = null
+
+        fun blockNextChannels(): BlockingCall =
+            BlockingCall().also { channelBlock = it }
+
+        override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
+            error("server-specific overload should be used")
+
+        override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse =
+            error("server-specific overload should be used")
+
+        override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
+            error("server-specific overload should be used")
+
+        override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
+            error("server-specific overload should be used")
+
+        override suspend fun channels(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
+            channelBlock?.let { block ->
+                channelBlock = null
+                block.started.complete(Unit)
+                block.released.await()
+            }
+            return HomeNetworkResponse(code = 200, bodyText = "[]")
+        }
+
+        override suspend fun directMessages(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = "[]")
+
+        override suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = "{}")
+
+        override suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = "[]")
+    }
+
+    private class BlockingCall {
+        val started = CompletableDeferred<Unit>()
+        val released = CompletableDeferred<Unit>()
+
+        suspend fun awaitStarted() {
+            started.await()
+        }
+
+        fun release() {
+            released.complete(Unit)
         }
     }
 

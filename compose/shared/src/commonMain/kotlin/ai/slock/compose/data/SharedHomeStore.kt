@@ -45,11 +45,15 @@ class SharedHomeStore(
 
     suspend fun accept(intent: SharedHomeIntent) {
         when (intent) {
-            SharedHomeIntent.Start -> load(_state.value.serverSwitchState)
+            SharedHomeIntent.Start ->
+                load(
+                    _state.value.serverSwitchState,
+                    showRefreshAffordance = _state.value.content !is SharedHomeContentState.Content
+                )
             SharedHomeIntent.Refresh -> {
                 val nextSwitch = _state.value.serverSwitchState.refresh()
                 _state.value = _state.value.copy(serverSwitchState = nextSwitch)
-                load(nextSwitch)
+                load(nextSwitch, showRefreshAffordance = true)
             }
             SharedHomeIntent.ToggleServerSwitcher ->
                 _state.value = _state.value.copy(serverSwitcherExpanded = !_state.value.serverSwitcherExpanded)
@@ -88,7 +92,7 @@ class SharedHomeStore(
                         selectedConversationId = null,
                         selectedTopAction = null
                     )
-                load(nextSwitch)
+                load(nextSwitch, showRefreshAffordance = true)
             }
         }
     }
@@ -128,7 +132,7 @@ class SharedHomeStore(
         if (event is DirectMessageCreated) {
             val nextSwitch = _state.value.serverSwitchState.refresh()
             _state.value = _state.value.copy(serverSwitchState = nextSwitch)
-            load(nextSwitch)
+            load(nextSwitch, showRefreshAffordance = false)
             return
         }
         if (result is DataResult.Content) {
@@ -147,16 +151,25 @@ class SharedHomeStore(
         }
     }
 
-    private suspend fun load(request: HomeServerSwitchState) {
+    private suspend fun load(
+        request: HomeServerSwitchState,
+        showRefreshAffordance: Boolean
+    ) {
         val previous = _state.value.content
-        _state.value = _state.value.copy(content = previous.asRefreshing())
+        _state.value =
+            _state.value.copy(
+                content = previous.asRefreshing(showRefreshAffordance = showRefreshAffordance)
+            )
         try {
             val session = authStore.readSession()
             if (session == null) {
                 _state.value = _state.value.copy(content = SharedHomeContentState.Error("unauthenticated"))
                 return
             }
-            _state.value = _state.value.copy(content = previous.asRefreshing(session))
+            _state.value =
+                _state.value.copy(
+                    content = previous.asRefreshing(session, showRefreshAffordance)
+                )
 
             val requestedServerId = request.selectedServerId
             requestedServerId?.let { serverId ->
@@ -165,7 +178,10 @@ class SharedHomeStore(
             }
 
             val activeSession = authStore.readSession() ?: session
-            _state.value = _state.value.copy(content = _state.value.content.asRefreshing(activeSession))
+            _state.value =
+                _state.value.copy(
+                    content = _state.value.content.asRefreshing(activeSession, showRefreshAffordance)
+                )
             val activeServerId = requestedServerId ?: activeSession.currentServerId
             val activeServer = activeServerId?.let(::ServerId)
             when (val cached = dataSource.readCachedHome(serverId = activeServer)) {
@@ -175,7 +191,12 @@ class SharedHomeStore(
                     if (latestSwitch.isCurrent(request.requestGeneration, cachedServerId)) {
                         _state.value =
                             _state.value.copy(
-                                content = SharedHomeContentState.Content(cached.data, activeSession, contentRefreshing = true),
+                                content =
+                                    SharedHomeContentState.Content(
+                                        cached.data,
+                                        activeSession,
+                                        contentRefreshing = showRefreshAffordance
+                                    ),
                                 serverSwitchState = latestSwitch.complete(request.requestGeneration, cachedServerId)
                             )
                     }
@@ -319,10 +340,11 @@ sealed interface SharedHomeContentState {
 }
 
 private fun SharedHomeContentState.asRefreshing(
-    session: StoredAuthSession? = (this as? SharedHomeContentState.Content)?.session
+    session: StoredAuthSession? = (this as? SharedHomeContentState.Content)?.session,
+    showRefreshAffordance: Boolean = true
 ): SharedHomeContentState =
     when (this) {
-        is SharedHomeContentState.Content -> copy(contentRefreshing = true)
+        is SharedHomeContentState.Content -> copy(contentRefreshing = showRefreshAffordance)
         is SharedHomeContentState.Empty -> SharedHomeContentState.Loading(session ?: this.session)
         is SharedHomeContentState.Loading -> SharedHomeContentState.Loading(session ?: this.session)
         is SharedHomeContentState.Error -> SharedHomeContentState.Loading(session)
