@@ -26,13 +26,13 @@ class SanitizedDiagnosticsLogBufferTest {
     fun keepsOnlyRecentEntries() {
         SanitizedDiagnosticsLogBuffer.clear()
 
-        repeat(90) { index ->
+        repeat(100_005) { index ->
             SanitizedDiagnosticsLogBuffer.record("Test", "entry=$index", timestampMillis = index.toLong())
         }
 
         val recent = SanitizedDiagnosticsLogBuffer.recent()
-        assertEquals(80, recent.size)
-        assertEquals("entry=10", recent.first().message)
-        assertEquals("entry=89", recent.last().message)
+        assertEquals(100_000, recent.size)
+        assertEquals("entry=5", recent.first().message)
+        assertEquals("entry=100004", recent.last().message)
     }
 }

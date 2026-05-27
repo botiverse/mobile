@@ -242,8 +242,8 @@ class SqlDelightSlockLocalStore(
         val conversations =
             queries.selectHomeConversations(serverId.value)
                 .executeAsList()
+                .dedupeHomeConversationRows()
                 .map { it.toConversationSummary() }
-                .dedupeHomeConversations()
         return LocalHomeConversations(
             channels = conversations.filter { it.kind == ConversationKind.Channel },
             directMessages = conversations.filter { it.kind == ConversationKind.DirectMessage }
@@ -775,16 +775,30 @@ private fun Local_conversation.toConversationSummary(): ConversationSummary =
             )
     )
 
-private fun List<ConversationSummary>.dedupeHomeConversations(): List<ConversationSummary> {
-    val deduped = LinkedHashMap<String, ConversationSummary>()
-    for (conversation in this) {
-        val key = conversation.homeConversationKey()
-        if (key !in deduped) {
-            deduped[key] = conversation
+private fun List<Local_conversation>.dedupeHomeConversationRows(): List<Local_conversation> =
+    groupBy { row ->
+        when (row.kind.toConversationKind()) {
+            ConversationKind.Thread -> row.thread_id
+            else -> row.channel_id.ifBlank { row.thread_id }
         }
-    }
-    return deduped.values.toList()
-}
+    }.values
+        .map { rows ->
+            rows.maxWithOrNull(
+                compareBy<Local_conversation> { it.last_synced_at_ms }
+                    .thenBy { it.updated_at_label.orEmpty() }
+                    .thenBy { it.id }
+            ) ?: rows.first()
+        }
+        .sortedWith(
+            compareBy<Local_conversation> {
+                when (it.kind) {
+                    ConversationKind.Channel.wireValue -> 0
+                    ConversationKind.DirectMessage.wireValue -> 1
+                    else -> 2
+                }
+            }.thenBy { it.name.lowercase() }
+                .thenBy { it.id }
+        )
 
 private fun ConversationSummary.homeConversationKey(): String =
     when (kind) {

@@ -33,8 +33,6 @@ import ai.slock.android.core.state.EmptyReason
 import ai.slock.compose.model.AvatarReference
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.take
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -1390,14 +1388,10 @@ class SlockLocalWriteThroughTest {
         val newMessage = message("message-2", seq = 2).copy(body = "realtime message")
         writer.writeRealtimeEvent(serverId, MessageNew(newMessage))
 
-        // Collect next 2 emissions (initial + after realtime event)
-        val emissions = withTimeout(2000) { flow.take(2).toList() }
-
-        // Verify we got 2 emissions
-        assertEquals(2, emissions.size)
-
-        // Verify second emission contains both messages
-        val updated = emissions[1]
+        val updated =
+            withTimeout(2000) {
+                flow.first { timeline -> timeline?.messages?.map { it.id.value } == listOf("message-1", "message-2") }
+            }
         assertEquals(2, updated?.messages?.size)
         assertEquals(
             listOf("message-1", "message-2"),
