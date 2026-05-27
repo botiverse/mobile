@@ -24,14 +24,19 @@ const BUGLY_APP_CHANNEL = 'ohos';
 const BUGLY_DEBUG_MODE = false;
 const BUGLY_DEVICE_DIR = 'bugly';
 const BUGLY_DEVICE_ID_FILE = 'device_id.txt';
-const SLOCK_FONT_NAMES: string[] = [
-  'space_grotesk',
-  'space_grotesk_regular',
-  'space_grotesk_medium',
-  'space_grotesk_semibold',
-  'space_grotesk_bold',
-  'space_grotesk_light',
-  'space_grotesk_variable',
+interface SlockFontResource {
+  familyName: string;
+  familySrc: Resource;
+}
+
+const SLOCK_FONTS: SlockFontResource[] = [
+  { familyName: 'space_grotesk', familySrc: $rawfile('fonts/space_grotesk.ttf') },
+  { familyName: 'space_grotesk_regular', familySrc: $rawfile('fonts/space_grotesk_regular.ttf') },
+  { familyName: 'space_grotesk_medium', familySrc: $rawfile('fonts/space_grotesk_medium.ttf') },
+  { familyName: 'space_grotesk_semibold', familySrc: $rawfile('fonts/space_grotesk_semibold.ttf') },
+  { familyName: 'space_grotesk_bold', familySrc: $rawfile('fonts/space_grotesk_bold.ttf') },
+  { familyName: 'space_grotesk_light', familySrc: $rawfile('fonts/space_grotesk_light.ttf') },
+  { familyName: 'space_grotesk_variable', familySrc: $rawfile('fonts/space_grotesk_variable.ttf') },
 ];
 
 export default class EntryAbility extends UIAbility {
@@ -75,15 +80,19 @@ export default class EntryAbility extends UIAbility {
   }
 
   private registerSlockFonts(): void {
-    const resourceDir = this.context.resourceDir;
-    SLOCK_FONT_NAMES.forEach((fontName: string) => {
+    const uiFont = this.context.windowStage.getMainWindowSync().getUIContext().getFont();
+    SLOCK_FONTS.forEach((fontResource: SlockFontResource) => {
       try {
         font.registerFont({
-          familyName: fontName,
-          familySrc: `${resourceDir}/fonts/${fontName}.ttf`,
+          familyName: fontResource.familyName,
+          familySrc: fontResource.familySrc,
+        });
+        uiFont.registerFont({
+          familyName: fontResource.familyName,
+          familySrc: fontResource.familySrc,
         });
       } catch (err) {
-        hilog.warn(0x0000, 'testTag', 'Failed to register font %{public}s. Cause: %{public}s', fontName, JSON.stringify(err) ?? '');
+        hilog.warn(0x0000, 'testTag', 'Failed to register font %{public}s. Cause: %{public}s', fontResource.familyName, JSON.stringify(err) ?? '');
       }
     });
   }
