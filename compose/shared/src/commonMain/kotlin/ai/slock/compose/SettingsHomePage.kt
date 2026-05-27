@@ -2267,6 +2267,22 @@ private fun AppShellAuthGateContent(
         }
     }
 
+    fun submitLogin(emailValue: String = state.email, passwordValue: String = state.password) {
+        val update = reducer.reduce(state.copy(email = emailValue, password = passwordValue), LoginFormEvent.Submit)
+        state = update.state
+        when (val effect = update.effect) {
+            is LoginFormEffect.SubmitLogin ->
+                pendingLogin =
+                    PendingAppShellLogin(
+                        nonce = (pendingLogin?.nonce ?: 0) + 1,
+                        email = effect.email,
+                        password = effect.password
+                    )
+            LoginFormEffect.FocusEmail -> Unit
+            null -> Unit
+        }
+    }
+
     when (mode) {
         "register" ->
             RegisterContent(
@@ -2301,21 +2317,8 @@ private fun AppShellAuthGateContent(
                 socialSubmittingProvider = socialSubmittingProvider,
                 onEmailChange = { state = reducer.reduce(state, LoginFormEvent.EmailChanged(it)).state },
                 onPasswordChange = { state = reducer.reduce(state, LoginFormEvent.PasswordChanged(it)).state },
-                onSubmit = {
-                    val update = reducer.reduce(state, LoginFormEvent.Submit)
-                    state = update.state
-                    when (val effect = update.effect) {
-                        is LoginFormEffect.SubmitLogin ->
-                            pendingLogin =
-                                PendingAppShellLogin(
-                                    nonce = (pendingLogin?.nonce ?: 0) + 1,
-                                    email = effect.email,
-                                    password = effect.password
-                                )
-                        LoginFormEffect.FocusEmail -> Unit
-                        null -> Unit
-                    }
-                },
+                onSubmit = { submitLogin() },
+                onSubmitValues = { emailValue, passwordValue -> submitLogin(emailValue, passwordValue) },
                 onSocialSignIn = { provider ->
                     state = state.copy(submitting = false, errorMessage = null)
                     socialSubmittingProvider = provider

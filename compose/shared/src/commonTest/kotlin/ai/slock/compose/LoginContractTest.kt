@@ -26,4 +26,12 @@ class LoginContractTest {
         assertEquals("user@example.com", effect.email)
         assertEquals("secret", effect.password)
     }
+
+    @Test
+    fun loginFormCanSubmitOnlyWhenFieldsAreReady() {
+        assertEquals(false, canSubmitLoginForm(email = "user@example.com", password = "", formBusy = false))
+        assertEquals(false, canSubmitLoginForm(email = "", password = "secret", formBusy = false))
+        assertEquals(false, canSubmitLoginForm(email = "user@example.com", password = "secret", formBusy = true))
+        assertEquals(true, canSubmitLoginForm(email = "user@example.com", password = "secret", formBusy = false))
+    }
 }

@@ -94,6 +94,9 @@ class LoginFormReducer {
         }
 }
 
+internal fun canSubmitLoginForm(email: String, password: String, formBusy: Boolean): Boolean =
+    email.isNotBlank() && password.isNotBlank() && !formBusy
+
 sealed class CreateAccountFormEvent {
     data class NameChanged(val value: String) : CreateAccountFormEvent()
     data class EmailChanged(val value: String) : CreateAccountFormEvent()

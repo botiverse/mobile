@@ -146,6 +146,22 @@ private fun LoginScreen() {
         }
     }
 
+    fun submitLogin(emailValue: String = state.email, passwordValue: String = state.password) {
+        val update = reducer.reduce(state.copy(email = emailValue, password = passwordValue), LoginFormEvent.Submit)
+        state = update.state
+        when (val effect = update.effect) {
+            is LoginFormEffect.SubmitLogin -> {
+                pendingLogin = PendingLogin(
+                    nonce = (pendingLogin?.nonce ?: 0) + 1,
+                    email = effect.email,
+                    password = effect.password
+                )
+            }
+            LoginFormEffect.FocusEmail -> Unit
+            null -> Unit
+        }
+    }
+
     LoginContent(
         email = state.email,
         password = state.password,
@@ -155,21 +171,8 @@ private fun LoginScreen() {
         socialSubmittingProvider = socialSubmittingProvider,
         onEmailChange = { state = reducer.reduce(state, LoginFormEvent.EmailChanged(it)).state },
         onPasswordChange = { state = reducer.reduce(state, LoginFormEvent.PasswordChanged(it)).state },
-        onSubmit = {
-            val update = reducer.reduce(state, LoginFormEvent.Submit)
-            state = update.state
-            when (val effect = update.effect) {
-                is LoginFormEffect.SubmitLogin -> {
-                    pendingLogin = PendingLogin(
-                        nonce = (pendingLogin?.nonce ?: 0) + 1,
-                        email = effect.email,
-                        password = effect.password
-                    )
-                }
-                LoginFormEffect.FocusEmail -> Unit
-                null -> Unit
-            }
-        },
+        onSubmit = { submitLogin() },
+        onSubmitValues = { emailValue, passwordValue -> submitLogin(emailValue, passwordValue) },
         onSocialSignIn = { provider ->
             state = state.copy(submitting = false, errorMessage = null)
             socialSubmittingProvider = provider
@@ -297,12 +300,30 @@ internal fun LoginContent(
     onEmailChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onSubmit: () -> Unit,
+    onSubmitValues: (String, String) -> Unit = { _, _ -> onSubmit() },
     onSocialSignIn: (AuthProvider) -> Unit = {},
     onForgotPassword: () -> Unit,
     onCreateAccount: () -> Unit
 ) {
+    var emailDraft by remember { mutableStateOf(email) }
+    var passwordDraft by remember { mutableStateOf(password) }
+    LaunchedEffect(email) {
+        if (email != emailDraft) {
+            emailDraft = email
+        }
+    }
+    LaunchedEffect(password) {
+        if (password != passwordDraft) {
+            passwordDraft = password
+        }
+    }
     val formBusy = submitting || socialSubmittingProvider != null
-    val canSubmit = email.isNotBlank() && password.isNotBlank() && !formBusy
+    val canSubmit = canSubmitLoginForm(emailDraft, passwordDraft, formBusy)
+    val submitIfReady = {
+        if (canSubmit) {
+            onSubmitValues(emailDraft, passwordDraft)
+        }
+    }
     AuthScaffold {
         AuthCenterMark()
         Text(
@@ -312,27 +333,33 @@ internal fun LoginContent(
         )
         AuthFormColumn {
             AuthTextField(
-                value = email,
-                onValueChange = onEmailChange,
+                value = emailDraft,
+                onValueChange = {
+                    emailDraft = it
+                    onEmailChange(it)
+                },
                 label = "Email",
                 required = true,
                 enabled = !formBusy,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(onNext = { onSubmit() })
+                keyboardActions = KeyboardActions.Default
             )
             AuthTextField(
-                value = password,
-                onValueChange = onPasswordChange,
+                value = passwordDraft,
+                onValueChange = {
+                    passwordDraft = it
+                    onPasswordChange(it)
+                },
                 label = "Password",
                 required = true,
                 enabled = !formBusy,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { onSubmit() })
+                keyboardActions = KeyboardActions(onDone = { submitIfReady() })
             )
             AuthError(errorMessage)
             AuthActionButton(
                 text = if (submitting) "Signing in..." else "Sign in",
-                onClick = onSubmit,
+                onClick = submitIfReady,
                 tone = if (submitting) AuthButtonTone.Pink else AuthButtonTone.Pink,
                 enabled = canSubmit,
                 loading = submitting,
