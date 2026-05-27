@@ -713,7 +713,7 @@ private fun ThreadMessageVisualCard(
                             alignEnd = false,
                             onOpenThread = {},
                             onOpenTask = {},
-                            onTaskStatusChange = { _, _ -> }
+                            onOpenTaskStatusMenu = {}
                         )
                     }
                 }
@@ -1745,6 +1745,8 @@ private fun ThreadMessagesList(
     val coroutineScope = rememberCoroutineScope()
     var actionMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var actionMenuAnchor by remember(payload.instanceId) { mutableStateOf(Offset(16f, 16f)) }
+    var taskStatusMenuMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
+    var taskStatusMenuAnchor by remember(payload.instanceId) { mutableStateOf(Offset(16f, 16f)) }
     var allowBottomAutoAnchor by remember(payload.instanceId) { mutableStateOf(true) }
     val latestItemIndex = remember(
         payload.originStatus,
@@ -1858,8 +1860,9 @@ private fun ThreadMessagesList(
                         taskStatusActionsEnabled = payload.showTaskStatusActions,
                         onOpenThread = { onThreadEvent("openMessageThread", message.id, null, null) },
                         onOpenTask = { onThreadEvent("openTask", it, null, null) },
-                        onTaskStatusChange = { taskId, status ->
-                            onThreadEvent("setTaskStatus", taskId, null, status.key)
+                        onOpenTaskStatusMenu = { anchor ->
+                            taskStatusMenuMessageId = message.id
+                            taskStatusMenuAnchor = anchor
                         },
                         onOpenMarkdownTag = onOpenMarkdownTag,
                         onOpenMarkdownUrl = onOpenMarkdownUrl
@@ -1884,8 +1887,9 @@ private fun ThreadMessagesList(
                         onOpenMember = { onThreadEvent("openMember", it, null, null) },
                         onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
                         onOpenTask = { onThreadEvent("openTask", it, null, null) },
-                        onTaskStatusChange = { taskId, status ->
-                            onThreadEvent("setTaskStatus", taskId, null, status.key)
+                        onOpenTaskStatusMenu = { anchor ->
+                            taskStatusMenuMessageId = message.id
+                            taskStatusMenuAnchor = anchor
                         },
                         timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
                         onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
@@ -1959,6 +1963,26 @@ private fun ThreadMessagesList(
                         onThreadEvent(action, message.taskId, null, null)
                     },
                     diagnosticsLogger = diagnosticsLogger
+                )
+            }
+        }
+        taskStatusMenuMessageId?.let { messageId ->
+            payload.messages.firstOrNull { it.id == messageId }?.let { message ->
+                val selectedStatus = message.taskStatus.threadTaskStatusOption()
+                SlockBaseMenuOverlay(
+                    anchor = taskStatusMenuAnchor,
+                    items = ThreadTaskStatusMenuItems,
+                    selectedId = selectedStatus.key,
+                    selectedRowColor = SlockColor.BrandYellow,
+                    onDismiss = { taskStatusMenuMessageId = null },
+                    onSelect = { selectedId ->
+                        taskStatusMenuMessageId = null
+                        val taskId = message.taskId?.takeIf { it.isNotBlank() }
+                        val status = selectedId.toSharedThreadTaskStatus()
+                        if (taskId != null && status != null && status.name != selectedStatus.key) {
+                            onThreadEvent("setTaskStatus", taskId, null, selectedId)
+                        }
+                    }
                 )
             }
         }
@@ -2198,7 +2222,7 @@ private fun ThreadSystemMessageRow(
     taskStatusActionsEnabled: Boolean,
     onOpenThread: () -> Unit,
     onOpenTask: (String) -> Unit,
-    onTaskStatusChange: (String, ThreadTaskStatusOption) -> Unit,
+    onOpenTaskStatusMenu: (Offset) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit
 ) {
@@ -2237,7 +2261,7 @@ private fun ThreadSystemMessageRow(
             alignEnd = false,
             onOpenThread = onOpenThread,
             onOpenTask = onOpenTask,
-            onTaskStatusChange = onTaskStatusChange
+            onOpenTaskStatusMenu = onOpenTaskStatusMenu
         )
     }
 }
@@ -2313,7 +2337,7 @@ private fun ThreadMessageCard(
     onOpenMember: (String) -> Unit,
     onOpenThread: (String) -> Unit,
     onOpenTask: (String) -> Unit,
-    onTaskStatusChange: (String, ThreadTaskStatusOption) -> Unit,
+    onOpenTaskStatusMenu: (Offset) -> Unit,
     onOpenAttachment: (String) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
@@ -2423,7 +2447,7 @@ private fun ThreadMessageCard(
                             alignEnd = alignOwnMessageRight,
                             onOpenThread = { onOpenThread(message.id) },
                             onOpenTask = onOpenTask,
-                            onTaskStatusChange = onTaskStatusChange
+                            onOpenTaskStatusMenu = onOpenTaskStatusMenu
                         )
                     }
                 }
@@ -2510,7 +2534,7 @@ private fun ThreadMessageFooterMeta(
     alignEnd: Boolean,
     onOpenThread: () -> Unit,
     onOpenTask: (String) -> Unit,
-    onTaskStatusChange: (String, ThreadTaskStatusOption) -> Unit
+    onOpenTaskStatusMenu: (Offset) -> Unit
 ) {
     val hasTask =
         !message.taskId.isNullOrBlank() ||
@@ -2521,7 +2545,6 @@ private fun ThreadMessageFooterMeta(
     val visibleReactions = message.reactions.filter { it.count > 0 }
     val hasReactions = visibleReactions.isNotEmpty()
     if (!hasTask && !hasReplies && !hasReactions) return
-    var statusSheetOpen by remember(message.id, message.taskStatus) { mutableStateOf(false) }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -2532,36 +2555,19 @@ private fun ThreadMessageFooterMeta(
         if (hasTask) {
             val label = threadMessageTaskMetaLabel(message, resolvedTaskAssigneeName) ?: "Task"
             val selectedStatus = message.taskStatus.threadTaskStatusOption()
+            val taskChipClick: ((Offset) -> Unit)? =
+                when {
+                    taskStatusActionsEnabled -> onOpenTaskStatusMenu
+                    taskOpenEnabled -> { _ -> message.taskId?.let(onOpenTask) }
+                    else -> null
+                }
             ThreadMetaChip(
                 label = label,
                 icon = null,
                 color = selectedStatus.color,
                 modifier = Modifier.weight(1f, fill = false).widthIn(max = 260.dp),
-                onClick = if (taskOpenEnabled || taskStatusActionsEnabled) {
-                    { statusSheetOpen = true }
-                } else {
-                    null
-                }
+                onClick = taskChipClick
             )
-            if (statusSheetOpen && (taskOpenEnabled || taskStatusActionsEnabled)) {
-                ThreadTaskStatusSheet(
-                    message = message,
-                    selectedStatus = selectedStatus,
-                    onDismiss = { statusSheetOpen = false },
-                    onOpenTask = {
-                        statusSheetOpen = false
-                        if (taskOpenEnabled) {
-                            message.taskId?.let(onOpenTask)
-                        }
-                    },
-                    onStatusSelected = { status ->
-                        statusSheetOpen = false
-                        if (taskStatusActionsEnabled) {
-                            message.taskId?.let { taskId -> onTaskStatusChange(taskId, status) }
-                        }
-                    }
-                )
-            }
         }
         if (hasReplies) {
             val replyLabel = threadMessageRepliesMetaLabel(message)
@@ -2570,7 +2576,7 @@ private fun ThreadMessageFooterMeta(
                 icon = "message-square",
                 color = SlockColor.AppBgLightBlue,
                 modifier = Modifier.widthIn(max = 220.dp),
-                onClick = onOpenThread
+                onClick = { _ -> onOpenThread() }
             )
         }
         if (hasReactions) {
@@ -2631,6 +2637,11 @@ private val threadTaskStatusOptions =
         ThreadTaskStatusOption("Done", "Done", "circle-check-big", SlockColor.AccentLime),
         ThreadTaskStatusOption("Closed", "Closed", "ban", SlockColor.AccentRed)
     )
+
+private val ThreadTaskStatusMenuItems: List<SlockBaseMenuItem> =
+    threadTaskStatusOptions.map { option ->
+        SlockBaseMenuItem(id = option.key, label = option.label)
+    }
 
 private fun String?.threadTaskStatusOption(): ThreadTaskStatusOption {
     val normalized =
@@ -2696,104 +2707,26 @@ private fun String.decodeBasicHtmlEntities(): String =
         .replace("&#39;", "'")
 
 @Composable
-private fun ThreadTaskStatusSheet(
-    message: KuiklyThreadMessageItem,
-    selectedStatus: ThreadTaskStatusOption,
-    onDismiss: () -> Unit,
-    onOpenTask: () -> Unit,
-    onStatusSelected: (ThreadTaskStatusOption) -> Unit
-) {
-    SlockModalLayer(
-        title = "Task status",
-        subtitle =
-            listOfNotNull(
-                message.taskNumber?.let { "#$it" },
-                message.taskAssigneeName?.takeIf { it.isNotBlank() }?.let {
-                    "@${it.removePrefix("@")}"
-                }
-            ).joinToString(" "),
-        onDismiss = onDismiss
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            threadTaskStatusOptions.forEach { status ->
-                ThreadTaskStatusSheetRow(
-                    status = status,
-                    selected = status.key == selectedStatus.key,
-                    onClick = { onStatusSelected(status) }
-                )
-            }
-            SlockActionSheetRow(
-                title = "Open task",
-                subtitle = message.taskNumber?.let { "#$it" }.orEmpty(),
-                icon = "external-link",
-                onClick = onOpenTask
-            )
-        }
-    }
-}
-
-@Composable
-private fun ThreadTaskStatusSheetRow(
-    status: ThreadTaskStatusOption,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    Button(
-        onClick = onClick,
-        modifier =
-            Modifier.fillMaxWidth()
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .padding(horizontal = 12.dp, vertical = 10.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Box(
-                modifier =
-                    Modifier.size(34.dp)
-                        .background(status.color)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                SlockLucideIcon(status.icon, modifier = Modifier.size(17.dp))
-            }
-            Text(
-                text = status.label,
-                style = SlockType.ButtonBold,
-                color = SlockColor.TextBlack,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (selected) {
-                SlockLucideIcon("check", modifier = Modifier.size(16.dp))
-            }
-        }
-    }
-}
-
-@Composable
 private fun ThreadMetaChip(
     label: String,
     icon: String?,
     color: Color,
-    onClick: (() -> Unit)?,
+    onClick: ((Offset) -> Unit)?,
     modifier: Modifier = Modifier
 ) {
-    val clickableModifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
-    Box(
+    Button(
+        onClick2 = { anchor -> onClick?.invoke(anchor) },
+        enabled = onClick != null,
+        pressFeedback = onClick != null,
         modifier = modifier
             .border(SlockStroke.Thin, SlockColor.BorderBlack)
             .background(color)
-            .then(clickableModifier)
-            .padding(horizontal = 6.dp, vertical = 3.dp),
-        contentAlignment = Alignment.Center
+            .padding(horizontal = 6.dp, vertical = 3.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-    ) {
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
             icon?.takeIf { it.isNotBlank() }?.let {
                 SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
             }
@@ -3070,7 +3003,7 @@ private fun ThreadOriginCard(
                         onOpenMember = {},
                         onOpenThread = {},
                         onOpenTask = {},
-                        onTaskStatusChange = { _, _ -> },
+                        onOpenTaskStatusMenu = {},
                         timestampLabel = payload.formatTimestampLabel(origin.timestampLabel),
                         onOpenAttachment = {},
                         onOpenMarkdownTag = {},
