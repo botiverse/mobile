@@ -1,8 +1,8 @@
 import { KRAny, KuiklyRenderBaseView, KuiklyRenderCallback } from '@kuikly-open/render';
 import { ComponentContent } from '@kit.ArkUI';
+import { fileUri } from '@kit.CoreFileKit';
 import { DividerMode, HdsTabs, HdsTabsController } from '@kit.UIDesignKit';
 import { hdsMaterial } from '@hms.hds.hdsMaterial';
-import { SlockLucidePathEntry, slockLucidePathEntries } from '../generated/SlockLucidePathIcons';
 
 const kKeysText = 'keysText';
 const kLabelsText = 'labelsText';
@@ -123,6 +123,13 @@ export class SlockOhosHdsTabBarView extends KuiklyRenderBaseView {
     });
   }
 
+  iconResource(name: string): ResourceStr | null {
+    const iconName = normalizeIconName(name);
+    if (iconName.length === 0) {
+      return null;
+    }
+    return fileUri.getUriFromPath(getContext().resourceDir + '/lucide/' + iconName + '.svg');
+  }
 }
 
 @Component
@@ -138,6 +145,13 @@ export struct SlockOhosHdsTabBar {
 
   private itemFontWeight(index: number): FontWeight {
     return this.renderView.selectedIndex() === index ? FontWeight.Bold : FontWeight.Medium;
+  }
+
+  private itemIconOpacity(item: SlockHdsTabItem, index: number): number {
+    if (!item.enabled) {
+      return 0.4;
+    }
+    return this.renderView.selectedIndex() === index ? 1 : 0.45;
   }
 
   build() {
@@ -193,26 +207,13 @@ export struct SlockOhosHdsTabBar {
   @Builder
   tabBarItem(item: SlockHdsTabItem, index: number) {
     Column() {
-      Stack({ alignContent: Alignment.Center }) {
-        ForEach(slockLucidePathEntries(item.icon), (entry: SlockLucidePathEntry) => {
-          Path({
-            width: `${entry.viewportWidth}px`,
-            height: `${entry.viewportHeight}px`,
-            commands: entry.commands,
-          })
-            .width(`${entry.viewportWidth}px`)
-            .height(`${entry.viewportHeight}px`)
-            .fill(pathPaint(this.itemColor(item, index), entry.fillOpacity))
-            .stroke(pathPaint(this.itemColor(item, index), entry.strokeOpacity))
-            .strokeWidth(entry.strokeOpacity > 0 ? `${entry.strokeWidth}px` : 0)
-            .strokeLineCap(entry.strokeLineCap)
-            .strokeLineJoin(entry.strokeLineJoin)
-            .scale({ x: tabIconScale(entry), y: tabIconScale(entry) })
-            .antiAlias(true)
-        }, (entry: SlockLucidePathEntry) => `${entry.commands}:${entry.strokeWidth}`)
-      }
-      .width(kIconSize)
-      .height(kIconSize)
+      Image(this.renderView.iconResource(item.icon))
+        .width(kIconSize)
+        .height(kIconSize)
+        .objectFit(ImageFit.Contain)
+        .interpolation(ImageInterpolation.High)
+        .supportSvg2(true)
+        .opacity(this.itemIconOpacity(item, index))
       Text(item.label.toUpperCase())
         .fontSize(9)
         .fontWeight(this.itemFontWeight(index))
@@ -249,13 +250,15 @@ function normalizeNumber(value: KRAny | KuiklyRenderCallback): number {
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
 }
 
-function pathPaint(color: ResourceColor, opacity: number): ResourceColor {
-  return opacity > 0 ? color : '#00000000';
-}
-
-function tabIconScale(entry: SlockLucidePathEntry): number {
-  const maxViewport = Math.max(entry.viewportWidth, entry.viewportHeight);
-  return maxViewport > 0 ? vp2px(kIconSize / maxViewport) : vp2px(1);
+function normalizeIconName(value: string): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return value
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/_/g, '-')
+    .toLowerCase();
 }
 
 @Builder
