@@ -43,6 +43,7 @@ export default class EntryAbility extends UIAbility {
   private static buglyInitialized: boolean = false;
   private static fontModuleRegistered: boolean = false;
   private static uiFontsRegistered: boolean = false;
+  private mainWindow?: window.Window;
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
@@ -59,6 +60,7 @@ export default class EntryAbility extends UIAbility {
     // Main window is created, set main page for this ability
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
     const mainWindow = windowStage.getMainWindowSync();
+    this.mainWindow = mainWindow;
     mainWindow.setWindowLayoutFullScreen(true);
     this.updateSafeAreaStorage(mainWindow);
     mainWindow.on('avoidAreaChange', (data: window.AvoidAreaOptions) => {
@@ -128,14 +130,28 @@ export default class EntryAbility extends UIAbility {
     }
   }
 
+  private restoreMainWindowLayout(): void {
+    if (this.mainWindow === undefined) {
+      return;
+    }
+    try {
+      this.mainWindow.setWindowLayoutFullScreen(true);
+      this.updateSafeAreaStorage(this.mainWindow);
+    } catch (err) {
+      hilog.warn(0x0000, 'testTag', 'Failed to restore main window layout. Cause: %{public}s', JSON.stringify(err) ?? '');
+    }
+  }
+
   onWindowStageDestroy(): void {
     // Main window is destroyed, release UI related resources
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
+    this.mainWindow = undefined;
   }
 
   onForeground(): void {
     // Ability has brought to foreground
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onForeground');
+    this.restoreMainWindowLayout();
   }
 
   onBackground(): void {
