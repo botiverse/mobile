@@ -447,15 +447,13 @@ private fun SharedTasksLoadedBodyContent(
         }
 
         statusMenuTask?.let { task ->
-            // Use the shared single-select menu. Reusing it keeps visual parity with the
-            // home channel menu (same shadow, same row sizing) instead of inventing a
-            // tasks-only chrome.
             SlockBaseMenuOverlay(
                 anchor = statusMenuAnchor,
-                items = task.status.validTransitions().map { next ->
-                    SlockBaseMenuItem(id = next.name, label = next.label, icon = next.iconName)
+                items = TaskStatus.values().map { next ->
+                    SlockBaseMenuItem(id = next.name, label = next.label)
                 },
                 selectedId = task.status.name,
+                uppercaseLabels = false,
                 onDismiss = { statusMenuTask = null },
                 onSelect = { id ->
                     val next = TaskStatus.values().firstOrNull { it.name == id }
@@ -1038,20 +1036,6 @@ private fun String.toTaskSortValue(): Long {
     return Long.MIN_VALUE
 }
 
-
-/**
- * Per-status menu of valid next-status transitions. Mirrors React VALID_TRANSITIONS in
- * `packages/web/src/components/task/taskStatusUi.ts`. The long-press menu surfaces these
- * so the user only sees moves the backend will accept.
- */
-private fun TaskStatus.validTransitions(): List<TaskStatus> =
-    when (this) {
-        TaskStatus.Todo -> listOf(TaskStatus.InProgress, TaskStatus.Closed)
-        TaskStatus.InProgress -> listOf(TaskStatus.InReview, TaskStatus.Done, TaskStatus.Closed)
-        TaskStatus.InReview -> listOf(TaskStatus.Done, TaskStatus.InProgress, TaskStatus.Closed)
-        TaskStatus.Done -> listOf(TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.InReview, TaskStatus.Closed)
-        TaskStatus.Closed -> listOf(TaskStatus.Todo)
-    }
 
 @Composable
 private fun TasksCreateDialog(

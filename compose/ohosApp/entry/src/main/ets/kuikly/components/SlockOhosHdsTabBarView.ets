@@ -15,7 +15,7 @@ const kSeparator = '\u001F';
 
 const kDockHeight = 56;
 const kDockSideMargin = 18;
-const kDockBottomMargin = 18;
+const kDockBottomMargin = 26;
 const kDockHostHeight = 92;
 const kAnimationDuration = 240;
 const kItemHeight = 40;

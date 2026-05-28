@@ -844,7 +844,7 @@ private fun SlockLogoBadge(
             Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
             if (showDropdown) {
                 Spacer(Modifier.width(SlockSpacing.Xs))
-                SlockLucideIcon("chevron-down", Modifier.size(18.dp), color = "#FFFFD440")
+                SlockLucidePathIcon("chevron-down", Modifier.size(18.dp), color = "#FFFFD440")
             }
         }
     }
@@ -858,40 +858,13 @@ private fun SlockTiltedLogoBadge(
     unread: Boolean = false,
     textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
 ) {
-    if (slockUseLegacyRotatedHomeChrome()) {
-        SlockRotatedLogoBadge(
-            text = text,
-            modifier = modifier,
-            showDropdown = showDropdown,
-            unread = unread,
-            textStyle = textStyle
-        )
-        return
-    }
-
-    Box(modifier = modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
-        SlantedBadgeChrome(
-            color = SlockColor.ShadowBlack,
-            borderColor = Color.Transparent,
-            modifier = Modifier.matchParentSize().offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
-        )
-        SlantedBadgeChrome(
-            color = SlockColor.TextBlack,
-            borderColor = SlockColor.BorderBlack,
-            modifier = Modifier.matchParentSize()
-        )
-        com.tencent.kuikly.compose.foundation.layout.Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
-            if (showDropdown) {
-                Spacer(Modifier.width(SlockSpacing.Xs))
-                SlockLucideIcon("chevron-down", Modifier.size(16.dp).rotate(2f), color = "#FFFFD440")
-            }
-        }
-        if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
-    }
+    SlockRotatedLogoBadge(
+        text = text,
+        modifier = modifier,
+        showDropdown = showDropdown,
+        unread = unread,
+        textStyle = textStyle
+    )
 }
 
 @Composable
@@ -903,18 +876,25 @@ private fun SlockRotatedLogoBadge(
     textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
 ) {
     Box(modifier = modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset).rotate(-2f)) {
-        Box(Modifier.matchParentSize().offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset).background(SlockColor.ShadowBlack))
+        RectangleBadgeChrome(
+            color = SlockColor.ShadowBlack,
+            borderColor = Color.Transparent,
+            modifier = Modifier.matchParentSize().offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
+        )
+        RectangleBadgeChrome(
+            color = SlockColor.TextBlack,
+            borderColor = SlockColor.BorderBlack,
+            modifier = Modifier.matchParentSize()
+        )
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier =
-                Modifier.background(SlockColor.TextBlack)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
             if (showDropdown) {
-                Spacer(Modifier.width(SlockSpacing.Xs))
-                SlockLucideIcon("chevron-down", Modifier.size(16.dp).rotate(2f), color = "#FFFFD440")
+                Spacer(Modifier.width(4.dp))
+                SlockLucidePathIcon("chevron-down", Modifier.size(15.dp).rotate(2f), color = "#FFFFD440")
             }
         }
         if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
@@ -922,10 +902,18 @@ private fun SlockRotatedLogoBadge(
 }
 
 @Composable
-private fun slockUseLegacyRotatedHomeChrome(): Boolean {
-    val params = (LocalActivity.current.getPager() as Pager).pageData.params
-    val nativeRenderer = params.optString("slockNativeTabBarRenderer").ifBlank { params.optString("nativeTabBarRenderer") }
-    return nativeRenderer == "ohosHdsImmersive" || nativeRenderer == "hdsImmersive"
+private fun RectangleBadgeChrome(
+    color: Color,
+    borderColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val strokeWidth = SlockStroke.Default.toPx()
+        drawRect(color = color, style = Fill)
+        if (borderColor != Color.Transparent) {
+            drawRect(color = borderColor, style = Stroke(width = strokeWidth))
+        }
+    }
 }
 
 @Composable

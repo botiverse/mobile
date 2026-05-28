@@ -27,6 +27,7 @@ import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -41,9 +42,9 @@ internal data class SlockBaseMenuItem(
 private val SlockBaseMenuWidth = 136.dp
 private val SlockBaseMenuRowHeight = 34.dp
 private val SlockBaseMenuShadowOffset = 4.dp
-private const val SlockBaseMenuFallbackWidth = 136f
-private const val SlockBaseMenuAnchorGap = 8f
-private const val SlockBaseMenuTriggerNudge = 14f
+private const val SlockBaseMenuViewportGap = 8f
+private const val SlockBaseMenuHorizontalOffset = -8f
+private const val SlockBaseMenuVerticalOffset = 8f
 
 @Composable
 internal fun SlockBaseMenuOverlay(
@@ -55,24 +56,38 @@ internal fun SlockBaseMenuOverlay(
     surfaceBorderColor: Color = SlockColor.BorderBlack,
     surfaceShadowColor: Color = SlockColor.ShadowBlack,
     selectedRowColor: Color = SlockColor.BrandYellow,
+    uppercaseLabels: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     if (items.isEmpty()) return
+    val density = LocalDensity.current
     var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
+    var overlayWidth by remember { mutableStateOf(0f) }
+    var overlayHeight by remember { mutableStateOf(0f) }
     val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else SlockBaseMenuShadowOffset
     val localAnchor = Offset(anchor.x - overlayOrigin.x, anchor.y - overlayOrigin.y)
-    val menuX = (localAnchor.x - SlockBaseMenuFallbackWidth + SlockBaseMenuTriggerNudge).coerceAtLeast(SlockBaseMenuAnchorGap)
-    val menuY = (localAnchor.y + SlockBaseMenuTriggerNudge).coerceAtLeast(SlockBaseMenuAnchorGap)
+    val menuWidthPx = with(density) { SlockBaseMenuWidth.toPx() }
+    val estimatedMenuHeightPx = with(density) { (SlockBaseMenuRowHeight * items.size).toPx() }
+    val maxX = (overlayWidth - menuWidthPx - SlockBaseMenuViewportGap).coerceAtLeast(SlockBaseMenuViewportGap)
+    val maxY = (overlayHeight - estimatedMenuHeightPx - SlockBaseMenuViewportGap).coerceAtLeast(SlockBaseMenuViewportGap)
+    val menuX = (localAnchor.x + SlockBaseMenuHorizontalOffset).coerceIn(SlockBaseMenuViewportGap, maxX)
+    val menuY = (localAnchor.y + SlockBaseMenuVerticalOffset).coerceIn(SlockBaseMenuViewportGap, maxY)
+    val menuXDp = with(density) { menuX.toDp() }
+    val menuYDp = with(density) { menuY.toDp() }
     Box(
         modifier = modifier
             .fillMaxSize()
-            .onGloballyPositioned { overlayOrigin = it.positionInRoot() }
+            .onGloballyPositioned {
+                overlayOrigin = it.positionInRoot()
+                overlayWidth = it.size.width.toFloat()
+                overlayHeight = it.size.height.toFloat()
+            }
             .clickable(onClick = onDismiss),
         contentAlignment = Alignment.TopStart
     ) {
         Box(
             modifier = Modifier
-                .offset(x = menuX, y = menuY)
+                .offset(x = menuXDp, y = menuYDp)
                 .padding(end = shadowOffset, bottom = shadowOffset)
         ) {
             if (shadowOffset > 0.dp) {
@@ -95,6 +110,7 @@ internal fun SlockBaseMenuOverlay(
                         item = item,
                         selected = selected,
                         selectedRowColor = selectedRowColor,
+                        uppercaseLabel = uppercaseLabels,
                         onClick = { onSelect(item.id) }
                     )
                 }
@@ -108,6 +124,7 @@ private fun SlockBaseMenuRow(
     item: SlockBaseMenuItem,
     selected: Boolean,
     selectedRowColor: Color,
+    uppercaseLabel: Boolean,
     onClick: () -> Unit
 ) {
     Button(
@@ -129,7 +146,7 @@ private fun SlockBaseMenuRow(
                 Spacer(modifier = Modifier.width(12.dp))
             }
             Text(
-                text = item.label.uppercase(),
+                text = if (uppercaseLabel) item.label.uppercase() else item.label,
                 style = SlockType.Caption.copy(
                     fontSize = 12.sp,
                     lineHeight = 14.sp,
