@@ -70,6 +70,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -1720,6 +1721,7 @@ private fun ThreadMessagesList(
     var taskStatusMenuMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var taskStatusMenuAnchor by remember(payload.instanceId) { mutableStateOf(Offset(16f, 16f)) }
     var allowBottomAutoAnchor by remember(payload.instanceId) { mutableStateOf(true) }
+    var initialBottomAnchorReady by remember(payload.instanceId) { mutableStateOf(false) }
     val latestItemIndex = remember(
         payload.originStatus,
         payload.canLoadMoreBefore,
@@ -1762,28 +1764,40 @@ private fun ThreadMessagesList(
     }
     LaunchedEffect(payload.instanceId, latestMessageLayoutKey, latestItemIndex, allowBottomAutoAnchor) {
         if (latestItemIndex < 0) return@LaunchedEffect
+        if (!initialBottomAnchorReady) {
+            repeat(ThreadInitialBottomAnchorAttempts) { attempt ->
+                listState.awaitThreadMessagesLayoutStability(latestItemIndex)
+                listState.scrollLatestItemToRenderedBottom(latestItemIndex)
+                delay(ThreadLayoutStabilityFrameDelayMs)
+                if (attempt >= ThreadBottomAnchorMinimumAttempts &&
+                    listState.isLatestItemAtRenderedBottom(latestItemIndex)
+                ) {
+                    initialBottomAnchorReady = true
+                    return@LaunchedEffect
+                }
+            }
+            initialBottomAnchorReady = true
+            return@LaunchedEffect
+        }
         if (!allowBottomAutoAnchor && !listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
             return@LaunchedEffect
         }
         listState.awaitThreadMessagesLayoutStability(latestItemIndex)
-        repeat(ThreadBottomAnchorCorrectionAttempts) { attempt ->
-            if (listState.isScrollInProgress && !listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
-                allowBottomAutoAnchor = false
-                return@LaunchedEffect
-            }
+        if (listState.isScrollInProgress && !listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
+            allowBottomAutoAnchor = false
+            return@LaunchedEffect
+        }
+        if (!listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
             listState.scrollLatestItemToRenderedBottom(latestItemIndex)
-            delay(ThreadLayoutStabilityFrameDelayMs)
-            if (attempt >= ThreadBottomAnchorMinimumAttempts &&
-                listState.isLatestItemAtRenderedBottom(latestItemIndex)
-            ) {
-                return@LaunchedEffect
-            }
         }
     }
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().padding(vertical = 2.dp).bouncesEnable(false),
+            modifier = Modifier.fillMaxSize()
+                .padding(vertical = 2.dp)
+                .alpha(if (initialBottomAnchorReady) 1f else 0f)
+                .bouncesEnable(false),
             verticalArrangement = Arrangement.Bottom,
             beyondBoundsItemCount = threadMessagesBeyondBoundsItemCount(lazyItemCount)
         ) {
@@ -1890,7 +1904,7 @@ private fun ThreadMessagesList(
                 }
             }
         }
-        if (listState.shouldShowThreadBackToBottom(latestItemIndex)) {
+        if (initialBottomAnchorReady && listState.shouldShowThreadBackToBottom(latestItemIndex)) {
             ThreadBackToBottomButton(
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = SlockSpacing.Md, bottom = SlockSpacing.Md),
                 onClick = {
@@ -2176,7 +2190,7 @@ private fun ThreadBackToBottomButton(
 
 private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
-private const val ThreadBottomAnchorCorrectionAttempts = 4
+private const val ThreadInitialBottomAnchorAttempts = 4
 private const val ThreadLayoutStabilityFrameDelayMs = 16L
 private const val ThreadLayoutStabilityMaxFrames = 30
 private const val ThreadLayoutStabilityRequiredFrames = 3
