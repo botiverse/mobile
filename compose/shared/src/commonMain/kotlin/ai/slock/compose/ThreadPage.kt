@@ -1062,11 +1062,17 @@ internal fun SharedThreadRouteContent(
         onComposerEvent = { action, value, asTask, attachmentId ->
             when (action) {
                 "change" -> {
+                    if (composerSending) {
+                        return@ThreadPageContent
+                    }
                     value?.let { composerDraftText = it }
                     asTask?.let { composerDraftAsTask = it }
                     composerFailureLabel = null
                 }
                 "toggleAsTask" -> {
+                    if (composerSending) {
+                        return@ThreadPageContent
+                    }
                     asTask?.let { composerDraftAsTask = it }
                     composerFailureLabel = null
                 }
@@ -1147,6 +1153,8 @@ internal fun SharedThreadRouteContent(
                         }
                         uploadedAttachments = emptyList()
                         removedAttachmentIds = emptySet()
+                        composerDraftText = ""
+                        composerDraftAsTask = false
                         composerSyncNonce += 1
                         composerFailureLabel = null
                         composerSending = false
