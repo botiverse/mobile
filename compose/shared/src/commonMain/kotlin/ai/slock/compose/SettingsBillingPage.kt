@@ -10,6 +10,7 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
@@ -26,6 +27,7 @@ import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
@@ -168,6 +170,7 @@ private fun rememberBillingPayload(payload: String, instanceId: String): KuiklyS
 @Composable
 internal fun SettingsBillingContent(
     payload: KuiklySettingsBillingPayload,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
     onEvent: (String, String?) -> Unit
 ) {
     LazyColumn(
@@ -194,6 +197,7 @@ internal fun SettingsBillingContent(
                 }
             }
         }
+        item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
 

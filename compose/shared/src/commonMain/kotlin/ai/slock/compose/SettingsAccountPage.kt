@@ -12,6 +12,7 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
@@ -29,6 +30,7 @@ import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
@@ -139,6 +141,7 @@ private fun rememberAccountPayload(payload: String, instanceId: String): KuiklyS
 internal fun SettingsAccountContent(
     payload: KuiklySettingsAccountPayload,
     applyTopSafeArea: Boolean = true,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
     onEvent: (String, String?) -> Unit
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
@@ -157,6 +160,7 @@ internal fun SettingsAccountContent(
             item { SettingsConnectedAccounts(payload) }
         }
         item { SettingsLogoutAction(payload.logoutDetail, payload.logoutLabel) { onEvent("logout", null) } }
+        item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
 

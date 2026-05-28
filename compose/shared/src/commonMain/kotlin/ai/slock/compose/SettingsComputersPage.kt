@@ -25,6 +25,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
@@ -164,6 +165,7 @@ private fun rememberComputerDetailPayload(payload: String, instanceId: String): 
 @Composable
 internal fun SettingsComputersContent(
     payload: KuiklySettingsComputersPayload,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
     onEvent: (String, String?) -> Unit
 ) {
     LazyColumn(
@@ -188,12 +190,14 @@ internal fun SettingsComputersContent(
         payload.addComputerUnavailableReason?.takeIf { it.isNotBlank() }?.let { reason ->
             item { SettingsInfoStrip("Add computer", reason) }
         }
+        item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
 
 @Composable
 internal fun SettingsComputerDetailContent(
     payload: KuiklySettingsComputerDetailPayload,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
     onEvent: (String, String?) -> Unit
 ) {
     LazyColumn(
@@ -233,6 +237,7 @@ internal fun SettingsComputerDetailContent(
                 )
             }
         }
+        item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
 

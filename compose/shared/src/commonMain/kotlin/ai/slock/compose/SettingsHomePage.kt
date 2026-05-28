@@ -1123,6 +1123,7 @@ private fun SlockAppShellContent() {
                                 onSettingsAction = { action, itemId ->
                                     bridge.settingsEvent("shared-shell-settings", action, itemId)
                                 },
+                                bottomContentPadding = slockAppBottomTabBarContentInset(bottomSafeArea),
                                 onLogout = {
                                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
                                     selectedTab = "home"
@@ -1303,6 +1304,7 @@ private fun SettingsAppShellContent(
     onOpenComputer: (String) -> Unit,
     onOpenRouter: () -> Unit,
     onSettingsAction: (String, String?) -> Unit,
+    bottomContentPadding: Dp,
     onLogout: () -> Unit
 ) {
     LaunchedEffect(selectedDestination, selectedComputerId) {
@@ -1412,6 +1414,7 @@ private fun SettingsAppShellContent(
     if (selectedDestination == SettingsDestinationHome) {
         SettingsHomeContent(
             payload = appShellSettingsHomePayload(session, selectedDestination),
+            bottomContentPadding = bottomContentPadding,
             onSelect = { key ->
                 if (key == SettingsDestinationRouter) {
                     onOpenRouter()
@@ -1439,7 +1442,8 @@ private fun SettingsAppShellContent(
             SettingsDestinationAccount ->
                 SettingsAccountContent(
                     settingsState.account.toAccountPayload(session, settingsState.actionState),
-                    applyTopSafeArea = false
+                    applyTopSafeArea = false,
+                    bottomContentPadding = bottomContentPadding
                 ) { action, value ->
                     when (action) {
                         "logout" -> onSettingsIntent(SharedSettingsIntent.Logout)
@@ -1462,7 +1466,10 @@ private fun SettingsAppShellContent(
                     }
                 }
             SettingsDestinationComputers ->
-                SettingsComputersContent(settingsState.computers.toComputersPayload(settingsState.isRefreshing(SharedSettingsDestination.Computers))) { action, itemId ->
+                SettingsComputersContent(
+                    settingsState.computers.toComputersPayload(settingsState.isRefreshing(SharedSettingsDestination.Computers)),
+                    bottomContentPadding = bottomContentPadding
+                ) { action, itemId ->
                     when (action) {
                         "openComputer" -> itemId?.takeIf { it.isNotBlank() }?.let(onOpenComputer)
                         "addComputer" -> onSettingsAction(action, itemId)
@@ -1470,7 +1477,10 @@ private fun SettingsAppShellContent(
                     }
                 }
             SettingsDestinationComputerDetail ->
-                SettingsComputerDetailContent(settingsState.computerDetail.toComputerDetailPayload(selectedComputerId)) { action, itemId ->
+                SettingsComputerDetailContent(
+                    settingsState.computerDetail.toComputerDetailPayload(selectedComputerId),
+                    bottomContentPadding = bottomContentPadding
+                ) { action, itemId ->
                     when (action) {
                         "retryWorkspaces", "retryAgents" ->
                             selectedComputerId?.takeIf { it.isNotBlank() }?.let { onSettingsIntent(SharedSettingsIntent.OpenComputer(it)) }
@@ -1483,7 +1493,8 @@ private fun SettingsAppShellContent(
                     settingsState.storage.toStoragePayload(
                         actionState = settingsState.actionState,
                         refreshing = settingsState.isRefreshing(SharedSettingsDestination.Storage)
-                    )
+                    ),
+                    bottomContentPadding = bottomContentPadding
                 ) { action, target ->
                     when (action) {
                         "refreshStorage" -> onSettingsIntent(SharedSettingsIntent.RefreshStorage)
@@ -1492,13 +1503,17 @@ private fun SettingsAppShellContent(
                     }
                 }
             SettingsDestinationBilling ->
-                SettingsBillingContent(settingsState.billing.toBillingPayload(session)) { _, _ -> }
+                SettingsBillingContent(
+                    settingsState.billing.toBillingPayload(session),
+                    bottomContentPadding = bottomContentPadding
+                ) { _, _ -> }
             SettingsDestinationServer ->
                 SharedSettingsSectionContent(
                     settingsState.server.toServerPayload(
                         session = session,
                         refreshing = settingsState.isRefreshing(SharedSettingsDestination.Server)
                     ),
+                    bottomContentPadding = bottomContentPadding,
                     onAction = onSettingsAction
                 )
             SettingsDestinationMobile ->
@@ -1506,7 +1521,8 @@ private fun SettingsAppShellContent(
                     settingsState.mobile.toMobilePayload(
                         actionState = settingsState.actionState,
                         refreshing = settingsState.isRefreshing(SharedSettingsDestination.Mobile)
-                    )
+                    ),
+                    bottomContentPadding = bottomContentPadding
                 ) { action, itemId ->
                     when (action) {
                         MOBILE_ACTION_NOTIFICATION_PREFERENCE ->
@@ -1532,6 +1548,7 @@ private fun SettingsAppShellContent(
                 SharedSettingsAboutContent(
                     state = settingsState.about,
                     fallback = appShellAboutFallback(session),
+                    bottomContentPadding = bottomContentPadding,
                     onOpenDiagnostics = { onDestinationChange(SettingsDestinationDiagnostics) },
                     onCopyBuild = { summary ->
                         settingsCapabilities.bridgeCopyToClipboard(summary)
@@ -1542,6 +1559,7 @@ private fun SettingsAppShellContent(
             SettingsDestinationDiagnostics ->
                 SharedSettingsDiagnosticsContent(
                     state = settingsState.diagnostics,
+                    bottomContentPadding = bottomContentPadding,
                     onCopyLogs = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
                     onShareLogs = { onSettingsIntent(SharedSettingsIntent.ShareDiagnostics) },
                     onClearLogs = { onSettingsIntent(SharedSettingsIntent.ClearDiagnostics) },
@@ -1552,7 +1570,8 @@ private fun SettingsAppShellContent(
                 SettingsSharedPlaceholder(
                     title = "Settings",
                     detail = "This Settings section is not available in shared shell yet.",
-                    iconName = "settings"
+                    iconName = "settings",
+                    bottomContentPadding = bottomContentPadding
                 )
         }
     }
@@ -1561,6 +1580,7 @@ private fun SettingsAppShellContent(
 @Composable
 private fun SharedSettingsSectionContent(
     payload: KuiklySharedSettingsPayload,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
     onAction: (String, String?) -> Unit
 ) {
     LazyColumn(
@@ -1571,6 +1591,7 @@ private fun SharedSettingsSectionContent(
         payload.sections.forEach { section ->
             item { SharedSettingsSectionCard(section, onAction) }
         }
+        item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
 
@@ -1657,6 +1678,7 @@ private fun SharedSettingsRow(
 private fun SharedSettingsAboutContent(
     state: ScreenLoadState<SharedSettingsAboutSnapshot>,
     fallback: SharedSettingsAboutSnapshot,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
     onOpenDiagnostics: () -> Unit,
     onCopyBuild: (String) -> Unit,
     onOpenSlock: () -> Unit,
@@ -1668,7 +1690,7 @@ private fun SharedSettingsAboutContent(
             else -> fallback
         }
     val payload = snapshot.toAboutPayload()
-    SharedSettingsSectionContent(payload) { action, value ->
+    SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             "diagnostics" -> onOpenDiagnostics()
             "copyBuild" -> onCopyBuild(value.orEmpty().ifBlank { snapshot.buildSummary() })
@@ -1681,6 +1703,7 @@ private fun SharedSettingsAboutContent(
 @Composable
 private fun SharedSettingsDiagnosticsContent(
     state: ScreenLoadState<SharedSettingsDiagnosticsSnapshot>,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
     onCopyLogs: () -> Unit,
     onShareLogs: () -> Unit,
     onClearLogs: () -> Unit,
@@ -1693,7 +1716,7 @@ private fun SharedSettingsDiagnosticsContent(
             else -> emptyList()
         }
     val payload = entries.toDiagnosticsPayload(state)
-    SharedSettingsSectionContent(payload) { action, _ ->
+    SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, _ ->
         when (action) {
             "copyLogs" -> onCopyLogs()
             "shareLogs" -> onShareLogs()
@@ -1757,10 +1780,11 @@ private fun SettingsDetailBackButton(onBack: () -> Unit) {
 private fun SettingsSharedPlaceholder(
     title: String,
     detail: String,
-    iconName: String
+    iconName: String,
+    bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
+        modifier = Modifier.fillMaxSize().padding(16.dp).padding(bottom = bottomContentPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(
@@ -6362,6 +6386,7 @@ private fun rememberSettingsHomePayload(payload: String, instanceId: String): Ku
 @Composable
 internal fun SettingsHomeContent(
     payload: KuiklySettingsHomePayload,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
     onSelect: (String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
@@ -6386,6 +6411,9 @@ internal fun SettingsHomeContent(
             }
             item {
                 Spacer(Modifier.height(SlockSpacing.Md))
+            }
+            item {
+                Spacer(Modifier.height(bottomContentPadding))
             }
         }
     }
