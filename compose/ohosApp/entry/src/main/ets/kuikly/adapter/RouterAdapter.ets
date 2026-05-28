@@ -26,6 +26,11 @@ export class RouterAdapter implements IKRRouterAdapter {
   }
 
   closePage(context: common.UIAbilityContext): void {
+    const pageStackLength = Number(router.getLength());
+    if (pageStackLength <= 1) {
+      context.terminateSelf();
+      return;
+    }
     router.back()
   }
 }
