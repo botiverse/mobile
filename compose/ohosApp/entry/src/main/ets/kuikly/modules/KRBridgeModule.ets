@@ -8,6 +8,7 @@ import { notificationManager } from '@kit.NotificationKit';
 import { KRAny } from '@kuikly-open/render';
 import { KuiklyRenderBaseModule } from '@kuikly-open/render';
 import { KuiklyRenderCallback } from '@kuikly-open/render';
+import router from '@ohos.router';
 import util from '@ohos.util';
 import fs from '@ohos.file.fs';
 import deviceInfo from '@ohos.deviceInfo';
@@ -145,8 +146,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   private showAlert(params: KRAny, callback: KuiklyRenderCallback) {
   }
 
-  // TODO close page
   private closePage() {
+    closeOhosPage(getContext(this) as common.UIAbilityContext);
   }
 
   // TODO open new page
@@ -961,4 +962,15 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       fs.closeSync(file);
     });
   }
+}
+
+function closeOhosPage(context: common.UIAbilityContext): void {
+  const routerLength = Number.parseInt(router.getLength(), 10);
+  if (!Number.isNaN(routerLength) && routerLength > 1) {
+    router.back();
+    return;
+  }
+  context.terminateSelf().catch((error: BusinessError) => {
+    console.error(`KuiklyRender terminateSelf failed ${error.code}: ${error.message}`);
+  });
 }

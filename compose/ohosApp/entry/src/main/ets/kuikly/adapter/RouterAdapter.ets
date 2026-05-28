@@ -26,11 +26,17 @@ export class RouterAdapter implements IKRRouterAdapter {
   }
 
   closePage(context: common.UIAbilityContext): void {
-    const pageStackLength = Number(router.getLength());
-    if (pageStackLength <= 1) {
-      context.terminateSelf();
-      return;
-    }
-    router.back()
+    closeOhosPage(context);
   }
+}
+
+function closeOhosPage(context: common.UIAbilityContext): void {
+  const routerLength = Number.parseInt(router.getLength(), 10);
+  if (!Number.isNaN(routerLength) && routerLength > 1) {
+    router.back();
+    return;
+  }
+  context.terminateSelf().catch((error: Error) => {
+    console.error(`KuiklyRender router terminateSelf failed ${error.message}`);
+  });
 }
