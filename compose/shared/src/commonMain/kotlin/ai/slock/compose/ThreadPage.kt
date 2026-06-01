@@ -264,6 +264,30 @@ internal data class KuiklyThreadAttachmentItem(
     val thumbnailUrl: String? = null
 )
 
+private data class ThreadImagePreviewUrl(
+    val url: String,
+    val expiresAt: String?
+)
+
+private data class ThreadImagePreviewState(
+    val images: List<KuiklyThreadAttachmentItem>,
+    val currentIndex: Int,
+    val loadingAttachmentIds: Set<String> = emptySet(),
+    val failedAttachmentIds: Set<String> = emptySet()
+) {
+    val current: KuiklyThreadAttachmentItem? get() = images.getOrNull(currentIndex)
+}
+
+private data class ThreadImageAttachmentGroup(
+    val images: List<KuiklyThreadAttachmentItem>,
+    val currentIndex: Int
+)
+
+internal data class SlockThreadWebLinkTarget(
+    val channelId: String,
+    val messageId: String? = null
+)
+
 @Serializable
 internal data class KuiklyThreadTaskItem(
     val id: String,
@@ -736,6 +760,8 @@ internal fun SharedThreadRouteContent(
     }
     var filesPayload by remember(payload.instanceId) { mutableStateOf(routeFilesPayload) }
     var filesRequestInFlight by remember(payload.instanceId) { mutableStateOf(false) }
+    var imagePreviewState by remember(payload.instanceId) { mutableStateOf<ThreadImagePreviewState?>(null) }
+    var imagePreviewUrlCache by remember(payload.instanceId) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
     LaunchedEffect(payload.instanceId, payload.filesPayload) {
         val rawFilesPayload = payload.filesPayload.trim()
         if (rawFilesPayload.isNotBlank() && rawFilesPayload != "{}") {
@@ -857,6 +883,57 @@ internal fun SharedThreadRouteContent(
             )
         }
     }
+    fun requestImagePreviewUrl(attachmentId: String) {
+        if (attachmentId in imagePreviewUrlCache) return
+        val currentPreview = imagePreviewState ?: return
+        if (attachmentId in currentPreview.loadingAttachmentIds) return
+        imagePreviewState =
+            currentPreview.copy(
+                loadingAttachmentIds = currentPreview.loadingAttachmentIds + attachmentId,
+                failedAttachmentIds = currentPreview.failedAttachmentIds - attachmentId
+            )
+        coroutineScope.launch {
+            when (val response = dataSource.attachmentUrl(attachmentId)) {
+                is ThreadApiResult.Success -> {
+                    imagePreviewUrlCache =
+                        imagePreviewUrlCache +
+                            (attachmentId to ThreadImagePreviewUrl(response.data.url, response.data.expiresAt))
+                    imagePreviewState =
+                        imagePreviewState?.takeIf { preview -> preview.images.any { it.id == attachmentId } }?.let { preview ->
+                            preview.copy(
+                                loadingAttachmentIds = preview.loadingAttachmentIds - attachmentId,
+                                failedAttachmentIds = preview.failedAttachmentIds - attachmentId
+                            )
+                        }
+                }
+                is ThreadApiResult.Failure -> {
+                    imagePreviewState =
+                        imagePreviewState?.takeIf { preview -> preview.images.any { it.id == attachmentId } }?.let { preview ->
+                            preview.copy(
+                                loadingAttachmentIds = preview.loadingAttachmentIds - attachmentId,
+                                failedAttachmentIds = preview.failedAttachmentIds + attachmentId
+                            )
+                        }
+                    if (imagePreviewState?.current?.id == attachmentId && imagePreviewState?.current?.thumbnailUrl.isNullOrBlank()) {
+                        bridge.toast("Unable to load image")
+                    }
+                }
+            }
+        }
+    }
+    fun openImagePreview(group: ThreadImageAttachmentGroup) {
+        if (group.images.isEmpty()) return
+        val currentIndex = group.currentIndex.coerceIn(0, group.images.lastIndex)
+        imagePreviewState = ThreadImagePreviewState(images = group.images, currentIndex = currentIndex)
+        requestImagePreviewUrl(group.images[currentIndex].id)
+    }
+    fun selectImagePreviewIndex(index: Int) {
+        val preview = imagePreviewState ?: return
+        if (preview.images.isEmpty()) return
+        val nextIndex = index.coerceIn(0, preview.images.lastIndex)
+        imagePreviewState = preview.copy(currentIndex = nextIndex)
+        requestImagePreviewUrl(preview.images[nextIndex].id)
+    }
     LaunchedEffect(renderedPayload.sourceThreadId, renderedPayload.selectedTab) {
         if (renderedPayload.selectedTab == KuiklyThreadTab.Files.wireValue && filesPayload.shouldFetchInitialFiles()) {
             loadThreadFiles("initial_tab")
@@ -872,24 +949,41 @@ internal fun SharedThreadRouteContent(
             threadViewModel.dispatch(SharedThreadIntent.MarkVisibleReadAll)
         }
     }
-    ThreadPageContent(
-        payload = renderedPayload,
-        filesPayload = filesPayload,
-        composerPayload = composerPayload,
-        highlightedMentions = threadState.highlightedMentions,
-        diagnosticsLogger = { bridge.log(it) },
-        onBack = onBack,
-        onThreadEvent = { action, itemId, attachmentId, tab ->
-            when {
-                action == "openAttachment" && !attachmentId.isNullOrBlank() -> {
-                    coroutineScope.launch {
-                        openSharedThreadAttachment(
-                            bridge = bridge,
-                            dataSource = dataSource,
-                            attachmentId = attachmentId
-                        )
+    Box(modifier = Modifier.fillMaxSize()) {
+        ThreadPageContent(
+            payload = renderedPayload,
+            filesPayload = filesPayload,
+            composerPayload = composerPayload,
+            highlightedMentions = threadState.highlightedMentions,
+            diagnosticsLogger = { bridge.log(it) },
+            onBack = onBack,
+            onThreadEvent = { action, itemId, attachmentId, tab ->
+                when {
+                    action == "openAttachment" && !attachmentId.isNullOrBlank() -> {
+                        val imageGroup =
+                            renderedPayload.findThreadImageAttachmentGroup(attachmentId)
+                                ?: filesPayload.findThreadImageAttachmentGroup(attachmentId)
+                        if (imageGroup != null) {
+                            openImagePreview(imageGroup)
+                        } else {
+                            coroutineScope.launch {
+                                openSharedThreadAttachment(
+                                    bridge = bridge,
+                                    dataSource = dataSource,
+                                    attachmentId = attachmentId
+                                )
+                            }
+                        }
                     }
-                }
+                    action == "downloadAttachment" && !attachmentId.isNullOrBlank() -> {
+                        coroutineScope.launch {
+                            openSharedThreadAttachment(
+                                bridge = bridge,
+                                dataSource = dataSource,
+                                attachmentId = attachmentId
+                            )
+                        }
+                    }
                 action == "copyMessage" && !itemId.isNullOrBlank() -> {
                     val body = renderedPayload.messages.firstOrNull { it.id == itemId }?.body.orEmpty()
                     if (body.isNotBlank()) {
@@ -997,7 +1091,26 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "openMarkdownUrl" && !itemId.isNullOrBlank() -> {
-                    bridge.openUrl(itemId, null)
+                    val target = itemId.toSlockThreadWebLinkTarget()
+                    if (target == null) {
+                        bridge.openUrl(itemId, null)
+                    } else {
+                        val loadingPayload = renderedPayload.webLinkLoadingPayload(target)
+                        onOpenThreadPayload(loadingPayload)
+                        coroutineScope.launch {
+                            when (val result = dataSource.fetchWebLinkThreadPayload(loadingPayload, target)) {
+                                is DataResult.Content -> onReplaceThreadPayload(result.data)
+                                is DataResult.Empty,
+                                is DataResult.Error,
+                                is DataResult.NoPermission -> {
+                                    onReplaceThreadPayload(
+                                        loadingPayload.copy(status = "error", errorCode = "thread_weblink_open_failed")
+                                    )
+                                    bridge.toast("Unable to open link")
+                                }
+                            }
+                        }
+                    }
                 }
                 action == "openMarkdownTag" && !itemId.isNullOrBlank() -> {
                     bridge.toast("Unable to open ${itemId.take(32)}")
@@ -1101,10 +1214,10 @@ internal fun SharedThreadRouteContent(
                         "thread_event_unsupported instanceId=${payload.instanceId} action=$action itemId=${itemId.orEmpty()} attachmentId=${attachmentId.orEmpty()} tab=${tab.orEmpty()}"
                     )
                 }
-            }
-        },
-        onComposerEvent = { action, value, asTask, attachmentId ->
-            when (action) {
+                }
+            },
+            onComposerEvent = { action, value, asTask, attachmentId ->
+                when (action) {
                 "change" -> {
                     if (composerSending) {
                         return@ThreadPageContent
@@ -1255,9 +1368,27 @@ internal fun SharedThreadRouteContent(
                         attachmentId = attachmentId
                     )
                 }
+                }
             }
+        )
+        imagePreviewState?.let { preview ->
+            ThreadImagePreviewOverlay(
+                state = preview,
+                resolvedUrls = imagePreviewUrlCache,
+                onDismiss = { imagePreviewState = null },
+                onOpenExternally = { attachment ->
+                    coroutineScope.launch {
+                        openSharedThreadAttachment(
+                            bridge = bridge,
+                            dataSource = dataSource,
+                            attachmentId = attachment.id
+                        )
+                    }
+                },
+                onSelectIndex = ::selectImagePreviewIndex
+            )
         }
-    )
+    }
 }
 
 private suspend fun openSharedThreadAttachment(
@@ -1268,6 +1399,316 @@ private suspend fun openSharedThreadAttachment(
     when (val response = dataSource.attachmentUrl(attachmentId)) {
         is ThreadApiResult.Success -> bridge.openUrl(response.data.url)
         is ThreadApiResult.Failure -> bridge.toast("Unable to open attachment")
+    }
+}
+
+internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
+    val trimmed = trim()
+    val schemeEnd = trimmed.indexOf("://")
+    if (schemeEnd <= 0) return null
+    val scheme = trimmed.substring(0, schemeEnd).lowercase()
+    if (scheme != "https" && scheme != "http") return null
+    val withoutScheme = trimmed.substring(schemeEnd + 3)
+    val pathStart = withoutScheme.indexOf('/')
+    val host = if (pathStart >= 0) withoutScheme.substring(0, pathStart) else withoutScheme
+    if (host.substringBefore(':').lowercase() != "app.slock.ai") return null
+    val pathAndQuery = if (pathStart >= 0) withoutScheme.substring(pathStart) else ""
+    val path = pathAndQuery.substringBefore('?')
+    val query = pathAndQuery.substringAfter('?', missingDelimiterValue = "")
+    val segments = path.split('/').filter { it.isNotBlank() }
+    val channelIndex = segments.indexOf("channel")
+    val channelId = segments.getOrNull(channelIndex + 1)?.takeIf { it.isNotBlank() } ?: return null
+    val messageId =
+        query.split('&')
+            .firstNotNullOfOrNull { part ->
+                val pieces = part.split('=', limit = 2)
+                pieces.getOrNull(1)?.takeIf { pieces.firstOrNull() == "msg" && it.isNotBlank() }
+            }
+    return SlockThreadWebLinkTarget(channelId = channelId, messageId = messageId)
+}
+
+private fun KuiklyThreadScreenPayload.webLinkLoadingPayload(target: SlockThreadWebLinkTarget): KuiklyThreadScreenPayload =
+    copy(
+        instanceId = "shared-shell-thread-${target.channelId}",
+        title = "Thread",
+        subtitle = null,
+        status = "loading",
+        sourceThreadId = target.channelId,
+        selectedTab = KuiklyThreadTab.Chat.wireValue,
+        messages = emptyList(),
+        originMessage = null,
+        originPreview = null,
+        originParentMessageId = null,
+        originStatus = "none",
+        originErrorCode = null,
+        errorCode = null,
+        filesPayload = "{}",
+        composerPayload = "{}"
+    )
+
+private fun KuiklyThreadScreenPayload.findThreadImageAttachmentGroup(attachmentId: String): ThreadImageAttachmentGroup? {
+    val messageCandidates = (listOfNotNull(originMessage) + messages).distinctBy { it.id }
+    messageCandidates.forEach { message ->
+        val images = message.attachments.filter { it.isImageAttachment() }
+        val currentIndex = images.indexOfFirst { it.id == attachmentId }
+        if (currentIndex >= 0) {
+            return ThreadImageAttachmentGroup(images = images, currentIndex = currentIndex)
+        }
+    }
+    return null
+}
+
+private fun KuiklyThreadFilesPayload.findThreadImageAttachmentGroup(attachmentId: String): ThreadImageAttachmentGroup? {
+    val images =
+        items
+            .filter { it.mimeType.startsWith("image/", ignoreCase = true) }
+            .map { item ->
+                KuiklyThreadAttachmentItem(
+                    id = item.attachmentId,
+                    name = item.name,
+                    mimeType = item.mimeType,
+                    sizeLabel = item.sizeLabel,
+                    thumbnailUrl = item.thumbnailUrl
+                )
+            }
+    val currentIndex = images.indexOfFirst { it.id == attachmentId }
+    return if (currentIndex >= 0) ThreadImageAttachmentGroup(images = images, currentIndex = currentIndex) else null
+}
+
+@Composable
+private fun ThreadImagePreviewOverlay(
+    state: ThreadImagePreviewState,
+    resolvedUrls: Map<String, ThreadImagePreviewUrl>,
+    onDismiss: () -> Unit,
+    onOpenExternally: (KuiklyThreadAttachmentItem) -> Unit,
+    onSelectIndex: (Int) -> Unit
+) {
+    val current = state.current ?: return
+    val thumbnailUrl = current.thumbnailUrl?.takeIf { it.isNotBlank() }
+    val fullUrl = resolvedUrls[current.id]?.url?.takeIf { it.isNotBlank() }
+    val displayUrl = fullUrl ?: thumbnailUrl
+    val hasMultiple = state.images.size > 1
+    val isLoading = current.id in state.loadingAttachmentIds
+    val failedWithoutImage = current.id in state.failedAttachmentIds && displayUrl == null
+    Box(
+        modifier = Modifier.fillMaxSize().background(SlockColor.TextBlack.copy(alpha = 0.92f))
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .height(58.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = current.name.ifBlank { "Image" },
+                    style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (hasMultiple) {
+                    ThreadImagePreviewCounter(
+                        label = "${state.currentIndex + 1}/${state.images.size}"
+                    )
+                }
+                ThreadImagePreviewIconButton(
+                    icon = "external-link",
+                    enabled = displayUrl != null,
+                    onClick = { onOpenExternally(current) }
+                )
+                ThreadImagePreviewIconButton(icon = "x", onClick = onDismiss)
+            }
+            Box(
+                modifier = Modifier.fillMaxWidth().weight(1f).padding(14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (displayUrl != null) {
+                    Box(
+                        modifier = Modifier.fillMaxSize()
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .padding(6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        SlockCachedImage(
+                            source = displayUrl,
+                            contentDescription = current.name,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                } else {
+                    ThreadImagePreviewEmptyState(
+                        title = if (failedWithoutImage) "Image unavailable" else "Loading image...",
+                        detail = current.name
+                    )
+                }
+                if (hasMultiple) {
+                    Row(
+                        modifier = Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ThreadImagePreviewIconButton(
+                            icon = "chevron-left",
+                            enabled = state.currentIndex > 0,
+                            onClick = { onSelectIndex(state.currentIndex - 1) }
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        ThreadImagePreviewIconButton(
+                            icon = "chevron-right",
+                            enabled = state.currentIndex < state.images.lastIndex,
+                            onClick = { onSelectIndex(state.currentIndex + 1) }
+                        )
+                    }
+                }
+                if (isLoading && displayUrl != null) {
+                    ThreadImagePreviewLoadingPill(modifier = Modifier.align(Alignment.BottomCenter))
+                }
+            }
+            if (hasMultiple) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth()
+                        .height(74.dp)
+                        .background(SlockColor.TextBlack)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    items(state.images.size, key = { state.images[it].id }) { index ->
+                        ThreadImagePreviewThumbnail(
+                            attachment = state.images[index],
+                            selected = index == state.currentIndex,
+                            resolvedUrl = resolvedUrls[state.images[index].id]?.url,
+                            onClick = { onSelectIndex(index) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadImagePreviewIconButton(
+    icon: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        pressOffset = 2.dp,
+        modifier = Modifier.size(36.dp)
+            .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .alpha(if (enabled) 1f else 0.42f)
+    ) {
+        SlockLucideIcon(icon, modifier = Modifier.size(20.dp), color = "#FF000000")
+    }
+}
+
+@Composable
+private fun ThreadImagePreviewCounter(label: String) {
+    Box(
+        modifier = Modifier.height(30.dp)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .background(SlockColor.BrandYellow)
+            .padding(horizontal = 9.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun ThreadImagePreviewEmptyState(title: String, detail: String) {
+    Column(
+        modifier = Modifier.widthIn(max = 260.dp)
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SlockLucideIcon("image", modifier = Modifier.size(34.dp), color = "#FF000000")
+        Text(
+            text = title,
+            style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = detail,
+            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun ThreadImagePreviewLoadingPill(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "Loading full image...",
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun ThreadImagePreviewThumbnail(
+    attachment: KuiklyThreadAttachmentItem,
+    selected: Boolean,
+    resolvedUrl: String?,
+    onClick: () -> Unit
+) {
+    val source = attachment.thumbnailUrl?.takeIf { it.isNotBlank() } ?: resolvedUrl?.takeIf { it.isNotBlank() }
+    Button(
+        onClick = onClick,
+        pressOffset = 2.dp,
+        modifier = Modifier.size(54.dp)
+            .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+            .padding(if (selected) 3.dp else 1.dp)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .background(SlockColor.SurfaceCream)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            if (source != null) {
+                SlockCachedImage(
+                    source = source,
+                    contentDescription = attachment.name,
+                    contentScale = ContentScale.FillBounds,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                SlockLucideIcon("image", modifier = Modifier.size(20.dp), color = "#FF000000")
+            }
+        }
     }
 }
 
@@ -1452,8 +1893,10 @@ private fun ThreadPageContent(
                     KuiklyThreadTab.Files ->
                         ThreadFilesContent(payload = filesPayload) { action, attachmentId ->
                             when (action) {
-                                "open", "download" ->
+                                "open" ->
                                     onThreadEvent("openAttachment", null, attachmentId, null)
+                                "download" ->
+                                    onThreadEvent("downloadAttachment", null, attachmentId, null)
                                 "loadMore" -> onThreadEvent("loadMoreFiles", null, null, null)
                                 "retry" -> onThreadEvent("retryFiles", null, null, null)
                             }

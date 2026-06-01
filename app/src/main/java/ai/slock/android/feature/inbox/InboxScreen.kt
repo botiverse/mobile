@@ -46,7 +46,8 @@ import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenError
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.sample.SlockStateSamples
-import ai.slock.android.feature.thread.toThreadTimestampLabel
+import ai.slock.compose.model.formatSlockTimestampLabel
+import ai.slock.compose.model.slockEpochDayForDate
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
@@ -63,6 +64,8 @@ import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockTheme
 import ai.slock.android.ui.theme.SlockType
 import ai.slock.android.ui.theme.slockHardShadow
+import java.time.LocalDate
+import java.time.ZoneId
 
 @Composable
 fun InboxScreen(
@@ -702,7 +705,7 @@ private fun InboxFlatItem(
     onMarkRead: () -> Unit = onClick
 ) {
     val unread = item.unreadCount > 0
-    val metadataTimestamp = item.metadataTimestamp()?.toThreadTimestampLabel()
+    val metadataTimestamp = item.metadataTimestamp()?.formatLocalSlockTimestampLabel()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -757,6 +760,16 @@ private fun InboxFlatItem(
             InboxItemCheckButton(onClick = onMarkRead)
         }
     }
+}
+
+private fun String.formatLocalSlockTimestampLabel(): String {
+    val zoneId = ZoneId.systemDefault()
+    val today = LocalDate.now(zoneId)
+    return formatSlockTimestampLabel(
+        value = this,
+        localOffsetMinutes = zoneId.rules.getOffset(java.time.Instant.now()).totalSeconds / 60,
+        todayEpochDay = slockEpochDayForDate(today.year, today.monthValue, today.dayOfMonth)
+    )
 }
 
 @Composable

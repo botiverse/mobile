@@ -33,11 +33,6 @@ import ai.slock.android.core.model.ThreadConversation
 import ai.slock.compose.model.messageStreamChannelId
 import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.model.withTitleFallback
-import ai.slock.android.core.state.ScreenLoadState
-import ai.slock.android.feature.thread.ComposerState
-import ai.slock.android.feature.thread.ComposerStatus
-import ai.slock.android.feature.thread.ThreadContent
-import ai.slock.android.feature.thread.ThreadUiState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import ai.slock.compose.model.explicitMessageStreamChannelId
@@ -107,18 +102,6 @@ class SlockLocalWriteThrough(
                     currentMemberFallback = currentMemberFallback
                 )
             }
-
-    fun readThreadUiState(
-        threadId: ThreadId,
-        fallbackHeader: ConversationSummary? = null,
-        parentMessage: Message? = null,
-        serverId: ServerId? = null
-    ): ThreadUiState? =
-        readThreadTimeline(threadId, serverId)?.toThreadUiState(
-            fallbackHeader = fallbackHeader,
-            parentMessage = parentMessage,
-            serverId = serverId
-        )
 
     fun clearConversationUnread(channelId: ChannelId, source: String, serverId: ServerId? = null) {
         store.clearConversationUnread(channelId, clock(), serverId)
@@ -721,55 +704,6 @@ private fun MemberProfile.matchesDirectMessage(conversation: ConversationSummary
         handle.equals(conversation.name, ignoreCase = true) ||
         displayName.equals(conversation.name, ignoreCase = true) ||
         handle.equals(conversation.name.removePrefix("@"), ignoreCase = true)
-
-fun LocalThreadTimeline.toThreadUiState(
-    fallbackHeader: ConversationSummary? = null,
-    parentMessage: Message? = null,
-    serverId: ServerId? = null
-): ThreadUiState {
-    val header =
-        conversation.copy(
-            name =
-                fallbackHeader
-                    ?.name
-                    ?.takeIf {
-                        conversation.name.isBlank() ||
-                            conversation.name == conversation.threadId.value ||
-                            conversation.name == conversation.channelId?.value
-                    }
-                    ?: conversation.name.takeIf { it.isNotBlank() }
-                    ?: fallbackHeader?.name.orEmpty(),
-            channelId = conversation.channelId ?: fallbackHeader?.channelId,
-            avatarUrl = conversation.avatarUrl ?: fallbackHeader?.avatarUrl
-        )
-    return ThreadUiState(
-        loadState =
-            ScreenLoadState.Content(
-                ThreadContent(
-                    header = header,
-                    messages = messages,
-                    tasks = tasks,
-                    canLoadMoreBefore = cursor?.hasLoadedOldest == false,
-                    canLoadMoreAfter = cursor?.hasLoadedNewest == false,
-                    parentMessage = parentMessage ?: this@toThreadUiState.parentMessage
-                )
-            ),
-        serverId = serverId,
-        composerState = header.toLocalComposerState()
-    )
-}
-
-private fun ConversationSummary.toLocalComposerState(): ComposerState =
-    ComposerState(
-        status =
-            if (permissions.canSend) {
-                ComposerStatus.IdleEmpty
-            } else {
-                ComposerStatus.NoPermission
-            },
-        enabled = permissions.canSend,
-        noPermissionCode = if (permissions.canSend) null else "cannot_send"
-    )
 
 private fun DataResult<*>.localWriteSkipReason(): String =
     when (this) {

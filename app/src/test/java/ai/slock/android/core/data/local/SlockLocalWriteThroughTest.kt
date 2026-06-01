@@ -720,17 +720,15 @@ class SlockLocalWriteThroughTest {
         )
         writer.writeRealtimeEvent(ServerId("server-1"), TaskDeleted(TaskId("task-1")))
 
-        val threadMessage = store.getMessagesForThread(ThreadId("thread-1"), ServerId("server-1")).single()
-        val threadState = writer.readThreadUiState(ThreadId("thread-1"), serverId = ServerId("server-1"))
-        val content =
-            threadState?.loadState as ai.slock.android.core.state.ScreenLoadState.Content
+        val threadTimeline = writer.readThreadTimeline(ThreadId("thread-1"), serverId = ServerId("server-1"))
+        val threadMessage = threadTimeline?.messages?.single()
 
-        assertEquals("thread-replies-1", threadMessage.threadChannelId?.value)
-        assertEquals(4, threadMessage.replyCount)
-        assertEquals("Now", threadMessage.updatedAtLabel)
+        assertEquals("thread-replies-1", threadMessage?.threadChannelId?.value)
+        assertEquals(4, threadMessage?.replyCount)
+        assertEquals("Now", threadMessage?.updatedAtLabel)
         assertTrue(store.getTaskReferencesForMessage(MessageId("message-1"), ServerId("server-1")).isEmpty())
-        assertTrue(content.data.tasks.isEmpty())
-        assertEquals(null, content.data.messages.single().task)
+        assertTrue(threadTimeline?.tasks.orEmpty().isEmpty())
+        assertEquals(null, threadMessage?.task)
     }
 
     @Test
@@ -1099,7 +1097,7 @@ class SlockLocalWriteThroughTest {
     }
 
     @Test
-    fun readsThreadUiStateFromLocalTimeline() {
+    fun readsThreadTimelineFromLocalCache() {
         val store = createInMemoryStore()
         val writer = SlockLocalWriteThrough(store, clock = { 44L })
         writer.writeThreadResult(
@@ -1115,15 +1113,13 @@ class SlockLocalWriteThroughTest {
             source = "seed"
         )
 
-        val state = writer.readThreadUiState(ThreadId("thread-1"))
-        val content =
-            state?.loadState as ai.slock.android.core.state.ScreenLoadState.Content
+        val timeline = writer.readThreadTimeline(ThreadId("thread-1"))
 
-        assertEquals("general", content.data.header.name)
-        assertEquals(listOf("message-1"), content.data.messages.map { it.id.value })
-        assertEquals(382, content.data.tasks.single().taskNumber)
-        assertEquals(true, content.data.canLoadMoreBefore)
-        assertEquals(false, content.data.canLoadMoreAfter)
+        assertEquals("general", timeline?.conversation?.name)
+        assertEquals(listOf("message-1"), timeline?.messages?.map { it.id.value })
+        assertEquals(382, timeline?.tasks?.single()?.taskNumber)
+        assertEquals(true, timeline?.cursor?.hasLoadedOldest == false)
+        assertEquals(false, timeline?.cursor?.hasLoadedNewest == false)
     }
 
     @Test

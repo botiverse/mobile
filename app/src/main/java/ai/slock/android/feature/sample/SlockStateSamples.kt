@@ -1,7 +1,6 @@
 package ai.slock.android.feature.sample
 
 import ai.slock.android.core.data.sample.AgentSampleData
-import ai.slock.android.core.model.AttachmentId
 import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.ChannelId
 import ai.slock.compose.model.toMemberProfile
@@ -10,6 +9,7 @@ import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.ConversationSummary
 import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.InboxItem
+import ai.slock.android.core.model.MessageDeliveryState
 import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.InboxItemKind
 import ai.slock.compose.model.toMemberProfile
@@ -20,8 +20,6 @@ import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.Message
-import ai.slock.compose.model.toMemberProfile
-import ai.slock.android.core.model.MessageDeliveryState
 import ai.slock.compose.model.toMemberProfile
 import ai.slock.android.core.model.MessageId
 import ai.slock.compose.model.toMemberProfile
@@ -57,10 +55,6 @@ import ai.slock.android.feature.settings.SettingsContent
 import ai.slock.android.feature.settings.SettingsUiState
 import ai.slock.android.feature.tasks.TasksContent
 import ai.slock.android.feature.tasks.TasksUiState
-import ai.slock.android.feature.thread.ComposerState
-import ai.slock.android.feature.thread.ComposerStatus
-import ai.slock.android.feature.thread.ThreadContent
-import ai.slock.android.feature.thread.ThreadUiState
 
 object SlockStateSamples {
     private val server = ServerSummary(
@@ -146,7 +140,7 @@ object SlockStateSamples {
             parentMessageId = MessageId("sample-parent-message"),
             parentMessagePreview = "聊天详情页在这里，请设计",
             latestActivityMessageId = MessageId("sample-reply-2"),
-            latestActivityPreview = "UI 只消费 ThreadUiState，不直接接 socket。",
+            latestActivityPreview = "UI 只消费 shared thread state，不直接接 socket。",
             latestActivityAt = "Now",
             latestActivitySenderName = "Cindy",
             replyCount = 3,
@@ -234,67 +228,6 @@ object SlockStateSamples {
         selectedThreadId = channel.threadId.value
     )
 
-    val threadContent = ThreadUiState(
-        loadState = ScreenLoadState.Content(
-            ThreadContent(
-                header = channel,
-                messages = messages,
-                tasks = listOf(task),
-                canLoadMoreBefore = true,
-                hasGap = false,
-                historyLimited = false,
-                newUpdateCount = 2,
-                highlightedMessageId = MessageId("sample-message")
-            )
-        ),
-        composerState = ComposerState(status = ComposerStatus.IdleEmpty)
-    )
-
-    val composerIdleEmpty = threadContent.copy(
-        composerState = ComposerState(status = ComposerStatus.IdleEmpty)
-    )
-
-    val composerReady = threadContent.copy(
-        composerState = ComposerState(value = "Ready to send", status = ComposerStatus.Ready)
-    )
-
-    val composerUploading = threadContent.copy(
-        composerState = ComposerState(
-            value = "Uploading attachment",
-            status = ComposerStatus.Uploading,
-            attachmentIds = listOf(AttachmentId("sample-uploading"))
-        )
-    )
-
-    val composerSending = threadContent.copy(
-        composerState = ComposerState(value = "Sending message", status = ComposerStatus.Sending)
-    )
-
-    val composerFailed = threadContent.copy(
-        composerState = ComposerState(
-            value = "Retry this message",
-            status = ComposerStatus.Failed,
-            errorCode = "send_failed"
-        )
-    )
-
-    val composerNoPermission = threadContent.copy(
-        composerState = ComposerState(
-            enabled = false,
-            status = ComposerStatus.NoPermission,
-            noPermissionCode = "channel_readonly"
-        )
-    )
-
-    val composerBranches = listOf(
-        composerIdleEmpty,
-        composerReady,
-        composerUploading,
-        composerSending,
-        composerFailed,
-        composerNoPermission
-    )
-
     val tasksContent = TasksUiState(
         loadState = ScreenLoadState.Content(
             TasksContent(
@@ -366,14 +299,6 @@ object SlockStateSamples {
         HomeUiState(ScreenLoadState.Empty(EmptyReason.NoChannels)),
         HomeUiState(error),
         HomeUiState(noPermission)
-    )
-
-    val threadBranches = listOf(
-        ThreadUiState(ScreenLoadState.Loading),
-        threadContent,
-        ThreadUiState(ScreenLoadState.Empty(EmptyReason.NoMessages)),
-        ThreadUiState(error),
-        ThreadUiState(noPermission)
     )
 
     val tasksBranches = listOf(

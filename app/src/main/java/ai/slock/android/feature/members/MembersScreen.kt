@@ -75,7 +75,8 @@ import ai.slock.android.core.state.PermissionBlocker
 import ai.slock.android.core.state.ScreenError
 import ai.slock.android.core.state.ScreenLoadState
 import ai.slock.android.feature.sample.SlockStateSamples
-import ai.slock.android.feature.thread.toThreadTimestampLabel
+import ai.slock.compose.model.formatSlockTimestampLabel
+import ai.slock.compose.model.slockEpochDayForDate
 import ai.slock.android.ui.components.SlockAgentStatusIndicator
 import ai.slock.android.ui.components.SlockAdaptiveAppLayoutInfo
 import ai.slock.android.ui.components.SlockButton
@@ -88,6 +89,8 @@ import ai.slock.android.ui.components.SlockWorkspaceTreeState
 import ai.slock.android.ui.components.SlockAvatar
 import ai.slock.android.ui.components.SlockIconSquareButton
 import ai.slock.android.ui.icons.LucideIcons
+import java.time.LocalDate
+import java.time.ZoneId
 import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.components.SlockMemberAvatar
 import ai.slock.android.ui.components.SlockPageDivider
@@ -1231,7 +1234,7 @@ private fun MemberWorkspaceRow(workspace: SettingsComputerWorkspaceSnapshot) {
             workspace.lastActiveLabel?.takeIf { it.isNotBlank() }?.let { lastActiveAt ->
                 MemberDetailLabeledValue(
                     label = "Last Active",
-                    value = lastActiveAt.toThreadTimestampLabel(),
+                    value = lastActiveAt.formatLocalSlockTimestampLabel(),
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -2111,7 +2114,17 @@ private fun String?.activitySortKey(): Long =
     }
 
 private fun String?.activityDisplayTime(): String =
-    takeUnless { it.isNullOrBlank() }?.toThreadTimestampLabel()?.takeIf { it.isNotBlank() } ?: "No time"
+    takeUnless { it.isNullOrBlank() }?.formatLocalSlockTimestampLabel()?.takeIf { it.isNotBlank() } ?: "No time"
+
+private fun String.formatLocalSlockTimestampLabel(): String {
+    val zoneId = ZoneId.systemDefault()
+    val today = LocalDate.now(zoneId)
+    return formatSlockTimestampLabel(
+        value = this,
+        localOffsetMinutes = zoneId.rules.getOffset(java.time.Instant.now()).totalSeconds / 60,
+        todayEpochDay = slockEpochDayForDate(today.year, today.monthValue, today.dayOfMonth)
+    )
+}
 
 private fun AgentActivityEntry.activityPrimaryDetail(): String =
     body?.takeIf { it.isNotBlank() }

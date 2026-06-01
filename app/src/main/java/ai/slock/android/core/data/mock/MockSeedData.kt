@@ -161,7 +161,7 @@ object MockSeedData {
             subtitle = "Component/state integration",
             avatarUrl = "pixel:diamond",
             lastMessageId = MessageId("message-dm-latest"),
-            lastMessagePreview = "ThreadUiState sample provider is ready.",
+            lastMessagePreview = "Shared thread sample provider is ready.",
             lastMessageAt = "Now",
             lastMessageSenderName = "Android-Developer"
         )
@@ -316,7 +316,7 @@ object MockSeedData {
             parentMessageId = MessageId("parent-chat-detail"),
             parentMessagePreview = "聊天详情页在这里，请设计",
             latestActivityMessageId = MessageId("reply-2"),
-            latestActivityPreview = "ThreadUiState 缺字段就补 contract，不绕 mock。",
+            latestActivityPreview = "Shared thread state 缺字段就补 contract，不绕 mock。",
             latestActivityAt = "14:05",
             latestActivitySenderName = "Cindy",
             replyCount = 5,
@@ -332,7 +332,7 @@ object MockSeedData {
             channelName = "Android-Developer",
             unreadCount = 0,
             lastMessageId = MessageId("message-dm-latest"),
-            lastMessagePreview = "ThreadUiState sample provider is ready.",
+            lastMessagePreview = "Shared thread sample provider is ready.",
             lastMessageAt = "Now",
             lastMessageSenderName = "Android-Developer"
         )
@@ -377,7 +377,7 @@ object MockSeedData {
             ConnectedAccountSnapshot(
                 provider = "GitHub",
                 identifier = "github.com/artin",
-                status = ConnectedAccountStatus.Connected
+                status = ConnectedAccountStatus.Connected,
             )
         )
     )
@@ -396,7 +396,6 @@ object MockSeedData {
         ),
         addComputerUnavailableReason = "Computer management API is not wired on Android yet."
     )
-
     val settingsComputerDetailSnapshot = SettingsComputerDetailSnapshot(
         computer = settingsComputersSnapshot.computers.first(),
         workspaces = listOf(
@@ -412,7 +411,6 @@ object MockSeedData {
             SettingsComputerAgentSnapshot(
                 id = "agent-settings",
                 name = "Android-Settings-Integrator",
-                statusLabel = "active",
                 ownerLabel = "Settings",
                 memberProfile = ai.slock.android.core.model.MemberProfile(
                     id = ai.slock.android.core.model.MemberId("agent-settings"),

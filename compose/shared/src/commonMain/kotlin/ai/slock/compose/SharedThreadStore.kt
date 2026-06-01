@@ -171,6 +171,32 @@ internal class SharedThreadDataSource(
         return DataResult.Content(payload)
     }
 
+    suspend fun fetchWebLinkThreadPayload(
+        basePayload: KuiklyThreadScreenPayload,
+        target: SlockThreadWebLinkTarget
+    ): DataResult<KuiklyThreadScreenPayload> {
+        val messageId = target.messageId?.takeIf { it.isNotBlank() }
+        if (messageId == null || conversationRepository == null) {
+            return fetchThreadPayload(basePayload)
+        }
+        val session =
+            readSession()
+                ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
+        val contextResult =
+            fetchThreadPayloadFromRepository(
+                session = session,
+                fallbackCode = "thread_weblink_context",
+                call = { repository -> repository.getMessageContext(MessageId(messageId)) },
+                transform = { snapshot -> snapshot.toKuiklyThreadPayload(basePayload, session.user.id) }
+            )
+        return when (contextResult) {
+            is DataResult.Content -> contextResult
+            is DataResult.Empty,
+            is DataResult.Error,
+            is DataResult.NoPermission -> fetchThreadPayload(basePayload)
+        }
+    }
+
     suspend fun enrichSenderProfiles(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
         val session = readSession() ?: return payload
         return payload.withSenderProfiles(session)
