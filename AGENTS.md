@@ -1,4 +1,4 @@
-# Slock Android Agent Notes
+# Slock Agent Notes
 
 ## Upstream Slock Source
 
@@ -52,23 +52,62 @@ git submodule update --init --recursive third_party/slock-source
 - After changing `compose/shared`, publish it locally before app validation:
   `cd /Users/artin/AndroidStudioProjects/Slock/compose && ./gradlew :shared:publishAndroidReleasePublicationToMavenLocal`.
 
-## Kuikly AI Skills
+## Kuikly References And Skills
 
 - Workspace-level Kuikly guidance lives under `.agents/`:
   - `.agents/skills/kuikly-*` contains the vendored skills from
     `Tencent-TDS/KuiklyUI-AI`.
+  - `.agents/skills/slock-dto-migration/SKILL.md` contains Slock-specific DTO
+    migration workflow guidance.
   - `.agents/rules/kuiklyComposeDSL.mdc` and `.agents/rules/kuiklyDSL.mdc` contain
     the Kuikly Compose / Kuikly DSL rules.
   - `.agents/kuikly-ui-ai-source.txt` records the upstream source and commit.
 - For Kuikly, OHOS, shared shell, navigation, assets, native bridge, or
   recomposition work, read the relevant workspace skill/rule first instead of
   relying on Android-native assumptions.
-- To refresh these files from upstream, run:
+- The local Tencent KuiklyUI upstream reference lives at
+  `.agents/skills/kuikly-ui-framework/references/KuiklyUI/`. Keep KuiklyUI
+  reference/demo/source lookup there instead of adding another copy under
+  `third_party/`.
+- Useful KuiklyUI reference paths:
+  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/demo/src/commonMain/kotlin/com/tencent/kuikly/demo/pages/compose/`
+    for Compose DSL demos such as popups, gestures, Canvas, dialogs, lazy lists,
+    and text/input behavior.
+  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/ohosApp/` for the
+    HarmonyOS host shell.
+  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/androidApp/` for the
+    Android host shell.
+  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/core-render-ohos/`
+    and `.agents/skills/kuikly-ui-framework/references/KuiklyUI/compose/` for
+    render/runtime implementation details.
+- Treat the KuiklyUI reference tree as vendor/reference source. Do not modify it
+  unless explicitly asked; for Slock product fixes, change Slock shared/app code.
+- To refresh the `.agents/` Kuikly AI skill/rule bundle from upstream, run:
 
 ```bash
 cd /Users/artin/AndroidStudioProjects/Slock
 scripts/sync_kuikly_ai_skills.sh
 ```
+
+## OHOS Kuikly Workflow
+
+- The Slock OHOS app bundle/module/ability is `ai.slock.compose` / `entry` /
+  `EntryAbility`.
+- `hdc` may not be on `PATH`; the default DevEco path in this workspace is
+  `/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc`.
+- To build, install, and launch the OHOS app, run the wrapper from the Compose
+  project. The script is not guaranteed to have its executable bit set, so prefer
+  invoking it through `sh`:
+
+```bash
+cd /Users/artin/AndroidStudioProjects/Slock/compose
+sh ohosApp/runOhosApp.sh
+```
+
+- `scripts/capture_ohos_screenshot.sh` uses `snapshot_display`; on some current
+  OHOS emulator images, `snapshot_display` rejects `.png` output names and only
+  accepts `.jpeg`. If screenshot capture fails with a suffix error, use a remote
+  `.jpeg` path and pull that file with `hdc file recv`.
 
 ## OHOS Kuikly SharedPreferences
 

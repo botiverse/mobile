@@ -1339,6 +1339,7 @@ internal fun SlockAvatar(avatarWireValue: String?, label: String, modifier: Modi
     when {
         pixelSpec != null -> PixelAvatar(pixelSpec, modifier, avatarSize)
         avatarWireValue?.startsWith("http://") == true || avatarWireValue?.startsWith("https://") == true -> Box(modifier = modifier.size(avatarSize).background(SlockColor.AccentLavender).border(SlockStroke.Thin, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
+            DefaultUserAvatarIcon(avatarSize)
             SlockCachedImage(
                 source = avatarWireValue,
                 contentDescription = null,
@@ -1346,15 +1347,20 @@ internal fun SlockAvatar(avatarWireValue: String?, label: String, modifier: Modi
                 modifier = Modifier.fillMaxSize()
             )
         }
-        else -> InitialsAvatar(label, modifier, avatarSize)
+        else -> DefaultUserAvatar(modifier, avatarSize)
     }
 }
 
 @Composable
-private fun InitialsAvatar(label: String, modifier: Modifier = Modifier, avatarSize: Dp = ChannelAvatarSize) {
+private fun DefaultUserAvatar(modifier: Modifier = Modifier, avatarSize: Dp = ChannelAvatarSize) {
     Box(modifier = modifier.size(avatarSize).background(SlockColor.AccentLavender).border(SlockStroke.Thin, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
-        Text(label.take(2).uppercase(), style = SlockType.Caption.withSlockFontWeight(FontWeight.Medium).copy(fontSize = ChannelAvatarFontSize), color = SlockColor.TextBlack, maxLines = 1)
+        DefaultUserAvatarIcon(avatarSize)
     }
+}
+
+@Composable
+private fun DefaultUserAvatarIcon(avatarSize: Dp) {
+    SlockLucideIcon("user", modifier = Modifier.size((avatarSize.value * 0.56f).dp), color = "#FF000000")
 }
 
 private val SlockPresence.homeRowColor: Color

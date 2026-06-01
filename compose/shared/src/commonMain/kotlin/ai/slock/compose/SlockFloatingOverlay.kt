@@ -121,7 +121,7 @@ internal fun SlockFloatingOverlayLayout.positionContent(
         SlockFloatingVerticalPlacement.Auto -> {
             val preferredAboveY = localAnchor.y - contentSize.height - verticalOffset
             if (preferredBelowY + contentSize.height > size.height - viewportGap) {
-                if (preferredAboveY >= viewportGap) preferredAboveY else maxY
+                if (preferredAboveY >= viewportGap) preferredAboveY.coerceAtMost(maxY) else maxY
             } else {
                 preferredBelowY.coerceIn(viewportGap, maxY)
             }

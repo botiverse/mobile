@@ -59,11 +59,17 @@ import ai.slock.compose.data.SharedSettingsDiagnosticsEntry
 import ai.slock.compose.data.SharedSettingsDiagnosticsSnapshot
 import ai.slock.compose.data.SharedSettingsEffect
 import ai.slock.compose.data.SharedSettingsIntent
+import ai.slock.compose.data.SharedSettingsRecompositionProfilerSnapshot
 import ai.slock.compose.data.SharedSettingsState
 import ai.slock.compose.data.SharedSettingsStorageRow
 import ai.slock.compose.data.SharedSettingsStorageSnapshot
 import ai.slock.compose.data.SharedSettingsViewModel
 import ai.slock.compose.data.ScreenLoadState
+import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_EXPORT
+import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_REPORT
+import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_RESET
+import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_START
+import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_STOP
 import ai.slock.compose.data.isRefreshing
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthServer
@@ -1559,10 +1565,16 @@ private fun SettingsAppShellContent(
             SettingsDestinationDiagnostics ->
                 SharedSettingsDiagnosticsContent(
                     state = settingsState.diagnostics,
+                    actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
                     onCopyLogs = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
                     onShareLogs = { onSettingsIntent(SharedSettingsIntent.ShareDiagnostics) },
                     onClearLogs = { onSettingsIntent(SharedSettingsIntent.ClearDiagnostics) },
+                    onStartProfiler = { onSettingsIntent(SharedSettingsIntent.StartRecompositionProfiler) },
+                    onStopProfiler = { onSettingsIntent(SharedSettingsIntent.StopRecompositionProfiler) },
+                    onResetProfiler = { onSettingsIntent(SharedSettingsIntent.ResetRecompositionProfiler) },
+                    onRefreshProfilerReport = { onSettingsIntent(SharedSettingsIntent.RefreshRecompositionProfilerReport) },
+                    onExportProfilerReport = { onSettingsIntent(SharedSettingsIntent.ExportRecompositionProfilerReport) },
                     onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) },
                     onBuglyCrashAction = { action -> onSettingsIntent(SharedSettingsIntent.RunBuglyCrashMonitorAction(action)) }
                 )
@@ -1703,24 +1715,31 @@ private fun SharedSettingsAboutContent(
 @Composable
 private fun SharedSettingsDiagnosticsContent(
     state: ScreenLoadState<SharedSettingsDiagnosticsSnapshot>,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onCopyLogs: () -> Unit,
     onShareLogs: () -> Unit,
     onClearLogs: () -> Unit,
+    onStartProfiler: () -> Unit,
+    onStopProfiler: () -> Unit,
+    onResetProfiler: () -> Unit,
+    onRefreshProfilerReport: () -> Unit,
+    onExportProfilerReport: () -> Unit,
     onSendFeedback: () -> Unit,
     onBuglyCrashAction: (String) -> Unit
 ) {
-    val entries =
-        when (state) {
-            is ScreenLoadState.Content -> state.data.entries
-            else -> emptyList()
-        }
-    val payload = entries.toDiagnosticsPayload(state)
+    val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
+    val payload = (snapshot?.entries ?: emptyList()).toDiagnosticsPayload(state, actionState)
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, _ ->
         when (action) {
             "copyLogs" -> onCopyLogs()
             "shareLogs" -> onShareLogs()
             "clearLogs" -> onClearLogs()
+            "startProfiler" -> onStartProfiler()
+            "stopProfiler" -> onStopProfiler()
+            "resetProfiler" -> onResetProfiler()
+            "refreshProfilerReport" -> onRefreshProfilerReport()
+            "exportProfilerReport" -> onExportProfilerReport()
             "feedback" -> onSendFeedback()
             "buglyPostTestError",
             "buglyTestJsCrash",
@@ -2517,6 +2536,25 @@ private fun ai.slock.compose.data.SharedSettingsActionState?.statusFor(action: S
         else -> "Saved"
     }
 
+private fun ai.slock.compose.data.SharedSettingsActionState?.isDiagnosticsActionLoading(action: String): Boolean =
+    this?.action == action && this.inProgress
+
+private fun Boolean.onOffLabel(): String =
+    if (this) {
+        "on"
+    } else {
+        "off"
+    }
+
+private val profilerActionKeys =
+    setOf(
+        DIAGNOSTICS_ACTION_PROFILER_START,
+        DIAGNOSTICS_ACTION_PROFILER_STOP,
+        DIAGNOSTICS_ACTION_PROFILER_RESET,
+        DIAGNOSTICS_ACTION_PROFILER_REPORT,
+        DIAGNOSTICS_ACTION_PROFILER_EXPORT
+    )
+
 private fun appShellAboutFallback(session: StoredAuthSession?): SharedSettingsAboutSnapshot =
     SharedSettingsAboutSnapshot(
         appName = "Slock",
@@ -2560,7 +2598,7 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(): KuiklySharedSettingsPa
                     title = "Actions",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("diagnostics", "clipboard-list", "Diagnostics log", "Open sanitized runtime logs.", status = "Open", enabled = true),
+                            KuiklySharedSettingsRow("diagnostics", "clipboard-list", "Diagnostics tools", "Open sanitized runtime logs and shared diagnostics.", status = "Open", enabled = true),
                             KuiklySharedSettingsRow("copyBuild", "copy", "Copy version/build", buildSummary(), status = "Copy", enabled = true),
                             KuiklySharedSettingsRow("openSlock", "external-link", "Open Slock", "Open app.slock.ai in the system browser.", status = "Open", enabled = true),
                             KuiklySharedSettingsRow("feedback", "message-square-plus", "Upload diagnostics", "Send sanitized logs to Bugly for support.", status = "Upload", enabled = true)
@@ -2577,10 +2615,15 @@ private fun SharedSettingsAboutSnapshot.buildSummary(): String =
         packageName.takeIf { it.isNotBlank() }?.let { append(" ").append(it) }
     }
 
-private fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
-    state: ScreenLoadState<SharedSettingsDiagnosticsSnapshot>
+internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
+    state: ScreenLoadState<SharedSettingsDiagnosticsSnapshot>,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?
 ): KuiklySharedSettingsPayload {
     val logsAvailable = isNotEmpty()
+    val profiler = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data?.profiler
+        ?: SharedSettingsRecompositionProfilerSnapshot()
+    val profilerRunning = profiler.statusLabel == "Running"
+    val profilerBusy = actionState?.action in profilerActionKeys && actionState?.inProgress == true
     val stateLabel =
         when (state) {
             is ScreenLoadState.Content -> if (logsAvailable) "${size} entries" else "Empty"
@@ -2611,14 +2654,230 @@ private fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                 )
             )
         }
+    val reportSummary =
+        when {
+            profiler.report.reportAvailable ->
+                buildString {
+                    append(profiler.report.durationLabel.ifBlank { "Ready" })
+                    append(" | ${profiler.report.totalFrames} frames")
+                    append(" | ${profiler.report.totalRecompositions} recompositions")
+                    if (profiler.report.hotspotCount > 0) {
+                        append(" | ${profiler.report.hotspotCount} hotspots")
+                    }
+                }
+            else -> "No report exported for this session yet."
+        }
+    val profilerHotspotRows =
+        if (profiler.report.topHotspots.isNotEmpty()) {
+            profiler.report.topHotspots.mapIndexed { index, hotspot ->
+                KuiklySharedSettingsRow(
+                    key = "profilerHotspot-$index",
+                    iconName = "flame",
+                    title = hotspot.name,
+                    detail =
+                        listOfNotNull(
+                            hotspot.sourceLocation,
+                            "${hotspot.recompositionCount}x recompositions",
+                            hotspot.avgDurationLabel.takeIf { it.isNotBlank() }
+                        ).joinToString(" | "),
+                    status = ""
+                )
+            }
+        } else {
+            listOf(
+                KuiklySharedSettingsRow(
+                    key = "profilerHotspotEmpty",
+                    iconName = "circle-dashed",
+                    title = "No hotspots yet",
+                    detail = "Start a focused session, reproduce the jank, then refresh or export the report.",
+                    status = profiler.statusLabel
+                )
+            )
+        }
+    val profilerSections =
+        if (profiler.supported) {
+            listOf(
+                KuiklySharedSettingsSection(
+                    title = "Recomposition profiler",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow(
+                                "profilerStatus",
+                                "activity",
+                                "Shared profiler status",
+                                profiler.detail,
+                                status = profiler.statusLabel
+                            ),
+                            KuiklySharedSettingsRow(
+                                "startProfiler",
+                                "play",
+                                "Start capture",
+                                "Apply the shared default debug profile with overlay enabled and begin collecting recompositions for the current Kuikly session.",
+                                status =
+                                    when {
+                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_START) -> "Loading"
+                                        profilerRunning -> "Running"
+                                        else -> "Start"
+                                    },
+                                enabled = !profilerRunning && !profilerBusy
+                            ),
+                            KuiklySharedSettingsRow(
+                                "stopProfiler",
+                                "square",
+                                "Stop capture",
+                                "Stop collection. Per Kuikly docs, stop() writes profiler_report.json automatically and keeps profiler_frames.jsonl for analyzer input.",
+                                status =
+                                    when {
+                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_STOP) -> "Loading"
+                                        profilerRunning -> "Stop"
+                                        else -> "Idle"
+                                    },
+                                enabled = profilerRunning && !profilerBusy
+                            ),
+                            KuiklySharedSettingsRow(
+                                "resetProfiler",
+                                "rotate-ccw",
+                                "Reset scene window",
+                                "Clear the current in-memory counters right before opening the target page or replaying the target interaction.",
+                                status =
+                                    when {
+                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_RESET) -> "Loading"
+                                        profilerRunning -> "Reset"
+                                        else -> "Wait"
+                                    },
+                                enabled = profilerRunning && !profilerBusy
+                            ),
+                            KuiklySharedSettingsRow(
+                                "refreshProfilerReport",
+                                "refresh-cw",
+                                "Refresh report",
+                                "Call getReport(saveToFile=false) to refresh the current summary without rewriting files.",
+                                status =
+                                    when {
+                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_REPORT) -> "Loading"
+                                        profiler.report.reportAvailable -> "Refresh"
+                                        else -> "Pull"
+                                    },
+                                enabled = !profilerBusy
+                            ),
+                            KuiklySharedSettingsRow(
+                                "exportProfilerReport",
+                                "file-json",
+                                "Export report",
+                                "Call getReport(saveToFile=true) and keep profiler_frames.jsonl beside profiler_report.json for analyzer input.",
+                                status =
+                                    when {
+                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_EXPORT) -> "Loading"
+                                        profiler.report.reportAvailable -> "Export"
+                                        else -> "Write"
+                                    },
+                                enabled = !profilerBusy
+                            )
+                        )
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Profiler defaults",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow(
+                                "profilerDefaults",
+                                "sliders-horizontal",
+                                "Default policy",
+                                "File ${profiler.defaults.enableFile.onOffLabel()}, log ${profiler.defaults.enableLog.onOffLabel()}, overlay ${profiler.defaults.enableOverlay.onOffLabel()}, sample ${profiler.defaults.sampleRateLabel}, hotspot ${profiler.defaults.hotspotThreshold}/s, buffer ${profiler.defaults.maxEventBufferSize}.",
+                                status = profiler.gateLabel
+                            ),
+                            KuiklySharedSettingsRow(
+                                "profilerOverlayGuide",
+                                "panel-bottom-open",
+                                "Overlay behavior",
+                                profiler.defaults.overlayGuide,
+                                status = "Doc"
+                            ),
+                            KuiklySharedSettingsRow(
+                                "profilerFilterStrategy",
+                                "funnel",
+                                "Recommended filtering",
+                                profiler.defaults.filterStrategy,
+                                status = "Hint"
+                            ),
+                            KuiklySharedSettingsRow(
+                                "profilerResetStrategy",
+                                "route",
+                                "Recommended reset timing",
+                                profiler.defaults.resetStrategy,
+                                status = "Hint"
+                            ),
+                            KuiklySharedSettingsRow(
+                                "profilerExtensionNote",
+                                "waypoints",
+                                "Implementation",
+                                profiler.extensionNote,
+                                status = "Shared"
+                            )
+                        )
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Profiler report",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow(
+                                "profilerReportSummary",
+                                "bar-chart-3",
+                                "Current summary",
+                                reportSummary,
+                                status = profiler.report.generatedLabel.ifBlank { profiler.statusLabel }
+                            ),
+                            KuiklySharedSettingsRow(
+                                "profilerSession",
+                                "hash",
+                                "Session and file names",
+                                listOfNotNull(
+                                    profiler.report.sessionId.takeIf { it.isNotBlank() }?.let { "session $it" },
+                                    profiler.files.reportFileName.takeIf { it.isNotBlank() },
+                                    profiler.files.framesFileName.takeIf { it.isNotBlank() }
+                                ).joinToString(" | ").ifBlank { "Use Kuikly default file names after the first export or stop." },
+                                status = if (profiler.report.reportAvailable) "Ready" else "Pending"
+                            ),
+                            KuiklySharedSettingsRow(
+                                "profilerLocationHint",
+                                "folder-open",
+                                "Expected location",
+                                profiler.files.locationHint,
+                                status = "Hint"
+                            )
+                        ) + profilerHotspotRows
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Analyzer",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow(
+                                "profilerAnalyzerHint",
+                                "sparkles",
+                                "Next step",
+                                profiler.analyzerHint,
+                                status = "AI"
+                            )
+                        )
+                )
+            )
+        } else {
+            emptyList()
+        }
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-diagnostics",
         title = "Diagnostics",
-        detail = "Sanitized app diagnostics",
+        detail =
+            profiler.actionFeedback
+                ?: if (profiler.supported) {
+                    "Sanitized app diagnostics and Kuikly recomposition profiler"
+                } else {
+                    "Sanitized app diagnostics"
+                },
         heroIconName = "clipboard-list",
         heroLabel = "Diagnostics",
         sections =
-            listOf(
+            profilerSections + listOf(
                 KuiklySharedSettingsSection(
                     title = "Actions",
                     rows =
@@ -2668,7 +2927,7 @@ private fun settingsDestinationSubtitle(destination: String): String =
         SettingsDestinationMobile -> "Phone and language"
         SettingsDestinationStorage -> "Local cache"
         SettingsDestinationAbout -> "Diagnostics"
-        SettingsDestinationDiagnostics -> "Sanitized runtime logs"
+        SettingsDestinationDiagnostics -> "Sanitized logs and diagnostics"
         else -> ""
     }
 

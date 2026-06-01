@@ -22,6 +22,11 @@ __pycache__
 artifacts/*.apk
 artifacts/*.apk.idsig
 artifacts/releases
+artifacts/ohos-screenshots/
+artifacts/workspace/*.png
+artifacts/workspace/*.jpg
+artifacts/workspace/*.jpeg
+artifacts/workspace/*.webp
 /diagnostics
 
 temp_compose/

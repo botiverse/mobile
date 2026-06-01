@@ -111,6 +111,7 @@ class ThreadApiTest {
         var syncBody: String = "[]",
         var sendBody: String = """{"id":"m1","content":"sent","seq":1}""",
         var attachmentUrlBody: String = """{"url":"https://cdn.slock.ai/default"}""",
+        var reactionBody: String = """{"id":"m1","reactions":[]}""",
         var createThreadBody: String = """{"threadChannelId":"thread-1"}"""
     ) : SharedThreadNetworkApi {
         override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): HomeNetworkResponse =
@@ -135,6 +136,12 @@ class ThreadApiTest {
 
         override suspend fun saveMessage(messageId: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
+
+        override suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = reactionBody)
+
+        override suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = reactionBody)
 
         override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"task":{"id":"$taskId"}}""")

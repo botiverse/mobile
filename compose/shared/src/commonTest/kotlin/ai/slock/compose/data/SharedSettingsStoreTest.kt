@@ -1,5 +1,6 @@
 package ai.slock.compose.data
 
+import com.tencent.kuikly.compose.profiler.RecompositionReport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -343,7 +344,11 @@ class SharedSettingsStoreTest {
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                        platformCapabilities = capabilities
+                        platformCapabilities = capabilities,
+                        recompositionProfilerController =
+                            SharedSettingsRecompositionProfilerController(
+                                debugGate = FakeProfilerDebugGate(supported = false)
+                            )
                     ),
                 scope = scope
             )
@@ -356,7 +361,76 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
         val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
         assertEquals(listOf("SlockTest"), diagnostics.entries.map { it.tag })
+        assertEquals(false, diagnostics.profiler.supported)
         assertEquals(listOf("about", "diagnostics"), capabilities.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun profilerActionsStayInSharedStoreAndOnlyReloadHostDiagnostics() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities = FakeSettingsCapabilities()
+        val engine = FakeProfilerEngine()
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        platformCapabilities = capabilities,
+                        recompositionProfilerController =
+                            SharedSettingsRecompositionProfilerController(
+                                engine = engine,
+                                debugGate = FakeProfilerDebugGate(supported = true, gateLabel = "Android debug")
+                            )
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+        store.accept(SharedSettingsIntent.StartRecompositionProfiler)
+
+        val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
+        assertEquals(true, engine.started)
+        assertEquals("Running", diagnostics.profiler.statusLabel)
+        assertEquals(true, diagnostics.profiler.defaults.enableOverlay)
+        assertEquals(
+            "Profiler started with file/log/overlay enabled. The bottom-right overlay FAB should appear for this session.",
+            diagnostics.profiler.actionFeedback
+        )
+        assertNull(store.state.value.effect)
+        assertEquals(
+            SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_START, inProgress = false),
+            store.state.value.actionState
+        )
+        assertEquals(listOf("diagnostics", "diagnostics"), capabilities.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun diagnosticsStillExposeSharedProfilerWhenHostDiagnosticsAreUnavailable() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities = FakeSettingsCapabilities(diagnosticsResult = DataResult.Empty(EmptyReason.NoSettingsAvailable))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        platformCapabilities = capabilities,
+                        recompositionProfilerController =
+                            SharedSettingsRecompositionProfilerController(
+                                debugGate = FakeProfilerDebugGate(supported = true)
+                            )
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+
+        val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
+        assertEquals(emptyList(), diagnostics.entries)
+        assertEquals(true, diagnostics.profiler.supported)
+        assertEquals("Idle", diagnostics.profiler.statusLabel)
+        assertEquals(listOf("diagnostics"), capabilities.calls)
         scope.cancel()
     }
 
@@ -500,7 +574,21 @@ class SharedSettingsStoreTest {
         }
     }
 
-    private class FakeSettingsCapabilities : SharedSettingsPlatformCapabilities {
+    private class FakeSettingsCapabilities(
+        private val diagnosticsResult: DataResult<SharedSettingsDiagnosticsHostSnapshot> =
+            DataResult.Content(
+                SharedSettingsDiagnosticsHostSnapshot(
+                    entries =
+                        listOf(
+                            SharedSettingsDiagnosticsEntry(
+                                timestampLabel = "123",
+                                tag = "SlockTest",
+                                message = "diagnostic ready"
+                            )
+                        )
+                )
+            )
+    ) : SharedSettingsPlatformCapabilities {
         val calls = mutableListOf<String>()
 
         override suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> {
@@ -527,20 +615,9 @@ class SharedSettingsStoreTest {
             return DataResult.Content(storageSnapshot(feedback = "Cleared $target"))
         }
 
-        override suspend fun loadDiagnostics(): DataResult<SharedSettingsDiagnosticsSnapshot> {
+        override suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> {
             calls += "diagnostics"
-            return DataResult.Content(
-                SharedSettingsDiagnosticsSnapshot(
-                    entries =
-                        listOf(
-                            SharedSettingsDiagnosticsEntry(
-                                timestampLabel = "123",
-                                tag = "SlockTest",
-                                message = "diagnostic ready"
-                            )
-                        )
-                )
-            )
+            return diagnosticsResult
         }
 
         private fun storageSnapshot(feedback: String? = null): SharedSettingsStorageSnapshot =
@@ -615,6 +692,36 @@ class SharedSettingsStoreTest {
         ): ChatLayoutPreferenceSnapshot =
             ChatLayoutPreferenceSnapshot(myMessageAlignment = alignment, largeScreenNavigation = navigation)
     }
+
+    private class FakeProfilerEngine : SharedSettingsRecompositionProfilerEngine {
+        override val isEnabled: Boolean
+            get() = started
+
+        var started: Boolean = false
+
+        override fun clearCustomFilters() = Unit
+
+        override fun configure(block: com.tencent.kuikly.compose.profiler.RecompositionConfigBuilder.() -> Unit) = Unit
+
+        override fun start() {
+            started = true
+        }
+
+        override fun stop() {
+            started = false
+        }
+
+        override fun reset() = Unit
+
+        override fun getReport(saveToFile: Boolean): RecompositionReport =
+            RecompositionReport.EMPTY
+    }
+
+    private class FakeProfilerDebugGate(
+        override val supported: Boolean,
+        override val gateLabel: String = if (supported) "Debug build" else "Debug only",
+        override val unavailableDetail: String = "Recomposition profiler is available only in shared debug builds."
+    ) : SharedSettingsRecompositionProfilerDebugGate
 
     private fun sampleSession(): StoredAuthSession =
         StoredAuthSession(

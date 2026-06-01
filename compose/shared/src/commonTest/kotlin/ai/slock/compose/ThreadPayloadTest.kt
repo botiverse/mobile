@@ -21,6 +21,8 @@ import ai.slock.compose.data.WireReaction
 import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesPage
 import ai.slock.compose.data.parseSharedThreadUploadedAttachments
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -91,10 +93,29 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun messageMenuOffsetHandlesEmptyRange() {
-        assertEquals(8f, coerceThreadMessageMenuOffset(value = 120f, min = 8f, max = -142.4f))
-        assertEquals(24f, coerceThreadMessageMenuOffset(value = 24f, min = 8f, max = 48f))
-        assertEquals(48f, coerceThreadMessageMenuOffset(value = 120f, min = 8f, max = 48f))
+    fun floatingOverlayPositionHandlesCrampedAndBottomAnchors() {
+        val cramped = SlockFloatingOverlayLayout(size = Size(width = 200f, height = 100f))
+        assertEquals(
+            Offset(8f, 8f),
+            cramped.positionContent(
+                anchor = Offset(120f, 120f),
+                contentSize = Size(width = 320f, height = 240f),
+                viewportGap = 8f
+            )
+        )
+
+        val roomy = SlockFloatingOverlayLayout(size = Size(width = 420f, height = 560f))
+        assertEquals(
+            Offset(200f, 338f),
+            roomy.positionContent(
+                anchor = Offset(360f, 1260f),
+                contentSize = Size(width = 212f, height = 214f),
+                viewportGap = 8f,
+                horizontalOffset = -16f,
+                verticalOffset = 8f,
+                verticalPlacement = SlockFloatingVerticalPlacement.Auto
+            )
+        )
     }
 
     @Test

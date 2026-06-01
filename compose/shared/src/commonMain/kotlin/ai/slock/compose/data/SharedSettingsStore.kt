@@ -94,13 +94,64 @@ data class SharedSettingsAboutSnapshot(
 )
 
 data class SharedSettingsDiagnosticsSnapshot(
-    val entries: List<SharedSettingsDiagnosticsEntry> = emptyList()
+    val entries: List<SharedSettingsDiagnosticsEntry> = emptyList(),
+    val profiler: SharedSettingsRecompositionProfilerSnapshot = SharedSettingsRecompositionProfilerSnapshot()
 )
 
 data class SharedSettingsDiagnosticsEntry(
     val timestampLabel: String,
     val tag: String,
     val message: String
+)
+
+data class SharedSettingsRecompositionProfilerSnapshot(
+    val supported: Boolean = false,
+    val gateLabel: String = "Unavailable",
+    val statusLabel: String = "Unavailable",
+    val detail: String = "Recomposition profiler is unavailable on this host.",
+    val actionFeedback: String? = null,
+    val defaults: SharedSettingsRecompositionProfilerDefaults = SharedSettingsRecompositionProfilerDefaults(),
+    val report: SharedSettingsRecompositionProfilerReport = SharedSettingsRecompositionProfilerReport(),
+    val files: SharedSettingsRecompositionProfilerFiles = SharedSettingsRecompositionProfilerFiles(),
+    val analyzerHint: String = "",
+    val extensionNote: String = ""
+)
+
+data class SharedSettingsRecompositionProfilerDefaults(
+    val enableFile: Boolean = false,
+    val enableLog: Boolean = false,
+    val enableOverlay: Boolean = false,
+    val sampleRateLabel: String = "",
+    val hotspotThreshold: Int = 0,
+    val maxEventBufferSize: Int = 0,
+    val overlayGuide: String = "",
+    val filterStrategy: String = "",
+    val resetStrategy: String = ""
+)
+
+data class SharedSettingsRecompositionProfilerReport(
+    val sessionId: String = "",
+    val durationLabel: String = "",
+    val totalFrames: Long = 0L,
+    val totalRecompositions: Int = 0,
+    val hotspotCount: Int = 0,
+    val stateChangeCount: Int = 0,
+    val generatedLabel: String = "",
+    val reportAvailable: Boolean = false,
+    val topHotspots: List<SharedSettingsRecompositionProfilerHotspot> = emptyList()
+)
+
+data class SharedSettingsRecompositionProfilerHotspot(
+    val name: String,
+    val sourceLocation: String? = null,
+    val recompositionCount: Int = 0,
+    val avgDurationLabel: String = ""
+)
+
+data class SharedSettingsRecompositionProfilerFiles(
+    val reportFileName: String = "",
+    val framesFileName: String = "",
+    val locationHint: String = ""
 )
 
 data class SharedSettingsActionState(
@@ -140,6 +191,11 @@ sealed interface SharedSettingsIntent {
     data object CopyDiagnostics : SharedSettingsIntent
     data object ShareDiagnostics : SharedSettingsIntent
     data object ClearDiagnostics : SharedSettingsIntent
+    data object StartRecompositionProfiler : SharedSettingsIntent
+    data object StopRecompositionProfiler : SharedSettingsIntent
+    data object ResetRecompositionProfiler : SharedSettingsIntent
+    data object RefreshRecompositionProfilerReport : SharedSettingsIntent
+    data object ExportRecompositionProfilerReport : SharedSettingsIntent
     data object SendFeedback : SharedSettingsIntent
     data class RunBuglyCrashMonitorAction(val action: String) : SharedSettingsIntent
     data object ConsumeEffect : SharedSettingsIntent
@@ -170,7 +226,7 @@ interface SharedSettingsPlatformCapabilities {
     suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
-    suspend fun loadDiagnostics(): DataResult<SharedSettingsDiagnosticsSnapshot> =
+    suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
 }
 
@@ -180,7 +236,9 @@ class SharedSettingsDataSource(
     private val notificationPreferenceRepository: NotificationPreferenceRepository? = null,
     private val localeRepository: LocaleRepository? = null,
     private val chatLayoutPreferenceRepository: ChatLayoutPreferenceRepository? = null,
-    private val platformCapabilities: SharedSettingsPlatformCapabilities = object : SharedSettingsPlatformCapabilities {}
+    private val platformCapabilities: SharedSettingsPlatformCapabilities = object : SharedSettingsPlatformCapabilities {},
+    private val recompositionProfilerController: SharedSettingsRecompositionProfilerController =
+        SharedSettingsRecompositionProfilerController()
 ) {
     suspend fun loadHome(selectedDestination: SharedSettingsDestination): DataResult<SharedSettingsHomeSnapshot> {
         val session = sessionStore.readSession()
@@ -266,7 +324,32 @@ class SharedSettingsDataSource(
         platformCapabilities.loadAbout()
 
     suspend fun loadDiagnostics(): DataResult<SharedSettingsDiagnosticsSnapshot> =
-        platformCapabilities.loadDiagnostics()
+        loadDiagnosticsSnapshot()
+
+    suspend fun startRecompositionProfiler(): DataResult<SharedSettingsDiagnosticsSnapshot> =
+        performProfilerAction {
+            recompositionProfilerController.start()
+        }
+
+    suspend fun stopRecompositionProfiler(): DataResult<SharedSettingsDiagnosticsSnapshot> =
+        performProfilerAction {
+            recompositionProfilerController.stop()
+        }
+
+    suspend fun resetRecompositionProfiler(): DataResult<SharedSettingsDiagnosticsSnapshot> =
+        performProfilerAction {
+            recompositionProfilerController.reset()
+        }
+
+    suspend fun refreshRecompositionProfilerReport(): DataResult<SharedSettingsDiagnosticsSnapshot> =
+        performProfilerAction {
+            recompositionProfilerController.refreshReport()
+        }
+
+    suspend fun exportRecompositionProfilerReport(): DataResult<SharedSettingsDiagnosticsSnapshot> =
+        performProfilerAction {
+            recompositionProfilerController.exportReport()
+        }
 
     private suspend fun SettingsMobileSnapshot.withLocalMobilePreferences(): SettingsMobileSnapshot {
         val notificationPreference = notificationPreferenceRepository?.getNotificationPreference()
@@ -330,6 +413,34 @@ class SharedSettingsDataSource(
                         detail = "Message alignment preference is not available on this platform."
                     )
         )
+    }
+
+    private suspend fun loadDiagnosticsSnapshot(
+        feedback: String? = null
+    ): DataResult<SharedSettingsDiagnosticsSnapshot> {
+        val entries =
+            when (val result = platformCapabilities.loadDiagnosticsHost()) {
+                is DataResult.Content -> result.data.entries
+                is DataResult.Empty -> emptyList()
+                is DataResult.Error -> emptyList()
+                is DataResult.NoPermission -> emptyList()
+            }
+        return DataResult.Content(
+            SharedSettingsDiagnosticsSnapshot(
+                entries = entries,
+                profiler = recompositionProfilerController.buildSnapshot(feedback = feedback)
+            )
+        )
+    }
+
+    private suspend fun performProfilerAction(
+        action: () -> SharedSettingsRecompositionProfilerActionResult
+    ): DataResult<SharedSettingsDiagnosticsSnapshot> {
+        val actionResult = action()
+        actionResult.errorCode?.let { code ->
+            return DataResult.Error(ScreenError(code, retryable = false))
+        }
+        return loadDiagnosticsSnapshot(feedback = actionResult.feedback)
     }
 }
 
@@ -491,6 +602,41 @@ class SharedSettingsStore(
                 _state.value = _state.value.copy(effect = SharedSettingsEffect.ShareDiagnostics)
             SharedSettingsIntent.ClearDiagnostics ->
                 _state.value = _state.value.copy(effect = SharedSettingsEffect.ClearDiagnostics)
+            SharedSettingsIntent.StartRecompositionProfiler -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_START, inProgress = true)
+                    )
+                dataSource.startRecompositionProfiler().applyDiagnosticsActionResult(DIAGNOSTICS_ACTION_PROFILER_START)
+            }
+            SharedSettingsIntent.StopRecompositionProfiler -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_STOP, inProgress = true)
+                    )
+                dataSource.stopRecompositionProfiler().applyDiagnosticsActionResult(DIAGNOSTICS_ACTION_PROFILER_STOP)
+            }
+            SharedSettingsIntent.ResetRecompositionProfiler -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_RESET, inProgress = true)
+                    )
+                dataSource.resetRecompositionProfiler().applyDiagnosticsActionResult(DIAGNOSTICS_ACTION_PROFILER_RESET)
+            }
+            SharedSettingsIntent.RefreshRecompositionProfilerReport -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_REPORT, inProgress = true)
+                    )
+                dataSource.refreshRecompositionProfilerReport().applyDiagnosticsActionResult(DIAGNOSTICS_ACTION_PROFILER_REPORT)
+            }
+            SharedSettingsIntent.ExportRecompositionProfilerReport -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_EXPORT, inProgress = true)
+                    )
+                dataSource.exportRecompositionProfilerReport().applyDiagnosticsActionResult(DIAGNOSTICS_ACTION_PROFILER_EXPORT)
+            }
             SharedSettingsIntent.SendFeedback ->
                 _state.value = _state.value.copy(effect = SharedSettingsEffect.SendFeedback)
             is SharedSettingsIntent.RunBuglyCrashMonitorAction ->
@@ -650,6 +796,26 @@ class SharedSettingsStore(
             )
     }
 
+    private fun DataResult<SharedSettingsDiagnosticsSnapshot>.applyDiagnosticsActionResult(action: String) {
+        val nextDiagnostics = toScreenLoadState()
+        _state.value =
+            _state.value.copy(
+                diagnostics =
+                    when (nextDiagnostics) {
+                        is ScreenLoadState.Content -> nextDiagnostics
+                        else -> _state.value.diagnostics
+                    },
+                actionState =
+                    SharedSettingsActionState(
+                        action = action,
+                        inProgress = false,
+                        errorCode = nextDiagnostics.routeErrorCode()
+                    ),
+                routeErrorCode = nextDiagnostics.routeErrorCode(),
+                effect = null
+            )
+    }
+
     private suspend fun <T> DataResult<T>.applyToState(
         destination: SharedSettingsDestination,
         update: SharedSettingsState.(ScreenLoadState<T>) -> SharedSettingsState
@@ -708,6 +874,11 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.CopyDiagnostics,
             SharedSettingsIntent.ShareDiagnostics,
             SharedSettingsIntent.ClearDiagnostics,
+            SharedSettingsIntent.StartRecompositionProfiler,
+            SharedSettingsIntent.StopRecompositionProfiler,
+            SharedSettingsIntent.ResetRecompositionProfiler,
+            SharedSettingsIntent.RefreshRecompositionProfilerReport,
+            SharedSettingsIntent.ExportRecompositionProfilerReport,
             SharedSettingsIntent.SendFeedback,
             is SharedSettingsIntent.RunBuglyCrashMonitorAction,
             SharedSettingsIntent.ConsumeEffect -> false
@@ -765,6 +936,11 @@ internal const val MOBILE_ACTION_SETTINGS = "openNotificationSettings"
 internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
+internal const val DIAGNOSTICS_ACTION_PROFILER_START = "diagnosticsProfilerStart"
+internal const val DIAGNOSTICS_ACTION_PROFILER_STOP = "diagnosticsProfilerStop"
+internal const val DIAGNOSTICS_ACTION_PROFILER_RESET = "diagnosticsProfilerReset"
+internal const val DIAGNOSTICS_ACTION_PROFILER_REPORT = "diagnosticsProfilerReport"
+internal const val DIAGNOSTICS_ACTION_PROFILER_EXPORT = "diagnosticsProfilerExport"
 
 private fun LocaleSnapshot.toSettingsMobileSelectionSnapshot(): SettingsMobileSelectionSnapshot =
     SettingsMobileSelectionSnapshot(

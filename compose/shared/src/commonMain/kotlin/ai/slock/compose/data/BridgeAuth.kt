@@ -351,28 +351,12 @@ internal class BridgeSettingsPlatformCapabilities(
         )
     }
 
-    override suspend fun loadDiagnostics(): DataResult<SharedSettingsDiagnosticsSnapshot> {
+    override suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> {
         val response = bridge.settingsCapability(JSONObject().put("action", "loadDiagnostics"))
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_diagnostics_unavailable" }))
         }
-        val entriesJson = response.optJSONArray("entries")
-        val entries =
-            buildList {
-                if (entriesJson != null) {
-                    for (index in 0 until entriesJson.length()) {
-                        val entry = entriesJson.optJSONObject(index) ?: continue
-                        add(
-                            SharedSettingsDiagnosticsEntry(
-                                timestampLabel = entry.optString("timestampLabel"),
-                                tag = entry.optString("tag"),
-                                message = entry.optString("message")
-                            )
-                        )
-                    }
-                }
-            }
-        return DataResult.Content(SharedSettingsDiagnosticsSnapshot(entries = entries))
+        return DataResult.Content(response.toDiagnosticsHostSnapshot())
     }
 
     suspend fun copyDiagnostics(): Boolean =
@@ -424,6 +408,26 @@ internal class BridgeSettingsPlatformCapabilities(
             rows = rows,
             feedback = optString("feedback").takeIf { it.isNotBlank() }
         )
+    }
+
+    private fun JSONObject.toDiagnosticsHostSnapshot(): SharedSettingsDiagnosticsHostSnapshot {
+        val entriesJson = optJSONArray("entries")
+        val entries =
+            buildList {
+                if (entriesJson != null) {
+                    for (index in 0 until entriesJson.length()) {
+                        val entry = entriesJson.optJSONObject(index) ?: continue
+                        add(
+                            SharedSettingsDiagnosticsEntry(
+                                timestampLabel = entry.optString("timestampLabel"),
+                                tag = entry.optString("tag"),
+                                message = entry.optString("message")
+                            )
+                        )
+                    }
+                }
+            }
+        return SharedSettingsDiagnosticsHostSnapshot(entries = entries)
     }
 
     private suspend fun systemNotificationAction(action: String): SystemNotificationActionResult {
@@ -527,6 +531,8 @@ internal interface SharedThreadNetworkApi {
     suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse
     suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse
     suspend fun saveMessage(messageId: String): HomeNetworkResponse
+    suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse
+    suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse
     suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse
     suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse
 }
@@ -582,6 +588,20 @@ internal class BridgeThreadApi(
             path = "channels/saved",
             method = "POST",
             bodyText = buildSharedSaveMessageBody(MessageId(messageId.trim()))
+        )
+
+    override suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse =
+        request(
+            path = "messages/${messageId.trim()}/reactions",
+            method = "POST",
+            bodyText = buildSharedReactionBody(emoji)
+        )
+
+    override suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse =
+        request(
+            path = "messages/${messageId.trim()}/reactions",
+            method = "DELETE",
+            bodyText = buildSharedReactionBody(emoji)
         )
 
     override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse =

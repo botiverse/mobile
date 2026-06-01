@@ -5,5 +5,6 @@
         "**/*.code-search": true,
         "**/oh_modules": true,
         "**/entry/build/default/cache/default/**": true
-    }
+    },
+    "java.configuration.updateBuildConfiguration": "disabled"
 }

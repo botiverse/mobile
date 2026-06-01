@@ -29,7 +29,7 @@ The script prints the required verification details:
 - bundle/module/ability: `ai.slock.compose / entry / EntryAbility`
 - install and launch commands, when requested
 - screenshot command
-- pulled PNG path under `artifacts/ohos-screenshots/`
+- pulled PNG path under `${TMPDIR:-/tmp}/slock-ohos-screenshots/` by default
 
 ## Default Toolchain
 

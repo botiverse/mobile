@@ -11,6 +11,8 @@ import ai.slock.compose.data.ReadReceiptResult
 import ai.slock.compose.data.ScreenError
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.MemberRepository
+import ai.slock.compose.data.MessageMutationSummary
+import ai.slock.compose.data.MessageReactionSummary
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SlockThreadApi
 import ai.slock.compose.data.SlockThreadApiClient
@@ -303,6 +305,44 @@ internal class SharedThreadDataSource(
             }
         return response.toUnitDataResult("thread_save_network")
     }
+
+        suspend fun setMessageReaction(messageId: String, emoji: String, selected: Boolean): DataResult<KuiklyThreadScreenPayload> {
+            val cleanMessageId = messageId.trim()
+            val cleanEmoji = emoji.trim()
+            if (cleanMessageId.isBlank()) {
+                return DataResult.Error(ScreenError(code = "message_id_missing", retryable = false))
+            }
+            if (cleanEmoji.isBlank()) {
+                return DataResult.Error(ScreenError(code = "message_reaction_missing", retryable = false))
+            }
+            val response =
+                try {
+                    if (selected) {
+                        api.addReaction(cleanMessageId, cleanEmoji)
+                    } else {
+                        api.removeReaction(cleanMessageId, cleanEmoji)
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    return DataResult.Error(ScreenError(code = "thread_reaction_network", retryable = true))
+                }
+            return when (response) {
+                is ThreadApiResult.Success -> {
+                    val currentUserId = readSession()?.user?.id
+                    val currentPayload = payloadCache.values.firstOrNull { payload ->
+                        payload.messages.any { it.id == cleanMessageId } || payload.originMessage?.id == cleanMessageId
+                    }
+                    val updatedPayload = currentPayload?.withMessageMutationSummary(response.data, currentUserId)
+                    if (updatedPayload != null) {
+                        cachePayload(updatedPayload)
+                        writeCachedPayload(updatedPayload)
+                    }
+                    DataResult.Content(updatedPayload ?: KuiklyThreadScreenPayload())
+                }
+                is ThreadApiResult.Failure -> response.toThreadDataError("thread_reaction_network")
+            }
+        }
 
     suspend fun updateTaskStatus(taskId: String, status: TaskStatus): DataResult<KuiklyThreadScreenPayload> {
         if (taskId.isBlank()) {
@@ -1103,6 +1143,80 @@ internal fun KuiklyThreadScreenPayload.withTaskStatus(taskId: String, status: Ta
         }
     )
 
+internal fun KuiklyThreadScreenPayload.withMessageReaction(
+    messageId: String,
+    emoji: String,
+    selected: Boolean
+): KuiklyThreadScreenPayload {
+    val cleanMessageId = messageId.trim()
+    val cleanEmoji = emoji.trim()
+    if (cleanMessageId.isBlank() || cleanEmoji.isBlank()) return this
+    return copy(
+        messages = messages.map { message ->
+            if (message.id == cleanMessageId) message.withReactionSelection(cleanEmoji, selected) else message
+        },
+        originMessage = originMessage?.let { message ->
+            if (message.id == cleanMessageId) message.withReactionSelection(cleanEmoji, selected) else message
+        }
+    )
+}
+
+private fun KuiklyThreadScreenPayload.withMessageMutationSummary(
+    summary: MessageMutationSummary,
+    currentUserId: String?
+): KuiklyThreadScreenPayload {
+    val messageId = summary.messageId.trim()
+    if (messageId.isBlank()) return this
+    val reactions = summary.reactions.toThreadReactionItems(currentUserId)
+    return copy(
+        messages = messages.map { message ->
+            if (message.id == messageId) message.copy(reactions = reactions) else message
+        },
+        originMessage = originMessage?.let { message ->
+            if (message.id == messageId) message.copy(reactions = reactions) else message
+        }
+    )
+}
+
+private fun KuiklyThreadMessageItem.withReactionSelection(emoji: String, selected: Boolean): KuiklyThreadMessageItem {
+    var matched = false
+    val updated =
+        reactions.mapNotNull { reaction ->
+            if (reaction.emoji != emoji) return@mapNotNull reaction
+            matched = true
+            val delta =
+                when {
+                    selected && !reaction.selected -> 1
+                    !selected && reaction.selected -> -1
+                    else -> 0
+                }
+            val nextCount = (reaction.count + delta).coerceAtLeast(0)
+            if (nextCount > 0) {
+                reaction.copy(count = nextCount, selected = selected)
+            } else {
+                null
+            }
+        }
+    val nextReactions =
+        if (!matched && selected) {
+            updated + KuiklyThreadReactionItem(emoji = emoji, count = 1, selected = true)
+        } else {
+            updated
+        }
+    return copy(reactions = nextReactions)
+}
+
+private fun List<MessageReactionSummary>.toThreadReactionItems(currentUserId: String?): List<KuiklyThreadReactionItem> =
+    mapNotNull { reaction ->
+        val emoji = reaction.emoji.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val count = reaction.count.takeIf { it > 0 } ?: return@mapNotNull null
+        KuiklyThreadReactionItem(
+            emoji = emoji,
+            count = count,
+            selected = currentUserId != null && currentUserId in reaction.reactorIds
+        )
+    }
+
 private fun Message.matchesSharedThread(
     payload: KuiklyThreadScreenPayload,
     activeReplyParentMessageId: MessageId?
@@ -1140,6 +1254,7 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(update: KuiklyThreadMess
         taskNumber = update.taskNumber ?: taskNumber,
         taskStatus = update.taskStatus ?: taskStatus,
         taskAssigneeName = update.taskAssigneeName ?: taskAssigneeName,
+        reactions = update.reactions.ifEmpty { reactions },
         attachments = update.attachments.ifEmpty { attachments }
     )
 

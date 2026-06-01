@@ -16,7 +16,7 @@ MODULE="entry"
 ABILITY="EntryAbility"
 TARGET_ID=""
 CASE_NAME="manual"
-OUTPUT_DIR="$ROOT_DIR/artifacts/ohos-screenshots"
+OUTPUT_DIR="${TMPDIR:-/tmp}/slock-ohos-screenshots"
 HAP_PATH="$OHOS_DIR/entry/build/default/outputs/default/entry-default-signed.hap"
 BUILD_HAP=0
 INSTALL_HAP=0
@@ -28,12 +28,12 @@ usage() {
 Usage: scripts/capture_ohos_screenshot.sh [options]
 
 Build/install/launch Slock OHOS if requested, then capture the current device
-screen through hdc and pull a PNG into artifacts/ohos-screenshots/.
+screen through hdc and pull a PNG into a temporary directory outside the repo.
 
 Options:
   --target <id>       hdc target id. Defaults to the first connected target.
   --case <name>       Screenshot case label, e.g. home-tabbar. Default: manual.
-  --output-dir <dir>  Local output directory. Default: artifacts/ohos-screenshots.
+  --output-dir <dir>  Local output directory. Default: ${TMPDIR:-/tmp}/slock-ohos-screenshots.
   --hap <path>        HAP path to install. Default: entry-default-signed.hap.
   --build            Run ohpm install, hvigor sync, and assembleHap first.
   --install          Install the HAP before capture.

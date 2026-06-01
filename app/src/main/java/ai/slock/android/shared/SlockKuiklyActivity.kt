@@ -42,6 +42,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.lifecycleScope
 import ai.slock.android.R
+import ai.slock.android.BuildConfig
 import ai.slock.compose.data.StoredAuthSession as AuthSession
 import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
@@ -94,6 +95,7 @@ import com.google.gson.Gson
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder

@@ -464,6 +464,48 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun setMessageReactionAddsReactionToCachedPayload() = runBlocking {
+        val api = FakeThreadApi()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        dataSource.cachePayload(contentPayload("reactable body"))
+
+        val result = dataSource.setMessageReaction("m1", "🔥", selected = true)
+
+        val updated = (result as DataResult.Content).data
+        val reaction = updated.messages.single().reactions.single()
+        assertEquals(listOf("m1" to "🔥"), api.addedReactions)
+        assertEquals("🔥", reaction.emoji)
+        assertEquals(1, reaction.count)
+        assertEquals(true, reaction.selected)
+    }
+
+    @Test
+    fun setMessageReactionRemovesReactionFromCachedPayload() = runBlocking {
+        val api = FakeThreadApi()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val message = contentPayload("reactable body").messages.single()
+        dataSource.cachePayload(
+            contentPayload("reactable body").copy(
+                messages = listOf(message.copy(reactions = listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = true))))
+            )
+        )
+
+        val result = dataSource.setMessageReaction("m1", "🔥", selected = false)
+
+        val updated = (result as DataResult.Content).data
+        assertEquals(listOf("m1" to "🔥"), api.removedReactions)
+        assertEquals(emptyList(), updated.messages.single().reactions)
+    }
+
+    @Test
     fun updateTaskStatusUpdatesCachedPayloadAndPersistentSnapshot() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         val api = FakeThreadApi()
@@ -641,6 +683,8 @@ class SharedThreadStoreTest {
         val channelIds: MutableList<String> = mutableListOf()
         var lastAttachmentIds: List<String> = emptyList()
         val savedMessageIds: MutableList<String> = mutableListOf()
+        val addedReactions: MutableList<Pair<String, String>> = mutableListOf()
+        val removedReactions: MutableList<Pair<String, String>> = mutableListOf()
         val updatedTaskStatuses: MutableList<Pair<String, TaskStatus>> = mutableListOf()
         val createdThreads: MutableList<Pair<String, String>> = mutableListOf()
 
@@ -686,6 +730,19 @@ class SharedThreadStoreTest {
         override suspend fun saveMessage(messageId: String): HomeNetworkResponse {
             savedMessageIds += messageId
             return HomeNetworkResponse(code = 200, bodyText = """{"id":"$messageId","saved":true}""")
+        }
+
+        override suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse {
+            addedReactions += messageId to emoji
+            return HomeNetworkResponse(
+                code = 200,
+                bodyText = """{"id":"$messageId","reactions":[{"emoji":"$emoji","count":1,"reactorIds":["u1"],"reactorNames":["User"]}]}"""
+            )
+        }
+
+        override suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse {
+            removedReactions += messageId to emoji
+            return HomeNetworkResponse(code = 200, bodyText = """{"id":"$messageId","reactions":[]}""")
         }
 
         override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse {
