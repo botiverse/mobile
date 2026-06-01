@@ -48,7 +48,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly OPEN_URL = "openUrl";
   static readonly LOG = "log";
   static readonly REPORT_DT = "reportDT";
-  static readonly REPORT_REAL_TIME = "reportRealtime";
+  static readonly REPORT_REAL_TIME = "reportRealTime";
+  static readonly REPORT_REAL_TIME_LEGACY = "reportRealtime";
   static readonly LOCAL_SERVE_TIME = "localServeTime";
   static readonly CURRENT_TIME_STAMP = "currentTimestamp";
   static readonly DATE_FORMATTER = "dateFormatter";
@@ -99,7 +100,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         this.reportDT(params);
         break;
       }
-      case KRBridgeModule.REPORT_REAL_TIME: {
+      case KRBridgeModule.REPORT_REAL_TIME:
+      case KRBridgeModule.REPORT_REAL_TIME_LEGACY: {
         this.reportRealtime(params);
         break;
       }
