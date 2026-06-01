@@ -1,11 +1,6 @@
 package ai.slock.compose
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -26,19 +21,15 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
-import kotlinx.coroutines.delay
 
 private const val SlockFilterPopoverWidthValue = 220f
 private const val SlockFilterPopoverEstimatedHeightValue = 360f
-private const val SlockFilterPopoverViewportGapValue = 8f
 private const val SlockFilterPopoverVerticalOffsetValue = 8f
 
 /**
@@ -92,46 +83,24 @@ internal fun SlockFilterPopover(
     selectedRowColor: Color = SlockColor.AppBgLightBlue.copy(alpha = 0.28f),
     headerSlot: (@Composable () -> Unit)? = null
 ) {
-    val density = LocalDensity.current
-    var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
-    var overlayWidth by remember { mutableStateOf(0f) }
-    var overlayHeight by remember { mutableStateOf(0f) }
-    var dismissEnabled by remember(anchor, title) { mutableStateOf(false) }
     val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else 4.dp
-    val localAnchor = Offset(anchor.x - overlayOrigin.x, anchor.y - overlayOrigin.y)
     val popoverWidth = widthDp.dp
-    val maxX =
-        (overlayWidth - widthDp - SlockFilterPopoverViewportGapValue)
-            .coerceAtLeast(SlockFilterPopoverViewportGapValue)
-    val maxY =
-        (overlayHeight - SlockFilterPopoverEstimatedHeightValue - SlockFilterPopoverViewportGapValue)
-            .coerceAtLeast(SlockFilterPopoverViewportGapValue)
-    val xClamped = (localAnchor.x + horizontalOffsetDp).coerceIn(SlockFilterPopoverViewportGapValue, maxX)
-    val yClamped = (localAnchor.y + verticalOffsetDp).coerceIn(SlockFilterPopoverViewportGapValue, maxY)
-    val xOffsetDp = with(density) { xClamped.toDp() }
-    val yOffsetDp = with(density) { yClamped.toDp() }
+    val popoverSize = Size(
+        width = widthDp + shadowOffset.value,
+        height = SlockFilterPopoverEstimatedHeightValue + shadowOffset.value
+    )
     val filtered =
         if (searchText.isBlank()) options
         else options.filter { it.label.contains(searchText, ignoreCase = true) }
-    LaunchedEffect(anchor, title) {
-        dismissEnabled = false
-        delay(120)
-        dismissEnabled = true
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .onGloballyPositioned {
-                overlayOrigin = it.positionInRoot()
-                overlayWidth = it.size.width.toFloat()
-                overlayHeight = it.size.height.toFloat()
-            }
-            .clickable(enabled = dismissEnabled, onClick = onDismiss),
-        contentAlignment = Alignment.TopStart
-    ) {
+    SlockAnchoredPopover(
+        anchor = anchor,
+        contentSize = popoverSize,
+        onDismiss = onDismiss,
+        horizontalOffset = horizontalOffsetDp,
+        verticalOffset = verticalOffsetDp
+    ) { popoverModifier, _ ->
         Box(
-            modifier = Modifier
-                .offset(x = xOffsetDp, y = yOffsetDp)
+            modifier = popoverModifier
                 .padding(end = shadowOffset, bottom = shadowOffset)
         ) {
             if (shadowOffset > 0.dp) {
@@ -147,7 +116,7 @@ internal fun SlockFilterPopover(
                     .width(popoverWidth)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, surfaceBorderColor)
-                    .clickable(onClick = {})
+                    .slockFloatingContentClickTarget()
             ) {
                 Row(
                     modifier = Modifier

@@ -7,6 +7,7 @@ import ai.slock.compose.SlockSpacing
 import ai.slock.compose.SlockStroke
 import ai.slock.compose.SlockType
 import ai.slock.compose.TextField
+import ai.slock.compose.toSlockDpOffset
 import ai.slock.compose.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,6 +46,7 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -687,12 +689,14 @@ internal fun SlockAnchoredToolbarChip(
     activeBackgroundColor: Color = SlockColor.AccentCyan,
     inactiveBackgroundColor: Color = SlockColor.SurfaceWhite
 ) {
-    var anchor by remember { mutableStateOf(Offset.Zero) }
+    val density = LocalDensity.current
+    var anchor by remember { mutableStateOf<Offset?>(null) }
     Box(
         modifier =
             modifier.onGloballyPositioned { coords ->
-                val root = coords.positionInRoot()
-                anchor = Offset(root.x, root.y + coords.size.height)
+                val root = coords.positionInRoot().toSlockDpOffset(density)
+                val height = with(density) { coords.size.height.toDp().value }
+                anchor = Offset(root.x, root.y + height)
             }
     ) {
         SlockToolbarChip(
@@ -705,7 +709,7 @@ internal fun SlockAnchoredToolbarChip(
             count = count,
             activeBackgroundColor = activeBackgroundColor,
             inactiveBackgroundColor = inactiveBackgroundColor,
-            onClick = { onClick(anchor) }
+            onClick = { anchor?.let(onClick) }
         )
     }
 }

@@ -24,10 +24,8 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -42,7 +40,6 @@ internal data class SlockBaseMenuItem(
 private val SlockBaseMenuWidth = 136.dp
 private val SlockBaseMenuRowHeight = 34.dp
 private val SlockBaseMenuShadowOffset = 4.dp
-private const val SlockBaseMenuViewportGap = 8f
 private const val SlockBaseMenuHorizontalOffset = -8f
 private const val SlockBaseMenuVerticalOffset = 8f
 
@@ -60,34 +57,21 @@ internal fun SlockBaseMenuOverlay(
     modifier: Modifier = Modifier
 ) {
     if (items.isEmpty()) return
-    val density = LocalDensity.current
-    var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
-    var overlayWidth by remember { mutableStateOf(0f) }
-    var overlayHeight by remember { mutableStateOf(0f) }
     val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else SlockBaseMenuShadowOffset
-    val localAnchor = Offset(anchor.x - overlayOrigin.x, anchor.y - overlayOrigin.y)
-    val menuWidthPx = with(density) { SlockBaseMenuWidth.toPx() }
-    val estimatedMenuHeightPx = with(density) { (SlockBaseMenuRowHeight * items.size).toPx() }
-    val maxX = (overlayWidth - menuWidthPx - SlockBaseMenuViewportGap).coerceAtLeast(SlockBaseMenuViewportGap)
-    val maxY = (overlayHeight - estimatedMenuHeightPx - SlockBaseMenuViewportGap).coerceAtLeast(SlockBaseMenuViewportGap)
-    val menuX = (localAnchor.x + SlockBaseMenuHorizontalOffset).coerceIn(SlockBaseMenuViewportGap, maxX)
-    val menuY = (localAnchor.y + SlockBaseMenuVerticalOffset).coerceIn(SlockBaseMenuViewportGap, maxY)
-    val menuXDp = with(density) { menuX.toDp() }
-    val menuYDp = with(density) { menuY.toDp() }
-    Box(
+    val menuSize = Size(
+        width = SlockBaseMenuWidth.value + shadowOffset.value,
+        height = SlockBaseMenuRowHeight.value * items.size + shadowOffset.value
+    )
+    SlockAnchoredPopover(
+        anchor = anchor,
+        contentSize = menuSize,
+        horizontalOffset = SlockBaseMenuHorizontalOffset,
+        verticalOffset = SlockBaseMenuVerticalOffset,
+        onDismiss = onDismiss,
         modifier = modifier
-            .fillMaxSize()
-            .onGloballyPositioned {
-                overlayOrigin = it.positionInRoot()
-                overlayWidth = it.size.width.toFloat()
-                overlayHeight = it.size.height.toFloat()
-            }
-            .clickable(onClick = onDismiss),
-        contentAlignment = Alignment.TopStart
-    ) {
+    ) { popoverModifier, _ ->
         Box(
-            modifier = Modifier
-                .offset(x = menuXDp, y = menuYDp)
+            modifier = popoverModifier
                 .padding(end = shadowOffset, bottom = shadowOffset)
         ) {
             if (shadowOffset > 0.dp) {
@@ -103,6 +87,7 @@ internal fun SlockBaseMenuOverlay(
                     .width(SlockBaseMenuWidth)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, surfaceBorderColor)
+                    .slockFloatingContentClickTarget()
             ) {
                 items.forEach { item ->
                     val selected = item.id == selectedId

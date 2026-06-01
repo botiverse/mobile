@@ -4216,7 +4216,7 @@ fun ThreadMessageItem(
     val context = LocalContext.current
     var showMessageActions by remember(message.id.value) { mutableStateOf(false) }
         var messageActionAnchor by remember(message.id.value) { mutableStateOf<IntOffset?>(null) }
-    var messageActionAreaOffset by remember(message.id.value) { mutableStateOf(IntOffset.Zero) }
+        var messageActionAreaOffset by remember(message.id.value) { mutableStateOf<IntOffset?>(null) }
     var messageBodyOffset by remember(message.id.value) { mutableStateOf(IntOffset.Zero) }
     var messageInteractiveAreaBounds by remember(message.id.value) { mutableStateOf<List<Rect>>(emptyList()) }
     var messageBodyInteractiveAreaBounds by remember(message.id.value) {
@@ -4305,8 +4305,7 @@ fun ThreadMessageItem(
                                 .semantics {
                                     contentDescription = "Message actions"
                                     onClick(label = "Message actions") {
-                                        toggleMessageActions(messageActionAreaOffset)
-                                        true
+                                                                                messageActionAreaOffset?.let(::toggleMessageActions) != null
                                     }
                                 },
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
@@ -4426,9 +4425,10 @@ fun ThreadMessageItem(
                 messageInteractiveAreaBounds = emptyList()
             }
             if (showMessageActions) {
-                ThreadMessageActionsPopup(
+                                messageActionAnchor?.let { anchor ->
+                                        ThreadMessageActionsPopup(
                         message = message,
-                                                anchor = messageActionAnchor ?: IntOffset.Zero,
+                                                anchor = anchor,
                         onDismiss = { showMessageActions = false },
                         onReply =
                                 onOpenThread?.let { openThread ->
@@ -4458,7 +4458,8 @@ fun ThreadMessageItem(
                             message.task?.let { task -> onTaskStatusChange(task, nextStatus) }
                             showMessageActions = false
                         }
-                )
+                                        )
+                                }
             }
         }
         if (alignCurrentUserRight) {
@@ -4475,7 +4476,7 @@ internal const val THREAD_MESSAGE_ACTION_MENU_TAG = "thread-message-action-menu"
 
 private fun Modifier.messageActionsTrigger(
         enabled: Boolean,
-        rootOffsetProvider: () -> IntOffset,
+        rootOffsetProvider: () -> IntOffset?,
         interactiveBoundsProvider: () -> List<Rect>,
         onOpen: (IntOffset) -> Unit,
         onDismiss: () -> Unit
@@ -4490,7 +4491,7 @@ private fun Modifier.messageActionsTrigger(
                                             requireUnconsumed = false,
                                             pass = PointerEventPass.Initial
                                     )
-                            val rootOffset = rootOffsetProvider()
+                            val rootOffset = rootOffsetProvider() ?: return@awaitEachGesture
                             val downInRoot =
                                     Offset(
                                             rootOffset.x + down.position.x,
@@ -4565,7 +4566,7 @@ private fun ThreadMessageActionsPopup(
     val menuWidthPx =
             menuSize.width.takeIf { it > 0 }
                     ?: with(density) { SlockMenuOverlayDefaults.Width.roundToPx() }
-    val menuHeightPx = menuSize.height
+    val menuHeightPx = menuSize.height.takeIf { it > 0 } ?: with(density) { 252.dp.roundToPx() }
     val menuOffset =
             remember(anchor, screenWidthPx, screenHeightPx, bottomInsetPx, menuWidthPx, menuHeightPx) {
                 val gapPx = with(density) { SlockSpacing.Sm.roundToPx() }

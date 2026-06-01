@@ -82,9 +82,7 @@ import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.Density
 import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
@@ -2741,70 +2739,38 @@ private fun ThreadMessageActionMenu(
                 )
             }
         }
-    val density = LocalDensity.current
-    var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
-    var overlaySize by remember { mutableStateOf(Size.Zero) }
     var menuSize by remember { mutableStateOf(Size.Zero) }
+    val density = LocalDensity.current
     val menuWidth = menuSize.width.takeIf { it > 0f } ?: ThreadMessageMenuWidth.value
     val menuHeight = menuSize.height.takeIf { it > 0f } ?: ThreadMessageMenuFallbackHeight
-    val localAnchor = Offset(anchor.x - overlayOrigin.x, anchor.y - overlayOrigin.y)
-    val menuX =
-        if (overlaySize.width > 0f) {
-            coerceThreadMessageMenuOffset(
-                value = localAnchor.x - ThreadMessageMenuHorizontalNudge,
-                min = ThreadMessageMenuAnchorGap,
-                max = overlaySize.width - menuWidth - ThreadMessageMenuAnchorGap
-            )
-        } else {
-            localAnchor.x.coerceAtLeast(ThreadMessageMenuAnchorGap)
-        }
-    val preferredBelowY = localAnchor.y + ThreadMessageMenuAnchorGap
-    val preferredAboveY = localAnchor.y - menuHeight - ThreadMessageMenuAnchorGap
-    val maxY =
-        if (overlaySize.height > 0f) {
-            overlaySize.height - menuHeight - ThreadMessageMenuAnchorGap
-        } else {
-            preferredBelowY
-        }
-    val menuY =
-        if (overlaySize.height > 0f && preferredBelowY + menuHeight > overlaySize.height - ThreadMessageMenuAnchorGap) {
-            if (preferredAboveY >= ThreadMessageMenuAnchorGap) {
-                preferredAboveY
-            } else {
-                maxY
-            }
-        } else {
-            coerceThreadMessageMenuOffset(
-                value = preferredBelowY,
-                min = ThreadMessageMenuAnchorGap,
-                max = maxY
+    val contentSize = Size(
+        width = menuWidth + 4f,
+        height = menuHeight + 4f
+    )
+    SlockAnchoredPopover(
+        anchor = anchor,
+        contentSize = contentSize,
+        onDismiss = onDismiss,
+        viewportGap = ThreadMessageMenuAnchorGap,
+        horizontalOffset = -ThreadMessageMenuHorizontalNudge,
+        verticalOffset = ThreadMessageMenuAnchorGap,
+        verticalPlacement = SlockFloatingVerticalPlacement.Auto
+    ) { popoverModifier, position ->
+        LaunchedEffect(message.id, anchor, position, menuSize) {
+            diagnosticsLogger(
+                "thread_message_menu_position messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y} " +
+                    "overlayX=${position.overlayLayout.origin.x} overlayY=${position.overlayLayout.origin.y} " +
+                    "localX=${position.localAnchor.x} localY=${position.localAnchor.y} " +
+                    "overlayW=${position.overlayLayout.size.width} overlayH=${position.overlayLayout.size.height} " +
+                    "menuW=$menuWidth menuH=$menuHeight finalX=${position.offset.x} finalY=${position.offset.y}"
             )
         }
-    LaunchedEffect(message.id, anchor, overlayOrigin, overlaySize, menuSize, menuX, menuY) {
-        diagnosticsLogger(
-            "thread_message_menu_position messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y} " +
-                "overlayX=${overlayOrigin.x} overlayY=${overlayOrigin.y} localX=${localAnchor.x} localY=${localAnchor.y} " +
-                "overlayW=${overlaySize.width} overlayH=${overlaySize.height} menuW=$menuWidth menuH=$menuHeight " +
-                "finalX=$menuX finalY=$menuY"
-        )
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .clickable(onClick = onDismiss)
-            .onGloballyPositioned { coordinates ->
-                overlayOrigin = coordinates.positionInRoot()
-                overlaySize = coordinates.size.toDpSize(density)
-            },
-        contentAlignment = Alignment.TopStart
-    ) {
         Box(
-            modifier = Modifier
-                .offset(x = menuX, y = menuY)
+            modifier = popoverModifier
                 .padding(end = 4.dp, bottom = 4.dp)
                 .width(ThreadMessageMenuWidth)
                 .onGloballyPositioned { coordinates ->
-                    menuSize = coordinates.size.toDpSize(density)
+                    menuSize = coordinates.size.toSlockDpSize(density)
                 }
         ) {
             Box(
@@ -2818,6 +2784,7 @@ private fun ThreadMessageActionMenu(
                     .width(ThreadMessageMenuWidth)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .slockFloatingContentClickTarget()
             ) {
                 ThreadMessageReactionRow()
                 ThreadMessageMenuDivider()
@@ -2831,16 +2798,6 @@ private fun ThreadMessageActionMenu(
             }
         }
     }
-}
-
-private fun IntSize.toDpSize(density: Density): Size =
-    with(density) {
-        Size(width.toDp().value, height.toDp().value)
-    }
-
-internal fun coerceThreadMessageMenuOffset(value: Float, min: Float, max: Float): Float {
-    if (max < min) return min
-    return value.coerceIn(min, max)
 }
 
 @Composable
