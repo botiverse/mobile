@@ -9,6 +9,12 @@ data class SharedSettingsDiagnosticsHostSnapshot(
     val entries: List<SharedSettingsDiagnosticsEntry> = emptyList()
 )
 
+internal data class SharedSettingsRecompositionProfilerSupportState(
+    val supported: Boolean,
+    val gateLabel: String,
+    val unavailableDetail: String
+)
+
 internal interface SharedSettingsRecompositionProfilerDebugGate {
     val supported: Boolean
     val gateLabel: String
@@ -16,14 +22,17 @@ internal interface SharedSettingsRecompositionProfilerDebugGate {
 }
 
 internal object SharedSettingsDefaultRecompositionProfilerDebugGate : SharedSettingsRecompositionProfilerDebugGate {
+    private val supportState: SharedSettingsRecompositionProfilerSupportState
+        get() = sharedProfilerSupportState()
+
     override val supported: Boolean
-        get() = isSharedProfilerDebugGateEnabled()
+        get() = supportState.supported
 
     override val gateLabel: String
-        get() = if (supported) "Debug build" else "Debug only"
+        get() = supportState.gateLabel
 
     override val unavailableDetail: String
-        get() = "Recomposition profiler is available only in shared debug builds."
+        get() = supportState.unavailableDetail
 }
 
 internal interface SharedSettingsRecompositionProfilerEngine {
@@ -307,4 +316,4 @@ private fun Long.formatDurationLabel(): String =
 private fun Double.formatMillisLabel(): String =
     "${(this * 10).roundToInt() / 10.0} ms avg"
 
-internal expect fun isSharedProfilerDebugGateEnabled(): Boolean
+internal expect fun sharedProfilerSupportState(): SharedSettingsRecompositionProfilerSupportState

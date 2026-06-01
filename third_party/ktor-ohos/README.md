@@ -97,9 +97,7 @@ machine. That means the Ktor OHOS fork has the engine source and Gradle target,
 but Slock still needs either:
 
 - the private/internal Maven that contains the KBA kotlinx artifacts, or
-- additional local forks/publications for the missing KBA kotlinx dependencies,
-  similar to the SQLiter/Stately layer needed by the SQLDelight native-driver
-  path.
+- additional local forks/publications for the missing KBA kotlinx dependencies.
 
 `Tencent-TDS/KuiklyBase-platform` is the right upstream dependency catalog for
 this stack, but it does not close every Ktor gap by itself:
