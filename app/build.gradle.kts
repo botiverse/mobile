@@ -112,7 +112,7 @@ sqldelight {
 dependencies {
     // Kuikly Compose shared module
     implementation("ai.slock.compose:shared-android:1.0.0")
-    implementation("com.tencent.kuikly-open:compose-android:2.19.1-2.1.21")
+    implementation("com.tencent.kuikly-open:compose-android:2.20.1-2.1.21")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
