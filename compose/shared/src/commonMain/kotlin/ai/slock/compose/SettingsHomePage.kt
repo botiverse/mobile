@@ -307,7 +307,10 @@ private fun SharedHomeSearchSenderMeta(
         )
         Text(
             text = sender,
-            style = SlockType.Caption.copy(fontSize = if (compact) 10.sp else 11.sp, lineHeight = if (compact) 12.sp else 13.sp),
+            style =
+                SlockType.Caption
+                    .withSlockFontWeight(FontWeight.Medium)
+                    .copy(fontSize = if (compact) 10.sp else 11.sp, lineHeight = if (compact) 12.sp else 13.sp),
             color = SlockColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -4135,6 +4138,9 @@ private fun SharedHomeSearchPanel(
                 )
             }
             item {
+                SharedHomeSearchDivider()
+            }
+            item {
                 SharedHomeSearchFilters(
                     state = state,
                     channelFilters = channelFilters,
@@ -4145,6 +4151,9 @@ private fun SharedHomeSearchPanel(
                     onIntent = onIntent,
                     showSenderFilter = showSenderFilter
                 )
+            }
+            item {
+                SharedHomeSearchDivider()
             }
             item {
                 if (state.loading || state.errorCode != null || state.noPermissionCode != null || state.empty || (!state.searched && state.items.isEmpty() && entityResults.isEmpty())) {
@@ -4280,6 +4289,17 @@ private fun SharedHomeSearchPanel(
             else -> Unit
         }
     }
+}
+
+@Composable
+private fun SharedHomeSearchDivider() {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(SlockStroke.Default)
+                .background(SlockColor.BorderBlack)
+    )
 }
 
 @Composable
@@ -4439,17 +4459,6 @@ private fun SharedHomeSearchToolbar(
                         SlockLucideIcon("x", color = "#FF000000", modifier = Modifier.size(12.dp))
                     }
                 }
-                Text(
-                    text = "ESC",
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    modifier =
-                        Modifier
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                            .padding(horizontal = 6.dp, vertical = 3.dp)
-                )
             }
         }
     }
@@ -4926,7 +4935,7 @@ private fun SharedHomeInboxResultRow(
 private fun SharedHomeSearchResultsCount(totalResults: Int) {
     Text(
         text = "$totalResults results",
-        style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 1.4.sp),
+        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.6.sp),
         color = SlockColor.TextMutedGray,
         maxLines = 1,
         modifier =
@@ -4940,7 +4949,7 @@ private fun SharedHomeSearchResultsCount(totalResults: Int) {
 private fun SharedHomeSearchSectionLabel(label: String) {
     Text(
         text = label.uppercase(),
-        style = SlockType.Caption.copy(letterSpacing = 1.6.sp),
+        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.8.sp),
         color = SlockColor.TextMutedGray,
         maxLines = 1,
         modifier = Modifier.padding(horizontal = SearchMessagesHorizontalPadding, vertical = 8.dp)
@@ -4969,7 +4978,7 @@ private fun SharedHomeSearchEntityRow(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = result.title,
-                    style = SlockType.SectionLabel.copy(fontSize = 14.sp, lineHeight = 17.sp),
+                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 17.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -4998,7 +5007,7 @@ private fun SharedHomeEntityTypeBadge(type: SearchEntityType) {
                 SearchEntityType.Human -> "DM"
                 SearchEntityType.Agent -> "DM"
             },
-        style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 10.sp, letterSpacing = 0.6.sp),
+        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 10.sp, letterSpacing = 0.sp),
         color = SlockColor.TextMutedGray,
         maxLines = 1,
         modifier =
@@ -5054,14 +5063,14 @@ private fun SharedHomeThreadResultGroup(
                     SharedHomeMiniMetaBadge("Thread", "message-square", compact = true)
                     Text(
                         text = sourceLabel,
-                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
                         color = SlockColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = "${group.items.size} hits",
-                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
                         color = SlockColor.TextMutedGray,
                         maxLines = 1
                     )
@@ -5069,7 +5078,7 @@ private fun SharedHomeThreadResultGroup(
                     if (!latestTime.isNullOrBlank()) {
                         Text(
                             text = latestTime,
-                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
                             color = SlockColor.TextMutedGray,
                             maxLines = 1
                         )
@@ -5077,7 +5086,7 @@ private fun SharedHomeThreadResultGroup(
                 }
                 Text(
                     text = group.title,
-                    style = SlockType.SectionLabel.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -5136,7 +5145,7 @@ private fun SharedHomeSearchMessageResultRow(
             if (!nested) {
                 Text(
                     text = searchResultSourceLabel(item),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 13.sp),
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -5157,14 +5166,14 @@ private fun SharedHomeSearchMessageResultRow(
             }
             Text(
                 text = time ?: "",
-                style = SlockType.Caption.copy(fontSize = if (compactMeta) 9.sp else 10.sp, lineHeight = if (compactMeta) 11.sp else 12.sp),
+                style = SlockType.Caption.copy(fontSize = if (compactMeta) 9.sp else 10.sp, lineHeight = if (compactMeta) 11.sp else 12.sp, letterSpacing = 0.sp),
                 color = SlockColor.TextMutedGray,
                 maxLines = 1
             )
         }
         Text(
             text = preview,
-            style = SlockType.Body.copy(fontSize = if (nested) 12.sp else 13.sp, lineHeight = if (nested) 17.sp else 18.sp),
+            style = SlockType.Body.copy(fontSize = if (nested) 12.sp else 13.sp, lineHeight = if (nested) 17.sp else 18.sp, letterSpacing = 0.sp),
             color = SlockColor.TextBlack.copy(alpha = if (nested) 0.7f else 0.74f),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
@@ -5200,7 +5209,7 @@ private fun SharedHomeMiniMetaBadge(
         SlockLucideIcon(iconName, color = "#99000000", modifier = Modifier.size(if (compact) 9.dp else 10.dp))
         Text(
             text = label,
-            style = SlockType.Caption.copy(fontSize = if (compact) 9.sp else 10.sp, lineHeight = if (compact) 11.sp else 12.sp),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = if (compact) 9.sp else 10.sp, lineHeight = if (compact) 11.sp else 12.sp, letterSpacing = 0.sp),
             color = SlockColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -5293,14 +5302,14 @@ private fun SharedHomeSearchSortSegmentButton(
     SharedHomeSearchControlSurface(
         enabled = true,
         onClick = onClick,
-        modifier = modifier.heightIn(min = 30.dp),
+        modifier = modifier.heightIn(min = 28.dp),
         background = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite,
         borderColor = SlockColor.BorderBlack,
         shadowColor = if (selected) SlockColor.ShadowBlack else Color.Transparent
     ) {
         Text(
-            text = label.uppercase(),
-            style = SlockType.TabLabel.copy(fontSize = 12.sp, lineHeight = 14.sp),
+            text = label,
+            style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
             color = if (selected) SlockColor.TextBlack else SearchMutedTextColor,
             maxLines = 1
         )
