@@ -637,21 +637,22 @@ private fun SlockAppShellContent() {
                 logger = { message -> bridge.log("app_shell_member_repository $message") }
             )
         }
-    val threadDataSource =
-        remember {
-            SharedThreadDataSource(
-                networkApi = BridgeThreadApi(bridge, authStore),
-                sessionStore = authStore,
-                localWriteThrough = localWriteThrough,
-                memberRepository = memberRepository
-            )
-        }
     val channelRepository =
         remember {
             RealChannelRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
                 warningLogger = { message -> bridge.log("shared_channel_repository $message") }
+            )
+        }
+    val threadDataSource =
+        remember {
+            SharedThreadDataSource(
+                networkApi = BridgeThreadApi(bridge, authStore),
+                sessionStore = authStore,
+                localWriteThrough = localWriteThrough,
+                memberRepository = memberRepository,
+                channelRepository = channelRepository
             )
         }
     val savedRepository =

@@ -11,6 +11,7 @@ import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklyRelationalStore
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.RelationalComposeLocalDataStore
+import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealConversationRepository
 import ai.slock.compose.data.RealMemberRepository
 import ai.slock.compose.data.ScreenError
@@ -217,7 +218,6 @@ internal data class KuiklyThreadScreenPayload(
 internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): KuiklyThreadScreenPayload =
     copy(
         showOpenInChannelAction = showOpenInChannelAction || originParentMessageId?.isNotBlank() == true,
-        canAddMembers = false,
         showSettingsAction = showSettingsAction && showModeTabs
     )
 
@@ -283,6 +283,14 @@ private data class ThreadImageAttachmentGroup(
     val images: List<KuiklyThreadAttachmentItem>,
     val currentIndex: Int
 )
+
+private fun <T> DataResult<T>.threadActionErrorCode(fallback: String): String =
+    when (this) {
+        is DataResult.Content -> fallback
+        is DataResult.Empty -> reason.name.lowercase()
+        is DataResult.Error -> error.code
+        is DataResult.NoPermission -> blocker.code
+    }
 
 internal data class SlockThreadWebLinkTarget(
     val channelId: String,
@@ -455,6 +463,12 @@ private fun ThreadPageScreen() {
                         sessionStore = authStore,
                         networkClient = networkClient,
                         warningLogger = { message -> bridge.log("thread_conversation_repository $message") }
+                    ),
+                channelRepository =
+                    RealChannelRepository(
+                        sessionStore = authStore,
+                        networkClient = networkClient,
+                        warningLogger = { message -> bridge.log("thread_channel_repository $message") }
                     )
             )
         }
@@ -1121,6 +1135,83 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "openMarkdownThreadRef" && !itemId.isNullOrBlank() -> {
                     bridge.toast("Unable to open ${itemId.take(32)}")
+                }
+                action == "submitAddMember" && !itemId.isNullOrBlank() -> {
+                    val previousPayload = renderedPayload
+                    threadViewModel.dispatch(
+                        SharedThreadIntent.SetPayload(
+                            previousPayload.copy(addMemberStatus = "adding", addMemberErrorCode = null)
+                        )
+                    )
+                    coroutineScope.launch {
+                        when (val result = dataSource.addChannelMember(previousPayload, itemId, tab)) {
+                            is DataResult.Content -> {
+                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(result.data))
+                                bridge.toast("Member added")
+                            }
+                            is DataResult.Empty,
+                            is DataResult.Error,
+                            is DataResult.NoPermission -> {
+                                val errorCode = result.threadActionErrorCode("member_add_failed")
+                                threadViewModel.dispatch(
+                                    SharedThreadIntent.SetPayload(
+                                        previousPayload.copy(addMemberStatus = "failed", addMemberErrorCode = errorCode)
+                                    )
+                                )
+                                bridge.toast("Unable to add member")
+                            }
+                        }
+                    }
+                }
+                action == "removeMember" && !itemId.isNullOrBlank() -> {
+                    val previousPayload = renderedPayload
+                    val member = previousPayload.members.firstOrNull { it.id == itemId }
+                    threadViewModel.dispatch(
+                        SharedThreadIntent.SetPayload(
+                            previousPayload.copy(
+                                removeMemberStatus = "removing",
+                                removingMemberId = itemId,
+                                removeMemberErrorCode = null
+                            )
+                        )
+                    )
+                    coroutineScope.launch {
+                        when (val result = dataSource.removeChannelMember(previousPayload, itemId, member?.kind)) {
+                            is DataResult.Content -> {
+                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(result.data))
+                                bridge.toast("Member removed")
+                            }
+                            is DataResult.Empty,
+                            is DataResult.Error,
+                            is DataResult.NoPermission -> {
+                                val errorCode = result.threadActionErrorCode("member_remove_failed")
+                                threadViewModel.dispatch(
+                                    SharedThreadIntent.SetPayload(
+                                        previousPayload.copy(
+                                            removeMemberStatus = "failed",
+                                            removingMemberId = itemId,
+                                            removeMemberErrorCode = errorCode
+                                        )
+                                    )
+                                )
+                                bridge.toast("Unable to remove member")
+                            }
+                        }
+                    }
+                }
+                action == "settingsAction" && itemId == "leave" -> {
+                    val previousPayload = renderedPayload
+                    coroutineScope.launch {
+                        when (dataSource.leaveChannel(previousPayload)) {
+                            is DataResult.Content -> {
+                                bridge.toast("Left channel")
+                                onBack()
+                            }
+                            is DataResult.Empty,
+                            is DataResult.Error,
+                            is DataResult.NoPermission -> bridge.toast("Unable to leave channel")
+                        }
+                    }
                 }
                 action == "setTaskStatus" && !itemId.isNullOrBlank() && !tab.isNullOrBlank() -> {
                     val status = tab.toSharedThreadTaskStatus()

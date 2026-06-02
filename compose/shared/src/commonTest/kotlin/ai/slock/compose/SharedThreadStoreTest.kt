@@ -159,6 +159,66 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun addChannelMemberUsesTypedRepositoryAndRefreshesMembers() = runBlocking {
+        val memberRepository =
+            FakeMemberRepository(
+                serverMembers =
+                    listOf(
+                        member("u1", "Artin"),
+                        MemberProfile(
+                            id = MemberId("agent-2"),
+                            displayName = "Cindy",
+                            handle = "cindy",
+                            kind = MemberKind.Agent,
+                            presence = Presence.Active
+                        )
+                    ),
+                channelMembers = listOf(member("u1", "Artin"))
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                memberRepository = memberRepository
+            )
+
+        val result = dataSource.addChannelMember(basePayload(), "agent-2", "agent")
+        val payload = (result as DataResult.Content).data
+
+        assertEquals(
+            listOf(AddChannelMemberRequest(ChannelId("channel-1"), MemberId("agent-2"), MemberKind.Agent)),
+            memberRepository.addRequests
+        )
+        assertEquals(listOf("u1", "agent-2"), payload.members.map { it.id })
+        assertEquals(emptyList(), payload.memberCandidates.map { it.id })
+    }
+
+    @Test
+    fun removeChannelMemberUsesTypedRepositoryAndRefreshesMembers() = runBlocking {
+        val memberRepository =
+            FakeMemberRepository(
+                serverMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc")),
+                channelMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc"))
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                memberRepository = memberRepository
+            )
+
+        val result = dataSource.removeChannelMember(basePayload(), "u2", "human")
+        val payload = (result as DataResult.Content).data
+
+        assertEquals(
+            listOf(RemoveChannelMemberRequest(ChannelId("channel-1"), MemberId("u2"), MemberKind.Human)),
+            memberRepository.removeRequests
+        )
+        assertEquals(listOf("u1"), payload.members.map { it.id })
+        assertEquals(listOf("u2"), payload.memberCandidates.map { it.id })
+    }
+
+    @Test
     fun persistentCachedThreadSnapshotRendersBeforeVisibleFetchAndSurvivesFailure() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -758,9 +818,11 @@ class SharedThreadStoreTest {
 
     private class FakeMemberRepository(
         private val serverMembers: List<MemberProfile> = emptyList(),
-        private val channelMembers: List<MemberProfile> = emptyList()
+        private var channelMembers: List<MemberProfile> = emptyList()
     ) : MemberRepository {
         val channelMemberRequests: MutableList<ChannelId> = mutableListOf()
+        val addRequests: MutableList<AddChannelMemberRequest> = mutableListOf()
+        val removeRequests: MutableList<RemoveChannelMemberRequest> = mutableListOf()
 
         override suspend fun getMembers(
             priority: ai.slock.compose.data.DataRequestPriority,
@@ -872,12 +934,43 @@ class SharedThreadStoreTest {
         override suspend fun addChannelMember(
             priority: ai.slock.compose.data.DataRequestPriority,
             request: AddChannelMemberRequest
-        ): DataResult<ChannelMemberActionResult> = error("unused")
+        ): DataResult<ChannelMemberActionResult> {
+            addRequests += request
+            val member =
+                serverMembers.firstOrNull { it.id == request.memberId }
+                    ?: MemberProfile(
+                        id = request.memberId,
+                        displayName = request.memberId.value,
+                        handle = request.memberId.value,
+                        kind = request.kind
+                    )
+            channelMembers = (channelMembers + member).distinctBy { it.id }
+            return DataResult.Content(
+                ChannelMemberActionResult(
+                    channelId = request.channelId,
+                    memberId = request.memberId,
+                    member = member,
+                    added = true
+                )
+            )
+        }
 
         override suspend fun removeChannelMember(
             priority: ai.slock.compose.data.DataRequestPriority,
             request: RemoveChannelMemberRequest
-        ): DataResult<ChannelMemberActionResult> = error("unused")
+        ): DataResult<ChannelMemberActionResult> {
+            removeRequests += request
+            val member = channelMembers.firstOrNull { it.id == request.memberId }
+            channelMembers = channelMembers.filterNot { it.id == request.memberId }
+            return DataResult.Content(
+                ChannelMemberActionResult(
+                    channelId = request.channelId,
+                    memberId = request.memberId,
+                    member = member,
+                    added = false
+                )
+            )
+        }
     }
 
     private class FakeConversationRepository(

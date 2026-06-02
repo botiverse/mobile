@@ -7,7 +7,10 @@ import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesPage
 import ai.slock.compose.data.ChannelFilesSnapshot
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.ConversationRepository
+import ai.slock.compose.data.AddChannelMemberRequest
+import ai.slock.compose.data.ChannelRepository
 import ai.slock.compose.data.ReadReceiptResult
+import ai.slock.compose.data.RemoveChannelMemberRequest
 import ai.slock.compose.data.ScreenError
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.MemberRepository
@@ -68,20 +71,23 @@ internal class SharedThreadDataSource(
     private val sessionStore: SlockAuthSessionStore,
     private val localWriteThrough: ComposeLocalWriteThrough? = null,
     private val memberRepository: MemberRepository? = null,
-    private val conversationRepository: ConversationRepository? = null
+    private val conversationRepository: ConversationRepository? = null,
+    private val channelRepository: ChannelRepository? = null
 ) {
     constructor(
         networkApi: SharedThreadNetworkApi,
         sessionStore: SlockAuthSessionStore,
         localWriteThrough: ComposeLocalWriteThrough? = null,
         memberRepository: MemberRepository? = null,
-        conversationRepository: ConversationRepository? = null
+        conversationRepository: ConversationRepository? = null,
+        channelRepository: ChannelRepository? = null
     ) : this(
         api = SlockThreadApiClient(networkApi),
         sessionStore = sessionStore,
         localWriteThrough = localWriteThrough,
         memberRepository = memberRepository,
-        conversationRepository = conversationRepository
+        conversationRepository = conversationRepository,
+        channelRepository = channelRepository
     )
 
     private val payloadCache = mutableMapOf<String, KuiklyThreadScreenPayload>()
@@ -243,6 +249,112 @@ internal class SharedThreadDataSource(
             memberCandidates = candidates,
             canAddMembers = channelMembers.data.canAddMembers
         )
+    }
+
+    suspend fun addChannelMember(
+        payload: KuiklyThreadScreenPayload,
+        memberId: String,
+        kind: String?
+    ): DataResult<KuiklyThreadScreenPayload> {
+        val repository =
+            memberRepository
+                ?: return DataResult.Error(ScreenError(code = "thread_member_repository_missing", retryable = false))
+        val channelId =
+            payload.sourceThreadId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
+                ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+        val memberKind =
+            kind.toThreadMemberKind()
+                ?: return DataResult.Error(ScreenError(code = "thread_member_kind_missing", retryable = false))
+        val cleanMemberId =
+            memberId.takeIf { it.isNotBlank() }?.let(::MemberId)
+                ?: return DataResult.Error(ScreenError(code = "thread_member_id_missing", retryable = false))
+        return when (
+            val result =
+                repository.addChannelMember(
+                    DataRequestPriority.Foreground,
+                    AddChannelMemberRequest(
+                        channelId = channelId,
+                        memberId = cleanMemberId,
+                        kind = memberKind
+                    )
+                )
+        ) {
+            is DataResult.Content ->
+                DataResult.Content(
+                    refreshMembersAfterMutation(
+                        payload.copy(addMemberStatus = "idle", addMemberErrorCode = null)
+                    )
+                )
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
+
+    suspend fun removeChannelMember(
+        payload: KuiklyThreadScreenPayload,
+        memberId: String,
+        kind: String?
+    ): DataResult<KuiklyThreadScreenPayload> {
+        val repository =
+            memberRepository
+                ?: return DataResult.Error(ScreenError(code = "thread_member_repository_missing", retryable = false))
+        val channelId =
+            payload.sourceThreadId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
+                ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+        val memberKind =
+            kind.toThreadMemberKind()
+                ?: return DataResult.Error(ScreenError(code = "thread_member_kind_missing", retryable = false))
+        val cleanMemberId =
+            memberId.takeIf { it.isNotBlank() }?.let(::MemberId)
+                ?: return DataResult.Error(ScreenError(code = "thread_member_id_missing", retryable = false))
+        return when (
+            val result =
+                repository.removeChannelMember(
+                    DataRequestPriority.Foreground,
+                    RemoveChannelMemberRequest(
+                        channelId = channelId,
+                        memberId = cleanMemberId,
+                        kind = memberKind
+                    )
+                )
+        ) {
+            is DataResult.Content ->
+                DataResult.Content(
+                    refreshMembersAfterMutation(
+                        payload.copy(
+                            removeMemberStatus = "idle",
+                            removingMemberId = null,
+                            removeMemberErrorCode = null
+                        )
+                    )
+                )
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
+
+    suspend fun leaveChannel(payload: KuiklyThreadScreenPayload): DataResult<Unit> {
+        val repository =
+            channelRepository
+                ?: return DataResult.Error(ScreenError(code = "thread_channel_repository_missing", retryable = false))
+        val channelId =
+            payload.sourceThreadId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
+                ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+        return when (val result = repository.leaveChannel(channelId)) {
+            is DataResult.Content -> DataResult.Content(Unit)
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
+
+    private suspend fun refreshMembersAfterMutation(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+        val nextPayload = enrichThreadMembers(payload)
+        cachePayload(nextPayload)
+        writeCachedPayload(nextPayload)
+        return nextPayload
     }
 
     suspend fun fetchOlderThreadPayload(
@@ -936,6 +1048,14 @@ private fun MemberProfile.toKuiklyThreadMemberItem(): KuiklyThreadMemberItem =
         avatarLabel = avatarLabel,
         kind = kind.name.lowercase()
     )
+
+private fun String?.toThreadMemberKind(): MemberKind? =
+    when (this?.trim()?.lowercase()) {
+        "agent" -> MemberKind.Agent
+        "human", "member", "user" -> MemberKind.Human
+        "system" -> MemberKind.System
+        else -> null
+    }
 
 private fun ChannelFilesSnapshot.toKuiklyThreadFilesPayload(
     basePayload: KuiklyThreadScreenPayload,

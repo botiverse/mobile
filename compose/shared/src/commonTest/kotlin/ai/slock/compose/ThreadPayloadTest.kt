@@ -800,7 +800,7 @@ class ThreadPayloadTest {
         assertEquals(true, payload.showTaskStatusActions)
         assertEquals(true, payload.canLoadMoreBefore)
         assertEquals(true, payload.canLoadMoreAfter)
-        assertEquals(false, payload.canAddMembers)
+        assertEquals(true, payload.canAddMembers)
         assertEquals(true, payload.showSettingsAction)
     }
 
