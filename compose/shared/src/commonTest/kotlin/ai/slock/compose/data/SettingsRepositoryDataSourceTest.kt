@@ -131,7 +131,7 @@ class SettingsRepositoryDataSourceTest {
         assertEquals("slock-android", serverSnapshot.profile.slug)
         assertEquals(true, serverSnapshot.profile.canSave)
         assertEquals(
-            listOf("admins", "billing", "pending_invites", "join_links", "onboarding_agent", "danger"),
+            listOf("admins", "billing", "pending_invites", "join_links", "onboarding_agent", "translation", "sidebar_order", "danger"),
             serverSnapshot.sections.map { it.key }
         )
         assertEquals("Admin User", serverSnapshot.admins.single().name)
@@ -139,6 +139,8 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(serverSnapshot.usageRows.any { it.label == "Billing Status" && it.value == "Active" })
         assertTrue(serverSnapshot.usageRows.any { it.label == "Computers" && it.value == "1" })
         assertEquals(true, serverSnapshot.onboarding?.setupModalReminderOptOut)
+        assertEquals(false, serverSnapshot.translation?.translationEnabled)
+        assertEquals("manual", serverSnapshot.sidebarOrder?.channelSortMode)
         assertEquals("new@slock.ai", serverSnapshot.pendingInvites.single().email)
         assertEquals("/join/token-123456789", serverSnapshot.joinLinks.single().url)
         assertEquals(SettingsSectionAvailability.Available, serverSnapshot.sections.first { it.key == "pending_invites" }.state)

@@ -435,6 +435,18 @@ class RealSettingsRepository(
                     )
                 )
             }
+        val translation =
+            if (canManageServer) {
+                fetchServerTranslation(serverId)
+            } else {
+                DataResult.NoPermission(PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_server"))
+            }
+        val sidebarOrder =
+            if (canManageServer) {
+                fetchServerSidebarOrder(serverId)
+            } else {
+                DataResult.NoPermission(PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_server"))
+            }
 
         val admins = (members as? DataResult.Content)?.data.orEmpty()
         val usageRows = mergeServerUsageRows(
@@ -444,6 +456,8 @@ class RealSettingsRepository(
         val pendingInvites = (invites as? DataResult.Content)?.data.orEmpty()
         val joinLinkRows = (joinLinks as? DataResult.Content)?.data.orEmpty()
         val onboardingSnapshot = (onboarding as? DataResult.Content)?.data
+        val translationSnapshot = (translation as? DataResult.Content)?.data
+        val sidebarOrderSnapshot = (sidebarOrder as? DataResult.Content)?.data
         val sections = listOf(
             SettingsServerSectionSnapshot(
                 key = "admins",
@@ -476,6 +490,18 @@ class RealSettingsRepository(
                 state = onboarding.sectionState(onboardingSnapshot == null)
             ),
             SettingsServerSectionSnapshot(
+                key = "translation",
+                title = "Translation",
+                detail = translationSectionDetail(translation, translationSnapshot),
+                state = translation.sectionState(translationSnapshot == null)
+            ),
+            SettingsServerSectionSnapshot(
+                key = "sidebar_order",
+                title = "Sidebar Order",
+                detail = sidebarOrderSectionDetail(sidebarOrder, sidebarOrderSnapshot),
+                state = sidebarOrder.sectionState(sidebarOrderSnapshot == null)
+            ),
+            SettingsServerSectionSnapshot(
                 key = "danger",
                 title = "Danger Zone",
                 detail = if (server.role == "owner") {
@@ -501,7 +527,9 @@ class RealSettingsRepository(
                 usageRows = usageRows,
                 pendingInvites = pendingInvites,
                 joinLinks = joinLinkRows,
-                onboarding = onboardingSnapshot
+                onboarding = onboardingSnapshot,
+                translation = translationSnapshot,
+                sidebarOrder = sidebarOrderSnapshot
             )
         )
     }
@@ -1484,6 +1512,32 @@ private fun onboardingSectionDetail(
         is DataResult.Empty -> "No onboarding preference was returned."
         is DataResult.NoPermission -> "Only server owners can update onboarding reminder settings."
         is DataResult.Error -> "Onboarding settings failed to load: ${result.error.code}"
+    }
+
+private fun translationSectionDetail(
+    result: DataResult<SettingsServerTranslationSnapshot>,
+    translation: SettingsServerTranslationSnapshot?
+): String =
+    when (result) {
+        is DataResult.Content -> translation?.detail ?: "Translation settings loaded."
+        is DataResult.Empty -> "No translation settings were returned."
+        is DataResult.NoPermission -> "Only server owners and admins can update translation settings."
+        is DataResult.Error -> "Translation settings failed to load: ${result.error.code}"
+    }
+
+private fun sidebarOrderSectionDetail(
+    result: DataResult<SettingsServerSidebarOrderSnapshot>,
+    sidebarOrder: SettingsServerSidebarOrderSnapshot?
+): String =
+    when (result) {
+        is DataResult.Content -> {
+            val channelMode = sidebarOrder?.channelSortMode?.takeIf { it.isNotBlank() } ?: "manual"
+            val dmMode = sidebarOrder?.dmSortMode?.takeIf { it.isNotBlank() } ?: "manual"
+            "Channel sort: $channelMode. DM sort: $dmMode."
+        }
+        is DataResult.Empty -> "No sidebar order settings were returned."
+        is DataResult.NoPermission -> "Only server owners and admins can update sidebar order."
+        is DataResult.Error -> "Sidebar order failed to load: ${result.error.code}"
     }
 
 private fun invitesSectionDetail(result: DataResult<List<SettingsServerInviteSnapshot>>, count: Int): String =

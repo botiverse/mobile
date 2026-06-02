@@ -130,8 +130,56 @@ class SharedSettingsStoreTest {
         val server = assertIs<ScreenLoadState.Content<SettingsServerSnapshot>>(store.state.value.server).data
         assertEquals("Slock Community", server.profile.name)
         assertEquals(listOf("Admin"), server.admins.map { it.name })
-        assertEquals(listOf("billing", "pending_invites", "join_links", "onboarding_agent"), server.sections.map { it.key })
+        assertEquals(
+            listOf("admins", "billing", "pending_invites", "join_links", "onboarding_agent", "translation", "sidebar_order", "danger"),
+            server.sections.map { it.key }
+        )
         assertEquals(listOf("billing", "server"), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun serverMutationIntentsUseTypedRepositoryAndRefreshServerState() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = FakeSettingsRepository(serverResult = DataResult.Content(serverSnapshot()))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Server))
+        store.accept(SharedSettingsIntent.CreateServerJoinLink())
+        store.accept(SharedSettingsIntent.RequestServerConfirmation(SERVER_ACTION_INVITE_REVOKE, "invite-1"))
+        assertEquals(
+            SharedSettingsActionState(SERVER_ACTION_CONFIRM, serverConfirmationItemId(SERVER_ACTION_INVITE_REVOKE, "invite-1")),
+            store.state.value.actionState
+        )
+        store.accept(SharedSettingsIntent.RevokeServerInvite("invite-1"))
+        store.accept(SharedSettingsIntent.UpdateServerTranslation(SettingsServerTranslationUpdateRequest(false)))
+        store.accept(SharedSettingsIntent.UpdateServerMemberRole(SettingsServerMemberRoleUpdateRequest("admin-1", "member")))
+
+        val server = assertIs<ScreenLoadState.Content<SettingsServerSnapshot>>(store.state.value.server).data
+        assertEquals("Saved", store.state.value.actionState?.let { if (it.errorCode == null && !it.inProgress) "Saved" else it.errorCode })
+        assertEquals(false, server.translation?.translationEnabled)
+        assertEquals(
+            listOf(
+                "server",
+                "createServerJoinLink",
+                "server",
+                "revokeServerInvite:invite-1",
+                "server",
+                "updateServerTranslation:false",
+                "server",
+                "updateServerMemberRole:admin-1:member",
+                "server"
+            ),
+            repository.calls
+        )
         scope.cancel()
     }
 
@@ -493,7 +541,7 @@ class SharedSettingsStoreTest {
         var billingResult: DataResult<SettingsBillingSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var serverResult: DataResult<SettingsServerSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var mobileResult: DataResult<SettingsMobileSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
-    ) : SettingsRepository, SettingsServerActionRepository {
+    ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
         val calls = mutableListOf<String>()
 
         override suspend fun getAccount(): DataResult<AccountSettingsSnapshot> {
@@ -547,24 +595,139 @@ class SharedSettingsStoreTest {
             return serverResult
         }
 
-        override suspend fun updateServerProfile(request: SettingsServerProfileUpdateRequest): DataResult<SettingsServerSnapshot> =
-            serverResult
+        override suspend fun updateServerProfile(request: SettingsServerProfileUpdateRequest): DataResult<SettingsServerSnapshot> {
+            calls += "updateServerProfile:${request.name}"
+            val current = (serverResult as? DataResult.Content)?.data ?: return serverResult
+            serverResult = DataResult.Content(current.copy(profile = current.profile.copy(name = request.name)))
+            return serverResult
+        }
 
-        override suspend fun createServerInvite(request: SettingsServerInviteCreateRequest): DataResult<SettingsServerActionResult> =
-            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        override suspend fun createServerInvite(request: SettingsServerInviteCreateRequest): DataResult<SettingsServerActionResult> {
+            calls += "createServerInvite:${request.email}"
+            return DataResult.Content(SettingsServerActionResult(success = true))
+        }
 
-        override suspend fun revokeServerInvite(inviteId: String): DataResult<SettingsServerActionResult> =
-            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        override suspend fun revokeServerInvite(inviteId: String): DataResult<SettingsServerActionResult> {
+            calls += "revokeServerInvite:$inviteId"
+            val current = (serverResult as? DataResult.Content)?.data
+            if (current != null) {
+                serverResult = DataResult.Content(current.copy(pendingInvites = current.pendingInvites.filterNot { it.id == inviteId }))
+            }
+            return DataResult.Content(SettingsServerActionResult(success = true))
+        }
 
         override suspend fun createServerJoinLink(
             request: SettingsServerJoinLinkCreateRequest
-        ): DataResult<SettingsServerJoinLinkSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        ): DataResult<SettingsServerJoinLinkSnapshot> {
+            calls += "createServerJoinLink"
+            val link = SettingsServerJoinLinkSnapshot(id = "join-created", label = "Created link", url = "/join/created-token")
+            val current = (serverResult as? DataResult.Content)?.data
+            if (current != null) {
+                serverResult = DataResult.Content(current.copy(joinLinks = current.joinLinks + link))
+            }
+            return DataResult.Content(link)
+        }
 
-        override suspend fun revokeServerJoinLink(linkId: String): DataResult<SettingsServerActionResult> =
-            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        override suspend fun revokeServerJoinLink(linkId: String): DataResult<SettingsServerActionResult> {
+            calls += "revokeServerJoinLink:$linkId"
+            val current = (serverResult as? DataResult.Content)?.data
+            if (current != null) {
+                serverResult = DataResult.Content(current.copy(joinLinks = current.joinLinks.filterNot { it.id == linkId }))
+            }
+            return DataResult.Content(SettingsServerActionResult(success = true))
+        }
 
         override suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult> =
             DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+        override suspend fun updateServerOnboarding(
+            request: SettingsServerOnboardingUpdateRequest
+        ): DataResult<SettingsServerOnboardingSnapshot> {
+            calls += "updateServerOnboarding:${request.setupModalReminderOptOut}"
+            val onboarding =
+                SettingsServerOnboardingSnapshot(
+                    setupModalReminderOptOut = request.setupModalReminderOptOut,
+                    statusLabel = if (request.setupModalReminderOptOut) "Disabled" else "Enabled",
+                    detail = "Agent onboarding ${if (request.setupModalReminderOptOut) "disabled" else "enabled"}."
+                )
+            val current = (serverResult as? DataResult.Content)?.data
+            if (current != null) {
+                serverResult = DataResult.Content(current.copy(onboarding = onboarding))
+            }
+            return DataResult.Content(onboarding)
+        }
+
+        override suspend fun getServerTranslationSettings(): DataResult<SettingsServerTranslationSnapshot> =
+            (serverResult as? DataResult.Content)?.data?.translation?.let { DataResult.Content(it) }
+                ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+        override suspend fun updateServerTranslationSettings(
+            request: SettingsServerTranslationUpdateRequest
+        ): DataResult<SettingsServerTranslationSnapshot> {
+            calls += "updateServerTranslation:${request.translationEnabled}"
+            val translation =
+                SettingsServerTranslationSnapshot(
+                    translationEnabled = request.translationEnabled,
+                    translationAvailable = true,
+                    canManageTranslation = true,
+                    statusLabel = if (request.translationEnabled) "Enabled" else "Disabled",
+                    detail = "Translation ${if (request.translationEnabled) "enabled" else "disabled"}."
+                )
+            val current = (serverResult as? DataResult.Content)?.data
+            if (current != null) {
+                serverResult = DataResult.Content(current.copy(translation = translation))
+            }
+            return DataResult.Content(translation)
+        }
+
+        override suspend fun getServerSidebarOrder(): DataResult<SettingsServerSidebarOrderSnapshot> =
+            (serverResult as? DataResult.Content)?.data?.sidebarOrder?.let { DataResult.Content(it) }
+                ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+        override suspend fun updateServerSidebarOrder(
+            request: SettingsServerSidebarOrderUpdateRequest
+        ): DataResult<SettingsServerSidebarOrderSnapshot> {
+            calls += "updateServerSidebarOrder:${request.channelSortMode}"
+            val sidebarOrder = SettingsServerSidebarOrderSnapshot(channelSortMode = request.channelSortMode ?: "manual")
+            val current = (serverResult as? DataResult.Content)?.data
+            if (current != null) {
+                serverResult = DataResult.Content(current.copy(sidebarOrder = sidebarOrder))
+            }
+            return DataResult.Content(sidebarOrder)
+        }
+
+        override suspend fun updateServerMemberRole(
+            request: SettingsServerMemberRoleUpdateRequest
+        ): DataResult<SettingsServerActionResult> {
+            calls += "updateServerMemberRole:${request.memberId}:${request.role}"
+            val current = (serverResult as? DataResult.Content)?.data
+            if (current != null) {
+                serverResult =
+                    DataResult.Content(
+                        current.copy(
+                            admins =
+                                current.admins.map { admin ->
+                                    if (admin.id == request.memberId) admin.copy(role = request.role) else admin
+                                }
+                        )
+                    )
+            }
+            return DataResult.Content(SettingsServerActionResult(success = true))
+        }
+
+        override suspend fun removeServerMember(memberId: String): DataResult<SettingsServerActionResult> {
+            calls += "removeServerMember:$memberId"
+            val current = (serverResult as? DataResult.Content)?.data
+            if (current != null) {
+                serverResult = DataResult.Content(current.copy(admins = current.admins.filterNot { it.id == memberId }))
+            }
+            return DataResult.Content(SettingsServerActionResult(success = true))
+        }
+
+        override suspend fun leaveServer(): DataResult<SettingsServerActionResult> {
+            calls += "leaveServer"
+            return DataResult.Content(SettingsServerActionResult(success = true))
+        }
 
         override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> {
             calls += "mobile"
@@ -802,16 +965,29 @@ class SharedSettingsStoreTest {
             profile = SettingsServerProfileSnapshot(name = "Slock Community", slug = "slock", canSave = true),
             sections =
                 listOf(
+                    SettingsServerSectionSnapshot("admins", "Admins", "1 admin", SettingsSectionAvailability.Available),
                     SettingsServerSectionSnapshot("billing", "Plan & Billing", "Current plan: Team", SettingsSectionAvailability.Available),
                     SettingsServerSectionSnapshot("pending_invites", "Pending Invites", "1 pending invite", SettingsSectionAvailability.Available),
                     SettingsServerSectionSnapshot("join_links", "Join Links", "1 active link", SettingsSectionAvailability.Available),
-                    SettingsServerSectionSnapshot("onboarding_agent", "Onboarding Agent", "Enabled", SettingsSectionAvailability.Available)
+                    SettingsServerSectionSnapshot("onboarding_agent", "Onboarding Agent", "Enabled", SettingsSectionAvailability.Available),
+                    SettingsServerSectionSnapshot("translation", "Translation", "Enabled", SettingsSectionAvailability.Available),
+                    SettingsServerSectionSnapshot("sidebar_order", "Sidebar Order", "Manual", SettingsSectionAvailability.Available),
+                    SettingsServerSectionSnapshot("danger", "Danger Zone", "Owner only", SettingsSectionAvailability.NoPermission)
                 ),
-            admins = listOf(SettingsServerAdminSnapshot(id = "user-admin", name = "Admin", role = "owner")),
+            admins = listOf(SettingsServerAdminSnapshot(id = "admin-1", name = "Admin", role = "admin")),
             usageRows = listOf(SettingsPlanUsageSnapshot("Messages", "100")),
             pendingInvites = listOf(SettingsServerInviteSnapshot(id = "invite-1", email = "invitee@slock.test")),
             joinLinks = listOf(SettingsServerJoinLinkSnapshot(id = "link-1", label = "Invite link")),
-            onboarding = SettingsServerOnboardingSnapshot(setupModalReminderOptOut = false, statusLabel = "Enabled", detail = "Agent onboarding enabled.")
+            onboarding = SettingsServerOnboardingSnapshot(setupModalReminderOptOut = false, statusLabel = "Enabled", detail = "Agent onboarding enabled."),
+            translation =
+                SettingsServerTranslationSnapshot(
+                    translationEnabled = true,
+                    translationAvailable = true,
+                    canManageTranslation = true,
+                    statusLabel = "Enabled",
+                    detail = "Translation enabled."
+                ),
+            sidebarOrder = SettingsServerSidebarOrderSnapshot(channelSortMode = "manual")
         )
 
     private fun mobileSnapshot(): SettingsMobileSnapshot =

@@ -483,7 +483,9 @@ data class SettingsServerSnapshot(
     val usageRows: List<SettingsPlanUsageSnapshot> = emptyList(),
     val pendingInvites: List<SettingsServerInviteSnapshot> = emptyList(),
     val joinLinks: List<SettingsServerJoinLinkSnapshot> = emptyList(),
-    val onboarding: SettingsServerOnboardingSnapshot? = null
+    val onboarding: SettingsServerOnboardingSnapshot? = null,
+    val translation: SettingsServerTranslationSnapshot? = null,
+    val sidebarOrder: SettingsServerSidebarOrderSnapshot? = null
 )
 
 data class SettingsServerProfileSnapshot(

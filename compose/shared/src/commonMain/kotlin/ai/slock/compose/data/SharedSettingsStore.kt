@@ -172,6 +172,19 @@ sealed interface SharedSettingsIntent {
     data object OpenNotificationSettings : SharedSettingsIntent
     data object SendTestNotification : SharedSettingsIntent
     data class UpdateProfile(val request: AccountProfileUpdateRequest) : SharedSettingsIntent
+    data class UpdateServerProfile(val request: SettingsServerProfileUpdateRequest) : SharedSettingsIntent
+    data class CreateServerInvite(val request: SettingsServerInviteCreateRequest) : SharedSettingsIntent
+    data class RevokeServerInvite(val inviteId: String) : SharedSettingsIntent
+    data class CreateServerJoinLink(val request: SettingsServerJoinLinkCreateRequest = SettingsServerJoinLinkCreateRequest()) : SharedSettingsIntent
+    data class RevokeServerJoinLink(val linkId: String) : SharedSettingsIntent
+    data class UpdateServerOnboarding(val request: SettingsServerOnboardingUpdateRequest) : SharedSettingsIntent
+    data class UpdateServerTranslation(val request: SettingsServerTranslationUpdateRequest) : SharedSettingsIntent
+    data class UpdateServerSidebarOrder(val request: SettingsServerSidebarOrderUpdateRequest) : SharedSettingsIntent
+    data class UpdateServerMemberRole(val request: SettingsServerMemberRoleUpdateRequest) : SharedSettingsIntent
+    data class RemoveServerMember(val memberId: String) : SharedSettingsIntent
+    data object LeaveServer : SharedSettingsIntent
+    data class DeleteServer(val request: SettingsServerDeleteRequest) : SharedSettingsIntent
+    data class RequestServerConfirmation(val action: String, val itemId: String? = null) : SharedSettingsIntent
     data class SetNotificationPreference(val enabled: Boolean) : SharedSettingsIntent
     data class SetServerMute(val enabled: Boolean) : SharedSettingsIntent
     data class CompleteSystemNotificationAction(
@@ -261,6 +274,59 @@ class SharedSettingsDataSource(
 
     suspend fun loadServer(): DataResult<SettingsServerSnapshot> =
         settingsRepository?.getServerSettings() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun updateServerProfile(request: SettingsServerProfileUpdateRequest): DataResult<SettingsServerSnapshot> =
+        settingsRepository?.updateServerProfile(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun createServerInvite(request: SettingsServerInviteCreateRequest): DataResult<SettingsServerActionResult> =
+        settingsRepository?.createServerInvite(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun revokeServerInvite(inviteId: String): DataResult<SettingsServerActionResult> =
+        (settingsRepository as? SettingsServerActionRepository)?.revokeServerInvite(inviteId)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun createServerJoinLink(request: SettingsServerJoinLinkCreateRequest): DataResult<SettingsServerJoinLinkSnapshot> =
+        (settingsRepository as? SettingsServerActionRepository)?.createServerJoinLink(request)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun revokeServerJoinLink(linkId: String): DataResult<SettingsServerActionResult> =
+        (settingsRepository as? SettingsServerActionRepository)?.revokeServerJoinLink(linkId)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult> =
+        settingsRepository?.deleteServer(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun updateServerOnboarding(
+        request: SettingsServerOnboardingUpdateRequest
+    ): DataResult<SettingsServerOnboardingSnapshot> =
+        (settingsRepository as? SettingsServerManagementRepository)?.updateServerOnboarding(request)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun updateServerTranslation(
+        request: SettingsServerTranslationUpdateRequest
+    ): DataResult<SettingsServerTranslationSnapshot> =
+        (settingsRepository as? SettingsServerManagementRepository)?.updateServerTranslationSettings(request)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun updateServerSidebarOrder(
+        request: SettingsServerSidebarOrderUpdateRequest
+    ): DataResult<SettingsServerSidebarOrderSnapshot> =
+        (settingsRepository as? SettingsServerManagementRepository)?.updateServerSidebarOrder(request)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun updateServerMemberRole(
+        request: SettingsServerMemberRoleUpdateRequest
+    ): DataResult<SettingsServerActionResult> =
+        (settingsRepository as? SettingsServerManagementRepository)?.updateServerMemberRole(request)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun removeServerMember(memberId: String): DataResult<SettingsServerActionResult> =
+        (settingsRepository as? SettingsServerManagementRepository)?.removeServerMember(memberId)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun leaveServer(): DataResult<SettingsServerActionResult> =
+        (settingsRepository as? SettingsServerManagementRepository)?.leaveServer()
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun loadBilling(): DataResult<SettingsBillingSnapshot> =
         settingsRepository?.getBilling() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -552,6 +618,64 @@ class SharedSettingsStore(
                     )
                 dataSource.updateProfile(intent.request).applyAccountActionResult("saveProfile")
             }
+            is SharedSettingsIntent.UpdateServerProfile -> {
+                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_PROFILE_SAVE, inProgress = true))
+                dataSource.updateServerProfile(intent.request).applyServerSnapshotActionResult(SERVER_ACTION_PROFILE_SAVE)
+            }
+            is SharedSettingsIntent.CreateServerInvite -> {
+                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_INVITE_CREATE, inProgress = true))
+                dataSource.createServerInvite(intent.request).applyServerActionResult(SERVER_ACTION_INVITE_CREATE)
+            }
+            is SharedSettingsIntent.RevokeServerInvite -> {
+                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_INVITE_REVOKE, intent.inviteId, inProgress = true))
+                dataSource.revokeServerInvite(intent.inviteId).applyServerActionResult(SERVER_ACTION_INVITE_REVOKE, intent.inviteId)
+            }
+            is SharedSettingsIntent.CreateServerJoinLink -> {
+                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_JOIN_LINK_CREATE, inProgress = true))
+                dataSource.createServerJoinLink(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_JOIN_LINK_CREATE)
+            }
+            is SharedSettingsIntent.RevokeServerJoinLink -> {
+                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_JOIN_LINK_REVOKE, intent.linkId, inProgress = true))
+                dataSource.revokeServerJoinLink(intent.linkId).applyServerActionResult(SERVER_ACTION_JOIN_LINK_REVOKE, intent.linkId)
+            }
+            is SharedSettingsIntent.UpdateServerOnboarding -> {
+                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_ONBOARDING_TOGGLE, inProgress = true))
+                dataSource.updateServerOnboarding(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_ONBOARDING_TOGGLE)
+            }
+            is SharedSettingsIntent.UpdateServerTranslation -> {
+                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_TRANSLATION_TOGGLE, inProgress = true))
+                dataSource.updateServerTranslation(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_TRANSLATION_TOGGLE)
+            }
+            is SharedSettingsIntent.UpdateServerSidebarOrder -> {
+                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_SIDEBAR_ORDER, inProgress = true))
+                dataSource.updateServerSidebarOrder(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_SIDEBAR_ORDER)
+            }
+            is SharedSettingsIntent.UpdateServerMemberRole -> {
+                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_MEMBER_ROLE, intent.request.memberId, inProgress = true))
+                dataSource.updateServerMemberRole(intent.request).applyServerActionResult(SERVER_ACTION_MEMBER_ROLE, intent.request.memberId)
+            }
+            is SharedSettingsIntent.RemoveServerMember -> {
+                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_MEMBER_REMOVE, intent.memberId, inProgress = true))
+                dataSource.removeServerMember(intent.memberId).applyServerActionResult(SERVER_ACTION_MEMBER_REMOVE, intent.memberId)
+            }
+            SharedSettingsIntent.LeaveServer -> {
+                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_LEAVE, inProgress = true))
+                dataSource.leaveServer().applyServerActionResult(SERVER_ACTION_LEAVE)
+            }
+            is SharedSettingsIntent.DeleteServer -> {
+                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_DELETE, inProgress = true))
+                dataSource.deleteServer(intent.request).applyServerActionResult(SERVER_ACTION_DELETE)
+            }
+            is SharedSettingsIntent.RequestServerConfirmation ->
+                _state.value =
+                    _state.value.copy(
+                        actionState =
+                            SharedSettingsActionState(
+                                SERVER_ACTION_CONFIRM,
+                                itemId = serverConfirmationItemId(intent.action, intent.itemId),
+                                inProgress = false
+                            )
+                    )
             is SharedSettingsIntent.CompleteSystemNotificationAction ->
                 completeSystemNotificationAction(intent.action, intent.result)
             is SharedSettingsIntent.SetNotificationPreference -> {
@@ -796,6 +920,52 @@ class SharedSettingsStore(
             )
     }
 
+    private fun DataResult<SettingsServerSnapshot>.applyServerSnapshotActionResult(action: String, itemId: String? = null) {
+        val nextServer = toScreenLoadState()
+        _state.value =
+            _state.value.copy(
+                server =
+                    when (nextServer) {
+                        is ScreenLoadState.Content -> nextServer
+                        else -> _state.value.server
+                    },
+                actionState =
+                    SharedSettingsActionState(
+                        action = action,
+                        itemId = itemId,
+                        inProgress = false,
+                        errorCode = nextServer.routeErrorCode()
+                    ),
+                routeErrorCode = nextServer.routeErrorCode()
+            )
+    }
+
+    private suspend fun DataResult<SettingsServerActionResult>.applyServerActionResult(action: String, itemId: String? = null) {
+        when (this) {
+            is DataResult.Content ->
+                dataSource.loadServer().applyServerSnapshotActionResult(action, itemId)
+            is DataResult.Empty ->
+                DataResult.Empty(reason).applyServerSnapshotActionResult(action, itemId)
+            is DataResult.Error ->
+                DataResult.Error(error).applyServerSnapshotActionResult(action, itemId)
+            is DataResult.NoPermission ->
+                DataResult.NoPermission(blocker).applyServerSnapshotActionResult(action, itemId)
+        }
+    }
+
+    private suspend fun <T> DataResult<T>.applyServerSnapshotReloadResult(action: String, itemId: String? = null) {
+        when (this) {
+            is DataResult.Content ->
+                dataSource.loadServer().applyServerSnapshotActionResult(action, itemId)
+            is DataResult.Empty ->
+                DataResult.Empty(reason).applyServerSnapshotActionResult(action, itemId)
+            is DataResult.Error ->
+                DataResult.Error(error).applyServerSnapshotActionResult(action, itemId)
+            is DataResult.NoPermission ->
+                DataResult.NoPermission(blocker).applyServerSnapshotActionResult(action, itemId)
+        }
+    }
+
     private fun DataResult<SharedSettingsDiagnosticsSnapshot>.applyDiagnosticsActionResult(action: String) {
         val nextDiagnostics = toScreenLoadState()
         _state.value =
@@ -864,6 +1034,19 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.OpenNotificationSettings,
             SharedSettingsIntent.SendTestNotification,
             is SharedSettingsIntent.UpdateProfile,
+            is SharedSettingsIntent.UpdateServerProfile,
+            is SharedSettingsIntent.CreateServerInvite,
+            is SharedSettingsIntent.RevokeServerInvite,
+            is SharedSettingsIntent.CreateServerJoinLink,
+            is SharedSettingsIntent.RevokeServerJoinLink,
+            is SharedSettingsIntent.UpdateServerOnboarding,
+            is SharedSettingsIntent.UpdateServerTranslation,
+            is SharedSettingsIntent.UpdateServerSidebarOrder,
+            is SharedSettingsIntent.UpdateServerMemberRole,
+            is SharedSettingsIntent.RemoveServerMember,
+            SharedSettingsIntent.LeaveServer,
+            is SharedSettingsIntent.DeleteServer,
+            is SharedSettingsIntent.RequestServerConfirmation,
             is SharedSettingsIntent.SetNotificationPreference,
             is SharedSettingsIntent.SetServerMute,
             is SharedSettingsIntent.CompleteSystemNotificationAction,
@@ -901,6 +1084,9 @@ private fun ScreenLoadState<*>.routeErrorCode(): String? =
         ScreenLoadState.Loading -> null
     }
 
+fun serverConfirmationItemId(action: String, itemId: String? = null): String =
+    if (itemId.isNullOrBlank()) action else "$action:$itemId"
+
 private fun SharedSettingsState.markRefreshing(destination: SharedSettingsDestination): SharedSettingsState =
     if (hasContent(destination)) {
         copy(refreshingDestinations = refreshingDestinations + destination, routeErrorCode = null)
@@ -936,6 +1122,19 @@ internal const val MOBILE_ACTION_SETTINGS = "openNotificationSettings"
 internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
+internal const val SERVER_ACTION_PROFILE_SAVE = "serverProfileSave"
+internal const val SERVER_ACTION_INVITE_CREATE = "serverInviteCreate"
+internal const val SERVER_ACTION_INVITE_REVOKE = "serverInviteRevoke"
+internal const val SERVER_ACTION_JOIN_LINK_CREATE = "serverJoinLinkCreate"
+internal const val SERVER_ACTION_JOIN_LINK_REVOKE = "serverJoinLinkRevoke"
+internal const val SERVER_ACTION_ONBOARDING_TOGGLE = "serverOnboardingToggle"
+internal const val SERVER_ACTION_TRANSLATION_TOGGLE = "serverTranslationToggle"
+internal const val SERVER_ACTION_SIDEBAR_ORDER = "serverSidebarOrder"
+internal const val SERVER_ACTION_MEMBER_ROLE = "serverMemberRole"
+internal const val SERVER_ACTION_MEMBER_REMOVE = "serverMemberRemove"
+internal const val SERVER_ACTION_LEAVE = "serverLeave"
+internal const val SERVER_ACTION_DELETE = "serverDelete"
+internal const val SERVER_ACTION_CONFIRM = "serverConfirm"
 internal const val DIAGNOSTICS_ACTION_PROFILER_START = "diagnosticsProfilerStart"
 internal const val DIAGNOSTICS_ACTION_PROFILER_STOP = "diagnosticsProfilerStop"
 internal const val DIAGNOSTICS_ACTION_PROFILER_RESET = "diagnosticsProfilerReset"
