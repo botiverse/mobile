@@ -86,6 +86,26 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun inlineTagWidthsDoNotReserveLargeTrailingPadding() {
+        val mentionWidth =
+            slockMarkdownInlineTagWidthSp(
+                "@Android-Developer-2",
+                ThreadMarkdownTagKind.UserMention
+            ).value
+        val selfMentionWidth =
+            slockMarkdownInlineTagWidthSp(
+                "@artin",
+                ThreadMarkdownTagKind.UserMention,
+                highlighted = true
+            ).value
+        val taskWidth = slockMarkdownInlineChipWidthSp("#405").value
+
+        assertTrue(mentionWidth < 170f)
+        assertTrue(selfMentionWidth < 70f)
+        assertTrue(taskWidth < 50f)
+    }
+
+    @Test
     fun channelThreadReferencesRenderAsSingleInlineChip() {
         val matches = "See #markdown专修:7933cf78 and #general:abc123 in chat".threadInlineTagMatches()
 

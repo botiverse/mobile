@@ -439,7 +439,11 @@ fun slockMarkdownAnnotator(
                         ?: threadMarkdownTagDisplayLabel(match.tag.label)
                 InlineTextContent(
                     Placeholder(
-                        width = slockMarkdownInlineChipWidthSp(label),
+                        width = slockMarkdownInlineTagWidthSp(
+                            label,
+                            match.tag.kind,
+                            highlightedMentionById.containsKey(match.id)
+                        ),
                         height = SlockMarkdownInlineChipHeight
                     )
                 ) {
@@ -575,11 +579,25 @@ private val SlockMarkdownMentionSpanStyle =
         textDecoration = TextDecoration.Underline
     )
 
-private fun slockMarkdownInlineChipWidthSp(label: String) =
-    (label.slockInlineTextWidthUnits() * 9 + 36).coerceAtLeast(56).sp
+internal fun slockMarkdownInlineTagWidthSp(
+    label: String,
+    kind: ThreadMarkdownTagKind,
+    highlighted: Boolean = false
+) =
+    if (kind == ThreadMarkdownTagKind.UserMention && !highlighted) {
+        slockMarkdownPlainMentionWidthSp(label)
+    } else {
+        slockMarkdownInlineChipWidthSp(label)
+    }
+
+private fun slockMarkdownPlainMentionWidthSp(label: String) =
+    (label.slockInlineTextWidthUnits() * 7.2f + 2f).coerceAtLeast(24f).sp
+
+internal fun slockMarkdownInlineChipWidthSp(label: String) =
+    (label.slockInlineTextWidthUnits() * 7.6f + 14f).coerceAtLeast(40f).sp
 
 private fun slockMarkdownInlineCodeWidthSp(code: String) =
-    (code.slockInlineTextWidthUnits() * 9 + 36).coerceAtLeast(56).sp
+    (code.slockInlineTextWidthUnits() * 8.2f + 14f).coerceAtLeast(40f).sp
 
 internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
     slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxWidthUnits
