@@ -229,9 +229,9 @@ fun SlockAppBottomBarHost(
         modifier =
             modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
                 .navigationBarsPadding()
                 .padding(bottom = SlockSpacing.Xs)
+                .background(SlockColor.SurfaceWhite)
     ) {
         SlockBottomTabBar(
             items = items,
