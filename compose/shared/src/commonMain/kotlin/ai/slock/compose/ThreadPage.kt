@@ -47,6 +47,7 @@ import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -1490,19 +1491,25 @@ private fun ThreadImagePreviewOverlay(
     val hasMultiple = state.images.size > 1
     val isLoading = current.id in state.loadingAttachmentIds
     val failedWithoutImage = current.id in state.failedAttachmentIds && displayUrl == null
+    val topSafeArea = slockTopSafeAreaPadding()
+    val bottomSafeArea = slockBottomSafeAreaPadding()
+    val swipeThresholdPx =
+        with(LocalDensity.current) {
+            56.dp.toPx()
+        }
     Box(
         modifier = Modifier.fillMaxSize().background(SlockColor.TextBlack.copy(alpha = 0.92f))
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier.fillMaxWidth()
-                    .height(58.dp)
+                    .height(topSafeArea + 58.dp)
                     .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(start = 12.dp, top = topSafeArea, end = 12.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                ThreadImagePreviewIconButton(icon = "arrow-left", onClick = onDismiss)
                 Text(
                     text = current.name.ifBlank { "Image" },
                     style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
@@ -1511,11 +1518,6 @@ private fun ThreadImagePreviewOverlay(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                if (hasMultiple) {
-                    ThreadImagePreviewCounter(
-                        label = "${state.currentIndex + 1}/${state.images.size}"
-                    )
-                }
                 ThreadImagePreviewIconButton(
                     icon = "external-link",
                     enabled = displayUrl != null,
@@ -1524,58 +1526,88 @@ private fun ThreadImagePreviewOverlay(
                 ThreadImagePreviewIconButton(icon = "x", onClick = onDismiss)
             }
             Box(
+                modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack)
+            )
+            Box(
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(14.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if (displayUrl != null) {
-                    Box(
-                        modifier = Modifier.fillMaxSize()
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .padding(6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        SlockCachedImage(
-                            source = displayUrl,
-                            contentDescription = current.name,
-                            contentScale = ContentScale.Fit,
+                Box(
+                    modifier = Modifier.fillMaxSize()
+                        .then(
+                            if (hasMultiple) {
+                                Modifier.pointerInput(state.currentIndex, state.images.size) {
+                                    var dragDistance = 0f
+                                    detectHorizontalDragGestures(
+                                        onDragStart = { dragDistance = 0f },
+                                        onDragEnd = {
+                                            when {
+                                                dragDistance <= -swipeThresholdPx && state.currentIndex < state.images.lastIndex -> {
+                                                    onSelectIndex(state.currentIndex + 1)
+                                                }
+
+                                                dragDistance >= swipeThresholdPx && state.currentIndex > 0 -> {
+                                                    onSelectIndex(state.currentIndex - 1)
+                                                }
+                                            }
+                                        },
+                                        onDragCancel = { dragDistance = 0f }
+                                    ) { _, dragAmount ->
+                                        dragDistance += dragAmount
+                                    }
+                                }
+                            } else {
+                                Modifier
+                            }
+                        )
+                ) {
+                    if (displayUrl != null) {
+                        Box(
                             modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                } else {
-                    ThreadImagePreviewEmptyState(
-                        title = if (failedWithoutImage) "Image unavailable" else "Loading image...",
-                        detail = current.name
-                    )
-                }
-                if (hasMultiple) {
-                    Row(
-                        modifier = Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        ThreadImagePreviewIconButton(
-                            icon = "chevron-left",
-                            enabled = state.currentIndex > 0,
-                            onClick = { onSelectIndex(state.currentIndex - 1) }
-                        )
-                        Spacer(modifier = Modifier.weight(1f))
-                        ThreadImagePreviewIconButton(
-                            icon = "chevron-right",
-                            enabled = state.currentIndex < state.images.lastIndex,
-                            onClick = { onSelectIndex(state.currentIndex + 1) }
+                                .background(SlockColor.SurfaceWhite)
+                                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                                .padding(6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            SlockCachedImage(
+                                source = displayUrl,
+                                contentDescription = current.name,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    } else {
+                        ThreadImagePreviewEmptyState(
+                            title = if (failedWithoutImage) "Image unavailable" else "Loading image...",
+                            detail = current.name
                         )
                     }
                 }
                 if (isLoading && displayUrl != null) {
-                    ThreadImagePreviewLoadingPill(modifier = Modifier.align(Alignment.BottomCenter))
+                    ThreadImagePreviewLoadingPill(
+                        modifier =
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = if (hasMultiple) 56.dp else 12.dp)
+                    )
+                }
+                if (hasMultiple) {
+                    ThreadImagePreviewNavigationPill(
+                        label = "${state.currentIndex + 1}/${state.images.size}",
+                        canGoPrevious = state.currentIndex > 0,
+                        canGoNext = state.currentIndex < state.images.lastIndex,
+                        onPrevious = { onSelectIndex(state.currentIndex - 1) },
+                        onNext = { onSelectIndex(state.currentIndex + 1) },
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
+                    )
                 }
             }
             if (hasMultiple) {
                 LazyRow(
                     modifier = Modifier.fillMaxWidth()
-                        .height(74.dp)
+                        .height(74.dp + bottomSafeArea)
                         .background(SlockColor.TextBlack)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                        .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1588,6 +1620,8 @@ private fun ThreadImagePreviewOverlay(
                         )
                     }
                 }
+            } else {
+                Spacer(modifier = Modifier.height(bottomSafeArea))
             }
         }
     }
@@ -1609,24 +1643,6 @@ private fun ThreadImagePreviewIconButton(
             .alpha(if (enabled) 1f else 0.42f)
     ) {
         SlockLucideIcon(icon, modifier = Modifier.size(20.dp), color = "#FF000000")
-    }
-}
-
-@Composable
-private fun ThreadImagePreviewCounter(label: String) {
-    Box(
-        modifier = Modifier.height(30.dp)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(SlockColor.BrandYellow)
-            .padding(horizontal = 9.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 1
-        )
     }
 }
 
@@ -1673,6 +1689,59 @@ private fun ThreadImagePreviewLoadingPill(modifier: Modifier = Modifier) {
             color = SlockColor.TextBlack,
             maxLines = 1
         )
+    }
+}
+
+@Composable
+private fun ThreadImagePreviewNavigationPill(
+    label: String,
+    canGoPrevious: Boolean,
+    canGoNext: Boolean,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        ThreadImagePreviewInlineNavButton(
+            icon = "chevron-left",
+            enabled = canGoPrevious,
+            onClick = onPrevious
+        )
+        Text(
+            text = label,
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1
+        )
+        ThreadImagePreviewInlineNavButton(
+            icon = "chevron-right",
+            enabled = canGoNext,
+            onClick = onNext
+        )
+    }
+}
+
+@Composable
+private fun ThreadImagePreviewInlineNavButton(
+    icon: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(24.dp)
+            .alpha(if (enabled) 1f else 0.35f)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockLucideIcon(icon, modifier = Modifier.size(16.dp), color = "#FF000000")
     }
 }
 
