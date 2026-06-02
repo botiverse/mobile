@@ -1,6 +1,7 @@
 # KMP Migration Capability Parity Audit
 
 Date: 2026-05-22
+Last refreshed: 2026-06-02
 
 Scope: global product-capability parity after moving Android product paths to the shared KMP/Kuikly shell. This document is the parent gate for Home, Thread, auth/session restore, and route-level loading/cache behavior. It should be read with:
 
@@ -10,6 +11,27 @@ Scope: global product-capability parity after moving Android product paths to th
 - `docs/android-ui-shared-migration-audit.md`
 
 This audit is intentionally capability-focused. Visual parity and component screenshot parity are necessary, but they do not prove that native Android behavior was migrated.
+
+## 2026-06-02 Refresh
+
+The release gate and checklist remain valid, but the original route-level gap
+summary is now stale after the late-May shared shell work. The current product
+path has real `ComposeLocalWriteThrough` wiring in `SlockAppShellContent`, a
+`SharedThreadStore`, and a real `RealSettingsRepository` passed into
+`SharedSettingsDataSource`.
+
+The migration is no longer blocked by "no shared store" or "no local
+write-through" for Home, Thread, or Settings. The remaining gaps are narrower:
+
+- Home: local write-through is wired, but visible startup still needs explicit
+  cached-first/offline regression coverage because `loadHome(Visible)` does not
+  directly return cached content before network.
+- Thread: shared store/cache/realtime/read-all hooks are wired, but pagination
+  gap recovery, reply/action parity, attachments, and #219 bottom-anchor
+  validation remain the main Thread risks.
+- Settings: shared MVI plus repository-backed data slices are wired through
+  #35-#38. task #39 remains the explicit Server mutations + confirmations
+  follow-up even though several typed endpoints already exist.
 
 ## Decision
 
@@ -30,19 +52,19 @@ The migration gate is now:
 | Auth/session | Restore session gate | Partial | Shared shell calls restore and requires a selected server, but restore is now visible as an in-shell placeholder rather than the old app-owned splash/gate. | Define a shared restore-state UX contract: splash may stay host-only, but shared shell must own session/server restore without exposing a confusing intermediate panel. |
 | Auth/session | Selected server persistence | Mostly migrated | Home audit confirms shared store/session updates selected server and gates stale switch responses. | Keep in commonMain; add regression for app restart and server switch stale response. |
 | Home | Same-process warm state | Migrated | `shared-home` ViewModel keeps content on refresh and Thread -> Home can reuse the same shell instance. | Add explicit regression so Thread -> Home never shows global loading when content already exists. |
-| Home | Cold-start/offline channel/DM cache | Missing | Real shared shell creates `SharedHomeDataSource` without local write-through; visible loads do not read cache. | Implement cached-first shared Home: wire native DB capability, emit cached content with `contentRefreshing=true`, then network refresh. |
-| Home | Refresh/loading preserves existing content | Partial | Existing `Content` refresh is retained; first visible load and offline reload can still show global loading/error. | Same cached-first Home follow-up; visible network error with cache must stay `Content`. |
-| Thread | Initial message renderer | Partial | Shared route can fetch `/messages/channel/{threadId}` and render parsed messages/attachments/markdown/footer. | Move route-local state into shared Thread MVI before expanding features. |
-| Thread | Cached-first thread load | Missing | Thread audit confirms no product-path use of `ComposeLocalWriteThrough.readThreadSnapshot(...)`. | Add shared Thread store + data source; emit cached thread snapshot before visible network fetch. |
-| Thread | Pagination / gap recovery | Missing | Shared shell disables load-more capabilities and has no shared load older/newer intents. | Add `LoadOlder`, `LoadNewer`, `SyncGap` intents and anchor preservation. |
-| Thread | Realtime merge | Missing | commonMain realtime primitives exist, but shared Thread route does not collect/merge events into route state. | Feed app-shell realtime events into Home/Thread stores; merge message/task/reply updates in commonMain. |
-| Thread | Send text | Partial | Plain text/as-task send exists, but no optimistic row, persisted draft, local write-through, or attachment IDs. | Move composer to shared MVI; add optimistic send, failure restore, cache write-through. |
-| Thread | Attachments upload/preview/open | Partial/missing | Shared message attachment click fetches URL and calls `openUrl`; composer send has empty `attachmentIds`; no in-app preview parity. | Add file/image picker + upload capability and preview/open state with Android/OHOS host implementations. |
-| Thread | Read receipts/unread reconciliation | Missing | Shared route does not call `ReadReceiptCoordinator` on visible/near-bottom messages. | Add visibility/read intents and reconcile Home/Inbox unread from commonMain. |
-| Thread | Message menu/actions | Partial | Menu UI exists, but shared shell disables reply/open-in-channel/save/task/status/settings/add-member effects. | Re-enable each action only after shared intent/effect and repository capability exist. |
-| Thread | Reply-thread/back stack | Missing/partial | Shared shell has simple Thread -> Home pop, not native reply stack/parent/open-in-channel behavior. | Model reply stack, parent context, overlays, and route back handling in shared state. |
+| Home | Cold-start/offline channel/DM cache | Partial | Real shared shell now passes `ComposeLocalWriteThrough` into `SharedHomeDataSource`, and `readCachedHome(...)` exists. Visible `loadHome(...)` still returns cached content only for `DataRequestPriority.Background`. | Add/verify cached-first visible Home startup and offline regression: cached content should render before or instead of a failed network refresh. |
+| Home | Refresh/loading preserves existing content | Mostly migrated | Existing `Content` refresh is retained and route-return refresh can be silent. The remaining risk is first visible load/offline reload when only local cache exists. | Add focused tests for visible network error with cached Home and Activity/shell recreation. |
+| Thread | Initial message renderer | Migrated/active | Shared route now uses `SharedThreadStore`/`SharedThreadDataSource`, parses messages/attachments/markdown/footer, and keeps image preview overlay state in shared Thread UI. | Continue Thread parity through store capabilities rather than route-local patches. |
+| Thread | Cached-first thread load | Partial | `SharedThreadStore` reads `ComposeLocalWriteThrough.readThreadSnapshot(...)` and writes successful results. Some startup/anchor UX still depends on validation for #219. | Keep cached-first store coverage and verify long-message/attachment startup on device. |
+| Thread | Pagination / gap recovery | Partial | `LoadOlder` exists, but gap recovery and complete older/newer parity are still not equivalent to the old native path. | Keep `LoadOlder`/anchor tests; add gap recovery and newer-page behavior only as concrete Thread follow-ups. |
+| Thread | Realtime merge | Partial | `SharedThreadStore.writeRealtimeEvent(...)` and app-shell realtime bridges exist, including OHOS realtime after #97. | Verify message/task/reply merge semantics on Android/OHOS; do not reopen broad realtime migration unless a concrete event class fails. |
+| Thread | Send text | Partial | Shared composer can send and restore failure state, and typed payload handling is stabilized. Optimistic row, durable draft, and attachment upload/send remain incomplete. | Track optimistic send/draft/attachment work as focused Thread tasks. |
+| Thread | Attachments upload/preview/open | Partial | Image preview overlay has been improved in shared Thread; upload/send attachment parity and non-image preview/open state are still incomplete. | Add upload capability and explicit Android/OHOS preview/open fallback states. |
+| Thread | Read receipts/unread reconciliation | Partial | Shared store now clears conversation unread through local write-through/read-all paths. Full visible-message read receipt parity still needs device verification. | Verify Home/DM unread reconciliation after opening Thread and after realtime messages. |
+| Thread | Message menu/actions | Partial | Several actions have been re-enabled over later tasks, but reply/open-in-channel/save/task/settings/add-member should be judged individually by capability and tests. | Keep disabled states for unsupported actions; avoid generic "menu parity complete" claims. |
+| Thread | Reply-thread/back stack | Partial | Shared shell has route payload replacement/back stack improvements, but native split parent/open-in-channel workflows remain a focused parity risk. | Model missing reply/open-in-channel details only where Product/QA still sees a real workflow gap. |
 | Tasks | Route MVI | Mostly migrated | Tasks reducer/store/display models and shared Tasks route are in commonMain; Android native Tasks top route/UI removed. | Continue long-tail route parity and visual/function regression, but this is not the current P0 gap. |
-| Settings | Detail route/data | Partial | Settings detail routes and some server members hydration are in shared, but there is no `SharedSettingsStore`; Computers/Mobile/Storage/Diagnostics are static or pending compared with native Android. | Use `docs/kmp-settings-capability-parity-audit.md`; start with shared Settings MVI boundary, then restore Computers, Mobile prefs/notifications, Storage, Diagnostics, Server/Billing/Account data/actions. |
+| Settings | Detail route/data | Mostly migrated | `SharedSettingsStore` exists and the product shell passes a real `RealSettingsRepository` into `SharedSettingsDataSource`. #35-#38/#43/#44/#48/#49 are In Review. | Use task #39 for the remaining Server mutations + confirmations slice; do not treat Settings as missing a shared store/repository. |
 
 ## Immediate Work Split
 
@@ -58,21 +80,27 @@ The migration gate is now:
 
 ### Phase 1: Stop Visible Data Loss
 
-1. Implement cached-first shared Home.
-   - Android platform capability must expose existing native/local Home cache to commonMain.
-   - Start/Refresh/SelectServer should emit cached content first when available.
-   - Network error with cache should keep `Content`, not replace with global error.
+1. Verify cached-first shared Home in the actual product path.
+   - Android/OHOS already construct `ComposeLocalWriteThrough`.
+   - Start/Refresh/SelectServer should emit cached content first when
+     available, or at least keep cached content on network failure.
+   - Network error with cache should keep `Content`, not replace with global
+     error.
 
-2. Implement shared Thread cached-first store.
-   - Create `SharedThreadStore` / `SharedThreadDataSource`.
-   - Start should read cached thread snapshot before visible network fetch.
-   - Successful network/send/realtime updates should write to local cache.
+2. Keep shared Thread store/cache behavior focused on remaining regressions.
+   - `SharedThreadStore` / `SharedThreadDataSource` already exist.
+   - Remaining work should be pagination/gap recovery, attachment send/preview
+     parity, and #219 bottom-anchor validation rather than another broad store
+     migration.
 
 ### Phase 2: Restore Live Conversation Behavior
 
-3. Wire realtime event stream into shared Home/Thread stores.
-4. Wire read receipts and unread reconciliation through `ReadReceiptCoordinator`.
-5. Restore pagination and gap recovery with stable scroll anchors.
+3. Verify realtime event stream behavior in shared Home/Thread stores on both
+   Android and OHOS.
+4. Verify read receipts and unread reconciliation through visible Thread
+   usage.
+5. Restore pagination and gap recovery with stable scroll anchors where still
+   failing.
 
 ### Phase 3: Restore Interaction Parity
 
@@ -83,7 +111,10 @@ The migration gate is now:
 
 ### Phase 4: Continue Non-P0 Route Audits
 
-10. Settings full MVI/data/action parity, starting with Computers, Mobile preferences/notifications, Storage, and Diagnostics because native Android already had real product capability there.
+10. Settings task #39: Server mutations with shared confirmations. Computers,
+    Mobile preferences/notifications, Storage, Diagnostics, Account/Billing,
+    and Server data are no longer broad missing slices; they are in review or
+    awaiting focused follow-up.
 11. Tasks remaining long-tail parity and visual/function regressions.
 12. Members/files/search/saved parity before deleting their Android native fallback paths.
 
@@ -121,7 +152,10 @@ complete because the shared page renders.
 
 ## Open Risks
 
-- `SharedHomeDataSource` has cache support in code/tests, but the real shell does not inject it. This is easy to miss because warm in-process state can make Home look correct during manual testing.
-- Thread has many fields/actions in the shared payload, which can make it look migrated while effects are deliberately disabled.
-- Direct UI route patches inside `ThreadPage.kt` will keep increasing complexity unless a shared Thread store/data source becomes the owner.
+- `SharedHomeDataSource` is injected with local write-through, but Visible
+  startup still needs explicit cached-first/offline validation.
+- Thread has a shared store now, but fields/actions in payload can still make
+  partial features look migrated before their effects are fully implemented.
+- `ThreadPage.kt` remains large; focused Thread changes should still avoid
+  route-local business logic when a shared store/data source is the right owner.
 - OHOS parity needs explicit capability state. If a native DB, image preview, upload, or realtime capability is not implemented on OHOS yet, the UI should expose a defined disabled/error state rather than silently dropping behavior.

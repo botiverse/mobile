@@ -1,6 +1,7 @@
 # KMP Settings Capability Parity Audit
 
 Date: 2026-05-23
+Last refreshed: 2026-06-02
 
 Scope: align the shared KMP Settings product route with the React Settings
 source while keeping Settings state, business logic, actions, and effects in
@@ -59,10 +60,17 @@ This means the architecture baseline from task #34 is present. New Settings
 work must extend this shared store/data-source/effect boundary instead of adding
 route-local mutable business state in UI.
 
-Current app-shell wiring still constructs `SharedSettingsDataSource` with
-session store and platform capabilities only. It does not pass a real
-`SettingsRepository`, so repository-backed Account, Computers, Server, Billing,
-and Mobile data paths are still not live in the product shared shell.
+Current app-shell wiring constructs `SharedSettingsDataSource` with a real
+`RealSettingsRepository`, notification/local preference repositories, and
+platform capabilities. Repository-backed Account, Computers, Server, Billing,
+Mobile, Storage, About, and Diagnostics slices have all moved into shared MVI
+or are in review from #35-#38/#43/#44/#48/#49.
+
+The remaining open Settings development slice is task #39: Server Settings
+mutations with shared confirmations. Several typed mutation endpoints already
+exist in `SettingsRepositoryDataSource`, so #39 should verify the UI
+confirmation/in-progress/error flow and product coverage rather than starting
+from "no repository".
 
 About and Diagnostics were migrated after task #43:
 
@@ -94,12 +102,12 @@ About or a smoke route.
 | --- | --- | --- | --- |
 | Settings MVI boundary | Migrated | Extend it consistently; do not add UI-local state machines. | task #34 complete; enforce in all new Settings tasks. |
 | Product IA | Partial | React Browser excluded correctly, but React Release Notes is missing. Router/smoke was product-visible before this audit. | Add Release Notes route if product wants React sidebar parity; keep Router harness-only. |
-| Click/action wiring audit | Missing | Some rows can still look active while doing nothing or only emitting generic events. | task #44. |
-| Account | Partial | Product shell uses auth-session fallback, not live account repository/profile update/connected accounts. | task #38. |
-| Computers | Missing/partial | Shared store supports repository route, but app shell does not pass a repository; product path can still show empty/static data. | task #35. |
-| Computer detail | Missing/partial | Store has `ComputerDetail`, but product shell still needs real route/open-detail wiring and retry/inline errors. | task #35. |
-| Server page | Partial | React sections are not fully repository-backed in shared shell; mutations/confirmations are missing. | task #38 and task #39. |
-| Billing | Partial | Uses session/static plan data unless repository is wired; no permission/error parity. | task #38. |
+| Click/action wiring audit | In Review | task #44 audited visible Settings row/action wiring; remaining misses should be filed as concrete row/action bugs. | Keep #44 as validation, not a new broad migration. |
+| Account | Mostly migrated | task #38 wired API-backed Account data; Account saveProfile typed boundary exists. Connected account edge cases should be verified by Product/QA. | Use focused follow-ups for any failed Account action, not a broad Account migration task. |
+| Computers | In Review | task #35 restored Computers list/detail through shared store/repository wiring. | Validate real data, detail rows, retry/empty/error; add navigation follow-up only if Product wants agent-detail jumps. |
+| Computer detail | In Review | Computer detail is shared/read-only by default; inert `openAgent` was removed from this slice. | If agent detail navigation is required, add a separate shared navigation effect. |
+| Server page | Partial / focused follow-up | Server data is repository-backed from #38, and many typed mutation endpoints exist. Confirmation UX and complete mutation coverage remain task #39. | task #39 should implement/verify confirmations, pending/error state, and rollback/toast behavior. |
+| Billing | Mostly migrated | Billing data is loaded through shared repository snapshots from #38. | Keep permission/empty/error validation in #38 review; add focused Billing bugs only if live data fails. |
 | Mobile | Wired/partial | Notification preference, permission/settings/test notification feedback, locale, and message-alignment local preferences now flow through shared Settings MVI. Server mute remains hidden/disabled until a real API/capability is confirmed. | task #36 complete; future server mute follow-up if needed. |
 | Storage | Wired/partial | Shared MVI now drives refresh/clear and Android returns live storage snapshots; OHOS exposes explicit unsupported/disabled rows until a native storage API is available. | task #37 complete. |
 | About/Diagnostics | Migrated/wired | Core actions are wired; task #37 reverified the Diagnostics route while keeping copy/share/clear/send-feedback behind shared effects/host capabilities. | task #43 complete; task #44 audits all visible rows. |
@@ -122,10 +130,11 @@ About or a smoke route.
 4. task #37: Storage refresh/clear is live through shared MVI and host
    capabilities; Diagnostics copy/share/clear/send-feedback remains live from
    task #43 and was reverified.
-5. task #38: wire Account, Billing, and Server API-backed data into
-   `SharedSettingsDataSource` for the app shell.
-6. task #39: add Server mutations with shared confirmation/in-progress/error
-   state.
+5. task #38: Account, Billing, and Server API-backed data are wired into
+   `SharedSettingsDataSource` for the app shell and are in review.
+6. task #39: finish Server mutations with shared confirmation/in-progress/error
+   state. Start from the existing typed endpoints in
+   `SettingsRepositoryDataSource`; do not reopen the broader repository wiring.
 7. Add a Release Notes parity task if React sidebar parity is required in
    Settings.
 
@@ -143,10 +152,10 @@ Every Settings KMP task must report:
 
 ## Bottom Line
 
-Settings is no longer just a shell: the shared MVI boundary exists and
-About/Diagnostics actions are wired. The remaining risk is capability parity:
-large parts of Account, Server, Billing, and Server mutation flows still need
-real repository/capability wiring in the shared product path. Computers,
-Mobile, Storage, and About/Diagnostics now have their first shared wiring
-slices. Follow the task #44 and task #35-#39 sequence rather than adding more
-route-local Settings logic.
+Settings is no longer just a shell: the shared MVI boundary exists, real
+repository wiring is present in the product shell, and #35-#38/#43/#44/#48/#49
+have moved the major Settings slices into review. The remaining implementation
+risk is not broad repository wiring; it is task #39 Server Settings mutations
+with confirmations and any focused bugs found during review. Continue extending
+the shared store/data-source/effect boundary rather than adding route-local
+Settings logic.
