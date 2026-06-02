@@ -4283,12 +4283,11 @@ private fun ThreadMembersModal(
 ) {
     val agents = members.filter { it.kind.equals("agent", ignoreCase = true) }
     val humans = members.filter { !it.kind.equals("agent", ignoreCase = true) }
-    SlockModalLayer(
-        title = "MEMBERS (${membersCount.takeIf { it > 0 } ?: members.size})",
-        subtitle = "",
+    SlockUnifiedDialog(
+        title = "Members (${membersCount.takeIf { it > 0 } ?: members.size})",
         onDismiss = onDismiss
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SlockModalListShell(height = threadMemberListHeight(agents.size, humans.size).dp) {
                 if (members.isEmpty()) {
                     item {
@@ -4381,13 +4380,18 @@ private fun ThreadAddMemberModal(
             addMemberStatus == "failed" -> "Unable to add member: ${addMemberErrorCode ?: "member_add_failed"}"
             else -> null
         }
-    SlockModalLayer(
-        title = "ADD MEMBER",
-        subtitle = errorText.orEmpty(),
-        onDismiss = onDismiss,
-        overlayAlpha = 0.82f
+    SlockUnifiedDialog(
+        title = "Add Members",
+        onDismiss = onDismiss
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (!errorText.isNullOrBlank()) {
+                Text(
+                    text = errorText,
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
+                    color = SlockColor.AccentRed
+                )
+            }
             SlockModalTextField(
                 label = "Search",
                 value = query,
@@ -4491,12 +4495,22 @@ private fun ThreadMemberDetailModal(
                 "Unable to remove member: no permission"
             else -> null
         }
-    SlockModalLayer(
-        title = member.displayName.uppercase(),
-        subtitle = errorText ?: member.handle.takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty(),
+    SlockUnifiedDialog(
+        title = member.displayName,
         onDismiss = onDismiss
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            val detailSubtitle = errorText ?: member.handle.takeIf { it.isNotBlank() }?.let { "@$it" }
+            if (!detailSubtitle.isNullOrBlank()) {
+                Text(
+                    text = detailSubtitle,
+                    style =
+                        SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(
+                            color = if (errorText != null) SlockColor.AccentRed else SlockColor.TextMutedGray
+                        ),
+                    color = if (errorText != null) SlockColor.AccentRed else SlockColor.TextMutedGray
+                )
+            }
             Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 SlockAvatarWithStatus(
                     statusColor = member.modalStatusColor(),
