@@ -6129,6 +6129,7 @@ internal fun buildAppShellThreadPayload(
         todayEpochDay = timeContext?.todayEpochDay,
         showMembersAction = true,
         showSettingsAction = true,
+        settingsActions = defaultThreadSettingsChannelActions(),
         emptyTitle = "Loading conversation",
         emptyDetail = "Loading messages from this conversation.",
         composerPayload =

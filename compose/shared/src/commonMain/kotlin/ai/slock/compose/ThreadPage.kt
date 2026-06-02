@@ -1201,17 +1201,34 @@ internal fun SharedThreadRouteContent(
                         }
                     }
                 }
-                action == "settingsAction" && itemId == "leave" -> {
+                action == "settingsAction" && itemId == "visibility" -> {
+                    bridge.toast("Channel visibility updates are not wired yet")
+                }
+                action == "settingsAction" && itemId == "archive" -> {
                     val previousPayload = renderedPayload
                     coroutineScope.launch {
-                        when (dataSource.leaveChannel(previousPayload)) {
+                        when (dataSource.archiveChannel(previousPayload)) {
                             is DataResult.Content -> {
-                                bridge.toast("Left channel")
+                                bridge.toast("Channel archived")
                                 onBack()
                             }
                             is DataResult.Empty,
                             is DataResult.Error,
-                            is DataResult.NoPermission -> bridge.toast("Unable to leave channel")
+                            is DataResult.NoPermission -> bridge.toast("Unable to archive channel")
+                        }
+                    }
+                }
+                action == "settingsAction" && itemId == "delete" -> {
+                    val previousPayload = renderedPayload
+                    coroutineScope.launch {
+                        when (dataSource.deleteChannel(previousPayload)) {
+                            is DataResult.Content -> {
+                                bridge.toast("Channel deleted")
+                                onBack()
+                            }
+                            is DataResult.Empty,
+                            is DataResult.Error,
+                            is DataResult.NoPermission -> bridge.toast("Unable to delete channel")
                         }
                     }
                 }
@@ -4583,9 +4600,67 @@ private enum class ThreadSettingsDangerAction(
     val color: Color
 ) {
     Visibility("visibility", "MAKE CHANNEL PRIVATE", "lock", "Make Private", SlockColor.AccentOrange),
-    Leave("leave", "LEAVE CHANNEL", "log-out", "Leave Channel", SlockColor.AccentOrange),
     Archive("archive", "ARCHIVE CHANNEL", "archive", "Archive Channel", SlockColor.AccentOrange),
     Delete("delete", "DELETE CHANNEL", "trash", "Delete Channel", SlockColor.AccentRed)
+}
+
+internal fun defaultThreadSettingsChannelActions(): List<KuiklyThreadSettingsAction> =
+    listOf(
+        KuiklyThreadSettingsAction(
+            id = "visibility",
+            title = "Make Private",
+            subtitle = "Restrict this channel to selected members",
+            icon = "lock",
+            destructive = true
+        ),
+        KuiklyThreadSettingsAction(
+            id = "archive",
+            title = "Archive Channel",
+            subtitle = "Freeze writes and hide from sidebars",
+            icon = "archive",
+            destructive = true
+        ),
+        KuiklyThreadSettingsAction(
+            id = "delete",
+            title = "Delete Channel",
+            subtitle = "Permanently remove this channel",
+            icon = "trash",
+            destructive = true
+        )
+    )
+
+internal fun List<KuiklyThreadSettingsAction>.normalizedThreadSettingsChannelActions(): List<KuiklyThreadSettingsAction> {
+    val defaults = defaultThreadSettingsChannelActions()
+    val defaultById = defaults.associateBy { it.id }
+    val channelActions =
+        mapNotNull { action ->
+            when (action.id) {
+                "visibility",
+                "make-private",
+                "make_public" -> action.copy(
+                    id = "visibility",
+                    title = action.title.ifBlank { defaultById.getValue("visibility").title },
+                    icon = action.icon.ifBlank { defaultById.getValue("visibility").icon },
+                    destructive = true
+                )
+                "archive" -> action.copy(
+                    id = "archive",
+                    title = action.title.ifBlank { defaultById.getValue("archive").title },
+                    icon = action.icon.ifBlank { defaultById.getValue("archive").icon },
+                    destructive = true
+                )
+                "delete" -> action.copy(
+                    id = "delete",
+                    title = action.title.ifBlank { defaultById.getValue("delete").title },
+                    icon = action.icon.ifBlank { defaultById.getValue("delete").icon },
+                    destructive = true
+                )
+                else -> null
+            }
+        }
+    if (channelActions.isEmpty()) return defaults
+    val presentIds = channelActions.map { it.id }.toSet()
+    return channelActions + defaults.filter { it.id !in presentIds }
 }
 
 @Composable
@@ -4600,36 +4675,12 @@ private fun ThreadSettingsModal(
     var description by remember(subtitle) { mutableStateOf(subtitle.orEmpty()) }
     var dangerAction by remember { mutableStateOf<ThreadSettingsDangerAction?>(null) }
     var confirmationName by remember(dangerAction) { mutableStateOf("") }
-    val effectiveActions =
-        actions.ifEmpty {
-            listOf(
-                KuiklyThreadSettingsAction(
-                    id = "files",
-                    title = "Files",
-                    subtitle = "Open files shared in this conversation",
-                    icon = "folder-open"
-                ),
-                KuiklyThreadSettingsAction(
-                    id = "notifications",
-                    title = "Notifications",
-                    subtitle = "Configure thread notification state",
-                    icon = "bell-ring"
-                ),
-                KuiklyThreadSettingsAction(
-                    id = "leave",
-                    title = "Leave thread",
-                    subtitle = "Stop following this conversation",
-                    icon = "log-out",
-                    destructive = true
-                )
-            )
-        }
+    val effectiveActions = actions.normalizedThreadSettingsChannelActions()
     val dangerActions = effectiveActions.mapNotNull { action ->
         when (action.id) {
             "visibility",
             "make-private",
             "make_public" -> ThreadSettingsDangerAction.Visibility
-            "leave" -> ThreadSettingsDangerAction.Leave
             "archive" -> ThreadSettingsDangerAction.Archive
             "delete" -> ThreadSettingsDangerAction.Delete
             else -> null
@@ -4699,18 +4750,6 @@ private fun ThreadSettingsModal(
                             color = SlockColor.TextMutedGray
                         )
                     }
-                    ThreadSettingsDangerAction.Leave -> {
-                        Text(
-                            text = "Leave #$channelName? You will be removed from this channel, but the channel itself will remain.",
-                            style = SlockType.Body,
-                            color = SlockColor.TextBlack
-                        )
-                        Text(
-                            text = "You can rejoin later if your permissions still allow it.",
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.TextMutedGray
-                        )
-                    }
                     ThreadSettingsDangerAction.Archive,
                     ThreadSettingsDangerAction.Delete -> {
                         Text(
@@ -4749,8 +4788,7 @@ private fun ThreadSettingsModal(
                     SlockModalActionButton(label = "Back", icon = "arrow-left", onClick = { dangerAction = null })
                     Spacer(modifier = Modifier.weight(1f))
                     val enabled =
-                        activeDanger == ThreadSettingsDangerAction.Leave ||
-                            activeDanger == ThreadSettingsDangerAction.Visibility ||
+                        activeDanger == ThreadSettingsDangerAction.Visibility ||
                             confirmationMatches
                     SlockModalActionButton(
                         label = activeDanger.buttonLabel,

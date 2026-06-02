@@ -143,8 +143,9 @@ class ThreadPayloadTest {
                         {"id": "a2", "displayName": "QA Bot", "kind": "agent"}
                       ],
                       "settingsActions": [
-                        {"id": "notifications", "title": "Notifications", "subtitle": "Configure alerts", "icon": "bell-ring"},
-                        {"id": "leave", "title": "Leave", "icon": "log-out", "destructive": true}
+                        {"id": "visibility", "title": "Make Private", "icon": "lock", "destructive": true},
+                        {"id": "archive", "title": "Archive Channel", "icon": "archive", "destructive": true},
+                        {"id": "delete", "title": "Delete Channel", "icon": "trash", "destructive": true}
                       ]
                     }
                     """.trimIndent(),
@@ -165,8 +166,10 @@ class ThreadPayloadTest {
         assertEquals("agent", payload.members[1].kind)
         assertEquals("Cindy", payload.memberCandidates.first().displayName)
         assertEquals("agent", payload.memberCandidates[1].kind)
-        assertEquals("notifications", payload.settingsActions.first().id)
-        assertEquals(true, payload.settingsActions[1].destructive)
+        assertEquals("visibility", payload.settingsActions.first().id)
+        assertEquals("archive", payload.settingsActions[1].id)
+        assertEquals("delete", payload.settingsActions[2].id)
+        assertEquals(true, payload.settingsActions.all { it.destructive })
     }
 
     @Test
@@ -176,6 +179,28 @@ class ThreadPayloadTest {
         assertEquals("bad-1", payload.instanceId)
         assertEquals("error", payload.status)
         assertEquals("payload_parse_failed", payload.errorCode)
+    }
+
+    @Test
+    fun threadSettingsActionsDropLegacyLeaveFallback() {
+        val actions =
+            listOf(
+                KuiklyThreadSettingsAction(
+                    id = "leave",
+                    title = "Leave Channel",
+                    icon = "log-out",
+                    destructive = true
+                )
+            ).normalizedThreadSettingsChannelActions()
+
+        assertEquals(
+            listOf("visibility", "archive", "delete"),
+            actions.map { it.id }
+        )
+        assertEquals(
+            listOf("Make Private", "Archive Channel", "Delete Channel"),
+            actions.map { it.title }
+        )
     }
 
     @Test
@@ -209,6 +234,10 @@ class ThreadPayloadTest {
         assertEquals(20593, payload.todayEpochDay)
         assertEquals(false, payload.showReplyActions)
         assertEquals(true, payload.showSettingsAction)
+        assertEquals(
+            listOf("visibility", "archive", "delete"),
+            payload.settingsActions.map { it.id }
+        )
         assertEquals("Message #general", parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId).placeholder)
     }
 
