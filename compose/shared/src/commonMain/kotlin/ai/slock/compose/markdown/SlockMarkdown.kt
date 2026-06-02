@@ -447,12 +447,13 @@ fun slockMarkdownAnnotator(
                         modifier = Modifier.fillMaxSize().clickable { onOpenTag(match.tag) },
                         contentAlignment = Alignment.Center
                     ) {
+                        val isHighlightedMention = highlightedMentionById.containsKey(match.id)
                         if (match.tag.kind == ThreadMarkdownTagKind.UserMention &&
-                            !highlightedMentionById.containsKey(match.id)
+                            !isHighlightedMention
                         ) {
                             SlockMarkdownMentionText(label)
                         } else {
-                            val chipColor = slockMarkdownTagColor(match.tag.kind)
+                            val chipColor = slockMarkdownTagColor(match.tag.kind, highlighted = isHighlightedMention)
                             SlockMarkdownInlineChip(label, chipColor)
                         }
                     }
@@ -590,12 +591,13 @@ private fun String.slockInlineTextWidthUnits(): Int =
         total + if (char.code > 0x7F) 2 else 1
     }
 
-private fun slockMarkdownTagColor(kind: ThreadMarkdownTagKind): Color =
-    when (kind) {
-        ThreadMarkdownTagKind.ChannelThread -> SlockColor.AccentCyan
-        ThreadMarkdownTagKind.Channel -> SlockColor.AccentCyan
-        ThreadMarkdownTagKind.Task -> SlockColor.AccentOrange
-        ThreadMarkdownTagKind.UserMention -> SlockColor.AccentLavender
+internal fun slockMarkdownTagColor(kind: ThreadMarkdownTagKind, highlighted: Boolean = false): Color =
+    when {
+        highlighted && kind == ThreadMarkdownTagKind.UserMention -> SlockColor.BrandYellow
+        kind == ThreadMarkdownTagKind.ChannelThread -> SlockColor.AccentCyan
+        kind == ThreadMarkdownTagKind.Channel -> SlockColor.AccentCyan
+        kind == ThreadMarkdownTagKind.Task -> SlockColor.AccentOrange
+        else -> SlockColor.AccentLavender
     }
 
 @Composable

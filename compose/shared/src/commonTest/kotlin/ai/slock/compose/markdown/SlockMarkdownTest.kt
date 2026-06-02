@@ -1,5 +1,6 @@
 package ai.slock.compose.markdown
 
+import ai.slock.compose.SlockColor
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertEquals
@@ -70,6 +71,18 @@ class SlockMarkdownTest {
         assertTrue(inlineContent.containsKey("slock:5"))
         assertTrue(inlineContent.containsKey("slock:16"))
         assertTrue(inlineContent.containsKey("slock:43"))
+    }
+
+    @Test
+    fun highlightedUserMentionUsesReactYellowChipColor() {
+        assertEquals(
+            SlockColor.BrandYellow,
+            slockMarkdownTagColor(ThreadMarkdownTagKind.UserMention, highlighted = true)
+        )
+        assertEquals(
+            SlockColor.AccentLavender,
+            slockMarkdownTagColor(ThreadMarkdownTagKind.UserMention)
+        )
     }
 
     @Test
