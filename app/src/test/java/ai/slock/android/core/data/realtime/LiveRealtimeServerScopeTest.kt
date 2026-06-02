@@ -27,6 +27,57 @@ import org.junit.Test
 
 class LiveRealtimeServerScopeTest {
     @Test
+    fun liveSyncResumeRespondsAfterRoomsJoined() = runBlocking {
+        val fixture = LiveFixture.login()
+        val transport = SocketIoSocketTransport()
+        val connected = CountDownLatch(1)
+        val roomsJoined = CountDownLatch(1)
+        val heartbeat = CountDownLatch(1)
+        val syncResumeResponse = CountDownLatch(1)
+        var heartbeatSeq: Long? = null
+        var responseCurrentSeq: Long? = null
+
+        transport.on(RealtimeSocketEvents.Connect) { connected.countDown() }
+        transport.on(RealtimeSocketEvents.RoomsJoined) { roomsJoined.countDown() }
+        transport.on(RealtimeSocketEvents.Heartbeat) { payload ->
+            val json = payload as? JSONObject
+            heartbeatSeq = json?.optLong("seq")
+            heartbeat.countDown()
+        }
+        transport.on(RealtimeSocketEvents.SyncResumeResponse) { payload ->
+            val json = payload as? JSONObject
+            responseCurrentSeq = json?.optLong("currentSeq")
+            syncResumeResponse.countDown()
+        }
+
+        try {
+            transport.connect(
+                mapOf(
+                    "token" to fixture.session.accessToken,
+                    "serverId" to requireNotNull(fixture.session.currentServerId)
+                )
+            )
+            assertTrue("Socket did not connect for sync resume validation.", connected.await(15, TimeUnit.SECONDS))
+            assertTrue("Socket did not finish room joins before resume.", roomsJoined.await(20, TimeUnit.SECONDS))
+            assertTrue("Socket did not receive heartbeat seq before resume.", heartbeat.await(40, TimeUnit.SECONDS))
+
+            val lastSeq = requireNotNull(heartbeatSeq).coerceAtLeast(1L)
+            transport.emit(RealtimeSocketEvents.SyncResume, mapOf("lastSeq" to lastSeq))
+
+            assertTrue(
+                "Socket did not receive sync:resume:response.",
+                syncResumeResponse.await(20, TimeUnit.SECONDS)
+            )
+            assertTrue(
+                "sync:resume:response currentSeq did not preserve resume seq.",
+                (responseCurrentSeq ?: 0L) >= lastSeq
+            )
+        } finally {
+            transport.disconnect()
+        }
+    }
+
+    @Test
     fun liveCaptureInboxAndRealtimePayloadShape() = runBlocking {
         val fixture = LiveFixture.login()
         val networkClient = RealSlockNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl)
