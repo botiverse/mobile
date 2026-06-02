@@ -1128,8 +1128,7 @@ private class SlockKuiklyImageAdapter(
 }
 
 internal class SlockKuiklyBridgeModule(
-        private val appContext: Context,
-        private val legacyIslandEventsEnabled: Boolean = false
+        private val appContext: Context
 ) : KuiklyRenderBaseModule() {
     private val databases = ConcurrentHashMap<String, SQLiteDatabase>()
     private val gson = Gson()
@@ -1158,22 +1157,6 @@ internal class SlockKuiklyBridgeModule(
             }
             "settingsCapability" -> {
                 settingsCapability(params, callback)
-                null
-            }
-            "filesEvent" -> {
-                dispatchLegacyIslandEvent(method = method, params = params)
-                null
-            }
-            "composerEvent" -> {
-                dispatchLegacyIslandEvent(method = method, params = params)
-                null
-            }
-            "settingsEvent" -> {
-                dispatchLegacyIslandEvent(method = method, params = params)
-                null
-            }
-            "threadEvent" -> {
-                dispatchLegacyIslandEvent(method = method, params = params)
                 null
             }
             "threadAttachmentUpload" -> {
@@ -1210,22 +1193,6 @@ internal class SlockKuiklyBridgeModule(
                 null
             }
         }
-    }
-
-    private fun dispatchLegacyIslandEvent(method: String, params: String?) {
-        val event = JSONObject(params ?: "{}")
-        if (!legacyIslandEventsEnabled) {
-            SlockDiagnosticsLogger.w(
-                    "SlockKuikly",
-                    "legacy_island_event_ignored method=$method instanceId=${event.optString("instanceId")} action=${event.optString("action")} itemId=${event.optString("itemId")} attachmentId=${event.optString("attachmentId")}"
-            )
-            return
-        }
-        SlockDiagnosticsLogger.d(
-                "SlockKuikly",
-                "legacy_island_event_dispatch method=$method instanceId=${event.optString("instanceId")} action=${event.optString("action")} itemId=${event.optString("itemId")} attachmentId=${event.optString("attachmentId")} tab=${event.optString("tab")} valueBytes=${event.optString("value").length}"
-        )
-        SlockKuiklyEventRegistry.dispatch(event)
     }
 
     private fun reportRealtime(params: String?) {
