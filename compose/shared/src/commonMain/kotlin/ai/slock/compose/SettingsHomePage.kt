@@ -35,6 +35,7 @@ import ai.slock.compose.data.SERVER_ACTION_INVITE_REVOKE
 import ai.slock.compose.data.SERVER_ACTION_JOIN_LINK_CREATE
 import ai.slock.compose.data.SERVER_ACTION_JOIN_LINK_REVOKE
 import ai.slock.compose.data.SERVER_ACTION_CONFIRM
+import ai.slock.compose.data.SERVER_ACTION_DELETE
 import ai.slock.compose.data.SERVER_ACTION_LEAVE
 import ai.slock.compose.data.SERVER_ACTION_MEMBER_REMOVE
 import ai.slock.compose.data.SERVER_ACTION_MEMBER_ROLE
@@ -123,6 +124,7 @@ import ai.slock.compose.data.SettingsComputersSnapshot
 import ai.slock.compose.data.SettingsMobileSelectionSnapshot
 import ai.slock.compose.data.SettingsMobileSnapshot
 import ai.slock.compose.data.SettingsServerAdminSnapshot
+import ai.slock.compose.data.SettingsServerDeleteRequest
 import ai.slock.compose.data.SettingsServerInviteCreateRequest
 import ai.slock.compose.data.SettingsServerInviteSnapshot
 import ai.slock.compose.data.SettingsServerJoinLinkCreateRequest
@@ -1464,6 +1466,14 @@ private fun SettingsAppShellContent(
         onSettingsIntent(SharedSettingsIntent.ConsumeEffect)
     }
 
+    var serverInviteEmail by remember { mutableStateOf("") }
+    var serverDeleteConfirmation by remember { mutableStateOf("") }
+    val currentServerName =
+        settingsState.server.currentContent()?.profile?.name ?: session?.currentServerSummary()?.name.orEmpty()
+    LaunchedEffect(currentServerName) {
+        serverDeleteConfirmation = ""
+    }
+
     if (selectedDestination == SettingsDestinationHome) {
         SettingsHomeContent(
             payload = appShellSettingsHomePayload(session, selectedDestination),
@@ -1561,12 +1571,18 @@ private fun SettingsAppShellContent(
                     bottomContentPadding = bottomContentPadding
                 ) { _, _ -> }
             SettingsDestinationServer ->
-                SharedSettingsSectionContent(
-                    settingsState.server.toServerPayload(
+                SharedSettingsServerContent(
+                    payload = settingsState.server.toServerPayload(
                         session = session,
                         refreshing = settingsState.isRefreshing(SharedSettingsDestination.Server),
                         actionState = settingsState.actionState
                     ),
+                    inviteEmail = serverInviteEmail,
+                    onInviteEmailChange = { serverInviteEmail = it },
+                    expectedServerName = currentServerName,
+                    deleteConfirmationName = serverDeleteConfirmation,
+                    onDeleteConfirmationNameChange = { serverDeleteConfirmation = it },
+                    actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
                 ) { action, itemId ->
                     when (action) {
@@ -1625,6 +1641,10 @@ private fun SettingsAppShellContent(
                                 onSettingsIntent(SharedSettingsIntent.LeaveServer)
                             } else {
                                 onSettingsIntent(SharedSettingsIntent.RequestServerConfirmation(SERVER_ACTION_LEAVE))
+                            }
+                        SERVER_ACTION_DELETE ->
+                            itemId?.trim()?.takeIf { it == currentServerName && it.isNotBlank() }?.let {
+                                onSettingsIntent(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest(it)))
                             }
                         else -> onSettingsAction(action, itemId)
                     }
@@ -1711,6 +1731,123 @@ private fun SharedSettingsSectionContent(
             item { SharedSettingsSectionCard(section, onAction) }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Composable
+private fun SharedSettingsServerContent(
+    payload: KuiklySharedSettingsPayload,
+    inviteEmail: String,
+    onInviteEmailChange: (String) -> Unit,
+    expectedServerName: String,
+    deleteConfirmationName: String,
+    onDeleteConfirmationNameChange: (String) -> Unit,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    onAction: (String, String?) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item { SharedSettingsHero(payload) }
+        payload.sections.forEach { section ->
+            item { SharedSettingsSectionCard(section, onAction) }
+            if (section.title == "Pending Invites") {
+                item {
+                    SettingsServerInviteFormCard(
+                        email = inviteEmail,
+                        actionState = actionState,
+                        onEmailChange = onInviteEmailChange,
+                        onSubmit = { onAction(SERVER_ACTION_INVITE_CREATE, inviteEmail.trim()) }
+                    )
+                }
+            }
+            if (section.title == "Plan and danger") {
+                item {
+                    SettingsServerDeleteFormCard(
+                        expectedServerName = expectedServerName,
+                        confirmationName = deleteConfirmationName,
+                        actionState = actionState,
+                        onConfirmationNameChange = onDeleteConfirmationNameChange,
+                        onSubmit = { onAction(SERVER_ACTION_DELETE, deleteConfirmationName.trim()) }
+                    )
+                }
+            }
+        }
+        item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Composable
+private fun SettingsServerInviteFormCard(
+    email: String,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    onEmailChange: (String) -> Unit,
+    onSubmit: () -> Unit
+) {
+    val trimmedEmail = email.trim()
+    val busy = actionState?.action == SERVER_ACTION_INVITE_CREATE && actionState.inProgress
+    val enabled = !busy && trimmedEmail.contains("@") && trimmedEmail.contains(".")
+    Column(
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text("INVITE BY EMAIL", style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+        SlockBrutalTextField(
+            label = "Email",
+            value = email,
+            placeholder = "teammate@example.com",
+            onValueChange = onEmailChange,
+            required = true,
+            enabled = !busy
+        )
+        SlockBrutalActionButton(
+            label = actionState.serverStatusFor(SERVER_ACTION_INVITE_CREATE, "Send invite"),
+            onClick = onSubmit,
+            enabled = enabled,
+            leadingIcon = "mail-plus",
+            backgroundColor = SlockColor.BrandYellow
+        )
+    }
+}
+
+@Composable
+private fun SettingsServerDeleteFormCard(
+    expectedServerName: String,
+    confirmationName: String,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    onConfirmationNameChange: (String) -> Unit,
+    onSubmit: () -> Unit
+) {
+    val trimmedName = confirmationName.trim()
+    val busy = actionState?.action == SERVER_ACTION_DELETE && actionState.inProgress
+    val enabled = !busy && expectedServerName.isNotBlank() && trimmedName == expectedServerName
+    Column(
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text("DELETE SERVER", style = SlockType.SectionLabel.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
+        Text(
+            "Type ${expectedServerName.ifBlank { "the server name" }} to permanently delete this server.",
+            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        SlockBrutalTextField(
+            label = "Confirm server name",
+            value = confirmationName,
+            placeholder = expectedServerName.ifBlank { "Server name" },
+            onValueChange = onConfirmationNameChange,
+            required = true,
+            enabled = !busy
+        )
+        SlockBrutalActionButton(
+            label = actionState.serverStatusFor(SERVER_ACTION_DELETE, "Delete server"),
+            onClick = onSubmit,
+            enabled = enabled,
+            leadingIcon = "trash-2",
+            backgroundColor = SlockColor.AccentRed
+        )
     }
 }
 
@@ -2421,15 +2558,7 @@ private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
     val invites = this.orEmpty()
     if (invites.isEmpty()) {
         return listOf(
-            section.toPlaceholderRow("pendingInvites", "mail-plus", "Pending invites", "No pending invites returned by the typed settings snapshot."),
-            KuiklySharedSettingsRow(
-                key = SERVER_ACTION_INVITE_CREATE,
-                iconName = "mail-plus",
-                title = "Send invite",
-                detail = "Requires an email input; disabled until the shared Server form is expanded.",
-                status = "Needs email",
-                enabled = false
-            )
+            section.toPlaceholderRow("pendingInvites", "mail-plus", "Pending invites", "No pending invites returned by the typed settings snapshot.")
         )
     }
     return invites.flatMap { invite ->
@@ -2452,14 +2581,7 @@ private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
                 enabled = actionState?.inProgress != true
             )
         )
-    } + KuiklySharedSettingsRow(
-        key = SERVER_ACTION_INVITE_CREATE,
-        iconName = "mail-plus",
-        title = "Send invite",
-        detail = "Requires an email input; disabled until the shared Server form is expanded.",
-        status = "Needs email",
-        enabled = false
-    )
+    }
 }
 
 private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
@@ -2584,8 +2706,8 @@ private fun SettingsServerSnapshot?.toPlanAndDangerRows(
             key = "danger",
             iconName = "triangle-alert",
             title = dangerSection?.title ?: "Danger actions",
-            detail = dangerSection?.detail ?: "Delete workspace contract is wired; destructive action requires typed name confirmation and remains disabled here.",
-            status = dangerSection?.state?.name ?: "Disabled",
+            detail = dangerSection?.detail ?: "Delete server requires typing the exact server name below.",
+            status = dangerSection?.state?.name ?: "Confirmation required",
             enabled = false
         )
     )

@@ -153,6 +153,7 @@ class SharedSettingsStoreTest {
             )
 
         store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Server))
+        store.accept(SharedSettingsIntent.CreateServerInvite(SettingsServerInviteCreateRequest("new@slock.ai")))
         store.accept(SharedSettingsIntent.CreateServerJoinLink())
         store.accept(SharedSettingsIntent.RequestServerConfirmation(SERVER_ACTION_INVITE_REVOKE, "invite-1"))
         assertEquals(
@@ -162,12 +163,15 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.RevokeServerInvite("invite-1"))
         store.accept(SharedSettingsIntent.UpdateServerTranslation(SettingsServerTranslationUpdateRequest(false)))
         store.accept(SharedSettingsIntent.UpdateServerMemberRole(SettingsServerMemberRoleUpdateRequest("admin-1", "member")))
+        store.accept(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest("Slock Android")))
 
         val server = assertIs<ScreenLoadState.Content<SettingsServerSnapshot>>(store.state.value.server).data
         assertEquals("Saved", store.state.value.actionState?.let { if (it.errorCode == null && !it.inProgress) "Saved" else it.errorCode })
         assertEquals(false, server.translation?.translationEnabled)
         assertEquals(
             listOf(
+                "server",
+                "createServerInvite:new@slock.ai",
                 "server",
                 "createServerJoinLink",
                 "server",
@@ -176,6 +180,8 @@ class SharedSettingsStoreTest {
                 "updateServerTranslation:false",
                 "server",
                 "updateServerMemberRole:admin-1:member",
+                "server",
+                "deleteServer:Slock Android",
                 "server"
             ),
             repository.calls
@@ -637,8 +643,10 @@ class SharedSettingsStoreTest {
             return DataResult.Content(SettingsServerActionResult(success = true))
         }
 
-        override suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult> =
-            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        override suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult> {
+            calls += "deleteServer:${request.confirmationName}"
+            return DataResult.Content(SettingsServerActionResult(success = true))
+        }
 
         override suspend fun updateServerOnboarding(
             request: SettingsServerOnboardingUpdateRequest
