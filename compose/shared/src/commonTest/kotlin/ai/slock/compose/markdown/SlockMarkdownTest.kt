@@ -1,6 +1,8 @@
 package ai.slock.compose.markdown
 
 import ai.slock.compose.SlockColor
+import ai.slock.compose.SlockType
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertEquals
@@ -83,6 +85,14 @@ class SlockMarkdownTest {
             SlockColor.AccentLavender,
             slockMarkdownTagColor(ThreadMarkdownTagKind.UserMention)
         )
+    }
+
+    @Test
+    fun inlineCodeKeepsSlockFontInsteadOfMono() {
+        val inlineCodeStyle = slockMarkdownInlineCodeTextStyle(SlockType.Body)
+
+        assertEquals(SlockType.Body.fontFamily, inlineCodeStyle.fontFamily)
+        assertFalse(inlineCodeStyle.fontFamily == FontFamily.Monospace)
     }
 
     @Test

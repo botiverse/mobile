@@ -149,7 +149,7 @@ private fun slockSmokeInlineChipTextStyle() =
     SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 16.sp)
 
 private fun slockSmokeInlineCodeStyle() =
-    SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 14.sp, lineHeight = 16.sp)
+    SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 16.sp)
 
 @Composable
 private fun slockMarkdownSmokeColors() =
@@ -170,12 +170,13 @@ private fun slockMarkdownSmokeColors() =
 @Composable
 private fun slockMarkdownSmokeTypography(): DefaultMarkdownTypography {
     val base = SlockType.Body
-    val code = TextStyle(
+    val codeBlock = TextStyle(
         fontFamily = FontFamily.Monospace,
         fontWeight = FontWeight.Normal,
         fontSize = 13.sp,
         lineHeight = 18.sp
     )
+    val inlineCode = slockSmokeInlineCodeStyle()
     return DefaultMarkdownTypography(
         h1 = SlockType.PageTitle.copy(fontSize = 22.sp, lineHeight = 28.sp),
         h2 = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 24.sp),
@@ -184,8 +185,8 @@ private fun slockMarkdownSmokeTypography(): DefaultMarkdownTypography {
         h5 = SlockType.Button,
         h6 = SlockType.Button,
         text = base,
-        code = code,
-        inlineCode = code,
+        code = codeBlock,
+        inlineCode = inlineCode,
         quote = SlockType.Body.copy(color = SlockColor.TextMutedGray),
         paragraph = base,
         ordered = base,

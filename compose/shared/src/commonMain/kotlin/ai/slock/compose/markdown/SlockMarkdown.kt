@@ -540,13 +540,14 @@ private fun slockMarkdownColors() =
 
 @Composable
 private fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography {
-    val code =
+    val codeBlock =
         SlockType.Caption.copy(
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Normal,
             fontSize = 14.sp,
             lineHeight = 20.sp
         )
+    val inlineCode = slockMarkdownInlineCodeTextStyle(base)
     return DefaultMarkdownTypography(
         h1 = SlockType.PageTitle.copy(fontSize = 22.sp, lineHeight = 28.sp),
         h2 = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 24.sp),
@@ -555,8 +556,8 @@ private fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography 
         h5 = SlockType.Button,
         h6 = SlockType.Button,
         text = base,
-        code = code,
-        inlineCode = code,
+        code = codeBlock,
+        inlineCode = inlineCode,
         quote = base.copy(color = SlockColor.TextMutedGray),
         paragraph = base,
         ordered = base,
@@ -591,13 +592,19 @@ internal fun slockMarkdownInlineTagWidthSp(
     }
 
 private fun slockMarkdownPlainMentionWidthSp(label: String) =
-    (label.slockInlineTextWidthUnits() * 7.2f + 2f).coerceAtLeast(24f).sp
+    (label.slockInlineTextWidthUnits() * 7.8f + 8f).coerceAtLeast(28f).sp
 
 internal fun slockMarkdownInlineChipWidthSp(label: String) =
     (label.slockInlineTextWidthUnits() * 7.6f + 14f).coerceAtLeast(40f).sp
 
 private fun slockMarkdownInlineCodeWidthSp(code: String) =
     (code.slockInlineTextWidthUnits() * 8.2f + 14f).coerceAtLeast(40f).sp
+
+internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
+    base.copy(
+        fontSize = 14.sp,
+        lineHeight = 20.sp
+    )
 
 internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
     slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxWidthUnits
@@ -657,7 +664,7 @@ private fun SlockMarkdownMentionText(label: String) {
         ),
         color = SlockColor.TextBlack,
         maxLines = 1,
-        overflow = TextOverflow.Ellipsis
+        overflow = TextOverflow.Clip
     )
 }
 
@@ -676,7 +683,6 @@ private fun SlockMarkdownInlineCodeChip(code: String) {
             modifier = Modifier.fillMaxWidth(),
             style =
                 SlockType.Caption.copy(
-                    fontFamily = FontFamily.Monospace,
                     fontSize = 14.sp,
                     lineHeight = 21.sp
                 ),
