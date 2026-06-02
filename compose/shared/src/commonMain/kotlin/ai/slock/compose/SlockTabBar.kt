@@ -187,21 +187,14 @@ internal fun SlockAppBottomTabBarHost(
         modifier = modifier
             .fillMaxWidth()
             .height(SlockSharedBottomTabBarHeight + bottomSafeArea)
+            .background(SlockColor.SurfaceWhite)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(bottomSafeArea)
-                .background(SlockColor.SurfaceWhite)
-                .align(Alignment.BottomCenter)
-        )
         SlockBottomTabBar(
             items = items,
             onSelect = onSelect,
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .offset(y = -SlockStroke.Default)
+                .align(Alignment.BottomCenter)
         )
     }
 }

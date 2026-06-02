@@ -4748,6 +4748,7 @@ private fun SharedHomeSearchToolbar(
                 Modifier
                     .weight(1f)
                     .heightIn(min = 38.dp)
+                    .padding(end = SearchControlShadowOffset, bottom = SearchControlShadowOffset)
         ) {
             Box(
                 modifier =
