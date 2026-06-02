@@ -107,6 +107,26 @@ class ComposeLocalWriteThroughTest {
     }
 
     @Test
+    fun duplicateThreadSnapshotWriteIsSkipped() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store, logger = logs::add)
+        val snapshot =
+            ThreadSnapshot(
+                conversation = channel(),
+                messages = listOf(message("m1", "channel-1", "channel-1", seq = 1)),
+                lastSeq = 1
+            )
+
+        writer.writeThreadResult(DataResult.Content(snapshot), source = "test_thread")
+        writer.writeThreadResult(DataResult.Content(snapshot), source = "test_thread")
+
+        assertEquals(snapshot.messages.single().id, store.readThread(ThreadId("channel-1"))?.messages?.single()?.id)
+        assertEquals(1, logs.count { it.startsWith("write_thread source=test_thread") })
+        assertEquals(1, logs.count { it.startsWith("write_thread_skip source=test_thread reason=unchanged") })
+    }
+
+    @Test
     fun realtimeMessageUpdatesCachedThreadAndHomePreview() = runBlocking {
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store)

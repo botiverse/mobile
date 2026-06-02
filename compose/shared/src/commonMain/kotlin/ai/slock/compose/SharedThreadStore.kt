@@ -606,14 +606,18 @@ internal class SharedThreadDataSource(
                 canLoadMoreBefore = false,
                 canLoadMoreAfter = false
             )
-        return when (val loaded = fetchThreadPayload(replyBase)) {
-            is DataResult.Content -> DataResult.Content(
-                loaded.data.copy(
-                    originMessage = loaded.data.originMessage ?: resolvedOrigin,
-                    originParentMessageId = loaded.data.originParentMessageId ?: action.parentMessageId?.value ?: parentMessage.id,
-                    originStatus = if (loaded.data.originMessage != null) loaded.data.originStatus else "loaded"
-                )
-            )
+        return when (val loaded = fetchThreadPayload(replyBase, persistResult = false)) {
+            is DataResult.Content -> {
+                val payload =
+                    loaded.data.copy(
+                        originMessage = loaded.data.originMessage ?: resolvedOrigin,
+                        originParentMessageId = loaded.data.originParentMessageId ?: action.parentMessageId?.value ?: parentMessage.id,
+                        originStatus = if (loaded.data.originMessage != null) loaded.data.originStatus else "loaded"
+                    )
+                cachePayload(payload)
+                writeCachedPayload(payload)
+                DataResult.Content(payload)
+            }
             is DataResult.Empty -> loaded
             is DataResult.Error -> loaded
             is DataResult.NoPermission -> loaded
@@ -772,6 +776,7 @@ internal sealed interface SharedThreadIntent {
     data class ApplyRealtimeEvent(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
         SharedThreadIntent
     data object MarkVisibleReadAll : SharedThreadIntent
+    data object LoadMembers : SharedThreadIntent
     data object LoadOlder : SharedThreadIntent
     data object LoadNewer : SharedThreadIntent
 }
@@ -812,6 +817,9 @@ internal class SharedThreadStore(
             SharedThreadIntent.MarkVisibleReadAll -> {
                 scope.launch { markVisibleReadAll() }
             }
+            SharedThreadIntent.LoadMembers -> {
+                scope.launch { loadMembers() }
+            }
             SharedThreadIntent.LoadOlder -> {
                 scope.launch { loadOlder() }
             }
@@ -836,6 +844,7 @@ internal class SharedThreadStore(
                     activeReplyParentMessageId = intent.activeReplyParentMessageId
                 )
             SharedThreadIntent.MarkVisibleReadAll -> markVisibleReadAll()
+            SharedThreadIntent.LoadMembers -> loadMembers()
             SharedThreadIntent.LoadOlder -> loadOlder()
             SharedThreadIntent.LoadNewer -> loadNewer()
         }
@@ -908,19 +917,18 @@ internal class SharedThreadStore(
             }
         if (result is DataResult.Content) {
             val visiblePayload = result.data.withRouteContext(basePayload)
-            val membersPayload = dataSource.enrichThreadMembers(visiblePayload)
-            dataSource.cachePayload(membersPayload)
-            writeCachedPayloadAfterFrame(membersPayload)
-            if (membersPayload != visiblePayload) {
-                _state.value = _state.value.copy(payload = membersPayload)
-            }
-            val enrichedPayload = dataSource.enrichSenderProfiles(membersPayload)
-            if (enrichedPayload != membersPayload) {
-                _state.value = _state.value.copy(payload = enrichedPayload)
-                dataSource.cachePayload(enrichedPayload)
-                writeCachedPayloadAfterFrame(enrichedPayload)
-            }
+            dataSource.cachePayload(visiblePayload)
+            writeCachedPayloadAfterFrame(visiblePayload)
         }
+    }
+
+    private suspend fun loadMembers() {
+        val existing = _state.value.payload
+        if (existing.sourceThreadId.isNullOrBlank()) return
+        val enrichedPayload = dataSource.enrichThreadMembers(existing)
+        if (enrichedPayload == existing) return
+        _state.value = _state.value.copy(payload = enrichedPayload)
+        dataSource.cachePayload(enrichedPayload)
     }
 
     private fun writeCachedPayloadAfterFrame(payload: KuiklyThreadScreenPayload) {

@@ -1305,6 +1305,9 @@ internal fun SharedThreadRouteContent(
                         loadThreadFiles("tab_select")
                     }
                 }
+                action == "loadMembers" -> {
+                    threadViewModel.dispatch(SharedThreadIntent.LoadMembers)
+                }
                 action == "loadMoreFiles" -> {
                     val cursor = filesPayload.nextCursor?.takeIf { it.isNotBlank() }
                     if (cursor != null && filesPayload.hasMore) {
@@ -2032,6 +2035,7 @@ private fun ThreadPageContent(
                 },
                 onShowMembers = {
                     activeModal = "members"
+                    onThreadEvent("loadMembers", null, null, null)
                 },
                 onShowSettings = {
                     activeModal = "settings"

@@ -112,7 +112,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun successfulFetchEnrichesThreadMembersFromRepository() = runBlocking {
+    fun loadMembersEnrichesThreadMembersFromRepository() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val memberRepository =
@@ -149,6 +149,10 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
+        assertEquals(0, store.state.value.payload.membersCount)
+        assertEquals(emptyList(), memberRepository.channelMemberRequests)
+
+        store.accept(SharedThreadIntent.LoadMembers)
 
         val payload = store.state.value.payload
         assertEquals(2, payload.membersCount)
@@ -216,6 +220,37 @@ class SharedThreadStoreTest {
         )
         assertEquals(listOf("u1"), payload.members.map { it.id })
         assertEquals(listOf("u2"), payload.memberCandidates.map { it.id })
+    }
+
+    @Test
+    fun startDoesNotLoadThreadMembersUntilRequested() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val memberRepository =
+            FakeMemberRepository(
+                serverMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc")),
+                channelMembers = listOf(member("u1", "Artin"))
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                memberRepository = memberRepository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        assertEquals("content", store.state.value.payload.status)
+        assertEquals(emptyList(), memberRepository.channelMemberRequests)
+        assertEquals(emptyList(), memberRepository.serverMemberRequests)
+
+        store.accept(SharedThreadIntent.LoadMembers)
+
+        assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
+        assertEquals(listOf(ServerId("server-1")), memberRepository.serverMemberRequests)
+        assertEquals(listOf("u1"), store.state.value.payload.members.map { it.id })
+        assertEquals(listOf("u2"), store.state.value.payload.memberCandidates.map { it.id })
+        scope.cancel()
     }
 
     @Test
@@ -333,7 +368,10 @@ class SharedThreadStoreTest {
 
         val payload = store.state.value.payload
         assertEquals(listOf("cached body", "realtime body"), payload.messages.map { it.body })
-        assertEquals("realtime body", localStore.readThread(ThreadId("channel-1"))?.messages?.last()?.body)
+        assertEquals(
+            "realtime body",
+            localStore.readThread(ThreadId("channel-1"))?.messages?.firstOrNull { it.id == MessageId("m2") }?.body
+        )
         scope.cancel()
     }
 
@@ -820,6 +858,7 @@ class SharedThreadStoreTest {
         private val serverMembers: List<MemberProfile> = emptyList(),
         private var channelMembers: List<MemberProfile> = emptyList()
     ) : MemberRepository {
+        val serverMemberRequests: MutableList<ServerId> = mutableListOf()
         val channelMemberRequests: MutableList<ChannelId> = mutableListOf()
         val addRequests: MutableList<AddChannelMemberRequest> = mutableListOf()
         val removeRequests: MutableList<RemoveChannelMemberRequest> = mutableListOf()
@@ -827,13 +866,15 @@ class SharedThreadStoreTest {
         override suspend fun getMembers(
             priority: ai.slock.compose.data.DataRequestPriority,
             serverId: ServerId
-        ): DataResult<MemberSnapshot> =
-            DataResult.Content(
+        ): DataResult<MemberSnapshot> {
+            serverMemberRequests += serverId
+            return DataResult.Content(
                 MemberSnapshot(
                     server = ai.slock.compose.model.ServerSummary(id = serverId, name = "Slock"),
                     members = serverMembers
                 )
             )
+        }
 
         override suspend fun getChannelMembers(
             priority: ai.slock.compose.data.DataRequestPriority,

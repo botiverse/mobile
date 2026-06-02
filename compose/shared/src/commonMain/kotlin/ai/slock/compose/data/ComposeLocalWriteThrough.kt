@@ -57,15 +57,15 @@ class ComposeLocalWriteThrough(
         fallbackThreadId: ThreadId? = null,
         fallbackHeader: ConversationSummary? = null,
         fallbackParentMessage: Message? = null
-    ) {
+    ): Boolean {
         val snapshot = (result as? DataResult.Content)?.data
         if (snapshot == null) {
             logger(
                 "write_thread_skip source=$source reason=${result.localWriteSkipReason()} fallbackThreadId=${fallbackThreadId?.value.orEmpty()}"
             )
-            return
+            return false
         }
-        writeThreadSnapshot(
+        return writeThreadSnapshot(
             snapshot = snapshot,
             source = source,
             fallbackThreadId = fallbackThreadId,
@@ -153,7 +153,7 @@ class ComposeLocalWriteThrough(
         fallbackThreadId: ThreadId? = null,
         fallbackHeader: ConversationSummary? = null,
         fallbackParentMessage: Message? = null
-    ) {
+    ): Boolean {
         val storedConversation =
             fallbackThreadId?.let { store.readThread(it)?.conversation }
                 ?: store.readThread(snapshot.conversation.threadId)?.conversation
@@ -181,10 +181,28 @@ class ComposeLocalWriteThrough(
                 parentMessage = resolvedParentMessage,
                 lastSeq = snapshot.lastSeq.takeIf { it > 0L } ?: messages.latestSeq()
             )
+        val aliasSnapshot =
+            fallbackThreadId
+                ?.takeIf { it != updatedSnapshot.conversation.threadId }
+                ?.let { aliasThreadId ->
+                    updatedSnapshot.copy(
+                        conversation = updatedSnapshot.conversation.copy(threadId = aliasThreadId)
+                    )
+                }
+        val existingSnapshot = store.readThread(updatedSnapshot.conversation.threadId)
+        val existingAliasSnapshot = aliasSnapshot?.let { store.readThread(it.conversation.threadId) }
+        if (existingSnapshot == updatedSnapshot && (aliasSnapshot == null || existingAliasSnapshot == aliasSnapshot)) {
+            logger(
+                "write_thread_skip source=$source reason=unchanged threadId=${conversation.threadId.value} messages=${snapshot.messages.size} lastSeq=${updatedSnapshot.lastSeq}"
+            )
+            return false
+        }
         store.writeThread(updatedSnapshot)
+        aliasSnapshot?.let { store.writeThread(it) }
         logger(
             "write_thread source=$source threadId=${conversation.threadId.value} streamChannelId=${streamChannelId.value} messages=${snapshot.messages.size} parent=${resolvedParentMessage != null} tasks=${snapshot.tasks.size} lastSeq=${updatedSnapshot.lastSeq}"
         )
+        return true
     }
 
     private suspend fun writeRealtimeMessages(
