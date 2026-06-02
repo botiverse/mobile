@@ -114,6 +114,7 @@ export default class EntryAbility extends UIAbility {
           hilog.warn(0x0000, 'testTag', 'Failed to register UI font %{public}s. Cause: %{public}s', fontResource.familyName, JSON.stringify(err) ?? '');
         }
       });
+      this.context.getApplicationContext().setFont('space_grotesk_regular');
       EntryAbility.uiFontsRegistered = true;
     } catch (err) {
       hilog.warn(0x0000, 'testTag', 'Skip UI font registration until UIContext is ready. Cause: %{public}s', JSON.stringify(err) ?? '');
