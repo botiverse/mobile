@@ -3,7 +3,6 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockAnchoredToolbarChip
-import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalPanelShell
 import ai.slock.compose.components.SlockBrutalSearchField
 import ai.slock.compose.components.SlockBrutalSectionLabel
@@ -4092,136 +4091,90 @@ private fun SharedCreateChannelDialog(
     val filteredAgentMembers = filteredMembers.filter { it.kind == MemberKind.Agent }
     val filteredHumanMembers = filteredMembers.filter { it.kind == MemberKind.Human }
     val hasFilteredMembers = filteredMembers.isNotEmpty()
-    Modal(onWillDismiss = { if (!submitting) onDismiss() }) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(SlockColor.ShadowBlack.copy(alpha = 0.36f))
-                    .clickable(enabled = !submitting, onClick = onDismiss),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .padding(SlockSpacing.Md)
-                        .widthIn(min = 312.dp, max = 408.dp)
-                        .clickable(enabled = false, onClick = {})
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .offset(x = 4.dp, y = 4.dp)
-                            .background(SlockColor.ShadowBlack)
-                )
-                Column(
-                    modifier =
-                        Modifier
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "CREATE CHANNEL",
-                            style = SlockType.PageTitle.copy(fontSize = 22.sp, lineHeight = 26.sp),
-                            color = SlockColor.TextBlack,
-                            modifier = Modifier.weight(1f)
-                        )
-                        SlockBrutalIconButton(
-                            enabled = !submitting,
-                            iconName = "x",
-                            onClick = onDismiss
-                        )
+    SlockUnifiedDialog(
+        title = "CREATE CHANNEL",
+        dismissEnabled = !submitting,
+        onDismiss = onDismiss
+    ) {
+        SlockBrutalTextField(
+            label = "Name",
+            required = true,
+            value = name,
+            onValueChange = { name = it },
+            placeholder = "e.g. ai-research",
+            enabled = !submitting,
+            autoFocus = true
+        )
+        SlockBrutalTextField(
+            label = "Description",
+            optional = true,
+            value = description,
+            onValueChange = { description = it },
+            placeholder = "What is this channel about?",
+            enabled = !submitting,
+            maxLines = 2,
+            autoFocus = false
+        )
+        SharedCreateChannelVisibilityControl(
+            selected = visibility,
+            enabled = !submitting,
+            onSelected = { visibility = it }
+        )
+        SharedCreateChannelMemberPicker(
+            loading = membersLoading,
+            hasMembers = selectableMembers.isNotEmpty(),
+            query = memberSearch,
+            onQueryChange = { memberSearch = it },
+            filteredAgentMembers = filteredAgentMembers,
+            filteredHumanMembers = filteredHumanMembers,
+            hasFilteredMembers = hasFilteredMembers,
+            selectedKeys = selectedMemberKeys,
+            enabled = !submitting,
+            onToggle = { key ->
+                selectedMemberKeys =
+                    if (key in selectedMemberKeys) {
+                        selectedMemberKeys - key
+                    } else {
+                        selectedMemberKeys + key
                     }
-                    SlockBrutalTextField(
-                        label = "Name",
-                        required = true,
-                        value = name,
-                        onValueChange = { name = it },
-                        placeholder = "e.g. ai-research",
-                        enabled = !submitting,
-                        autoFocus = true
-                    )
-                    SlockBrutalTextField(
-                        label = "Description",
-                        optional = true,
-                        value = description,
-                        onValueChange = { description = it },
-                        placeholder = "What is this channel about?",
-                        enabled = !submitting,
-                        maxLines = 2,
-                        autoFocus = false
-                    )
-                    SharedCreateChannelVisibilityControl(
-                        selected = visibility,
-                        enabled = !submitting,
-                        onSelected = { visibility = it }
-                    )
-                    SharedCreateChannelMemberPicker(
-                        loading = membersLoading,
-                        hasMembers = selectableMembers.isNotEmpty(),
-                        query = memberSearch,
-                        onQueryChange = { memberSearch = it },
-                        filteredAgentMembers = filteredAgentMembers,
-                        filteredHumanMembers = filteredHumanMembers,
-                        hasFilteredMembers = hasFilteredMembers,
-                        selectedKeys = selectedMemberKeys,
-                        enabled = !submitting,
-                        onToggle = { key ->
-                            selectedMemberKeys =
-                                if (key in selectedMemberKeys) {
-                                    selectedMemberKeys - key
-                                } else {
-                                    selectedMemberKeys + key
-                                }
-                        }
-                    )
-                    if (!errorMessage.isNullOrBlank()) {
-                        Text(
-                            text = "Error: $errorMessage",
-                            style = SlockType.Caption,
-                            color = SlockColor.AccentRed
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Spacer(Modifier.weight(1f))
-                        SlockBrutalActionButton(
-                            label = "Cancel",
-                            enabled = !submitting,
-                            backgroundColor = SlockColor.SurfaceWhite,
-                            onClick = onDismiss
-                        )
-                        SlockBrutalActionButton(
-                            label = if (submitting) "Creating..." else "Create Channel",
-                            enabled = canSubmit,
-                            minWidth = 126.dp,
-                            backgroundColor = SlockColor.AccentPink,
-                            onClick = {
-                                val selectedMembers =
-                                    selectableMembers.filter { it.memberSelectionKey in selectedMemberKeys }
-                                onSubmit(
-                                    name,
-                                    description,
-                                    visibility.wireValue,
-                                    selectedMembers.filter { it.kind == MemberKind.Agent }.map { it.id.value },
-                                    selectedMembers.filter { it.kind == MemberKind.Human }.map { it.id.value }
-                                )
-                            }
-                        )
-                    }
-                }
             }
+        )
+        if (!errorMessage.isNullOrBlank()) {
+            Text(
+                text = "Error: $errorMessage",
+                style = SlockType.Caption,
+                color = SlockColor.AccentRed
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Spacer(Modifier.weight(1f))
+            SlockBrutalActionButton(
+                label = "Cancel",
+                enabled = !submitting,
+                backgroundColor = SlockColor.SurfaceWhite,
+                onClick = onDismiss
+            )
+            SlockBrutalActionButton(
+                label = if (submitting) "Creating..." else "Create Channel",
+                enabled = canSubmit,
+                minWidth = 126.dp,
+                backgroundColor = SlockColor.AccentPink,
+                onClick = {
+                    val selectedMembers =
+                        selectableMembers.filter { it.memberSelectionKey in selectedMemberKeys }
+                    onSubmit(
+                        name,
+                        description,
+                        visibility.wireValue,
+                        selectedMembers.filter { it.kind == MemberKind.Agent }.map { it.id.value },
+                        selectedMembers.filter { it.kind == MemberKind.Human }.map { it.id.value }
+                    )
+                }
+            )
         }
     }
 }

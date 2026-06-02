@@ -1,7 +1,6 @@
 package ai.slock.compose
 
 import ai.slock.compose.components.SlockAnchoredMetaChip
-import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
@@ -4576,72 +4575,6 @@ private enum class ThreadSettingsDangerAction(
 }
 
 @Composable
-private fun ThreadSettingsModalShell(
-    title: String,
-    onDismiss: () -> Unit,
-    content: @Composable () -> Unit
-) {
-    Modal(onWillDismiss = { onDismiss() }) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(SlockColor.ShadowBlack.copy(alpha = 0.6f))
-                    .clickable(onClick = onDismiss)
-                    .padding(horizontal = 24.dp, vertical = 24.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .widthIn(max = 408.dp)
-                        .clickable(onClick = {})
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .offset(x = 4.dp, y = 4.dp)
-                            .background(SlockColor.ShadowBlack)
-                )
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = title,
-                            style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
-                            color = SlockColor.TextBlack,
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        SlockBrutalIconButton(
-                            iconName = "x",
-                            onClick = onDismiss,
-                            size = 34.dp,
-                            shadowOffset = 3.dp
-                        )
-                    }
-                    content()
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun ThreadSettingsModal(
     channelName: String,
     subtitle: String?,
@@ -4690,7 +4623,7 @@ private fun ThreadSettingsModal(
     }
     val activeDanger = dangerAction
     val confirmationMatches = confirmationName.trim() == channelName.trim()
-    ThreadSettingsModalShell(
+    SlockUnifiedDialog(
         title = activeDanger?.title ?: "EDIT CHANNEL",
         onDismiss = onDismiss
     ) {
@@ -4727,7 +4660,7 @@ private fun ThreadSettingsModal(
                     Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
                     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         dangerActions.forEach { (danger, action) ->
-                            ThreadSettingsDangerButton(
+                            SlockModalFullWidthActionButton(
                                 label = action.title,
                                 icon = action.icon.ifBlank { danger.icon },
                                 color = danger.color,
@@ -4817,57 +4750,6 @@ private fun ThreadSettingsModal(
                         }
                     )
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ThreadSettingsDangerButton(
-    label: String,
-    icon: String,
-    color: Color,
-    onClick: () -> Unit,
-    enabled: Boolean = true
-) {
-    val shadowOffset = 3.dp
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(40.dp + shadowOffset)
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .background(SlockColor.ShadowBlack)
-        )
-        Button(
-            enabled = enabled,
-            onClick = onClick,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-                    .background(if (enabled) color else SlockColor.SurfaceCream)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(horizontal = 14.dp, vertical = 9.dp)
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SlockLucideIcon(icon, modifier = Modifier.size(13.dp), color = "#FF000000")
-                Text(
-                    text = label,
-                    style = SlockType.Button.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                    color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
         }
     }
