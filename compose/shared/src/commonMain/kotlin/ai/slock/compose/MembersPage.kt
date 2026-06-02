@@ -15,7 +15,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -36,22 +35,17 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
-import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 
 const val MEMBERS_PAGE = "compose_members"
@@ -60,7 +54,6 @@ private const val MEMBERS_PAGE_DATA_EVENT = "slockPageData"
 
 private val MembersPageInset = SlockSpacing.Md
 private val MemberAvatarSize = 34.dp
-private val MemberAvatarFontSize = 12.sp
 private val MemberRowMinHeight = 48.dp
 private val MemberStatusDotSize = 10.dp
 private val MembersActionSize = 30.dp
@@ -510,7 +503,7 @@ private fun MembersDetailSummary(member: MemberProfile, modifier: Modifier = Mod
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
-        MembersAvatar(member = member, avatarSize = 58.dp, fontSize = 18.sp, statusSize = 12.dp)
+        MembersAvatar(member = member, avatarSize = 58.dp, statusSize = 12.dp)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
             Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs), verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -724,110 +717,26 @@ private fun MembersListRow(
 private fun MembersAvatar(
     member: MemberProfile,
     avatarSize: Dp = MemberAvatarSize,
-    fontSize: TextUnit = MemberAvatarFontSize,
     statusSize: Dp = MemberStatusDotSize
 ) {
     val avatarWireValue = remember(member.avatar, member.avatarUrl, member.gravatarHash) {
         member.avatar?.wireValue ?: member.avatarUrl ?: member.gravatarHash?.toGravatarAvatarUrl()
     }
-    val pixelSpec = remember(avatarWireValue) { avatarWireValue?.toMembersPixelAvatarSpec() }
-    val isRemoteAvatar =
-        avatarWireValue?.startsWith("http://") == true || avatarWireValue?.startsWith("https://") == true
-    var renderRemoteAvatar by remember(avatarWireValue) { mutableStateOf(!isRemoteAvatar) }
-    LaunchedEffect(avatarWireValue, isRemoteAvatar) {
-        if (isRemoteAvatar) {
-            renderRemoteAvatar = false
-            delay(80L + member.id.value.staggerDelayMillis())
-            renderRemoteAvatar = true
-        } else {
-            renderRemoteAvatar = true
-        }
-    }
-    Box(modifier = Modifier.size(avatarSize)) {
-        when {
-            pixelSpec != null -> MembersPixelAvatar(pixelSpec, member.kind, avatarSize)
-            isRemoteAvatar && renderRemoteAvatar ->
-                Box(
-                    modifier = Modifier
-                        .size(avatarSize)
-                        .background(member.kind.membersAvatarColor)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack),
-                    contentAlignment = Alignment.Center
-                ) {
-                    SlockCachedImage(
-                        source = avatarWireValue,
-                        contentDescription = null,
-                        contentScale = ContentScale.FillBounds,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            else ->
-                Box(
-                    modifier = Modifier
-                        .size(avatarSize)
-                        .background(member.kind.membersAvatarColor)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = member.avatarLabel.take(2).uppercase(),
-                        style = SlockType.Button.copy(fontSize = fontSize),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1
-                    )
-                }
-        }
-        if (member.kind == MemberKind.Agent) {
-            MembersStatusDot(
-                member = member,
-                modifier = Modifier.align(Alignment.BottomEnd),
-                size = statusSize
-            )
-        }
-    }
-}
-
-private fun String.staggerDelayMillis(): Long =
-    (fold(0) { acc, char -> (acc * 31 + char.code) and 0x7fffffff } % 180).toLong()
-
-@Composable
-private fun MembersStatusDot(
-    member: MemberProfile,
-    modifier: Modifier = Modifier,
-    size: Dp = MemberStatusDotSize
-) {
-    SlockStatusIndicator(
-        color = member.agentStatus.membersStatusColor(member.presence),
-        modifier = modifier,
-        size = size
-    )
-}
-
-@Composable
-private fun MembersPixelAvatar(
-    spec: MembersPixelAvatarSpec,
-    kind: MemberKind,
-    avatarSize: Dp = MemberAvatarSize
-) {
-    Canvas(
-        modifier = Modifier
-            .size(avatarSize)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+    SlockAvatarWithStatus(
+        statusColor =
+            if (member.kind == MemberKind.Agent) {
+                member.agentStatus.membersStatusColor(member.presence)
+            } else {
+                null
+            },
+        avatarSize = avatarSize,
+        statusSize = statusSize
     ) {
-        drawRect(spec.background.takeIf { kind == MemberKind.Human } ?: kind.membersAvatarColor)
-        val cellSize = size.width / PixelAvatarGridSize
-        spec.grid.forEachIndexed { rowIndex, row ->
-            row.forEachIndexed { columnIndex, key ->
-                val color = PixelAvatarPalette[key] ?: Color.Transparent
-                if (color != Color.Transparent) {
-                    drawRect(
-                        color = color,
-                        topLeft = Offset(columnIndex * cellSize, rowIndex * cellSize),
-                        size = Size(cellSize, cellSize)
-                    )
-                }
-            }
-        }
+        SlockAvatar(
+            avatarWireValue = avatarWireValue,
+            label = member.avatarLabel,
+            avatarSize = avatarSize
+        )
     }
 }
 
@@ -892,99 +801,3 @@ private fun groupedAgentMembers(members: List<MemberProfile>): List<MembersAgent
                 } ?: "Unknown computer"
         }
         .map { (label, groupedMembers) -> MembersAgentGroup(label, groupedMembers) }
-
-private data class MembersPixelAvatarSpec(val background: Color, val grid: List<String>)
-
-private const val PixelAvatarGridSize = 8f
-private const val PixelAvatarProtocolPrefix = "pixel:"
-private const val PixelAvatarRandomPrefix = "random:"
-private const val PixelAvatarDefaultKey = "robot"
-
-private val PixelAvatarPalette = mapOf(
-    '_' to Color.Transparent,
-    'K' to Color(0xFF141111),
-    'W' to Color(0xFFFFFFFF),
-    'P' to Color(0xFFFE7DA8),
-    'O' to Color(0xFFF8A16F),
-    'Y' to Color(0xFFFFD440),
-    'L' to Color(0xFFA9D877),
-    'C' to Color(0xFF27CCF3),
-    'V' to Color(0xFFBBAFE6),
-    'B' to Color(0xFF576574),
-    'R' to Color(0xFFF97264),
-    'G' to Color(0xFF9DCAAA)
-)
-
-private val MembersPixelAvatarFixedSpecs = mapOf(
-    "robot" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("_KKKKKK_", "KCKWWKCK", "KWKWWKWK", "KKKKKKKK", "_KWKKWK_", "_KKKKKK_", "_KK__KK_", "_KK__KK_")),
-    "cat" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('Y'), listOf("K______K", "KK____KK", "KYKYYKYK", "KYYYYYYK", "KYKYYKYK", "_KYYYYK_", "__KYYK__", "___KK___")),
-    "ghost" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('V'), listOf("__KKKK__", "_KWWWWK_", "KWKWWKWK", "KWWWWWWK", "KWWWWWWK", "KWWKKWWK", "KWKWWKWK", "K_K__K_K")),
-    "skull" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('O'), listOf("_KKKKKK_", "KWWWWWWK", "KWKWWKWK", "KWWWWWWK", "_KWWWWK_", "_KWKWKK_", "__KKKK__", "___KK___")),
-    "alien" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('L'), listOf("_KKKKKK_", "KGGGGGGK", "KGKKKKGK", "KGGGGGGK", "_KGGGGK_", "__KGGK__", "__KGGK__", "_KK__KK_")),
-    "heart" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('P'), listOf("________", "_KK__KK_", "KRRKKRRK", "KRRRRRRK", "KRRRRRRK", "_KRRRRK_", "__KRRK__", "___KK___")),
-    "star" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('Y'), listOf("___KK___", "___KK___", "KKKKKKKK", "_KYYYYK_", "__KYYK__", "_KYKKYK_", "KYK__KYK", "KK____KK")),
-    "flame" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('O'), listOf("___K____", "__KRK___", "__KRKK__", "_KORRRK_", "_KOORRK_", "KYOOORK_", "KYYOOK__", "_KKKK___")),
-    "diamond" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("___KK___", "__KCCK__", "_KCWCCK_", "KCWCCCCK", "KCCCCCCK", "_KCCCCK_", "__KCCK__", "___KK___")),
-    "mushroom" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('P'), listOf("__KKKK__", "_KRWWRK_", "KRRWWRRK", "KRRRRRRK", "_KKKKKK_", "__KWWK__", "__KWWK__", "_KKKKKK_")),
-    "eye" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('V'), listOf("________", "__KKKK__", "_KWWWWK_", "KWWKKWWK", "KWWKKWWK", "_KWWWWK_", "__KKKK__", "________")),
-    "crown" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('Y'), listOf("________", "_K_KK_K_", "_KKKKKK_", "_KYYYYK_", "_KYYYYK_", "KKKKKKKK", "KYYYYYYK", "KKKKKKKK")),
-    "cloud" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("________", "__KK____", "_KWWKK__", "KWWWWWK_", "KWWWWWWK", "KWWWWWWK", "_KKKKKK_", "________")),
-    "sun" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('R'), listOf("_K_KK_K_", "K_KYYK_K", "_KYYYYK_", "KYYYYYYK", "KYYYYYYK", "_KYYYYK_", "K_KYYK_K", "_K_KK_K_")),
-    "bell" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('B'), listOf("___KK___", "__KYYK__", "_KYYYYK_", "_KYYYYK_", "_KYYYYK_", "KYYYYYYK", "KKKKKKKK", "___KK___")),
-    "tree" to MembersPixelAvatarSpec(PixelAvatarPalette.getValue('L'), listOf("___KK___", "__KGGK__", "_KGGGGK_", "KGGGGGGK", "KGGGGGGK", "_KKGGKK_", "__KOOK__", "___KK___"))
-)
-
-private val PixelAvatarRandomOptions = listOf(
-    PixelAvatarPalette.getValue('C') to 'K',
-    PixelAvatarPalette.getValue('Y') to 'K',
-    PixelAvatarPalette.getValue('L') to 'K',
-    PixelAvatarPalette.getValue('P') to 'W',
-    PixelAvatarPalette.getValue('V') to 'K',
-    Color(0xFF1E1E1C) to 'C',
-    Color(0xFF1E1E1C) to 'G',
-    Color(0xFF1E1E1C) to 'P',
-    Color(0xFF1E1E1C) to 'Y',
-    Color(0xFF1E1E1C) to 'V',
-    PixelAvatarPalette.getValue('O') to 'K',
-    PixelAvatarPalette.getValue('C') to 'W'
-)
-
-private fun String.toMembersPixelAvatarSpec(): MembersPixelAvatarSpec? =
-    removePrefixOrNull(PixelAvatarProtocolPrefix)?.let {
-        MembersPixelAvatarFixedSpecs[it] ?: MembersPixelAvatarFixedSpecs.getValue(PixelAvatarDefaultKey)
-    } ?: removePrefixOrNull(PixelAvatarRandomPrefix)?.let(::randomMembersPixelAvatar)
-
-private fun String.removePrefixOrNull(prefix: String): String? =
-    takeIf { startsWith(prefix) }?.removePrefix(prefix)?.ifBlank { null }
-
-private fun randomMembersPixelAvatar(seed: String): MembersPixelAvatarSpec {
-    val random = MembersPixelAvatarRandom(pixelHash(seed))
-    val (background, fill) = PixelAvatarRandomOptions[(random.next() * PixelAvatarRandomOptions.size).toInt()]
-    val grid = List(PixelAvatarGridSize.toInt()) {
-        val left = List((PixelAvatarGridSize / 2).toInt()) {
-            if (random.next() < 0.45) fill else '_'
-        }
-        (left + left.asReversed()).joinToString(separator = "")
-    }
-    return MembersPixelAvatarSpec(background, grid)
-}
-
-private fun pixelHash(input: String): Int {
-    var hash = 0
-    input.forEach { character ->
-        hash = (hash shl 5) - hash + character.code
-    }
-    return hash
-}
-
-private class MembersPixelAvatarRandom(seed: Int) {
-    private var value = seed
-
-    fun next(): Double {
-        value += 1831565813
-        var mixed = (value xor (value ushr 15)) * (1 or value)
-        mixed = (mixed + ((mixed xor (mixed ushr 7)) * (61 or mixed))) xor mixed
-        val unsigned = (mixed xor (mixed ushr 14)).toLong() and 0xffffffffL
-        return unsigned.toDouble() / 4294967296.0
-    }
-}
