@@ -4779,16 +4779,13 @@ private fun SharedHomeSearchToolbar(
                         modifier = Modifier.weight(1f)
                     )
                 }
-                Box(
-                    modifier =
-                        Modifier
-                            .size(24.dp)
-                            .padding(
-                                end = if (interactive && query.isNotBlank()) SearchControlShadowOffset else 0.dp,
-                                bottom = if (interactive && query.isNotBlank()) SearchControlShadowOffset else 0.dp
-                            )
-                ) {
-                    if (interactive && query.isNotBlank()) {
+                if (interactive && query.isNotBlank()) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(24.dp)
+                                .padding(end = SearchControlShadowOffset, bottom = SearchControlShadowOffset)
+                    ) {
                         Box(
                             modifier =
                                 Modifier
@@ -4796,23 +4793,17 @@ private fun SharedHomeSearchToolbar(
                                     .offset(x = SearchControlShadowOffset, y = SearchControlShadowOffset)
                                     .background(SlockColor.ShadowBlack)
                         )
-                    }
-                    Button(
-                        enabled = interactive && query.isNotBlank(),
-                        onClick = onClear,
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .background(
-                                    if (interactive && query.isNotBlank()) {
-                                        SlockColor.SurfaceWhite
-                                    } else {
-                                        SlockColor.EmptyStateGray.copy(alpha = 0.35f)
-                                    }
-                                )
-                                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                    ) {
-                        SlockLucideIcon("x", color = "#FF000000", modifier = Modifier.size(12.dp))
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(SlockColor.SurfaceWhite)
+                                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                                    .clickable(onClick = onClear),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            SlockLucideIcon("x", color = "#FF000000", modifier = Modifier.size(12.dp))
+                        }
                     }
                 }
             }
@@ -4995,7 +4986,7 @@ private fun SharedHomeSearchFilters(
             Modifier
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
-                .padding(bottom = 10.dp),
+                .padding(top = 12.dp, bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (showSenderFilter) {
