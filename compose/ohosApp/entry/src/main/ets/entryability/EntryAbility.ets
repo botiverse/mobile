@@ -13,6 +13,7 @@ import { AppVersionMode, Bugly, BuglyBuilder, ModuleName } from 'bugly';
 import { LogAdapter } from '../kuikly/adapter/LogAdapter';
 import { RouterAdapter } from '../kuikly/adapter/RouterAdapter';
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
+import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import { SlockBuglyCrashListener, SlockOhosBuglyDiagnostics } from './SlockOhosBuglyDiagnostics';
 import { SlockOhosCrashReporter } from './SlockOhosCrashReporter';
 
@@ -152,11 +153,13 @@ export default class EntryAbility extends UIAbility {
     // Ability has brought to foreground
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onForeground');
     this.restoreMainWindowLayout();
+    slockOhosRealtimeBridge.onPageShow();
   }
 
   onBackground(): void {
     // Ability has back to background
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onBackground');
+    slockOhosRealtimeBridge.onPageHide();
   }
 
   private initBugly(): void {

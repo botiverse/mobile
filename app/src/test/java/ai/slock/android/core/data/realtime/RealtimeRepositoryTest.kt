@@ -201,7 +201,7 @@ class RealtimeRepositoryTest {
 
         assertEquals(
             listOf("channel-1", "channel-2"),
-            transport.emitted.map { it.second["channelId"] }
+            transport.emitted.map { it.second }
         )
         transport.emitted.clear()
 
@@ -226,7 +226,7 @@ class RealtimeRepositoryTest {
 
         assertEquals(
             listOf("channel-1"),
-            transport.emitted.map { it.second["channelId"] }
+            transport.emitted.map { it.second }
         )
     }
 

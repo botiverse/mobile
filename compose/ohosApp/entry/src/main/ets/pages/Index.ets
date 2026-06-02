@@ -64,10 +64,12 @@ struct Index {
 
   onPageShow(): void {
     this.kuiklyViewDelegate.pageDidAppear();
+    slockOhosRealtimeBridge.onPageShow();
   }
 
   onPageHide(): void {
     this.kuiklyViewDelegate.pageDidDisappear();
+    slockOhosRealtimeBridge.onPageHide();
   }
 
   onBackPress(): boolean {

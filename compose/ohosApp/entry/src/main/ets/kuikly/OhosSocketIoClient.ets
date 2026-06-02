@@ -64,6 +64,21 @@ export class OhosSocketIoClient {
     this.disconnectSocket(reason);
   }
 
+  suspend(reason: string): void {
+    this.manualDisconnect = true;
+    this.clearReconnectTimer();
+    this.disconnectSocket(reason);
+  }
+
+  resume(): void {
+    const params = this.connectParams;
+    if (params === undefined || this.connected || this.socket !== undefined) {
+      return;
+    }
+    this.manualDisconnect = false;
+    this.openSocket(params);
+  }
+
   emit(eventName: string, payload: KRAny): boolean {
     if (!this.connected) {
       return false;

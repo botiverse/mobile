@@ -77,6 +77,14 @@ export class SlockOhosRealtimeBridge {
     }
   }
 
+  onPageShow(): void {
+    this.socketIo.resume();
+  }
+
+  onPageHide(): void {
+    this.socketIo.suspend('background');
+  }
+
   private connect(params: RealtimeConnectParams): void {
     if (params.serverId.length === 0 || params.accessToken.length === 0) {
       console.warn('[SlockOhosRealtime] connect skipped: missing server/token');

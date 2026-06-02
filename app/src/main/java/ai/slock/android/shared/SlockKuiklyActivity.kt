@@ -120,6 +120,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private var realtimeSubscription: RealtimeSubscription? = null
     private var realtimeConnectJob: Job? = null
     private var realtimeServerId: ServerId? = null
+    private var realtimeSessionKey: String? = null
     private var realtimeLastSeq: Long = 0L
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private val googleSocialAuthGateway = GoogleSocialAuthGateway()
@@ -474,7 +475,45 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                     (pageName.startsWith("compose_") && pageName.endsWith("_visual"))
 
     private fun startRealtimeBridgeIfNeeded() {
-        if (pageName != PAGE_APP_SHELL || realtimeConnectJob != null) return
+        if (pageName != PAGE_APP_SHELL) return
+        val repository = ensureRealtimeRepository()
+        val sessionStore = EncryptedAuthSessionStore(applicationContext)
+        realtimeConnectJob?.cancel()
+        realtimeConnectJob =
+                lifecycleScope.launch {
+                    try {
+                        val session = sessionStore.readSession()
+                        val serverId =
+                                session?.currentServerId?.let(::ServerId)
+                                        ?: run {
+                                            SlockDiagnosticsLogger.w(
+                                                    "SlockKuiklyRealtime",
+                                                    "connect_skip reason=missing_selected_server"
+                                            )
+                                            return@launch
+                                        }
+                        val accessToken = session.accessToken.takeIf { it.isNotBlank() }
+                                ?: run {
+                                    SlockDiagnosticsLogger.w(
+                                            "SlockKuiklyRealtime",
+                                            "connect_skip reason=missing_access_token serverId=${serverId.value}"
+                                    )
+                                    return@launch
+                                }
+                        connectRealtimeRepository(
+                                repository = repository,
+                                serverId = serverId,
+                                accessToken = accessToken,
+                                requestedLastSeq = realtimeLastSeq
+                        )
+                    } finally {
+                        realtimeConnectJob = null
+                    }
+                }
+    }
+
+    private fun ensureRealtimeRepository(): RealtimeRepository {
+        realtimeRepository?.let { return it }
         val sessionStore = EncryptedAuthSessionStore(applicationContext)
         val repository =
                 SessionRealtimeRepository(
@@ -500,25 +539,73 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                         sendRealtimeEventToSharedShell(serverId, event)
                     }
                 }
+        return repository
+    }
+
+    private suspend fun connectRealtimeRepository(
+            repository: RealtimeRepository,
+            serverId: ServerId,
+            accessToken: String,
+            requestedLastSeq: Long
+    ) {
+        val nextSessionKey = "$accessToken|${serverId.value}"
+        val previousSessionKey = realtimeSessionKey
+        val resumeSeq =
+                if (previousSessionKey != null && previousSessionKey != nextSessionKey) {
+                    0L
+                } else {
+                    requestedLastSeq
+                }
+        if (realtimeServerId == serverId && realtimeSessionKey == nextSessionKey) {
+            return
+        }
+        realtimeSessionKey = nextSessionKey
+        realtimeServerId = serverId
+        if (resumeSeq == 0L) {
+            realtimeLastSeq = 0L
+        }
+        val result = repository.connect(serverId, resumeSeq)
+        SlockDiagnosticsLogger.d(
+                "SlockKuiklyRealtime",
+                "connect_result serverId=${serverId.value} result=${result::class.simpleName} lastSeq=$resumeSeq"
+        )
+    }
+
+    internal fun requestRealtimeConnect(serverId: String, accessToken: String, lastSeq: Long) {
+        if (pageName != PAGE_APP_SHELL || serverId.isBlank() || accessToken.isBlank()) return
+        val repository = ensureRealtimeRepository()
+        realtimeConnectJob?.cancel()
         realtimeConnectJob =
                 lifecycleScope.launch {
-                    val session = sessionStore.readSession()
-                    val serverId =
-                            session?.currentServerId?.let(::ServerId)
-                                    ?: run {
-                                        SlockDiagnosticsLogger.w(
-                                                "SlockKuiklyRealtime",
-                                                "connect_skip reason=missing_selected_server"
-                                        )
-                                        return@launch
-                                    }
-                    realtimeServerId = serverId
-                    val result = repository.connect(serverId, realtimeLastSeq)
-                    SlockDiagnosticsLogger.d(
-                            "SlockKuiklyRealtime",
-                            "connect_result serverId=${serverId.value} result=${result::class.simpleName}"
-                    )
+                    try {
+                        connectRealtimeRepository(
+                                repository = repository,
+                                serverId = ServerId(serverId),
+                                accessToken = accessToken,
+                                requestedLastSeq = lastSeq
+                        )
+                    } finally {
+                        realtimeConnectJob = null
+                    }
                 }
+    }
+
+    internal fun requestRealtimeDisconnect(reason: String) {
+        realtimeConnectJob?.cancel()
+        realtimeConnectJob = null
+        realtimeRepository?.disconnect()
+        realtimeServerId = null
+        realtimeSessionKey = null
+        realtimeLastSeq = 0L
+        SlockDiagnosticsLogger.d(
+                "SlockKuiklyRealtime",
+                "disconnect_requested reason=$reason"
+        )
+    }
+
+    internal fun requestRealtimeJoinChannel(channelId: String) {
+        if (channelId.isBlank()) return
+        (realtimeRepository ?: return).joinChannel(ai.slock.android.core.model.ChannelId(channelId))
     }
 
     private fun stopRealtimeBridge() {
@@ -529,6 +616,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         realtimeRepository?.disconnect()
         realtimeRepository = null
         realtimeServerId = null
+        realtimeSessionKey = null
     }
 
     private fun sendRealtimeEventToSharedShell(serverId: ServerId, event: RealtimeEvent) {
@@ -1064,6 +1152,10 @@ internal class SlockKuiklyBridgeModule(
                 copyToPasteboard(params)
                 null
             }
+            "reportRealTime", "reportRealtime" -> {
+                reportRealtime(params)
+                null
+            }
             "settingsCapability" -> {
                 settingsCapability(params, callback)
                 null
@@ -1134,6 +1226,26 @@ internal class SlockKuiklyBridgeModule(
                 "legacy_island_event_dispatch method=$method instanceId=${event.optString("instanceId")} action=${event.optString("action")} itemId=${event.optString("itemId")} attachmentId=${event.optString("attachmentId")} tab=${event.optString("tab")} valueBytes=${event.optString("value").length}"
         )
         SlockKuiklyEventRegistry.dispatch(event)
+    }
+
+    private fun reportRealtime(params: String?) {
+        val request = JSONObject(params ?: "{}")
+        when (request.optString("action")) {
+            "connect" ->
+                    (activity as? SlockKuiklyActivity)?.requestRealtimeConnect(
+                            serverId = request.optString("serverId"),
+                            accessToken = request.optString("accessToken"),
+                            lastSeq = request.optLong("lastSeq", 0L)
+                    )
+            "disconnect" ->
+                    (activity as? SlockKuiklyActivity)?.requestRealtimeDisconnect(
+                            request.optString("reason").ifBlank { "shared_disconnect" }
+                    )
+            "joinChannel" ->
+                    (activity as? SlockKuiklyActivity)?.requestRealtimeJoinChannel(
+                            request.optString("channelId")
+                    )
+        }
     }
 
     private fun relationalStore(params: String?, callback: KuiklyRenderCallback?) {

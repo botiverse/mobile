@@ -2,6 +2,7 @@ package ai.slock.android.core.data.realtime
 
 import android.util.Log
 import ai.slock.compose.data.RealtimeSubscription
+import ai.slock.compose.data.realtime.RealtimeSocketEvents
 import ai.slock.compose.data.realtime.RealtimeSocketTransport
 import io.socket.client.IO
 import io.socket.client.Manager
@@ -50,7 +51,7 @@ class SocketIoSocketTransport(
             "SlockRealtime",
             "transport_emit eventName=$eventName keys=${payload.keys.joinToString("|")}"
         )
-        socket?.emit(eventName, JSONObject(payload))
+        socket?.emit(eventName, realtimeSocketIoWirePayload(eventName, payload))
     }
 
     override fun on(eventName: String, listener: (Any?) -> Unit): RealtimeSubscription {
@@ -100,3 +101,10 @@ class SocketIoSocketTransport(
         )
     }
 }
+
+internal fun realtimeSocketIoWirePayload(eventName: String, payload: Map<String, Any>): Any =
+    if (eventName == RealtimeSocketEvents.JoinChannel) {
+        payload["channelId"] as? String ?: JSONObject(payload)
+    } else {
+        JSONObject(payload)
+    }

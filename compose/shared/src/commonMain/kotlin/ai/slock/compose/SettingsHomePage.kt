@@ -764,6 +764,7 @@ private fun SlockAppShellContent() {
     val bottomSafeArea = slockBottomSafeAreaPadding()
     val realtimeEventMapper = remember { RealtimeEventMapper() }
     var realtimeLastSeq by remember { mutableStateOf(0L) }
+    var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
@@ -784,6 +785,8 @@ private fun SlockAppShellContent() {
     LaunchedEffect(authStore) {
         authStore.sessionInvalidations.collect {
             authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
+            realtimeLastSeq = 0L
+            realtimeSessionKey = null
             selectedTab = "home"
             selectedSettingsDestination = SettingsDestinationHome
             selectedSettingsComputerId = null
@@ -823,6 +826,8 @@ private fun SlockAppShellContent() {
                 },
                 onSignOut = {
                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
+                    realtimeLastSeq = 0L
+                    realtimeSessionKey = null
                     selectedTab = "home"
                     selectedSettingsDestination = SettingsDestinationHome
                     selectedSettingsComputerId = null
@@ -849,11 +854,25 @@ private fun SlockAppShellContent() {
     DisposableEffect(readySession?.currentServerId, readySession?.accessToken) {
         val serverId = readySession?.currentServerId
         val accessToken = readySession?.accessToken
+        val nextSessionKey =
+            if (!serverId.isNullOrBlank() && !accessToken.isNullOrBlank()) {
+                "$accessToken|$serverId"
+            } else {
+                null
+            }
         if (!serverId.isNullOrBlank() && !accessToken.isNullOrBlank()) {
+            val resumeSeq =
+                if (realtimeSessionKey != null && realtimeSessionKey != nextSessionKey) {
+                    realtimeLastSeq = 0L
+                    0L
+                } else {
+                    realtimeLastSeq
+                }
+            realtimeSessionKey = nextSessionKey
             bridge.realtimeConnect(
                 serverId = serverId,
                 accessToken = accessToken,
-                lastSeq = realtimeLastSeq
+                lastSeq = resumeSeq
             )
         }
         onDispose {
@@ -1132,6 +1151,8 @@ private fun SlockAppShellContent() {
                                 bottomContentPadding = slockAppBottomTabBarContentInset(bottomSafeArea),
                                 onLogout = {
                                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
+                                    realtimeLastSeq = 0L
+                                    realtimeSessionKey = null
                                     selectedTab = "home"
                                     selectedSettingsDestination = SettingsDestinationHome
                                     selectedSettingsComputerId = null
