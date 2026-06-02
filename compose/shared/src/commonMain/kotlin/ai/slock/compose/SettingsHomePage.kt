@@ -96,6 +96,7 @@ import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.RealChannelRepository
+import ai.slock.compose.data.RealConversationRepository
 import ai.slock.compose.data.RealMemberRepository
 import ai.slock.compose.data.RealSavedRepository
 import ai.slock.compose.data.RealSearchRepository
@@ -672,6 +673,14 @@ private fun SlockAppShellContent() {
                 warningLogger = { message -> bridge.log("shared_channel_repository $message") }
             )
         }
+    val conversationRepository =
+        remember {
+            RealConversationRepository(
+                sessionStore = authStore,
+                networkClient = appShellNetworkClient,
+                warningLogger = { message -> bridge.log("shared_conversation_repository $message") }
+            )
+        }
     val threadDataSource =
         remember {
             SharedThreadDataSource(
@@ -679,6 +688,7 @@ private fun SlockAppShellContent() {
                 sessionStore = authStore,
                 localWriteThrough = localWriteThrough,
                 memberRepository = memberRepository,
+                conversationRepository = conversationRepository,
                 channelRepository = channelRepository
             )
         }
