@@ -1242,7 +1242,8 @@ private fun String?.toBillingPlanConfig(): SettingsBillingPlanConfig =
 private fun isSettingsTrialActive(nowMillis: Long = Clock.System.now().toEpochMilliseconds()): Boolean {
     val startMillis = Instant.parse("2026-04-18T00:00:00Z").toEpochMilliseconds()
     val durationMillis = 37L * 24L * 60L * 60L * 1000L
-    return nowMillis in startMillis until (startMillis + durationMillis)
+    val endMillis = startMillis + durationMillis
+    return nowMillis >= startMillis && nowMillis < endMillis
 }
 
 private fun currentPlanUsageRows(
