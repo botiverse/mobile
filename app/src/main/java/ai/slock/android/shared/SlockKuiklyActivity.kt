@@ -1473,13 +1473,17 @@ internal class SlockKuiklyBridgeModule(
     private fun requestNotificationPermissionCapability(): Map<String, Any> {
         if (hasNotificationPermission()) {
             ensureSharedNotificationChannel()
-            return mapOf("status" to "ok", "code" to "permission_granted")
+            return if (NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
+                mapOf("status" to "ok", "code" to "permission_granted")
+            } else {
+                mapOf("status" to "error", "code" to "notifications_disabled")
+            }
         }
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val activity = appContext as? Activity
             if (activity != null) {
                 activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS_CODE)
-                mapOf("status" to "ok", "code" to "permission_requested")
+                mapOf("status" to "pending", "code" to "permission_requested")
             } else {
                 mapOf("status" to "error", "code" to "permission_denied")
             }

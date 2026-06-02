@@ -299,6 +299,21 @@ class SharedSettingsStoreTest {
         assertEquals("Done", mobile.notificationPermission.statusLabel)
         assertNull(store.state.value.effect)
 
+        store.accept(SharedSettingsIntent.RequestNotificationPermission)
+        store.accept(
+            SharedSettingsIntent.CompleteSystemNotificationAction(
+                MOBILE_ACTION_PERMISSION,
+                SystemNotificationActionResult(SystemNotificationActionStatus.Requested, code = "permission_requested")
+            )
+        )
+        mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals("Requested", mobile.notificationPermission.statusLabel)
+        assertEquals(
+            "System notification permission dialog was opened. Recheck after responding.",
+            mobile.notificationPermission.detail
+        )
+        assertNull(store.state.value.actionState?.errorCode)
+
         store.accept(
             SharedSettingsIntent.CompleteSystemNotificationAction(
                 MOBILE_ACTION_TEST_NOTIFICATION,

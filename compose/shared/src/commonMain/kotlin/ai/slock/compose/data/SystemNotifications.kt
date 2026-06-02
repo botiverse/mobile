@@ -51,11 +51,12 @@ data class SystemNotificationActionResult(
     val message: String = ""
 ) {
     val ok: Boolean
-        get() = status == SystemNotificationActionStatus.Ok
+        get() = status == SystemNotificationActionStatus.Ok || status == SystemNotificationActionStatus.Requested
 }
 
 enum class SystemNotificationActionStatus {
     Ok,
+    Requested,
     PermissionDenied,
     NotificationsDisabled,
     ChannelBlocked,

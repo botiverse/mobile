@@ -443,6 +443,7 @@ internal class BridgeSettingsPlatformCapabilities(
             status =
                 when {
                     status == "ok" -> SystemNotificationActionStatus.Ok
+                    code == "permission_requested" -> SystemNotificationActionStatus.Requested
                     code == "permission_denied" -> SystemNotificationActionStatus.PermissionDenied
                     code == "notifications_disabled" -> SystemNotificationActionStatus.NotificationsDisabled
                     code == "channel_blocked" -> SystemNotificationActionStatus.ChannelBlocked

@@ -1009,6 +1009,7 @@ private fun SystemNotificationActionResult.mobileStatusLabel(action: String): St
                 MOBILE_ACTION_TEST_NOTIFICATION -> "Sent"
                 else -> "Done"
             }
+        SystemNotificationActionStatus.Requested -> "Requested"
         SystemNotificationActionStatus.PermissionDenied -> "Denied"
         SystemNotificationActionStatus.NotificationsDisabled -> "Disabled"
         SystemNotificationActionStatus.ChannelBlocked -> "Blocked"
@@ -1024,6 +1025,7 @@ private fun SystemNotificationActionResult.mobileDetail(action: String): String 
                 MOBILE_ACTION_TEST_NOTIFICATION -> "A test notification was posted."
                 else -> "Notification permission request completed."
             }
+        SystemNotificationActionStatus.Requested -> "System notification permission dialog was opened. Recheck after responding."
         SystemNotificationActionStatus.PermissionDenied -> "Notification permission is denied or still disabled."
         SystemNotificationActionStatus.NotificationsDisabled -> "System notifications are disabled for Slock."
         SystemNotificationActionStatus.ChannelBlocked -> "The notification channel is blocked in system settings."
