@@ -3,8 +3,10 @@ package ai.slock.compose.data
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.Heartbeat
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
@@ -201,6 +203,87 @@ class SharedHomeStoreTest {
         assertEquals(1, content.snapshot.channels.single().unreadCount)
         assertEquals(1, content.snapshot.unreadTotal)
         assertEquals("live update", localStore.readHome(ServerId("server-1"))?.channels?.single()?.lastMessagePreview)
+        scope.cancel()
+    }
+
+    @Test
+    fun heartbeatDoesNotReloadVisibleHomeSnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(sampleHome(ServerId("server-1")))
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = ThrowingHomeApi(),
+                    localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
+                    parseHome = { _, _ -> error("network failure should not parse") }
+                ),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        logs.clear()
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event = Heartbeat(seq = 42)
+            )
+        )
+
+        assertEquals(listOf("write_realtime_skip type=heartbeat seq=42"), logs)
+        scope.cancel()
+    }
+
+    @Test
+    fun duplicatePresenceDoesNotReloadVisibleHomeSnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(
+            sampleHome(ServerId("server-1")).copy(
+                directMessages =
+                    listOf(
+                        ConversationSummary(
+                            threadId = ThreadId("dm-1"),
+                            channelId = ChannelId("dm-1"),
+                            kind = ConversationKind.DirectMessage,
+                            name = "Agent",
+                            presence = Presence.Active,
+                            presenceMemberId = MemberId("agent-1")
+                        )
+                    )
+            )
+        )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = ThrowingHomeApi(),
+                    localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
+                    parseHome = { _, _ -> error("network failure should not parse") }
+                ),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        logs.clear()
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MemberPresenceUpdated(
+                        memberId = MemberId("agent-1"),
+                        presence = Presence.Active,
+                        kind = MemberKind.Agent
+                    )
+            )
+        )
+
+        assertEquals(emptyList(), logs)
         scope.cancel()
     }
 

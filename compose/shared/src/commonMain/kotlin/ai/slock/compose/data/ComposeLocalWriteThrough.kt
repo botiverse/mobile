@@ -125,19 +125,27 @@ class ComposeLocalWriteThrough(
         logger("clear_home_unread source=$source channelId=${channelId.value}")
     }
 
-    suspend fun writeRealtimeEvent(serverId: ServerId, event: RealtimeEvent) {
+    suspend fun writeRealtimeEvent(serverId: ServerId, event: RealtimeEvent): Boolean =
         when (event) {
             is MessageNew -> writeRealtimeMessages(serverId, listOf(event.message), incrementUnread = true)
             is MessageUpdated -> writeRealtimeMessages(serverId, listOf(event.message), incrementUnread = false)
             is SyncResumeResponse -> writeRealtimeMessages(serverId, event.messages, incrementUnread = true)
             is ThreadUpdated -> writeThreadMetadata(serverId, event)
-            is TaskCreated -> writeRealtimeTasks(event.tasks)
-            is TaskUpdated -> writeRealtimeTasks(listOf(event.task))
+            is TaskCreated -> {
+                writeRealtimeTasks(event.tasks)
+                false
+            }
+            is TaskUpdated -> {
+                writeRealtimeTasks(listOf(event.task))
+                false
+            }
             is ai.slock.compose.model.MemberPresenceUpdated -> updateHomePresence(serverId, event)
-            is Heartbeat -> logger("write_realtime_skip type=heartbeat seq=${event.seq}")
-            else -> Unit
+            is Heartbeat -> {
+                logger("write_realtime_skip type=heartbeat seq=${event.seq}")
+                false
+            }
+            else -> false
         }
-    }
 
     private suspend fun writeThreadSnapshot(
         snapshot: ThreadSnapshot,
@@ -183,8 +191,9 @@ class ComposeLocalWriteThrough(
         serverId: ServerId,
         messages: List<Message>,
         incrementUnread: Boolean
-    ) {
-        if (messages.isEmpty()) return
+    ): Boolean {
+        if (messages.isEmpty()) return false
+        var wroteHome = false
         messages.groupBy { message -> message.channelId ?: ChannelId(message.threadId.value) }
             .forEach { (streamChannelId, streamMessages) ->
                 val threadId = ThreadId(streamChannelId.value)
@@ -201,22 +210,25 @@ class ComposeLocalWriteThrough(
                         )
                     )
                 }
-                updateHomePreview(serverId, streamChannelId, streamMessages, incrementUnread)
+                wroteHome = updateHomePreview(serverId, streamChannelId, streamMessages, incrementUnread) || wroteHome
             }
+        return wroteHome
     }
 
-    private suspend fun writeThreadMetadata(serverId: ServerId, event: ThreadUpdated) {
-        val home = store.readHome(serverId) ?: return
+    private suspend fun writeThreadMetadata(serverId: ServerId, event: ThreadUpdated): Boolean {
+        val home = store.readHome(serverId) ?: return false
         val updatedHome =
             home.copy(
                 channels = home.channels.map { conversation -> conversation.withThreadMetadata(event) },
                 directMessages =
                     home.directMessages.map { conversation -> conversation.withThreadMetadata(event) }
             )
+        if (updatedHome == home) return false
         store.writeHome(updatedHome)
         logger(
             "write_thread_metadata parentMessageId=${event.parentMessageId.value} threadChannelId=${event.threadChannelId.value} replyCount=${event.replyCount}"
         )
+        return true
     }
 
     private suspend fun writeRealtimeTasks(tasks: List<ai.slock.compose.model.TaskSummary>) {
@@ -233,8 +245,8 @@ class ComposeLocalWriteThrough(
     private suspend fun updateHomePresence(
         serverId: ServerId,
         event: ai.slock.compose.model.MemberPresenceUpdated
-    ) {
-        val home = store.readHome(serverId) ?: return
+    ): Boolean {
+        val home = store.readHome(serverId) ?: return false
         val updatedDirectMessages =
             home.directMessages.map { conversation ->
                 if (conversation.matchesPresenceMember(event)) {
@@ -247,11 +259,12 @@ class ComposeLocalWriteThrough(
                     conversation
                 }
             }
-        if (updatedDirectMessages == home.directMessages) return
+        if (updatedDirectMessages == home.directMessages) return false
         store.writeHome(home.copy(directMessages = updatedDirectMessages))
         logger(
             "write_home_realtime source=presence serverId=${serverId.value} memberId=${event.memberId.value}"
         )
+        return true
     }
 
     private suspend fun updateHomePreview(
@@ -259,9 +272,9 @@ class ComposeLocalWriteThrough(
         streamChannelId: ChannelId,
         messages: List<Message>,
         incrementUnread: Boolean
-    ) {
-        val home = store.readHome(serverId) ?: return
-        val latest = messages.maxByOrNull { it.seq ?: Long.MIN_VALUE } ?: return
+    ): Boolean {
+        val home = store.readHome(serverId) ?: return false
+        val latest = messages.maxByOrNull { it.seq ?: Long.MIN_VALUE } ?: return false
         fun ConversationSummary.updateIfMatches(): ConversationSummary {
             if (messageStreamChannelId() != streamChannelId) return this
             return copy(
@@ -273,13 +286,15 @@ class ComposeLocalWriteThrough(
                 unreadCountKnown = unreadCountKnown || incrementUnread
             )
         }
-        store.writeHome(
+        val updatedHome =
             home.copy(
                 channels = home.channels.map { it.updateIfMatches() },
                 directMessages = home.directMessages.map { it.updateIfMatches() },
                 unreadTotal = if (incrementUnread) home.unreadTotal + 1 else home.unreadTotal
             )
-        )
+        if (updatedHome == home) return false
+        store.writeHome(updatedHome)
+        return true
     }
 }
 

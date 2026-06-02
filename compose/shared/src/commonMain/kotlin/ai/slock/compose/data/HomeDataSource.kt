@@ -1,7 +1,14 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.MemberPresenceUpdated
+import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.RealtimeEvent
+import ai.slock.compose.model.SyncResumeResponse
+import ai.slock.compose.model.TaskCreated
+import ai.slock.compose.model.TaskUpdated
+import ai.slock.compose.model.ThreadUpdated
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -70,8 +77,11 @@ class SharedHomeDataSource(
     }
 
     suspend fun applyRealtimeEvent(serverId: ServerId, event: RealtimeEvent): DataResult<HomeSnapshot> {
-        localWriteThrough?.writeRealtimeEvent(serverId, event)
+        val homeUpdated = localWriteThrough?.writeRealtimeEvent(serverId, event)
             ?: return DataResult.Empty(EmptyReason.NoChannels)
+        if (!homeUpdated || !event.updatesHomeSnapshot()) {
+            return DataResult.Empty(EmptyReason.NoChannels)
+        }
         return readCachedHome(serverId)
     }
 
@@ -92,6 +102,18 @@ class SharedHomeDataSource(
         return client.dismissAnnouncement(id)
     }
 }
+
+private fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
+    when (this) {
+        is MessageNew,
+        is MessageUpdated,
+        is SyncResumeResponse,
+        is ThreadUpdated,
+        is TaskCreated,
+        is TaskUpdated,
+        is MemberPresenceUpdated -> true
+        else -> false
+    }
 
 data class SharedHomeNotification(
     val id: String,
