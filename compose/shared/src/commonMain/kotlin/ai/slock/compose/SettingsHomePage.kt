@@ -1329,6 +1329,7 @@ private fun SlockAppShellContent() {
                                 SharedHomeSavedPanel(
                                     state = homeSearchSavedState.saved,
                                     onIntent = homeSearchSavedViewModel::dispatch,
+                                    onClose = { selectedHomeDestination = null },
                                     onOpenItem = { item ->
                                         selectedHomeDestination = null
                                         selectedHomeConversationId = item.toConversationSummary().threadId.value
@@ -4826,6 +4827,7 @@ private fun SharedHomeSearchToolbar(
 private fun SharedHomeSavedPanel(
     state: SharedHomeSavedPanelState,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
+    onClose: (() -> Unit)? = null,
     onOpenItem: (InboxItem) -> Unit,
     bottomContentPadding: Dp,
     includeTopSafeArea: Boolean = true
@@ -4841,13 +4843,9 @@ private fun SharedHomeSavedPanel(
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         item {
-            SharedHomePanelHeader(
-                title = "Saved",
-                subtitle = "Messages you saved for later.",
-                iconName = "bookmark",
-                actionLabel = if (state.loading) "Loading..." else "Refresh",
-                actionEnabled = !state.loading,
-                onAction = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) },
+            SharedHomeSavedHeader(
+                count = state.totalCount.takeIf { it > 0 } ?: state.items.size,
+                onClose = onClose,
                 includeTopSafeArea = includeTopSafeArea
             )
         }
@@ -4865,10 +4863,9 @@ private fun SharedHomeSavedPanel(
         }
         items(state.items.size, key = { index -> "saved-${state.items[index].key}" }) { index ->
             val item = state.items[index]
-            SharedHomeInboxResultRow(
+            SharedHomeSavedResultCard(
                 item = item,
-                actionLabel = "Unsave",
-                onAction = { onIntent(SharedHomeSearchSavedIntent.Unsave(item)) },
+                onUnsave = { onIntent(SharedHomeSearchSavedIntent.Unsave(item)) },
                 onOpen = { onOpenItem(item) }
             )
         }
@@ -4876,7 +4873,7 @@ private fun SharedHomeSavedPanel(
             item {
                 SharedHomeLoadMoreRow(
                     loading = state.loadingMore,
-                    label = "Load more saved",
+                    label = "Load More",
                     onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSaved) }
                 )
             }
@@ -4884,6 +4881,61 @@ private fun SharedHomeSavedPanel(
         item {
             Spacer(Modifier.height(bottomContentPadding))
         }
+    }
+}
+
+@Composable
+private fun SharedHomeSavedHeader(
+    count: Int,
+    onClose: (() -> Unit)?,
+    includeTopSafeArea: Boolean = true
+) {
+    val topPadding = if (includeTopSafeArea) slockTopSafeAreaPadding() else 0.dp
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, top = topPadding + 12.dp, end = 16.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (onClose != null) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(34.dp)
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .clickable(onClick = onClose),
+                    contentAlignment = Alignment.Center
+                ) {
+                    SlockLucideIcon("arrow-left", color = "#FF000000", modifier = Modifier.size(16.dp))
+                }
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "Saved",
+                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 18.sp, lineHeight = 22.sp, letterSpacing = 0.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    "$count saved",
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 15.sp, letterSpacing = 0.sp),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        SharedHomeSearchDivider()
     }
 }
 
@@ -5206,85 +5258,113 @@ private fun SharedHomePanelMessage(
 }
 
 @Composable
-private fun SharedHomeInboxResultRow(
+private fun SharedHomeSavedResultCard(
     item: InboxItem,
-    actionLabel: String,
-    onAction: () -> Unit,
+    onUnsave: () -> Unit,
     onOpen: () -> Unit
 ) {
     val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview ?: "No preview"
     val sender = item.latestActivitySenderName ?: item.lastMessageSenderName
-    val meta =
-        listOfNotNull(
-            item.channelName.takeIf { it.isNotBlank() }?.let { if (item.kind == InboxItemKind.Channel) "#$it" else it },
-            sender,
-            item.latestActivityAt ?: item.lastMessageAt
-        ).joinToString(" · ")
+    val time = item.latestActivityAt ?: item.lastMessageAt
+    val source =
+        when {
+            item.kind == InboxItemKind.DirectMessage -> item.channelName.takeIf { it.isNotBlank() }?.let { "@$it" }
+            item.kind == InboxItemKind.Thread -> item.parentChannelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
+            else -> item.channelName.takeIf { it.isNotBlank() }?.let { "#$it" }
+        }
+    val threadReplyCount = item.replyCount.takeIf { item.kind == InboxItemKind.Thread && it > 0 }
     Row(
         modifier =
             Modifier
-                .padding(horizontal = 18.dp)
+                .padding(horizontal = SearchMessagesHorizontalPadding, vertical = 4.dp)
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .border(SlockStroke.Default, SearchLightRowBorderColor)
                 .clickable(onClick = onOpen)
-                .padding(SlockSpacing.Md),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top
     ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                source?.let {
+                    Text(
+                        text = it,
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.5f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (item.kind == InboxItemKind.Thread) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SlockLucideIcon("message-square", color = "#66000000", modifier = Modifier.size(10.dp))
+                        Text(
+                            text = "thread",
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
+                            color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                threadReplyCount?.let {
+                    Text(
+                        text = "$it replies",
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                sender?.let {
+                    Text(
+                        text = it,
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                time?.let {
+                    Text(
+                        text = it,
+                        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Text(
+                text = preview,
+                style = SlockType.Button.copy(fontSize = 14.sp, lineHeight = 19.sp, letterSpacing = 0.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
         Box(
             modifier =
                 Modifier
-                    .size(34.dp)
-                    .background(SlockColor.BrandYellow)
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack),
+                    .size(31.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .clickable(onClick = onUnsave),
             contentAlignment = Alignment.Center
         ) {
-            SlockLucideIcon(
-                name =
-                    when (item.kind) {
-                        InboxItemKind.DirectMessage -> "mail"
-                        InboxItemKind.Thread -> "message-square"
-                        InboxItemKind.System -> "bell-ring"
-                        else -> "hash"
-                    },
-                color = "#FF000000",
-                modifier = Modifier.size(18.dp)
-            )
-        }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(
-                text = item.parentChannelName ?: item.channelName,
-                style = SlockType.SectionLabel,
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = preview,
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 17.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = meta.ifBlank { "Message" },
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (item.replyCount > 0) {
-                Text(
-                    text = "${item.replyCount} replies",
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1
-                )
-            }
-            SharedHomePanelButton(label = actionLabel, selected = false, onClick = onAction)
+            SlockLucideIcon("bookmark", color = "#FF000000", modifier = Modifier.size(15.dp))
         }
     }
 }
@@ -5595,15 +5675,27 @@ private fun SharedHomeLoadMoreRow(
         modifier =
             Modifier
                 .padding(horizontal = SearchMessagesHorizontalPadding)
+                .padding(top = 4.dp, bottom = 8.dp)
                 .fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
-        SharedHomePanelButton(
-            label = if (loading) "Loading..." else label,
-            enabled = !loading,
-            selected = false,
-            onClick = onClick
-        )
+        Box(
+            modifier =
+                Modifier
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .clickable(onClick = onClick)
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (loading) "Loading..." else label,
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
+                color = if (loading) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
@@ -6996,6 +7088,7 @@ private fun HomeSavedVisualContent() {
         SharedHomeSavedPanel(
             state = homeSavedVisualState,
             onIntent = {},
+            onClose = {},
             onOpenItem = {},
             bottomContentPadding = 12.dp,
             includeTopSafeArea = false
