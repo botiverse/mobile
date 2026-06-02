@@ -53,6 +53,7 @@ export class OhosSocketIoClient {
   connect(params: OhosSocketIoConnectParams): void {
     this.connectParams = params;
     this.manualDisconnect = false;
+    this.clearReconnectTimer();
     this.disconnectSocket('reconnect');
     this.openSocket(params);
   }

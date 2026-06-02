@@ -31,6 +31,7 @@ interface RealtimeConnectParams {
 export class SlockOhosRealtimeBridge {
   private controller?: KRNativeRenderController;
   private readonly socketIo: OhosSocketIoClient = new OhosSocketIoClient();
+  private readonly joinedChannels: Set<string> = new Set();
   private connectParams?: RealtimeConnectParams;
 
   setController(controller?: KRNativeRenderController): void {
@@ -91,6 +92,9 @@ export class SlockOhosRealtimeBridge {
       return;
     }
     const previous = this.connectParams;
+    if (previous !== undefined && previous.serverId !== params.serverId) {
+      this.joinedChannels.clear();
+    }
     this.connectParams = params;
     if (this.socketIo.isConnected() && previous?.serverId === params.serverId && previous?.accessToken === params.accessToken) {
       return;
@@ -110,6 +114,10 @@ export class SlockOhosRealtimeBridge {
   }
 
   private disconnect(reason: string): void {
+    if (reason !== 'reconnect') {
+      this.joinedChannels.clear();
+      this.connectParams = undefined;
+    }
     this.socketIo.disconnect(reason);
   }
 
@@ -130,6 +138,7 @@ export class SlockOhosRealtimeBridge {
   }
 
   private onRoomsJoined(): void {
+    this.rejoinChannels('rooms_joined');
     const lastSeq = this.connectParams?.lastSeq ?? 0;
     if (lastSeq > 0) {
       this.syncResume(lastSeq);
@@ -140,7 +149,17 @@ export class SlockOhosRealtimeBridge {
     if (channelId.length === 0) {
       return;
     }
-    this.socketIo.emit('join:channel', channelId);
+    this.joinedChannels.add(channelId);
+    if (!this.socketIo.emit('join:channel', channelId)) {
+      console.info('[SlockOhosRealtime] join_channel_deferred');
+    }
+  }
+
+  private rejoinChannels(reason: string): void {
+    this.joinedChannels.forEach((channelId) => {
+      console.info(`[SlockOhosRealtime] rejoin_channel reason=${reason}`);
+      this.socketIo.emit('join:channel', channelId);
+    });
   }
 
   private syncResume(lastSeq: number): void {
