@@ -201,7 +201,7 @@ class RealtimeRepositoryTest {
 
         assertEquals(
             listOf("channel-1", "channel-2"),
-            transport.emitted.map { it.second }
+            transport.emitted.map { it.second["channelId"] }
         )
         transport.emitted.clear()
 
@@ -226,8 +226,30 @@ class RealtimeRepositoryTest {
 
         assertEquals(
             listOf("channel-1"),
-            transport.emitted.map { it.second }
+            transport.emitted.map { it.second["channelId"] }
         )
+    }
+
+    @Test
+    fun androidTransportUsesRawChannelIdForJoinChannel() {
+        val payload =
+            realtimeSocketIoWirePayload(
+                RealtimeSocketEvents.JoinChannel,
+                mapOf("channelId" to "channel-1")
+            )
+
+        assertEquals("channel-1", payload)
+    }
+
+    @Test
+    fun androidTransportKeepsObjectPayloadForSyncResume() {
+        val payload =
+            realtimeSocketIoWirePayload(
+                RealtimeSocketEvents.SyncResume,
+                mapOf("lastSeq" to 88L)
+            ) as JSONObject
+
+        assertEquals(88L, payload.getLong("lastSeq"))
     }
 
     @Test
