@@ -383,6 +383,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           callback(await this.sendTestNotificationCapability());
           return;
         }
+        case "postUnreadNotification": {
+          callback(await this.postUnreadNotificationCapability(records));
+          return;
+        }
         case "cancelTestNotification":
         case "cancelNotification": {
           callback(await this.cancelNotificationCapability(records));
@@ -563,6 +567,44 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
   }
 
+  private async postUnreadNotificationCapability(records: Record<string, Object>): Promise<Record<string, Object>> {
+    try {
+      if (!(await notificationManager.isNotificationEnabled())) {
+        return { "status": "error", "code": "permission_denied", "message": "Notification permission is disabled" };
+      }
+      await this.ensureNotificationSlot();
+
+      const key = this.stringRecordValue(records, "notificationKey", `${records["serverId"] ?? ""}:${records["threadId"] ?? ""}:${records["messageId"] ?? ""}`);
+      const notificationId = this.stableNotificationId(key);
+      const title = this.stringRecordValue(records, "title", "Slock");
+      const text = this.stringRecordValue(records, "body", "You have a new unread message.");
+      const category = this.stringRecordValue(records, "category", "general_unread");
+      const request: notificationManager.NotificationRequest = {
+        id: notificationId,
+        notificationSlotType: notificationManager.SlotType.SOCIAL_COMMUNICATION,
+        tapDismissed: true,
+        autoDeletedTime: Date.now() + 300000,
+        content: {
+          notificationContentType: notificationManager.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
+          normal: {
+            title,
+            text
+          }
+        }
+      };
+      await notificationManager.publish(request);
+      return {
+        "status": "ok",
+        "code": "posted",
+        "notificationId": notificationId,
+        "channelId": "ohos-social-communication",
+        "category": category
+      };
+    } catch (error) {
+      return this.notificationCapabilityError("post_failed", error);
+    }
+  }
+
   private async cancelNotificationCapability(records: Record<string, Object>): Promise<Record<string, Object>> {
     const notificationId = Number(records["notificationId"] ?? records["id"] ?? 0);
     if (notificationId <= 0) {
@@ -588,6 +630,23 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       "platformCode": businessError.code ?? -1,
       "message": businessError.message ?? `${error}`
     };
+  }
+
+  private stringRecordValue(records: Record<string, Object>, key: string, fallback: string): string {
+    const value = records[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+    return fallback;
+  }
+
+  private stableNotificationId(key: string): number {
+    let hash = 0;
+    for (let index = 0; index < key.length; index++) {
+      hash = ((hash << 5) - hash + key.charCodeAt(index)) | 0;
+    }
+    const positive = Math.abs(hash);
+    return Math.max(1, positive % 2147483647);
   }
 
   private async threadAttachmentUpload(params: KRAny, callback: KuiklyRenderCallback) {

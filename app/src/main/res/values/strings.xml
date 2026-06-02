@@ -274,6 +274,15 @@
     <string name="settings_notification_test_text">Mobile Settings can show local Android notifications.</string>
     <string name="settings_notification_channel_name">Settings test notifications</string>
     <string name="settings_notification_channel_description">Local test notifications from Mobile Settings.</string>
+    <string name="notification_unread_default_text">You have a new unread message.</string>
+    <string name="notification_unread_general_channel_name">Unread messages</string>
+    <string name="notification_unread_general_channel_description">General unread Slock message notifications.</string>
+    <string name="notification_unread_channel_channel_name">Channel unread messages</string>
+    <string name="notification_unread_channel_channel_description">Unread messages from channels and threads.</string>
+    <string name="notification_unread_dm_channel_name">Direct messages</string>
+    <string name="notification_unread_dm_channel_description">Unread direct message notifications.</string>
+    <string name="notification_unread_mention_channel_name">Mentions</string>
+    <string name="notification_unread_mention_channel_description">Unread notifications for messages that mention you.</string>
     <string name="inbox_notification_channel_name">Activity notifications</string>
     <string name="inbox_notification_channel_description">Unread activity updates from Slock.</string>
     <string name="inbox_notification_title">New message in %1$s</string>

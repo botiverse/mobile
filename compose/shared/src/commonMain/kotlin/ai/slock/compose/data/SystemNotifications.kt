@@ -1,5 +1,8 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.model.ConversationKind
+import ai.slock.compose.model.Message
+
 data class NotificationPreferenceSnapshot(
     val enabled: Boolean
 )
@@ -64,6 +67,24 @@ enum class SystemNotificationActionStatus {
     Error
 }
 
+enum class SystemUnreadNotificationCategory(val wireValue: String) {
+    GeneralUnread("general_unread"),
+    ChannelUnread("channel_unread"),
+    DirectMessage("direct_message"),
+    Mention("mention")
+}
+
+data class SystemUnreadNotificationRequest(
+    val serverId: String,
+    val messageId: String,
+    val threadId: String,
+    val channelId: String?,
+    val category: SystemUnreadNotificationCategory,
+    val title: String,
+    val body: String,
+    val notificationKey: String
+)
+
 fun shouldShowSystemInboxNotification(
     messageAuthorId: String?,
     currentMemberId: String?,
@@ -75,3 +96,85 @@ fun shouldShowSystemInboxNotification(
     if (isVisibleThread) return false
     return true
 }
+
+fun buildSystemUnreadNotificationRequest(
+    serverId: String,
+    message: Message,
+    currentMemberId: String?,
+    isVisibleThread: Boolean,
+    conversationName: String?,
+    conversationKind: ConversationKind?,
+    currentMemberHandle: String? = null,
+    isAppInForeground: Boolean = false
+): SystemUnreadNotificationRequest? {
+    if (
+        !shouldShowSystemInboxNotification(
+            messageAuthorId = message.author.id.value,
+            currentMemberId = currentMemberId,
+            isVisibleThread = isVisibleThread,
+            isAppInForeground = isAppInForeground
+        )
+    ) {
+        return null
+    }
+    val sender = message.author.displayName.ifBlank { message.author.handle.ifBlank { "Someone" } }
+    val preview = message.body.toNotificationPreview().ifBlank { "Sent a new message." }
+    val mentioned =
+        currentMemberHandle
+            ?.trim()
+            ?.removePrefix("@")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { handle ->
+                message.body.contains("@$handle", ignoreCase = true) ||
+                    message.body.contains(handle, ignoreCase = true)
+            } == true
+    val category =
+        when {
+            mentioned -> SystemUnreadNotificationCategory.Mention
+            conversationKind == ConversationKind.DirectMessage -> SystemUnreadNotificationCategory.DirectMessage
+            conversationKind == ConversationKind.Channel || conversationKind == ConversationKind.Thread ->
+                SystemUnreadNotificationCategory.ChannelUnread
+            else -> SystemUnreadNotificationCategory.GeneralUnread
+        }
+    val title =
+        when (category) {
+            SystemUnreadNotificationCategory.DirectMessage -> sender
+            SystemUnreadNotificationCategory.ChannelUnread,
+            SystemUnreadNotificationCategory.Mention ->
+                conversationName
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { name -> if (name.startsWith("#")) name else "#$name" }
+                    ?: "Slock"
+            SystemUnreadNotificationCategory.GeneralUnread -> "Slock"
+        }
+    val body =
+        when (category) {
+            SystemUnreadNotificationCategory.DirectMessage -> preview
+            else -> "$sender: $preview"
+        }
+    val channelId = message.threadChannelId?.value ?: message.channelId?.value
+    val threadId = message.threadId.value
+    val messageId = message.id.value
+    return SystemUnreadNotificationRequest(
+        serverId = serverId,
+        messageId = messageId,
+        threadId = threadId,
+        channelId = channelId,
+        category = category,
+        title = title,
+        body = body,
+        notificationKey = "unread:$serverId:${channelId ?: threadId}:$messageId"
+    )
+}
+
+private fun String.toNotificationPreview(maxLength: Int = 140): String =
+    trim()
+        .replace(Regex("\\s+"), " ")
+        .let { value ->
+            if (value.length <= maxLength) {
+                value
+            } else {
+                value.take(maxLength - 1).trimEnd() + "…"
+            }
+        }

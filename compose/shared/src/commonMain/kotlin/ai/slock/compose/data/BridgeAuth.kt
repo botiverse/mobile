@@ -383,6 +383,23 @@ internal class BridgeSettingsPlatformCapabilities(
     suspend fun sendTestNotification(): SystemNotificationActionResult =
         systemNotificationAction("sendTestNotification")
 
+    suspend fun postUnreadNotification(request: SystemUnreadNotificationRequest): SystemNotificationActionResult {
+        val command =
+            JSONObject()
+                .put("action", "postUnreadNotification")
+                .put("serverId", request.serverId)
+                .put("messageId", request.messageId)
+                .put("threadId", request.threadId)
+                .put("channelId", request.channelId.orEmpty())
+                .put("category", request.category.wireValue)
+                .put("title", request.title)
+                .put("body", request.body)
+                .put("notificationKey", request.notificationKey)
+        val response = bridge.settingsCapability(command)
+            ?: return SystemNotificationActionResult(SystemNotificationActionStatus.Unsupported, code = "settings_capability_missing")
+        return response.toSystemNotificationActionResult()
+    }
+
     private fun JSONObject.toStorageSnapshot(): SharedSettingsStorageSnapshot {
         val rowsJson = optJSONArray("rows")
         val rows =

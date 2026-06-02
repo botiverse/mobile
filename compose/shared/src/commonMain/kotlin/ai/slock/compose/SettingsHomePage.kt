@@ -16,6 +16,7 @@ import ai.slock.compose.data.BridgeHomeApi
 import ai.slock.compose.data.BridgeMembersApi
 import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
 import ai.slock.compose.data.BridgeTasksApi
+import ai.slock.compose.data.buildSystemUnreadNotificationRequest
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
 import ai.slock.compose.data.KeyValueLocalePreferenceStore
@@ -1089,7 +1090,15 @@ private fun SlockAppShellContent() {
             ?.let { bridge.realtimeJoinChannel(it) }
     }
 
-    DisposableEffect(pager, homeViewModel, realtimeEventMapper) {
+    DisposableEffect(
+        pager,
+        homeViewModel,
+        realtimeEventMapper,
+        notificationPreferenceSnapshot,
+        homeState,
+        activeThreadPayload?.sourceThreadId,
+        readySession?.user?.id
+    ) {
         val observer =
             object : IPagerEventObserver {
                 override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
@@ -1099,6 +1108,27 @@ private fun SlockAppShellContent() {
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
                     if (event is DirectMessageCreated) {
                         bridge.realtimeJoinChannel(event.channelId.value)
+                    }
+                    if (event is MessageNew && notificationPreferenceSnapshot.enabled) {
+                        val conversation = homeState.systemNotificationConversation(event.message)
+                        val request =
+                            buildSystemUnreadNotificationRequest(
+                                serverId = serverId,
+                                message = event.message,
+                                currentMemberId = readySession?.user?.id,
+                                isVisibleThread = event.message.isVisibleInThread(activeThreadPayload),
+                                conversationName = conversation?.name,
+                                conversationKind = conversation?.kind,
+                                currentMemberHandle = readySession?.user?.email
+                            )
+                        if (request != null) {
+                            appShellScope.launch {
+                                val result = settingsCapabilities.postUnreadNotification(request)
+                                if (!result.ok) {
+                                    bridge.log("system_unread_notification_failed code=${result.code} message=${result.message}")
+                                }
+                            }
+                        }
                     }
                     homeViewModel.dispatch(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
                 }
@@ -5741,6 +5771,29 @@ private fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannel
             )
         }
         .distinctBy { it.id }
+}
+
+private fun SharedHomeState.systemNotificationConversation(message: Message): ConversationSummary? {
+    val snapshot = (content as? SharedHomeContentState.Content)?.snapshot ?: return null
+    val ids =
+        setOfNotNull(
+            message.threadId.value,
+            message.channelId?.value,
+            message.threadChannelId?.value
+        )
+    return (snapshot.channels + snapshot.directMessages).firstOrNull { conversation ->
+        conversation.threadId.value in ids ||
+            conversation.channelId?.value in ids ||
+            conversation.thread?.streamChannelId?.value in ids ||
+            conversation.thread?.parentChannelId?.value in ids
+    }
+}
+
+private fun Message.isVisibleInThread(payload: KuiklyThreadScreenPayload?): Boolean {
+    val sourceThreadId = payload?.sourceThreadId?.takeIf { it.isNotBlank() } ?: return false
+    return sourceThreadId == threadId.value ||
+        sourceThreadId == channelId?.value ||
+        sourceThreadId == threadChannelId?.value
 }
 
 private enum class SearchEntityType {
