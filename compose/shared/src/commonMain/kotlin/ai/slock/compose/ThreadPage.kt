@@ -4302,7 +4302,12 @@ private fun ThreadMembersModal(
     val humans = members.filter { !it.kind.equals("agent", ignoreCase = true) }
     SlockUnifiedDialog(
         title = "Members (${membersCount.takeIf { it > 0 } ?: members.size})",
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        minWidth = 300.dp,
+        maxWidth = 332.dp,
+        contentPadding = 24.dp,
+        titleFontSize = 18,
+        titleLineHeight = 22
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SlockModalListShell(height = threadMemberListHeight(agents.size, humans.size).dp) {
@@ -4348,11 +4353,10 @@ private fun ThreadMembersModal(
                     }
                 }
             }
-            SlockModalActionButton(
+            SlockModalFullWidthActionButton(
                 label = "Add Member",
                 icon = "user-plus",
                 onClick = { if (canAddMembers) onAddMember() },
-                modifier = Modifier.fillMaxWidth(),
                 color = SlockColor.AccentPink,
                 enabled = canAddMembers
             )
@@ -4398,8 +4402,13 @@ private fun ThreadAddMemberModal(
             else -> null
         }
     SlockUnifiedDialog(
-        title = "Add Members",
-        onDismiss = onDismiss
+        title = "Add Member",
+        onDismiss = onDismiss,
+        minWidth = 300.dp,
+        maxWidth = 332.dp,
+        contentPadding = 24.dp,
+        titleFontSize = 18,
+        titleLineHeight = 22
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (!errorText.isNullOrBlank()) {
@@ -4489,7 +4498,7 @@ private fun ThreadAddMemberModal(
 private fun threadMemberListHeight(agentCount: Int, humanCount: Int, maxHeight: Int = 288): Int {
     val sectionCount = listOf(agentCount, humanCount).count { it > 0 }
     val rowCount = agentCount + humanCount
-    return (sectionCount * 29 + rowCount * 46 + 6).coerceIn(92, maxHeight)
+    return (sectionCount * 30 + rowCount * 58 + 8).coerceIn(108, maxHeight)
 }
 
 @Composable
@@ -4514,7 +4523,12 @@ private fun ThreadMemberDetailModal(
         }
     SlockUnifiedDialog(
         title = member.displayName,
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        minWidth = 300.dp,
+        maxWidth = 332.dp,
+        contentPadding = 24.dp,
+        titleFontSize = 18,
+        titleLineHeight = 22
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             val detailSubtitle = errorText ?: member.handle.takeIf { it.isNotBlank() }?.let { "@$it" }

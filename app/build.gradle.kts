@@ -72,20 +72,6 @@ configurations
     .configureEach {
         resolutionStrategy.eachDependency {
             when {
-                requested.group == "androidx.compose.runtime" &&
-                    requested.name in
-                        setOf(
-                            "runtime",
-                            "runtime-android",
-                            "runtime-saveable",
-                            "runtime-saveable-android"
-                        ) -> {
-                    useVersion("1.7.6")
-                    because(
-                        "Kuikly profiler in compose-android 2.19.1 expects the older CompositionObserverKt.observe(Composition, ...) runtime tooling API."
-                    )
-                }
-
                 requested.group == "androidx.lifecycle" -> {
                     useVersion("2.9.4")
                     because("Keep connectedTest on the lifecycle artifacts already used and cached by the app build.")
