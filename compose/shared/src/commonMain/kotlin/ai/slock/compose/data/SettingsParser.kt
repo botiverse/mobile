@@ -223,12 +223,12 @@ private data class WireSettingsServerUsage(
     val channels: JsonElement,
 )
 
-fun parseSharedSettingsServerUsage(bodyText: String): List<SettingsPlanUsageSnapshot>? = runCatching {
+fun parseSharedSettingsServerUsage(bodyText: String): SettingsServerUsageSnapshot? = runCatching {
     val usage = settingsJson.decodeFromString(WireSettingsServerUsage.serializer(), bodyText)
-    listOf(
-        SettingsPlanUsageSnapshot("Agents", usage.agents.settingsDisplayValue() ?: return null),
-        SettingsPlanUsageSnapshot("Computers", usage.machines.settingsDisplayValue() ?: return null),
-        SettingsPlanUsageSnapshot("Channels", usage.channels.settingsDisplayValue() ?: return null),
+    SettingsServerUsageSnapshot(
+        agents = usage.agents.settingsIntValue() ?: return null,
+        machines = usage.machines.settingsIntValue() ?: return null,
+        channels = usage.channels.settingsIntValue() ?: return null,
     )
 }.getOrNull()
 
@@ -242,22 +242,17 @@ private data class WireSettingsBillingSubscription(
 private data class WireSettingsSubscription(
     val status: String? = null,
     val currentPeriodEnd: String? = null,
+    val cancelAtPeriodEnd: Boolean = false,
 )
 
-fun parseSharedSettingsBillingSubscription(bodyText: String): List<SettingsPlanUsageSnapshot>? = runCatching {
+fun parseSharedSettingsBillingSubscription(bodyText: String): SettingsBillingSubscriptionSnapshot? = runCatching {
     val billing = settingsJson.decodeFromString(WireSettingsBillingSubscription.serializer(), bodyText)
-    buildList {
-        add(
-            SettingsPlanUsageSnapshot(
-                label = "Billing Status",
-                value = billing.subscription?.status?.toSettingsRoleLabel() ?: "No subscription",
-            )
-        )
-        billing.subscription?.currentPeriodEnd?.let { currentPeriodEnd ->
-            add(SettingsPlanUsageSnapshot(label = "Current Period End", value = currentPeriodEnd))
-        }
-        add(SettingsPlanUsageSnapshot(label = "Stripe Configured", value = billing.stripeConfigured.toString()))
-    }
+    SettingsBillingSubscriptionSnapshot(
+        status = billing.subscription?.status?.takeIf { it.isNotBlank() },
+        currentPeriodEnd = billing.subscription?.currentPeriodEnd?.takeIf { it.isNotBlank() },
+        cancelAtPeriodEnd = billing.subscription?.cancelAtPeriodEnd == true,
+        stripeConfigured = billing.stripeConfigured
+    )
 }.getOrNull()
 
 @Serializable
@@ -468,6 +463,11 @@ fun parseSharedSettingsServerAction(bodyText: String): SettingsServerActionResul
 private fun JsonElement.settingsDisplayValue(): String? =
     (this as? JsonPrimitive)?.let { primitive ->
         primitive.contentOrNull ?: primitive.intOrNull?.toString() ?: primitive.booleanOrNull?.toString()
+    }
+
+private fun JsonElement.settingsIntValue(): Int? =
+    (this as? JsonPrimitive)?.let { primitive ->
+        primitive.intOrNull ?: primitive.contentOrNull?.toIntOrNull()
     }
 
 private fun String.toSettingsRoleLabel(): String =

@@ -53,12 +53,19 @@ class SettingsRepositoryDataSourceTest {
 
     @Test
     fun billingMapsReadablePlanStateAndRequiresOwnerPermission() = runBlocking {
-        val billing = RealSettingsRepository(sampleStore(), FakeSettingsNetworkClient()).getBilling()
+        val billing =
+            RealSettingsRepository(
+                sampleStore(),
+                FakeSettingsNetworkClient(
+                    usageJson = """{"machines":1,"agents":10,"channels":12}""",
+                    billingSubscriptionJson = """{"subscription":{"status":"active","currentPeriodEnd":"2026-06-01T00:00:00Z","cancelAtPeriodEnd":true},"stripeConfigured":true}"""
+                )
+            ).getBilling()
         val denied =
             RealSettingsRepository(
                 sampleStore(
                     sampleSession().copy(
-                        servers = sampleSession().servers.map { it.copy(role = "member") }
+                        servers = sampleSession().servers.map { it.copy(role = "admin") }
                     )
                 ),
                 FakeSettingsNetworkClient()
@@ -68,7 +75,11 @@ class SettingsRepositoryDataSourceTest {
         val billingSnapshot = billing.data
         assertEquals("Team", billingSnapshot.currentPlan.planName)
         assertEquals(4, billingSnapshot.currentPlan.usageRows.size)
-        assertTrue(billingSnapshot.plans.any { it.current })
+        assertEquals("1 / 8", billingSnapshot.currentPlan.usageRows.first { it.label == "Computers" }.value)
+        assertEquals("10 / 40", billingSnapshot.currentPlan.usageRows.first { it.label == "Agents" }.value)
+        assertEquals("Unlimited", billingSnapshot.currentPlan.usageRows.first { it.label == "History" }.value)
+        assertEquals(listOf("Hobby", "Team", "Business"), billingSnapshot.plans.map { it.name })
+        assertTrue(billingSnapshot.plans.single { it.name == "Team" }.current)
         assertTrue(billingSnapshot.plans.any { it.comingSoon })
         assertTrue(denied is DataResult.NoPermission)
         assertEquals("billing_owner_required", denied.blocker.code)

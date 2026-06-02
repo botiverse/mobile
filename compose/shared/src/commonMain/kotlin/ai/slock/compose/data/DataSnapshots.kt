@@ -397,6 +397,19 @@ data class SettingsBillingSnapshot(
     val plans: List<SettingsBillingPlanSnapshot>
 )
 
+data class SettingsBillingSubscriptionSnapshot(
+    val status: String? = null,
+    val currentPeriodEnd: String? = null,
+    val cancelAtPeriodEnd: Boolean = false,
+    val stripeConfigured: Boolean = false
+)
+
+data class SettingsServerUsageSnapshot(
+    val agents: Int,
+    val machines: Int,
+    val channels: Int
+)
+
 data class SettingsBillingCurrentPlanSnapshot(
     val planName: String,
     val usageRows: List<SettingsPlanUsageSnapshot>,

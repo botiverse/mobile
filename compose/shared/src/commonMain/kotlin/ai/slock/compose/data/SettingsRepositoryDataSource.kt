@@ -2,6 +2,8 @@ package ai.slock.compose.data
 
 import ai.slock.compose.model.ServerId
 import kotlinx.coroutines.CancellationException
+import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -369,50 +371,36 @@ class RealSettingsRepository(
 
     override suspend fun getBilling(): DataResult<SettingsBillingSnapshot> {
         val server = selectedServer() ?: return serverRequired()
-        if (!server.canManageServer) {
+        if (server.role != "owner") {
             return DataResult.NoPermission(
                 PermissionBlocker(code = "billing_owner_required", requiredCapability = "manage_billing")
             )
         }
-        val currentPlanName = server.plan.toPlanDisplayName()
+        val currentPlan = server.plan.toBillingPlanConfig()
+        val usage =
+            when (val result = fetchServerUsage(server.id)) {
+                is DataResult.Content -> result.data
+                is DataResult.Empty -> return DataResult.Empty(result.reason)
+                is DataResult.Error -> return DataResult.Error(result.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
+            }
         val billing = fetchServerBilling()
-        val billingUsageRows =
+        val subscription =
             when (billing) {
                 is DataResult.Content -> billing.data
-                is DataResult.Empty -> emptyList()
-                is DataResult.Error -> listOf(SettingsPlanUsageSnapshot(label = "Billing Status", value = billing.error.code))
-                is DataResult.NoPermission -> listOf(SettingsPlanUsageSnapshot(label = "Billing Status", value = billing.blocker.code))
+                is DataResult.Empty -> null
+                is DataResult.Error -> return DataResult.Error(billing.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(billing.blocker)
             }
+        val trialActive = currentPlan.id == "free" && isSettingsTrialActive()
         return DataResult.Content(
             SettingsBillingSnapshot(
                 currentPlan = SettingsBillingCurrentPlanSnapshot(
-                    planName = currentPlanName,
-                    usageRows =
-                        listOf(
-                            SettingsPlanUsageSnapshot(label = "Workspace", value = server.name),
-                            SettingsPlanUsageSnapshot(label = "Role", value = server.role.orEmpty().replaceFirstChar { it.uppercase() }),
-                        ) + billingUsageRows,
-                    trialActive = false
+                    planName = currentPlan.displayName,
+                    usageRows = currentPlanUsageRows(currentPlan, usage, trialActive),
+                    trialActive = trialActive
                 ),
-                plans = listOf(
-                    SettingsBillingPlanSnapshot(
-                        name = "Starter",
-                        price = "$0",
-                        features = listOf("Core chat", "Inbox and thread access")
-                    ),
-                    SettingsBillingPlanSnapshot(
-                        name = "Team",
-                        price = "$12 / user",
-                        features = listOf("Advanced permissions", "Billing controls"),
-                        current = currentPlanName.equals("Team", ignoreCase = true)
-                    ),
-                    SettingsBillingPlanSnapshot(
-                        name = "Enterprise",
-                        price = "Contact sales",
-                        features = listOf("SAML", "Audit log", "Priority support"),
-                        comingSoon = true
-                    )
-                )
+                plans = settingsDisplayPlanConfigs.map { it.toBillingPlanSnapshot(currentPlan, trialActive, subscription) }
             )
         )
     }
@@ -452,8 +440,8 @@ class RealSettingsRepository(
 
         val admins = (members as? DataResult.Content)?.data.orEmpty()
         val usageRows = mergeServerUsageRows(
-            usage = (usage as? DataResult.Content)?.data.orEmpty(),
-            billing = (billing as? DataResult.Content)?.data.orEmpty()
+            usage = (usage as? DataResult.Content)?.data,
+            billing = (billing as? DataResult.Content)?.data
         )
         val pendingInvites = (invites as? DataResult.Content)?.data.orEmpty()
         val joinLinkRows = (joinLinks as? DataResult.Content)?.data.orEmpty()
@@ -805,7 +793,7 @@ class RealSettingsRepository(
             }
         )
 
-    private suspend fun fetchServerUsage(serverId: String): DataResult<List<SettingsPlanUsageSnapshot>> =
+    private suspend fun fetchServerUsage(serverId: String): DataResult<SettingsServerUsageSnapshot> =
         executeTypedSettings(
             source = "settings_server_usage",
             contractCode = "settings_server_usage_contract_mismatch",
@@ -816,7 +804,7 @@ class RealSettingsRepository(
             }
         )
 
-    private suspend fun fetchServerBilling(): DataResult<List<SettingsPlanUsageSnapshot>> =
+    private suspend fun fetchServerBilling(): DataResult<SettingsBillingSubscriptionSnapshot> =
         executeTypedSettings(
             source = "settings_billing_subscription",
             contractCode = "settings_billing_subscription_contract_mismatch",
@@ -1204,9 +1192,136 @@ private fun String?.toPlanDisplayName(): String =
     when (this?.lowercase()) {
         null, "" -> "Unknown"
         "hobby", "starter" -> "Hobby"
+        "founder" -> "Founder"
         "team" -> "Team"
         "business", "enterprise" -> "Business"
         else -> replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+    }
+
+private fun String.toSettingsStatusLabel(): String =
+    replace("_", " ")
+        .replace("-", " ")
+        .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+private data class SettingsPlanLimits(
+    val maxMachines: Int,
+    val maxAgents: Int,
+    val maxChannels: Int,
+    val messageHistoryDays: Int
+)
+
+private data class SettingsBillingPlanConfig(
+    val id: String,
+    val displayName: String,
+    val priceLabel: String,
+    val limits: SettingsPlanLimits? = null,
+    val comingSoon: Boolean = false
+)
+
+private val hobbyPlanLimits = SettingsPlanLimits(maxMachines = 2, maxAgents = 5, maxChannels = 5, messageHistoryDays = 30)
+private val founderPlanLimits = SettingsPlanLimits(maxMachines = -1, maxAgents = -1, maxChannels = -1, messageHistoryDays = -1)
+private val teamPlanLimits = SettingsPlanLimits(maxMachines = 8, maxAgents = 40, maxChannels = 20, messageHistoryDays = -1)
+private val businessPlanLimits = SettingsPlanLimits(maxMachines = 40, maxAgents = 200, maxChannels = -1, messageHistoryDays = -1)
+
+private val hobbyBillingPlanConfig = SettingsBillingPlanConfig(id = "free", displayName = "Hobby", priceLabel = "$0 /mo", limits = hobbyPlanLimits)
+private val founderBillingPlanConfig = SettingsBillingPlanConfig(id = "founder", displayName = "Founder", priceLabel = "$0 /mo", limits = founderPlanLimits)
+private val teamBillingPlanConfig = SettingsBillingPlanConfig(id = "pro", displayName = "Team", priceLabel = "$20 /mo", limits = teamPlanLimits, comingSoon = true)
+private val businessBillingPlanConfig = SettingsBillingPlanConfig(id = "max", displayName = "Business", priceLabel = "$200 /mo", limits = businessPlanLimits, comingSoon = true)
+private val settingsDisplayPlanConfigs = listOf(hobbyBillingPlanConfig, teamBillingPlanConfig, businessBillingPlanConfig)
+
+private fun String?.toBillingPlanConfig(): SettingsBillingPlanConfig =
+    when (this?.lowercase()) {
+        "free", "hobby", "starter" -> hobbyBillingPlanConfig
+        "founder" -> founderBillingPlanConfig
+        "team", "pro" -> teamBillingPlanConfig.copy(comingSoon = false)
+        "business", "enterprise", "max" -> businessBillingPlanConfig.copy(comingSoon = false)
+        null, "" -> SettingsBillingPlanConfig(id = "unknown", displayName = "Unknown", priceLabel = "Unavailable")
+        else -> SettingsBillingPlanConfig(id = lowercase(), displayName = toPlanDisplayName(), priceLabel = "Unavailable")
+    }
+
+private fun isSettingsTrialActive(nowMillis: Long = Clock.System.now().toEpochMilliseconds()): Boolean {
+    val startMillis = Instant.parse("2026-04-18T00:00:00Z").toEpochMilliseconds()
+    val durationMillis = 37L * 24L * 60L * 60L * 1000L
+    return nowMillis in startMillis until (startMillis + durationMillis)
+}
+
+private fun currentPlanUsageRows(
+    plan: SettingsBillingPlanConfig,
+    usage: SettingsServerUsageSnapshot,
+    trialActive: Boolean
+): List<SettingsPlanUsageSnapshot> {
+    val limits = plan.limits
+    return listOf(
+        SettingsPlanUsageSnapshot("Computers", formatCurrentPlanUsageValue(usage.machines, limits?.maxMachines, trialActive)),
+        SettingsPlanUsageSnapshot("Agents", formatCurrentPlanUsageValue(usage.agents, limits?.maxAgents, trialActive)),
+        SettingsPlanUsageSnapshot("Channels", formatCurrentPlanUsageValue(usage.channels, limits?.maxChannels, trialActive)),
+        SettingsPlanUsageSnapshot("History", formatHistoryUsageValue(limits?.messageHistoryDays, trialActive))
+    )
+}
+
+private fun formatCurrentPlanUsageValue(current: Int, limit: Int?, trialActive: Boolean): String =
+    when {
+        trialActive && limit != null && limit != -1 -> "$current (Unlimited limited time)"
+        limit == null -> current.toString()
+        limit == -1 -> "$current (Unlimited)"
+        else -> "$current / $limit"
+    }
+
+private fun formatHistoryUsageValue(limit: Int?, trialActive: Boolean): String =
+    when {
+        trialActive && limit != null && limit != -1 -> "Unlimited (limited time)"
+        limit == null -> "Unavailable"
+        limit == -1 -> "Unlimited"
+        else -> "$limit days"
+    }
+
+private fun SettingsBillingPlanConfig.toBillingPlanSnapshot(
+    currentPlan: SettingsBillingPlanConfig,
+    trialActive: Boolean,
+    subscription: SettingsBillingSubscriptionSnapshot?
+): SettingsBillingPlanSnapshot =
+    SettingsBillingPlanSnapshot(
+        name = displayName,
+        price = priceLabel,
+        features = planFeatureRows(this, trialActive, subscription),
+        current = id == currentPlan.id,
+        comingSoon = comingSoon
+    )
+
+private fun planFeatureRows(
+    plan: SettingsBillingPlanConfig,
+    trialActive: Boolean,
+    subscription: SettingsBillingSubscriptionSnapshot?
+): List<String> {
+    val limits = plan.limits ?: return emptyList()
+    val rows =
+        mutableListOf(
+            formatPlanLimitFeature(limits.maxMachines, "computer"),
+            formatPlanLimitFeature(limits.maxAgents, "agent"),
+            formatPlanLimitFeature(limits.maxChannels, "channel"),
+            formatPlanHistoryFeature(limits.messageHistoryDays)
+        )
+    if (plan.id == "free" && trialActive) {
+        rows += "Unlimited during current free trial"
+    }
+    if (subscription?.status == "active" && plan.id == "pro") {
+        rows += "Stripe subscription active"
+    }
+    return rows
+}
+
+private fun formatPlanLimitFeature(limit: Int, label: String): String =
+    when (limit) {
+        -1 -> "Unlimited ${label}s"
+        1 -> "1 $label"
+        else -> "$limit ${label}s"
+    }
+
+private fun formatPlanHistoryFeature(limit: Int): String =
+    when (limit) {
+        -1 -> "Unlimited history"
+        1 -> "1 day history"
+        else -> "$limit days history"
     }
 
 private val StoredAuthServer.canManageServer: Boolean
@@ -1343,15 +1458,22 @@ private fun adminsSectionDetail(result: DataResult<List<SettingsServerAdminSnaps
 
 private fun billingSectionDetail(
     sessionPlan: String?,
-    billing: DataResult<List<SettingsPlanUsageSnapshot>>,
+    billing: DataResult<SettingsBillingSubscriptionSnapshot>,
     usageRowCount: Int
 ): String {
     val plan = sessionPlan.toPlanDisplayName()
     val usage = if (usageRowCount > 0) " Usage rows: $usageRowCount." else ""
     return when (billing) {
-        is DataResult.NoPermission -> "Billing requires owner/admin permission."
+        is DataResult.Content -> {
+            val detail =
+                billing.data.status?.toSettingsStatusLabel()?.let { status ->
+                    " Billing status: $status."
+                }.orEmpty()
+            "Current plan: $plan.$detail$usage"
+        }
+        is DataResult.NoPermission -> "Billing requires owner permission."
         is DataResult.Error -> "Current plan: $plan. Billing subscription failed: ${billing.error.code}.$usage"
-        else -> "Current plan: $plan.$usage"
+        is DataResult.Empty -> "Current plan: $plan.$usage"
     }
 }
 
@@ -1391,8 +1513,8 @@ private fun <T> DataResult<T>.sectionState(empty: Boolean): SettingsSectionAvail
     }
 
 private fun combineSectionState(
-    billing: DataResult<List<SettingsPlanUsageSnapshot>>,
-    usage: DataResult<List<SettingsPlanUsageSnapshot>>,
+    billing: DataResult<SettingsBillingSubscriptionSnapshot>,
+    usage: DataResult<SettingsServerUsageSnapshot>,
     empty: Boolean
 ): SettingsSectionAvailability =
     when {
@@ -1405,13 +1527,30 @@ private fun combineSectionState(
     }
 
 private fun mergeServerUsageRows(
-    usage: List<SettingsPlanUsageSnapshot>,
-    billing: List<SettingsPlanUsageSnapshot>
+    usage: SettingsServerUsageSnapshot?,
+    billing: SettingsBillingSubscriptionSnapshot?
 ): List<SettingsPlanUsageSnapshot> =
     buildList {
-        addAll(billing)
-        addAll(usage)
+        billing?.let { addAll(it.toServerUsageRows()) }
+        usage?.let { addAll(it.toServerUsageRows()) }
     }
+
+private fun SettingsBillingSubscriptionSnapshot.toServerUsageRows(): List<SettingsPlanUsageSnapshot> =
+    buildList {
+        add(SettingsPlanUsageSnapshot(label = "Billing Status", value = status?.toSettingsStatusLabel() ?: "No subscription"))
+        currentPeriodEnd?.let { add(SettingsPlanUsageSnapshot(label = "Current Period End", value = it)) }
+        if (cancelAtPeriodEnd) {
+            add(SettingsPlanUsageSnapshot(label = "Cancel At Period End", value = "Enabled"))
+        }
+        add(SettingsPlanUsageSnapshot(label = "Stripe Configured", value = stripeConfigured.toString()))
+    }
+
+private fun SettingsServerUsageSnapshot.toServerUsageRows(): List<SettingsPlanUsageSnapshot> =
+    listOf(
+        SettingsPlanUsageSnapshot("Computers", machines.toString()),
+        SettingsPlanUsageSnapshot("Agents", agents.toString()),
+        SettingsPlanUsageSnapshot("Channels", channels.toString())
+    )
 
 private fun String.toSettingsSlug(): String =
     lowercase()
