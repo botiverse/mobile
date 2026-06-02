@@ -2,8 +2,6 @@ package ai.slock.compose.data
 
 import ai.slock.compose.model.ServerId
 import kotlinx.coroutines.CancellationException
-import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -1228,6 +1226,9 @@ private val founderBillingPlanConfig = SettingsBillingPlanConfig(id = "founder",
 private val teamBillingPlanConfig = SettingsBillingPlanConfig(id = "pro", displayName = "Team", priceLabel = "$20 /mo", limits = teamPlanLimits, comingSoon = true)
 private val businessBillingPlanConfig = SettingsBillingPlanConfig(id = "max", displayName = "Business", priceLabel = "$200 /mo", limits = businessPlanLimits, comingSoon = true)
 private val settingsDisplayPlanConfigs = listOf(hobbyBillingPlanConfig, teamBillingPlanConfig, businessBillingPlanConfig)
+private const val settingsTrialStartMillis = 1_776_470_400_000L // 2026-04-18T00:00:00Z
+private const val settingsTrialDurationMillis = 37L * 24L * 60L * 60L * 1000L
+private const val settingsTrialEndMillis = settingsTrialStartMillis + settingsTrialDurationMillis
 
 private fun String?.toBillingPlanConfig(): SettingsBillingPlanConfig =
     when (this?.lowercase()) {
@@ -1239,12 +1240,8 @@ private fun String?.toBillingPlanConfig(): SettingsBillingPlanConfig =
         else -> SettingsBillingPlanConfig(id = lowercase(), displayName = toPlanDisplayName(), priceLabel = "Unavailable")
     }
 
-private fun isSettingsTrialActive(nowMillis: Long = Clock.System.now().toEpochMilliseconds()): Boolean {
-    val startMillis = Instant.parse("2026-04-18T00:00:00Z").toEpochMilliseconds()
-    val durationMillis = 37L * 24L * 60L * 60L * 1000L
-    val endMillis = startMillis + durationMillis
-    return nowMillis >= startMillis && nowMillis < endMillis
-}
+private fun isSettingsTrialActive(nowMillis: Long = settingsTrialEndMillis): Boolean =
+    nowMillis >= settingsTrialStartMillis && nowMillis < settingsTrialEndMillis
 
 private fun currentPlanUsageRows(
     plan: SettingsBillingPlanConfig,
