@@ -61,9 +61,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class SharedThreadStoreTest {
     @Test
@@ -179,10 +182,12 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
         assertEquals(0, store.state.value.payload.membersCount)
         assertEquals(emptyList(), memberRepository.channelMemberRequests)
+        val beforeMessages = store.state.value.payload.messages
 
         store.accept(SharedThreadIntent.LoadMembers)
 
         val payload = store.state.value.payload
+        assertTrue(beforeMessages === payload.messages)
         assertEquals(2, payload.membersCount)
         assertEquals(listOf("u1", "agent-1"), payload.members.map { it.id })
         assertEquals(listOf("agent-2"), payload.memberCandidates.map { it.id })
@@ -389,6 +394,111 @@ class SharedThreadStoreTest {
         assertEquals(listOf(ThreadId("channel-1")), repository.getThreadRequests)
         assertEquals(0, api.channelMessageCalls)
         assertEquals("repository body", payload.messages.single().body)
+    }
+
+    @Test
+    fun refreshWithUnchangedSnapshotDoesNotEmitAndKeepsTimelineList() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            messages =
+                                listOf(
+                                    message(id = "m1", seq = 1, body = "first"),
+                                    message(id = "m2", seq = 2, body = "second")
+                                )
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val beforeMessages = store.state.value.payload.messages
+        val observedStates = mutableListOf<SharedThreadState>()
+        val observer = scope.launch {
+            store.state.collect { state -> observedStates += state }
+        }
+        val countBeforeRefresh = observedStates.size
+
+        repository.threadResult =
+            DataResult.Content(
+                threadSnapshot(
+                    messages =
+                        listOf(
+                            message(id = "m1", seq = 1, body = "first"),
+                            message(id = "m2", seq = 2, body = "second")
+                        )
+                )
+            )
+        store.accept(SharedThreadIntent.Refresh)
+
+        assertEquals(countBeforeRefresh, observedStates.size)
+        assertTrue(beforeMessages === store.state.value.payload.messages)
+        observer.cancel()
+        scope.cancel()
+    }
+
+    @Test
+    fun refreshSummaryPatchOnlyReplacesAffectedMessageRow() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            messages =
+                                listOf(
+                                    message(id = "m1", seq = 1, body = "first"),
+                                    message(id = "m2", seq = 2, body = "second")
+                                )
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val beforeMessages = store.state.value.payload.messages
+
+        repository.threadResult =
+            DataResult.Content(
+                threadSnapshot(
+                    messages =
+                        listOf(
+                            message(id = "m1", seq = 1, body = "first"),
+                            message(
+                                id = "m2",
+                                seq = 2,
+                                body = "second",
+                                threadChannelId = "thread-m2",
+                                replyCount = 2,
+                                unreadReplyCount = 1
+                            )
+                        )
+                )
+            )
+        store.accept(SharedThreadIntent.Refresh)
+
+        val afterMessages = store.state.value.payload.messages
+        assertEquals(listOf("m1", "m2"), afterMessages.map { it.id })
+        assertTrue(beforeMessages !== afterMessages)
+        assertTrue(beforeMessages[0] === afterMessages[0])
+        assertTrue(beforeMessages[1] !== afterMessages[1])
+        assertEquals("thread-m2", afterMessages[1].threadChannelId)
+        assertEquals(2, afterMessages[1].replyCount)
+        assertEquals(1, afterMessages[1].unreadReplyCount)
+        scope.cancel()
     }
 
     @Test
@@ -1207,11 +1317,12 @@ class SharedThreadStoreTest {
             threadId: String = "channel-1",
             body: String = "repository body",
             id: String = "m1",
-            seq: Long = 10
+            seq: Long = 10,
+            messages: List<Message> = listOf(message(threadId = threadId, id = id, seq = seq, body = body))
         ): ThreadSnapshot =
             ThreadSnapshot(
                 conversation = conversationSummary(threadId),
-                messages = listOf(message(threadId = threadId, id = id, seq = seq, body = body))
+                messages = messages
             )
 
         private fun conversationSummary(threadId: String = "channel-1"): ConversationSummary =
@@ -1226,12 +1337,16 @@ class SharedThreadStoreTest {
             threadId: String = "channel-1",
             id: String,
             seq: Long,
-            body: String
+            body: String,
+            threadChannelId: String? = null,
+            replyCount: Int = 0,
+            unreadReplyCount: Int = 0
         ): Message =
             Message(
                 id = MessageId(id),
                 threadId = ThreadId(threadId),
                 channelId = ChannelId(threadId),
+                threadChannelId = threadChannelId?.let(::ChannelId),
                 author =
                     MemberProfile(
                         id = MemberId("u1"),
@@ -1239,10 +1354,12 @@ class SharedThreadStoreTest {
                         handle = "artin",
                         kind = MemberKind.Human,
                         presence = Presence.Active
-                    ),
+                ),
                 seq = seq,
                 timestampLabel = "2026-05-19T16:00:00Z",
-                body = body
+                body = body,
+                replyCount = replyCount,
+                unreadReplyCount = unreadReplyCount
             )
 
         private fun messagesResponse(

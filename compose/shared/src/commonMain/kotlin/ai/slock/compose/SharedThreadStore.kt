@@ -909,10 +909,15 @@ internal class SharedThreadStore(
             delay(SharedThreadFirstFrameDelayMillis)
         }
         val result = dataSource.fetchThreadPayload(basePayload, persistResult = false)
+        val visiblePayload =
+            (result as? DataResult.Content)
+                ?.data
+                ?.withRouteContext(basePayload)
+                ?.preserveStableTimelineFrom(_state.value.payload)
         _state.value =
             when (result) {
                 is DataResult.Content ->
-                    _state.value.copy(payload = result.data.withRouteContext(basePayload))
+                    _state.value.copy(payload = visiblePayload ?: result.data.withRouteContext(basePayload))
                 is DataResult.Empty ->
                     _state.value.copy(payload = _state.value.payload.asRefreshFailed("empty_thread"))
                 is DataResult.Error ->
@@ -920,8 +925,7 @@ internal class SharedThreadStore(
                 is DataResult.NoPermission ->
                     _state.value.copy(payload = _state.value.payload.asRefreshFailed(result.blocker.code))
             }
-        if (result is DataResult.Content) {
-            val visiblePayload = result.data.withRouteContext(basePayload)
+        if (visiblePayload != null) {
             dataSource.cachePayload(visiblePayload)
             writeCachedPayloadAfterFrame(visiblePayload)
         }
@@ -955,10 +959,11 @@ internal class SharedThreadStore(
                 activeReplyParentMessageId = activeReplyParentMessageId
             )
         dataSource.writeRealtimeEvent(event)
-        if (merged != existing) {
-            _state.value = _state.value.copy(payload = merged)
-            dataSource.cachePayload(merged)
-            dataSource.writeCachedPayload(merged)
+        val stableMerged = merged.preserveStableTimelineFrom(existing)
+        if (stableMerged != existing) {
+            _state.value = _state.value.copy(payload = stableMerged)
+            dataSource.cachePayload(stableMerged)
+            dataSource.writeCachedPayload(stableMerged)
         }
     }
 
@@ -980,7 +985,11 @@ internal class SharedThreadStore(
         _state.value =
             when (result) {
                 is DataResult.Content -> {
-                    val merged = _state.value.payload.mergePagedMessages(result.data.messages, before = true)
+                    val current = _state.value.payload
+                    val merged =
+                        current
+                            .mergePagedMessages(result.data.messages, before = true)
+                            .preserveStableTimelineFrom(current)
                     _state.value.copy(payload = merged)
                 }
                 is DataResult.Empty ->
@@ -1007,7 +1016,11 @@ internal class SharedThreadStore(
         _state.value =
             when (result) {
                 is DataResult.Content -> {
-                    val merged = _state.value.payload.mergePagedMessages(result.data.messages, before = false)
+                    val current = _state.value.payload
+                    val merged =
+                        current
+                            .mergePagedMessages(result.data.messages, before = false)
+                            .preserveStableTimelineFrom(current)
                     _state.value.copy(payload = merged)
                 }
                 is DataResult.Empty ->
@@ -1071,6 +1084,50 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
         emptyTitle = base.emptyTitle,
         emptyDetail = base.emptyDetail
     )
+
+internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
+    previous: KuiklyThreadScreenPayload
+): KuiklyThreadScreenPayload {
+    val stableMessages = messages.preserveStableItemsFrom(previous.messages) { item -> item.id }
+    val stableTasks = tasks.preserveStableItemsFrom(previous.tasks) { item -> item.id }
+    val stableOrigin =
+        if (originMessage != null && originMessage == previous.originMessage) {
+            previous.originMessage
+        } else {
+            originMessage
+        }
+    if (stableMessages === messages && stableTasks === tasks && stableOrigin === originMessage) {
+        return this
+    }
+    return copy(messages = stableMessages, originMessage = stableOrigin, tasks = stableTasks)
+}
+
+private inline fun <T, K> List<T>.preserveStableItemsFrom(
+    previous: List<T>,
+    keySelector: (T) -> K
+): List<T> {
+    if (isEmpty() || previous.isEmpty()) return this
+    val previousByKey = previous.associateBy(keySelector)
+    var reusedAnyReference = false
+    val stableItems =
+        map { incoming ->
+            val previousItem = previousByKey[keySelector(incoming)]
+            if (previousItem != null && previousItem == incoming) {
+                reusedAnyReference = reusedAnyReference || previousItem !== incoming
+                previousItem
+            } else {
+                incoming
+            }
+        }
+    val fullyMatchesPrevious =
+        stableItems.size == previous.size &&
+            stableItems.indices.all { index -> stableItems[index] === previous[index] }
+    return when {
+        fullyMatchesPrevious -> previous
+        reusedAnyReference -> stableItems
+        else -> this
+    }
+}
 
 private val MemberProfile.memberKey: String
     get() = "${kind.name}:${id.value}"
