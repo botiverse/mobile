@@ -113,7 +113,6 @@ private const val CHANNEL_MEMBERS_PANEL_VISUAL_PAGE = "compose_channel_members_p
 private const val CHANNEL_SETTINGS_PANEL_VISUAL_PAGE = "compose_channel_settings_panel_visual"
 private const val CHANNEL_ADD_MEMBER_PANEL_VISUAL_PAGE = "compose_channel_add_member_panel_visual"
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
-private const val ThreadMessagesPageSize = 50
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 

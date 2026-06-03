@@ -137,13 +137,13 @@ internal class SharedThreadDataSource(
                 fetchThreadPayloadFromRepository(
                     session = session,
                     fallbackCode = "thread_network",
-                    call = { repository -> repository.getThread(ThreadId(threadId)) },
+                    call = { repository -> repository.getThread(ThreadId(threadId), limit = SharedThreadPaging.initialPageSize) },
                     transform = { snapshot -> snapshot.toKuiklyThreadPayload(basePayload, session.user.id) }
                 )
             } else {
                 val response =
                     try {
-                        api.channelMessages(threadId, limit = SharedThreadPageSize)
+                        api.channelMessages(threadId, limit = SharedThreadPaging.initialPageSize)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Throwable) {
@@ -394,8 +394,8 @@ internal class SharedThreadDataSource(
         fetchThreadPage(
             basePayload = basePayload,
             source = "older",
-            repositoryCall = { repository, threadId -> repository.loadOlderMessages(threadId, beforeSeq) },
-            call = { threadId -> api.channelMessages(threadId, limit = SharedThreadPageSize, beforeSeq = beforeSeq) }
+            repositoryCall = { repository, threadId -> repository.loadOlderMessages(threadId, beforeSeq, SharedThreadPaging.pageSize) },
+            call = { threadId -> api.channelMessages(threadId, limit = SharedThreadPaging.pageSize, beforeSeq = beforeSeq) }
         )
 
     suspend fun fetchNewerThreadPayload(
@@ -405,8 +405,8 @@ internal class SharedThreadDataSource(
         fetchThreadPage(
             basePayload = basePayload,
             source = "newer",
-            repositoryCall = { repository, threadId -> repository.loadNewerMessages(threadId, afterSeq) },
-            call = { threadId -> api.messageSync(threadId, sinceSeq = afterSeq, limit = SharedThreadPageSize) }
+            repositoryCall = { repository, threadId -> repository.loadNewerMessages(threadId, afterSeq, SharedThreadPaging.pageSize) },
+            call = { threadId -> api.messageSync(threadId, sinceSeq = afterSeq, limit = SharedThreadPaging.pageSize) }
         )
 
     suspend fun sendMessage(
@@ -761,7 +761,10 @@ private fun ThreadApiResult<Unit>.toUnitDataResult(fallbackCode: String): DataRe
         is ThreadApiResult.Failure -> toThreadDataError(fallbackCode)
     }
 
-private const val SharedThreadPageSize = 50
+internal object SharedThreadPaging {
+    const val initialPageSize = 10
+    const val pageSize = initialPageSize
+}
 private const val SharedThreadFirstFrameDelayMillis = 16L
 
 internal data class SharedThreadState(
@@ -1207,7 +1210,7 @@ private fun KuiklyThreadScreenPayload.mergePagedMessages(
         } else {
             (messages + incoming).distinctBy { it.id }
         }.sortedByThreadTimeline()
-    val hasMore = incoming.size >= SharedThreadPageSize
+    val hasMore = incoming.size >= SharedThreadPaging.pageSize
     return copy(
         status = "content",
         errorCode = null,

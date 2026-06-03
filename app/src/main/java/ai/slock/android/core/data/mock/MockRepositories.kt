@@ -300,7 +300,8 @@ class MockConversationRepository(
 ) : ConversationRepository {
     override suspend fun getThread(
         threadId: ThreadId,
-        includeFollowedSummaries: Boolean
+        includeFollowedSummaries: Boolean,
+        limit: Int
     ): DataResult<ThreadSnapshot> =
         resultFor(scenario, EmptyReason.NoMessages) { MockSeedData.threadSnapshot }
 
@@ -309,12 +310,20 @@ class MockConversationRepository(
             MockSeedData.threadSnapshot.copy(highlightedMessageId = messageId)
         }
 
-    override suspend fun loadOlderMessages(threadId: ThreadId, beforeSeq: Long): DataResult<ThreadSnapshot> =
+    override suspend fun loadOlderMessages(
+        threadId: ThreadId,
+        beforeSeq: Long,
+        limit: Int
+    ): DataResult<ThreadSnapshot> =
         resultFor(scenario, EmptyReason.NoMessages) {
             MockSeedData.threadSnapshot.copy(canLoadMoreBefore = beforeSeq > 1000)
         }
 
-    override suspend fun loadNewerMessages(threadId: ThreadId, afterSeq: Long): DataResult<ThreadSnapshot> =
+    override suspend fun loadNewerMessages(
+        threadId: ThreadId,
+        afterSeq: Long,
+        limit: Int
+    ): DataResult<ThreadSnapshot> =
         resultFor(scenario, EmptyReason.NoMessages) {
             MockSeedData.threadSnapshot.copy(canLoadMoreAfter = afterSeq < 1004)
         }

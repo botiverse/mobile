@@ -112,6 +112,34 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun startAndPagingUseConfiguredThreadPageSize() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(
+            SharedThreadIntent.SetPayload(
+                store.state.value.payload.copy(
+                    canLoadMoreBefore = true,
+                    canLoadMoreAfter = true
+                )
+            )
+        )
+        store.accept(SharedThreadIntent.LoadOlder)
+        store.accept(SharedThreadIntent.LoadNewer)
+
+        assertEquals(listOf(10, 10), api.channelMessageLimits)
+        assertEquals(listOf(10), api.syncLimits)
+        scope.cancel()
+    }
+
+    @Test
     fun loadMembersEnrichesThreadMembersFromRepository() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
@@ -778,6 +806,8 @@ class SharedThreadStoreTest {
         val readAllChannels: MutableList<String> = mutableListOf()
         val beforeSeqs: MutableList<Long> = mutableListOf()
         val syncSinceSeqs: MutableList<Long> = mutableListOf()
+        val channelMessageLimits: MutableList<Int> = mutableListOf()
+        val syncLimits: MutableList<Int> = mutableListOf()
         val channelIds: MutableList<String> = mutableListOf()
         var lastAttachmentIds: List<String> = emptyList()
         val savedMessageIds: MutableList<String> = mutableListOf()
@@ -789,6 +819,7 @@ class SharedThreadStoreTest {
         override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): HomeNetworkResponse {
             channelMessageCalls += 1
             channelIds += threadId
+            channelMessageLimits += limit
             if (failChannelMessages) throw IllegalStateException("offline")
             return if (beforeSeq != null) {
                 beforeSeqs += beforeSeq
@@ -800,6 +831,7 @@ class SharedThreadStoreTest {
 
         override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): HomeNetworkResponse {
             syncSinceSeqs += sinceSeq
+            syncLimits += limit
             return HomeNetworkResponse(code = 200, bodyText = newerBodyText)
         }
 
@@ -1029,27 +1061,42 @@ class SharedThreadStoreTest {
             )
     ) : ConversationRepository {
         val getThreadRequests: MutableList<ThreadId> = mutableListOf()
+        val getThreadLimits: MutableList<Int> = mutableListOf()
         val olderRequests: MutableList<Pair<ThreadId, Long>> = mutableListOf()
+        val olderLimits: MutableList<Int> = mutableListOf()
         val newerRequests: MutableList<Pair<ThreadId, Long>> = mutableListOf()
+        val newerLimits: MutableList<Int> = mutableListOf()
         val createOrOpenRequests: MutableList<Pair<ChannelId, MessageId>> = mutableListOf()
 
         override suspend fun getThread(
             threadId: ThreadId,
-            includeFollowedSummaries: Boolean
+            includeFollowedSummaries: Boolean,
+            limit: Int
         ): DataResult<ThreadSnapshot> {
             getThreadRequests += threadId
+            getThreadLimits += limit
             return threadResult
         }
 
         override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> = error("unused")
 
-        override suspend fun loadOlderMessages(threadId: ThreadId, beforeSeq: Long): DataResult<ThreadSnapshot> {
+        override suspend fun loadOlderMessages(
+            threadId: ThreadId,
+            beforeSeq: Long,
+            limit: Int
+        ): DataResult<ThreadSnapshot> {
             olderRequests += threadId to beforeSeq
+            olderLimits += limit
             return olderResult
         }
 
-        override suspend fun loadNewerMessages(threadId: ThreadId, afterSeq: Long): DataResult<ThreadSnapshot> {
+        override suspend fun loadNewerMessages(
+            threadId: ThreadId,
+            afterSeq: Long,
+            limit: Int
+        ): DataResult<ThreadSnapshot> {
             newerRequests += threadId to afterSeq
+            newerLimits += limit
             return newerResult
         }
 

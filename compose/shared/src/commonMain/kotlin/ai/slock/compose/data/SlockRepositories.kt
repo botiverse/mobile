@@ -85,11 +85,20 @@ interface SettingsServerManagementRepository {
 interface ConversationRepository {
     suspend fun getThread(
         threadId: ThreadId,
-        includeFollowedSummaries: Boolean = true
+        includeFollowedSummaries: Boolean = true,
+        limit: Int = DEFAULT_PAGE_LIMIT
     ): DataResult<ThreadSnapshot>
     suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot>
-    suspend fun loadOlderMessages(threadId: ThreadId, beforeSeq: Long): DataResult<ThreadSnapshot>
-    suspend fun loadNewerMessages(threadId: ThreadId, afterSeq: Long): DataResult<ThreadSnapshot>
+    suspend fun loadOlderMessages(
+        threadId: ThreadId,
+        beforeSeq: Long,
+        limit: Int = DEFAULT_PAGE_LIMIT
+    ): DataResult<ThreadSnapshot>
+    suspend fun loadNewerMessages(
+        threadId: ThreadId,
+        afterSeq: Long,
+        limit: Int = DEFAULT_PAGE_LIMIT
+    ): DataResult<ThreadSnapshot>
     suspend fun getChannelThreads(channelId: ChannelId, limit: Int = DEFAULT_PAGE_LIMIT): DataResult<ThreadListSnapshot>
     suspend fun getFollowedThreads(serverId: ServerId, limit: Int = DEFAULT_PAGE_LIMIT): DataResult<ThreadListSnapshot>
     suspend fun createOrOpenThread(channelId: ChannelId, parentMessageId: MessageId): DataResult<ThreadActionResult>

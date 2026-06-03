@@ -136,13 +136,16 @@ class RealConversationRepository(
 ) : ConversationRepository {
     override suspend fun getThread(
         threadId: ThreadId,
-        includeFollowedSummaries: Boolean
+        includeFollowedSummaries: Boolean,
+        limit: Int
     ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
+        val messageLimit = limit.coerceAtLeast(1)
         return loadChannelMessages(
             context = context,
             threadId = threadId,
-            block = { networkClient.channelMessages(DataRequestPriority.Foreground, ChannelId(threadId.value), MESSAGE_PAGE_LIMIT) },
+            messageLimit = messageLimit,
+            block = { networkClient.channelMessages(DataRequestPriority.Foreground, ChannelId(threadId.value), messageLimit) },
             source = "messages_channel",
             includeFollowedSummaries = includeFollowedSummaries
         )
@@ -172,17 +175,20 @@ class RealConversationRepository(
 
     override suspend fun loadOlderMessages(
         threadId: ThreadId,
-        beforeSeq: Long
+        beforeSeq: Long,
+        limit: Int
     ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
+        val messageLimit = limit.coerceAtLeast(1)
         return loadChannelMessages(
             context = context,
             threadId = threadId,
+            messageLimit = messageLimit,
             block = {
                 networkClient.channelMessages(
                     DataRequestPriority.Visible,
                     ChannelId(threadId.value),
-                    MESSAGE_PAGE_LIMIT,
+                    messageLimit,
                     beforeSeq = beforeSeq
                 )
             },
@@ -192,7 +198,8 @@ class RealConversationRepository(
 
     override suspend fun loadNewerMessages(
         threadId: ThreadId,
-        afterSeq: Long
+        afterSeq: Long,
+        limit: Int
     ): DataResult<ThreadSnapshot> {
         currentContext() ?: return authRequired()
         return executeConversation(
@@ -201,7 +208,7 @@ class RealConversationRepository(
                 networkClient.messageSync(
                     DataRequestPriority.Visible,
                     sinceSeq = afterSeq,
-                    limit = SYNC_PAGE_LIMIT,
+                    limit = limit.coerceAtLeast(1),
                     channelId = ChannelId(threadId.value)
                 )
             },
@@ -377,6 +384,7 @@ class RealConversationRepository(
     private suspend fun loadChannelMessages(
         context: NetworkServerContext,
         threadId: ThreadId,
+        messageLimit: Int,
         block: suspend () -> HomeNetworkResponse,
         source: String,
         includeFollowedSummaries: Boolean = true
@@ -393,7 +401,7 @@ class RealConversationRepository(
                         buildSharedThreadSnapshot(
                             payload = payload,
                             threadId = threadId,
-                            canLoadMoreBefore = payload.messages.size >= MESSAGE_PAGE_LIMIT
+                            canLoadMoreBefore = payload.messages.size >= messageLimit
                         )
                     }
                 )
