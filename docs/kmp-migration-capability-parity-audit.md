@@ -45,6 +45,11 @@ The migration gate is now:
 4. Existing native Android capabilities must be explicitly marked `migrated`, `partial`, `missing`, or `intentionally unsupported`.
 5. Loading/refresh must not clear already-rendered content unless the user explicitly switches identity/server and no cache exists.
 
+The detailed app-wide state rules live in
+[`docs/slock-app-state-first-principles.md`](slock-app-state-first-principles.md).
+Use that document as the review checklist for new Home, Thread, Search/Saved,
+Tasks, Members, Settings, and realtime state changes.
+
 ## Current Capability Matrix
 
 | Area | Capability | Current status | Evidence | Required follow-up |
