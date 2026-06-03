@@ -491,21 +491,32 @@ private fun ThreadMessageVisualScreen() {
     val instanceId = params.optString("instanceId")
     val payload =
         remember(payloadText, instanceId) {
-            parseThreadScreenPayload(
-                payload = payloadText,
-                fallbackPageData = params.toString(),
-                instanceId = instanceId
-            )
-        }
+        parseThreadScreenPayload(
+            payload = payloadText,
+            fallbackPageData = params.toString(),
+            instanceId = instanceId
+        )
+    }
     val message = payload.messages.firstOrNull()
     Column(modifier = Modifier.width(342.dp).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
         if (message != null) {
-            ThreadMessageVisualCard(
+            ThreadMessageCard(
                 message = message,
                 highlightedMentions = emptySet(),
+                alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
+                showReplyAction = payload.showReplyActions,
                 resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName),
                 resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
+                taskOpenEnabled = payload.showTaskOpenActions,
+                taskStatusActionsEnabled = payload.showTaskStatusActions,
                 timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
+                onShowActions = {},
+                onOpenMember = {},
+                onOpenThread = {},
+                onOpenTask = {},
+                onOpenTaskStatusMenu = {},
+                onToggleReaction = {},
+                onOpenAttachment = {},
                 onOpenMarkdownTag = {},
                 onOpenMarkdownUrl = {},
                 outerPadding = 0.dp

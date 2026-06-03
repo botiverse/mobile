@@ -220,7 +220,8 @@ class ThreadPayloadTest {
                 AppShellThreadTimeContext(
                     localOffsetMinutes = 480,
                     todayEpochDay = 20593
-                )
+                ),
+                alignOwnMessagesRight = true
             )
 
         assertEquals("shared-shell-thread-channel-1", payload.instanceId)
@@ -233,6 +234,7 @@ class ThreadPayloadTest {
         assertEquals(480, payload.localOffsetMinutes)
         assertEquals(20593, payload.todayEpochDay)
         assertEquals(false, payload.showReplyActions)
+        assertEquals(true, payload.alignOwnMessagesRight)
         assertEquals(true, payload.showSettingsAction)
         assertEquals(
             listOf("visibility", "archive", "delete"),
@@ -275,7 +277,8 @@ class ThreadPayloadTest {
                     channelName = "general",
                     updatedAtLabel = "now"
                 ),
-                AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593)
+                AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593),
+                alignOwnMessagesRight = true
             )
 
         assertEquals("shared-shell-task-thread-task-1", payload.instanceId)
@@ -288,6 +291,7 @@ class ThreadPayloadTest {
         assertEquals("Opening task", payload.emptyTitle)
         assertEquals(480, payload.localOffsetMinutes)
         assertEquals(20593, payload.todayEpochDay)
+        assertEquals(true, payload.alignOwnMessagesRight)
     }
 
     @Test

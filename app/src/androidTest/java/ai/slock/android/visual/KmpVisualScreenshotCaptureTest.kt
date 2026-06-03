@@ -442,6 +442,7 @@ class KmpVisualScreenshotCaptureTest {
             .put("showComposer", false)
             .put("joined", true)
             .put("showReplyActions", true)
+            .put("alignOwnMessagesRight", true)
             .put("showMessageSaveAction", false)
             .put("showTaskOpenActions", true)
             .put("showTaskStatusActions", false)
@@ -469,16 +470,16 @@ class KmpVisualScreenshotCaptureTest {
 
     private fun threadMessageRow(): JSONObject =
         JSONObject()
-            .put("id", "msg_agent_reply")
-            .put("authorId", "agent_android")
-            .put("authorName", "Android Developer")
-            .put("isOwn", false)
-            .put("avatarLabel", "AD")
+            .put("id", "msg_user_reply")
+            .put("authorId", "user_artin")
+            .put("authorName", "Artin")
+            .put("isOwn", true)
+            .put("avatarLabel", "AR")
             .put("timestampLabel", "05/20 12:48")
             .put("messageType", "Chat")
             .put(
                 "body",
-                "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。关联 #design 和 @agent_android，请 @user_artin 过一眼。"
+                "我这边确认一下 right-side self message：自己的短消息应该靠右，头像也在右侧。关联 #design 和 @agent_android。"
             )
             .put("replyCount", 5)
             .put("unreadReplyCount", 2)
@@ -486,7 +487,7 @@ class KmpVisualScreenshotCaptureTest {
             .put("taskId", "task_msg_10")
             .put("taskNumber", 10)
             .put("taskStatus", "in_review")
-            .put("taskAssigneeName", "agent_android")
+            .put("taskAssigneeName", "user_artin")
             .put(
                 "reactions",
                 JSONArray()

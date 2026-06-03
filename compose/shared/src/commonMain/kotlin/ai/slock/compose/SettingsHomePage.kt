@@ -30,6 +30,7 @@ import ai.slock.compose.data.MOBILE_ACTION_PERMISSION
 import ai.slock.compose.data.MOBILE_ACTION_SERVER_MUTE
 import ai.slock.compose.data.MOBILE_ACTION_SETTINGS
 import ai.slock.compose.data.MOBILE_ACTION_TEST_NOTIFICATION
+import ai.slock.compose.data.MyMessageAlignmentPreference
 import ai.slock.compose.data.SERVER_ACTION_INVITE_CREATE
 import ai.slock.compose.data.SERVER_ACTION_INVITE_REVOKE
 import ai.slock.compose.data.SERVER_ACTION_JOIN_LINK_CREATE
@@ -756,6 +757,7 @@ private fun SlockAppShellContent() {
         }
     var activeThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
     var threadBackStack by remember { mutableStateOf<List<KuiklyThreadScreenPayload>>(emptyList()) }
+    var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
     var createChannelDialogOpen by remember { mutableStateOf(false) }
     var createChannelSubmitting by remember { mutableStateOf(false) }
     var createChannelError by remember { mutableStateOf<String?>(null) }
@@ -813,6 +815,10 @@ private fun SlockAppShellContent() {
     LaunchedEffect(notificationPreferenceRepository) {
         notificationPreferenceSnapshot =
             notificationPreferenceRepository.getNotificationPreference()
+    }
+    LaunchedEffect(chatLayoutPreferenceRepository) {
+        myMessageAlignment =
+            chatLayoutPreferenceRepository.getChatLayoutPreference().myMessageAlignment
     }
     DisposableEffect(notificationPreferenceEvents) {
         val callbackRef =
@@ -951,6 +957,13 @@ private fun SlockAppShellContent() {
             navController.navigate(AppShellRouteThread)
         }
     }
+
+    fun appShellThreadPayload(conversation: ConversationSummary): KuiklyThreadScreenPayload =
+        buildAppShellThreadPayload(
+            conversation = conversation,
+            timeContext = threadTimeContext,
+            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right
+        )
 
     fun popMainRoute(): Boolean {
         if (createChannelDialogOpen) {
@@ -1215,6 +1228,9 @@ private fun SlockAppShellContent() {
                                     selectedSettingsDestination = SettingsDestinationComputerDetail
                                 },
                                 onOpenRouter = { jumpPage(pager, "router") },
+                                onMessageAlignmentSelected = {
+                                    myMessageAlignment = it
+                                },
                                 onSettingsAction = { action, itemId ->
                                     bridge.settingsEvent("shared-shell-settings", action, itemId)
                                 },
@@ -1242,6 +1258,7 @@ private fun SlockAppShellContent() {
                                         task = task,
                                         dataSource = threadDataSource,
                                         timeContext = threadTimeContext,
+                                        alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                                         onOpenThreadPayload = { payload -> openThreadPayload(payload) },
                                         onReplaceThreadPayload = { payload -> openThreadPayload(payload, pushCurrent = false) },
                                         onFailure = { bridge.toast("Unable to open task") }
@@ -1276,7 +1293,7 @@ private fun SlockAppShellContent() {
                                     onOpenConversation = { conversation ->
                                         selectedHomeDestination = null
                                         selectedHomeConversationId = conversation.threadId.value
-                                        activeThreadPayload = buildAppShellThreadPayload(conversation, threadTimeContext)
+                                        activeThreadPayload = appShellThreadPayload(conversation)
                                         threadBackStack = emptyList()
                                         navController.navigate(AppShellRouteThread)
                                     },
@@ -1289,7 +1306,7 @@ private fun SlockAppShellContent() {
                                     onOpenConversation = { conversation ->
                                         selectedHomeDestination = null
                                         selectedHomeConversationId = conversation.threadId.value
-                                        activeThreadPayload = buildAppShellThreadPayload(conversation, threadTimeContext)
+                                        activeThreadPayload = appShellThreadPayload(conversation)
                                         threadBackStack = emptyList()
                                         navController.navigate(AppShellRouteThread)
                                     }
@@ -1305,7 +1322,7 @@ private fun SlockAppShellContent() {
                                     onOpenItem = { item ->
                                         selectedHomeDestination = null
                                         selectedHomeConversationId = item.toConversationSummary().threadId.value
-                                        activeThreadPayload = buildAppShellThreadPayload(item.toConversationSummary(), threadTimeContext)
+                                        activeThreadPayload = appShellThreadPayload(item.toConversationSummary())
                                         threadBackStack = emptyList()
                                         navController.navigate(AppShellRouteThread)
                                     },
@@ -1315,7 +1332,7 @@ private fun SlockAppShellContent() {
                                         if (threadId != null) {
                                             selectedHomeConversationId = threadId
                                             entity.conversation?.let {
-                                                activeThreadPayload = buildAppShellThreadPayload(it, threadTimeContext)
+                                                activeThreadPayload = appShellThreadPayload(it)
                                                 threadBackStack = emptyList()
                                                 navController.navigate(AppShellRouteThread)
                                             }
@@ -1336,7 +1353,7 @@ private fun SlockAppShellContent() {
                                     onOpenItem = { item ->
                                         selectedHomeDestination = null
                                         selectedHomeConversationId = item.toConversationSummary().threadId.value
-                                        activeThreadPayload = buildAppShellThreadPayload(item.toConversationSummary(), threadTimeContext)
+                                        activeThreadPayload = appShellThreadPayload(item.toConversationSummary())
                                         threadBackStack = emptyList()
                                         navController.navigate(AppShellRouteThread)
                                     },
@@ -1401,6 +1418,7 @@ private fun SettingsAppShellContent(
     onDestinationChange: (String) -> Unit,
     onOpenComputer: (String) -> Unit,
     onOpenRouter: () -> Unit,
+    onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onSettingsAction: (String, String?) -> Unit,
     bottomContentPadding: Dp,
     onLogout: () -> Unit
@@ -1715,6 +1733,7 @@ private fun SettingsAppShellContent(
                             itemId?.takeIf { it.isNotBlank() }?.let { onSettingsIntent(SharedSettingsIntent.SetLocale(it)) }
                         MOBILE_ACTION_MESSAGE_ALIGNMENT ->
                             itemId?.takeIf { it.isNotBlank() }?.let {
+                                onMessageAlignmentSelected(MyMessageAlignmentPreference.fromStorageKey(it))
                                 onSettingsIntent(SharedSettingsIntent.SetMessageAlignment(it))
                             }
                         else -> onSettingsAction(action, itemId)
@@ -6221,7 +6240,8 @@ private fun AppShellThreadTimeContext?.toSearchIsoBounds(range: SearchTimeRange)
 
 internal fun buildAppShellThreadPayload(
     conversation: ConversationSummary,
-    timeContext: AppShellThreadTimeContext? = null
+    timeContext: AppShellThreadTimeContext? = null,
+    alignOwnMessagesRight: Boolean = false
 ): KuiklyThreadScreenPayload =
     KuiklyThreadScreenPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
@@ -6233,6 +6253,7 @@ internal fun buildAppShellThreadPayload(
         navigationLabel = "Back",
         showModeTabs = true,
         showReplyActions = false,
+        alignOwnMessagesRight = alignOwnMessagesRight,
         showOpenInChannelAction = false,
         joined = conversation.joined,
         canSend = conversation.joined && conversation.permissions.canSend,
@@ -6263,11 +6284,12 @@ private suspend fun openAppShellTaskThread(
     task: TaskSummary,
     dataSource: SharedThreadDataSource,
     timeContext: AppShellThreadTimeContext?,
+    alignOwnMessagesRight: Boolean,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit,
     onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit,
     onFailure: () -> Unit
 ) {
-    val loadingPayload = buildAppShellTaskThreadLoadingPayload(task, timeContext)
+    val loadingPayload = buildAppShellTaskThreadLoadingPayload(task, timeContext, alignOwnMessagesRight)
     onOpenThreadPayload(loadingPayload)
     val channelId = task.channelId
     val parentMessage = task.toAppShellTaskParentMessage()
@@ -6282,7 +6304,8 @@ private suspend fun openAppShellTaskThread(
                     joined = true,
                     permissions = ConversationPermissions(canSend = true, canAttach = true, canCreateTask = true)
                 ),
-                timeContext
+                timeContext,
+                alignOwnMessagesRight
             )
         when (val result = dataSource.createOrOpenReplyThread(channelPayload, parentMessage)) {
             is ai.slock.compose.data.DataResult.Content -> {
@@ -6310,7 +6333,8 @@ private suspend fun openAppShellTaskThread(
 
 internal fun buildAppShellTaskThreadLoadingPayload(
     task: TaskSummary,
-    timeContext: AppShellThreadTimeContext?
+    timeContext: AppShellThreadTimeContext?,
+    alignOwnMessagesRight: Boolean = false
 ): KuiklyThreadScreenPayload {
     val threadId = task.threadId?.value?.takeIf { it.isNotBlank() }
     val parentMessage = task.toAppShellTaskParentMessage()
@@ -6324,6 +6348,7 @@ internal fun buildAppShellTaskThreadLoadingPayload(
         navigationLabel = "Back",
         showModeTabs = false,
         showReplyActions = false,
+        alignOwnMessagesRight = alignOwnMessagesRight,
         showOpenInChannelAction = true,
         originMessage = parentMessage,
         originParentMessageId = parentMessage?.id,
