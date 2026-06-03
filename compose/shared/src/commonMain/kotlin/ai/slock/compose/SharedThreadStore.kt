@@ -108,7 +108,9 @@ internal class SharedThreadDataSource(
         val threadId = basePayload.cacheThreadId() ?: return null
         val snapshot = localWriteThrough?.readThreadSnapshot(ThreadId(threadId)) ?: return null
         val session = readSession()
-        return snapshot.toKuiklyThreadPayload(basePayload, session?.user?.id)
+        return snapshot
+            .toKuiklyThreadPayload(basePayload, session?.user?.id)
+            .trimToLatestThreadWindow(SharedThreadPaging.initialPageSize)
     }
 
     suspend fun writeCachedPayload(payload: KuiklyThreadScreenPayload) {
@@ -1219,6 +1221,21 @@ private fun KuiklyThreadScreenPayload.mergePagedMessages(
         canLoadMoreAfter = if (before) canLoadMoreAfter else hasMore,
         olderMessagesStatus = if (before) "idle" else olderMessagesStatus,
         newerMessagesStatus = if (before) newerMessagesStatus else "idle"
+    )
+}
+
+private fun KuiklyThreadScreenPayload.trimToLatestThreadWindow(limit: Int): KuiklyThreadScreenPayload {
+    if (limit <= 0 || messages.isEmpty()) return this
+    val sortedMessages = messages.sortedByThreadTimeline()
+    if (sortedMessages.size <= limit) {
+        return if (sortedMessages == messages) this else copy(messages = sortedMessages)
+    }
+    return copy(
+        status = "content",
+        errorCode = null,
+        messages = sortedMessages.takeLast(limit),
+        canLoadMoreBefore = true,
+        olderMessagesStatus = "idle"
     )
 }
 

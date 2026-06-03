@@ -327,6 +327,32 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun persistentCachedThreadSnapshotUsesConfiguredInitialWindow() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeThread(
+            ThreadSnapshot(
+                conversation = conversationSummary(),
+                messages = (1..12).map { index -> message(id = "cached-$index", seq = index.toLong(), body = "cached $index") }
+            )
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        val payload = store.state.value.payload
+        assertEquals((3..12).map { "cached $it" }, payload.messages.map { it.body })
+        assertEquals(true, payload.canLoadMoreBefore)
+        scope.cancel()
+    }
+
+    @Test
     fun successfulFetchWritesPersistentThreadSnapshotForColdRestart() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
@@ -1184,32 +1210,39 @@ class SharedThreadStoreTest {
             seq: Long = 10
         ): ThreadSnapshot =
             ThreadSnapshot(
-                conversation =
-                    ConversationSummary(
-                        threadId = ThreadId(threadId),
-                        channelId = ChannelId(threadId),
-                        kind = ConversationKind.Channel,
-                        name = "general"
+                conversation = conversationSummary(threadId),
+                messages = listOf(message(threadId = threadId, id = id, seq = seq, body = body))
+            )
+
+        private fun conversationSummary(threadId: String = "channel-1"): ConversationSummary =
+            ConversationSummary(
+                threadId = ThreadId(threadId),
+                channelId = ChannelId(threadId),
+                kind = ConversationKind.Channel,
+                name = "general"
+            )
+
+        private fun message(
+            threadId: String = "channel-1",
+            id: String,
+            seq: Long,
+            body: String
+        ): Message =
+            Message(
+                id = MessageId(id),
+                threadId = ThreadId(threadId),
+                channelId = ChannelId(threadId),
+                author =
+                    MemberProfile(
+                        id = MemberId("u1"),
+                        displayName = "Artin",
+                        handle = "artin",
+                        kind = MemberKind.Human,
+                        presence = Presence.Active
                     ),
-                messages =
-                    listOf(
-                        Message(
-                            id = MessageId(id),
-                            threadId = ThreadId(threadId),
-                            channelId = ChannelId(threadId),
-                            author =
-                                MemberProfile(
-                                    id = MemberId("u1"),
-                                    displayName = "Artin",
-                                    handle = "artin",
-                                    kind = MemberKind.Human,
-                                    presence = Presence.Active
-                                ),
-                            seq = seq,
-                            timestampLabel = "2026-05-19T16:00:00Z",
-                            body = body
-                        )
-                    )
+                seq = seq,
+                timestampLabel = "2026-05-19T16:00:00Z",
+                body = body
             )
 
         private fun messagesResponse(
