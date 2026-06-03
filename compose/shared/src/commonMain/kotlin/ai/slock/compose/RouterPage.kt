@@ -192,6 +192,12 @@ internal fun ComposeRouteImpl() {
             Text("Thread 预览")
         }
 
+        Button({
+            jumpPage(localPager, REVERSE_LAZY_COLUMN_DEMO_PAGE)
+        }) {
+            Text("LazyColumn reverseLayout 验收")
+        }
+
     }
 }
 
