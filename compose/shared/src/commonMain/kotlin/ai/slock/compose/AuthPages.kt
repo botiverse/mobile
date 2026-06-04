@@ -341,6 +341,7 @@ internal fun LoginContent(
                 label = "Email",
                 required = true,
                 enabled = !formBusy,
+                renderValueOverlay = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions.Default
             )
@@ -420,8 +421,8 @@ internal fun RegisterContent(
             color = SlockColor.TextBlack
         )
         AuthFormColumn {
-            AuthTextField(name, onNameChange, "Name", placeholder = "Letters, numbers, hyphens, underscores", required = true, enabled = formEnabled, forceFocused = forceNameFocused)
-            AuthTextField(email, onEmailChange, "Email", required = true, enabled = formEnabled, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next))
+            AuthTextField(name, onNameChange, "Name", placeholder = "Letters, numbers, hyphens, underscores", required = true, enabled = formEnabled, forceFocused = forceNameFocused, renderValueOverlay = true)
+            AuthTextField(email, onEmailChange, "Email", required = true, enabled = formEnabled, renderValueOverlay = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next))
             AuthTextField(
                 password,
                 onPasswordChange,
@@ -479,6 +480,7 @@ internal fun ForgotPasswordContent(
                 isError = !errorMessage.isNullOrBlank(),
                 errorText = errorMessage,
                 forceFocused = !sent,
+                renderValueOverlay = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { onSubmit() })
             )
