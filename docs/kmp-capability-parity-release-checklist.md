@@ -6,13 +6,35 @@ Scope: release/build validation for any KMP migration that replaces or bypasses 
 
 ## Release/Build Validation Command
 
-Run this gate with the normal release validation set:
+For shared KMP changes that affect Android packaging, run the executable shared
+release gate:
+
+```bash
+./gradlew validateKmpSharedRelease
+```
+
+This generates SQLDelight interfaces, runs focused Thread SQLDelight/write-through
+tests, publishes `compose/shared` to MavenLocal, and compiles the Android app
+against that freshly published artifact.
+
+For OHOS SQLDelight/native-driver validation, run the script form with `--ohos`
+after the patched SQLDelight OHOS plugin has been published to MavenLocal:
+
+```bash
+scripts/validate_kmp_shared_release.sh --ohos
+```
+
+Also run this lightweight documentation gate with the normal release validation
+set:
 
 ```bash
 ./gradlew checkKmpCapabilityGate
 ```
 
-This Gradle task verifies that the global migration audit, route-level audits, and this checklist stay present and checklist-backed. It does not prove product behavior by itself; it prevents release notes from skipping the capability gate.
+`checkKmpCapabilityGate` verifies that the global migration audit, route-level
+audits, and this checklist stay present and checklist-backed. It does not prove
+product behavior by itself; it prevents release notes from skipping the
+capability gate.
 
 ## Required Checklist
 

@@ -87,6 +87,15 @@ val checkKmpCapabilityGate by tasks.registering {
     }
 }
 
+val validateKmpSharedRelease by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Validates compose/shared SQLDelight Thread cache, publishes shared Android artifact to MavenLocal, and compiles the app."
+
+    commandLine(
+        layout.projectDirectory.file("scripts/validate_kmp_shared_release.sh").asFile.absolutePath,
+    )
+}
+
 tasks.named("check") {
     dependsOn(checkKmpCapabilityGate)
 }
