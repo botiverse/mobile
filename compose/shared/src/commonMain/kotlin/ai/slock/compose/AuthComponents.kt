@@ -195,7 +195,6 @@ internal fun AuthTextField(
     isError: Boolean = false,
     errorText: String? = null,
     forceFocused: Boolean = false,
-    renderValueOverlay: Boolean = false,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default
 ) {
@@ -208,13 +207,6 @@ internal fun AuthTextField(
         val focused = enabled && (isFocused || forceFocused)
         val shadowOffset = if (focused) 4.dp else 2.dp
         val borderColor = if (isError) SlockColor.AccentRed else SlockColor.BorderBlack
-        val showValueOverlay = renderValueOverlay && value.isNotEmpty()
-        val inputTextStyle =
-            if (showValueOverlay) {
-                AuthInputTextStyle.copy(color = SlockColor.TextBlack.copy(alpha = 0f))
-            } else {
-                AuthInputTextStyle
-            }
         Box(modifier = Modifier.fillMaxWidth().height(44.dp + shadowOffset).padding(end = shadowOffset, bottom = shadowOffset)) {
             Box(Modifier.fillMaxSize().offset(x = shadowOffset, y = shadowOffset).background(SlockColor.ShadowBlack))
             Box(
@@ -234,16 +226,6 @@ internal fun AuthTextField(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                if (showValueOverlay) {
-                    Text(
-                        text = value,
-                        style = AuthInputTextStyle,
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
                 TextField(
                     value = value,
                     placeholder = "",
@@ -251,7 +233,7 @@ internal fun AuthTextField(
                     onFocus = { isFocused = true },
                     onBlur = { isFocused = false },
                     onValueChange = onValueChange,
-                    textStyle = inputTextStyle,
+                    textStyle = AuthInputTextStyle,
                     cursorBrush = SolidColor(SlockColor.TextBlack),
                     maxLines = 1,
                     keyboardOptions = keyboardOptions,
