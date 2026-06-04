@@ -114,6 +114,7 @@ import ai.slock.compose.data.AccountProfileUpdateRequest
 import ai.slock.compose.data.AccountSettingsSnapshot
 import ai.slock.compose.data.ConnectedAccountStatus
 import ai.slock.compose.data.InboxItem
+import ai.slock.compose.data.InboxSnapshot
 import ai.slock.compose.data.kuiklyNotificationPreferenceRepository
 import ai.slock.compose.data.kuiklySharedPreferenceStore
 import ai.slock.compose.data.savedMessageIdOrNull
@@ -252,6 +253,7 @@ private const val SETTINGS_PAGE_VISUAL_PAGE = "compose_settings_page_visual"
 private const val HOME_SEARCH_VISUAL_PAGE = "compose_home_search_visual"
 private const val HOME_SEARCH_CHANNEL_DROPDOWN_VISUAL_PAGE = "compose_home_search_channel_dropdown_visual"
 private const val HOME_SAVED_VISUAL_PAGE = "compose_home_saved_visual"
+private const val HOME_ACTIVITY_VISUAL_PAGE = "compose_home_activity_visual"
 private const val HOME_CREATE_CHANNEL_DIALOG_VISUAL_PAGE = "compose_home_create_channel_dialog_visual"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 
@@ -413,6 +415,14 @@ internal class ComposeHomeSavedVisualPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { HomeSavedVisualContent() }
+    }
+}
+
+@Page(HOME_ACTIVITY_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeHomeActivityVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeActivityVisualContent() }
     }
 }
 
@@ -1303,6 +1313,7 @@ private fun SlockAppShellContent() {
                                 SharedHomeActivityScreen(
                                     bridge = bridge,
                                     authStore = authStore,
+                                    onClose = { selectedHomeDestination = null },
                                     onOpenConversation = { conversation ->
                                         selectedHomeDestination = null
                                         selectedHomeConversationId = conversation.threadId.value
@@ -7085,6 +7096,75 @@ private val homeSavedVisualState = SharedHomeSavedPanelState(
     nextOffset = 3
 )
 
+private val homeActivityVisualSnapshot = InboxSnapshot(
+    server = homeSearchVisualServer,
+    items =
+        listOf(
+            InboxItem(
+                key = "activity-thread-visual-parity",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread_msg_agent_reply"),
+                channelName = "thread",
+                unreadCount = 2,
+                hasMention = true,
+                firstUnreadMessageId = MessageId("msg_activity_reply_1"),
+                lastMessageId = MessageId("msg_agent_reply"),
+                lastMessagePreview = "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。",
+                lastMessageAt = "15:30",
+                lastMessageSenderName = "Android Developer",
+                threadChannelId = ChannelId("thread_msg_agent_reply"),
+                parentChannelId = ChannelId("ch_design"),
+                parentChannelName = "design",
+                parentChannelKind = ConversationKind.Channel,
+                parentMessageId = MessageId("msg_agent_reply"),
+                parentMessagePreview = "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。",
+                latestActivityMessageId = MessageId("msg_activity_reply_1"),
+                latestActivityPreview = "Android Activity needs to reuse the real ThreadsInbox row primitives.",
+                latestActivityAt = "15:30",
+                latestActivitySenderName = "Artin",
+                replyCount = 5,
+                participantIds = listOf(MemberId("user_artin"), MemberId("agent_android")),
+                taskNumber = 177,
+                taskStatus = TaskStatus.InProgress,
+                taskClaimedByName = "Product-UX-Designer"
+            ),
+            InboxItem(
+                key = "activity-channel-artifacts",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("ch_android"),
+                channelName = "android-artifacts",
+                lastMessageId = MessageId("msg_activity_channel_1"),
+                lastMessagePreview = "Uploaded Android visual report with Search and Saved cases.",
+                lastMessageAt = "14:58",
+                lastMessageSenderName = "Android Developer",
+                latestActivityMessageId = MessageId("msg_activity_channel_1"),
+                latestActivityPreview = "Uploaded Android visual report with Search and Saved cases.",
+                latestActivityAt = "14:58",
+                latestActivitySenderName = "Android Developer"
+            ),
+            InboxItem(
+                key = "activity-dm-android",
+                kind = InboxItemKind.DirectMessage,
+                channelId = ChannelId("dm_android"),
+                channelName = "Android Developer",
+                unreadCount = 1,
+                firstUnreadMessageId = MessageId("msg_activity_dm_1"),
+                lastMessageId = MessageId("msg_activity_dm_1"),
+                lastMessagePreview = "Please keep this saved checklist around for the next connected visual-testing run.",
+                lastMessageAt = "14:44",
+                lastMessageSenderName = "Android Developer",
+                latestActivityMessageId = MessageId("msg_activity_dm_1"),
+                latestActivityPreview = "Please keep this saved checklist around for the next connected visual-testing run.",
+                latestActivityAt = "14:44",
+                latestActivitySenderName = "Android Developer"
+            )
+        ),
+    totalCount = 3,
+    totalUnreadCount = 3,
+    hasMore = true,
+    nextOffset = 3
+)
+
 @Composable
 private fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -7135,6 +7215,18 @@ private fun HomeSavedVisualContent() {
             onOpenItem = {},
             bottomContentPadding = 12.dp,
             includeTopSafeArea = false
+        )
+    }
+}
+
+@Composable
+private fun HomeActivityVisualContent() {
+    Box(modifier = Modifier.width(342.dp).height(620.dp)) {
+        SharedHomeActivityPanel(
+            snapshot = homeActivityVisualSnapshot,
+            onOpenConversation = {},
+            onClose = {},
+            modifier = Modifier.fillMaxSize()
         )
     }
 }

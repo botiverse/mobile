@@ -133,6 +133,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeActivityResults() {
+        captureKmpComponentCase(
+            caseId = "home.activity.results",
+            pageName = "compose_home_activity_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureHomeCreateChannelDialog() {
         captureKmpComponentCase(
             caseId = "home.create-channel.dialog",

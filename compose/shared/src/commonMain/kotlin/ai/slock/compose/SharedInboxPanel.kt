@@ -1,12 +1,17 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.BridgeModule
+import ai.slock.compose.components.SegmentedControl
+import ai.slock.compose.components.SegmentedControlOption
+import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.InboxFilter
 import ai.slock.compose.data.InboxItem
 import ai.slock.compose.data.InboxSnapshot
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.RealInboxRepository
+import ai.slock.compose.data.RealReadReceiptRepository
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
@@ -21,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -49,29 +55,43 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun SharedHomeActivityScreen(
     bridge: BridgeModule,
     authStore: SlockAuthSessionStore,
     onOpenConversation: (ConversationSummary) -> Unit,
+    onClose: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val pager = LocalActivity.current.getPager() as Pager
-    val repository =
+    val networkClient =
         remember(authStore, pager) {
+            KuiklySlockNetworkClient(
+                sessionStore = authStore,
+                networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
+                warningLogger = { message -> bridge.log("kuikly_network $message") }
+            )
+        }
+    val repository =
+        remember(authStore, networkClient) {
             RealInboxRepository(
                 sessionStore = authStore,
-                networkClient =
-                    KuiklySlockNetworkClient(
-                        sessionStore = authStore,
-                        networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
-                        warningLogger = { message -> bridge.log("kuikly_network $message") }
-                    ),
+                networkClient = networkClient,
                 logger = { message -> bridge.log("shared_activity $message") },
                 warningLogger = { message -> bridge.log("shared_activity_warning $message") }
             )
         }
+    val readReceiptRepository =
+        remember(authStore, networkClient) {
+            RealReadReceiptRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                warningLogger = { message -> bridge.log("shared_activity_read_warning $message") }
+            )
+        }
+    val scope = rememberCoroutineScope()
     var selectedFilter by remember { mutableStateOf(InboxFilter.All) }
     var refreshNonce by remember { mutableStateOf(0) }
     var state by remember { mutableStateOf<SharedActivityPanelState>(SharedActivityPanelState.Loading) }
@@ -111,46 +131,46 @@ internal fun SharedHomeActivityScreen(
         }
     }
 
-    Column(
-        modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
-    ) {
-        SharedActivityHeader(
-            totalUnreadCount = (state as? SharedActivityPanelState.Content)?.snapshot?.totalUnreadCount ?: 0,
-            refreshing = refreshing || state is SharedActivityPanelState.Loading,
-            onRefresh = { refreshNonce += 1 }
-        )
-        SharedActivityFilterBar(
-            selectedFilter = selectedFilter,
-            onFilterSelected = { selectedFilter = it }
-        )
-        when (val current = state) {
-            SharedActivityPanelState.Loading ->
-                SharedActivityStateBody(
-                    title = "Loading...",
-                    detail = "",
-                    loading = true
-                )
-            is SharedActivityPanelState.Error ->
-                SharedActivityStateBody(
-                    title = "Could not load activity",
-                    detail = current.code,
-                    actionLabel = "Retry",
-                    onAction = { refreshNonce += 1 }
-                )
-            is SharedActivityPanelState.Content ->
-                if (current.snapshot.items.isEmpty()) {
-                    SharedActivityStateBody(
-                        title = "Activity is empty",
-                        detail = selectedFilter.emptyCopy()
-                    )
-                } else {
-                    SharedActivityList(
-                        snapshot = current.snapshot,
-                        onOpenConversation = onOpenConversation
-                    )
+    SharedActivityPanelContent(
+        state = state,
+        selectedFilter = selectedFilter,
+        refreshing = refreshing || state is SharedActivityPanelState.Loading,
+        onRefresh = { refreshNonce += 1 },
+        onFilterSelected = { selectedFilter = it },
+        onOpenConversation = onOpenConversation,
+        onClose = onClose,
+        onMarkAllRead = {
+            scope.launch {
+                val serverId = authStore.readSession()?.currentServerId
+                if (!serverId.isNullOrBlank()) {
+                    readReceiptRepository.markInboxReadAll(ServerId(serverId))
+                    refreshNonce += 1
                 }
-        }
-    }
+            }
+        },
+        modifier = modifier
+    )
+}
+
+@Composable
+internal fun SharedHomeActivityPanel(
+    snapshot: InboxSnapshot,
+    selectedFilter: InboxFilter = InboxFilter.All,
+    onOpenConversation: (ConversationSummary) -> Unit = {},
+    onClose: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    SharedActivityPanelContent(
+        state = SharedActivityPanelState.Content(snapshot),
+        selectedFilter = selectedFilter,
+        refreshing = false,
+        onRefresh = {},
+        onFilterSelected = {},
+        onOpenConversation = onOpenConversation,
+        onClose = onClose,
+        onMarkAllRead = {},
+        modifier = modifier
+    )
 }
 
 private sealed interface SharedActivityPanelState {
@@ -160,71 +180,155 @@ private sealed interface SharedActivityPanelState {
 }
 
 @Composable
-private fun SharedActivityHeader(
-    totalUnreadCount: Int,
+private fun SharedActivityPanelContent(
+    state: SharedActivityPanelState,
+    selectedFilter: InboxFilter,
     refreshing: Boolean,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onFilterSelected: (InboxFilter) -> Unit,
+    onOpenConversation: (ConversationSummary) -> Unit,
+    onClose: (() -> Unit)?,
+    onMarkAllRead: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    SlockTopPageHeader(
-        title = "Activity",
-        subtitle = if (totalUnreadCount > 0) "$totalUnreadCount unread" else "All caught up",
-        iconName = "activity",
-        iconBackground = SlockColor.AccentPink,
-        trailingContent = {
-            SharedActivitySmallButton(
-                label = if (refreshing) "..." else "Refresh",
-                iconName = "refresh-cw",
-                onClick = onRefresh
-            )
+    Column(
+        modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
+    ) {
+        val snapshot = (state as? SharedActivityPanelState.Content)?.snapshot
+        SharedActivityHeader(
+            totalCount = snapshot?.totalCount ?: 0,
+            totalUnreadCount = snapshot?.totalUnreadCount ?: 0,
+            onClose = onClose
+        )
+        SharedActivityFilterBar(
+            selectedFilter = selectedFilter,
+            totalUnreadCount = snapshot?.totalUnreadCount ?: 0,
+            onFilterSelected = onFilterSelected,
+            onMarkAllRead = onMarkAllRead
+        )
+        when (state) {
+            SharedActivityPanelState.Loading ->
+                SharedActivityStateBody(
+                    title = "Loading Inbox...",
+                    detail = "",
+                    loading = true
+                )
+            is SharedActivityPanelState.Error ->
+                SharedActivityStateBody(
+                    title = "Could not load activity",
+                    detail = state.code,
+                    actionLabel = if (refreshing) "..." else "Retry",
+                    onAction = onRefresh
+                )
+            is SharedActivityPanelState.Content ->
+                if (state.snapshot.items.isEmpty()) {
+                    SharedActivityStateBody(
+                        title =
+                            when (selectedFilter) {
+                                InboxFilter.Mentions -> "No mentions yet"
+                                InboxFilter.Unread -> "No unread chats"
+                                InboxFilter.All -> "Activity is empty"
+                            },
+                        detail = selectedFilter.emptyCopy()
+                    )
+                } else {
+                    SharedActivityList(
+                        snapshot = state.snapshot,
+                        onOpenConversation = onOpenConversation
+                    )
+                }
         }
-    )
+    }
 }
 
 @Composable
-private fun SharedActivityFilterBar(
-    selectedFilter: InboxFilter,
-    onFilterSelected: (InboxFilter) -> Unit
+private fun SharedActivityHeader(
+    totalCount: Int,
+    totalUnreadCount: Int,
+    onClose: (() -> Unit)?
 ) {
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .height(62.dp)
                 .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        InboxFilter.entries.forEach { filter ->
-            SharedActivityFilterChip(
-                label = filter.label,
-                selected = selectedFilter == filter,
-                onClick = { onFilterSelected(filter) }
+        if (onClose != null) {
+            SlockBrutalIconButton(iconName = "arrow-left", onClick = onClose, size = 32.dp, shadowOffset = 2.dp)
+        }
+        Box(
+            modifier =
+                Modifier
+                    .size(36.dp)
+                    .background(SlockColor.BrandYellow)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            SlockLucideIcon("activity", modifier = Modifier.size(18.dp), color = "#FF000000")
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = "Activity",
+                style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "$totalCount active" + if (totalUnreadCount > 0) " · $totalUnreadCount unread" else "",
+                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack.copy(alpha = 0.52f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
 }
 
 @Composable
-private fun SharedActivityFilterChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
+private fun SharedActivityFilterBar(
+    selectedFilter: InboxFilter,
+    totalUnreadCount: Int,
+    onFilterSelected: (InboxFilter) -> Unit,
+    onMarkAllRead: () -> Unit
 ) {
-    Box(
+    Row(
         modifier =
             Modifier
-                .background(if (selected) SlockColor.AccentCyan else SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Sm))
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .clickable { onClick() }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = label,
-            style = if (selected) SlockType.ButtonBold else SlockType.Button,
-            color = SlockColor.TextBlack,
-            maxLines = 1
+        SegmentedControl(
+            selectedValue = selectedFilter.wireValue,
+            options =
+                InboxFilter.entries.map { filter ->
+                    SegmentedControlOption(value = filter.wireValue, label = filter.label)
+                },
+            onValueSelected = { value ->
+                InboxFilter.entries.firstOrNull { it.wireValue == value }?.let(onFilterSelected)
+            },
+            modifier = Modifier.weight(1f)
         )
+        if (totalUnreadCount > 0) {
+            SlockBrutalActionButton(
+                label = "Mark all read",
+                minHeight = 28.dp,
+                minWidth = 0.dp,
+                shadowOffset = 2.dp,
+                backgroundColor = SlockColor.SurfaceWhite,
+                textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 13.sp),
+                onClick = onMarkAllRead
+            )
+        }
     }
 }
 
@@ -234,8 +338,8 @@ private fun SharedActivityList(
     onOpenConversation: (ConversationSummary) -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(top = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(snapshot.items.size, key = { index -> snapshot.items[index].key }) { index ->
             val item = snapshot.items[index]
@@ -259,73 +363,155 @@ private fun SharedActivityRow(
         modifier =
             modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceCream, RoundedCornerShape(SlockRadius.Sm))
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.TextBlack.copy(alpha = 0.3f))
                 .clickable { onClick() }
                 .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(38.dp)
-                    .background(item.kind.iconColor())
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            SlockLucideIcon(item.kind.iconName(), modifier = Modifier.size(17.dp), color = "#FF000000")
-        }
         Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Text(
-                    text = item.displayTitle(),
-                    style = SlockType.ButtonBold,
-                    color = SlockColor.TextBlack,
+                    text = item.channelLabel(),
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextBlack.copy(alpha = 0.52f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                if (item.unreadCount > 0) {
-                    Spacer(Modifier.width(8.dp))
-                    SharedActivityCountPill(item.unreadCount.toString())
+                item.senderDisplayName()?.let { sender ->
+                    Text(
+                        text = sender,
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
+                Text(
+                    text = item.activityTimeLabel(),
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             Text(
                 text = item.previewText(),
-                style = SlockType.Button,
-                color = SlockColor.TextMutedGray,
-                maxLines = 2,
+                style =
+                    if (item.unreadCount > 0) {
+                        SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp)
+                    } else {
+                        SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp)
+                    },
+                color = if (item.kind == InboxItemKind.Thread && item.unreadCount == 0) SlockColor.TextBlack.copy(alpha = 0.5f) else SlockColor.TextBlack,
+                maxLines = if (item.kind == InboxItemKind.Thread) 2 else 3,
                 overflow = TextOverflow.Ellipsis
             )
+            item.secondaryPreviewText()?.let { secondary ->
+                Text(
+                    text = secondary,
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 15.sp),
+                    color = if (item.unreadCount > 0) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.45f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SharedActivityFooter(item)
+        }
+        SharedActivitySmallIconButton(iconName = "check", onClick = onClick)
+    }
+}
+
+@Composable
+private fun SharedActivityFooter(item: InboxItem) {
+    Row(
+        modifier = Modifier.padding(top = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        if (item.taskNumber != null && item.taskStatus != null) {
+            SharedActivityTaskBadge(item)
+        }
+        if (item.kind == InboxItemKind.Thread) {
             Text(
-                text = item.metaText(),
-                style = SlockType.Caption,
-                color = SlockColor.TextBlack.copy(alpha = 0.45f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                text = "${item.replyCount} ${if (item.replyCount == 1) "reply" else "replies"}",
+                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                color = SlockColor.TextBlack.copy(alpha = 0.42f),
+                maxLines = 1
             )
+        }
+        if (item.hasMention && item.unreadCount > 0) {
+            SharedActivityCountPill("@ you", backgroundColor = SlockColor.BrandYellow, textColor = SlockColor.TextBlack)
+        }
+        if (item.unreadCount > 0) {
+            SharedActivityCountPill("${item.unreadCount} new", backgroundColor = SlockColor.AccentPink, textColor = SlockColor.SurfaceWhite)
         }
     }
 }
 
 @Composable
-private fun SharedActivityCountPill(text: String) {
+private fun SharedActivityTaskBadge(item: InboxItem) {
+    val background =
+        when (item.taskStatus) {
+            ai.slock.compose.model.TaskStatus.Todo -> SlockColor.AccentOrange
+            ai.slock.compose.model.TaskStatus.InProgress -> SlockColor.AccentCyan
+            ai.slock.compose.model.TaskStatus.InReview -> SlockColor.AccentLavender
+            ai.slock.compose.model.TaskStatus.Done -> SlockColor.AccentLime
+            ai.slock.compose.model.TaskStatus.Closed -> SlockColor.AccentRed
+            null -> SlockColor.SurfaceWhite
+        }
+    SharedActivityCountPill(
+        text = "#${item.taskNumber}" + item.taskClaimedByName?.let { " @$it" }.orEmpty(),
+        backgroundColor = background,
+        textColor = SlockColor.TextBlack
+    )
+}
+
+@Composable
+private fun SharedActivityCountPill(
+    text: String,
+    backgroundColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.AccentPink,
+    textColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.TextBlack
+) {
     Box(
         modifier =
             Modifier
-                .widthIn(min = 28.dp)
-                .background(SlockColor.AccentPink, RoundedCornerShape(SlockRadius.Sm))
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 7.dp, vertical = 2.dp),
+                .widthIn(min = 22.dp)
+                .background(backgroundColor)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .padding(horizontal = 6.dp, vertical = 2.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp),
-            color = SlockColor.TextBlack,
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
+            color = textColor,
             maxLines = 1
         )
+    }
+}
+
+@Composable
+private fun SharedActivitySmallIconButton(
+    iconName: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier =
+            Modifier
+                .background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Sm))
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .clickable { onClick() }
+                .padding(6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockLucideIcon(iconName, modifier = Modifier.size(14.dp), color = "#FF000000")
     }
 }
 
@@ -335,19 +521,16 @@ private fun SharedActivitySmallButton(
     iconName: String,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier =
-            Modifier
-                .background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Sm))
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .clickable { onClick() }
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        SlockLucideIcon(iconName, modifier = Modifier.size(14.dp), color = "#FF000000")
-        Text(label, style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack, maxLines = 1)
-    }
+    SlockBrutalActionButton(
+        label = label,
+        leadingIcon = iconName,
+        minHeight = 30.dp,
+        minWidth = 0.dp,
+        shadowOffset = 2.dp,
+        backgroundColor = SlockColor.SurfaceWhite,
+        textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp),
+        onClick = onClick
+    )
 }
 
 @Composable
@@ -408,40 +591,32 @@ private fun InboxItem.displayTitle(): String =
         InboxItemKind.DirectMessage, InboxItemKind.Channel, InboxItemKind.System -> channelName
     }.ifBlank { channelId.value }
 
+private fun InboxItem.channelLabel(): String =
+    when (kind) {
+        InboxItemKind.DirectMessage -> "@${channelName.ifBlank { channelId.value }}"
+        InboxItemKind.Thread -> "#${(parentChannelName ?: channelName).ifBlank { channelId.value }}"
+        InboxItemKind.Channel, InboxItemKind.System -> "#${channelName.ifBlank { channelId.value }}"
+    }
+
+private fun InboxItem.senderDisplayName(): String? =
+    latestActivitySenderName ?: lastMessageSenderName
+
+private fun InboxItem.activityTimeLabel(): String =
+    latestActivityAt ?: lastMessageAt ?: ""
+
 private fun InboxItem.previewText(): String =
+    if (kind == InboxItemKind.Thread) {
+        parentMessagePreview ?: latestActivityPreview ?: lastMessagePreview ?: "Thread update"
+    } else {
+        lastMessagePreview ?: latestActivityPreview ?: "Conversation update"
+    }
+
+private fun InboxItem.secondaryPreviewText(): String? =
     latestActivityPreview
-        ?: lastMessagePreview
-        ?: parentMessagePreview
-        ?: if (kind == InboxItemKind.Thread) "Thread update" else "Conversation update"
-
-private fun InboxItem.metaText(): String {
-    val sender = latestActivitySenderName ?: lastMessageSenderName
-    val at = latestActivityAt ?: lastMessageAt
-    return listOfNotNull(sender, at).joinToString(" · ").ifBlank {
-        when (kind) {
-            InboxItemKind.Thread -> "Thread"
-            InboxItemKind.DirectMessage -> "Direct message"
-            InboxItemKind.Channel -> "Channel"
-            InboxItemKind.System -> "System"
+        ?.takeIf { kind == InboxItemKind.Thread && replyCount > 0 && it != previewText() }
+        ?.let { preview ->
+            senderDisplayName()?.let { "$it: $preview" } ?: preview
         }
-    }
-}
-
-private fun InboxItemKind.iconName(): String =
-    when (this) {
-        InboxItemKind.Thread -> "message-square"
-        InboxItemKind.DirectMessage -> "mail"
-        InboxItemKind.Channel -> "hash"
-        InboxItemKind.System -> "bell"
-    }
-
-private fun InboxItemKind.iconColor() =
-    when (this) {
-        InboxItemKind.Thread -> SlockColor.AccentLavender
-        InboxItemKind.DirectMessage -> SlockColor.AccentCyan
-        InboxItemKind.Channel -> SlockColor.BrandYellow
-        InboxItemKind.System -> SlockColor.AccentOrange
-    }
 
 private fun InboxItem.toConversationSummary(): ConversationSummary {
     val streamChannelId = threadChannelId ?: channelId
