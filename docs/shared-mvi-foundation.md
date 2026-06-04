@@ -48,7 +48,7 @@ boundary failures.
 The expected direction is:
 
 ```text
-UI -> Store -> Interactor/UseCase -> Repository -> DataSource/API/HostCapability
+UI -> SharedStateHolder -> UseCase -> Repository -> DataSource/API/HostCapability
 ```
 
 Repositories and data sources return typed domain snapshots, patches, or
@@ -59,6 +59,30 @@ become hidden state machines.
 Cache, realtime, and write-through events must re-enter through store/reducer
 paths. They should not directly mutate UI collections or trigger a full page
 reload when a narrow patch is enough.
+
+```mermaid
+graph TD
+    UI[UI Layer<br/>Kuikly Compose / Android Compose / SwiftUI]
+
+    subgraph CommonMain[Shared Logic]
+        StateHolder[SharedStateHolder<br/>StateFlow UIState + Flow UIEvent]
+        Runtime[MviStoreRuntime<br/>queued reducer + no-op gate]
+        UseCase[UseCase / Interactor]
+        Repository[Repository]
+        DataSource[DataSource<br/>Ktor / SQLDelight / HostCapability]
+    end
+
+    StateHolder -->|UIState| UI
+    StateHolder -->|UIEvent| UI
+    UI -->|UIAction| StateHolder
+    StateHolder --> Runtime
+    StateHolder -->|Call| UseCase
+    UseCase --> Repository
+    Repository --> DataSource
+    DataSource -->|DataResult / Patch| Repository
+    Repository -->|Typed result| UseCase
+    UseCase -->|Intent / Result| StateHolder
+```
 
 ## Library Survey
 
@@ -108,9 +132,20 @@ adopting a heavy framework in this migration slice.
 
 ## Current Consumer
 
-`SharedTasksStore` is the first small consumer. It delegates state emission to
-`MviStoreRuntime`, keeps its existing reducer shape, and uses typed
-`DataResult.failureCodeOrNull()` mapping for mutation failures.
+`SharedTasksViewModel` / `SharedTasksStore` is the first small consumer.
+
+- `SharedTasksViewModel` implements `SharedStateHolder<TasksUiState,
+  SharedTasksRouteIntent, SharedTasksEvent>`.
+- UI dispatches `SharedTasksRouteIntent` as the UI action.
+- The ViewModel calls `SharedTasksUseCase`.
+- The use case reads selected session/server from `SlockAuthSessionStore` and
+  calls `SharedTasksRepository`.
+- `SharedTasksRepositoryAdapter` delegates to `SharedTasksDataSource`, which is
+  the typed API/data-source boundary.
+- Store state emission still goes through `MviStoreRuntime`, keeping the reducer
+  queue, no-op gate, and transition log.
+- Mutation/load failures are mapped through typed `DataResult.failureCodeOrNull`
+  and also exposed as one-off `SharedTasksEvent.OperationFailed` events.
 
 Thread and Home already have proof slices for structural sharing/no-op behavior.
 They should be migrated to the foundation in later focused tasks instead of

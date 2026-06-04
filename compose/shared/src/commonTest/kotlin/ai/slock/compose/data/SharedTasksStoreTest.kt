@@ -6,6 +6,7 @@ import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.Presence
+import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -13,12 +14,62 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 
 class SharedTasksStoreTest {
+    @Test
+    fun sharedTasksUseCaseReturnsTypedErrorWhenSelectedServerIsMissing() = runBlocking {
+        val repository = FakeTasksRepository()
+        val useCase =
+            SharedTasksUseCase(
+                authStore = InMemorySlockAuthSessionStore(),
+                repository = repository
+            )
+
+        val result = useCase.loadTasks(TasksLoadRequest())
+
+        val error = assertIs<DataResult.Error>(result)
+        assertEquals("selected_server_missing", error.error.code)
+        assertEquals(0, repository.loadCalls)
+    }
+
+    @Test
+    fun sharedTasksUseCaseLoadsThroughRepositoryWithSelectedServer() = runBlocking {
+        val repository =
+            FakeTasksRepository(
+                loadResult =
+                    DataResult.Content(
+                        TaskSnapshot(
+                            tasks = listOf(task("task-1", TaskStatus.Todo)),
+                            summaryCounts = mapOf(TaskStatus.Todo to 1)
+                        )
+                    )
+            )
+        val useCase =
+            SharedTasksUseCase(
+                authStore =
+                    InMemorySlockAuthSessionStore(
+                        StoredAuthSession(
+                            user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                            accessToken = "token",
+                            refreshToken = "refresh",
+                            selectedServerId = "server-1"
+                        )
+                    ),
+                repository = repository
+            )
+
+        val result = useCase.loadTasks(TasksLoadRequest(TaskFilter(statuses = setOf(TaskStatus.Todo))))
+
+        assertIs<DataResult.Content<TaskSnapshot>>(result)
+        assertEquals(ServerId("server-1"), repository.lastServerId)
+        assertEquals(setOf(TaskStatus.Todo), repository.lastFilter?.statuses)
+    }
+
     @Test
     fun sharedTasksStoreUsesMviRuntimeNoopGateAndTransitionLog() {
         val transitions = mutableListOf<MviTransition<SharedTasksIntent>>()
@@ -362,4 +413,33 @@ class SharedTasksStoreTest {
             kind = MemberKind.Agent,
             presence = Presence.Active
         )
+
+    private class FakeTasksRepository(
+        private val loadResult: DataResult<TaskSnapshot> =
+            DataResult.Error(ScreenError("not_configured")),
+        private val updateResult: DataResult<TaskActionResult> =
+            DataResult.Error(ScreenError("not_configured")),
+        private val createResult: DataResult<TaskSnapshot> =
+            DataResult.Error(ScreenError("not_configured"))
+    ) : SharedTasksRepository {
+        var loadCalls = 0
+            private set
+        var lastServerId: ServerId? = null
+            private set
+        var lastFilter: TaskFilter? = null
+            private set
+
+        override suspend fun loadTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot> {
+            loadCalls += 1
+            lastServerId = serverId
+            lastFilter = filter
+            return loadResult
+        }
+
+        override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult> =
+            updateResult
+
+        override suspend fun createTasks(channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot> =
+            createResult
+    }
 }

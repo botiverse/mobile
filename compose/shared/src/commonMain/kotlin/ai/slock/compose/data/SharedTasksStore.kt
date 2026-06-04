@@ -2,6 +2,7 @@ package ai.slock.compose.data
 
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.ServerId
@@ -10,6 +11,7 @@ import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -106,6 +108,10 @@ sealed interface SharedTasksRouteIntent {
     data class CreateTasks(val channelId: ChannelId, val titles: List<String>) : SharedTasksRouteIntent
 }
 
+sealed interface SharedTasksEvent {
+    data class OperationFailed(val code: String) : SharedTasksEvent
+}
+
 sealed interface TasksPresentationIntent {
     data class SetChannelSelectorExpanded(val expanded: Boolean) : TasksPresentationIntent
     data class ToggleChannel(val channelName: String) : TasksPresentationIntent
@@ -123,43 +129,57 @@ sealed interface TasksPresentationIntent {
 }
 
 class SharedTasksViewModel(
-    private val authStore: SlockAuthSessionStore,
-    private val dataSource: SharedTasksDataSource
-) : ViewModel() {
+    authStore: SlockAuthSessionStore,
+    dataSource: SharedTasksDataSource,
+    private val useCase: SharedTasksUseCase =
+        SharedTasksUseCase(
+            authStore = authStore,
+            repository = SharedTasksRepositoryAdapter(dataSource)
+        )
+) : ViewModel(),
+    SharedStateHolder<TasksUiState, SharedTasksRouteIntent, SharedTasksEvent> {
     private val store by lazy {
         SharedTasksStore(scope = viewModelScope)
     }
-    val state: StateFlow<TasksUiState>
+    private val events = MviEffectEmitter<SharedTasksEvent>()
+
+    override val uiState: StateFlow<TasksUiState>
         get() = store.state
+
+    override val uiEvents: Flow<SharedTasksEvent>
+        get() = events.effects
+
+    val state: StateFlow<TasksUiState>
+        get() = uiState
 
     private var loadJob: Job? = null
     private var statusJob: Job? = null
 
     private var createJob: Job? = null
 
-    fun dispatch(intent: SharedTasksRouteIntent) {
-        when (intent) {
+    override fun dispatch(action: SharedTasksRouteIntent) {
+        when (action) {
             SharedTasksRouteIntent.Start,
             SharedTasksRouteIntent.Refresh,
             is SharedTasksRouteIntent.SelectFilter -> {
                 loadJob?.cancel()
                 loadJob =
                     viewModelScope.launch {
-                        load(intent)
+                        load(action)
                     }
             }
             is SharedTasksRouteIntent.UpdateStatus -> {
                 statusJob?.cancel()
                 statusJob =
                     viewModelScope.launch {
-                        updateStatus(intent.task, intent.status)
+                        updateStatus(action.task, action.status)
                     }
             }
             is SharedTasksRouteIntent.CreateTasks -> {
                 createJob?.cancel()
                 createJob =
                     viewModelScope.launch {
-                        createTasks(intent.channelId, intent.titles)
+                        createTasks(action.channelId, action.titles)
                     }
             }
             SharedTasksRouteIntent.ClearNavigationError ->
@@ -175,13 +195,13 @@ class SharedTasksViewModel(
             }
         store.accept(SharedTasksIntent.StartLoading(selectedFilter))
         try {
-            val serverId =
-                authStore.readSession()?.currentServerId?.let(::ServerId)
-                    ?: run {
-                        store.accept(SharedTasksIntent.RefreshFailed("selected_server_missing"))
-                        return
+            val result =
+                useCase.loadTasks(
+                    TasksLoadRequest(filter = TaskFilter(statuses = selectedFilter?.let(::setOf) ?: emptySet()))
+                )
+            if (result !is DataResult.Content) {
+                result.failureCodeOrNull()?.let { events.emit(SharedTasksEvent.OperationFailed(it)) }
             }
-            val result = dataSource.loadTasks(serverId, TaskFilter(statuses = selectedFilter?.let(::setOf) ?: emptySet()))
             store.accept(
                 if (intent == SharedTasksRouteIntent.Refresh) {
                     SharedTasksIntent.MergeRefreshResult(result, selectedFilter)
@@ -192,6 +212,7 @@ class SharedTasksViewModel(
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
+            events.emit(SharedTasksEvent.OperationFailed("tasks_network"))
             store.accept(SharedTasksIntent.RefreshFailed("tasks_network"))
         }
     }
@@ -199,19 +220,23 @@ class SharedTasksViewModel(
     private suspend fun updateStatus(task: TaskSummary, status: TaskStatus) {
         store.accept(SharedTasksIntent.UpdateTaskStatus(task.id.value, status))
         try {
-            when (val result = dataSource.updateTaskStatus(task.id, status)) {
+            when (val result = useCase.updateTaskStatus(TasksStatusUpdateRequest(task.id, status))) {
                 is DataResult.Content -> store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(result.data.task))
-                else ->
+                else -> {
+                    val errorCode = result.failureCodeOrNull() ?: "tasks_status_unknown"
+                    events.emit(SharedTasksEvent.OperationFailed(errorCode))
                     store.accept(
                         SharedTasksIntent.TaskStatusUpdateFailed(
                             previousTask = task,
-                            errorCode = result.failureCodeOrNull() ?: "tasks_status_unknown"
+                            errorCode = errorCode
                         )
                     )
+                }
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
+            events.emit(SharedTasksEvent.OperationFailed("tasks_status_network"))
             store.accept(SharedTasksIntent.TaskStatusUpdateFailed(task, "tasks_status_network"))
         }
     }
@@ -221,7 +246,7 @@ class SharedTasksViewModel(
         if (cleaned.isEmpty()) return
         store.accept(SharedTasksIntent.CreateTasksStarted(channelId))
         try {
-            when (val result = dataSource.createTasks(channelId, cleaned)) {
+            when (val result = useCase.createTasks(TasksCreateRequest(channelId, cleaned))) {
                 is DataResult.Content -> {
                     store.accept(SharedTasksIntent.CreateTasksSucceeded(result.data))
                     // Re-fetch the server-wide list so the new tasks show up in board/list
@@ -230,16 +255,20 @@ class SharedTasksViewModel(
                     // endpoint does not include other channels' tasks.
                     load(SharedTasksRouteIntent.Refresh)
                 }
-                else ->
+                else -> {
+                    val errorCode = result.failureCodeOrNull() ?: "tasks_create_unknown"
+                    events.emit(SharedTasksEvent.OperationFailed(errorCode))
                     store.accept(
                         SharedTasksIntent.CreateTasksFailed(
-                            result.failureCodeOrNull() ?: "tasks_create_unknown"
+                            errorCode
                         )
                     )
+                }
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
+            events.emit(SharedTasksEvent.OperationFailed("tasks_create_network"))
             store.accept(SharedTasksIntent.CreateTasksFailed("tasks_create_network"))
         }
     }
@@ -250,6 +279,59 @@ class SharedTasksViewModel(
         createJob?.cancel()
         super.onCleared()
     }
+}
+
+data class TasksLoadRequest(val filter: TaskFilter = TaskFilter())
+
+data class TasksStatusUpdateRequest(
+    val taskId: TaskId,
+    val status: TaskStatus
+)
+
+data class TasksCreateRequest(
+    val channelId: ChannelId,
+    val titles: List<String>
+)
+
+interface SharedTasksRepository {
+    suspend fun loadTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot>
+
+    suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult>
+
+    suspend fun createTasks(channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot>
+}
+
+class SharedTasksRepositoryAdapter(
+    private val dataSource: SharedTasksDataSource
+) : SharedTasksRepository {
+    override suspend fun loadTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot> =
+        dataSource.loadTasks(serverId, filter)
+
+    override suspend fun updateTaskStatus(
+        taskId: TaskId,
+        status: TaskStatus
+    ): DataResult<TaskActionResult> =
+        dataSource.updateTaskStatus(taskId, status)
+
+    override suspend fun createTasks(channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot> =
+        dataSource.createTasks(channelId, titles)
+}
+
+class SharedTasksUseCase(
+    private val authStore: SlockAuthSessionStore,
+    private val repository: SharedTasksRepository
+) {
+    suspend fun loadTasks(request: TasksLoadRequest): DataResult<TaskSnapshot> {
+        val serverId = authStore.readSession()?.currentServerId?.let(::ServerId)
+            ?: return DataResult.Error(ScreenError(code = "selected_server_missing", retryable = false))
+        return repository.loadTasks(serverId, request.filter)
+    }
+
+    suspend fun updateTaskStatus(request: TasksStatusUpdateRequest): DataResult<TaskActionResult> =
+        repository.updateTaskStatus(request.taskId, request.status)
+
+    suspend fun createTasks(request: TasksCreateRequest): DataResult<TaskSnapshot> =
+        repository.createTasks(request.channelId, request.titles)
 }
 
 class SharedTasksStore(

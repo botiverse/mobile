@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -10,6 +11,25 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
+interface SharedStateHolder<UiState, UiAction, UiEvent> {
+    val uiState: StateFlow<UiState>
+    val uiEvents: Flow<UiEvent>
+
+    fun dispatch(action: UiAction)
+}
+
+interface MviUseCase<Request, Response> {
+    suspend fun execute(request: Request): DataResult<Response>
+}
+
+interface MviRepository<Request, Response> {
+    suspend fun execute(request: Request): DataResult<Response>
+}
+
+interface MviDataSource<Request, Response> {
+    suspend fun execute(request: Request): DataResult<Response>
+}
 
 /**
  * Lightweight shared MVI runtime used by feature stores. It intentionally avoids
@@ -49,6 +69,45 @@ class MviStoreRuntime<State, Intent>(
         transitionLogger(MviTransition(intent = intent, emitted = true))
         return true
     }
+}
+
+class MviStateHolder<UiState, UiAction, StoreIntent, UiEvent>(
+    initialState: UiState,
+    private val scope: CoroutineScope,
+    reduce: (UiState, StoreIntent) -> UiState,
+    private val handleAction: suspend MviActionScope<StoreIntent, UiEvent>.(UiAction) -> Unit,
+    transitionLogger: (MviTransition<StoreIntent>) -> Unit = {},
+    equivalent: (UiState, UiState) -> Boolean = { previous, next -> previous == next }
+) : SharedStateHolder<UiState, UiAction, UiEvent> {
+    private val runtime =
+        MviStoreRuntime(
+            initialState = initialState,
+            scope = scope,
+            reduce = reduce,
+            transitionLogger = transitionLogger,
+            equivalent = equivalent
+        )
+    private val effectEmitter = MviEffectEmitter<UiEvent>()
+
+    override val uiState: StateFlow<UiState> = runtime.state
+    override val uiEvents: Flow<UiEvent> = effectEmitter.effects
+
+    override fun dispatch(action: UiAction) {
+        scope.launch {
+            MviActionScope(runtime::acceptQueued, effectEmitter::emit).handleAction(action)
+        }
+    }
+
+    fun accept(intent: StoreIntent): Boolean = runtime.accept(intent)
+}
+
+class MviActionScope<StoreIntent, UiEvent>(
+    private val acceptIntent: suspend (StoreIntent) -> Boolean,
+    private val emitEvent: (UiEvent) -> Boolean
+) {
+    suspend fun reduce(intent: StoreIntent): Boolean = acceptIntent(intent)
+
+    fun emit(event: UiEvent): Boolean = emitEvent(event)
 }
 
 data class MviTransition<Intent>(

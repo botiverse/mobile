@@ -4,6 +4,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -77,6 +80,84 @@ class MviFoundationTest {
     }
 
     @Test
+    fun stateHolderDispatchesActionThroughUseCaseAndReducesState() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val useCase =
+            object : MviUseCase<Int, String> {
+                override suspend fun execute(request: Int): DataResult<String> =
+                    DataResult.Content("loaded-$request")
+            }
+        val holder =
+            MviStateHolder<DemoState, DemoAction, DemoIntent, DemoEvent>(
+                initialState = DemoState(),
+                scope = scope,
+                reduce = { state, intent ->
+                    when (intent) {
+                        is DemoIntent.SetLabel -> state.copy(label = intent.label)
+                    }
+                },
+                handleAction = { action ->
+                    when (action) {
+                        is DemoAction.Load -> {
+                            when (val result = useCase.execute(action.id)) {
+                                is DataResult.Content -> reduce(DemoIntent.SetLabel(result.data))
+                                else -> emit(DemoEvent.Failed(result.failureCodeOrNull() ?: "unknown"))
+                            }
+                        }
+                    }
+                }
+            )
+
+        holder.dispatch(DemoAction.Load(42))
+
+        assertEquals(DemoState(label = "loaded-42"), holder.uiState.value)
+        scope.cancel()
+    }
+
+    @Test
+    fun stateHolderEmitsUiEventForUseCaseFailure() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val useCase =
+            object : MviUseCase<Int, String> {
+                override suspend fun execute(request: Int): DataResult<String> =
+                    DataResult.Error(ScreenError("demo_failed"))
+            }
+        val holder =
+            MviStateHolder<DemoState, DemoAction, DemoIntent, DemoEvent>(
+                initialState = DemoState(),
+                scope = scope,
+                reduce = { state, intent ->
+                    when (intent) {
+                        is DemoIntent.SetLabel -> state.copy(label = intent.label)
+                    }
+                },
+                handleAction = { action ->
+                    when (action) {
+                        is DemoAction.Load -> {
+                            when (val result = useCase.execute(action.id)) {
+                                is DataResult.Content -> reduce(DemoIntent.SetLabel(result.data))
+                                else -> emit(DemoEvent.Failed(result.failureCodeOrNull() ?: "unknown"))
+                            }
+                        }
+                    }
+                }
+            )
+        val events = mutableListOf<DemoEvent>()
+        val eventJob =
+            launch(Dispatchers.Unconfined) {
+                holder.uiEvents.take(1).collect { event ->
+                    events += event
+                }
+            }
+
+        holder.dispatch(DemoAction.Load(404))
+
+        assertEquals(listOf<DemoEvent>(DemoEvent.Failed("demo_failed")), events)
+        eventJob.cancel()
+        scope.cancel()
+    }
+
+    @Test
     fun inFlightGuardRejectsDuplicateUntilFinished() {
         val guard = MviInFlightGuard()
         val key = MviActionKey("settings:server:delete")
@@ -141,5 +222,19 @@ class MviFoundationTest {
     private sealed interface CounterIntent {
         data object Increment : CounterIntent
         data object Noop : CounterIntent
+    }
+
+    private data class DemoState(val label: String = "idle")
+
+    private sealed interface DemoAction {
+        data class Load(val id: Int) : DemoAction
+    }
+
+    private sealed interface DemoIntent {
+        data class SetLabel(val label: String) : DemoIntent
+    }
+
+    private sealed interface DemoEvent {
+        data class Failed(val code: String) : DemoEvent
     }
 }
