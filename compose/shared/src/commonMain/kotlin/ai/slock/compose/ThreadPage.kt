@@ -2085,6 +2085,7 @@ private fun ThreadPageContent(
                     KuiklyThreadTab.Chat ->
                         ThreadChatTab(
                             payload = payload,
+                            composerKeyboardInsetDp = composerKeyboardInsetDp,
                             highlightedMentions = highlightedMentions,
                             onThreadEvent = onThreadEvent,
                             onOpenMarkdownTag = openMarkdownTag,
@@ -2369,6 +2370,7 @@ private val ThreadTabHeight = 32.dp
 @Composable
 private fun ThreadChatTab(
     payload: KuiklyThreadScreenPayload,
+    composerKeyboardInsetDp: Float,
     highlightedMentions: Set<String>,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
@@ -2389,6 +2391,7 @@ private fun ThreadChatTab(
         else ->
             ThreadMessagesList(
                 payload = payload,
+                composerKeyboardInsetDp = composerKeyboardInsetDp,
                 highlightedMentions = highlightedMentions,
                 onThreadEvent = onThreadEvent,
                 onOpenMarkdownTag = onOpenMarkdownTag,
@@ -2401,6 +2404,7 @@ private fun ThreadChatTab(
 @Composable
 private fun ThreadMessagesList(
     payload: KuiklyThreadScreenPayload,
+    composerKeyboardInsetDp: Float,
     highlightedMentions: Set<String>,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
@@ -2419,6 +2423,8 @@ private fun ThreadMessagesList(
     var taskStatusMenuAnchor by remember(payload.instanceId) { mutableStateOf(Offset(16f, 16f)) }
     var allowBottomAutoAnchor by remember(payload.instanceId) { mutableStateOf(true) }
     var initialBottomAnchorReady by remember(payload.instanceId) { mutableStateOf(false) }
+    var lastComposerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(composerKeyboardInsetDp) }
+    var pendingKeyboardBottomAnchor by remember(payload.instanceId) { mutableStateOf(false) }
     val latestItemIndex = remember(
         payload.originStatus,
         payload.canLoadMoreBefore,
@@ -2487,6 +2493,33 @@ private fun ThreadMessagesList(
         if (!listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
             listState.scrollLatestItemToRenderedBottom(latestItemIndex)
         }
+    }
+    LaunchedEffect(payload.instanceId, composerKeyboardInsetDp, latestItemIndex) {
+        if (composerKeyboardInsetDp == lastComposerKeyboardInsetDp) {
+            return@LaunchedEffect
+        }
+        val wasAtBottom = initialBottomAnchorReady &&
+            latestItemIndex >= 0 &&
+            allowBottomAutoAnchor
+        lastComposerKeyboardInsetDp = composerKeyboardInsetDp
+        if (!wasAtBottom) {
+            pendingKeyboardBottomAnchor = false
+            return@LaunchedEffect
+        }
+        allowBottomAutoAnchor = true
+        pendingKeyboardBottomAnchor = true
+        listState.awaitThreadMessagesLayoutStability(latestItemIndex)
+        repeat(ThreadKeyboardBottomAnchorAttempts) { attempt ->
+            listState.scrollLatestItemToRenderedBottom(latestItemIndex)
+            delay(ThreadLayoutStabilityFrameDelayMs)
+            if (attempt >= ThreadBottomAnchorMinimumAttempts &&
+                listState.isLatestItemAtRenderedBottom(latestItemIndex)
+            ) {
+                pendingKeyboardBottomAnchor = false
+                return@LaunchedEffect
+            }
+        }
+        pendingKeyboardBottomAnchor = false
     }
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -2602,7 +2635,10 @@ private fun ThreadMessagesList(
                 }
             }
         }
-        if (initialBottomAnchorReady && listState.shouldShowThreadBackToBottom(latestItemIndex)) {
+        if (initialBottomAnchorReady &&
+            !pendingKeyboardBottomAnchor &&
+            listState.shouldShowThreadBackToBottom(latestItemIndex)
+        ) {
             ThreadBackToBottomButton(
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = SlockSpacing.Md, bottom = SlockSpacing.Md),
                 onClick = {
@@ -2897,6 +2933,7 @@ private const val ThreadLayoutStabilityFrameDelayMs = 16L
 private const val ThreadLayoutStabilityMaxFrames = 30
 private const val ThreadLayoutStabilityRequiredFrames = 3
 private const val ThreadBackToBottomAnchorAttempts = 12
+private const val ThreadKeyboardBottomAnchorAttempts = 8
 
 @Composable
 private fun ThreadSystemMessageRow(
