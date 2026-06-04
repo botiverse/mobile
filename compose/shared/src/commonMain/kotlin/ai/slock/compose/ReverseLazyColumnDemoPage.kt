@@ -15,7 +15,9 @@ import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
@@ -41,7 +43,8 @@ internal class ReverseLazyColumnDemoPage : ComposeContainer() {
 @Composable
 private fun ReverseLazyColumnDemoScreen() {
     val statusBarHeight = LocalActivity.current.pageData.statusBarHeight
-    val listState = rememberLazyListState()
+    val columnState = rememberLazyListState()
+    val rowState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val itemCount = 20
 
@@ -63,7 +66,7 @@ private fun ReverseLazyColumnDemoScreen() {
             color = SlockColor.TextMutedGray
         )
         Text(
-            text = "firstVisibleItemIndex=${listState.firstVisibleItemIndex}",
+            text = "Column firstVisibleItemIndex=${columnState.firstVisibleItemIndex} / Row firstVisibleItemIndex=${rowState.firstVisibleItemIndex}",
             style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
             color = SlockColor.TextMutedGray
         )
@@ -77,7 +80,7 @@ private fun ReverseLazyColumnDemoScreen() {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 scope.launch {
-                    listState.animateScrollToItem(itemCount - 1)
+                    columnState.animateScrollToItem(itemCount - 1)
                 }
             }
             ReverseLazyDemoButton(
@@ -85,16 +88,16 @@ private fun ReverseLazyColumnDemoScreen() {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 scope.launch {
-                    listState.animateScrollToItem(0)
+                    columnState.animateScrollToItem(0)
                 }
             }
         }
 
         LazyColumn(
-            state = listState,
+            state = columnState,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(420.dp)
+                .height(300.dp)
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .padding(horizontal = 12.dp, vertical = 12.dp),
@@ -103,7 +106,29 @@ private fun ReverseLazyColumnDemoScreen() {
             contentPadding = PaddingValues(vertical = 8.dp)
         ) {
             items(itemCount) { index ->
-                ReverseLazyDemoCard(index)
+                ReverseLazyDemoCard(index, modifier = Modifier.fillMaxWidth().height(56.dp))
+            }
+        }
+
+        Text(
+            text = "LazyRow reverseLayout",
+            style = SlockType.SectionLabel.copy(fontSize = 12.sp, lineHeight = 16.sp),
+            color = SlockColor.TextMutedGray
+        )
+        LazyRow(
+            state = rowState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(116.dp)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            reverseLayout = true,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp)
+        ) {
+            items(itemCount) { index ->
+                ReverseLazyDemoCard(index, modifier = Modifier.width(120.dp).height(72.dp))
             }
         }
     }
@@ -132,7 +157,7 @@ private fun ReverseLazyDemoButton(
 }
 
 @Composable
-private fun ReverseLazyDemoCard(index: Int) {
+private fun ReverseLazyDemoCard(index: Int, modifier: Modifier) {
     val cardColor =
         when (index % 4) {
             0 -> Color(0xFF4C6EF5)
@@ -141,9 +166,7 @@ private fun ReverseLazyDemoCard(index: Int) {
             else -> Color(0xFFE03131)
         }
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp)
+        modifier = modifier
             .background(cardColor)
             .border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
