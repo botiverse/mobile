@@ -20,6 +20,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -207,6 +208,60 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun realtimeMessageUpdateOnlyReplacesMatchingHomeRow() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(
+            sampleHome(ServerId("server-1")).copy(
+                channels =
+                    listOf(
+                        channel("channel-1", "general"),
+                        channel("channel-2", "random")
+                    )
+            )
+        )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = ThrowingHomeApi(),
+                    localWriteThrough = ComposeLocalWriteThrough(localStore),
+                    parseHome = { _, _ -> error("network failure should not parse") }
+                ),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        val before = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MessageNew(
+                        Message(
+                            id = MessageId("message-2"),
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            seq = 2,
+                            author = sampleMember(),
+                            timestampLabel = "12:01",
+                            body = "live update"
+                        )
+                    )
+            )
+        )
+
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels
+        assertTrue(before !== after)
+        assertTrue(before[0] !== after[0])
+        assertTrue(before[1] === after[1])
+        assertEquals("live update", after[0].lastMessagePreview)
+        assertEquals("random", after[1].name)
+        scope.cancel()
+    }
+
+    @Test
     fun heartbeatDoesNotReloadVisibleHomeSnapshot() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
@@ -284,6 +339,54 @@ class SharedHomeStoreTest {
         )
 
         assertEquals(emptyList(), logs)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimePresenceUpdateOnlyReplacesMatchingDirectMessageRow() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(
+            sampleHome(ServerId("server-1")).copy(
+                directMessages =
+                    listOf(
+                        directMessage("dm-1", "Agent One", "agent-1", Presence.Offline),
+                        directMessage("dm-2", "Agent Two", "agent-2", Presence.Active)
+                    )
+            )
+        )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = ThrowingHomeApi(),
+                    localWriteThrough = ComposeLocalWriteThrough(localStore),
+                    parseHome = { _, _ -> error("network failure should not parse") }
+                ),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        val before = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MemberPresenceUpdated(
+                        memberId = MemberId("agent-1"),
+                        presence = Presence.Active,
+                        kind = MemberKind.Agent
+                    )
+            )
+        )
+
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
+        assertTrue(before !== after)
+        assertTrue(before[0] !== after[0])
+        assertTrue(before[1] === after[1])
+        assertEquals(Presence.Active, after[0].presence)
+        assertEquals(Presence.Active, after[1].presence)
         scope.cancel()
     }
 
@@ -375,6 +478,38 @@ class SharedHomeStoreTest {
 
         blockedRefresh.release()
         refreshJob.join()
+        scope.cancel()
+    }
+
+    @Test
+    fun duplicateHomeSnapshotStartDoesNotEmitState() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        val localStore = InMemoryComposeLocalDataStore()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = RecordingHomeApi(),
+                    localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
+                    parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
+                ),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        val observedStates = mutableListOf<SharedHomeState>()
+        val observer = scope.launch {
+            store.state.collect { state -> observedStates += state }
+        }
+        logs.clear()
+        val countBeforeStart = observedStates.size
+
+        store.accept(SharedHomeIntent.Start)
+
+        assertEquals(countBeforeStart, observedStates.size)
+        assertEquals(1, logs.count { it.startsWith("write_home_skip source=shared_home_data_source reason=unchanged") })
+        observer.cancel()
         scope.cancel()
     }
 
@@ -680,6 +815,29 @@ class SharedHomeStoreTest {
                 ),
             directMessages = emptyList(),
             unreadTotal = 0
+        )
+
+    private fun channel(id: String, name: String): ConversationSummary =
+        ConversationSummary(
+            threadId = ThreadId(id),
+            channelId = ChannelId(id),
+            kind = ConversationKind.Channel,
+            name = name
+        )
+
+    private fun directMessage(
+        id: String,
+        name: String,
+        memberId: String,
+        presence: Presence
+    ): ConversationSummary =
+        ConversationSummary(
+            threadId = ThreadId(id),
+            channelId = ChannelId(id),
+            kind = ConversationKind.DirectMessage,
+            name = name,
+            presence = presence,
+            presenceMemberId = MemberId(memberId)
         )
 
     private fun sampleMember(): MemberProfile =

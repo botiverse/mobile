@@ -143,7 +143,7 @@ class SharedHomeStore(
                 _state.value.copy(
                     content =
                         SharedHomeContentState.Content(
-                            snapshot = result.data,
+                            snapshot = result.data.preserveStableRowsFrom(currentContent?.snapshot),
                             session = session,
                             contentRefreshing = currentContent?.contentRefreshing == true
                         )
@@ -189,11 +189,12 @@ class SharedHomeStore(
                     val latestSwitch = _state.value.serverSwitchState
                     val cachedServerId = cached.data.server.id
                     if (latestSwitch.isCurrent(request.requestGeneration, cachedServerId)) {
+                        val previousSnapshot = (_state.value.content as? SharedHomeContentState.Content)?.snapshot
                         _state.value =
                             _state.value.copy(
                                 content =
                                     SharedHomeContentState.Content(
-                                        cached.data,
+                                        cached.data.preserveStableRowsFrom(previousSnapshot),
                                         activeSession,
                                         contentRefreshing = showRefreshAffordance
                                     ),
@@ -216,9 +217,14 @@ class SharedHomeStore(
                 ?: activeServerId?.let(::ServerId)
             val latestSwitch = _state.value.serverSwitchState
             if (resultServerId == null || latestSwitch.isCurrent(request.requestGeneration, resultServerId)) {
+                val nextContent =
+                    (result as? SharedHomeContentState.Content)?.let { content ->
+                        val previousSnapshot = (_state.value.content as? SharedHomeContentState.Content)?.snapshot
+                        content.copy(snapshot = content.snapshot.preserveStableRowsFrom(previousSnapshot))
+                    } ?: result
                 _state.value =
                     _state.value.copy(
-                        content = result,
+                        content = nextContent,
                         serverSwitchState =
                             if (resultServerId != null) {
                                 latestSwitch.complete(request.requestGeneration, resultServerId)

@@ -39,16 +39,26 @@ class ComposeLocalWriteThrough(
             )
         }
 
-    suspend fun writeHomeResult(result: DataResult<HomeSnapshot>, source: String) {
+    suspend fun writeHomeResult(result: DataResult<HomeSnapshot>, source: String): Boolean {
         val snapshot = (result as? DataResult.Content)?.data
         if (snapshot == null) {
             logger("write_home_skip source=$source reason=${result.localWriteSkipReason()}")
-            return
+            return false
         }
-        store.writeHome(snapshot.withStoredDirectMessagePresence(store.readHome(snapshot.server.id)))
+        val previous = store.readHome(snapshot.server.id)
+        val updatedSnapshot =
+            snapshot
+                .withStoredDirectMessagePresence(previous)
+                .preserveStableRowsFrom(previous)
+        if (updatedSnapshot == previous) {
+            logger("write_home_skip source=$source reason=unchanged serverId=${snapshot.server.id.value}")
+            return false
+        }
+        store.writeHome(updatedSnapshot)
         logger(
             "write_home source=$source serverId=${snapshot.server.id.value} channels=${snapshot.channels.size} directMessages=${snapshot.directMessages.size}"
         )
+        return true
     }
 
     suspend fun writeThreadResult(
@@ -98,14 +108,16 @@ class ComposeLocalWriteThrough(
         }
         store.writeUnread(snapshot)
         store.readHome(snapshot.server.id)?.let { home ->
-            store.writeHome(
+            val updatedHome =
                 home.copy(
                     channels = home.channels.map { it.withUnreadCounts(snapshot.unreadCounts) },
                     directMessages =
                         home.directMessages.map { it.withUnreadCounts(snapshot.unreadCounts) },
                     unreadTotal = snapshot.totalUnreadCount
-                )
-            )
+                ).preserveStableRowsFrom(home)
+            if (updatedHome != home) {
+                store.writeHome(updatedHome)
+            }
         }
         logger(
             "write_home_unread source=$source serverId=${snapshot.server.id.value} counts=${snapshot.unreadCounts.size} total=${snapshot.totalUnreadCount}"
@@ -406,6 +418,47 @@ private fun HomeSnapshot.withStoredDirectMessagePresence(previous: HomeSnapshot?
             }
     )
 }
+
+internal fun HomeSnapshot.preserveStableRowsFrom(previous: HomeSnapshot?): HomeSnapshot {
+    previous ?: return this
+    val stableChannels = channels.preserveStableItemsFrom(previous.channels) { conversation -> conversation.homeRowKey() }
+    val stableDirectMessages =
+        directMessages.preserveStableItemsFrom(previous.directMessages) { conversation -> conversation.homeRowKey() }
+    if (stableChannels === channels && stableDirectMessages === directMessages) {
+        return this
+    }
+    return copy(channels = stableChannels, directMessages = stableDirectMessages)
+}
+
+private inline fun <T, K> List<T>.preserveStableItemsFrom(
+    previous: List<T>,
+    keySelector: (T) -> K
+): List<T> {
+    if (isEmpty() || previous.isEmpty()) return this
+    val previousByKey = previous.associateBy(keySelector)
+    var reusedAnyReference = false
+    val stableItems =
+        map { incoming ->
+            val previousItem = previousByKey[keySelector(incoming)]
+            if (previousItem != null && previousItem == incoming) {
+                reusedAnyReference = reusedAnyReference || previousItem !== incoming
+                previousItem
+            } else {
+                incoming
+            }
+        }
+    val fullyMatchesPrevious =
+        stableItems.size == previous.size &&
+            stableItems.indices.all { index -> stableItems[index] === previous[index] }
+    return when {
+        fullyMatchesPrevious -> previous
+        reusedAnyReference -> stableItems
+        else -> this
+    }
+}
+
+private fun ConversationSummary.homeRowKey(): String =
+    channelId?.value ?: threadId.value
 
 private fun ConversationSummary.withUnreadCounts(
     unreadCounts: Map<ChannelId, Int>

@@ -20,6 +20,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ComposeLocalWriteThroughTest {
     @Test
@@ -56,6 +57,21 @@ class ComposeLocalWriteThroughTest {
         assertEquals(Presence.Active, cached?.presence)
         assertEquals(MemberId("agent-1"), cached?.presenceMemberId)
         assertEquals("new", cached?.lastMessagePreview)
+    }
+
+    @Test
+    fun duplicateHomeSnapshotWriteIsSkipped() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store, logger = logs::add)
+        val snapshot = home(channels = listOf(channel(), channel("channel-2")))
+
+        writer.writeHomeResult(DataResult.Content(snapshot), source = "test_home")
+        writer.writeHomeResult(DataResult.Content(snapshot), source = "test_home")
+
+        assertEquals(listOf("channel-1", "channel-2"), store.readHome(serverId)?.channels?.map { it.threadId.value })
+        assertEquals(1, logs.count { it.startsWith("write_home source=test_home") })
+        assertEquals(1, logs.count { it.startsWith("write_home_skip source=test_home reason=unchanged") })
     }
 
     @Test
@@ -210,6 +226,41 @@ class ComposeLocalWriteThroughTest {
     }
 
     @Test
+    fun writeUnreadCountsOnlyReplacesMatchingHomeRows() = runBlocking {
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store)
+        store.writeHome(
+            home(
+                channels =
+                    listOf(
+                        channel("channel-1").copy(unreadCount = 0, unreadCountKnown = true),
+                        channel("channel-2").copy(unreadCount = 0, unreadCountKnown = true)
+                    )
+            )
+        )
+        val before = store.readHome(serverId)?.channels.orEmpty()
+
+        writer.writeUnreadCounts(
+            DataResult.Content(
+                ChannelUnreadSnapshot(
+                    server = server,
+                    unreadCounts = mapOf(ChannelId("channel-1") to 3),
+                    totalUnreadCount = 3
+                )
+            ),
+            source = "test_unread"
+        )
+
+        val cached = store.readHome(serverId)
+        val after = cached?.channels.orEmpty()
+        assertEquals(3, after[0].unreadCount)
+        assertEquals(0, after[1].unreadCount)
+        assertEquals(3, cached?.unreadTotal)
+        assertTrue(before[0] !== after[0])
+        assertTrue(before[1] === after[1])
+    }
+
+    @Test
     fun heartbeatDoesNotRewriteSnapshots() = runBlocking {
         val logs = mutableListOf<String>()
         val store = InMemoryComposeLocalDataStore()
@@ -233,12 +284,12 @@ class ComposeLocalWriteThroughTest {
             unreadTotal = 0
         )
 
-    private fun channel(): ConversationSummary =
+    private fun channel(id: String = "channel-1"): ConversationSummary =
         ConversationSummary(
-            threadId = ThreadId("channel-1"),
-            channelId = ChannelId("channel-1"),
+            threadId = ThreadId(id),
+            channelId = ChannelId(id),
             kind = ConversationKind.Channel,
-            name = "general"
+            name = if (id == "channel-1") "general" else id
         )
 
     private fun message(
