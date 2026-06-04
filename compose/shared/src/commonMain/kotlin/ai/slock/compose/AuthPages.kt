@@ -9,7 +9,7 @@ import androidx.compose.runtime.setValue
 import ai.slock.compose.base.Utils
 import ai.slock.compose.data.BridgeAuthApi
 import ai.slock.compose.data.KuiklyAuthSessionStore
-import ai.slock.compose.data.KuiklyRelationalStore
+import ai.slock.compose.data.createSlockRelationalStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
 import com.tencent.kuikly.compose.foundation.background
@@ -99,7 +99,7 @@ private fun LoginScreen() {
         remember {
             SharedAuthDataSource(
                 transport = BridgeAuthApi(bridge),
-                sessionStore = KuiklyAuthSessionStore(KuiklyRelationalStore(bridge))
+                sessionStore = KuiklyAuthSessionStore(createSlockRelationalStore(bridge))
             )
         }
     val reducer = remember { LoginFormReducer() }

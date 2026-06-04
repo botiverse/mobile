@@ -9,7 +9,7 @@ import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.parseSharedThreadUploadedAttachments
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KuiklyAuthSessionStore
-import ai.slock.compose.data.KuiklyRelationalStore
+import ai.slock.compose.data.createSlockRelationalStore
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.RelationalComposeLocalDataStore
 import ai.slock.compose.data.RealChannelRepository
@@ -432,7 +432,7 @@ private fun ThreadPageScreen() {
             instanceId = instanceId
         )
     }
-    val relationalStore = remember { KuiklyRelationalStore(bridge) }
+    val relationalStore = remember { createSlockRelationalStore(bridge) }
     val authStore = remember { KuiklyAuthSessionStore(relationalStore) }
     val localWriteThrough =
         remember {

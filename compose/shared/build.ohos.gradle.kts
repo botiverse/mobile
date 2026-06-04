@@ -67,6 +67,12 @@ kotlin {
                 api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyOhosVersion()}")
             }
         }
+        val ohosArm64Main by getting {
+            dependencies {
+                implementation("app.cash.sqldelight:runtime:2.1.0-KBA-001")
+                implementation("app.cash.sqldelight:native-driver-ohosarm64:2.1.0-KBA-001")
+            }
+        }
 
         // val iosX64Main by getting
         // val iosArm64Main by getting

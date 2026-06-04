@@ -22,7 +22,7 @@ import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
 import ai.slock.compose.data.KeyValueLocalePreferenceStore
 import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklyNotificationPreferenceEvents
-import ai.slock.compose.data.KuiklyRelationalStore
+import ai.slock.compose.data.createSlockRelationalStore
 import ai.slock.compose.data.MOBILE_ACTION_LANGUAGE
 import ai.slock.compose.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import ai.slock.compose.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
@@ -624,7 +624,7 @@ private fun SlockAppShellContent() {
     var selectedHomeConversationId by remember { mutableStateOf<String?>(null) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val relationalStore = remember { KuiklyRelationalStore(bridge) }
+    val relationalStore = remember { createSlockRelationalStore(bridge) }
     val authStore = remember { KuiklyAuthSessionStore(relationalStore) }
     val localWriteThrough =
         remember {
@@ -3749,7 +3749,7 @@ private fun AppShellAuthErrorContent(
 
 @Composable
 private fun SharedMembersScreen(bridge: ai.slock.compose.base.BridgeModule) {
-    val authStore = remember { KuiklyAuthSessionStore(KuiklyRelationalStore(bridge)) }
+    val authStore = remember { KuiklyAuthSessionStore(createSlockRelationalStore(bridge)) }
     val pager = LocalActivity.current.getPager() as Pager
     val memberRepository =
         remember {
