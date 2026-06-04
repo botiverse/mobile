@@ -40,11 +40,9 @@ class SqlDelightSlockLocalStoreTest {
         val database = SlockDatabase(driver)
 
         database.slockDatabaseQueries.upsertConversation(
-            id = "thread-1",
+            server_id = "server-1",
             channel_id = "channel-1",
             thread_id = "thread-1",
-            stream_channel_id = "channel-1",
-            server_id = "server-1",
             kind = "Channel",
             name = "general",
             subtitle = null,
@@ -64,10 +62,7 @@ class SqlDelightSlockLocalStoreTest {
             joined = 1L,
             archived = 0L,
             member_count = null,
-            can_read = 1L,
-            can_send = 1L,
-            can_attach = 1L,
-            can_create_task = 1L,
+            capabilities = 15L,
             updated_at_label = null,
             last_synced_at_ms = 1L
         )
@@ -78,10 +73,6 @@ class SqlDelightSlockLocalStoreTest {
                 .selectConversation(
                     "thread-1",
                     "thread-1",
-                    "thread-1",
-                    "thread-1",
-                    "thread-1",
-                    "thread-1",
                     "thread-1"
                 )
                 .executeAsOne()
@@ -90,7 +81,7 @@ class SqlDelightSlockLocalStoreTest {
     }
 
     @Test
-    fun migrationSixClearsLocalCacheRows() {
+    fun migrationSevenRebuildsLocalCacheRows() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         SlockDatabase.Schema.create(driver)
         val database = SlockDatabase(driver)
@@ -107,7 +98,7 @@ class SqlDelightSlockLocalStoreTest {
         )
         store.upsertMessage(message("message-1", seq = 1), syncedAtMs = 11L, streamChannelId = ChannelId("channel-1"))
 
-        SlockDatabase.Schema.migrate(driver, 5, 6)
+        SlockDatabase.Schema.migrate(driver, 6, 7)
 
         assertEquals(emptyList<ConversationSummary>(), store.getHomeConversations(ServerId("server-1")).channels)
         assertEquals(emptyList<Message>(), store.getMessagesForThread(ThreadId("channel-1"), ServerId("server-1")))
