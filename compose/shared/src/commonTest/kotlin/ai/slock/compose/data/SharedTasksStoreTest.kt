@@ -70,7 +70,43 @@ class SharedTasksStoreTest {
 
         assertIs<DataResult.Content<TaskSnapshot>>(result)
         assertEquals(ServerId("server-1"), repository.lastServerId)
+        assertEquals(SharedTasksScope.Server, repository.lastScope)
         assertEquals(setOf(TaskStatus.Todo), repository.lastFilter?.statuses)
+    }
+
+    @Test
+    fun sharedTasksUseCaseLoadsChannelScopeThroughRepository() = runBlocking {
+        val repository =
+            FakeTasksRepository(
+                loadResult =
+                    DataResult.Content(
+                        TaskSnapshot(
+                            tasks = listOf(task("task-1", TaskStatus.Todo)),
+                            summaryCounts = mapOf(TaskStatus.Todo to 1)
+                        )
+                    )
+            )
+        val channelId = ChannelId("thread-channel-1")
+        val useCase =
+            SharedTasksUseCase(
+                authStore =
+                    InMemorySlockAuthSessionStore(
+                        StoredAuthSession(
+                            user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                            accessToken = "token",
+                            refreshToken = "refresh",
+                            selectedServerId = "server-1"
+                        )
+                    ),
+                repository = repository,
+                scope = SharedTasksScope.Channel(channelId)
+            )
+
+        val result = useCase.refreshTasks(TasksLoadRequest())
+
+        assertIs<DataResult.Content<TaskSnapshot>>(result)
+        assertEquals(ServerId("server-1"), repository.lastServerId)
+        assertEquals(SharedTasksScope.Channel(channelId), repository.lastScope)
     }
 
     @Test
@@ -97,14 +133,69 @@ class SharedTasksStoreTest {
                 remoteDataSource = remote
             )
 
-        val refreshResult = repository.refreshTasks(serverId, TaskFilter(statuses = setOf(TaskStatus.Todo)))
-        val observed = repository.observeTasks(serverId, TaskFilter(statuses = setOf(TaskStatus.Todo))).first()
+        val refreshResult =
+            repository.refreshTasks(
+                serverId,
+                SharedTasksScope.Server,
+                TaskFilter(statuses = setOf(TaskStatus.Todo))
+            )
+        val observed =
+            repository.observeTasks(
+                serverId,
+                SharedTasksScope.Server,
+                TaskFilter(statuses = setOf(TaskStatus.Todo))
+            ).first()
 
         val refreshContent = assertIs<DataResult.Content<TaskSnapshot>>(refreshResult).data
         val observedContent = assertIs<DataResult.Content<TaskSnapshot>>(observed).data
         assertEquals(listOf("task-1"), refreshContent.tasks.map { it.id.value })
         assertEquals(listOf("task-1"), observedContent.tasks.map { it.id.value })
         assertEquals(TaskFilter(), remote.lastFilter)
+    }
+
+    @Test
+    fun sharedTasksRepositoryKeepsChannelRefreshScopedToChannelCache() = runBlocking {
+        val serverId = ServerId("server-1")
+        val channelId = ChannelId("channel-thread")
+        val local =
+            InMemorySharedTasksLocalDataSource(
+                mapOf(
+                    serverId to
+                        TaskSnapshot(
+                            tasks = listOf(task("task-server", TaskStatus.Todo, channelName = "general")),
+                            summaryCounts = emptyMap()
+                        )
+                )
+            )
+        val remote =
+            FakeTasksRemoteDataSource(
+                channelLoadResult =
+                    DataResult.Content(
+                        TaskSnapshot(
+                            tasks = listOf(task("task-channel", TaskStatus.InProgress, channelName = "thread")),
+                            summaryCounts = emptyMap()
+                        )
+                    )
+            )
+        val repository =
+            SharedTasksDataRepository(
+                localDataSource = local,
+                remoteDataSource = remote
+            )
+
+        val channelResult =
+            repository.refreshTasks(
+                serverId = serverId,
+                scope = SharedTasksScope.Channel(channelId),
+                filter = TaskFilter()
+            )
+        val serverObserved = repository.observeTasks(serverId, SharedTasksScope.Server, TaskFilter()).first()
+        val channelObserved = repository.observeTasks(serverId, SharedTasksScope.Channel(channelId), TaskFilter()).first()
+
+        assertEquals(listOf("task-channel"), assertIs<DataResult.Content<TaskSnapshot>>(channelResult).data.tasks.map { it.id.value })
+        assertEquals(listOf("task-server"), assertIs<DataResult.Content<TaskSnapshot>>(serverObserved).data.tasks.map { it.id.value })
+        assertEquals(listOf("task-channel"), assertIs<DataResult.Content<TaskSnapshot>>(channelObserved).data.tasks.map { it.id.value })
+        assertEquals(channelId, remote.lastChannelId)
     }
 
     @Test
@@ -463,15 +554,26 @@ class SharedTasksStoreTest {
             private set
         var lastServerId: ServerId? = null
             private set
+        var lastScope: SharedTasksScope? = null
+            private set
         var lastFilter: TaskFilter? = null
             private set
 
-        override fun observeTasks(serverId: ServerId, filter: TaskFilter): Flow<DataResult<TaskSnapshot>> =
+        override fun observeTasks(
+            serverId: ServerId,
+            scope: SharedTasksScope,
+            filter: TaskFilter
+        ): Flow<DataResult<TaskSnapshot>> =
             flowOf(loadResult)
 
-        override suspend fun refreshTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot> {
+        override suspend fun refreshTasks(
+            serverId: ServerId,
+            scope: SharedTasksScope,
+            filter: TaskFilter
+        ): DataResult<TaskSnapshot> {
             loadCalls += 1
             lastServerId = serverId
+            lastScope = scope
             lastFilter = filter
             return loadResult
         }
@@ -494,6 +596,8 @@ class SharedTasksStoreTest {
     private class FakeTasksRemoteDataSource(
         private val loadResult: DataResult<TaskSnapshot> =
             DataResult.Error(ScreenError("not_configured")),
+        private val channelLoadResult: DataResult<TaskSnapshot> =
+            DataResult.Error(ScreenError("not_configured")),
         private val updateResult: DataResult<TaskActionResult> =
             DataResult.Error(ScreenError("not_configured")),
         private val createResult: DataResult<TaskSnapshot> =
@@ -501,10 +605,18 @@ class SharedTasksStoreTest {
     ) : SharedTasksRemoteDataSource {
         var lastFilter: TaskFilter? = null
             private set
+        var lastChannelId: ChannelId? = null
+            private set
 
         override suspend fun loadTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot> {
             lastFilter = filter
             return loadResult
+        }
+
+        override suspend fun loadChannelTasks(channelId: ChannelId, filter: TaskFilter): DataResult<TaskSnapshot> {
+            lastChannelId = channelId
+            lastFilter = filter
+            return channelLoadResult
         }
 
         override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult> =

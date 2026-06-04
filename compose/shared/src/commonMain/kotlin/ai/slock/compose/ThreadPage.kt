@@ -5,6 +5,7 @@ import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
 import ai.slock.compose.data.BridgeThreadApi
+import ai.slock.compose.data.BridgeTasksApi
 import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.parseSharedThreadUploadedAttachments
 import ai.slock.compose.data.ComposeLocalWriteThrough
@@ -18,12 +19,16 @@ import ai.slock.compose.data.ScreenError
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.ThreadApiResult
+import ai.slock.compose.data.SharedTasksDataSource
 import ai.slock.compose.data.SharedTasksRouteIntent
+import ai.slock.compose.data.SharedTasksScope
+import ai.slock.compose.data.SharedTasksViewModel
 import ai.slock.compose.data.SqlDelightComposeLocalDataStore
 import ai.slock.compose.data.SqlDelightRelationalStore
+import ai.slock.compose.data.TaskSnapshot
 import ai.slock.compose.data.TasksUiState
 import ai.slock.compose.data.createSlockSqlDatabase
-import ai.slock.compose.data.toTasksUiStateForThreadTasks
+import ai.slock.compose.data.summaryCounts
 import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
@@ -32,6 +37,7 @@ import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.markdown.ThreadMarkdownTag
 import ai.slock.compose.markdown.ThreadMarkdownTagKind
 import ai.slock.compose.markdown.threadMarkdownTagDisplayLabel
+import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -491,10 +497,18 @@ private fun ThreadPageScreen() {
                     )
             )
         }
+    val tasksDataSource =
+        remember {
+            SharedTasksDataSource(
+                api = BridgeTasksApi(bridge, authStore)
+            )
+        }
     SharedThreadRouteContent(
         initialPayload = payload,
         bridge = bridge,
         dataSource = dataSource,
+        authStore = authStore,
+        tasksDataSource = tasksDataSource,
         onBack = {
             pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
         }
@@ -765,6 +779,8 @@ internal fun SharedThreadRouteContent(
     initialPayload: KuiklyThreadScreenPayload,
     bridge: ai.slock.compose.base.BridgeModule,
     dataSource: SharedThreadDataSource,
+    authStore: KuiklyAuthSessionStore,
+    tasksDataSource: SharedTasksDataSource,
     onBack: () -> Unit,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
     onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit = onOpenThreadPayload,
@@ -776,6 +792,20 @@ internal fun SharedThreadRouteContent(
         }
     val threadState by threadViewModel.state.collectAsState()
     val payload = threadState.payload
+    val taskChannelId =
+        initialPayload.sourceThreadId
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::ChannelId)
+            ?: ChannelId(initialPayload.instanceId)
+    val tasksViewModel: SharedTasksViewModel =
+        viewModel(key = "shared-thread-tasks-${taskChannelId.value}") {
+            SharedTasksViewModel(
+                authStore = authStore,
+                dataSource = tasksDataSource,
+                scope = SharedTasksScope.Channel(taskChannelId)
+            )
+        }
+    val tasksState by tasksViewModel.state.collectAsState()
     var composerDraftText by remember(initialPayload.instanceId) { mutableStateOf("") }
     var composerDraftAsTask by remember(initialPayload.instanceId) { mutableStateOf(false) }
     var composerSyncNonce by remember(initialPayload.instanceId) { mutableStateOf(0) }
@@ -798,6 +828,19 @@ internal fun SharedThreadRouteContent(
         removedAttachmentIds = emptySet()
         uploadedAttachments = emptyList()
         threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
+    }
+    LaunchedEffect(payload.sourceThreadId, payload.tasks) {
+        if (payload.tasks.isNotEmpty()) {
+            val taskSummaries = payload.tasks.map { it.toTaskSummary() }
+            tasksViewModel.dispatch(
+                SharedTasksRouteIntent.SeedContent(
+                    TaskSnapshot(
+                        tasks = taskSummaries,
+                        summaryCounts = taskSummaries.summaryCounts()
+                    )
+                )
+            )
+        }
     }
 
     val routeFilesPayload = remember(payload.filesPayload, payload.instanceId) {
@@ -999,6 +1042,8 @@ internal fun SharedThreadRouteContent(
             payload = renderedPayload,
             filesPayload = filesPayload,
             composerPayload = composerPayload,
+            tasksState = tasksState,
+            onTasksIntent = tasksViewModel::dispatch,
             highlightedMentions = threadState.highlightedMentions,
             diagnosticsLogger = { bridge.log(it) },
             onBack = onBack,
@@ -2007,6 +2052,8 @@ private fun ThreadPageContent(
     payload: KuiklyThreadScreenPayload,
     filesPayload: KuiklyThreadFilesPayload,
     composerPayload: KuiklyThreadComposerPayload,
+    tasksState: TasksUiState,
+    onTasksIntent: (SharedTasksRouteIntent) -> Unit,
     highlightedMentions: Set<String>,
     diagnosticsLogger: (String) -> Unit = {},
     onBack: () -> Unit,
@@ -2019,8 +2066,13 @@ private fun ThreadPageContent(
     var activeModal by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var activeMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var composerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(0f) }
-    var selectedTasksFilter by remember(payload.instanceId) { mutableStateOf<TaskStatus?>(null) }
-    val tasksTabCache = remember(payload.instanceId) { ThreadTasksTabCache() }
+    val taskChannelId =
+        remember(payload.sourceThreadId, payload.instanceId) {
+            payload.sourceThreadId
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::ChannelId)
+                ?: ChannelId(payload.instanceId)
+        }
     val openMarkdownTag: (ThreadMarkdownTag) -> Unit = { tag ->
         when (tag.kind) {
             ThreadMarkdownTagKind.UserMention -> {
@@ -2078,6 +2130,11 @@ private fun ThreadPageContent(
                     }
                 )
             }
+            LaunchedEffect(selectedTab, taskChannelId) {
+                if (selectedTab == KuiklyThreadTab.Tasks) {
+                    onTasksIntent(SharedTasksRouteIntent.Start)
+                }
+            }
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)
             ) {
@@ -2094,13 +2151,11 @@ private fun ThreadPageContent(
                         )
                     KuiklyThreadTab.Tasks ->
                         ThreadTasksTab(
-                            tasks = payload.tasks,
-                            selectedFilter = selectedTasksFilter,
-                            cache = tasksTabCache,
+                            state = tasksState,
+                            channelId = taskChannelId,
                             openTaskEnabled = payload.showTaskOpenActions,
                             onOpenTask = { onThreadEvent("openTask", it, null, null) },
-                            onSelectedFilterChange = { selectedTasksFilter = it },
-                            onStatusChange = { taskId, status -> onThreadEvent("setTaskStatus", taskId, null, status.name) }
+                            onIntent = onTasksIntent
                         )
                     KuiklyThreadTab.Files ->
                         ThreadFilesContent(payload = filesPayload) { action, attachmentId ->
@@ -4251,62 +4306,24 @@ private fun ThreadAttachmentChip(
 
 @Composable
 private fun ThreadTasksTab(
-    tasks: List<KuiklyThreadTaskItem>,
-    selectedFilter: TaskStatus?,
-    cache: ThreadTasksTabCache,
+    state: TasksUiState,
+    channelId: ChannelId,
     openTaskEnabled: Boolean,
     onOpenTask: (String) -> Unit,
-    onSelectedFilterChange: (TaskStatus?) -> Unit,
-    onStatusChange: (String, TaskStatus) -> Unit
+    onIntent: (SharedTasksRouteIntent) -> Unit
 ) {
-    val state = cache.uiState(tasks, selectedFilter)
     SharedTasksPanel(
         state = state,
         showHeader = false,
         showChannelFilter = false,
+        createTasksChannelId = channelId,
         onOpenTask = if (openTaskEnabled) {
             { task -> onOpenTask(task.id.value) }
         } else {
             null
         },
-        onIntent = { intent ->
-            when (intent) {
-                SharedTasksRouteIntent.Start,
-                SharedTasksRouteIntent.Refresh,
-                SharedTasksRouteIntent.ClearNavigationError -> Unit
-                is SharedTasksRouteIntent.SelectFilter ->
-                    onSelectedFilterChange(intent.status)
-                is SharedTasksRouteIntent.UpdateStatus ->
-                    onStatusChange(intent.task.id.value, intent.status)
-                is SharedTasksRouteIntent.CreateTasks -> Unit
-            }
-        }
+        onIntent = onIntent
     )
-}
-
-private class ThreadTasksTabCache {
-    private var sourceTasks: List<KuiklyThreadTaskItem>? = null
-    private var summaries: List<TaskSummary> = emptyList()
-    private var cachedFilter: TaskStatus? = null
-    private var cachedState: TasksUiState? = null
-
-    fun uiState(tasks: List<KuiklyThreadTaskItem>, selectedFilter: TaskStatus?): TasksUiState {
-        if (sourceTasks !== tasks) {
-            sourceTasks = tasks
-            summaries = tasks.map { it.toTaskSummary() }
-            cachedState = null
-        }
-        val existing = cachedState
-        if (existing != null && cachedFilter == selectedFilter) {
-            return existing
-        }
-        return summaries.toTasksUiStateForThreadTasks()
-            .copy(selectedFilter = selectedFilter)
-            .also {
-                cachedFilter = selectedFilter
-                cachedState = it
-            }
-    }
 }
 
 private fun KuiklyThreadTaskItem.toTaskSummary(): TaskSummary =

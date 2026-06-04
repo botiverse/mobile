@@ -9,6 +9,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.mapNotNull
 
+sealed interface SharedTasksScope {
+    data object Server : SharedTasksScope
+    data class Channel(val channelId: ChannelId) : SharedTasksScope
+}
+
 /**
  * Domain-facing Tasks repository.
  *
@@ -16,9 +21,9 @@ import kotlinx.coroutines.flow.mapNotNull
  * results, while the implementation decides which lower data source is used.
  */
 interface SharedTasksRepository {
-    fun observeTasks(serverId: ServerId, filter: TaskFilter): Flow<DataResult<TaskSnapshot>>
+    fun observeTasks(serverId: ServerId, scope: SharedTasksScope, filter: TaskFilter): Flow<DataResult<TaskSnapshot>>
 
-    suspend fun refreshTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot>
+    suspend fun refreshTasks(serverId: ServerId, scope: SharedTasksScope, filter: TaskFilter): DataResult<TaskSnapshot>
 
     suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult>
 
@@ -29,16 +34,28 @@ class SharedTasksDataRepository(
     private val localDataSource: SharedTasksLocalDataSource = InMemorySharedTasksLocalDataSource(),
     private val remoteDataSource: SharedTasksRemoteDataSource
 ) : SharedTasksRepository {
-    override fun observeTasks(serverId: ServerId, filter: TaskFilter): Flow<DataResult<TaskSnapshot>> =
-        localDataSource.observeTasks(serverId, filter).mapNotNull { snapshot ->
+    override fun observeTasks(
+        serverId: ServerId,
+        scope: SharedTasksScope,
+        filter: TaskFilter
+    ): Flow<DataResult<TaskSnapshot>> =
+        localDataSource.observeTasks(serverId, scope, filter).mapNotNull { snapshot ->
             snapshot?.toTasksDataResult()
         }
 
-    override suspend fun refreshTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot> {
-        val remoteResult = remoteDataSource.loadTasks(serverId, TaskFilter())
+    override suspend fun refreshTasks(
+        serverId: ServerId,
+        scope: SharedTasksScope,
+        filter: TaskFilter
+    ): DataResult<TaskSnapshot> {
+        val remoteResult =
+            when (scope) {
+                SharedTasksScope.Server -> remoteDataSource.loadTasks(serverId, TaskFilter())
+                is SharedTasksScope.Channel -> remoteDataSource.loadChannelTasks(scope.channelId, TaskFilter())
+            }
         if (remoteResult is DataResult.Content) {
-            localDataSource.replaceTasks(serverId, remoteResult.data)
-            return localDataSource.cachedTasks(serverId, filter)?.toTasksDataResult()
+            localDataSource.replaceTasks(serverId, scope, remoteResult.data)
+            return localDataSource.cachedTasks(serverId, scope, filter)?.toTasksDataResult()
                 ?: DataResult.Empty(EmptyReason.NoTasks)
         }
         return remoteResult
@@ -63,20 +80,24 @@ class SharedTasksDataRepository(
     ): DataResult<TaskSnapshot> {
         val result = remoteDataSource.createTasks(channelId, titles)
         if (result is DataResult.Content) {
-            localDataSource.mergeTasks(serverId, result.data)
+            val channelScope = SharedTasksScope.Channel(channelId)
+            localDataSource.mergeTasks(serverId, channelScope, result.data)
+            localDataSource.mergeTasksIfPresent(serverId, SharedTasksScope.Server, result.data)
         }
         return result
     }
 }
 
 interface SharedTasksLocalDataSource {
-    fun observeTasks(serverId: ServerId, filter: TaskFilter): Flow<TaskSnapshot?>
+    fun observeTasks(serverId: ServerId, scope: SharedTasksScope, filter: TaskFilter): Flow<TaskSnapshot?>
 
-    suspend fun cachedTasks(serverId: ServerId, filter: TaskFilter): TaskSnapshot?
+    suspend fun cachedTasks(serverId: ServerId, scope: SharedTasksScope, filter: TaskFilter): TaskSnapshot?
 
-    suspend fun replaceTasks(serverId: ServerId, snapshot: TaskSnapshot)
+    suspend fun replaceTasks(serverId: ServerId, scope: SharedTasksScope, snapshot: TaskSnapshot)
 
-    suspend fun mergeTasks(serverId: ServerId, snapshot: TaskSnapshot)
+    suspend fun mergeTasks(serverId: ServerId, scope: SharedTasksScope, snapshot: TaskSnapshot)
+
+    suspend fun mergeTasksIfPresent(serverId: ServerId, scope: SharedTasksScope, snapshot: TaskSnapshot)
 
     suspend fun upsertTask(serverId: ServerId, task: TaskSummary)
 }
@@ -84,50 +105,83 @@ interface SharedTasksLocalDataSource {
 interface SharedTasksRemoteDataSource {
     suspend fun loadTasks(serverId: ServerId, filter: TaskFilter = TaskFilter()): DataResult<TaskSnapshot>
 
+    suspend fun loadChannelTasks(channelId: ChannelId, filter: TaskFilter = TaskFilter()): DataResult<TaskSnapshot>
+
     suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult>
 
     suspend fun createTasks(channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot>
 }
 
+private data class SharedTasksCacheKey(
+    val serverId: ServerId,
+    val scopeId: String
+)
+
+private fun SharedTasksCacheKey(serverId: ServerId, scope: SharedTasksScope): SharedTasksCacheKey =
+    SharedTasksCacheKey(
+        serverId = serverId,
+        scopeId =
+            when (scope) {
+                SharedTasksScope.Server -> "server"
+                is SharedTasksScope.Channel -> "channel:${scope.channelId.value}"
+            }
+    )
+
 class InMemorySharedTasksLocalDataSource(
     initialSnapshots: Map<ServerId, TaskSnapshot> = emptyMap()
 ) : SharedTasksLocalDataSource {
-    private val snapshots = MutableStateFlow(initialSnapshots)
+    private val snapshots =
+        MutableStateFlow(initialSnapshots.mapKeys { (serverId, _) -> SharedTasksCacheKey(serverId, SharedTasksScope.Server) })
 
-    override fun observeTasks(serverId: ServerId, filter: TaskFilter): Flow<TaskSnapshot?> =
+    override fun observeTasks(serverId: ServerId, scope: SharedTasksScope, filter: TaskFilter): Flow<TaskSnapshot?> =
         snapshots.mapNotNull { current ->
-            current[serverId]?.filteredBy(filter)
+            current[SharedTasksCacheKey(serverId, scope)]?.filteredBy(filter)
         }
 
-    override suspend fun cachedTasks(serverId: ServerId, filter: TaskFilter): TaskSnapshot? =
-        snapshots.value[serverId]?.filteredBy(filter)
+    override suspend fun cachedTasks(serverId: ServerId, scope: SharedTasksScope, filter: TaskFilter): TaskSnapshot? =
+        snapshots.value[SharedTasksCacheKey(serverId, scope)]?.filteredBy(filter)
 
-    override suspend fun replaceTasks(serverId: ServerId, snapshot: TaskSnapshot) {
-        snapshots.value = snapshots.value + (serverId to snapshot.normalized())
+    override suspend fun replaceTasks(serverId: ServerId, scope: SharedTasksScope, snapshot: TaskSnapshot) {
+        snapshots.value = snapshots.value + (SharedTasksCacheKey(serverId, scope) to snapshot.normalized())
     }
 
-    override suspend fun mergeTasks(serverId: ServerId, snapshot: TaskSnapshot) {
-        val current = snapshots.value[serverId]
+    override suspend fun mergeTasks(serverId: ServerId, scope: SharedTasksScope, snapshot: TaskSnapshot) {
+        val key = SharedTasksCacheKey(serverId, scope)
+        val current = snapshots.value[key]
         val merged =
             if (current == null) {
                 snapshot.normalized()
             } else {
                 current.merge(snapshot.tasks)
             }
-        snapshots.value = snapshots.value + (serverId to merged)
+        snapshots.value = snapshots.value + (key to merged)
+    }
+
+    override suspend fun mergeTasksIfPresent(serverId: ServerId, scope: SharedTasksScope, snapshot: TaskSnapshot) {
+        val key = SharedTasksCacheKey(serverId, scope)
+        val current = snapshots.value[key] ?: return
+        snapshots.value = snapshots.value + (key to current.merge(snapshot.tasks))
     }
 
     override suspend fun upsertTask(serverId: ServerId, task: TaskSummary) {
-        val current = snapshots.value[serverId]
-        val next =
-            if (current == null) {
-                TaskSnapshot(tasks = listOf(task), summaryCounts = listOf(task).summaryCounts())
-            } else {
-                current.merge(listOf(task))
+        val serverKey = SharedTasksCacheKey(serverId, SharedTasksScope.Server)
+        val nextSnapshots = snapshots.value.toMutableMap()
+        if (serverKey in nextSnapshots) {
+            nextSnapshots[serverKey] = nextSnapshots[serverKey].upsert(task)
+        }
+        task.channelId?.let { channelId ->
+            val channelKey = SharedTasksCacheKey(serverId, SharedTasksScope.Channel(channelId))
+            if (channelKey in nextSnapshots) {
+                nextSnapshots[channelKey] = nextSnapshots[channelKey].upsert(task)
             }
-        snapshots.value = snapshots.value + (serverId to next)
+        }
+        snapshots.value = nextSnapshots
     }
 }
+
+private fun TaskSnapshot?.upsert(task: TaskSummary): TaskSnapshot =
+    this?.merge(listOf(task))
+        ?: TaskSnapshot(tasks = listOf(task), summaryCounts = listOf(task).summaryCounts())
 
 private fun TaskSnapshot.merge(tasksToMerge: List<TaskSummary>): TaskSnapshot {
     val incomingById = tasksToMerge.associateBy { it.id }

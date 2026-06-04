@@ -12,18 +12,19 @@ import kotlinx.coroutines.flow.flowOf
  */
 class SharedTasksUseCase(
     private val authStore: SlockAuthSessionStore,
-    private val repository: SharedTasksRepository
+    private val repository: SharedTasksRepository,
+    private val scope: SharedTasksScope = SharedTasksScope.Server
 ) {
     suspend fun observeTasks(request: TasksLoadRequest): Flow<DataResult<TaskSnapshot>> {
         val serverId =
             authStore.readSession()?.currentServerId?.let(::ServerId)
                 ?: return flowOf(DataResult.Error(ScreenError(code = "selected_server_missing", retryable = false)))
-        return repository.observeTasks(serverId, request.filter)
+        return repository.observeTasks(serverId, scope, request.filter)
     }
 
     suspend fun refreshTasks(request: TasksLoadRequest): DataResult<TaskSnapshot> {
         val serverId = selectedServerIdOrError() ?: return selectedServerMissing()
-        return repository.refreshTasks(serverId, request.filter)
+        return repository.refreshTasks(serverId, scope, request.filter)
     }
 
     suspend fun updateTaskStatus(request: TasksStatusUpdateRequest): DataResult<TaskActionResult> {

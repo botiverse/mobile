@@ -1191,6 +1191,8 @@ private fun SlockAppShellContent() {
                     initialPayload = payload,
                     bridge = bridge,
                     dataSource = threadDataSource,
+                    authStore = authStore,
+                    tasksDataSource = tasksDataSource,
                     onBack = { popThreadRoute() },
                     onOpenThreadPayload = { payload -> openThreadPayload(payload) },
                     onReplaceThreadPayload = { payload -> openThreadPayload(payload, pushCurrent = false) },

@@ -97,6 +97,7 @@ sealed interface SharedTasksRouteIntent {
     data class SelectFilter(val status: TaskStatus?) : SharedTasksRouteIntent
     data class UpdateStatus(val task: TaskSummary, val status: TaskStatus) : SharedTasksRouteIntent
     data object ClearNavigationError : SharedTasksRouteIntent
+    data class SeedContent(val snapshot: TaskSnapshot) : SharedTasksRouteIntent
 
     /**
      * Channel-scoped task creation. The host is responsible for providing the
@@ -130,10 +131,12 @@ sealed interface TasksPresentationIntent {
 class SharedTasksViewModel(
     authStore: SlockAuthSessionStore,
     dataSource: SharedTasksDataSource,
+    private val scope: SharedTasksScope = SharedTasksScope.Server,
     private val useCase: SharedTasksUseCase =
         SharedTasksUseCase(
             authStore = authStore,
-            repository = SharedTasksDataRepository(remoteDataSource = dataSource)
+            repository = SharedTasksDataRepository(remoteDataSource = dataSource),
+            scope = scope
         )
 ) : ViewModel(),
     SharedStateHolder<TasksUiState, SharedTasksRouteIntent, SharedTasksEvent> {
@@ -184,6 +187,8 @@ class SharedTasksViewModel(
             }
             SharedTasksRouteIntent.ClearNavigationError ->
                 store.dispatch(SharedTasksIntent.NavigationFailed(null))
+            is SharedTasksRouteIntent.SeedContent ->
+                store.dispatch(SharedTasksIntent.SetContent(action.snapshot, state.value.selectedFilter))
         }
     }
 
@@ -201,7 +206,7 @@ class SharedTasksViewModel(
             if (result !is DataResult.Content) {
                 result.failureCodeOrNull()?.let { events.emit(SharedTasksEvent.OperationFailed(it)) }
                 store.accept(
-                    if (intent == SharedTasksRouteIntent.Refresh) {
+                    if (intent == SharedTasksRouteIntent.Refresh || state.value.loadState is ScreenLoadState.Content) {
                         SharedTasksIntent.MergeRefreshResult(result, selectedFilter)
                     } else {
                         SharedTasksIntent.SetResult(result, selectedFilter)
@@ -258,10 +263,8 @@ class SharedTasksViewModel(
             when (val result = useCase.createTasks(TasksCreateRequest(channelId, cleaned))) {
                 is DataResult.Content -> {
                     store.accept(SharedTasksIntent.CreateTasksSucceeded(result.data))
-                    // Re-fetch the server-wide list so the new tasks show up in board/list
-                    // without waiting for the next manual refresh. We don't merge the create
-                    // snapshot directly because the channel-scoped response from the create
-                    // endpoint does not include other channels' tasks.
+                    // Re-fetch the active scope so the board/list reflects server-side
+                    // canonical ordering and any derived counts after create.
                     load(SharedTasksRouteIntent.Refresh)
                 }
                 else -> {
