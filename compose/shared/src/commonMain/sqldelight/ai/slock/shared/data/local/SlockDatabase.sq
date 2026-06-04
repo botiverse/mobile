@@ -1,0 +1,716 @@
+-- Server channel metadata. Server-side threads are also rows in channels with
+-- type = 'thread' and parentMessageId set.
+CREATE TABLE channelEntity (
+  serverId TEXT NOT NULL,
+  channelId TEXT NOT NULL,
+  type TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  parentChannelId TEXT,
+  parentMessageId TEXT,
+  avatarUrl TEXT,
+  presence TEXT,
+  agentStatus TEXT,
+  presenceMemberId TEXT,
+  joined INTEGER NOT NULL DEFAULT 1,
+  archived INTEGER NOT NULL DEFAULT 0,
+  memberCount INTEGER,
+  unreadCount INTEGER NOT NULL DEFAULT 0,
+  mentionCount INTEGER NOT NULL DEFAULT 0,
+  lastMessageId TEXT,
+  firstUnreadMessageId TEXT,
+  lastMessagePreview TEXT,
+  lastMessageSenderName TEXT,
+  hasDraft INTEGER NOT NULL DEFAULT 0,
+  replyCount INTEGER NOT NULL DEFAULT 0,
+  -- Bit mask for channel-level permissions:
+  -- 1 = read, 2 = send, 4 = attach, 8 = create task.
+  capabilities INTEGER NOT NULL DEFAULT 15,
+  updatedAtLabel TEXT,
+  lastSyncedAtMs INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (serverId, channelId)
+);
+
+CREATE INDEX channelEntity_serverType ON channelEntity(serverId, type);
+CREATE INDEX channelEntity_parentMessageId ON channelEntity(serverId, parentMessageId);
+CREATE INDEX channelEntity_parentChannelId ON channelEntity(serverId, parentChannelId);
+
+-- Per-principal read and inbox state for normal channels, private channels,
+-- and DMs. Thread follow/done state lives in threadFollowEntity.
+CREATE TABLE channelReadStateEntity (
+  serverId TEXT NOT NULL,
+  channelId TEXT NOT NULL,
+  principalKind TEXT NOT NULL,
+  principalId TEXT NOT NULL,
+  lastReadSeq INTEGER NOT NULL DEFAULT 0,
+  lastReadMessageId TEXT,
+  lastViewedAtMs INTEGER,
+  doneAtMs INTEGER,
+  updatedAtMs INTEGER NOT NULL,
+  lastSyncedAtMs INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (serverId, channelId, principalKind, principalId)
+);
+
+CREATE INDEX channelReadStateEntity_principal ON channelReadStateEntity(serverId, principalKind, principalId);
+
+-- Thread inbox/follow state. A thread is a channel row, but its attention state
+-- follows server thread_follows rather than channel membership.
+CREATE TABLE threadFollowEntity (
+  serverId TEXT NOT NULL,
+  threadChannelId TEXT NOT NULL,
+  followerKind TEXT NOT NULL,
+  followerId TEXT NOT NULL,
+  parentMessageId TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  doneAtMs INTEGER,
+  unfollowedAtMs INTEGER,
+  createdAtMs INTEGER,
+  lastSyncedAtMs INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (serverId, threadChannelId, followerKind, followerId)
+);
+
+CREATE INDEX threadFollowEntity_follower ON threadFollowEntity(serverId, followerKind, followerId);
+CREATE INDEX threadFollowEntity_parentMessageId ON threadFollowEntity(serverId, parentMessageId);
+
+-- Message body cache. channelId is the current message-list channel. For
+-- thread replies this is the id of the thread channel row.
+CREATE TABLE messageEntity (
+  id TEXT NOT NULL PRIMARY KEY,
+  serverId TEXT NOT NULL,
+  channelId TEXT NOT NULL,
+  seq INTEGER,
+  authorId TEXT NOT NULL,
+  authorDisplayName TEXT NOT NULL,
+  authorHandle TEXT NOT NULL,
+  authorKind TEXT NOT NULL,
+  authorDescription TEXT,
+  timestampLabel TEXT NOT NULL,
+  body TEXT NOT NULL,
+  messageType TEXT NOT NULL,
+  systemEventType TEXT,
+  metadataJson TEXT NOT NULL DEFAULT '{}',
+  deliveryState TEXT NOT NULL,
+  replyCount INTEGER NOT NULL DEFAULT 0,
+  parentMessageId TEXT,
+  updatedAtLabel TEXT,
+  lastSyncedAtMs INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX messageEntity_channelSeq ON messageEntity(serverId, channelId, seq);
+CREATE INDEX messageEntity_channelIdId ON messageEntity(serverId, channelId, id);
+CREATE INDEX messageEntity_parentMessageId ON messageEntity(serverId, parentMessageId);
+
+CREATE TABLE attachmentEntity (
+  id TEXT NOT NULL PRIMARY KEY,
+  messageId TEXT NOT NULL REFERENCES messageEntity(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  mimeType TEXT NOT NULL,
+  sizeLabel TEXT NOT NULL,
+  thumbnailUrl TEXT,
+  sortOrder INTEGER NOT NULL
+);
+
+CREATE INDEX attachmentEntity_messageId ON attachmentEntity(messageId);
+
+CREATE TABLE messageReactionEntity (
+  messageId TEXT NOT NULL REFERENCES messageEntity(id) ON DELETE CASCADE,
+  reactorKind TEXT NOT NULL,
+  reactorId TEXT NOT NULL,
+  emoji TEXT NOT NULL,
+  createdAtMs INTEGER,
+  lastSyncedAtMs INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (messageId, reactorKind, reactorId, emoji)
+);
+
+CREATE INDEX messageReactionEntity_messageId ON messageReactionEntity(messageId);
+CREATE INDEX messageReactionEntity_reactor ON messageReactionEntity(reactorKind, reactorId);
+
+CREATE TABLE savedMessageEntity (
+  serverId TEXT NOT NULL,
+  messageId TEXT NOT NULL REFERENCES messageEntity(id) ON DELETE CASCADE,
+  ownerKind TEXT NOT NULL,
+  ownerId TEXT NOT NULL,
+  createdAtMs INTEGER,
+  lastSyncedAtMs INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (serverId, messageId, ownerKind, ownerId)
+);
+
+CREATE INDEX savedMessageEntity_owner ON savedMessageEntity(serverId, ownerKind, ownerId);
+
+CREATE TABLE taskSummaryEntity (
+  id TEXT NOT NULL PRIMARY KEY,
+  serverId TEXT NOT NULL,
+  messageId TEXT,
+  parentMessageId TEXT,
+  channelId TEXT,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL,
+  taskNumber INTEGER,
+  isThreadTask INTEGER NOT NULL DEFAULT 0,
+  assigneeId TEXT,
+  assigneeDisplayName TEXT,
+  assigneeHandle TEXT,
+  assigneeKind TEXT,
+  channelName TEXT,
+  updatedAtLabel TEXT NOT NULL,
+  -- Bit mask for task row actions: 1 = claim.
+  capabilities INTEGER NOT NULL DEFAULT 1,
+  lastSyncedAtMs INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX taskSummaryEntity_messageId ON taskSummaryEntity(messageId);
+CREATE INDEX taskSummaryEntity_parentMessageId ON taskSummaryEntity(parentMessageId);
+CREATE INDEX taskSummaryEntity_taskNumber ON taskSummaryEntity(taskNumber);
+CREATE INDEX taskSummaryEntity_serverId ON taskSummaryEntity(serverId);
+CREATE INDEX taskSummaryEntity_channelId ON taskSummaryEntity(serverId, channelId);
+
+CREATE TABLE memberProfileEntity (
+  id TEXT NOT NULL,
+  serverId TEXT NOT NULL,
+  displayName TEXT NOT NULL,
+  handle TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  avatarUrl TEXT,
+  gravatarHash TEXT,
+  avatarLabel TEXT,
+  presence TEXT,
+  description TEXT,
+  roleDescription TEXT,
+  membershipStatus TEXT,
+  lastSyncedAtMs INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (serverId, id)
+);
+
+CREATE INDEX memberProfileEntity_membershipStatus ON memberProfileEntity(serverId, membershipStatus);
+
+CREATE TABLE syncCursorEntity (
+  scopeId TEXT NOT NULL,
+  serverId TEXT NOT NULL,
+  scopeKind TEXT NOT NULL,
+  latestSeq INTEGER,
+  oldestLoadedSeq INTEGER,
+  newestLoadedSeq INTEGER,
+  hasLoadedOldest INTEGER NOT NULL DEFAULT 0,
+  hasLoadedNewest INTEGER NOT NULL DEFAULT 1,
+  updatedAtMs INTEGER NOT NULL,
+  PRIMARY KEY (serverId, scopeId)
+);
+
+CREATE TABLE outboxMessageEntity (
+  localId TEXT NOT NULL PRIMARY KEY,
+  serverId TEXT NOT NULL,
+  channelId TEXT NOT NULL,
+  body TEXT NOT NULL,
+  attachmentIdsJson TEXT NOT NULL DEFAULT '[]',
+  asTask INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL,
+  createdAtMs INTEGER NOT NULL,
+  lastErrorCode TEXT
+);
+
+CREATE TABLE localSnapshotEntity (
+  scope TEXT NOT NULL,
+  id TEXT NOT NULL,
+  value TEXT NOT NULL,
+  updatedAtMs INTEGER NOT NULL,
+  PRIMARY KEY(scope, id)
+);
+
+selectChannel:
+SELECT *
+FROM channelEntity
+WHERE serverId = ?
+  AND channelId = ?
+LIMIT 1;
+
+selectChannelServerId:
+SELECT serverId
+FROM channelEntity
+WHERE channelId = ?
+LIMIT 1;
+
+selectHomeChannels:
+SELECT *
+FROM channelEntity
+WHERE serverId = ?
+  AND type != 'thread'
+ORDER BY CASE type
+  WHEN 'channel' THEN 0
+  WHEN 'private' THEN 1
+  WHEN 'dm' THEN 2
+  ELSE 3
+END,
+name COLLATE NOCASE ASC,
+channelId ASC;
+
+selectThreadForParentMessage:
+SELECT *
+FROM channelEntity
+WHERE serverId = ?
+  AND type = 'thread'
+  AND parentMessageId = ?
+LIMIT 1;
+
+selectThreadsForParentChannel:
+SELECT *
+FROM channelEntity
+WHERE serverId = ?
+  AND type = 'thread'
+  AND parentChannelId = ?
+ORDER BY COALESCE(updatedAtLabel, '') DESC,
+         channelId ASC;
+
+deleteHomeChannel:
+DELETE FROM channelEntity
+WHERE serverId = ?
+  AND channelId = ?
+  AND type != 'thread';
+
+upsertChannel:
+INSERT OR REPLACE INTO channelEntity(
+  serverId,
+  channelId,
+  type,
+  name,
+  description,
+  parentChannelId,
+  parentMessageId,
+  avatarUrl,
+  presence,
+  agentStatus,
+  presenceMemberId,
+  joined,
+  archived,
+  memberCount,
+  unreadCount,
+  mentionCount,
+  lastMessageId,
+  firstUnreadMessageId,
+  lastMessagePreview,
+  lastMessageSenderName,
+  hasDraft,
+  replyCount,
+  capabilities,
+  updatedAtLabel,
+  lastSyncedAtMs
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectChannelReadState:
+SELECT *
+FROM channelReadStateEntity
+WHERE serverId = ?
+  AND channelId = ?
+  AND principalKind = ?
+  AND principalId = ?
+LIMIT 1;
+
+upsertChannelReadState:
+INSERT OR REPLACE INTO channelReadStateEntity(
+  serverId,
+  channelId,
+  principalKind,
+  principalId,
+  lastReadSeq,
+  lastReadMessageId,
+  lastViewedAtMs,
+  doneAtMs,
+  updatedAtMs,
+  lastSyncedAtMs
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteChannelReadState:
+DELETE FROM channelReadStateEntity
+WHERE serverId = ?
+  AND channelId = ?
+  AND principalKind = ?
+  AND principalId = ?;
+
+selectThreadFollow:
+SELECT *
+FROM threadFollowEntity
+WHERE serverId = ?
+  AND threadChannelId = ?
+  AND followerKind = ?
+  AND followerId = ?
+LIMIT 1;
+
+selectThreadFollowsForFollower:
+SELECT *
+FROM threadFollowEntity
+WHERE serverId = ?
+  AND followerKind = ?
+  AND followerId = ?
+  AND unfollowedAtMs IS NULL
+ORDER BY COALESCE(doneAtMs, -1) ASC,
+         COALESCE(createdAtMs, 0) DESC,
+         threadChannelId ASC;
+
+upsertThreadFollow:
+INSERT OR REPLACE INTO threadFollowEntity(
+  serverId,
+  threadChannelId,
+  followerKind,
+  followerId,
+  parentMessageId,
+  reason,
+  doneAtMs,
+  unfollowedAtMs,
+  createdAtMs,
+  lastSyncedAtMs
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteThreadFollow:
+DELETE FROM threadFollowEntity
+WHERE serverId = ?
+  AND threadChannelId = ?
+  AND followerKind = ?
+  AND followerId = ?;
+
+selectMessage:
+SELECT *
+FROM messageEntity
+WHERE id = ?;
+
+selectMessagesForChannel:
+SELECT *
+FROM messageEntity
+WHERE serverId = ?
+  AND channelId = ?
+ORDER BY CASE WHEN timestampLabel = '' THEN 1 ELSE 0 END,
+         timestampLabel,
+         COALESCE(seq, -9223372036854775808),
+         id;
+
+selectTimelineInvalidation:
+SELECT channelId AS id FROM channelEntity
+WHERE serverId = ?
+  AND (channelId = ? OR parentChannelId = ? OR parentMessageId = ?)
+UNION
+SELECT id FROM messageEntity
+WHERE serverId = ?
+  AND (channelId = ? OR parentMessageId = ?)
+UNION
+SELECT id FROM taskSummaryEntity
+WHERE serverId = ?
+  AND (
+    channelId = ?
+    OR messageId IN (
+      SELECT id FROM messageEntity
+      WHERE serverId = ?
+        AND channelId = ?
+    )
+    OR parentMessageId IN (
+      SELECT id FROM messageEntity
+      WHERE serverId = ?
+        AND channelId = ?
+    )
+  )
+UNION
+SELECT threadChannelId AS id FROM threadFollowEntity
+WHERE serverId = ?
+  AND (threadChannelId = ? OR parentMessageId = ?)
+UNION
+SELECT channelId AS id FROM channelReadStateEntity
+WHERE serverId = ?
+  AND channelId = ?
+UNION
+SELECT messageId AS id FROM savedMessageEntity
+WHERE serverId = ?
+  AND messageId IN (
+    SELECT id FROM messageEntity
+    WHERE serverId = ?
+      AND channelId = ?
+  )
+UNION
+SELECT id FROM memberProfileEntity
+WHERE serverId = ?;
+
+upsertMessage:
+INSERT OR REPLACE INTO messageEntity(
+  id,
+  serverId,
+  channelId,
+  seq,
+  authorId,
+  authorDisplayName,
+  authorHandle,
+  authorKind,
+  authorDescription,
+  timestampLabel,
+  body,
+  messageType,
+  systemEventType,
+  metadataJson,
+  deliveryState,
+  replyCount,
+  parentMessageId,
+  updatedAtLabel,
+  lastSyncedAtMs
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteAttachmentsForMessage:
+DELETE FROM attachmentEntity
+WHERE messageId = ?;
+
+insertAttachment:
+INSERT INTO attachmentEntity(
+  id,
+  messageId,
+  name,
+  mimeType,
+  sizeLabel,
+  thumbnailUrl,
+  sortOrder
+) VALUES (?, ?, ?, ?, ?, ?, ?);
+
+selectAttachmentsForMessage:
+SELECT *
+FROM attachmentEntity
+WHERE messageId = ?
+ORDER BY sortOrder, id;
+
+deleteReactionsForMessage:
+DELETE FROM messageReactionEntity
+WHERE messageId = ?;
+
+upsertMessageReaction:
+INSERT OR REPLACE INTO messageReactionEntity(
+  messageId,
+  reactorKind,
+  reactorId,
+  emoji,
+  createdAtMs,
+  lastSyncedAtMs
+) VALUES (?, ?, ?, ?, ?, ?);
+
+deleteMessageReaction:
+DELETE FROM messageReactionEntity
+WHERE messageId = ?
+  AND reactorKind = ?
+  AND reactorId = ?
+  AND emoji = ?;
+
+selectReactionsForMessage:
+SELECT *
+FROM messageReactionEntity
+WHERE messageId = ?
+ORDER BY emoji, reactorKind, reactorId;
+
+selectSavedMessage:
+SELECT *
+FROM savedMessageEntity
+WHERE serverId = ?
+  AND messageId = ?
+  AND ownerKind = ?
+  AND ownerId = ?
+LIMIT 1;
+
+selectSavedMessagesForOwner:
+SELECT *
+FROM savedMessageEntity
+WHERE serverId = ?
+  AND ownerKind = ?
+  AND ownerId = ?
+ORDER BY COALESCE(createdAtMs, 0) DESC,
+         messageId ASC;
+
+upsertSavedMessage:
+INSERT OR REPLACE INTO savedMessageEntity(
+  serverId,
+  messageId,
+  ownerKind,
+  ownerId,
+  createdAtMs,
+  lastSyncedAtMs
+) VALUES (?, ?, ?, ?, ?, ?);
+
+deleteSavedMessage:
+DELETE FROM savedMessageEntity
+WHERE serverId = ?
+  AND messageId = ?
+  AND ownerKind = ?
+  AND ownerId = ?;
+
+selectTaskReference:
+SELECT *
+FROM taskSummaryEntity
+WHERE serverId = ?
+  AND id = ?;
+
+upsertTaskReference:
+INSERT OR REPLACE INTO taskSummaryEntity(
+  id,
+  serverId,
+  messageId,
+  parentMessageId,
+  channelId,
+  title,
+  status,
+  taskNumber,
+  isThreadTask,
+  assigneeId,
+  assigneeDisplayName,
+  assigneeHandle,
+  assigneeKind,
+  channelName,
+  updatedAtLabel,
+  capabilities,
+  lastSyncedAtMs
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectTaskReferencesForMessage:
+SELECT *
+FROM taskSummaryEntity
+WHERE serverId = ?
+  AND (messageId = ? OR parentMessageId = ?)
+ORDER BY COALESCE(taskNumber, 9223372036854775807), id;
+
+selectAllTaskReferences:
+SELECT *
+FROM taskSummaryEntity
+WHERE serverId = ?
+ORDER BY COALESCE(updatedAtLabel, '') DESC,
+         COALESCE(taskNumber, 9223372036854775807),
+         id;
+
+selectTaskContext:
+SELECT *
+FROM taskSummaryEntity
+WHERE serverId = ?
+  AND (
+    id = ?
+    OR messageId = ?
+    OR parentMessageId = ?
+    OR taskNumber = ?
+  )
+LIMIT 1;
+
+deleteTaskReference:
+DELETE FROM taskSummaryEntity
+WHERE serverId = ?
+  AND id = ?;
+
+upsertMemberSnapshot:
+INSERT OR REPLACE INTO memberProfileEntity(
+  id,
+  serverId,
+  displayName,
+  handle,
+  kind,
+  avatarUrl,
+  gravatarHash,
+  avatarLabel,
+  presence,
+  description,
+  roleDescription,
+  membershipStatus,
+  lastSyncedAtMs
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectMemberSnapshot:
+SELECT *
+FROM memberProfileEntity
+WHERE serverId = ?
+  AND id = ?;
+
+updateMemberPresence:
+UPDATE memberProfileEntity
+SET presence = ?,
+    kind = COALESCE(?, kind),
+    lastSyncedAtMs = ?
+WHERE serverId = ?
+  AND id = ?;
+
+updateMemberMembershipStatus:
+UPDATE memberProfileEntity
+SET membershipStatus = ?,
+    lastSyncedAtMs = ?
+WHERE serverId = ?
+  AND id = ?;
+
+updateThreadMetadata:
+UPDATE channelEntity
+SET replyCount = ?,
+    updatedAtLabel = COALESCE(?, updatedAtLabel),
+    lastSyncedAtMs = ?
+WHERE serverId = ?
+  AND type = 'thread'
+  AND parentMessageId = ?;
+
+clearChannelUnread:
+UPDATE channelEntity
+SET unreadCount = 0,
+    mentionCount = 0,
+    firstUnreadMessageId = NULL,
+    lastSyncedAtMs = ?
+WHERE serverId = ?
+  AND channelId = ?;
+
+upsertSyncCursor:
+INSERT OR REPLACE INTO syncCursorEntity(
+  scopeId,
+  serverId,
+  scopeKind,
+  latestSeq,
+  oldestLoadedSeq,
+  newestLoadedSeq,
+  hasLoadedOldest,
+  hasLoadedNewest,
+  updatedAtMs
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectSyncCursor:
+SELECT *
+FROM syncCursorEntity
+WHERE serverId = ?
+  AND scopeId = ?;
+
+insertOutboxMessage:
+INSERT INTO outboxMessageEntity(
+  localId,
+  serverId,
+  channelId,
+  body,
+  attachmentIdsJson,
+  asTask,
+  status,
+  createdAtMs,
+  lastErrorCode
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateOutboxStatus:
+UPDATE outboxMessageEntity
+SET status = ?, lastErrorCode = ?
+WHERE localId = ?;
+
+selectPendingOutboxMessages:
+SELECT *
+FROM outboxMessageEntity
+WHERE serverId = ?
+  AND status IN ('pending', 'failed')
+ORDER BY createdAtMs, localId;
+
+selectSnapshot:
+SELECT value
+FROM localSnapshotEntity
+WHERE scope = ?
+  AND id = ?
+LIMIT 1;
+
+upsertSnapshot:
+INSERT OR REPLACE INTO localSnapshotEntity(
+  scope,
+  id,
+  value,
+  updatedAtMs
+) VALUES (?, ?, ?, ?);
+
+deleteSnapshot:
+DELETE FROM localSnapshotEntity
+WHERE scope = ?
+  AND id = ?;
+
+selectSnapshotIds:
+SELECT id
+FROM localSnapshotEntity
+WHERE scope = ?;

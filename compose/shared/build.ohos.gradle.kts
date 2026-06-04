@@ -7,6 +7,7 @@ plugins {
     id("maven-publish")
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
+    id("app.cash.sqldelight") version "2.1.0-KBA-001"
 }
 
 val KEY_PAGE_NAME = "pageName"
@@ -106,6 +107,16 @@ publishing {
                 password = System.getenv("mavenPassword") ?: ""
             }
             rootProject.properties["mavenUr?"]?.toString()?.let { url = uri(it) }
+        }
+    }
+}
+
+sqldelight {
+    databases {
+        create("SlockDatabase") {
+            packageName.set("ai.slock.shared.data.local")
+            schemaOutputDirectory.set(file("src/commonMain/sqldelight/databases"))
+            verifyMigrations.set(true)
         }
     }
 }
