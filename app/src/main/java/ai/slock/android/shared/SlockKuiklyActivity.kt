@@ -31,7 +31,9 @@ import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import android.view.ViewTreeObserver
 import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -123,6 +125,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private var realtimeServerId: ServerId? = null
     private var realtimeSessionKey: String? = null
     private var realtimeLastSeq: Long = 0L
+    private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private val googleSocialAuthGateway = GoogleSocialAuthGateway()
     private val threadImageAttachmentPickerLauncher: ActivityResultLauncher<String> =
@@ -144,6 +147,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         setupImmersiveMode()
         suppressVisualKeyboard()
         val container = findViewById<ViewGroup>(R.id.slock_kuikly_container)
+        installSlockInputFontBridge(container)
         val spec = createPageSpec()
         kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
         startRealtimeBridgeIfNeeded()
@@ -151,6 +155,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
     override fun onDestroy() {
         stopRealtimeBridge()
+        removeSlockInputFontBridge()
         super.onDestroy()
         kuiklyRenderViewDelegator.onDetach()
     }
@@ -164,6 +169,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     override fun onResume() {
         super.onResume()
         suppressVisualKeyboard()
+        applySlockInputTypeface()
         kuiklyRenderViewDelegator.onResume()
         startRealtimeBridgeIfNeeded()
     }
@@ -202,6 +208,40 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
     override fun onGetPerformanceData(data: KRPerformanceData) {
         SlockKuiklyPerformanceDiagnostics.recordPerformance("activity", pageName, data)
+    }
+
+    private fun installSlockInputFontBridge(container: ViewGroup) {
+        val listener =
+                ViewTreeObserver.OnGlobalLayoutListener {
+                    container.applySlockInputTypeface()
+                }
+        inputFontLayoutListener = listener
+        container.viewTreeObserver.addOnGlobalLayoutListener(listener)
+        container.post { container.applySlockInputTypeface() }
+    }
+
+    private fun removeSlockInputFontBridge() {
+        val container = findViewById<ViewGroup?>(R.id.slock_kuikly_container) ?: return
+        val listener = inputFontLayoutListener ?: return
+        if (container.viewTreeObserver.isAlive) {
+            container.viewTreeObserver.removeOnGlobalLayoutListener(listener)
+        }
+        inputFontLayoutListener = null
+    }
+
+    private fun applySlockInputTypeface() {
+        findViewById<ViewGroup?>(R.id.slock_kuikly_container)?.applySlockInputTypeface()
+    }
+
+    private fun View.applySlockInputTypeface() {
+        if (this is EditText) {
+            SlockKuiklyFontAdapter.inputTypeface(context)?.let { typeface = it }
+        }
+        if (this is ViewGroup) {
+            for (index in 0 until childCount) {
+                getChildAt(index).applySlockInputTypeface()
+            }
+        }
     }
 
     internal fun requestThreadAttachmentUpload(
@@ -874,9 +914,16 @@ private object SlockKuiklyExceptionAdapter : IKRUncaughtExceptionHandlerAdapter 
 
 private object SlockKuiklyFontAdapter : IKRFontAdapter {
     private var context: Context? = null
+    private var inputTypeface: Typeface? = null
 
     fun init(context: Context) {
         this.context = context.applicationContext
+    }
+
+    fun inputTypeface(context: Context): Typeface? {
+        inputTypeface?.let { return it }
+        return ResourcesCompat.getFont(context.applicationContext, R.font.space_grotesk_regular)
+                ?.also { inputTypeface = it }
     }
 
     override fun getTypeface(fontFamily: String, result: (Typeface?) -> Unit) {
