@@ -60,6 +60,7 @@ cd ../sqliter
   :sqliter-driver:publishOhosArm64PublicationToMavenLocal
 
 cd ../sqldelight
+./gradlew :sqldelight-gradle-plugin:publishToMavenLocal
 ./gradlew :drivers:native-driver:compileKotlinOhosArm64
 ```
 

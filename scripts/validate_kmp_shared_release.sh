@@ -20,6 +20,8 @@ Default gate:
 
 Options:
   --ohos      Also compile shared OHOS Kotlin with settings.ohos.gradle.kts.
+              The OHOS settings file prepares required SQLDelight submodule
+              artifacts automatically when MavenLocal is missing them.
   -h, --help  Show this help.
 USAGE
 }
@@ -76,12 +78,6 @@ run_in "$ROOT_DIR" "$ROOT_GRADLE" \
   :app:compileDebugKotlin
 
 if [ "$RUN_OHOS" -eq 1 ]; then
-  SQDELIGHT_PLUGIN_DIR="$HOME/.m2/repository/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin/2.1.0-KBA-001"
-  if [ ! -d "$SQDELIGHT_PLUGIN_DIR" ]; then
-    echo "error: missing SQLDelight OHOS Gradle plugin in MavenLocal: $SQDELIGHT_PLUGIN_DIR" >&2
-    echo "hint: publish the patched SQLDelight fork artifact app.cash.sqldelight:app.cash.sqldelight.gradle.plugin:2.1.0-KBA-001, then rerun with --ohos." >&2
-    exit 2
-  fi
   run_in "$ROOT_DIR/compose" "$COMPOSE_GRADLE" \
     --no-daemon \
     --console=plain \

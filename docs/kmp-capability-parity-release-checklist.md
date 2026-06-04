@@ -17,8 +17,11 @@ This generates SQLDelight interfaces, runs focused Thread SQLDelight/write-throu
 tests, publishes `compose/shared` to MavenLocal, and compiles the Android app
 against that freshly published artifact.
 
-For OHOS SQLDelight/native-driver validation, run the script form with `--ohos`
-after the patched SQLDelight OHOS plugin has been published to MavenLocal:
+For OHOS SQLDelight/native-driver validation, run the script form with `--ohos`.
+The OHOS Gradle settings initialize the SQLDelight fork submodules and publish
+the required Stately, SQLiter, SQLDelight plugin/compiler/dialect/runtime/native
+driver artifacts to MavenLocal when they are missing, then compile shared OHOS
+Kotlin:
 
 ```bash
 scripts/validate_kmp_shared_release.sh --ohos
