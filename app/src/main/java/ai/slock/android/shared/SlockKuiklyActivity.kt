@@ -73,6 +73,7 @@ import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.SyncResumeResponse
 import ai.slock.android.core.model.ThreadUpdated
+import ai.slock.compose.data.SlockAndroidSqlDatabaseContext
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext
 import com.tencent.kuikly.core.render.android.adapter.HRImageLoadOption
@@ -788,6 +789,7 @@ internal object SlockKuiklyAdapters {
     private var initialized = false
 
     fun init(context: Context) {
+        SlockAndroidSqlDatabaseContext.init(context)
         if (initialized) {
             return
         }

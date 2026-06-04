@@ -71,6 +71,7 @@ kotlin {
                 implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.7")
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+                implementation("app.cash.sqldelight:runtime:2.1.0")
             }
         }
         val commonTest by getting {
@@ -83,6 +84,7 @@ kotlin {
             dependencies {
                 api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyVersion()}")
                 implementation("io.ktor:ktor-client-okhttp:2.3.7")
+                implementation("app.cash.sqldelight:android-driver:2.1.0")
             }
         }
 

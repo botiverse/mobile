@@ -1,17 +1,16 @@
 package ai.slock.compose.data
 
+import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.db.SqlSchema
-import app.cash.sqldelight.driver.native.NativeSqliteDriver
 
-internal class SqlDelightOhosRelationalStore(
-    private val databaseName: String = "slock_shared.db",
-    private val driver: SqlDriver = NativeSqliteDriver(EmptySchema, databaseName)
-) : SlockRelationalStore {
-    override suspend fun execute(sql: String, bindArgs: List<RelationalValue>) {
+internal class SlockSqlDatabase(
+    private val driver: SqlDriver
+) {
+    suspend fun execute(sql: String, bindArgs: List<RelationalValue> = emptyList()) {
         driver.execute(
             identifier = null,
             sql = sql,
@@ -20,7 +19,7 @@ internal class SqlDelightOhosRelationalStore(
         )
     }
 
-    override suspend fun query(sql: String, bindArgs: List<RelationalValue>): RelationalRows {
+    suspend fun query(sql: String, bindArgs: List<RelationalValue> = emptyList()): RelationalRows {
         val rows = mutableListOf<List<RelationalValue>>()
         driver.executeQuery(
             identifier = null,
@@ -37,7 +36,7 @@ internal class SqlDelightOhosRelationalStore(
         return RelationalRows(columns = emptyList(), rows = rows)
     }
 
-    override suspend fun transaction(block: suspend SlockRelationalStore.() -> Unit) {
+    suspend fun transaction(block: suspend SlockSqlDatabase.() -> Unit) {
         execute("BEGIN IMMEDIATE")
         try {
             block()
@@ -67,18 +66,24 @@ internal class SqlDelightOhosRelationalStore(
             ?: getBoolean(index)?.let(RelationalValue::BooleanValue)
             ?: RelationalValue.Null
 
-    private object EmptySchema : SqlSchema<QueryResult.Value<Unit>> {
-        override val version: Long = 1
+    companion object {
+        const val DatabaseName: String = "slock_shared.db"
 
-        override fun create(driver: SqlDriver): QueryResult.Value<Unit> =
-            QueryResult.Value(Unit)
+        val Schema: SqlSchema<QueryResult.Value<Unit>> =
+            object : SqlSchema<QueryResult.Value<Unit>> {
+                override val version: Long = 1
 
-        override fun migrate(
-            driver: SqlDriver,
-            oldVersion: Long,
-            newVersion: Long,
-            vararg callbacks: app.cash.sqldelight.db.AfterVersion
-        ): QueryResult.Value<Unit> =
-            QueryResult.Value(Unit)
+                override fun create(driver: SqlDriver): QueryResult.Value<Unit> =
+                    QueryResult.Value(Unit)
+
+                override fun migrate(
+                    driver: SqlDriver,
+                    oldVersion: Long,
+                    newVersion: Long,
+                    vararg callbacks: AfterVersion
+                ): QueryResult.Value<Unit> =
+                    QueryResult.Value(Unit)
+            }
     }
 }
+
