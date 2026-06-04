@@ -88,6 +88,11 @@ kotlin {
                 implementation("app.cash.sqldelight:android-driver:2.1.0")
             }
         }
+        val androidUnitTest by getting {
+            dependencies {
+                implementation("app.cash.sqldelight:sqlite-driver:2.1.0")
+            }
+        }
 
 //        val iosX64Main by getting
 //        val iosArm64Main by getting

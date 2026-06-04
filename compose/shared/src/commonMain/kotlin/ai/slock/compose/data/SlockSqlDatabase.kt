@@ -5,10 +5,14 @@ import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import ai.slock.shared.data.local.SlockDatabase
+import ai.slock.shared.data.local.SlockDatabaseQueries
 
 internal class SlockSqlDatabase(
     private val driver: SqlDriver
 ) {
+    private val database: SlockDatabase = SlockDatabase(driver)
+    val queries: SlockDatabaseQueries = database.slockDatabaseQueries
+
     suspend fun execute(sql: String, bindArgs: List<RelationalValue> = emptyList()) {
         driver.execute(
             identifier = null,

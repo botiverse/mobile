@@ -9,7 +9,6 @@ import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.parseSharedThreadUploadedAttachments
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KuiklyAuthSessionStore
-import ai.slock.compose.data.createSlockRelationalStore
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.RelationalComposeLocalDataStore
 import ai.slock.compose.data.RealChannelRepository
@@ -20,7 +19,10 @@ import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.data.SharedTasksRouteIntent
+import ai.slock.compose.data.SqlDelightComposeLocalDataStore
+import ai.slock.compose.data.SqlDelightRelationalStore
 import ai.slock.compose.data.TasksUiState
+import ai.slock.compose.data.createSlockSqlDatabase
 import ai.slock.compose.data.toTasksUiStateForThreadTasks
 import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.MemberId
@@ -34,6 +36,7 @@ import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.formatSlockTimestampLabel
+import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -432,12 +435,27 @@ private fun ThreadPageScreen() {
             instanceId = instanceId
         )
     }
-    val relationalStore = remember { createSlockRelationalStore(bridge) }
-    val authStore = remember { KuiklyAuthSessionStore(relationalStore) }
+    val sqlDatabase = remember { createSlockSqlDatabase(bridge) }
+    val relationalStore = remember(sqlDatabase) { SqlDelightRelationalStore(sqlDatabase) }
+    val authStore = remember(relationalStore) { KuiklyAuthSessionStore(relationalStore) }
+    val fallbackLocalStore = remember(relationalStore) { RelationalComposeLocalDataStore(relationalStore) }
+    val threadLocalStore =
+        remember(sqlDatabase, fallbackLocalStore, authStore) {
+            SqlDelightComposeLocalDataStore(
+                database = sqlDatabase,
+                fallback = fallbackLocalStore,
+                currentServerId = {
+                    authStore.readSession()
+                        ?.currentServerId
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let(::ServerId)
+                }
+            )
+        }
     val localWriteThrough =
-        remember {
+        remember(threadLocalStore) {
             ComposeLocalWriteThrough(
-                RelationalComposeLocalDataStore(relationalStore),
+                threadLocalStore,
                 logger = { message -> bridge.log("shared_thread_cache $message") }
             )
         }
