@@ -612,59 +612,69 @@ class SharedSettingsStore(
                         effect = SharedSettingsEffect.SendTestNotification
                     )
             is SharedSettingsIntent.UpdateProfile -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState("saveProfile", inProgress = true)
-                    )
-                dataSource.updateProfile(intent.request).applyAccountActionResult("saveProfile")
+                runAction("saveProfile") {
+                    dataSource.updateProfile(intent.request).applyAccountActionResult("saveProfile")
+                }
             }
             is SharedSettingsIntent.UpdateServerProfile -> {
-                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_PROFILE_SAVE, inProgress = true))
-                dataSource.updateServerProfile(intent.request).applyServerSnapshotActionResult(SERVER_ACTION_PROFILE_SAVE)
+                runAction(SERVER_ACTION_PROFILE_SAVE) {
+                    dataSource.updateServerProfile(intent.request).applyServerSnapshotActionResult(SERVER_ACTION_PROFILE_SAVE)
+                }
             }
             is SharedSettingsIntent.CreateServerInvite -> {
-                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_INVITE_CREATE, inProgress = true))
-                dataSource.createServerInvite(intent.request).applyServerActionResult(SERVER_ACTION_INVITE_CREATE)
+                runAction(SERVER_ACTION_INVITE_CREATE) {
+                    dataSource.createServerInvite(intent.request).applyServerActionResult(SERVER_ACTION_INVITE_CREATE)
+                }
             }
             is SharedSettingsIntent.RevokeServerInvite -> {
-                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_INVITE_REVOKE, intent.inviteId, inProgress = true))
-                dataSource.revokeServerInvite(intent.inviteId).applyServerActionResult(SERVER_ACTION_INVITE_REVOKE, intent.inviteId)
+                runAction(SERVER_ACTION_INVITE_REVOKE, intent.inviteId) {
+                    dataSource.revokeServerInvite(intent.inviteId).applyServerActionResult(SERVER_ACTION_INVITE_REVOKE, intent.inviteId)
+                }
             }
             is SharedSettingsIntent.CreateServerJoinLink -> {
-                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_JOIN_LINK_CREATE, inProgress = true))
-                dataSource.createServerJoinLink(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_JOIN_LINK_CREATE)
+                runAction(SERVER_ACTION_JOIN_LINK_CREATE) {
+                    dataSource.createServerJoinLink(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_JOIN_LINK_CREATE)
+                }
             }
             is SharedSettingsIntent.RevokeServerJoinLink -> {
-                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_JOIN_LINK_REVOKE, intent.linkId, inProgress = true))
-                dataSource.revokeServerJoinLink(intent.linkId).applyServerActionResult(SERVER_ACTION_JOIN_LINK_REVOKE, intent.linkId)
+                runAction(SERVER_ACTION_JOIN_LINK_REVOKE, intent.linkId) {
+                    dataSource.revokeServerJoinLink(intent.linkId).applyServerActionResult(SERVER_ACTION_JOIN_LINK_REVOKE, intent.linkId)
+                }
             }
             is SharedSettingsIntent.UpdateServerOnboarding -> {
-                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_ONBOARDING_TOGGLE, inProgress = true))
-                dataSource.updateServerOnboarding(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_ONBOARDING_TOGGLE)
+                runAction(SERVER_ACTION_ONBOARDING_TOGGLE) {
+                    dataSource.updateServerOnboarding(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_ONBOARDING_TOGGLE)
+                }
             }
             is SharedSettingsIntent.UpdateServerTranslation -> {
-                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_TRANSLATION_TOGGLE, inProgress = true))
-                dataSource.updateServerTranslation(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_TRANSLATION_TOGGLE)
+                runAction(SERVER_ACTION_TRANSLATION_TOGGLE) {
+                    dataSource.updateServerTranslation(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_TRANSLATION_TOGGLE)
+                }
             }
             is SharedSettingsIntent.UpdateServerSidebarOrder -> {
-                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_SIDEBAR_ORDER, inProgress = true))
-                dataSource.updateServerSidebarOrder(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_SIDEBAR_ORDER)
+                runAction(SERVER_ACTION_SIDEBAR_ORDER) {
+                    dataSource.updateServerSidebarOrder(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_SIDEBAR_ORDER)
+                }
             }
             is SharedSettingsIntent.UpdateServerMemberRole -> {
-                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_MEMBER_ROLE, intent.request.memberId, inProgress = true))
-                dataSource.updateServerMemberRole(intent.request).applyServerActionResult(SERVER_ACTION_MEMBER_ROLE, intent.request.memberId)
+                runAction(SERVER_ACTION_MEMBER_ROLE, intent.request.memberId) {
+                    dataSource.updateServerMemberRole(intent.request).applyServerActionResult(SERVER_ACTION_MEMBER_ROLE, intent.request.memberId)
+                }
             }
             is SharedSettingsIntent.RemoveServerMember -> {
-                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_MEMBER_REMOVE, intent.memberId, inProgress = true))
-                dataSource.removeServerMember(intent.memberId).applyServerActionResult(SERVER_ACTION_MEMBER_REMOVE, intent.memberId)
+                runAction(SERVER_ACTION_MEMBER_REMOVE, intent.memberId) {
+                    dataSource.removeServerMember(intent.memberId).applyServerActionResult(SERVER_ACTION_MEMBER_REMOVE, intent.memberId)
+                }
             }
             SharedSettingsIntent.LeaveServer -> {
-                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_LEAVE, inProgress = true))
-                dataSource.leaveServer().applyServerActionResult(SERVER_ACTION_LEAVE)
+                runAction(SERVER_ACTION_LEAVE) {
+                    dataSource.leaveServer().applyServerActionResult(SERVER_ACTION_LEAVE)
+                }
             }
             is SharedSettingsIntent.DeleteServer -> {
-                _state.value = _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_DELETE, inProgress = true))
-                dataSource.deleteServer(intent.request).applyServerActionResult(SERVER_ACTION_DELETE)
+                runAction(SERVER_ACTION_DELETE) {
+                    dataSource.deleteServer(intent.request).applyServerActionResult(SERVER_ACTION_DELETE)
+                }
             }
             is SharedSettingsIntent.RequestServerConfirmation ->
                 _state.value =
@@ -880,6 +890,19 @@ class SharedSettingsStore(
                     ),
                 effect = null
             )
+    }
+
+    private suspend fun runAction(
+        action: String,
+        itemId: String? = null,
+        block: suspend () -> Unit
+    ) {
+        val currentAction = _state.value.actionState
+        if (currentAction?.action == action && currentAction.itemId == itemId && currentAction.inProgress) {
+            return
+        }
+        _state.value = _state.value.copy(actionState = SharedSettingsActionState(action, itemId, inProgress = true))
+        block()
     }
 
     private fun DataResult<SettingsMobileSnapshot>.applyMobileActionResult(action: String) {

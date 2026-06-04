@@ -1,11 +1,13 @@
 package ai.slock.compose.data
 
 import com.tencent.kuikly.compose.profiler.RecompositionReport
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -69,21 +71,7 @@ class SharedSettingsStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository =
             FakeSettingsRepository(
-                accountResult =
-                    DataResult.Content(
-                        AccountSettingsSnapshot(
-                            profile =
-                                AccountProfileSnapshot(
-                                    userId = "user-1",
-                                    displayName = "New Name",
-                                    handle = "@new",
-                                    email = "new@slock.ai",
-                                    avatarLabel = "NN",
-                                    verified = true
-                                ),
-                            connectedAccounts = emptyList()
-                        )
-                    )
+                accountResult = DataResult.Content(accountSnapshot(displayName = "New Name", handle = "@new", email = "new@slock.ai"))
             )
         val store =
             SharedSettingsStore(
@@ -186,6 +174,114 @@ class SharedSettingsStoreTest {
             ),
             repository.calls
         )
+        scope.cancel()
+    }
+
+    @Test
+    fun duplicateProfileSaveNoOpsWhileInFlight() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val block = BlockingCall()
+        val repository =
+            FakeSettingsRepository(accountResult = DataResult.Content(accountSnapshot())).also {
+                it.updateProfileBlock = block
+            }
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.dispatch(SharedSettingsIntent.UpdateProfile(AccountProfileUpdateRequest("New Name", "@new", "new@slock.ai")))
+        block.awaitStarted()
+        store.dispatch(SharedSettingsIntent.UpdateProfile(AccountProfileUpdateRequest("New Name", "@new", "new@slock.ai")))
+
+        assertEquals(listOf("updateProfile:New Name"), repository.calls)
+        assertEquals(SharedSettingsActionState("saveProfile", inProgress = true), store.state.value.actionState)
+
+        block.release()
+        yield()
+
+        assertEquals(listOf("updateProfile:New Name"), repository.calls)
+        assertEquals(false, store.state.value.actionState?.inProgress)
+        assertNull(store.state.value.actionState?.errorCode)
+        scope.cancel()
+    }
+
+    @Test
+    fun duplicateCreateServerInviteNoOpsWhileInFlight() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val block = BlockingCall()
+        val repository =
+            FakeSettingsRepository(serverResult = DataResult.Content(serverSnapshot())).also {
+                it.createServerInviteBlock = block
+            }
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Server))
+        store.dispatch(SharedSettingsIntent.CreateServerInvite(SettingsServerInviteCreateRequest("new@slock.ai")))
+        block.awaitStarted()
+        store.dispatch(SharedSettingsIntent.CreateServerInvite(SettingsServerInviteCreateRequest("new@slock.ai")))
+
+        assertEquals(listOf("server", "createServerInvite:new@slock.ai"), repository.calls)
+        assertEquals(SharedSettingsActionState(SERVER_ACTION_INVITE_CREATE, inProgress = true), store.state.value.actionState)
+
+        block.release()
+        yield()
+
+        assertEquals(listOf("server", "createServerInvite:new@slock.ai", "server"), repository.calls)
+        assertEquals(false, store.state.value.actionState?.inProgress)
+        assertNull(store.state.value.actionState?.errorCode)
+        scope.cancel()
+    }
+
+    @Test
+    fun duplicateDeleteServerNoOpsAndFailureKeepsExistingContent() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val block = BlockingCall()
+        val initialServer = serverSnapshot()
+        val repository =
+            FakeSettingsRepository(serverResult = DataResult.Content(initialServer)).also {
+                it.deleteServerBlock = block
+                it.deleteServerResult = DataResult.Error(ScreenError("settings_server_delete_failed"))
+            }
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Server))
+        store.dispatch(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest("Slock Android")))
+        block.awaitStarted()
+        store.dispatch(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest("Slock Android")))
+
+        assertEquals(listOf("server", "deleteServer:Slock Android"), repository.calls)
+        assertEquals(SharedSettingsActionState(SERVER_ACTION_DELETE, inProgress = true), store.state.value.actionState)
+
+        block.release()
+        yield()
+
+        val server = assertIs<ScreenLoadState.Content<SettingsServerSnapshot>>(store.state.value.server).data
+        assertEquals(initialServer.profile.name, server.profile.name)
+        assertEquals(listOf("server", "deleteServer:Slock Android"), repository.calls)
+        assertEquals(SharedSettingsActionState(SERVER_ACTION_DELETE, inProgress = false, errorCode = "settings_server_delete_failed"), store.state.value.actionState)
+        assertEquals("settings_server_delete_failed", store.state.value.routeErrorCode)
         scope.cancel()
     }
 
@@ -549,6 +645,10 @@ class SharedSettingsStoreTest {
         var mobileResult: DataResult<SettingsMobileSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
     ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
         val calls = mutableListOf<String>()
+        var updateProfileBlock: BlockingCall? = null
+        var createServerInviteBlock: BlockingCall? = null
+        var deleteServerBlock: BlockingCall? = null
+        var deleteServerResult: DataResult<SettingsServerActionResult> = DataResult.Content(SettingsServerActionResult(success = true))
 
         override suspend fun getAccount(): DataResult<AccountSettingsSnapshot> {
             calls += "account"
@@ -557,6 +657,7 @@ class SharedSettingsStoreTest {
 
         override suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot> {
             calls += "updateProfile:${request.displayName}"
+            updateProfileBlock?.consume()
             return accountResult
         }
 
@@ -610,6 +711,7 @@ class SharedSettingsStoreTest {
 
         override suspend fun createServerInvite(request: SettingsServerInviteCreateRequest): DataResult<SettingsServerActionResult> {
             calls += "createServerInvite:${request.email}"
+            createServerInviteBlock?.consume()
             return DataResult.Content(SettingsServerActionResult(success = true))
         }
 
@@ -645,7 +747,8 @@ class SharedSettingsStoreTest {
 
         override suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult> {
             calls += "deleteServer:${request.confirmationName}"
-            return DataResult.Content(SettingsServerActionResult(success = true))
+            deleteServerBlock?.consume()
+            return deleteServerResult
         }
 
         override suspend fun updateServerOnboarding(
@@ -997,6 +1100,42 @@ class SharedSettingsStoreTest {
                 ),
             sidebarOrder = SettingsServerSidebarOrderSnapshot(channelSortMode = "manual")
         )
+
+    private fun accountSnapshot(
+        displayName: String = "Slock User",
+        handle: String = "@slock",
+        email: String = "user@slock.ai"
+    ): AccountSettingsSnapshot =
+        AccountSettingsSnapshot(
+            profile =
+                AccountProfileSnapshot(
+                    userId = "user-1",
+                    displayName = displayName,
+                    handle = handle,
+                    email = email,
+                    avatarLabel = displayName.split(' ').mapNotNull { it.firstOrNull()?.uppercase() }.joinToString("").ifBlank { "SU" },
+                    verified = true
+                ),
+            connectedAccounts = emptyList()
+        )
+
+    private class BlockingCall {
+        private val started = CompletableDeferred<Unit>()
+        private val released = CompletableDeferred<Unit>()
+
+        suspend fun consume() {
+            started.complete(Unit)
+            released.await()
+        }
+
+        suspend fun awaitStarted() {
+            started.await()
+        }
+
+        fun release() {
+            released.complete(Unit)
+        }
+    }
 
     private fun mobileSnapshot(): SettingsMobileSnapshot =
         SettingsMobileSnapshot(
