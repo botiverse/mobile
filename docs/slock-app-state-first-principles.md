@@ -5,6 +5,9 @@ not a Thread-only guideline. Home, Thread, Search/Saved, Tasks, Members,
 Settings, auth/session, realtime, and platform capability surfaces should all
 follow the same rules.
 
+Implementation helpers and the current KMP state-library survey live in
+`docs/shared-mvi-foundation.md`.
+
 ## Goal
 
 The app should feel stable even while network, realtime, local cache, markdown,

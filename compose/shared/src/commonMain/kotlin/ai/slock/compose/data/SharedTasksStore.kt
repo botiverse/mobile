@@ -10,9 +10,7 @@ import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 data class TasksUiState(
@@ -203,9 +201,13 @@ class SharedTasksViewModel(
         try {
             when (val result = dataSource.updateTaskStatus(task.id, status)) {
                 is DataResult.Content -> store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(result.data.task))
-                is DataResult.Empty -> store.accept(SharedTasksIntent.TaskStatusUpdateFailed(task, result.reason.name))
-                is DataResult.Error -> store.accept(SharedTasksIntent.TaskStatusUpdateFailed(task, result.error.code))
-                is DataResult.NoPermission -> store.accept(SharedTasksIntent.TaskStatusUpdateFailed(task, result.blocker.code))
+                else ->
+                    store.accept(
+                        SharedTasksIntent.TaskStatusUpdateFailed(
+                            previousTask = task,
+                            errorCode = result.failureCodeOrNull() ?: "tasks_status_unknown"
+                        )
+                    )
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -228,9 +230,12 @@ class SharedTasksViewModel(
                     // endpoint does not include other channels' tasks.
                     load(SharedTasksRouteIntent.Refresh)
                 }
-                is DataResult.Empty -> store.accept(SharedTasksIntent.CreateTasksFailed(result.reason.name))
-                is DataResult.Error -> store.accept(SharedTasksIntent.CreateTasksFailed(result.error.code))
-                is DataResult.NoPermission -> store.accept(SharedTasksIntent.CreateTasksFailed(result.blocker.code))
+                else ->
+                    store.accept(
+                        SharedTasksIntent.CreateTasksFailed(
+                            result.failureCodeOrNull() ?: "tasks_create_unknown"
+                        )
+                    )
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -249,20 +254,23 @@ class SharedTasksViewModel(
 
 class SharedTasksStore(
     initialState: TasksUiState = TasksUiState(ScreenLoadState.Loading),
-    private val scope: CoroutineScope
+    scope: CoroutineScope,
+    transitionLogger: (MviTransition<SharedTasksIntent>) -> Unit = {}
 ) {
-    private val _state = MutableStateFlow(initialState)
-    val state: StateFlow<TasksUiState> = _state.asStateFlow()
+    private val runtime =
+        MviStoreRuntime(
+            initialState = initialState,
+            scope = scope,
+            reduce = { state, intent -> state.reduce(intent) },
+            transitionLogger = transitionLogger
+        )
+    val state: StateFlow<TasksUiState> = runtime.state
 
     fun dispatch(intent: SharedTasksIntent) {
-        scope.launch {
-            accept(intent)
-        }
+        runtime.dispatch(intent)
     }
 
-    fun accept(intent: SharedTasksIntent) {
-        _state.value = _state.value.reduce(intent)
-    }
+    fun accept(intent: SharedTasksIntent): Boolean = runtime.accept(intent)
 }
 
 fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =

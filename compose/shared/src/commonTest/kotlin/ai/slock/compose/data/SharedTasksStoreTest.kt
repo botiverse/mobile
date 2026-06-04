@@ -9,11 +9,42 @@ import ai.slock.compose.model.Presence
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 
 class SharedTasksStoreTest {
+    @Test
+    fun sharedTasksStoreUsesMviRuntimeNoopGateAndTransitionLog() {
+        val transitions = mutableListOf<MviTransition<SharedTasksIntent>>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedTasksStore(
+                initialState = TasksUiState(ScreenLoadState.Loading),
+                scope = scope,
+                transitionLogger = transitions::add
+            )
+
+        val emitted = store.accept(SharedTasksIntent.NavigationFailed(null))
+
+        assertFalse(emitted)
+        assertEquals(TasksUiState(ScreenLoadState.Loading), store.state.value)
+        assertEquals(
+            MviTransition<SharedTasksIntent>(
+                intent = SharedTasksIntent.NavigationFailed(null),
+                emitted = false,
+                reason = "unchanged"
+            ),
+            transitions.single()
+        )
+        scope.cancel()
+    }
+
     @Test
     fun loadingKeepsVisibleContentAndMarksRefresh() {
         val state =

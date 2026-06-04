@@ -1,0 +1,103 @@
+package ai.slock.compose.data
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+/**
+ * Lightweight shared MVI runtime used by feature stores. It intentionally avoids
+ * a heavy base-class hierarchy: business stores keep their own state shape and
+ * reducer, while this helper owns the common dispatch/no-op/transition contract.
+ */
+class MviStoreRuntime<State, Intent>(
+    initialState: State,
+    private val scope: CoroutineScope,
+    private val reduce: (State, Intent) -> State,
+    private val transitionLogger: (MviTransition<Intent>) -> Unit = {},
+    private val equivalent: (State, State) -> Boolean = { previous, next -> previous == next }
+) {
+    private val reducerMutex = Mutex()
+    private val _state = MutableStateFlow(initialState)
+    val state: StateFlow<State> = _state.asStateFlow()
+
+    fun dispatch(intent: Intent) {
+        scope.launch {
+            acceptQueued(intent)
+        }
+    }
+
+    suspend fun acceptQueued(intent: Intent): Boolean =
+        reducerMutex.withLock {
+            accept(intent)
+        }
+
+    fun accept(intent: Intent): Boolean {
+        val previous = _state.value
+        val next = reduce(previous, intent)
+        if (equivalent(previous, next)) {
+            transitionLogger(MviTransition(intent = intent, emitted = false, reason = "unchanged"))
+            return false
+        }
+        _state.value = next
+        transitionLogger(MviTransition(intent = intent, emitted = true))
+        return true
+    }
+}
+
+data class MviTransition<Intent>(
+    val intent: Intent,
+    val emitted: Boolean,
+    val reason: String? = null
+)
+
+class MviEffectEmitter<Effect>(
+    extraBufferCapacity: Int = 64
+) {
+    private val _effects = MutableSharedFlow<Effect>(extraBufferCapacity = extraBufferCapacity)
+    val effects: SharedFlow<Effect> = _effects.asSharedFlow()
+
+    fun emit(effect: Effect): Boolean = _effects.tryEmit(effect)
+}
+
+data class MviStaleToken(
+    val value: Long
+) {
+    fun isCurrent(current: MviStaleToken): Boolean = value == current.value
+
+    companion object {
+        val Initial = MviStaleToken(0)
+    }
+}
+
+/**
+ * Store-facing key for idempotent mutations or loads. It is deliberately a tiny
+ * value object so features can decide the business-specific key granularity.
+ */
+data class MviActionKey(val value: String)
+
+class MviInFlightGuard {
+    private val activeKeys = mutableSetOf<MviActionKey>()
+
+    fun tryStart(key: MviActionKey): Boolean = activeKeys.add(key)
+
+    fun finish(key: MviActionKey) {
+        activeKeys.remove(key)
+    }
+
+    fun isActive(key: MviActionKey): Boolean = key in activeKeys
+}
+
+fun DataResult<*>.failureCodeOrNull(): String? =
+    when (this) {
+        is DataResult.Content -> null
+        is DataResult.Empty -> reason.name
+        is DataResult.Error -> error.code
+        is DataResult.NoPermission -> blocker.code
+    }
