@@ -174,18 +174,20 @@ class SqlDelightSlockLocalStore(
             ?: conversationToStore.threadId.parentMessageIdOrNull()
         val storedChannelId = conversationToStore.channelId ?: parentChannelId
         val streamChannelId = conversationToStore.explicitMessageStreamChannelId()
-        val storedConversationChannelId = streamChannelId ?: storedChannelId
         val storedServerId =
             serverId?.value
                 ?: selectStoredConversationServerId(conversationToStore.threadId).orEmpty()
                     .takeIf(String::isNotBlank)
                 ?: fallbackServerId.value
         requireValidLocalId(conversationToStore.threadId.value, "conversation.threadId")
-        requireValidLocalId(storedConversationChannelId?.value, "conversation.channelId")
+        requireValidLocalId(storedChannelId?.value, "conversation.channelId")
+        requireValidLocalId(streamChannelId?.value, "conversation.streamChannelId")
         queries.upsertConversation(
-            server_id = storedServerId,
-            channel_id = storedConversationChannelId?.value ?: conversationToStore.threadId.value,
+            id = conversationToStore.threadId.value,
+            channel_id = storedChannelId?.value ?: conversationToStore.threadId.value,
             thread_id = conversationToStore.threadId.value,
+            stream_channel_id = streamChannelId?.value,
+            server_id = storedServerId,
             kind = conversationToStore.kind.wireValue,
             name = conversationToStore.name,
             subtitle = conversationToStore.subtitle,
@@ -205,7 +207,10 @@ class SqlDelightSlockLocalStore(
             joined = if (conversationToStore.joined) 1L else 0L,
             archived = if (conversationToStore.archived) 1L else 0L,
             member_count = conversationToStore.memberCount?.toLong(),
-            capabilities = conversationToStore.permissions.toCapabilitiesMask(),
+            can_read = if (conversationToStore.permissions.canRead) 1L else 0L,
+            can_send = if (conversationToStore.permissions.canSend) 1L else 0L,
+            can_attach = if (conversationToStore.permissions.canAttach) 1L else 0L,
+            can_create_task = if (conversationToStore.permissions.canCreateTask) 1L else 0L,
             updated_at_label = conversationToStore.lastMessageAt,
             last_synced_at_ms = syncedAtMs
         )
@@ -215,11 +220,19 @@ class SqlDelightSlockLocalStore(
         queries.selectConversationServerId(
             id.value,
             id.value,
+            id.value,
+            id.value,
+            id.value,
+            id.value,
             id.value
-        ).executeAsOneOrNull()
+        ).executeAsOneOrNull()?.server_id
 
     override fun getConversation(id: ThreadId): ConversationSummary? =
         queries.selectConversation(
+            id.value,
+            id.value,
+            id.value,
+            id.value,
             id.value,
             id.value,
             id.value
@@ -252,8 +265,7 @@ class SqlDelightSlockLocalStore(
         stale.forEach { conversation ->
             queries.deleteHomeConversation(
                 server_id = serverId.value,
-                channel_id = conversation.channelId?.value ?: conversation.threadId.value,
-                thread_id = conversation.threadId.value
+                id = conversation.threadId.value
             )
         }
         return stale.size
@@ -265,7 +277,9 @@ class SqlDelightSlockLocalStore(
             last_synced_at_ms = syncedAtMs,
             server_id = resolvedServerId.value,
             channel_id = channelId.value,
-            thread_id = channelId.value
+            thread_id = channelId.value,
+            stream_channel_id = channelId.value,
+            id = channelId.value
         )
     }
 
@@ -302,19 +316,22 @@ class SqlDelightSlockLocalStore(
                 resolvedServerId.value,
                 key,
                 key,
+                key,
+                key,
+                resolvedServerId.value,
+                key,
+                key,
+                key,
+                key,
+                resolvedServerId.value,
+                key,
+                key,
                 resolvedServerId.value,
                 key,
                 key,
                 key,
                 resolvedServerId.value,
                 key,
-                resolvedServerId.value,
-                key,
-                key,
-                resolvedServerId.value,
-                key,
-                key,
-                resolvedServerId.value,
                 key,
                 key,
                 resolvedServerId.value
@@ -345,19 +362,17 @@ class SqlDelightSlockLocalStore(
         requireValidLocalId(storedChannelId.value, "message.channelId")
         database.transaction {
             val currentMessage = queries.selectMessage(message.id.value).executeAsOneOrNull()
-            val currentThreadMetadata =
-                queries.selectMessageThread(storedServerId, message.id.value).executeAsOneOrNull()
             val currentAuthorSnapshot = getMemberSnapshot(message.author.id, ServerId(storedServerId))
                 ?: currentMessage?.author_id?.let { getMemberSnapshot(MemberId(it), ServerId(storedServerId)) }
             val storedAuthor = message.author
                 .withStoredFallback(currentMessage)
                 .withProfileFallback(currentAuthorSnapshot)
-            val storedThreadChannelId = message.threadChannelId?.value ?: currentThreadMetadata?.thread_channel_id
+            val storedThreadChannelId = message.threadChannelId?.value ?: currentMessage?.thread_channel_id
             val storedReplyCount =
                 if (message.replyCount > 0 || message.threadChannelId != null) {
                     message.replyCount.toLong()
                 } else {
-                    currentThreadMetadata?.reply_count ?: currentMessage?.reply_count ?: 0L
+                    currentMessage?.reply_count ?: 0L
                 }
             val storedMessageType =
                 if (message.messageType == MessageType.Chat &&
@@ -373,6 +388,7 @@ class SqlDelightSlockLocalStore(
                 server_id = storedServerId,
                 thread_id = message.threadId.value,
                 channel_id = storedChannelId.value,
+                thread_channel_id = storedThreadChannelId,
                 seq = message.seq ?: currentMessage?.seq,
                 author_id = storedAuthor.id.value,
                 author_display_name = storedAuthor.displayName,
@@ -392,16 +408,6 @@ class SqlDelightSlockLocalStore(
                 updated_at_label = message.updatedAtLabel ?: currentMessage?.updated_at_label,
                 last_synced_at_ms = syncedAtMs
             )
-            if (storedThreadChannelId != null) {
-                queries.updateMessageThreadMetadata(
-                    server_id = storedServerId,
-                    parent_message_id = message.id.value,
-                    thread_channel_id = storedThreadChannelId,
-                    reply_count = storedReplyCount,
-                    updated_at_label = message.updatedAtLabel ?: currentThreadMetadata?.updated_at_label,
-                    last_synced_at_ms = syncedAtMs
-                )
-            }
             val attachmentsToStore =
                 message.attachments.ifEmpty {
                     queries.selectAttachmentsForMessage(message.id.value)
@@ -434,8 +440,7 @@ class SqlDelightSlockLocalStore(
                 val attachments =
                     queries.selectAttachmentsForMessage(row.id).executeAsList().map { it.toAttachment() }
                 val task = getTaskReferencesForMessage(MessageId(row.id), resolvedServerId).firstOrNull()
-                val threadMetadata = queries.selectMessageThread(resolvedServerId.value, row.id).executeAsOneOrNull()
-                row.toMessage(attachments = attachments, task = task, threadMetadata = threadMetadata)
+                row.toMessage(attachments = attachments, task = task)
                     .withLocalAuthorSnapshot(resolvedServerId)
             }
             .sortedForLocalThreadTimeline()
@@ -449,8 +454,7 @@ class SqlDelightSlockLocalStore(
                 val attachments =
                     queries.selectAttachmentsForMessage(row.id).executeAsList().map { it.toAttachment() }
                 val task = getTaskReferencesForMessage(MessageId(row.id), serverId).firstOrNull()
-                val threadMetadata = queries.selectMessageThread(serverId.value, row.id).executeAsOneOrNull()
-                row.toMessage(attachments = attachments, task = task, threadMetadata = threadMetadata)
+                row.toMessage(attachments = attachments, task = task)
                     .withLocalAuthorSnapshot(serverId)
             }
 
@@ -653,12 +657,12 @@ class SqlDelightSlockLocalStore(
     ) {
         val resolvedServerId = serverId ?: fallbackServerId
         queries.updateMessageThreadMetadata(
-            server_id = resolvedServerId.value,
-            parent_message_id = parentMessageId.value,
             thread_channel_id = threadChannelId.value,
             reply_count = replyCount.toLong(),
-            updated_at_label = lastReplyAt,
+            value = lastReplyAt,
             last_synced_at_ms = syncedAtMs,
+            server_id = resolvedServerId.value,
+            id = parentMessageId.value
         )
     }
 
@@ -736,7 +740,7 @@ private fun Local_conversation.toConversationSummary(): ConversationSummary =
                 ThreadConversation(
                     parentChannelId = parent_channel_id?.let(::ChannelId) ?: ChannelId(channel_id),
                     parentMessageId = MessageId(parent_message_id),
-                    streamChannelId = ChannelId(channel_id)
+                    streamChannelId = stream_channel_id?.let(::ChannelId)
                 )
             } else {
                 null
@@ -764,10 +768,10 @@ private fun Local_conversation.toConversationSummary(): ConversationSummary =
         memberCount = member_count?.toInt(),
         permissions =
             ConversationPermissions(
-                canRead = capabilities.hasCapability(CONVERSATION_CAP_READ),
-                canSend = capabilities.hasCapability(CONVERSATION_CAP_SEND),
-                canAttach = capabilities.hasCapability(CONVERSATION_CAP_ATTACH),
-                canCreateTask = capabilities.hasCapability(CONVERSATION_CAP_CREATE_TASK)
+                canRead = can_read != 0L,
+                canSend = can_send != 0L,
+                canAttach = can_attach != 0L,
+                canCreateTask = can_create_task != 0L
             )
     )
 
@@ -782,7 +786,7 @@ private fun List<Local_conversation>.dedupeHomeConversationRows(): List<Local_co
             rows.maxWithOrNull(
                 compareBy<Local_conversation> { it.last_synced_at_ms }
                     .thenBy { it.updated_at_label.orEmpty() }
-                    .thenBy { it.thread_id }
+                    .thenBy { it.id }
             ) ?: rows.first()
         }
         .sortedWith(
@@ -793,7 +797,7 @@ private fun List<Local_conversation>.dedupeHomeConversationRows(): List<Local_co
                     else -> 2
                 }
             }.thenBy { it.name.lowercase() }
-                .thenBy { it.thread_id }
+                .thenBy { it.id }
         )
 
 private fun ConversationSummary.homeConversationKey(): String =
@@ -838,14 +842,13 @@ private fun String?.toAgentStatusOrNull(): AgentStatus? =
 
 private fun Local_message.toMessage(
     attachments: List<Attachment>,
-    task: TaskSummary?,
-    threadMetadata: Local_message_thread?
+    task: TaskSummary?
 ): Message =
     Message(
         id = MessageId(id),
         threadId = ThreadId(thread_id),
         channelId = ChannelId(channel_id),
-        threadChannelId = threadMetadata?.thread_channel_id?.let(::ChannelId),
+        threadChannelId = thread_channel_id?.let(::ChannelId),
         seq = seq,
         author = MemberProfile(
             id = MemberId(author_id),
@@ -862,7 +865,7 @@ private fun Local_message.toMessage(
         attachments = attachments,
         deliveryState = delivery_state.toMessageDeliveryState(),
         task = task,
-        replyCount = (threadMetadata?.reply_count ?: reply_count).toInt(),
+        replyCount = reply_count.toInt(),
         parentMessageId = parent_message_id?.let(::MessageId),
         updatedAtLabel = updated_at_label
     )
@@ -1136,21 +1139,6 @@ private fun String.toLocalOutboxStatus(): LocalOutboxStatus =
 
 private inline fun <reified T : Enum<T>> enumValueOfOrDefault(value: String, default: T): T =
     enumValues<T>().firstOrNull { it.name.equals(value, ignoreCase = true) } ?: default
-
-private const val CONVERSATION_CAP_READ = 1L
-private const val CONVERSATION_CAP_SEND = 1L shl 1
-private const val CONVERSATION_CAP_ATTACH = 1L shl 2
-private const val CONVERSATION_CAP_CREATE_TASK = 1L shl 3
-
-private fun ConversationPermissions.toCapabilitiesMask(): Long =
-    listOf(
-        canRead to CONVERSATION_CAP_READ,
-        canSend to CONVERSATION_CAP_SEND,
-        canAttach to CONVERSATION_CAP_ATTACH,
-        canCreateTask to CONVERSATION_CAP_CREATE_TASK
-    ).fold(0L) { mask, (enabled, bit) -> if (enabled) mask or bit else mask }
-
-private fun Long.hasCapability(bit: Long): Boolean = (this and bit) != 0L
 
 private fun Boolean.toLongFlag(): Long = if (this) 1L else 0L
 

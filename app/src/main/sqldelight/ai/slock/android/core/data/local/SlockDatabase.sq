@@ -1,10 +1,9 @@
--- Home/conversation projection cache.
--- Identity is the server + actual API channel + route thread tuple. Do not add
--- another synthetic id unless the server owns that id.
 CREATE TABLE local_conversation (
-  server_id TEXT NOT NULL DEFAULT '',
+  id TEXT NOT NULL PRIMARY KEY,
   channel_id TEXT NOT NULL,
   thread_id TEXT NOT NULL,
+  stream_channel_id TEXT,
+  server_id TEXT,
   kind TEXT NOT NULL,
   name TEXT NOT NULL,
   subtitle TEXT,
@@ -24,25 +23,25 @@ CREATE TABLE local_conversation (
   joined INTEGER NOT NULL DEFAULT 1,
   archived INTEGER NOT NULL DEFAULT 0,
   member_count INTEGER,
-  -- Bit mask for ConversationPermissions:
-  -- 1 = read, 2 = send, 4 = attach, 8 = create task.
-  capabilities INTEGER NOT NULL DEFAULT 15,
+  can_read INTEGER NOT NULL DEFAULT 1,
+  can_send INTEGER NOT NULL DEFAULT 1,
+  can_attach INTEGER NOT NULL DEFAULT 1,
+  can_create_task INTEGER NOT NULL DEFAULT 1,
   updated_at_label TEXT,
-  last_synced_at_ms INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (server_id, channel_id, thread_id)
+  last_synced_at_ms INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE INDEX local_conversation_channel_id ON local_conversation(server_id, channel_id);
-CREATE INDEX local_conversation_thread_id ON local_conversation(server_id, thread_id);
+CREATE INDEX local_conversation_channel_id ON local_conversation(channel_id);
+CREATE INDEX local_conversation_thread_id ON local_conversation(thread_id);
+CREATE INDEX local_conversation_stream_channel_id ON local_conversation(stream_channel_id);
 CREATE INDEX local_conversation_server_kind ON local_conversation(server_id, kind);
 
--- Message body cache. channel_id is the actual stream/fetch identity.
--- Reply-thread metadata for a parent message is kept in local_message_thread.
 CREATE TABLE local_message (
   id TEXT NOT NULL PRIMARY KEY,
   server_id TEXT NOT NULL DEFAULT '',
   thread_id TEXT NOT NULL,
   channel_id TEXT NOT NULL,
+  thread_channel_id TEXT,
   seq INTEGER,
   author_id TEXT NOT NULL,
   author_display_name TEXT NOT NULL,
@@ -65,19 +64,8 @@ CREATE INDEX local_message_thread_seq ON local_message(thread_id, seq);
 CREATE INDEX local_message_thread_id_id ON local_message(thread_id, id);
 CREATE INDEX local_message_channel_seq ON local_message(channel_id, seq);
 CREATE INDEX local_message_server_channel_seq ON local_message(server_id, channel_id, seq);
+CREATE INDEX local_message_thread_channel_id ON local_message(thread_channel_id);
 CREATE INDEX local_message_parent_message_id ON local_message(parent_message_id);
-
-CREATE TABLE local_message_thread (
-  server_id TEXT NOT NULL DEFAULT '',
-  parent_message_id TEXT NOT NULL REFERENCES local_message(id) ON DELETE CASCADE,
-  thread_channel_id TEXT NOT NULL,
-  reply_count INTEGER NOT NULL DEFAULT 0,
-  updated_at_label TEXT,
-  last_synced_at_ms INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (server_id, parent_message_id)
-);
-
-CREATE INDEX local_message_thread_channel_id ON local_message_thread(server_id, thread_channel_id);
 
 CREATE TABLE local_attachment (
   id TEXT NOT NULL PRIMARY KEY,
@@ -162,20 +150,24 @@ CREATE TABLE local_outbox_message (
 selectConversation:
 SELECT *
 FROM local_conversation
-WHERE thread_id = ? OR channel_id = ?
+WHERE id = ? OR thread_id = ? OR channel_id = ? OR stream_channel_id = ?
 ORDER BY CASE
-  WHEN thread_id = ? THEN 0
-  ELSE 1
+  WHEN id = ? THEN 0
+  WHEN thread_id = ? THEN 1
+  WHEN stream_channel_id = ? THEN 2
+  ELSE 3
 END
 LIMIT 1;
 
 selectConversationServerId:
 SELECT server_id
 FROM local_conversation
-WHERE thread_id = ? OR channel_id = ?
+WHERE id = ? OR thread_id = ? OR channel_id = ? OR stream_channel_id = ?
 ORDER BY CASE
-  WHEN thread_id = ? THEN 0
-  ELSE 1
+  WHEN id = ? THEN 0
+  WHEN thread_id = ? THEN 1
+  WHEN stream_channel_id = ? THEN 2
+  ELSE 3
 END
 LIMIT 1;
 
@@ -190,20 +182,21 @@ ORDER BY CASE kind
   ELSE 2
 END,
 name COLLATE NOCASE ASC,
-thread_id ASC;
+id ASC;
 
 deleteHomeConversation:
 DELETE FROM local_conversation
 WHERE server_id = ?
-  AND channel_id = ?
-  AND thread_id = ?
+  AND id = ?
   AND (kind = 'Channel' OR kind = 'DirectMessage');
 
 upsertConversation:
 INSERT OR REPLACE INTO local_conversation(
-  server_id,
+  id,
   channel_id,
   thread_id,
+  stream_channel_id,
+  server_id,
   kind,
   name,
   subtitle,
@@ -223,10 +216,13 @@ INSERT OR REPLACE INTO local_conversation(
   joined,
   archived,
   member_count,
-  capabilities,
+  can_read,
+  can_send,
+  can_attach,
+  can_create_task,
   updated_at_label,
   last_synced_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectMessage:
 SELECT *
@@ -244,17 +240,13 @@ ORDER BY CASE WHEN timestamp_label = '' THEN 1 ELSE 0 END,
          id;
 
 selectThreadTimelineInvalidation:
-SELECT thread_id AS id FROM local_conversation
+SELECT id FROM local_conversation
 WHERE server_id = ?
-  AND (thread_id = ? OR channel_id = ?)
+  AND (id = ? OR thread_id = ? OR channel_id = ? OR stream_channel_id = ?)
 UNION
 SELECT id FROM local_message
 WHERE server_id = ?
-  AND (thread_id = ? OR channel_id = ? OR parent_message_id = ?)
-UNION
-SELECT parent_message_id FROM local_message_thread
-WHERE server_id = ?
-  AND thread_channel_id = ?
+  AND (thread_id = ? OR channel_id = ? OR thread_channel_id = ? OR parent_message_id = ?)
 UNION
 SELECT id FROM local_task_reference
 WHERE server_id = ?
@@ -264,12 +256,12 @@ WHERE server_id = ?
     OR message_id IN (
       SELECT id FROM local_message
       WHERE server_id = ?
-        AND (thread_id = ? OR channel_id = ?)
+        AND (thread_id = ? OR channel_id = ? OR thread_channel_id = ?)
     )
     OR parent_message_id IN (
       SELECT id FROM local_message
       WHERE server_id = ?
-        AND (thread_id = ? OR channel_id = ?)
+        AND (thread_id = ? OR channel_id = ? OR thread_channel_id = ?)
     )
   )
 UNION
@@ -282,6 +274,7 @@ INSERT OR REPLACE INTO local_message(
   server_id,
   thread_id,
   channel_id,
+  thread_channel_id,
   seq,
   author_id,
   author_display_name,
@@ -298,7 +291,7 @@ INSERT OR REPLACE INTO local_message(
   parent_message_id,
   updated_at_label,
   last_synced_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteAttachmentsForMessage:
 DELETE FROM local_attachment
@@ -320,12 +313,6 @@ SELECT *
 FROM local_attachment
 WHERE message_id = ?
 ORDER BY sort_order, id;
-
-selectMessageThread:
-SELECT *
-FROM local_message_thread
-WHERE server_id = ?
-  AND parent_message_id = ?;
 
 selectTaskReference:
 SELECT *
@@ -418,14 +405,13 @@ WHERE server_id = ?
   AND id = ?;
 
 updateMessageThreadMetadata:
-INSERT OR REPLACE INTO local_message_thread(
-  server_id,
-  parent_message_id,
-  thread_channel_id,
-  reply_count,
-  updated_at_label,
-  last_synced_at_ms
-) VALUES (?, ?, ?, ?, ?, ?);
+UPDATE local_message
+SET thread_channel_id = ?,
+    reply_count = ?,
+    updated_at_label = COALESCE(?, updated_at_label),
+    last_synced_at_ms = ?
+WHERE server_id = ?
+  AND id = ?;
 
 clearConversationUnread:
 UPDATE local_conversation
@@ -437,6 +423,8 @@ WHERE server_id = ?
   AND (
     channel_id = ?
     OR thread_id = ?
+    OR stream_channel_id = ?
+    OR id = ?
   );
 
 upsertSyncCursor:
