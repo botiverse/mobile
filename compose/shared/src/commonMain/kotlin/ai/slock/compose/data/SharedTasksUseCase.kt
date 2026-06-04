@@ -1,6 +1,8 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ServerId
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /**
  * Tasks application rules that should not live in UI state code.
@@ -12,15 +14,31 @@ class SharedTasksUseCase(
     private val authStore: SlockAuthSessionStore,
     private val repository: SharedTasksRepository
 ) {
-    suspend fun loadTasks(request: TasksLoadRequest): DataResult<TaskSnapshot> {
-        val serverId = authStore.readSession()?.currentServerId?.let(::ServerId)
-            ?: return DataResult.Error(ScreenError(code = "selected_server_missing", retryable = false))
-        return repository.loadTasks(serverId, request.filter)
+    suspend fun observeTasks(request: TasksLoadRequest): Flow<DataResult<TaskSnapshot>> {
+        val serverId =
+            authStore.readSession()?.currentServerId?.let(::ServerId)
+                ?: return flowOf(DataResult.Error(ScreenError(code = "selected_server_missing", retryable = false)))
+        return repository.observeTasks(serverId, request.filter)
     }
 
-    suspend fun updateTaskStatus(request: TasksStatusUpdateRequest): DataResult<TaskActionResult> =
-        repository.updateTaskStatus(request.taskId, request.status)
+    suspend fun refreshTasks(request: TasksLoadRequest): DataResult<TaskSnapshot> {
+        val serverId = selectedServerIdOrError() ?: return selectedServerMissing()
+        return repository.refreshTasks(serverId, request.filter)
+    }
 
-    suspend fun createTasks(request: TasksCreateRequest): DataResult<TaskSnapshot> =
-        repository.createTasks(request.channelId, request.titles)
+    suspend fun updateTaskStatus(request: TasksStatusUpdateRequest): DataResult<TaskActionResult> {
+        val serverId = selectedServerIdOrError() ?: return selectedServerMissing()
+        return repository.updateTaskStatus(serverId, request.taskId, request.status)
+    }
+
+    suspend fun createTasks(request: TasksCreateRequest): DataResult<TaskSnapshot> {
+        val serverId = selectedServerIdOrError() ?: return selectedServerMissing()
+        return repository.createTasks(serverId, request.channelId, request.titles)
+    }
+
+    private suspend fun selectedServerIdOrError(): ServerId? =
+        authStore.readSession()?.currentServerId?.let(::ServerId)
+
+    private fun <T> selectedServerMissing(): DataResult<T> =
+        DataResult.Error(ScreenError(code = "selected_server_missing", retryable = false))
 }

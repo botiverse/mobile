@@ -48,7 +48,8 @@ boundary failures.
 The expected direction is:
 
 ```text
-UI -> SharedStateHolder -> UseCase -> Repository -> DataSource/API/HostCapability
+UI -> SharedStateHolder -> UseCase -> Repository -> LocalDataSource/DAO
+                                             \-> RemoteDataSource/API/HostCapability
 ```
 
 Repositories and data sources return typed domain snapshots, patches, or
@@ -81,7 +82,8 @@ graph TD
         Runtime[MviStoreRuntime<br/>queued reducer + no-op gate]
         UseCase[UseCase / Interactor]
         Repository[Repository]
-        DataSource[DataSource<br/>Ktor / SQLDelight / HostCapability]
+        Local[LocalDataSource / DAO<br/>SQLDelight / Native DB / KV]
+        Remote[RemoteDataSource<br/>Ktor / WebSocket / HostCapability]
     end
 
     StateHolder -->|UIState| UI
@@ -90,8 +92,11 @@ graph TD
     StateHolder --> Runtime
     StateHolder -->|Call| UseCase
     UseCase --> Repository
-    Repository --> DataSource
-    DataSource -->|DataResult / Patch| Repository
+    Repository -->|Observe local truth| Local
+    Repository -->|Refresh / mutate / realtime sync| Remote
+    Remote -->|DataResult / Patch| Repository
+    Repository -->|Upsert / patch| Local
+    Local -->|Flow of domain state| Repository
     Repository -->|Typed result| UseCase
     UseCase -->|Intent / Result| StateHolder
 ```
@@ -153,9 +158,15 @@ adopting a heavy framework in this migration slice.
 - The use case reads selected session/server from `SlockAuthSessionStore` and
   calls `SharedTasksRepository`.
 - `SharedTasksRepository` lives in `SharedTasksRepository.kt`.
-- `SharedTasksDataRepository` is the current remote-only implementation. It
-  delegates to `SharedTasksDataSource`, which remains the typed API/data-source
-  boundary in `TasksDataSource.kt`.
+- `SharedTasksDataRepository` is the first local-first proof implementation.
+  UI-facing reads go through `observeTasks(...)`, which observes
+  `SharedTasksLocalDataSource`.
+- `SharedTasksRemoteDataSource` is implemented by `SharedTasksDataSource` in
+  `TasksDataSource.kt`; it owns typed API calls only.
+- `InMemorySharedTasksLocalDataSource` is the temporary commonMain local source
+  used to prove the flow: refresh fetches remote tasks, writes local, and local
+  Flow drives UI state. It should be replaced by a real DAO-backed local source
+  when Tasks needs offline/persistent behavior.
 - `TasksLoadRequest`, `TasksStatusUpdateRequest`, and `TasksCreateRequest` live
   in `TasksRequests.kt` so the use-case input contract is not hidden inside the
   store file.

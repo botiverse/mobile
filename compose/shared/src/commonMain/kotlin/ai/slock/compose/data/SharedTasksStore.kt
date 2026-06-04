@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 data class TasksUiState(
@@ -132,7 +133,7 @@ class SharedTasksViewModel(
     private val useCase: SharedTasksUseCase =
         SharedTasksUseCase(
             authStore = authStore,
-            repository = SharedTasksDataRepository(dataSource)
+            repository = SharedTasksDataRepository(remoteDataSource = dataSource)
         )
 ) : ViewModel(),
     SharedStateHolder<TasksUiState, SharedTasksRouteIntent, SharedTasksEvent> {
@@ -151,6 +152,7 @@ class SharedTasksViewModel(
         get() = uiState
 
     private var loadJob: Job? = null
+    private var observeJob: Job? = null
     private var statusJob: Job? = null
 
     private var createJob: Job? = null
@@ -191,28 +193,37 @@ class SharedTasksViewModel(
                 is SharedTasksRouteIntent.SelectFilter -> intent.status
                 else -> state.value.selectedFilter
             }
+        val request = TasksLoadRequest(filter = TaskFilter(statuses = selectedFilter?.let(::setOf) ?: emptySet()))
+        observeTasks(request, selectedFilter)
         store.accept(SharedTasksIntent.StartLoading(selectedFilter))
         try {
-            val result =
-                useCase.loadTasks(
-                    TasksLoadRequest(filter = TaskFilter(statuses = selectedFilter?.let(::setOf) ?: emptySet()))
-                )
+            val result = useCase.refreshTasks(request)
             if (result !is DataResult.Content) {
                 result.failureCodeOrNull()?.let { events.emit(SharedTasksEvent.OperationFailed(it)) }
+                store.accept(
+                    if (intent == SharedTasksRouteIntent.Refresh) {
+                        SharedTasksIntent.MergeRefreshResult(result, selectedFilter)
+                    } else {
+                        SharedTasksIntent.SetResult(result, selectedFilter)
+                    }
+                )
             }
-            store.accept(
-                if (intent == SharedTasksRouteIntent.Refresh) {
-                    SharedTasksIntent.MergeRefreshResult(result, selectedFilter)
-                } else {
-                    SharedTasksIntent.SetResult(result, selectedFilter)
-                }
-            )
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             events.emit(SharedTasksEvent.OperationFailed("tasks_network"))
             store.accept(SharedTasksIntent.RefreshFailed("tasks_network"))
         }
+    }
+
+    private fun observeTasks(request: TasksLoadRequest, selectedFilter: TaskStatus?) {
+        observeJob?.cancel()
+        observeJob =
+            viewModelScope.launch {
+                useCase.observeTasks(request).collect { result ->
+                    store.accept(SharedTasksIntent.SetResult(result, selectedFilter))
+                }
+            }
     }
 
     private suspend fun updateStatus(task: TaskSummary, status: TaskStatus) {
@@ -273,6 +284,7 @@ class SharedTasksViewModel(
 
     override fun onCleared() {
         loadJob?.cancel()
+        observeJob?.cancel()
         statusJob?.cancel()
         createJob?.cancel()
         super.onCleared()

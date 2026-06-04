@@ -24,12 +24,12 @@ private val tasksJson = Json {
 
 class SharedTasksDataSource(
     private val api: SlockTasksApi
-) {
+) : SharedTasksRemoteDataSource {
     private val typedApi = SlockTasksApiClient(api)
 
-    suspend fun loadTasks(
+    override suspend fun loadTasks(
         serverId: ServerId,
-        filter: TaskFilter = TaskFilter()
+        filter: TaskFilter
     ): DataResult<TaskSnapshot> =
         try {
             typedApi.serverTasks(serverId, DataRequestPriority.Visible, filter)
@@ -39,7 +39,7 @@ class SharedTasksDataSource(
             DataResult.Error(ScreenError(code = "tasks_network", retryable = true))
         }
 
-    suspend fun updateTaskStatus(
+    override suspend fun updateTaskStatus(
         taskId: TaskId,
         status: TaskStatus
     ): DataResult<TaskActionResult> =
@@ -58,7 +58,7 @@ class SharedTasksDataSource(
      * Callers should pre-filter (see [SharedTasksViewModel] which discards blanks
      * before dispatching).
      */
-    suspend fun createTasks(
+    override suspend fun createTasks(
         channelId: ChannelId,
         titles: List<String>
     ): DataResult<TaskSnapshot> =

@@ -14,6 +14,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,7 +33,7 @@ class SharedTasksStoreTest {
                 repository = repository
             )
 
-        val result = useCase.loadTasks(TasksLoadRequest())
+        val result = useCase.refreshTasks(TasksLoadRequest())
 
         val error = assertIs<DataResult.Error>(result)
         assertEquals("selected_server_missing", error.error.code)
@@ -63,11 +66,45 @@ class SharedTasksStoreTest {
                 repository = repository
             )
 
-        val result = useCase.loadTasks(TasksLoadRequest(TaskFilter(statuses = setOf(TaskStatus.Todo))))
+        val result = useCase.refreshTasks(TasksLoadRequest(TaskFilter(statuses = setOf(TaskStatus.Todo))))
 
         assertIs<DataResult.Content<TaskSnapshot>>(result)
         assertEquals(ServerId("server-1"), repository.lastServerId)
         assertEquals(setOf(TaskStatus.Todo), repository.lastFilter?.statuses)
+    }
+
+    @Test
+    fun sharedTasksRepositoryRefreshWritesRemoteResultIntoLocalSource() = runBlocking {
+        val serverId = ServerId("server-1")
+        val local = InMemorySharedTasksLocalDataSource()
+        val remote =
+            FakeTasksRemoteDataSource(
+                loadResult =
+                    DataResult.Content(
+                        TaskSnapshot(
+                            tasks =
+                                listOf(
+                                    task("task-1", TaskStatus.Todo),
+                                    task("task-2", TaskStatus.Done)
+                                ),
+                            summaryCounts = emptyMap()
+                        )
+                    )
+            )
+        val repository =
+            SharedTasksDataRepository(
+                localDataSource = local,
+                remoteDataSource = remote
+            )
+
+        val refreshResult = repository.refreshTasks(serverId, TaskFilter(statuses = setOf(TaskStatus.Todo)))
+        val observed = repository.observeTasks(serverId, TaskFilter(statuses = setOf(TaskStatus.Todo))).first()
+
+        val refreshContent = assertIs<DataResult.Content<TaskSnapshot>>(refreshResult).data
+        val observedContent = assertIs<DataResult.Content<TaskSnapshot>>(observed).data
+        assertEquals(listOf("task-1"), refreshContent.tasks.map { it.id.value })
+        assertEquals(listOf("task-1"), observedContent.tasks.map { it.id.value })
+        assertEquals(TaskFilter(), remote.lastFilter)
     }
 
     @Test
@@ -429,9 +466,43 @@ class SharedTasksStoreTest {
         var lastFilter: TaskFilter? = null
             private set
 
-        override suspend fun loadTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot> {
+        override fun observeTasks(serverId: ServerId, filter: TaskFilter): Flow<DataResult<TaskSnapshot>> =
+            flowOf(loadResult)
+
+        override suspend fun refreshTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot> {
             loadCalls += 1
             lastServerId = serverId
+            lastFilter = filter
+            return loadResult
+        }
+
+        override suspend fun updateTaskStatus(
+            serverId: ServerId,
+            taskId: TaskId,
+            status: TaskStatus
+        ): DataResult<TaskActionResult> =
+            updateResult
+
+        override suspend fun createTasks(
+            serverId: ServerId,
+            channelId: ChannelId,
+            titles: List<String>
+        ): DataResult<TaskSnapshot> =
+            createResult
+    }
+
+    private class FakeTasksRemoteDataSource(
+        private val loadResult: DataResult<TaskSnapshot> =
+            DataResult.Error(ScreenError("not_configured")),
+        private val updateResult: DataResult<TaskActionResult> =
+            DataResult.Error(ScreenError("not_configured")),
+        private val createResult: DataResult<TaskSnapshot> =
+            DataResult.Error(ScreenError("not_configured"))
+    ) : SharedTasksRemoteDataSource {
+        var lastFilter: TaskFilter? = null
+            private set
+
+        override suspend fun loadTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot> {
             lastFilter = filter
             return loadResult
         }
