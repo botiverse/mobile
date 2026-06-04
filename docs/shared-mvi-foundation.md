@@ -56,6 +56,18 @@ Repositories and data sources return typed domain snapshots, patches, or
 store, notification permission, file picker, router, or open URL. They must not
 become hidden state machines.
 
+Repository and data source are deliberately separate:
+
+- A repository is the domain-facing contract for a feature. It is where cache
+  vs remote policy, write-through, realtime patch merge, no-op/diff decisions,
+  and fallback behavior belong.
+- A data source is a concrete external boundary: Ktor/API transport,
+  SQLDelight/native database DAO, local KV store, or host capability.
+- A feature that only has one remote call may temporarily have a thin
+  repository implementation. That is a migration bridge, not a pattern to copy
+  blindly. If a repository never owns policy, it should be collapsed back into
+  the use case or replaced by a real repository when cache/realtime arrives.
+
 Cache, realtime, and write-through events must re-enter through store/reducer
 paths. They should not directly mutate UI collections or trigger a full page
 reload when a narrow patch is enough.
@@ -140,8 +152,13 @@ adopting a heavy framework in this migration slice.
 - The ViewModel calls `SharedTasksUseCase`.
 - The use case reads selected session/server from `SlockAuthSessionStore` and
   calls `SharedTasksRepository`.
-- `SharedTasksRepositoryAdapter` delegates to `SharedTasksDataSource`, which is
-  the typed API/data-source boundary.
+- `SharedTasksRepository` lives in `SharedTasksRepository.kt`.
+- `SharedTasksDataRepository` is the current remote-only implementation. It
+  delegates to `SharedTasksDataSource`, which remains the typed API/data-source
+  boundary in `TasksDataSource.kt`.
+- `TasksLoadRequest`, `TasksStatusUpdateRequest`, and `TasksCreateRequest` live
+  in `TasksRequests.kt` so the use-case input contract is not hidden inside the
+  store file.
 - Store state emission still goes through `MviStoreRuntime`, keeping the reducer
   queue, no-op gate, and transition log.
 - Mutation/load failures are mapped through typed `DataResult.failureCodeOrNull`

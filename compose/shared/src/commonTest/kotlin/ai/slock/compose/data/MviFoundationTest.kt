@@ -82,11 +82,7 @@ class MviFoundationTest {
     @Test
     fun stateHolderDispatchesActionThroughUseCaseAndReducesState() {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val useCase =
-            object : MviUseCase<Int, String> {
-                override suspend fun execute(request: Int): DataResult<String> =
-                    DataResult.Content("loaded-$request")
-            }
+        val useCase = DemoUseCase(DataResult.Content("loaded-42"))
         val holder =
             MviStateHolder<DemoState, DemoAction, DemoIntent, DemoEvent>(
                 initialState = DemoState(),
@@ -117,11 +113,7 @@ class MviFoundationTest {
     @Test
     fun stateHolderEmitsUiEventForUseCaseFailure() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val useCase =
-            object : MviUseCase<Int, String> {
-                override suspend fun execute(request: Int): DataResult<String> =
-                    DataResult.Error(ScreenError("demo_failed"))
-            }
+        val useCase = DemoUseCase(DataResult.Error(ScreenError("demo_failed")))
         val holder =
             MviStateHolder<DemoState, DemoAction, DemoIntent, DemoEvent>(
                 initialState = DemoState(),
@@ -236,5 +228,11 @@ class MviFoundationTest {
 
     private sealed interface DemoEvent {
         data class Failed(val code: String) : DemoEvent
+    }
+
+    private class DemoUseCase(
+        private val result: DataResult<String>
+    ) {
+        suspend fun execute(request: Int): DataResult<String> = result
     }
 }

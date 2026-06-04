@@ -2,10 +2,8 @@ package ai.slock.compose.data
 
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MemberProfile
-import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
-import ai.slock.compose.model.ServerId
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -134,7 +132,7 @@ class SharedTasksViewModel(
     private val useCase: SharedTasksUseCase =
         SharedTasksUseCase(
             authStore = authStore,
-            repository = SharedTasksRepositoryAdapter(dataSource)
+            repository = SharedTasksDataRepository(dataSource)
         )
 ) : ViewModel(),
     SharedStateHolder<TasksUiState, SharedTasksRouteIntent, SharedTasksEvent> {
@@ -279,59 +277,6 @@ class SharedTasksViewModel(
         createJob?.cancel()
         super.onCleared()
     }
-}
-
-data class TasksLoadRequest(val filter: TaskFilter = TaskFilter())
-
-data class TasksStatusUpdateRequest(
-    val taskId: TaskId,
-    val status: TaskStatus
-)
-
-data class TasksCreateRequest(
-    val channelId: ChannelId,
-    val titles: List<String>
-)
-
-interface SharedTasksRepository {
-    suspend fun loadTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot>
-
-    suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult>
-
-    suspend fun createTasks(channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot>
-}
-
-class SharedTasksRepositoryAdapter(
-    private val dataSource: SharedTasksDataSource
-) : SharedTasksRepository {
-    override suspend fun loadTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot> =
-        dataSource.loadTasks(serverId, filter)
-
-    override suspend fun updateTaskStatus(
-        taskId: TaskId,
-        status: TaskStatus
-    ): DataResult<TaskActionResult> =
-        dataSource.updateTaskStatus(taskId, status)
-
-    override suspend fun createTasks(channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot> =
-        dataSource.createTasks(channelId, titles)
-}
-
-class SharedTasksUseCase(
-    private val authStore: SlockAuthSessionStore,
-    private val repository: SharedTasksRepository
-) {
-    suspend fun loadTasks(request: TasksLoadRequest): DataResult<TaskSnapshot> {
-        val serverId = authStore.readSession()?.currentServerId?.let(::ServerId)
-            ?: return DataResult.Error(ScreenError(code = "selected_server_missing", retryable = false))
-        return repository.loadTasks(serverId, request.filter)
-    }
-
-    suspend fun updateTaskStatus(request: TasksStatusUpdateRequest): DataResult<TaskActionResult> =
-        repository.updateTaskStatus(request.taskId, request.status)
-
-    suspend fun createTasks(request: TasksCreateRequest): DataResult<TaskSnapshot> =
-        repository.createTasks(request.channelId, request.titles)
 }
 
 class SharedTasksStore(

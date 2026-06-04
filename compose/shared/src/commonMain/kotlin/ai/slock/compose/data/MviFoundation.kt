@@ -19,18 +19,6 @@ interface SharedStateHolder<UiState, UiAction, UiEvent> {
     fun dispatch(action: UiAction)
 }
 
-interface MviUseCase<Request, Response> {
-    suspend fun execute(request: Request): DataResult<Response>
-}
-
-interface MviRepository<Request, Response> {
-    suspend fun execute(request: Request): DataResult<Response>
-}
-
-interface MviDataSource<Request, Response> {
-    suspend fun execute(request: Request): DataResult<Response>
-}
-
 /**
  * Lightweight shared MVI runtime used by feature stores. It intentionally avoids
  * a heavy base-class hierarchy: business stores keep their own state shape and
