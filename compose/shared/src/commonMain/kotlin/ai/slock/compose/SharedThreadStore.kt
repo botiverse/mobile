@@ -164,7 +164,7 @@ internal class SharedThreadDataSource(
                         basePayload = basePayload,
                         page = page,
                         session = session
-                    ).withCachedSenderProfiles(session)
+                    ).withSenderProfiles(session)
                 )
             }
         val payload =
@@ -695,7 +695,7 @@ internal class SharedThreadDataSource(
                     basePayload = basePayload,
                     page = page,
                     session = session
-                ).withCachedSenderProfiles(session)
+                ).withSenderProfiles(session)
             )
         }
     }
@@ -717,7 +717,7 @@ internal class SharedThreadDataSource(
             } catch (_: Throwable) {
                 return DataResult.Error(ScreenError(code = fallbackCode, retryable = true))
             }
-        return result.map { snapshot -> transform(snapshot).withCachedSenderProfiles(session) }
+        return result.map { snapshot -> transform(snapshot).withSenderProfiles(session) }
     }
 
     private suspend fun KuiklyThreadScreenPayload.withSenderProfiles(
