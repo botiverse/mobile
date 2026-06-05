@@ -1,6 +1,10 @@
 {
   "fonts": [
     {
+      "familyName": "space_grotesk_variable",
+      "fileName": "space_grotesk_variable.ttf"
+    },
+    {
       "familyName": "space_grotesk_regular",
       "fileName": "space_grotesk_regular.ttf"
     },
