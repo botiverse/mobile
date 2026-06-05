@@ -576,7 +576,7 @@ private val SlockMarkdownCodeBlockBackground = Color(0xFF111827)
 private val SlockMarkdownMentionSpanStyle =
     SpanStyle(
         color = SlockColor.TextBlack,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.SemiBold,
         textDecoration = TextDecoration.Underline
     )
 
@@ -639,7 +639,7 @@ private fun SlockMarkdownInlineChip(label: String, color: Color) {
             label,
             modifier = Modifier.fillMaxWidth(),
             style = SlockType.Caption.copy(
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 fontSize = 14.sp,
                 lineHeight = 21.sp
             ),

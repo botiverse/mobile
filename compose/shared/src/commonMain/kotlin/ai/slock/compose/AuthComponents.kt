@@ -382,7 +382,7 @@ internal fun AuthInlineAction(leading: String, action: String, onClick: () -> Un
         Text(
             text = action,
             style = SlockType.Body.copy(
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
                 color = SlockColor.AccentPink,

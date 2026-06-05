@@ -62,14 +62,19 @@ internal object SlockSize {
 private val SpaceGroteskRegular = FontFamily(KuiklyFont("space_grotesk_regular", FontWeight.Normal, FontStyle.Normal))
 private val SpaceGroteskMedium = FontFamily(KuiklyFont("space_grotesk_medium", FontWeight.Medium, FontStyle.Normal))
 private val SpaceGroteskSemiBold = FontFamily(KuiklyFont("space_grotesk_semibold", FontWeight.SemiBold, FontStyle.Normal))
-private val SpaceGroteskBold = FontFamily(KuiklyFont("space_grotesk_bold", FontWeight.Bold, FontStyle.Normal))
 
 private fun spaceGroteskFamily(fontWeight: FontWeight): FontFamily =
     when {
-        fontWeight >= FontWeight.Bold -> SpaceGroteskBold
+        fontWeight >= FontWeight.Bold -> SpaceGroteskSemiBold
         fontWeight >= FontWeight.SemiBold -> SpaceGroteskSemiBold
         fontWeight >= FontWeight.Medium -> SpaceGroteskMedium
         else -> SpaceGroteskRegular
+    }
+
+private fun slockVisualFontWeight(fontWeight: FontWeight): FontWeight =
+    when {
+        fontWeight >= FontWeight.Bold -> FontWeight.SemiBold
+        else -> fontWeight
     }
 
 private fun slockTextStyle(
@@ -78,16 +83,20 @@ private fun slockTextStyle(
     lineHeight: TextUnit,
     letterSpacing: TextUnit
 ): TextStyle =
-    TextStyle(
-        fontFamily = spaceGroteskFamily(fontWeight),
-        fontWeight = fontWeight,
-        fontSize = fontSize,
-        lineHeight = lineHeight,
-        letterSpacing = letterSpacing
-    )
+    slockVisualFontWeight(fontWeight).let { visualWeight ->
+        TextStyle(
+            fontFamily = spaceGroteskFamily(visualWeight),
+            fontWeight = visualWeight,
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            letterSpacing = letterSpacing
+        )
+    }
 
 internal fun TextStyle.withSlockFontWeight(fontWeight: FontWeight): TextStyle =
-    copy(fontFamily = spaceGroteskFamily(fontWeight), fontWeight = fontWeight)
+    slockVisualFontWeight(fontWeight).let { visualWeight ->
+        copy(fontFamily = spaceGroteskFamily(visualWeight), fontWeight = visualWeight)
+    }
 
 internal object SlockType {
     val PageTitle = slockTextStyle(FontWeight.SemiBold, 20.sp, 24.sp, 0.sp)

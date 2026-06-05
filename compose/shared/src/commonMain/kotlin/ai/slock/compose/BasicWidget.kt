@@ -623,7 +623,7 @@ fun ComposeNavigationBar(titleInput: String = "", content: @Composable () -> Uni
             Text(
                 text = "<",
                 fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
                     .padding(vertical = 12.dp, horizontal = 12.dp)
                     .clickable {
@@ -633,7 +633,7 @@ fun ComposeNavigationBar(titleInput: String = "", content: @Composable () -> Uni
             Text(
                 title,
                 fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
                 color = Color(0xFF333333),
                 modifier = Modifier
