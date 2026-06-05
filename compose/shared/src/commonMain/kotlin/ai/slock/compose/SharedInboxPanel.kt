@@ -261,16 +261,6 @@ private fun SharedActivityHeader(
         if (onClose != null) {
             SlockBrutalIconButton(iconName = "arrow-left", onClick = onClose, size = 32.dp, shadowOffset = 2.dp)
         }
-        Box(
-            modifier =
-                Modifier
-                    .size(36.dp)
-                    .background(SlockColor.BrandYellow)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            SlockLucideIcon("activity", modifier = Modifier.size(18.dp), color = "#FF000000")
-        }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = "Activity",
