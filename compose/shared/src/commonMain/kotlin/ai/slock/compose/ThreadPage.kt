@@ -3261,19 +3261,21 @@ private fun ThreadReactionChip(
             .background(background)
             .padding(horizontal = 6.dp, vertical = 3.dp)
     val chipContent: @Composable () -> Unit = {
-        Text(
-            text = buildString {
-                append(reaction.emoji)
-                if (reaction.count > 0) {
-                    append(" ")
-                    append(reaction.count)
-                }
-            },
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            ThreadQuickReactionGlyph(reaction.emoji, modifier = Modifier.size(15.dp))
+            if (reaction.count > 0) {
+                Text(
+                    text = reaction.count.toString(),
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
     }
     if (onClick != null) {
         Button(onClick = onClick, pressFeedback = false) {
