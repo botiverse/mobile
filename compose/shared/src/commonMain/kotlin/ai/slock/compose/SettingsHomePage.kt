@@ -4587,6 +4587,9 @@ private fun SharedHomeSearchPanel(
     LaunchedEffect(Unit) {
         onIntent(SharedHomeSearchSavedIntent.OpenSearch)
     }
+    SlockBackHandler(enabled = openFilterId != null) {
+        openFilterId = null
+    }
     Box(
         modifier =
             modifier

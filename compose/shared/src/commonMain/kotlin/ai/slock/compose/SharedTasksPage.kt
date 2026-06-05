@@ -282,6 +282,16 @@ private fun SharedTasksLoadedBodyContent(
     val assigneeFilterOptions = remember(visibleContent.assigneeOptions) {
         visibleContent.assigneeOptions.map { SlockFilterOption(id = it.id.value, label = it.displayName, icon = "user") }
     }
+    SlockBackHandler(
+        enabled = createDialogOpen || statusMenuTask != null || presentationState.openFilterId != null
+    ) {
+        when {
+            createDialogOpen -> createDialogOpen = false
+            statusMenuTask != null -> statusMenuTask = null
+            presentationState.openFilterId != null ->
+                presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null))
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(modifier = Modifier.fillMaxSize()) {

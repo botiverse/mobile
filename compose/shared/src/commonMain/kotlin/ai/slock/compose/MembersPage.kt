@@ -269,6 +269,9 @@ internal fun MembersRouteContent(
             selectedMemberId = null
         }
     }
+    SlockBackHandler(enabled = selectedMember != null) {
+        selectedMemberId = null
+    }
     if (selectedMember != null) {
         MembersDetailContent(
             member = selectedMember,
