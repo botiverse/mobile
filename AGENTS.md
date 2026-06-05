@@ -89,6 +89,26 @@ cd /Users/artin/AndroidStudioProjects/Slock
 scripts/sync_kuikly_ai_skills.sh
 ```
 
+## KuiklyUI Fork
+
+- We maintain a fork at `https://github.com/bytemain/KuiklyUI` checked out as a
+  git submodule at `third_party/kuikly-ui/` (branch `staging`).
+- Patches that fix Kuikly upstream bugs land on `staging` first, then a PR is
+  submitted to `Tencent-TDS/KuiklyUI`.
+- Current patches on staging:
+  - `toKuiklyFontFamily()` weight serialization: includes FontWeight in the
+    serialized font family string (`"fontName:weight"`) so multi-weight
+    FontFamily entries resolve correctly on the platform side.
+- When a fix is accepted upstream and released as a new Kuikly version, update
+  `KUIKLY_VERSION` in `compose/buildSrc/src/main/java/KotlinBuildVar.kt` and
+  simplify any workaround code that the fix obsoletes (e.g. per-weight
+  FontFamily dispatch in `SlockDesignTokens.kt`).
+- To publish the fork locally for testing:
+  ```bash
+  cd /Users/artin/AndroidStudioProjects/Slock/third_party/kuikly-ui
+  ./gradlew publishToMavenLocal
+  ```"
+
 ## OHOS Kuikly Workflow
 
 - The Slock OHOS app bundle/module/ability is `ai.slock.compose` / `entry` /
