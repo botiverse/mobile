@@ -8,7 +8,7 @@ SOURCE_URL="${SLOCK_KTOR_OHOS_SOURCE_URL:-https://github.com/blackbbc/ktor.git}"
 SOURCE_REF="${SLOCK_KTOR_OHOS_SOURCE_REF:-3.0.3-ohos}"
 BRANCH_NAME="${SLOCK_KTOR_OHOS_BRANCH:-slock-3.0.3-ohos}"
 VERSION_NAME="${SLOCK_KTOR_OHOS_VERSION:-3.0.3-slock-ohos-001}"
-WORKDIR="${SLOCK_KTOR_OHOS_WORKDIR:-${REPO_ROOT}/../Slock-third-party/ktor-slock-ohos}"
+WORKDIR="${SLOCK_KTOR_OHOS_WORKDIR:-${REPO_ROOT}/third_party/.workdirs/ktor-slock-ohos}"
 
 PUBLISH=false
 if [[ "${1:-}" == "--publish" ]]; then

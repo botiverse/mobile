@@ -63,7 +63,7 @@ By default it clones `Tencent-TDS/KuiklyBase-platform` and the selected upstream
 project under:
 
 ```text
-../Slock-third-party/
+third_party/.workdirs/
 ```
 
 It then checks out the documented baseline, applies the KuiklyBase patch, and

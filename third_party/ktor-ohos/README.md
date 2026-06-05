@@ -47,7 +47,7 @@ scripts/prepare_ktor_ohos_fork.sh
 By default this checks out the reference fork under:
 
 ```text
-../Slock-third-party/ktor-slock-ohos
+third_party/.workdirs/ktor-slock-ohos
 ```
 
 Override the source repository after Slock creates its own fork:
@@ -82,7 +82,7 @@ Direct compile currently reaches OHOS dependency resolution but is blocked by
 missing KBA kotlinx artifacts:
 
 ```bash
-cd ../Slock-third-party/ktor-slock-ohos
+cd third_party/.workdirs/ktor-slock-ohos
 ./gradlew :ktor-client:ktor-client-ohos:compileKotlinOhosArm64
 ```
 

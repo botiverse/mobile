@@ -31,7 +31,7 @@ EOF
 fi
 
 KUIKLYBASE_URL="${SLOCK_KUIKLYBASE_PLATFORM_URL:-https://github.com/Tencent-TDS/KuiklyBase-platform.git}"
-THIRD_PARTY_ROOT="${SLOCK_THIRD_PARTY_WORKDIR:-${REPO_ROOT}/../Slock-third-party}"
+THIRD_PARTY_ROOT="${SLOCK_THIRD_PARTY_WORKDIR:-${REPO_ROOT}/third_party/.workdirs}"
 KUIKLYBASE_WORKDIR="${SLOCK_KUIKLYBASE_PLATFORM_WORKDIR:-${THIRD_PARTY_ROOT}/KuiklyBase-platform}"
 
 case "${COMPONENT}" in

@@ -26,4 +26,6 @@ artifacts/workspace/*.webp
 
 temp_compose/
 
+/third_party/.workdirs/
+
 .agents/.tmp/
