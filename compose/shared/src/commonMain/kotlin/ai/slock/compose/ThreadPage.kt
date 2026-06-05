@@ -44,7 +44,6 @@ import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.ServerId
-import ai.slock.compose.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -703,7 +702,6 @@ private fun ThreadMessageVisualCard(
                 ThreadMessageStaticAvatar(
                     avatarLabel = message.avatarLabel,
                     avatarWireValue = message.resolvedThreadAvatarWireValue(),
-                    gravatarHash = message.gravatarHash,
                     showStatus = message.showsAgentStatusIndicator()
                 )
                 Column(
@@ -3150,7 +3148,6 @@ private fun ThreadMessageCard(
                     ThreadMessageAvatar(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = message.resolvedThreadAvatarWireValue(),
-                        gravatarHash = message.gravatarHash,
                         showStatus = message.showsAgentStatusIndicator(),
                         onClick = { onOpenMember(message.authorId) }
                     )
@@ -3243,7 +3240,6 @@ private fun ThreadMessageCard(
                     ThreadMessageAvatar(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = message.resolvedThreadAvatarWireValue(),
-                        gravatarHash = message.gravatarHash,
                         showStatus = message.showsAgentStatusIndicator(),
                         onClick = { onOpenMember(message.authorId) }
                     )
@@ -3992,14 +3988,12 @@ private fun ThreadOriginCard(
 private fun ThreadMessageAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
-    gravatarHash: String?,
     showStatus: Boolean,
     onClick: () -> Unit
 ) {
     val avatarSource =
-        remember(avatarWireValue, gravatarHash) {
+        remember(avatarWireValue) {
             avatarWireValue?.takeIf { it.isNotBlank() }
-                ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
         }
     Box(
         modifier = Modifier.size(40.dp).clickable(onClick = onClick),
@@ -4023,13 +4017,11 @@ private fun ThreadMessageAvatar(
 private fun ThreadMessageStaticAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
-    gravatarHash: String?,
     showStatus: Boolean
 ) {
     val avatarSource =
-        remember(avatarWireValue, gravatarHash) {
+        remember(avatarWireValue) {
             avatarWireValue?.takeIf { it.isNotBlank() }
-                ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
         }
     Box(
         modifier = Modifier.size(40.dp),
