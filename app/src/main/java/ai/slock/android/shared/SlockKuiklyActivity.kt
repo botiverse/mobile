@@ -54,16 +54,21 @@ import ai.slock.android.core.data.auth.completeGoogleSocialAuth
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
+import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
 import ai.slock.android.core.data.storage.StorageClearTarget
 import ai.slock.android.core.data.storage.StorageManagementRepository
 import ai.slock.android.core.data.storage.StorageManagementSnapshot
 import ai.slock.android.core.data.realtime.SessionRealtimeRepository
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.android.core.data.realtime.SocketIoSocketTransport
+import ai.slock.compose.data.DataRequestPriority
+import ai.slock.compose.data.HomeNetworkResponse
 import ai.slock.compose.data.RealtimeRepository
 import ai.slock.compose.data.RealtimeSubscription
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
+import ai.slock.compose.model.ChannelId
+import ai.slock.compose.network.MultipartFile
 import ai.slock.android.core.model.DirectMessageCreated
 import ai.slock.android.core.model.Heartbeat
 import ai.slock.android.core.model.MemberKind
@@ -98,7 +103,6 @@ import com.caverock.androidsvg.SVG
 import com.google.gson.Gson
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import java.io.DataOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -409,71 +413,21 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                     "errorBodyText" to "No readable attachments"
             )
         }
-        val initialResult = postThreadAttachments(channelId = channelId, token = token, serverId = serverId, files = files)
-        val finalResult =
-                if (initialResult.code == 401) {
-                    val refreshed =
-                            runBlocking {
-                                tokenRefresher.refreshIfCurrent(
-                                        failedAccessToken = token,
-                                        clearOnUnauthorized = false
-                                )
-                            }
-                    val refreshedToken = refreshed?.accessToken.orEmpty()
-                    val refreshedServerId = refreshed?.currentServerId.orEmpty()
-                    if (refreshedToken.isBlank() || refreshedServerId.isBlank()) {
-                        initialResult
-                    } else {
-                        postThreadAttachments(
-                                channelId = channelId,
-                                token = refreshedToken,
-                                serverId = refreshedServerId,
-                                files = files
-                        )
-                    }
-                } else {
-                    initialResult
+        val response =
+                runBlocking {
+                    RealSlockNetworkClientFactory.create(sessionStore, tokenRefresher = tokenRefresher)
+                            .uploadAttachments(
+                                    priority = DataRequestPriority.Foreground,
+                                    channelId = ChannelId(channelId),
+                                    files = files.map { it.toMultipartFile() }
+                            )
                 }
         return mapOf(
-                "code" to finalResult.code,
-                "bodyText" to if (finalResult.code in 200..299) finalResult.body else "",
-                "errorCode" to finalResult.errorCode(),
-                "errorBodyText" to if (finalResult.code in 200..299) "" else finalResult.body
+                "code" to response.code,
+                "bodyText" to response.bodyText.orEmpty(),
+                "errorCode" to response.uploadErrorCode(),
+                "errorBodyText" to if (response.isSuccessful) "" else response.errorBodyText.orEmpty()
         )
-    }
-
-    private fun postThreadAttachments(
-            channelId: String,
-            token: String,
-            serverId: String,
-            files: List<PickedThreadAttachment>
-    ): ThreadAttachmentUploadHttpResult {
-        val boundary = "SlockBoundary${System.currentTimeMillis()}"
-        val url = URL("${AndroidAuthApiFactory.BASE_URL.trimEnd('/')}/attachments/upload")
-        val connection =
-                (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    connectTimeout = 30_000
-                    readTimeout = 60_000
-                    doOutput = true
-                    setRequestProperty("Accept", "application/json")
-                    setRequestProperty("Authorization", "Bearer $token")
-                    setRequestProperty("X-Server-Id", serverId)
-                    setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-                }
-        DataOutputStream(connection.outputStream).use { output ->
-            output.writeMultipartField(boundary, "channelId", channelId)
-            files.forEach { file ->
-                output.writeMultipartFile(boundary, file)
-            }
-            output.writeBytes("--$boundary--\r\n")
-            output.flush()
-        }
-        val code = connection.responseCode
-        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-        val body = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
-        connection.disconnect()
-        return ThreadAttachmentUploadHttpResult(code = code, body = body)
     }
 
     private fun readPickedThreadAttachment(uri: Uri): PickedThreadAttachment? {
@@ -491,6 +445,14 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 bytes = bytes
         )
     }
+
+    private fun PickedThreadAttachment.toMultipartFile(): MultipartFile =
+            MultipartFile(
+                    name = "files",
+                    fileName = fileName,
+                    mimeType = mimeType,
+                    bytes = bytes
+            )
 
     private fun queryPickedFileName(uri: Uri): String? =
             contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
@@ -903,37 +865,12 @@ private data class PickedThreadAttachment(
         val bytes: ByteArray
 )
 
-private data class ThreadAttachmentUploadHttpResult(
-        val code: Int,
-        val body: String
-) {
-        fun errorCode(): String =
-                when {
-                        code in 200..299 -> ""
-                        code == 401 -> "auth_required"
-                        else -> "attachment_upload_failed"
-                }
-}
-
-private fun DataOutputStream.writeMultipartField(boundary: String, name: String, value: String) {
-    writeBytes("--$boundary\r\n")
-    writeBytes("Content-Disposition: form-data; name=\"$name\"\r\n\r\n")
-    write(value.toByteArray(StandardCharsets.UTF_8))
-    writeBytes("\r\n")
-}
-
-private fun DataOutputStream.writeMultipartFile(boundary: String, file: PickedThreadAttachment) {
-    writeBytes("--$boundary\r\n")
-    writeBytes(
-            "Content-Disposition: form-data; name=\"files\"; filename=\"${file.fileName.sanitizeMultipartFileName()}\"\r\n"
-    )
-    writeBytes("Content-Type: ${file.mimeType}\r\n\r\n")
-    write(file.bytes)
-    writeBytes("\r\n")
-}
-
-private fun String.sanitizeMultipartFileName(): String =
-        replace("\"", "_").replace("\r", "_").replace("\n", "_")
+private fun HomeNetworkResponse.uploadErrorCode(): String =
+        when {
+            isSuccessful -> ""
+            code == 401 -> "auth_required"
+            else -> "attachment_upload_failed"
+        }
 
 private object SlockKuiklyRouterAdapter : IKRRouterAdapter {
     override fun openPage(context: Context, pageName: String, pageData: JSONObject) {
