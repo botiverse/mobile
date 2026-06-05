@@ -10,7 +10,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
 import com.tencent.kuikly.compose.foundation.Canvas
+import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -1340,14 +1342,32 @@ internal fun SlockAvatar(avatarWireValue: String?, label: String, modifier: Modi
         pixelSpec != null -> PixelAvatar(pixelSpec, modifier, avatarSize)
         avatarWireValue?.startsWith("http://") == true || avatarWireValue?.startsWith("https://") == true -> Box(modifier = modifier.size(avatarSize).background(SlockColor.AccentLavender).border(SlockStroke.Thin, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
             DefaultUserAvatarIcon(avatarSize)
-            SlockCachedImage(
+            SlockAvatarHttpImage(
                 source = avatarWireValue,
-                contentDescription = null,
-                contentScale = ContentScale.FillBounds,
                 modifier = Modifier.fillMaxSize()
             )
         }
         else -> DefaultUserAvatar(modifier, avatarSize)
+    }
+}
+
+@Composable
+private fun SlockAvatarHttpImage(source: String, modifier: Modifier = Modifier) {
+    var loaded by remember(source) { mutableStateOf(false) }
+    val painter =
+        rememberAsyncImagePainter(
+            model = source,
+            onLoading = { loaded = false },
+            onSuccess = { loaded = true },
+            onError = { loaded = false }
+        )
+    if (loaded) {
+        Image(
+            painter = painter,
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = ContentScale.FillBounds
+        )
     }
 }
 

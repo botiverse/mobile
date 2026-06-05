@@ -6,18 +6,24 @@ import ai.slock.compose.components.SegmentedControlOption
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.InboxFilter
 import ai.slock.compose.data.InboxItem
 import ai.slock.compose.data.InboxSnapshot
 import ai.slock.compose.data.KuiklySlockNetworkClient
+import ai.slock.compose.data.MemberRepository
 import ai.slock.compose.data.RealInboxRepository
+import ai.slock.compose.data.RealMemberRepository
 import ai.slock.compose.data.RealReadReceiptRepository
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.InboxItemKind
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ThreadConversation
+import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.model.topLevelThreadId
 import ai.slock.compose.network.SlockNetworkModule
@@ -94,6 +100,15 @@ internal fun SharedHomeActivityScreen(
                 warningLogger = { message -> bridge.log("shared_activity_read_warning $message") }
             )
         }
+    val memberRepository =
+        remember(authStore, networkClient) {
+            RealMemberRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                logger = { message -> bridge.log("shared_activity_member $message") },
+                warningLogger = { message -> bridge.log("shared_activity_member_warning $message") }
+            )
+        }
     val scope = rememberCoroutineScope()
     var selectedFilter by remember { mutableStateOf(InboxFilter.All) }
     var refreshNonce by remember { mutableStateOf(0) }
@@ -117,7 +132,12 @@ internal fun SharedHomeActivityScreen(
             }
             state =
                 when (val result = repository.loadInitial(ServerId(serverId), selectedFilter, limit = 30)) {
-                    is DataResult.Content -> SharedActivityPanelState.Content(result.data)
+                    is DataResult.Content ->
+                        SharedActivityPanelState.Content(
+                            result.data.withSenderAvatarsFromMembers(
+                                memberRepository.loadSenderAvatarProfiles(ServerId(serverId))
+                            )
+                        )
                     is DataResult.Empty ->
                         SharedActivityPanelState.Content(
                             InboxSnapshot(server = server, items = emptyList(), totalCount = 0, totalUnreadCount = 0)
@@ -393,14 +413,24 @@ private fun SharedActivityRow(
                     modifier = Modifier.weight(1f)
                 )
                 item.senderDisplayName()?.let { sender ->
-                    Text(
-                        text = sender,
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SlockAvatar(
+                            avatarWireValue = item.senderAvatarWireValue(),
+                            label = sender,
+                            avatarSize = 14.dp
+                        )
+                        Text(
+                            text = sender,
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
                 Text(
                     text = item.activityTimeLabel(),
@@ -610,6 +640,77 @@ private fun InboxItem.channelLabel(): String =
 
 private fun InboxItem.senderDisplayName(): String? =
     latestActivitySenderName ?: lastMessageSenderName
+
+private fun InboxItem.senderAvatarWireValue(): String? =
+    when {
+        latestActivitySenderKind != null && latestActivitySenderId != null ->
+            avatarWireValueForAvatarSlot(
+                kind = latestActivitySenderKind,
+                id = latestActivitySenderId,
+                avatarWireValue = latestActivitySenderAvatarWireValue
+            )
+        lastMessageSenderKind != null && lastMessageSenderId != null ->
+            avatarWireValueForAvatarSlot(
+                kind = lastMessageSenderKind,
+                id = lastMessageSenderId,
+                avatarWireValue = lastMessageSenderAvatarWireValue
+            )
+        else -> latestActivitySenderAvatarWireValue ?: lastMessageSenderAvatarWireValue
+    }
+
+private suspend fun MemberRepository.loadSenderAvatarProfiles(
+    serverId: ServerId
+): Map<String, InboxSenderAvatarProfile> =
+    try {
+        when (val result = getMembers(DataRequestPriority.Visible, serverId)) {
+            is DataResult.Content ->
+                result.data.members.associateBy(
+                    keySelector = { it.id.value },
+                    valueTransform = {
+                        InboxSenderAvatarProfile(
+                            kind = it.kind,
+                            avatarWireValue = it.avatarWireValueForActivity()
+                        )
+                    }
+                )
+            else -> emptyMap()
+        }
+    } catch (_: Throwable) {
+        emptyMap()
+    }
+
+private data class InboxSenderAvatarProfile(
+    val kind: MemberKind,
+    val avatarWireValue: String?
+)
+
+private fun MemberProfile.avatarWireValueForActivity(): String? =
+    avatarWireValueForAvatarSlot(
+        kind = kind,
+        id = id.value,
+        avatarWireValue = avatar?.wireValue,
+        avatarUrl = avatarUrl,
+        gravatarHash = gravatarHash
+    )
+
+private fun InboxSnapshot.withSenderAvatarsFromMembers(
+    senderProfiles: Map<String, InboxSenderAvatarProfile>
+): InboxSnapshot {
+    if (senderProfiles.isEmpty()) return this
+    return copy(
+        items =
+            items.map { item ->
+                val lastSender = item.lastMessageSenderId?.let(senderProfiles::get)
+                val latestSender = item.latestActivitySenderId?.let(senderProfiles::get)
+                item.copy(
+                    lastMessageSenderKind = lastSender?.kind ?: item.lastMessageSenderKind,
+                    lastMessageSenderAvatarWireValue = lastSender?.avatarWireValue ?: item.lastMessageSenderAvatarWireValue,
+                    latestActivitySenderKind = latestSender?.kind ?: item.latestActivitySenderKind,
+                    latestActivitySenderAvatarWireValue = latestSender?.avatarWireValue ?: item.latestActivitySenderAvatarWireValue
+                )
+            }
+    )
+}
 
 private fun InboxItem.activityTimeLabel(): String =
     latestActivityAt ?: lastMessageAt ?: ""

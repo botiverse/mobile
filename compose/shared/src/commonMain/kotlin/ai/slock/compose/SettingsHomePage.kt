@@ -172,6 +172,7 @@ import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
+import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.slockEpochMillisUtcIso
 import ai.slock.compose.model.slockStartOfDayUtcIso
 import ai.slock.compose.model.threadIdentity
@@ -326,6 +327,7 @@ private fun SharedHomeSearchEntityLeadingAvatar(result: SearchEntityResult) {
 @Composable
 private fun SharedHomeSearchSenderMeta(
     sender: String,
+    avatarWireValue: String?,
     modifier: Modifier = Modifier,
     compact: Boolean = false
 ) {
@@ -335,7 +337,7 @@ private fun SharedHomeSearchSenderMeta(
         verticalAlignment = Alignment.CenterVertically
     ) {
         SlockAvatar(
-            avatarWireValue = "random:${sender.searchAvatarSeed()}",
+            avatarWireValue = avatarWireValue ?: "random:${sender.searchAvatarSeed()}",
             label = sender,
             avatarSize = if (compact) 12.dp else 16.dp
         )
@@ -4484,7 +4486,7 @@ private fun SharedCreateChannelMemberRow(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    val avatarWireValue = member.avatar?.wireValue ?: member.avatarUrl
+    val avatarWireValue = member.avatarWireValueForAvatarSlot()
     val statusColor =
         when (member.presence) {
             Presence.Active -> SlockColor.AccentLime
@@ -5407,7 +5409,11 @@ private fun SharedHomeSavedResultCard(
                     }
                 }
                 sender?.let {
-                    SharedHomeSavedSenderMeta(senderName = it, modifier = Modifier.weight(1f))
+                    SharedHomeSavedSenderMeta(
+                        senderName = it,
+                        avatarWireValue = item.senderAvatarWireValueForPreview(),
+                        modifier = Modifier.weight(1f)
+                    )
                 }
                 time?.let {
                     Text(
@@ -5437,14 +5443,18 @@ private fun SharedHomeSavedResultCard(
 }
 
 @Composable
-private fun SharedHomeSavedSenderMeta(senderName: String, modifier: Modifier = Modifier) {
+private fun SharedHomeSavedSenderMeta(
+    senderName: String,
+    avatarWireValue: String?,
+    modifier: Modifier = Modifier
+) {
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         SlockAvatar(
-            avatarWireValue = savedSenderAvatarFallback(senderName),
+            avatarWireValue = avatarWireValue ?: savedSenderAvatarFallback(senderName),
             label = senderName,
             avatarSize = 12.dp
         )
@@ -5456,6 +5466,28 @@ private fun SharedHomeSavedSenderMeta(senderName: String, modifier: Modifier = M
             overflow = TextOverflow.Ellipsis
         )
     }
+}
+
+private fun InboxItem.senderAvatarWireValueForPreview(): String? {
+    val latestKind = latestActivitySenderKind
+    val latestId = latestActivitySenderId
+    if (latestKind != null && latestId != null) {
+        return avatarWireValueForAvatarSlot(
+            kind = latestKind,
+            id = latestId,
+            avatarWireValue = latestActivitySenderAvatarWireValue
+        )
+    }
+    val lastKind = lastMessageSenderKind
+    val lastId = lastMessageSenderId
+    if (lastKind != null && lastId != null) {
+        return avatarWireValueForAvatarSlot(
+            kind = lastKind,
+            id = lastId,
+            avatarWireValue = lastMessageSenderAvatarWireValue
+        )
+    }
+    return latestActivitySenderAvatarWireValue ?: lastMessageSenderAvatarWireValue
 }
 
 private fun savedSenderAvatarFallback(senderName: String): String? =
@@ -5692,6 +5724,7 @@ private fun SharedHomeSearchMessageResultRow(
             if (!sender.isNullOrBlank()) {
                 SharedHomeSearchSenderMeta(
                     sender = sender,
+                    avatarWireValue = item.senderAvatarWireValueForPreview(),
                     modifier = Modifier.weight(1f),
                     compact = compactMeta
                 )

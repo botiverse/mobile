@@ -2,6 +2,7 @@ package ai.slock.compose
 
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.EmptyReason
+import ai.slock.compose.data.HomeSnapshot
 import ai.slock.compose.data.ThreadActionResult
 import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesPage
 import ai.slock.compose.data.ChannelFilesSnapshot
@@ -55,6 +56,7 @@ import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.SyncResumeResponse
 import ai.slock.compose.model.formatSlockTimestampLabel
+import ai.slock.compose.model.isGravatarAvatarWireValue
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -723,8 +725,13 @@ internal class SharedThreadDataSource(
     ): KuiklyThreadScreenPayload {
         val repository = memberRepository ?: return this
         val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return this
+        val homeAvatarByMemberId =
+            localWriteThrough
+                ?.readHomeSnapshot(serverId)
+                ?.directMessageAvatarWireValuesByMemberId()
+                .orEmpty()
         senderProfilesCache[serverId.value]?.let { profilesById ->
-            return withSenderProfiles(profilesById)
+            return withSenderProfiles(profilesById).withHomeDirectMessageAvatars(homeAvatarByMemberId)
         }
         val result =
             try {
@@ -737,7 +744,7 @@ internal class SharedThreadDataSource(
         if (result !is DataResult.Content) return this
         val profilesById = result.data.members.associateBy { it.id.value }
         senderProfilesCache[serverId.value] = profilesById
-        return withSenderProfiles(profilesById)
+        return withSenderProfiles(profilesById).withHomeDirectMessageAvatars(homeAvatarByMemberId)
     }
 
     private fun KuiklyThreadScreenPayload.withCachedSenderProfiles(
@@ -1544,6 +1551,42 @@ private fun KuiklyThreadScreenPayload.withSenderProfiles(
         messages = messages.map { it.withSenderProfile(profilesById[it.authorId]) },
         originMessage = originMessage?.withSenderProfile(profilesById[originMessage.authorId])
     )
+
+private fun KuiklyThreadScreenPayload.withHomeDirectMessageAvatars(
+    avatarByMemberId: Map<String, String>
+): KuiklyThreadScreenPayload {
+    if (avatarByMemberId.isEmpty()) return this
+    return copy(
+        messages = messages.map { it.withHomeDirectMessageAvatar(avatarByMemberId[it.authorId]) },
+        originMessage = originMessage?.withHomeDirectMessageAvatar(avatarByMemberId[originMessage.authorId])
+    )
+}
+
+private fun KuiklyThreadMessageItem.withHomeDirectMessageAvatar(avatarWireValue: String?): KuiklyThreadMessageItem {
+    val wireValue = avatarWireValue?.takeIf { it.isNotBlank() } ?: return this
+    val isAgent = authorKind.equals("agent", ignoreCase = true)
+    if (!isAgent) return this
+    val currentWireValue = this.avatarWireValue?.takeIf { it.isNotBlank() }
+    return copy(
+        avatarWireValue =
+            if (currentWireValue == null || currentWireValue.isGravatarAvatarWireValue()) {
+                wireValue
+            } else {
+                currentWireValue
+            },
+        gravatarHash = null
+    )
+}
+
+private fun HomeSnapshot.directMessageAvatarWireValuesByMemberId(): Map<String, String> =
+    directMessages.mapNotNull { conversation ->
+        val memberId = conversation.presenceMemberId?.value ?: return@mapNotNull null
+        val avatarWireValue =
+            conversation.avatar?.wireValue
+                ?: conversation.avatarUrl
+                ?: return@mapNotNull null
+        memberId to avatarWireValue
+    }.toMap()
 
 private fun KuiklyThreadMessageItem.toTaskItemOrNull(): KuiklyThreadTaskItem? {
     if (taskId == null && taskNumber == null) return null

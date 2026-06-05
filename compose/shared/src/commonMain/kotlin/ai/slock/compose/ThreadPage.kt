@@ -41,6 +41,7 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
+import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.toGravatarAvatarUrl
@@ -3345,12 +3346,15 @@ private fun Modifier.threadMessageLongPressActions(
         }
 }
 
-internal fun KuiklyThreadMessageItem.resolvedThreadAvatarWireValue(): String? =
-    avatarWireValue ?: if (authorKind.equals("agent", ignoreCase = true) || authorId.isLikelyThreadAgentId()) {
-        "random:${authorId.ifBlank { authorName }}"
-    } else {
-        null
-    }
+internal fun KuiklyThreadMessageItem.resolvedThreadAvatarWireValue(): String? {
+    val isAgent = authorKind.equals("agent", ignoreCase = true) || authorId.isLikelyThreadAgentId()
+    return avatarWireValueForAvatarSlot(
+        kind = if (isAgent) MemberKind.Agent else MemberKind.Human,
+        id = authorId.ifBlank { authorName },
+        avatarWireValue = avatarWireValue,
+        gravatarHash = gravatarHash
+    )
+}
 
 private fun String.isLikelyThreadAgentId(): Boolean =
     startsWith("agent", ignoreCase = true) ||

@@ -3,6 +3,7 @@ package ai.slock.compose.data
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.InboxItemKind
+import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.TaskStatus
 import kotlinx.serialization.Serializable
@@ -50,6 +51,7 @@ private data class WireInboxItem(
     val latestActivityPreview: String? = null,
     val latestActivitySenderType: String? = null,
     val latestActivitySenderId: String? = null,
+    val latestActivitySenderName: String? = null,
     val latestActivityMessageId: String? = null,
     val lastActivityAt: String? = null,
     val lastReplyAt: String? = null,
@@ -147,6 +149,8 @@ private fun WireInboxItem.toChannelOrDmDomain(): InboxItem? {
         lastMessagePreview = lastMessagePreview,
         lastMessageAt = lastMessageAt,
         lastMessageSenderName = lastMessageSenderName,
+        lastMessageSenderId = lastMessageSenderId,
+        lastMessageSenderKind = lastMessageSenderType.toSenderKind(),
     )
 }
 
@@ -169,7 +173,9 @@ private fun WireInboxItem.toThreadDomain(): InboxItem? {
         latestActivityMessageId = latestActivityMessageId?.let(::MessageId),
         latestActivityPreview = latestActivityPreview,
         latestActivityAt = lastActivityAt,
-        latestActivitySenderName = null,
+        latestActivitySenderName = latestActivitySenderName,
+        latestActivitySenderId = latestActivitySenderId,
+        latestActivitySenderKind = latestActivitySenderType.toSenderKind(),
         replyCount = replyCount,
         taskNumber = taskNumber,
         taskStatus = TaskStatus.fromWireValue(taskStatus),
@@ -180,6 +186,12 @@ private fun WireInboxItem.toThreadDomain(): InboxItem? {
 private fun String.toConversationKind(): ConversationKind? = when (this) {
     "dm" -> ConversationKind.DirectMessage
     "channel", "private", "joint" -> ConversationKind.Channel
+    else -> null
+}
+
+private fun String?.toSenderKind(): MemberKind? = when {
+    equals("agent", ignoreCase = true) -> MemberKind.Agent
+    equals("user", ignoreCase = true) || equals("human", ignoreCase = true) -> MemberKind.Human
     else -> null
 }
 
@@ -268,6 +280,8 @@ private fun WireSavedEntry.toInboxItem(): InboxItem {
         lastMessagePreview = content,
         lastMessageAt = createdAt,
         lastMessageSenderName = senderName,
+        lastMessageSenderId = senderId,
+        lastMessageSenderKind = senderType.toSenderKind(),
         threadChannelId = if (itemKind == InboxItemKind.Thread) ChannelId(channelId) else null,
         parentChannelId = parentChannelId?.let(::ChannelId),
         parentChannelName = parentChannelName,
@@ -344,6 +358,8 @@ private fun WireSearchResult.toInboxItem(): InboxItem {
         lastMessagePreview = snippet.ifBlank { content },
         lastMessageAt = createdAt,
         lastMessageSenderName = senderName,
+        lastMessageSenderId = senderId,
+        lastMessageSenderKind = senderType.toSenderKind(),
         threadChannelId = if (itemKind == InboxItemKind.Thread) ChannelId(channelId) else null,
         parentChannelId = ChannelId(parentChannelId),
         parentChannelName = parentChannelName,

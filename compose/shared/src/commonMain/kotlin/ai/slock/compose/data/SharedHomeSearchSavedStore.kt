@@ -6,6 +6,7 @@ import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -178,14 +179,16 @@ class SharedHomeSearchSavedStore(
                             }
                     )
                 try {
-                    val serverId = currentServerId() ?: return@launch setSavedError("server_missing")
+                    val session = authStore.readSession() ?: return@launch setSavedError("unauthenticated")
+                    val serverId = session.currentServerId?.let(::ServerId) ?: return@launch setSavedError("server_missing")
+                    val senderProfiles = loadSenderAvatarProfiles(session, serverId)
                     val result =
                         if (refresh) {
                             savedRepository.loadInitial(serverId, HomePanelPageSize)
                         } else {
                             savedRepository.loadMore(serverId, previous.nextOffset ?: previous.items.size, HomePanelPageSize)
                         }
-                    applySavedResult(result, append = !refresh)
+                    applySavedResult(result, append = !refresh, senderProfiles = senderProfiles)
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
@@ -231,6 +234,7 @@ class SharedHomeSearchSavedStore(
                 try {
                     val session = authStore.readSession() ?: return@launch setSearchError("unauthenticated")
                     val serverId = session.currentServerId?.let(::ServerId) ?: return@launch setSearchError("server_missing")
+                    val senderProfiles = loadSenderAvatarProfiles(session, serverId)
                     val bounds = timeRangeBoundsProvider(previous.timeRange)
                     val senderId = previous.selectedSenderId ?: session.user.id.takeIf { previous.myMessagesOnly }
                     val result =
@@ -248,7 +252,7 @@ class SharedHomeSearchSavedStore(
                                     beforeIso = bounds.beforeIso
                                 )
                         )
-                    applySearchResult(result, append = !refresh)
+                    applySearchResult(result, append = !refresh, senderProfiles = senderProfiles)
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
@@ -289,14 +293,68 @@ class SharedHomeSearchSavedStore(
 
     private suspend fun currentServerId(): ServerId? = authStore.readSession()?.currentServerId?.let(::ServerId)
 
-    private fun applySavedResult(result: DataResult<SavedSnapshot>, append: Boolean) {
+    private suspend fun loadSenderAvatarProfiles(
+        session: StoredAuthSession,
+        serverId: ServerId
+    ): Map<String, SenderAvatarProfile> {
+        val cached =
+            _state.value.search.senderFilters.associateBy(
+                keySelector = { it.id },
+                valueTransform = {
+                    SenderAvatarProfile(
+                        kind = it.kind,
+                        avatarWireValue = it.avatarWireValue,
+                        presence = it.presence,
+                        agentStatus = it.agentStatus
+                    )
+                }
+        )
+        if (cached.isNotEmpty()) return cached
+        val repository = memberRepository ?: return emptyMap()
+        return try {
+            when (val result = repository.getMembers(DataRequestPriority.Visible, serverId)) {
+                is DataResult.Content -> {
+                    val filters = result.data.members.toSearchSenderFilters(session.user.id)
+                    _state.value =
+                        _state.value.copy(
+                            search =
+                                _state.value.search.copy(
+                                    senderFilters = filters,
+                                    senderFiltersLoading = false,
+                                    senderFiltersErrorCode = null
+                                )
+                        )
+                    filters.associateBy(
+                        keySelector = { it.id },
+                        valueTransform = {
+                            SenderAvatarProfile(
+                                kind = it.kind,
+                                avatarWireValue = it.avatarWireValue,
+                                presence = it.presence,
+                                agentStatus = it.agentStatus
+                            )
+                        }
+                    )
+                }
+                else -> emptyMap()
+            }
+        } catch (_: Throwable) {
+            emptyMap()
+        }
+    }
+
+    private fun applySavedResult(
+        result: DataResult<SavedSnapshot>,
+        append: Boolean,
+        senderProfiles: Map<String, SenderAvatarProfile>
+    ) {
         val current = _state.value.saved
         _state.value =
             _state.value.copy(
                 saved =
                     when (result) {
                         is DataResult.Content -> {
-                            val pageItems: List<InboxItem> = result.data.items
+                            val pageItems: List<InboxItem> = result.data.items.withSenderAvatarProfiles(senderProfiles)
                             val items =
                                 if (append) {
                                     (current.items + pageItems).distinctBy { item: InboxItem -> item.key }
@@ -346,14 +404,18 @@ class SharedHomeSearchSavedStore(
             )
     }
 
-    private fun applySearchResult(result: DataResult<SearchSnapshot>, append: Boolean) {
+    private fun applySearchResult(
+        result: DataResult<SearchSnapshot>,
+        append: Boolean,
+        senderProfiles: Map<String, SenderAvatarProfile>
+    ) {
         val current = _state.value.search
         _state.value =
             _state.value.copy(
                 search =
                     when (result) {
                         is DataResult.Content -> {
-                            val pageItems: List<InboxItem> = result.data.items
+                            val pageItems: List<InboxItem> = result.data.items.withSenderAvatarProfiles(senderProfiles)
                             val items =
                                 if (append) {
                                     (current.items + pageItems).distinctBy { item: InboxItem -> item.key }
@@ -553,6 +615,27 @@ data class SearchSenderFilterItem(
     val agentStatus: ai.slock.compose.model.AgentStatus? = null
 )
 
+private data class SenderAvatarProfile(
+    val kind: MemberKind,
+    val avatarWireValue: String? = null,
+    val presence: Presence? = null,
+    val agentStatus: ai.slock.compose.model.AgentStatus? = null
+)
+
+private fun List<InboxItem>.withSenderAvatarProfiles(
+    senderProfiles: Map<String, SenderAvatarProfile>
+): List<InboxItem> =
+    map { item ->
+        val lastSender = item.lastMessageSenderId?.let(senderProfiles::get)
+        val latestSender = item.latestActivitySenderId?.let(senderProfiles::get)
+        item.copy(
+            lastMessageSenderKind = lastSender?.kind ?: item.lastMessageSenderKind,
+            lastMessageSenderAvatarWireValue = lastSender?.avatarWireValue ?: item.lastMessageSenderAvatarWireValue,
+            latestActivitySenderKind = latestSender?.kind ?: item.latestActivitySenderKind,
+            latestActivitySenderAvatarWireValue = latestSender?.avatarWireValue ?: item.latestActivitySenderAvatarWireValue
+        )
+    }
+
 private fun List<MemberProfile>.toSearchSenderFilters(currentUserId: String): List<SearchSenderFilterItem> =
     map { member ->
         SearchSenderFilterItem(
@@ -561,7 +644,7 @@ private fun List<MemberProfile>.toSearchSenderFilters(currentUserId: String): Li
             handle = member.handle,
             kind = member.kind,
             isSelf = member.id.value == currentUserId,
-            avatarWireValue = member.avatar?.wireValue ?: member.avatarUrl,
+            avatarWireValue = member.avatarWireValueForAvatarSlot(),
             presence = member.presence,
             agentStatus = member.agentStatus
         )

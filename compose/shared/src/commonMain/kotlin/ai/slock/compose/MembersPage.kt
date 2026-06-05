@@ -7,7 +7,7 @@ import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Presence
-import ai.slock.compose.model.toGravatarAvatarUrl
+import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -719,8 +719,8 @@ private fun MembersAvatar(
     avatarSize: Dp = MemberAvatarSize,
     statusSize: Dp = MemberStatusDotSize
 ) {
-    val avatarWireValue = remember(member.avatar, member.avatarUrl, member.gravatarHash) {
-        member.avatar?.wireValue ?: member.avatarUrl ?: member.gravatarHash?.toGravatarAvatarUrl()
+    val avatarWireValue = remember(member.avatar, member.avatarUrl, member.gravatarHash, member.kind, member.id) {
+        member.avatarWireValueForAvatarSlot()
     }
     SlockAvatarWithStatus(
         statusColor =

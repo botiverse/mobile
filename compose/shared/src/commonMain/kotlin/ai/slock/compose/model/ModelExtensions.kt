@@ -122,6 +122,48 @@ fun AgentProfile.toMemberProfile(): MemberProfile =
         permissionBadges = permissionBadges
     )
 
+// Avatar priority helpers
+fun MemberProfile.avatarWireValueForAvatarSlot(): String? =
+    avatarWireValueForAvatarSlot(
+        kind = kind,
+        id = id.value,
+        avatarWireValue = avatar?.wireValue,
+        avatarUrl = avatarUrl,
+        gravatarHash = gravatarHash
+    )
+
+fun avatarWireValueForAvatarSlot(
+    kind: MemberKind,
+    id: String,
+    avatarWireValue: String?,
+    avatarUrl: String? = null,
+    gravatarHash: String? = null
+): String? {
+    val wireValue =
+        avatarWireValue
+            ?.takeIf { it.isNotBlank() }
+            ?: avatarUrl?.takeIf { it.isNotBlank() }
+    if (kind != MemberKind.Agent) {
+        return wireValue ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
+    }
+    return when {
+        wireValue == null -> agentAvatarFallbackWireValue(id)
+        wireValue.isAgentAvatarWireValue() -> wireValue
+        else -> agentAvatarFallbackWireValue(id)
+    }
+}
+
+fun agentAvatarFallbackWireValue(id: String): String =
+    "random:${id.ifBlank { "agent" }}"
+
+fun String.isGravatarAvatarWireValue(): Boolean =
+    contains("gravatar.com/avatar", ignoreCase = true)
+
+private fun String.isAgentAvatarWireValue(): Boolean =
+    startsWith("pixel:") ||
+        startsWith("random:") ||
+        ((startsWith("http://") || startsWith("https://")) && !isGravatarAvatarWireValue())
+
 // Gravatar helpers
 fun String.toGravatarAvatarUrl(): String =
     "https://www.gravatar.com/avatar/${trim().lowercase()}?s=52&d=404"

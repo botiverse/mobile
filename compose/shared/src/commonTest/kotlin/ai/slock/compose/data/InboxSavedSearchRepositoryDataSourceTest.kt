@@ -3,6 +3,7 @@ package ai.slock.compose.data
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.InboxItemKind
+import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.ServerId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -94,6 +95,8 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertEquals("inline code 也有这个问题", item.parentMessagePreview)
         assertEquals("收到，我会修 inline code", item.latestActivityPreview)
         assertEquals("2026-05-10T21:26:00+08:00", item.latestActivityAt)
+        assertEquals("agent-1", item.latestActivitySenderId)
+        assertEquals(MemberKind.Agent, item.latestActivitySenderKind)
         assertEquals(8, item.replyCount)
     }
 
@@ -142,8 +145,12 @@ class InboxSavedSearchRepositoryDataSourceTest {
 
         assertTrue(saved is DataResult.Content)
         assertEquals("Saved note", saved.data.items.single().lastMessagePreview)
+        assertEquals("user-1", saved.data.items.single().lastMessageSenderId)
+        assertEquals(MemberKind.Human, saved.data.items.single().lastMessageSenderKind)
         assertTrue(search is DataResult.Content)
         assertEquals("Search hit", search.data.items.single().lastMessagePreview)
+        assertEquals("user-1", search.data.items.single().lastMessageSenderId)
+        assertEquals(MemberKind.Human, search.data.items.single().lastMessageSenderKind)
         assertTrue(blank is DataResult.Empty)
     }
 
