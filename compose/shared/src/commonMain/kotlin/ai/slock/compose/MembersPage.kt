@@ -801,6 +801,6 @@ private fun groupedAgentMembers(members: List<MemberProfile>): List<MembersAgent
                 .firstNotNullOfOrNull { badge ->
                     badge.removePrefix("computer:")
                         .takeIf { badge.startsWith("computer:") && it.isNotBlank() }
-                } ?: "Unknown computer"
+                } ?: "no computer"
         }
         .map { (label, groupedMembers) -> MembersAgentGroup(label, groupedMembers) }

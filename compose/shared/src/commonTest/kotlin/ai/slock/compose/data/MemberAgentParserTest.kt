@@ -88,6 +88,32 @@ class MemberAgentParserTest {
     }
 
     @Test
+    fun agentsListFiltersDeletedAgentsLikeReactMembersTab() {
+        val members = parseSharedSettingsAgentsAsMembers(
+            """
+            [
+              {
+                "id": "agent-active",
+                "name": "active",
+                "displayName": "Active Agent",
+                "status": "online"
+              },
+              {
+                "id": "agent-deleted",
+                "name": "deleted",
+                "displayName": "Deleted Agent",
+                "status": "offline",
+                "deletedAt": "2026-06-06T00:00:00.000Z"
+              }
+            ]
+            """.trimIndent()
+        )
+
+        val profiles = assertNotNull(members)
+        assertEquals(listOf("agent-active"), profiles.map { it.id.value })
+    }
+
+    @Test
     fun serverMembersAcceptsWrappedMembersPayload() {
         val snapshot = parseSharedServerMemberSnapshot(
             bodyText =

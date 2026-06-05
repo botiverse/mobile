@@ -88,6 +88,7 @@ private data class WireAgent(
     val machineId: String? = null,
     val activity: String? = null,
     val activityDetail: String? = null,
+    val deletedAt: String? = null,
     val runtimeProfile: WireAgentRuntimeProfileSummary? = null,
     val createdAgents: List<WireAgentCreatedSummary> = emptyList(),
 )
@@ -443,7 +444,9 @@ private fun decodeAgents(bodyText: String): List<MemberProfile> =
         { memberAgentJson.decodeFromString(WireAgentsDataListResponse.serializer(), bodyText).data },
         { memberAgentJson.decodeFromString(WireAgentsDataResponse.serializer(), bodyText).data.allAgents },
         { listOf(memberAgentJson.decodeFromString(WireAgent.serializer(), bodyText)) }
-    ).map { it.toMemberProfile() }
+    )
+        .filterNot { it.isDeletedAgent }
+        .map { it.toMemberProfile() }
 
 private val WireServerMembersResponse.allMembers: List<WireServerMember>
     get() = members + items + results
@@ -537,6 +540,9 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         ),
     )
 }
+
+private val WireAgent.isDeletedAgent: Boolean
+    get() = !deletedAt.isNullOrBlank()
 
 private fun firstNonBlank(vararg values: String?): String? =
     values.firstOrNull { !it.isNullOrBlank() }
