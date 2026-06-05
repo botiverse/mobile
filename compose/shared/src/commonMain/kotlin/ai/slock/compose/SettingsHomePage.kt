@@ -5297,12 +5297,12 @@ private fun SharedHomeSavedResultCard(
             item.kind == InboxItemKind.Thread -> item.parentChannelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
             else -> item.channelName.takeIf { it.isNotBlank() }?.let { "#$it" }
         }
-    val threadReplyCount = item.replyCount.takeIf { item.kind == InboxItemKind.Thread && it > 0 }
     Row(
         modifier =
             Modifier
                 .padding(horizontal = SearchMessagesHorizontalPadding, vertical = 4.dp)
                 .fillMaxWidth()
+                .heightIn(min = 122.dp)
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SearchLightRowBorderColor)
                 .clickable(onClick = onOpen)
@@ -5324,8 +5324,9 @@ private fun SharedHomeSavedResultCard(
                         text = it,
                         style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.5f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 82.dp)
                     )
                 }
                 if (item.kind == InboxItemKind.Thread) {
@@ -5343,24 +5344,8 @@ private fun SharedHomeSavedResultCard(
                         )
                     }
                 }
-                threadReplyCount?.let {
-                    Text(
-                        text = "$it replies",
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.4f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
                 sender?.let {
-                    Text(
-                        text = it,
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
+                    SharedHomeSavedSenderMeta(senderName = it, modifier = Modifier.weight(1f))
                 }
                 time?.let {
                     Text(
@@ -5374,7 +5359,7 @@ private fun SharedHomeSavedResultCard(
             }
             Text(
                 text = preview,
-                style = SlockType.Button.copy(fontSize = 14.sp, lineHeight = 19.sp, letterSpacing = 0.sp),
+                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 19.sp, letterSpacing = 0.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
@@ -5393,6 +5378,35 @@ private fun SharedHomeSavedResultCard(
         }
     }
 }
+
+@Composable
+private fun SharedHomeSavedSenderMeta(senderName: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockAvatar(
+            avatarWireValue = savedSenderAvatarFallback(senderName),
+            label = senderName,
+            avatarSize = 12.dp
+        )
+        Text(
+            text = senderName,
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+private fun savedSenderAvatarFallback(senderName: String): String? =
+    if (senderName.contains("developer", ignoreCase = true) || senderName.contains("agent", ignoreCase = true)) {
+        "pixel:robot"
+    } else {
+        null
+    }
 
 @Composable
 private fun SharedHomeSearchResultsCount(totalResults: Int) {
@@ -7052,7 +7066,7 @@ private val homeSavedVisualState = SharedHomeSavedPanelState(
                 lastMessageSenderName = "Android Developer",
                 latestActivityMessageId = MessageId("msg_saved_report"),
                 latestActivityPreview = "Uploaded Android visual report with Search and Saved cases. The latest run still needs Product UX review before we mark it done.",
-                latestActivityAt = "13:58",
+                latestActivityAt = "2 hours ago",
                 latestActivitySenderName = "Android Developer"
             ),
             InboxItem(
@@ -7072,7 +7086,7 @@ private val homeSavedVisualState = SharedHomeSavedPanelState(
                 parentMessagePreview = "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。",
                 latestActivityMessageId = MessageId("msg_saved_thread_reply"),
                 latestActivityPreview = "Search visual parity should keep the real React SavedPanel as the source, not a hand-built preview shell.",
-                latestActivityAt = "14:31",
+                latestActivityAt = "1 hour ago",
                 latestActivitySenderName = "artin",
                 replyCount = 5,
                 participantIds = listOf(MemberId("user_artin"), MemberId("agent_android"))
@@ -7088,7 +7102,7 @@ private val homeSavedVisualState = SharedHomeSavedPanelState(
                 lastMessageSenderName = "Android Developer",
                 latestActivityMessageId = MessageId("msg_saved_dm"),
                 latestActivityPreview = "Please keep this saved checklist around for the next connected visual-testing run.",
-                latestActivityAt = "14:44",
+                latestActivityAt = "1 hour ago",
                 latestActivitySenderName = "Android Developer"
             )
         ),
