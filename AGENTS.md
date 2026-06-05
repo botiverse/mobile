@@ -105,9 +105,11 @@ scripts/sync_kuikly_ai_skills.sh
   FontFamily dispatch in `SlockDesignTokens.kt`).
 - To publish the fork locally for testing:
   ```bash
-  cd /Users/artin/AndroidStudioProjects/Slock/third_party/kuikly-ui
-  ./gradlew publishToMavenLocal
-  ```"
+  cd /Users/artin/AndroidStudioProjects/Slock
+  sh scripts/build_kuikly_fork.sh
+  ```
+- After publishing, the Slock Android build (`:app:compileDebugKotlin`) picks up
+  the forked artifacts from mavenLocal automatically.""
 
 ## OHOS Kuikly Workflow
 
