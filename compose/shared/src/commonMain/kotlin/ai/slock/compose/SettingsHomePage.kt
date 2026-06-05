@@ -1324,7 +1324,8 @@ private fun SlockAppShellContent() {
                                         activeThreadPayload = appShellThreadPayload(conversation)
                                         threadBackStack = emptyList()
                                         navController.navigate(AppShellRouteThread)
-                                    }
+                                    },
+                                    bottomContentPadding = slockAppBottomTabBarContentInset(bottomSafeArea)
                                 )
                             } else if (selectedHomeDestination == HomeDestinationSearch) {
                                 SharedHomeSearchPanel(

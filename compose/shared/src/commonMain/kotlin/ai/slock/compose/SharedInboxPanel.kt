@@ -51,6 +51,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.pager.Pager
@@ -63,6 +64,8 @@ internal fun SharedHomeActivityScreen(
     authStore: SlockAuthSessionStore,
     onOpenConversation: (ConversationSummary) -> Unit,
     onClose: (() -> Unit)? = null,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    includeTopSafeArea: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -148,6 +151,8 @@ internal fun SharedHomeActivityScreen(
                 }
             }
         },
+        bottomContentPadding = bottomContentPadding,
+        includeTopSafeArea = includeTopSafeArea,
         modifier = modifier
     )
 }
@@ -158,6 +163,8 @@ internal fun SharedHomeActivityPanel(
     selectedFilter: InboxFilter = InboxFilter.All,
     onOpenConversation: (ConversationSummary) -> Unit = {},
     onClose: (() -> Unit)? = null,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    includeTopSafeArea: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     SharedActivityPanelContent(
@@ -169,6 +176,8 @@ internal fun SharedHomeActivityPanel(
         onOpenConversation = onOpenConversation,
         onClose = onClose,
         onMarkAllRead = {},
+        bottomContentPadding = bottomContentPadding,
+        includeTopSafeArea = includeTopSafeArea,
         modifier = modifier
     )
 }
@@ -189,6 +198,8 @@ private fun SharedActivityPanelContent(
     onOpenConversation: (ConversationSummary) -> Unit,
     onClose: (() -> Unit)?,
     onMarkAllRead: () -> Unit,
+    bottomContentPadding: Dp,
+    includeTopSafeArea: Boolean,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -198,7 +209,8 @@ private fun SharedActivityPanelContent(
         SharedActivityHeader(
             totalCount = snapshot?.totalCount ?: 0,
             totalUnreadCount = snapshot?.totalUnreadCount ?: 0,
-            onClose = onClose
+            onClose = onClose,
+            includeTopSafeArea = includeTopSafeArea
         )
         SharedActivityFilterBar(
             selectedFilter = selectedFilter,
@@ -211,14 +223,16 @@ private fun SharedActivityPanelContent(
                 SharedActivityStateBody(
                     title = "Loading Inbox...",
                     detail = "",
-                    loading = true
+                    loading = true,
+                    bottomContentPadding = bottomContentPadding
                 )
             is SharedActivityPanelState.Error ->
                 SharedActivityStateBody(
                     title = "Could not load activity",
                     detail = state.code,
                     actionLabel = if (refreshing) "..." else "Retry",
-                    onAction = onRefresh
+                    onAction = onRefresh,
+                    bottomContentPadding = bottomContentPadding
                 )
             is SharedActivityPanelState.Content ->
                 if (state.snapshot.items.isEmpty()) {
@@ -229,12 +243,14 @@ private fun SharedActivityPanelContent(
                                 InboxFilter.Unread -> "No unread chats"
                                 InboxFilter.All -> "Activity is empty"
                             },
-                        detail = selectedFilter.emptyCopy()
+                        detail = selectedFilter.emptyCopy(),
+                        bottomContentPadding = bottomContentPadding
                     )
                 } else {
                     SharedActivityList(
                         snapshot = state.snapshot,
-                        onOpenConversation = onOpenConversation
+                        onOpenConversation = onOpenConversation,
+                        bottomContentPadding = bottomContentPadding
                     )
                 }
         }
@@ -245,16 +261,18 @@ private fun SharedActivityPanelContent(
 private fun SharedActivityHeader(
     totalCount: Int,
     totalUnreadCount: Int,
-    onClose: (() -> Unit)?
+    onClose: (() -> Unit)?,
+    includeTopSafeArea: Boolean
 ) {
+    val topPadding = if (includeTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(62.dp)
+                .height(62.dp + topPadding)
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 20.dp, vertical = 10.dp),
+                .padding(start = 20.dp, top = topPadding + 10.dp, end = 20.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -325,7 +343,8 @@ private fun SharedActivityFilterBar(
 @Composable
 private fun SharedActivityList(
     snapshot: InboxSnapshot,
-    onOpenConversation: (ConversationSummary) -> Unit
+    onOpenConversation: (ConversationSummary) -> Unit,
+    bottomContentPadding: Dp
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(top = 16.dp),
@@ -339,7 +358,7 @@ private fun SharedActivityList(
                 onClick = { onOpenConversation(item.toConversationSummary()) }
             )
         }
-        item { Spacer(Modifier.height(18.dp)) }
+        item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
 
@@ -529,6 +548,7 @@ private fun SharedActivityStateBody(
     detail: String,
     loading: Boolean = false,
     actionLabel: String? = null,
+    bottomContentPadding: Dp,
     onAction: () -> Unit = {}
 ) {
     if (loading) {
@@ -536,7 +556,7 @@ private fun SharedActivityStateBody(
         return
     }
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier.fillMaxSize().padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = bottomContentPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
