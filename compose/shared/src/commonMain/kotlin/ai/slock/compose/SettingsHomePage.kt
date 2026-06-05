@@ -47,7 +47,9 @@ import ai.slock.compose.data.SERVER_ACTION_TRANSLATION_TOGGLE
 import ai.slock.compose.data.NotificationPreferenceSnapshot
 import ai.slock.compose.data.PersistentChatLayoutPreferenceRepository
 import ai.slock.compose.data.PersistentLocaleRepository
+import ai.slock.compose.data.RelationalValue
 import ai.slock.compose.data.RelationalComposeLocalDataStore
+import ai.slock.compose.data.SlockRelationalStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthErrorCode
 import ai.slock.compose.data.SharedAuthGateIntent
@@ -222,6 +224,7 @@ import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -262,6 +265,7 @@ private const val AppShellRouteThread = "thread"
 private const val HomeDestinationSearch = "search"
 private const val HomeDestinationActivity = "activity"
 private const val HomeDestinationSaved = "saved"
+private const val AppShellFirstLoginLandingSeenKeyPrefix = "app_shell_first_login_landing_seen:"
 private const val SettingsDestinationHome = "home"
 private const val SettingsDestinationAccount = "account"
 private const val SettingsDestinationComputers = "computers"
@@ -748,6 +752,8 @@ private fun SlockAppShellContent() {
     var notificationPreferenceSnapshot by remember {
         mutableStateOf(NotificationPreferenceSnapshot(enabled = false))
     }
+    var showFirstLoginLanding by remember { mutableStateOf(false) }
+    var firstLoginLandingKey by remember { mutableStateOf<String?>(null) }
     val settingsDataSource =
         remember {
             SharedSettingsDataSource(
@@ -907,6 +913,18 @@ private fun SlockAppShellContent() {
         is SharedAuthGateState.Ready -> Unit
     }
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
+
+    LaunchedEffect(readySession?.user?.id, readySession?.currentServerId) {
+        val session = readySession
+        if (session == null || session.currentServerId.isNullOrBlank()) {
+            showFirstLoginLanding = false
+            firstLoginLandingKey = null
+            return@LaunchedEffect
+        }
+        val key = appShellFirstLoginLandingSeenKey(session.user)
+        firstLoginLandingKey = key
+        showFirstLoginLanding = !hasAppShellFirstLoginLandingBeenSeen(relationalStore, key)
+    }
 
     DisposableEffect(readySession?.currentServerId, readySession?.accessToken) {
         val serverId = readySession?.currentServerId
@@ -1408,6 +1426,31 @@ private fun SlockAppShellContent() {
                         },
                         onSubmit = { name, description, visibility, agentMemberIds, userMemberIds ->
                             submitCreateChannel(name, description, visibility, agentMemberIds, userMemberIds)
+                        }
+                    )
+                }
+                if (showFirstLoginLanding && readySession != null) {
+                    AppShellFirstLoginLandingDialog(
+                        user = readySession.user,
+                        onDismiss = {
+                            val storageKey = firstLoginLandingKey
+                            showFirstLoginLanding = false
+                            if (storageKey != null) {
+                                appShellScope.launch {
+                                    markAppShellFirstLoginLandingSeen(relationalStore, storageKey)
+                                }
+                            }
+                        },
+                        onOpenActivity = {
+                            val storageKey = firstLoginLandingKey
+                            showFirstLoginLanding = false
+                            selectedTab = "home"
+                            selectedHomeDestination = HomeDestinationActivity
+                            if (storageKey != null) {
+                                appShellScope.launch {
+                                    markAppShellFirstLoginLandingSeen(relationalStore, storageKey)
+                                }
+                            }
                         }
                     )
                 }
@@ -3580,6 +3623,42 @@ private fun AuthProvider.appShellProviderId(): String =
         AuthProvider.GitHub -> "github"
     }
 
+private fun appShellFirstLoginLandingSeenKey(user: StoredAuthUser): String =
+    AppShellFirstLoginLandingSeenKeyPrefix + user.id
+
+private suspend fun hasAppShellFirstLoginLandingBeenSeen(
+    relationalStore: SlockRelationalStore,
+    key: String
+): Boolean {
+    ensureAppShellKvTable(relationalStore)
+    val rows =
+        relationalStore.query(
+            "SELECT value FROM slock_kv WHERE key = ?",
+            listOf(RelationalValue.Text(key))
+        )
+    return rows.rows.firstOrNull()?.firstOrNull() != null
+}
+
+private suspend fun markAppShellFirstLoginLandingSeen(
+    relationalStore: SlockRelationalStore,
+    key: String
+) {
+    ensureAppShellKvTable(relationalStore)
+    relationalStore.execute(
+        "INSERT OR REPLACE INTO slock_kv(key, value) VALUES(?, ?)",
+        listOf(RelationalValue.Text(key), RelationalValue.Text("1"))
+    )
+}
+
+private suspend fun ensureAppShellKvTable(relationalStore: SlockRelationalStore) {
+    relationalStore.execute(
+        "CREATE TABLE IF NOT EXISTS slock_kv(" +
+            "key TEXT PRIMARY KEY NOT NULL, " +
+            "value TEXT NOT NULL" +
+            ")"
+    )
+}
+
 @Composable
 private fun AppShellServerGateContent(
     session: StoredAuthSession,
@@ -3588,8 +3667,9 @@ private fun AppShellServerGateContent(
     onSignOut: () -> Unit
 ) {
     var latestSession by remember(session) { mutableStateOf(session) }
-    var mode by remember { mutableStateOf("choose") }
+    var mode by remember(session.servers) { mutableStateOf(if (session.servers.isEmpty()) "empty" else "choose") }
     var createName by remember { mutableStateOf("") }
+    var createSlug by remember { mutableStateOf("") }
     var pendingServerId by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -3602,22 +3682,50 @@ private fun AppShellServerGateContent(
             null -> errorMessage = "Could not load servers."
         }
     }
+    LaunchedEffect(latestSession.servers.size) {
+        if (mode != "create") {
+            mode = if (latestSession.servers.isEmpty()) "empty" else "choose"
+        }
+    }
 
     AuthScaffold {
         AuthLogoBadge("SLOCK")
         Text(
-            text = if (mode == "create") "Create server" else "Choose server",
+            text =
+                when (mode) {
+                    "create" -> "Create server"
+                    "empty" -> "Create your first server"
+                    else -> "Choose server"
+                },
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
+        )
+        Text(
+            text = "Signed in as ${latestSession.user.bestDisplayName}",
+            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            textAlign = TextAlign.Center
         )
         AuthFormColumn {
             AuthError(errorMessage)
             if (mode == "create") {
+                Text(
+                    text = "Create the workspace you want to land in. You can rename it later in settings.",
+                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
+                )
                 AuthTextField(
                     value = createName,
                     onValueChange = { createName = it },
                     label = "Server name",
                     required = true,
+                    enabled = !loading
+                )
+                AuthTextField(
+                    value = createSlug,
+                    onValueChange = { createSlug = it.trim().lowercase() },
+                    label = "URL slug",
+                    placeholder = "my-team",
                     enabled = !loading
                 )
                 AuthActionButton(
@@ -3632,10 +3740,14 @@ private fun AppShellServerGateContent(
                     loading = loading
                 )
                 AuthActionButton(
-                    text = "Back to servers",
-                    onClick = { mode = "choose" },
+                    text = if (latestSession.servers.isEmpty()) "Back" else "Back to servers",
+                    onClick = { mode = if (latestSession.servers.isEmpty()) "empty" else "choose" },
                     tone = AuthButtonTone.White,
                     enabled = !loading
+                )
+            } else if (mode == "empty") {
+                AppShellServerEmptyState(
+                    onCreateServer = { mode = "create" }
                 )
             } else {
                 latestSession.servers.forEach { server ->
@@ -3652,7 +3764,7 @@ private fun AppShellServerGateContent(
                     )
                 }
                 AuthActionButton(
-                    text = "Create server",
+                    text = "Switch or create server",
                     onClick = { mode = "create" },
                     tone = AuthButtonTone.Cyan,
                     enabled = !loading
@@ -3684,7 +3796,7 @@ private fun AppShellServerGateContent(
         }
         val result =
             if (target == "__create__") {
-                authDataSource.createServer(createName)
+                authDataSource.createServer(createName, slug = createSlug)
             } else {
                 authDataSource.selectServer(target)
             }
@@ -3694,6 +3806,92 @@ private fun AppShellServerGateContent(
             is SharedAuthResult.Success -> onReady(result.data)
             is SharedAuthResult.Failure -> errorMessage = result.message
             SharedAuthResult.Unauthenticated -> onSignOut()
+        }
+    }
+
+}
+
+@Composable
+private fun AppShellServerEmptyState(
+    onCreateServer: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        AuthCenterMark()
+        Text(
+            text = "You don't have a server yet. Create one to unlock channels, agents, and activity in the app.",
+            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            textAlign = TextAlign.Center
+        )
+        AuthActionButton(
+            text = "Create new server",
+            onClick = onCreateServer,
+            tone = AuthButtonTone.Pink
+        )
+    }
+}
+
+@Composable
+private fun AppShellFirstLoginLandingDialog(
+    user: StoredAuthUser,
+    onDismiss: () -> Unit,
+    onOpenActivity: () -> Unit
+) {
+    SlockUnifiedDialog(
+        title = "START BUILDING WITH SLOCK",
+        onDismiss = onDismiss,
+        maxWidth = 420.dp,
+        contentSpacing = 14.dp
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.size(36.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon("bot", modifier = Modifier.size(18.dp))
+            }
+            Text(
+                text = "Welcome, ${user.bestDisplayName}. Agents here keep context across channels, tasks, and activity.",
+                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Text(
+            text = "Start from Activity to see what needs attention first, then hand work to agents like teammates:",
+            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        Column(
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text("• Talk to them directly", style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+            Text("• Give them tasks and follow-ups", style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+            Text("• Review unread activity before diving in", style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            AuthActionButton(
+                text = "Maybe later",
+                onClick = onDismiss,
+                tone = AuthButtonTone.White,
+                modifier = Modifier.weight(1f)
+            )
+            AuthActionButton(
+                text = "Open activity",
+                onClick = onOpenActivity,
+                tone = AuthButtonTone.Pink,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
