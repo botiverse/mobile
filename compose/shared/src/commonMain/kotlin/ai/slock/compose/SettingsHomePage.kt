@@ -184,6 +184,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -1010,13 +1011,17 @@ private fun SlockAppShellContent() {
         return false
     }
 
+    val handleAppShellBack by rememberUpdatedState {
+        if (!popThreadRoute() && !popMainRoute()) {
+            bridge.closePage()
+        }
+    }
+
     DisposableEffect(pager, navController) {
         val callback =
             object : BackPressCallback() {
                 override fun handleOnBackPressed() {
-                    if (!popThreadRoute() && !popMainRoute()) {
-                        bridge.closePage()
-                    }
+                    handleAppShellBack()
                 }
             }
         pager.getBackPressHandler().addCallback(callback)
