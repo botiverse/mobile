@@ -10,12 +10,13 @@ For shared KMP changes that affect Android packaging, run the executable shared
 release gate:
 
 ```bash
+cd compose
 ./gradlew validateKmpSharedRelease
 ```
 
 This generates SQLDelight interfaces, runs focused Thread SQLDelight/write-through
-tests, publishes `compose/shared` to MavenLocal, and compiles the Android app
-against that freshly published artifact.
+tests, and compiles `:androidApp` against `:shared` as a direct project
+dependency.
 
 For OHOS SQLDelight/native-driver validation, run the script form with `--ohos`.
 The OHOS Gradle settings initialize the SQLDelight fork submodules and publish
@@ -24,20 +25,9 @@ driver artifacts to MavenLocal when they are missing, then compile shared OHOS
 Kotlin:
 
 ```bash
-scripts/validate_kmp_shared_release.sh --ohos
+cd compose
+../scripts/validate_kmp_shared_release.sh --ohos
 ```
-
-Also run this lightweight documentation gate with the normal release validation
-set:
-
-```bash
-./gradlew checkKmpCapabilityGate
-```
-
-`checkKmpCapabilityGate` verifies that the global migration audit, route-level
-audits, and this checklist stay present and checklist-backed. It does not prove
-product behavior by itself; it prevents release notes from skipping the
-capability gate.
 
 ## Required Checklist
 

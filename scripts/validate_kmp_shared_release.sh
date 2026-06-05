@@ -3,20 +3,18 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_GRADLE="$ROOT_DIR/compose/gradlew"
-ROOT_GRADLE="$ROOT_DIR/gradlew"
 RUN_OHOS=0
 
 usage() {
   cat <<'USAGE'
 Usage: scripts/validate_kmp_shared_release.sh [options]
 
-Validates and publishes compose/shared before Android app packaging.
+Validates compose/shared and the merged compose/androidApp host.
 
 Default gate:
   1. Generate the commonMain SQLDelight interface.
   2. Run focused Thread SQLDelight/write-through/store tests.
-  3. Publish shared Android release artifact to MavenLocal.
-  4. Compile the Android app against the freshly published shared artifact.
+  3. Compile the Android app against :shared as a direct project dependency.
 
 Options:
   --ohos      Also compile shared OHOS Kotlin with settings.ohos.gradle.kts.
@@ -69,13 +67,7 @@ run_in "$ROOT_DIR/compose" "$COMPOSE_GRADLE" \
   --no-daemon \
   --console=plain \
   -Dkotlin.compiler.execution.strategy=in-process \
-  :shared:publishAndroidReleasePublicationToMavenLocal
-
-run_in "$ROOT_DIR" "$ROOT_GRADLE" \
-  --no-daemon \
-  --console=plain \
-  -Dkotlin.compiler.execution.strategy=in-process \
-  :app:compileDebugKotlin
+  :androidApp:compileDebugKotlin
 
 if [ "$RUN_OHOS" -eq 1 ]; then
   run_in "$ROOT_DIR/compose" "$COMPOSE_GRADLE" \

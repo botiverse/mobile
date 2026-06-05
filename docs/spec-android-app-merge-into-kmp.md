@@ -58,8 +58,7 @@ Slock/                          ← git repo root (no longer a Gradle project ro
 │   │       │   ├── AndroidManifest.xml      ← merged
 │   │       │   ├── java/ai/slock/android/   ← all outer app source
 │   │       │   ├── res/                     ← all outer app resources
-│   │       │   ├── assets/                  ← brand assets
-│   │       │   └── sqldelight/              ← outer SQLDelight schemas
+│   │       │   └── assets/                  ← brand assets
 │   │       ├── test/                        ← outer unit tests
 │   │       ├── androidTest/                 ← outer instrumented tests
 │   │       └── connectedTest/               ← outer connectedTest variant
@@ -163,17 +162,8 @@ of enabling cleartext globally in production.
 
 ### 3.4 SQLDelight schemas
 
-The outer `app/src/main/sqldelight/` has `SlockDatabase.sq` with package
-`ai.slock.android.core.data.local` and migration `.sqm`/`.db` files.
-
-The shared module has its own `SlockDatabase` at `ai.slock.shared.data.local`.
-
-These are **separate databases** — the app's local DB (cache, write-through) vs. shared's
-cross-platform data store. Keep both.
-
-Move outer SQLDelight files → `compose/androidApp/src/main/sqldelight/`. The
-`:androidApp` build.gradle.kts already has zero SQLDelight config; add the sqldelight
-plugin and database block from the outer `app/build.gradle.kts`.
+Only `:shared` owns SQLDelight. `:androidApp` must not contain `src/main/sqldelight`,
+apply the SQLDelight plugin, or generate an app-local database.
 
 ### 3.5 Assets
 
@@ -254,7 +244,6 @@ is the gating factor.
 ### 3.10 Root build.gradle.kts
 
 `compose/build.gradle.kts` needs updating:
-- Add `checkKmpCapabilityGate` task from outer root
 - Add `validateKmpSharedRelease` task (simplified — no need for publish step)
 - Update plugin versions to match outer catalog
 - Update all root-relative file references from `docs/...` and `scripts/...` to
@@ -332,12 +321,8 @@ will switch to `ai.slock.android` namespace. Ensure no package conflicts.
 resolve through the `:shared` project dependency normally.
 
 ### 5.2 Duplicate SQLDelight Database Names
-Both `:app` and `:shared` define `SlockDatabase`. If both are configured in the same
-Gradle project, Gradle might complain.
-
-**Mitigation**: The `sqldelight` plugin config is module-scoped. `:androidApp` configures
-its database at `ai.slock.android.core.data.local` and `:shared` configures its at
-`ai.slock.shared.data.local`. Separate packages, separate generated code. No conflict.
+The migration should avoid duplicate generated `SlockDatabase` classes by retiring the
+Android-only SQLDelight schema. Only `:shared` should configure SQLDelight.
 
 ### 5.3 Kuikly Version Mismatch
 The outer app references `com.tencent.kuikly-open:compose-android:2.20.1-2.1.21`. The
@@ -447,8 +432,8 @@ outer `.idea/`.
 
 10. **Move assets** from `app/src/main/assets/` to `compose/androidApp/src/main/assets/`.
 
-11. **Move SQLDelight** from `app/src/main/sqldelight/` to
-    `compose/androidApp/src/main/sqldelight/`.
+11. **Keep SQLDelight shared-only**. `:androidApp` must not define its own schema or
+    generated database.
 
 12. **Move ProGuard** rules.
 
@@ -463,8 +448,8 @@ outer `.idea/`.
 
 ### Phase 5: Root Cleanup
 
-16. **Update `compose/build.gradle.kts`** with the root validation tasks
-    (`checkKmpCapabilityGate`, updated `validateKmpSharedRelease`).
+16. **Update `compose/build.gradle.kts`** with the root validation task
+    (`validateKmpSharedRelease`).
 
 17. **Merge `gradle.properties`** entries.
 
@@ -531,7 +516,7 @@ outer `.idea/`.
 - [ ] All resources merged (no missing drawables, strings, themes)
 - [ ] Inner global-cleartext `network_security_config.xml` is not enabled in production
 - [ ] AndroidManifest merged correctly
-- [ ] SQLDelight schemas and migrations moved
+- [ ] Android-only SQLDelight schema/migrations deleted; shared schema remains
 - [ ] Assets moved
 - [ ] Test sources moved
 - [ ] ProGuard rules moved

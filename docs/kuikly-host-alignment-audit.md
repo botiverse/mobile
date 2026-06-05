@@ -10,9 +10,9 @@ This notes the current gap between Kuikly's default Android host/router implemen
 - Kuikly upstream page data parser: `core/src/commonMain/kotlin/com/tencent/kuikly/core/pager/PagerData.kt`
 - Kuikly upstream Android demo host: `androidApp/src/main/java/com/tencent/kuikly/android/demo/KuiklyRenderActivity.kt`
 - Kuikly upstream Android router: `androidApp/src/main/java/com/tencent/kuikly/android/demo/adapter/KRRouterAdapter.kt`
-- Slock Android host: `app/src/main/java/ai/slock/android/shared/SlockKuiklyActivity.kt`
-- Slock Android host contract: `app/src/main/java/ai/slock/android/shared/SlockKuiklyHostContract.kt`
-- Slock Android island host: `app/src/main/java/ai/slock/android/shared/SlockKuiklyIsland.kt`
+- Slock Android host: `compose/androidApp/src/main/java/ai/slock/android/shared/SlockKuiklyActivity.kt`
+- Slock Android host contract: `compose/androidApp/src/main/java/ai/slock/android/shared/SlockKuiklyHostContract.kt`
+- Slock Android island host: `compose/androidApp/src/main/java/ai/slock/android/shared/SlockKuiklyIsland.kt`
 - Slock OHOS host: `compose/ohosApp/entry/src/main/ets/pages/Index.ets`
 - Slock OHOS router: `compose/ohosApp/entry/src/main/ets/kuikly/adapter/RouterAdapter.ets`
 - Shared safe area consumer: `compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockSafeArea.kt`

@@ -12,33 +12,33 @@ echo
 echo "1) MainActivity Android UI/theme imports"
 rg -n \
   "import ai\\.slock\\.android\\.ui\\.(theme|components|icons)\\.|import ai\\.slock\\.android\\.feature\\..*(Screen|KuiklyScreen)" \
-  app/src/main/java/ai/slock/android/MainActivity.kt \
+  compose/androidApp/src/main/java/ai/slock/android/MainActivity.kt \
   || true
 
 echo
 echo "2) Runtime Android product screens still referenced by MainActivity"
 rg -n \
   "ThreadScreen\\(|InboxScreen\\(|SettingsHomeScreen\\(|Settings(Account|Billing|Mobile|Server|Storage|About|Diagnostics).*Screen\\(" \
-  app/src/main/java/ai/slock/android/MainActivity.kt \
+  compose/androidApp/src/main/java/ai/slock/android/MainActivity.kt \
   || true
 
 echo
 echo "3) Android product theme/component import consumers"
 for package in theme components icons; do
   count="$(
-    rg -l "ai\\.slock\\.android\\.ui\\.$package" app/src/main/java app/src/test/java app/src/androidTest/java 2>/dev/null \
+    rg -l "ai\\.slock\\.android\\.ui\\.$package" compose/androidApp/src/main/java compose/androidApp/src/test/java compose/androidApp/src/androidTest/java 2>/dev/null \
       | wc -l \
       | tr -d ' '
   )"
   echo "ui/$package import consumers: $count"
-  rg -l "ai\\.slock\\.android\\.ui\\.$package" app/src/main/java app/src/test/java app/src/androidTest/java 2>/dev/null \
+  rg -l "ai\\.slock\\.android\\.ui\\.$package" compose/androidApp/src/main/java compose/androidApp/src/test/java compose/androidApp/src/androidTest/java 2>/dev/null \
     | sed 's#^#  - #' \
     || true
 done
 
 echo
 echo "4) Files under Android product UI/theme directories"
-find app/src/main/java/ai/slock/android/ui app/src/main/java/ai/slock/android/feature \
+find compose/androidApp/src/main/java/ai/slock/android/ui compose/androidApp/src/main/java/ai/slock/android/feature \
   -type f \
   | sort \
   | sed 's#^#  - #'

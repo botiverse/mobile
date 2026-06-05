@@ -24,7 +24,7 @@ git submodule update --init --recursive third_party/slock-source
 - Iron rule: every Android API wire contract must go through an explicit shared
   DTO/parser in `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/`.
   Do not add new app-side Gson/JsonObject response mappers for API payloads in
-  `app/src/main/java/.../network/`.
+  `compose/androidApp/src/main/java/.../network/`.
 - For any new or changed API endpoint, first verify the canonical field names
   in `third_party/slock-source/packages/server/` and
   `third_party/slock-source/packages/shared/`, then model that exact camelCase
@@ -49,8 +49,9 @@ git submodule update --init --recursive third_party/slock-source
   single bottom network layer: auth, refresh, priority, headers, and raw HTTP
   request/response. Server DTO parsing and request-body construction remain in
   shared.
-- After changing `compose/shared`, publish it locally before app validation:
-  `cd /Users/artin/AndroidStudioProjects/Slock/compose && ./gradlew :shared:publishAndroidReleasePublicationToMavenLocal`.
+- After changing `compose/shared`, validate from the compose Gradle root. The Android
+  app consumes `:shared` as a direct project dependency, so no MavenLocal publish step
+  is needed for normal app validation.
 
 ## Kuikly References And Skills
 
@@ -164,28 +165,27 @@ sh ohosApp/runOhosApp.sh
 
 ## Compose Shared Workflow
 
-- The Android app consumes Kuikly Compose shared code as the Maven artifact
-  `ai.slock.compose:shared-android:1.0.0` from `mavenLocal()`.
-- Root `settings.gradle.kts` only includes `:app`; `compose/shared` is not in the app
-  source graph.
+- The Android app lives at `compose/androidApp` and consumes Kuikly Compose shared code
+  through `implementation(project(":shared"))` in the same compose Gradle project.
 - When changing code under package `ai.slock.compose.*`, make the source change in
-  `compose/shared/src/commonMain/kotlin/...`, not in `app/src/main/java/...`.
-- After changing `compose/shared`, publish it locally before compiling or packaging
-  the Android app:
+  `compose/shared/src/commonMain/kotlin/...`, not in `compose/androidApp/src/main/java/...`.
+- After changing `compose/shared`, compile the shared module and Android app from the
+  compose Gradle root:
 
 ```bash
 cd /Users/artin/AndroidStudioProjects/Slock/compose
-./gradlew :shared:publishAndroidReleasePublicationToMavenLocal
+./gradlew :shared:compileDebugKotlinAndroid :androidApp:compileDebugKotlin
 ```
 
-- Then run app validation from the repo root, for example:
+- Then package the Android app from the same Gradle root, for example:
 
 ```bash
-cd /Users/artin/AndroidStudioProjects/Slock
-./gradlew :app:compileDebugKotlin
+cd /Users/artin/AndroidStudioProjects/Slock/compose
+./gradlew :androidApp:assembleDebug
 ```
 
-- Do not keep shadow copies of shared classes in `app/src/main/java/ai/slock/compose/...`.
+- Do not keep shadow copies of shared classes in
+  `compose/androidApp/src/main/java/ai/slock/compose/...`.
   Temporary app-side shims can make one APK build, but they drift from the real shared
   artifact and should be removed before handoff.
 
@@ -326,32 +326,32 @@ else (UI, foundation, material3, animation) imports from `com.tencent.kuikly.com
 After any shared-layer change, validate all target platforms before handoff:
 
 ```bash
-# 1. Shared Android compile + publish to mavenLocal
+# 1. Shared Android compile
 cd /Users/artin/AndroidStudioProjects/Slock/compose
-./gradlew :shared:compileDebugKotlinAndroid :shared:publishAndroidReleasePublicationToMavenLocal
+./gradlew :shared:compileDebugKotlinAndroid
 
 # 2. Shared OHOS compile (Kotlin/Native cross-check)
 cd /Users/artin/AndroidStudioProjects/Slock/compose
 ./gradlew -c settings.ohos.gradle.kts :shared:compileKotlinOhosArm64
 
 # 3. Android app compile + assemble
-cd /Users/artin/AndroidStudioProjects/Slock
-./gradlew :app:compileDebugKotlin :app:assembleDebug
+cd /Users/artin/AndroidStudioProjects/Slock/compose
+./gradlew :androidApp:compileDebugKotlin :androidApp:assembleDebug
 
 # 4. OHOS HAP (requires DevEco Studio)
 cd /Users/artin/AndroidStudioProjects/Slock/compose
 sh ohosApp/runOhosApp.sh
 
-# 5. Focused unit tests (run from repo root)
-cd /Users/artin/AndroidStudioProjects/Slock
-./gradlew :app:testDebugUnitTest \
+# 5. Focused unit tests
+cd /Users/artin/AndroidStudioProjects/Slock/compose
+./gradlew :androidApp:testDebugUnitTest \
   --tests "ai.slock.android.core.data.quality.NetworkPriorityCallSiteTest*" \
   --tests "ai.slock.android.core.data.mock.MockRepositoryTest*"
 ```
 
 Key invariants:
-- If step 1 is skipped, the Android app compiles against a stale shared snapshot
-  and new parsers/types appear to "not exist".
+- If step 1 fails, fix shared before validating the app. The Android app now sees
+  shared changes directly through the project dependency.
 - Step 2 must pass even if you only changed commonMain; Kotlin/Native catches
   expect/actual mismatches, missing `ohosArm64` source sets, and
   platform-incompatible dependencies.

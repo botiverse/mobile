@@ -18,4 +18,7 @@ if [[ -z "${SLOCK_TEST_EMAIL:-}" || -z "${SLOCK_TEST_PASSWORD:-}" ]]; then
   exit 1
 fi
 
-"$ROOT_DIR/gradlew" testDebugUnitTest --tests ai.slock.android.core.data.network.LiveSlockDbFlowTest
+"$ROOT_DIR/compose/gradlew" \
+  --project-dir "$ROOT_DIR/compose" \
+  :androidApp:testDebugUnitTest \
+  --tests ai.slock.android.core.data.network.LiveSlockDbFlowTest

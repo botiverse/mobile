@@ -1,3 +1,0 @@
-ALTER TABLE local_conversation ADD COLUMN server_id TEXT;
-
-CREATE INDEX local_conversation_server_kind ON local_conversation(server_id, kind);

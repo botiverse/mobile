@@ -136,25 +136,6 @@ Every KMP migration PR that replaces native Android product behavior must includ
 - A focused unit/store test or a live-device verification note.
 - A visual-testing run only when visual parity is relevant; visual output cannot replace capability verification.
 
-## Release/Build Validation
-
-The release/build gate now has an explicit checklist and Gradle validation task:
-
-```bash
-./gradlew checkKmpCapabilityGate
-```
-
-This task verifies that the global audit, route-level audits, and
-`docs/kmp-capability-parity-release-checklist.md` are present and contain the
-required capability/status markers. It is a guardrail for release notes and
-handoffs; product migration tasks must still provide the route-specific evidence
-listed in the checklist.
-
-Use `docs/kmp-capability-parity-release-checklist.md` for every KMP migration
-delivery note. If a capability is not fully implemented, mark it `partial`,
-`missing`, or `intentionally unsupported` rather than calling the migration
-complete because the shared page renders.
-
 ## Open Risks
 
 - `SharedHomeDataSource` is injected with local write-through, but Visible

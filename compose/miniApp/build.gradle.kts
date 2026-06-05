@@ -12,7 +12,7 @@ kotlin {
         browser {
             webpackTask {
                 // Final output executable JS filename
-                outputFileName = "miniApp.js"
+                mainOutputFileName = "miniApp.js"
                 webpackConfigApplier {
                     val tempConfigFile = File(project.buildDir, "../webpack.config.d/config.js")
                     tempConfigFile.parentFile.mkdirs()

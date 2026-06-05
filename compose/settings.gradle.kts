@@ -1,6 +1,19 @@
 pluginManagement {
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "com.android.application" || requested.id.id == "com.android.library") {
+                useModule("com.android.tools.build:gradle:${requested.version}")
+            }
+        }
+    }
     repositories {
-        google()
+        google {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
         gradlePluginPortal()
         mavenCentral()
         mavenLocal()
@@ -25,5 +38,4 @@ dependencyResolutionManagement {
 rootProject.name = "compose"
 include(":androidApp")
 include(":shared")
-include(":h5App")
 include(":miniApp")

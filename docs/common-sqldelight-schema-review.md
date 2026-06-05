@@ -1,13 +1,13 @@
 # Common SQLDelight Schema Review
 
-This is the review slice for moving Slock local storage ownership from Android-only SQLDelight into `compose/shared/commonMain`.
+This documents the current Slock local storage schema owned by `compose/shared/commonMain`.
 
 ## Direction
 
 - Common owns `.sq` schema and generated queries.
 - Android and OHOS only provide `SqlDriver`.
 - JS is intentionally unsupported until a concrete local-store driver is chosen.
-- Android app's old `app/src/main/sqldelight` schema should be deleted only after this common schema is approved and Android adapters are migrated to the shared generated DB.
+- `compose/androidApp` must not define its own SQLDelight schema or generated database.
 
 ## Server Source Of Truth
 

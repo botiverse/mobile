@@ -10,17 +10,15 @@ plugins {
     id("com.tencent.kuikly-open.kuikly")
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
-    id("app.cash.sqldelight") version "2.1.0"
+    id("app.cash.sqldelight")
 }
 
 val KEY_PAGE_NAME = "pageName"
 
 kotlin {
     androidTarget {
-        compilations.all {
-            kotlinOptions {
-                jvmTarget = "1.8"
-            }
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
         }
         publishLibraryVariants("release")
     }
@@ -28,7 +26,7 @@ kotlin {
     js(IR) {
         browser {
             webpackTask {
-                outputFileName = "nativevue2.js" // 最后输出的名字
+                mainOutputFileName = "nativevue2.js" // 最后输出的名字
             }
 
             commonWebpackConfig {
@@ -160,7 +158,6 @@ android {
     compileSdk = 34
     defaultConfig {
         minSdk = 21
-        targetSdk = 30
     }
     sourceSets {
         named("main") {
@@ -187,7 +184,7 @@ fun getLinkerArgs(): List<String> {
 configure<KuiklyConfig> {
     // JS 产物配置
     js {
-        // 构建产物名，与 KMM 插件 webpackTask#outputFileName 一致
+        // 构建产物名，与 KMM 插件 webpackTask#mainOutputFileName 一致
         outputName("nativevue2")
         // 可选：分包构建时的页面列表，如果为空则构建全部页面
         // addSplitPage("route","home")

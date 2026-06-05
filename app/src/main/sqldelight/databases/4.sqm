@@ -1,3 +1,0 @@
-ALTER TABLE local_message ADD COLUMN author_description TEXT;
-
-ALTER TABLE local_member_snapshot ADD COLUMN description TEXT;

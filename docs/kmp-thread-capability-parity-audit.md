@@ -46,8 +46,8 @@ channel action depth, and #219 long-message bottom-anchor behavior.
 - Product route constructs `ComposeLocalWriteThrough` and passes it to `SharedThreadDataSource`.
 - `ComposeLocalWriteThrough` exposes `readThreadSnapshot(...)`, `writeThreadResult(...)`, `writeRealtimeEvent(...)`, and unread clear helpers used by shared Thread flows.
 - `ThreadPage.kt` remains the large UI surface for renderer, overlays, composer, and menu wiring, so new business behavior should still prefer the shared store/data-source boundary.
-- Legacy native behavior remains visible in `app/src/main/java/ai/slock/android/MainActivity.kt`: `openThread(...)`, `refreshSelectedThread(...)`, `loadOlderThreadMessages(...)`, `loadNewerThreadMessages(...)`, realtime event merge, read receipt coordinator, attachment open/preview, attachment upload/send, and local write-through calls.
-- Native thread UI state in `app/src/main/java/ai/slock/android/feature/thread/ThreadUiState.kt` includes pagination status, refresh status, reply action error, parent message, new update count, composer attachment state, and realtime merge helpers that are not yet represented by a shared Thread store.
+- Legacy native behavior remains visible in `compose/androidApp/src/main/java/ai/slock/android/MainActivity.kt`: `openThread(...)`, `refreshSelectedThread(...)`, `loadOlderThreadMessages(...)`, `loadNewerThreadMessages(...)`, realtime event merge, read receipt coordinator, attachment open/preview, attachment upload/send, and local write-through calls.
+- Native thread UI state in `compose/androidApp/src/main/java/ai/slock/android/feature/thread/ThreadUiState.kt` includes pagination status, refresh status, reply action error, parent message, new update count, composer attachment state, and realtime merge helpers that are not yet represented by a shared Thread store.
 
 ## Recommended Fix Order
 
