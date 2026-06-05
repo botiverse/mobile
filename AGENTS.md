@@ -108,8 +108,14 @@ scripts/sync_kuikly_ai_skills.sh
   cd /Users/artin/AndroidStudioProjects/Slock
   sh scripts/build_kuikly_fork.sh
   ```
-- After publishing, the Slock Android build (`:app:compileDebugKotlin`) picks up
-  the forked artifacts from mavenLocal automatically.""
+- After publishing, the Slock Android build picks up the forked artifacts
+  from mavenLocal automatically (`mavenLocal()` is already in the repository
+  config). Android Studio Run works without extra steps — only re-run the
+  script after pulling fork changes (e.g. `git submodule update`).
+- Do not use `includeBuild` for the fork. The KuiklyUI project includes
+  androidApp/demo/ohosApp/h5App/iosApp in its settings, causing composite
+  builds to configure the entire project tree on every Gradle sync and
+  timing out.""
 
 ## OHOS Kuikly Workflow
 
