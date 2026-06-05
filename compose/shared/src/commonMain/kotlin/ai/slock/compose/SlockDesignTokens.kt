@@ -59,9 +59,17 @@ internal object SlockSize {
     val BottomBarHeight = 53.dp
 }
 
-// Variable weight font covering 300-700 via wght axis.
-// Replaces the previous 3 discrete weight files (regular/medium/semibold).
-private val SpaceGrotesk = FontFamily(KuiklyFont("space_grotesk_variable", FontWeight.Normal, FontStyle.Normal))
+// Discrete weight files registered in a single FontFamily.
+// Kuikly does not resolve variable font wght axis from a single entry;
+// each weight needs its own KuiklyFont entry so the resolver can pick the closest match.
+// See SlockKuiklyFontAdapter for the platform-side name → R.font mapping.
+private val SpaceGrotesk = FontFamily(
+    KuiklyFont("space_grotesk_bold", FontWeight.Bold, FontStyle.Normal),
+    KuiklyFont("space_grotesk_semibold", FontWeight.SemiBold, FontStyle.Normal),
+    KuiklyFont("space_grotesk_medium", FontWeight.Medium, FontStyle.Normal),
+    KuiklyFont("space_grotesk_regular", FontWeight.Normal, FontStyle.Normal),
+    KuiklyFont("space_grotesk_light", FontWeight.Light, FontStyle.Normal),
+)
 
 private fun slockTextStyle(
     fontWeight: FontWeight,
