@@ -55,6 +55,7 @@ import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.SyncResumeResponse
+import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.isGravatarAvatarWireValue
 import com.tencent.kuikly.lifecycle.ViewModel
@@ -164,7 +165,7 @@ internal class SharedThreadDataSource(
                         basePayload = basePayload,
                         page = page,
                         session = session
-                    ).withSenderProfiles(session)
+                    ).withCachedSenderProfiles(session)
                 )
             }
         val payload =
@@ -224,28 +225,45 @@ internal class SharedThreadDataSource(
                 return payload
             }
         if (channelMembers !is DataResult.Content) return payload
-        val members = channelMembers.data.members.distinctBy { it.memberKey }
-        val memberKeys = members.map { it.memberKey }.toSet()
         val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
-        val candidates =
+        val homeAvatarByMemberId =
+            serverId
+                ?.let { localWriteThrough?.readHomeSnapshot(it)?.directMessageAvatarWireValuesByMemberId() }
+                .orEmpty()
+        val serverMembers =
             if (serverId == null) {
-                payload.memberCandidates
+                null
             } else {
                 try {
                     when (val result = repository.getMembers(DataRequestPriority.Visible, serverId)) {
-                        is DataResult.Content ->
-                            result.data.members
-                                .filterNot { it.memberKey in memberKeys }
-                                .map { it.toKuiklyThreadMemberItem() }
+                        is DataResult.Content -> result.data.members
                         is DataResult.Empty,
                         is DataResult.Error,
-                        is DataResult.NoPermission -> payload.memberCandidates
+                        is DataResult.NoPermission -> null
                     }
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
-                    payload.memberCandidates
+                    null
                 }
+            }
+        val serverMembersByKey = serverMembers.orEmpty().associateBy { it.memberKey }
+        val members =
+            channelMembers.data.members
+                .distinctBy { it.memberKey }
+                .map { member ->
+                    member
+                        .withProfileAvatarFallback(serverMembersByKey[member.memberKey])
+                        .withHomeAvatarFallback(homeAvatarByMemberId[member.id.value])
+                }
+        val memberKeys = members.map { it.memberKey }.toSet()
+        val candidates =
+            if (serverMembers == null) {
+                payload.memberCandidates
+            } else {
+                serverMembers
+                    .filterNot { it.memberKey in memberKeys }
+                    .map { it.withHomeAvatarFallback(homeAvatarByMemberId[it.id.value]).toKuiklyThreadMemberItem() }
             }
         return payload.copy(
             membersCount = members.size,
@@ -695,7 +713,7 @@ internal class SharedThreadDataSource(
                     basePayload = basePayload,
                     page = page,
                     session = session
-                ).withSenderProfiles(session)
+                ).withCachedSenderProfiles(session)
             )
         }
     }
@@ -717,7 +735,7 @@ internal class SharedThreadDataSource(
             } catch (_: Throwable) {
                 return DataResult.Error(ScreenError(code = fallbackCode, retryable = true))
             }
-        return result.map { snapshot -> transform(snapshot).withSenderProfiles(session) }
+        return result.map { snapshot -> transform(snapshot).withCachedSenderProfiles(session) }
     }
 
     private suspend fun KuiklyThreadScreenPayload.withSenderProfiles(
@@ -747,12 +765,17 @@ internal class SharedThreadDataSource(
         return withSenderProfiles(profilesById).withHomeDirectMessageAvatars(homeAvatarByMemberId)
     }
 
-    private fun KuiklyThreadScreenPayload.withCachedSenderProfiles(
+    private suspend fun KuiklyThreadScreenPayload.withCachedSenderProfiles(
         session: StoredAuthSession
     ): KuiklyThreadScreenPayload {
         val serverId = session.currentServerId?.takeIf { it.isNotBlank() } ?: return this
-        val profilesById = senderProfilesCache[serverId] ?: return this
-        return withSenderProfiles(profilesById)
+        val homeAvatarByMemberId =
+            localWriteThrough
+                ?.readHomeSnapshot(ServerId(serverId))
+                ?.directMessageAvatarWireValuesByMemberId()
+                .orEmpty()
+        val cachedProfiles = senderProfilesCache[serverId].orEmpty()
+        return withSenderProfiles(cachedProfiles).withHomeDirectMessageAvatars(homeAvatarByMemberId)
     }
 }
 
@@ -1139,6 +1162,27 @@ private inline fun <T, K> List<T>.preserveStableItemsFrom(
 private val MemberProfile.memberKey: String
     get() = "${kind.name}:${id.value}"
 
+private fun MemberProfile.withProfileAvatarFallback(profile: MemberProfile?): MemberProfile {
+    profile ?: return this
+    return copy(
+        avatarUrl = avatarUrl ?: profile.avatarUrl,
+        gravatarHash = gravatarHash ?: profile.gravatarHash,
+        avatar = avatar ?: profile.avatar,
+        avatarLabel = avatarLabel.ifBlank { profile.avatarLabel }
+    )
+}
+
+private fun MemberProfile.withHomeAvatarFallback(avatarWireValue: String?): MemberProfile {
+    val wireValue = avatarWireValue?.takeIf { it.isNotBlank() } ?: return this
+    val currentWireValue = avatar?.wireValue ?: avatarUrl
+    if (!currentWireValue.isNullOrBlank()) return this
+    return copy(
+        avatarUrl = wireValue,
+        avatar = AvatarReference.fromWireValue(wireValue),
+        gravatarHash = null
+    )
+}
+
 private fun MemberProfile.toKuiklyThreadMemberItem(): KuiklyThreadMemberItem =
     KuiklyThreadMemberItem(
         id = id.value,
@@ -1151,7 +1195,7 @@ private fun MemberProfile.toKuiklyThreadMemberItem(): KuiklyThreadMemberItem =
                     MemberKind.Human -> "Member"
                     MemberKind.System -> "System"
                 },
-        avatarUrl = avatarUrl,
+        avatarUrl = avatarWireValueForAvatarSlot(),
         avatarLabel = avatarLabel,
         kind = kind.name.lowercase()
     )

@@ -24,6 +24,7 @@ import ai.slock.compose.data.ChannelFilesSnapshot
 import ai.slock.compose.data.ConversationRepository
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.HomeNetworkResponse
+import ai.slock.compose.data.HomeSnapshot
 import ai.slock.compose.data.InMemoryComposeLocalDataStore
 import ai.slock.compose.data.InMemorySlockAuthSessionStore
 import ai.slock.compose.data.MemberRepository
@@ -39,6 +40,7 @@ import ai.slock.compose.data.ThreadSnapshot
 import ai.slock.compose.data.ThreadListSnapshot
 import ai.slock.compose.data.WireMessage
 import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesPage
+import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
@@ -51,6 +53,7 @@ import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -192,6 +195,30 @@ class SharedThreadStoreTest {
         assertEquals(listOf("u1", "agent-1"), payload.members.map { it.id })
         assertEquals(listOf("agent-2"), payload.memberCandidates.map { it.id })
         assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
+        scope.cancel()
+    }
+
+    @Test
+    fun loadMembersKeepsHumanUploadedAvatarFromServerProfile() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val uploadedAvatar = "https://cdn.slock.ai/avatars/users/stdrc.webp"
+        val memberRepository =
+            FakeMemberRepository(
+                serverMembers = listOf(member("u1", "Artin").copy(avatarUrl = uploadedAvatar)),
+                channelMembers = listOf(member("u1", "Artin"))
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                memberRepository = memberRepository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.LoadMembers)
+
+        assertEquals(uploadedAvatar, store.state.value.payload.members.single().avatarUrl)
         scope.cancel()
     }
 
@@ -374,6 +401,44 @@ class SharedThreadStoreTest {
         assertEquals("general", cached?.conversation?.name)
         assertEquals("network body", cached?.messages?.single()?.body)
         assertEquals("Artin", cached?.messages?.single()?.author?.displayName)
+    }
+
+    @Test
+    fun fetchedThreadPayloadUsesHomeDirectMessageAvatarBeforePersistentCacheWrite() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(
+            HomeSnapshot(
+                server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+                currentMember = member("u1", "Artin"),
+                channels = emptyList(),
+                directMessages =
+                    listOf(
+                        ConversationSummary(
+                            threadId = ThreadId("dm-agent-1"),
+                            channelId = ChannelId("dm-agent-1"),
+                            kind = ConversationKind.DirectMessage,
+                            name = "Product-UX-Designer",
+                            avatar = AvatarReference.fromWireValue("pixel:tree"),
+                            presenceMemberId = MemberId("agent-1")
+                        )
+                    ),
+                unreadTotal = 0
+            )
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+
+        val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
+
+        assertEquals("pixel:tree", payload.messages.single().avatarWireValue)
+        assertEquals(null, payload.messages.single().gravatarHash)
+        val cachedAuthor = localStore.readThread(ThreadId("channel-1"))?.messages?.single()?.author
+        assertEquals("pixel:tree", cachedAuthor?.avatar?.wireValue)
+        assertEquals(null, cachedAuthor?.gravatarHash)
     }
 
     @Test
@@ -1380,6 +1445,24 @@ class SharedThreadStoreTest {
                   "senderId": "u1",
                   "senderName": "Artin",
                   "senderType": "user"
+                }
+              ]
+            }
+            """.trimIndent()
+
+        private fun agentMessagesResponse(): String =
+            """
+            {
+              "historyLimited": true,
+              "messages": [
+                {
+                  "id": "m1",
+                  "seq": 10,
+                  "content": "agent body",
+                  "createdAt": "2026-05-19T16:00:00Z",
+                  "senderId": "agent-1",
+                  "senderName": "Product-UX-Designer",
+                  "senderType": "agent"
                 }
               ]
             }
