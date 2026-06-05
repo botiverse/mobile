@@ -48,9 +48,7 @@ import ai.slock.compose.data.SERVER_ACTION_TRANSLATION_TOGGLE
 import ai.slock.compose.data.NotificationPreferenceSnapshot
 import ai.slock.compose.data.PersistentChatLayoutPreferenceRepository
 import ai.slock.compose.data.PersistentLocaleRepository
-import ai.slock.compose.data.RelationalValue
 import ai.slock.compose.data.RelationalComposeLocalDataStore
-import ai.slock.compose.data.SlockRelationalStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthErrorCode
 import ai.slock.compose.data.SharedAuthGateIntent
@@ -266,7 +264,6 @@ private const val AppShellRouteThread = "thread"
 private const val HomeDestinationSearch = "search"
 private const val HomeDestinationActivity = "activity"
 private const val HomeDestinationSaved = "saved"
-private const val AppShellFirstLoginLandingSeenKeyPrefix = "app_shell_first_login_landing_seen:"
 private const val SettingsDestinationHome = "home"
 private const val SettingsDestinationAccount = "account"
 private const val SettingsDestinationComputers = "computers"
@@ -753,8 +750,6 @@ private fun SlockAppShellContent() {
     var notificationPreferenceSnapshot by remember {
         mutableStateOf(NotificationPreferenceSnapshot(enabled = false))
     }
-    var showFirstLoginLanding by remember { mutableStateOf(false) }
-    var firstLoginLandingKey by remember { mutableStateOf<String?>(null) }
     val settingsDataSource =
         remember {
             SharedSettingsDataSource(
@@ -914,18 +909,6 @@ private fun SlockAppShellContent() {
         is SharedAuthGateState.Ready -> Unit
     }
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
-
-    LaunchedEffect(readySession?.user?.id, readySession?.currentServerId) {
-        val session = readySession
-        if (session == null || session.currentServerId.isNullOrBlank()) {
-            showFirstLoginLanding = false
-            firstLoginLandingKey = null
-            return@LaunchedEffect
-        }
-        val key = appShellFirstLoginLandingSeenKey(session.user)
-        firstLoginLandingKey = key
-        showFirstLoginLanding = !hasAppShellFirstLoginLandingBeenSeen(relationalStore, key)
-    }
 
     DisposableEffect(readySession?.currentServerId, readySession?.accessToken) {
         val serverId = readySession?.currentServerId
@@ -1427,31 +1410,6 @@ private fun SlockAppShellContent() {
                         },
                         onSubmit = { name, description, visibility, agentMemberIds, userMemberIds ->
                             submitCreateChannel(name, description, visibility, agentMemberIds, userMemberIds)
-                        }
-                    )
-                }
-                if (showFirstLoginLanding && readySession != null) {
-                    AppShellFirstLoginLandingDialog(
-                        user = readySession.user,
-                        onDismiss = {
-                            val storageKey = firstLoginLandingKey
-                            showFirstLoginLanding = false
-                            if (storageKey != null) {
-                                appShellScope.launch {
-                                    markAppShellFirstLoginLandingSeen(relationalStore, storageKey)
-                                }
-                            }
-                        },
-                        onOpenActivity = {
-                            val storageKey = firstLoginLandingKey
-                            showFirstLoginLanding = false
-                            selectedTab = "home"
-                            selectedHomeDestination = HomeDestinationActivity
-                            if (storageKey != null) {
-                                appShellScope.launch {
-                                    markAppShellFirstLoginLandingSeen(relationalStore, storageKey)
-                                }
-                            }
                         }
                     )
                 }
@@ -3624,42 +3582,6 @@ private fun AuthProvider.appShellProviderId(): String =
         AuthProvider.GitHub -> "github"
     }
 
-private fun appShellFirstLoginLandingSeenKey(user: StoredAuthUser): String =
-    AppShellFirstLoginLandingSeenKeyPrefix + user.id
-
-private suspend fun hasAppShellFirstLoginLandingBeenSeen(
-    relationalStore: SlockRelationalStore,
-    key: String
-): Boolean {
-    ensureAppShellKvTable(relationalStore)
-    val rows =
-        relationalStore.query(
-            "SELECT value FROM slock_kv WHERE key = ?",
-            listOf(RelationalValue.Text(key))
-        )
-    return rows.rows.firstOrNull()?.firstOrNull() != null
-}
-
-private suspend fun markAppShellFirstLoginLandingSeen(
-    relationalStore: SlockRelationalStore,
-    key: String
-) {
-    ensureAppShellKvTable(relationalStore)
-    relationalStore.execute(
-        "INSERT OR REPLACE INTO slock_kv(key, value) VALUES(?, ?)",
-        listOf(RelationalValue.Text(key), RelationalValue.Text("1"))
-    )
-}
-
-private suspend fun ensureAppShellKvTable(relationalStore: SlockRelationalStore) {
-    relationalStore.execute(
-        "CREATE TABLE IF NOT EXISTS slock_kv(" +
-            "key TEXT PRIMARY KEY NOT NULL, " +
-            "value TEXT NOT NULL" +
-            ")"
-    )
-}
-
 @Composable
 private fun AppShellServerGateContent(
     session: StoredAuthSession,
@@ -3836,66 +3758,6 @@ private fun AppShellServerEmptyState(
     }
 }
 
-@Composable
-private fun AppShellFirstLoginLandingDialog(
-    user: StoredAuthUser,
-    onDismiss: () -> Unit,
-    onOpenActivity: () -> Unit
-) {
-    SlockUnifiedDialog(
-        title = "START BUILDING WITH SLOCK",
-        onDismiss = onDismiss,
-        maxWidth = 420.dp,
-        contentSpacing = 14.dp
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier.size(36.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                SlockLucideIcon("bot", modifier = Modifier.size(18.dp))
-            }
-            Text(
-                text = "Welcome, ${user.bestDisplayName}. Agents here keep context across channels, tasks, and activity.",
-                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Text(
-            text = "Start from Activity to see what needs attention first, then hand work to agents like teammates:",
-            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
-        )
-        Column(
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text("• Talk to them directly", style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-            Text("• Give them tasks and follow-ups", style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-            Text("• Review unread activity before diving in", style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            AuthActionButton(
-                text = "Maybe later",
-                onClick = onDismiss,
-                tone = AuthButtonTone.White,
-                modifier = Modifier.weight(1f)
-            )
-            AuthActionButton(
-                text = "Open activity",
-                onClick = onOpenActivity,
-                tone = AuthButtonTone.Pink,
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
-}
 
 @Composable
 private fun AppShellServerRow(
