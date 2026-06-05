@@ -276,9 +276,9 @@ private fun AuthLoginInputsVisualScreen() {
 @Composable
 private fun AuthRegisterInputsVisualScreen() {
     RegisterContent(
-        name = "",
-        email = "new@slock.test",
-        password = "",
+        name = "Artin",
+        email = "artin@slock.test",
+        password = "password",
         submitting = false,
         errorMessage = null,
         onNameChange = {},

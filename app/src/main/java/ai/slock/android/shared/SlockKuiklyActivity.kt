@@ -93,6 +93,7 @@ import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import com.tencent.kuikly.core.render.android.performace.KRMonitorType
 import com.tencent.kuikly.core.render.android.performace.KRPerformanceData
 import com.tencent.kuikly.core.render.android.performace.launch.KRLaunchData
+import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 import com.caverock.androidsvg.SVG
 import com.google.gson.Gson
 import java.io.ByteArrayInputStream
@@ -462,6 +463,10 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
     override fun registerExternalRenderView(kuiklyRenderExport: IKuiklyRenderExport) {
         super.registerExternalRenderView(kuiklyRenderExport)
+        kuiklyRenderExport.renderViewExport(
+            KRTextFieldView.VIEW_NAME,
+            renderViewExportCreator = { context -> SlockKuiklyTextFieldView(context, window.attributes?.softInputMode) }
+        )
         kuiklyRenderExport.renderViewExport(
             SlockLucideIconRenderView.VIEW_NAME,
             renderViewExportCreator = { context -> SlockLucideIconRenderView(context) }
@@ -912,7 +917,7 @@ private object SlockKuiklyExceptionAdapter : IKRUncaughtExceptionHandlerAdapter 
     }
 }
 
-private object SlockKuiklyFontAdapter : IKRFontAdapter {
+internal object SlockKuiklyFontAdapter : IKRFontAdapter {
     private var context: Context? = null
     private var inputTypeface: Typeface? = null
 
@@ -926,8 +931,8 @@ private object SlockKuiklyFontAdapter : IKRFontAdapter {
                 ?.also { inputTypeface = it }
     }
 
-    override fun getTypeface(fontFamily: String, result: (Typeface?) -> Unit) {
-        val fontName = fontFamily.substringBefore(",").trim()
+    fun resolveTypeface(fontFamily: String?, context: Context): Typeface? {
+        val fontName = fontFamily?.substringBefore(",")?.trim().orEmpty()
         val fontRes = when (fontName) {
             "space_grotesk_bold" -> R.font.space_grotesk_bold
             "space_grotesk_semibold" -> R.font.space_grotesk_semibold
@@ -937,10 +942,13 @@ private object SlockKuiklyFontAdapter : IKRFontAdapter {
             "space_grotesk" -> R.font.space_grotesk
             else -> null
         }
-        val typeface = fontRes?.let { resId ->
-            context?.let { ResourcesCompat.getFont(it, resId) }
-        }
-        result(typeface)
+        return fontRes?.let { ResourcesCompat.getFont(context.applicationContext, it) }
+            ?: inputTypeface(context)
+    }
+
+    override fun getTypeface(fontFamily: String, result: (Typeface?) -> Unit) {
+        val currentContext = context
+        result(currentContext?.let { resolveTypeface(fontFamily, it) })
     }
 }
 
