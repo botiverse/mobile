@@ -1027,8 +1027,12 @@ internal fun SharedThreadRouteContent(
         }
     }
     LaunchedEffect(renderedPayload) {
+        val replyRows = renderedPayload.messages.filter { it.replyCount > 0 }
         bridge.log(
-            "thread_render instanceId=${renderedPayload.instanceId} status=${renderedPayload.status} tab=${renderedPayload.selectedTab} messages=${renderedPayload.messages.size} tasks=${renderedPayload.tasks.size}"
+            "thread_render instanceId=${renderedPayload.instanceId} status=${renderedPayload.status} tab=${renderedPayload.selectedTab} " +
+                "messages=${renderedPayload.messages.size} tasks=${renderedPayload.tasks.size} " +
+                "showReplyActions=${renderedPayload.showReplyActions} replyRows=${replyRows.size} " +
+                "firstReply=${replyRows.firstOrNull()?.let { "${it.id.take(8)}:${it.replyCount}/${it.unreadReplyCount}" } ?: "none"}"
         )
     }
     LaunchedEffect(renderedPayload.sourceThreadId, renderedPayload.status, renderedPayload.messages.size) {
@@ -3377,7 +3381,7 @@ private fun ThreadMessageFooterMeta(
             message.taskNumber != null ||
             !message.taskStatus.isNullOrBlank() ||
             !message.taskAssigneeName.isNullOrBlank()
-    val hasReplies = showReplyAction && message.replyCount > 0
+    val hasReplies = message.replyCount > 0
     val visibleReactions = message.reactions.filter { it.count > 0 }
     val hasReactions = visibleReactions.isNotEmpty()
     if (!hasTask && !hasReplies && !hasReactions) return
@@ -3414,7 +3418,7 @@ private fun ThreadMessageFooterMeta(
                 iconSize = 12.dp,
                 color = SlockColor.AccentCyan.copy(alpha = 0.2f),
                 modifier = Modifier.widthIn(max = 220.dp),
-                onClick = { _ -> onOpenThread() }
+                onClick = if (showReplyAction) { _ -> onOpenThread() } else null
             )
         }
         if (hasReactions) {

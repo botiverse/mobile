@@ -6364,7 +6364,7 @@ internal fun buildAppShellThreadPayload(
         selectedTab = "chat",
         navigationLabel = "Back",
         showModeTabs = true,
-        showReplyActions = false,
+        showReplyActions = conversation.kind != ConversationKind.Thread,
         alignOwnMessagesRight = alignOwnMessagesRight,
         showOpenInChannelAction = false,
         joined = conversation.joined,

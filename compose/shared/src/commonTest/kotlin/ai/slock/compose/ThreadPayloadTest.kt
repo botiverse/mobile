@@ -234,7 +234,7 @@ class ThreadPayloadTest {
         assertEquals(7, payload.membersCount)
         assertEquals(480, payload.localOffsetMinutes)
         assertEquals(20593, payload.todayEpochDay)
-        assertEquals(false, payload.showReplyActions)
+        assertEquals(true, payload.showReplyActions)
         assertEquals(true, payload.alignOwnMessagesRight)
         assertEquals(true, payload.showSettingsAction)
         assertEquals(

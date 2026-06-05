@@ -80,6 +80,19 @@ private data class MessagesWireMessage(
     val createdAt: String = "",
     val updatedAt: String = "",
     val attachments: List<MessagesWireAttachment> = emptyList(),
+    val threadSummary: MessagesWireThreadSummary? = null,
+    val replyCount: Int? = null,
+    val unreadReplyCount: Int? = null,
+    val threadUnreadCount: Int? = null,
+    val firstUnreadReplyMessageId: String? = null,
+)
+
+@Serializable
+private data class MessagesWireThreadSummary(
+    val threadChannelId: String? = null,
+    val replyCount: Int? = null,
+    val unreadCount: Int? = null,
+    val firstUnreadMessageId: String? = null,
 )
 
 @Serializable
@@ -160,6 +173,13 @@ fun parseSharedSentMessage(bodyText: String, fallbackThreadId: ThreadId): Messag
 }
 
 private fun MessagesWireMessage.toDomain(fallbackThreadId: ThreadId): Message {
+    val summary = threadSummary
+    val resolvedThreadChannelId =
+        threadId
+            ?: summary?.threadChannelId?.takeIf { it.isNotBlank() }
+    val resolvedFirstUnreadReplyMessageId =
+        firstUnreadReplyMessageId
+            ?: summary?.firstUnreadMessageId?.takeIf { it.isNotBlank() }
     val authorKind = when {
         senderType.equals("agent", ignoreCase = true) -> MemberKind.Agent
         messageType.equals("system", ignoreCase = true) -> MemberKind.System
@@ -205,7 +225,7 @@ private fun MessagesWireMessage.toDomain(fallbackThreadId: ThreadId): Message {
         id = MessageId(id),
         threadId = resolvedThreadId,
         channelId = ChannelId(channelId),
-        threadChannelId = threadId?.let(::ChannelId),
+        threadChannelId = resolvedThreadChannelId?.let(::ChannelId),
         seq = seq,
         author = author,
         timestampLabel = createdAt,
@@ -218,6 +238,9 @@ private fun MessagesWireMessage.toDomain(fallbackThreadId: ThreadId): Message {
         attachments = attachments.map { it.toDomain() },
         deliveryState = MessageDeliveryState.Sent,
         task = task,
+        replyCount = replyCount ?: summary?.replyCount ?: 0,
+        unreadReplyCount = unreadReplyCount ?: threadUnreadCount ?: summary?.unreadCount ?: 0,
+        firstUnreadReplyMessageId = resolvedFirstUnreadReplyMessageId?.let(::MessageId),
         updatedAtLabel = updatedAt.ifBlank { null },
     )
 }
