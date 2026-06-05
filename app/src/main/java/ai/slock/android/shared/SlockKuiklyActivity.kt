@@ -383,7 +383,13 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     private fun uploadThreadAttachments(channelId: String, uris: List<Uri>): Map<String, Any> {
-        val session = runBlocking { EncryptedAuthSessionStore(applicationContext).readSession() }
+        val sessionStore = EncryptedAuthSessionStore(applicationContext)
+        val tokenRefresher = AuthTokenRefresher(sessionStore)
+        val session =
+                runBlocking {
+                    tokenRefresher.refreshIfExpiringSoon(clearOnUnauthorized = false)
+                            ?: sessionStore.readSession()
+                }
         val token = session?.accessToken.orEmpty()
         val serverId = session?.currentServerId.orEmpty()
         if (token.isBlank() || serverId.isBlank()) {
@@ -403,6 +409,45 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                     "errorBodyText" to "No readable attachments"
             )
         }
+        val initialResult = postThreadAttachments(channelId = channelId, token = token, serverId = serverId, files = files)
+        val finalResult =
+                if (initialResult.code == 401) {
+                    val refreshed =
+                            runBlocking {
+                                tokenRefresher.refreshIfCurrent(
+                                        failedAccessToken = token,
+                                        clearOnUnauthorized = false
+                                )
+                            }
+                    val refreshedToken = refreshed?.accessToken.orEmpty()
+                    val refreshedServerId = refreshed?.currentServerId.orEmpty()
+                    if (refreshedToken.isBlank() || refreshedServerId.isBlank()) {
+                        initialResult
+                    } else {
+                        postThreadAttachments(
+                                channelId = channelId,
+                                token = refreshedToken,
+                                serverId = refreshedServerId,
+                                files = files
+                        )
+                    }
+                } else {
+                    initialResult
+                }
+        return mapOf(
+                "code" to finalResult.code,
+                "bodyText" to if (finalResult.code in 200..299) finalResult.body else "",
+                "errorCode" to finalResult.errorCode(),
+                "errorBodyText" to if (finalResult.code in 200..299) "" else finalResult.body
+        )
+    }
+
+    private fun postThreadAttachments(
+            channelId: String,
+            token: String,
+            serverId: String,
+            files: List<PickedThreadAttachment>
+    ): ThreadAttachmentUploadHttpResult {
         val boundary = "SlockBoundary${System.currentTimeMillis()}"
         val url = URL("${AndroidAuthApiFactory.BASE_URL.trimEnd('/')}/attachments/upload")
         val connection =
@@ -427,12 +472,8 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         val code = connection.responseCode
         val stream = if (code in 200..299) connection.inputStream else connection.errorStream
         val body = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
-        return mapOf(
-                "code" to code,
-                "bodyText" to if (code in 200..299) body else "",
-                "errorCode" to if (code in 200..299) "" else "attachment_upload_failed",
-                "errorBodyText" to if (code in 200..299) "" else body
-        )
+        connection.disconnect()
+        return ThreadAttachmentUploadHttpResult(code = code, body = body)
     }
 
     private fun readPickedThreadAttachment(uri: Uri): PickedThreadAttachment? {
@@ -861,6 +902,18 @@ private data class PickedThreadAttachment(
         val mimeType: String,
         val bytes: ByteArray
 )
+
+private data class ThreadAttachmentUploadHttpResult(
+        val code: Int,
+        val body: String
+) {
+        fun errorCode(): String =
+                when {
+                        code in 200..299 -> ""
+                        code == 401 -> "auth_required"
+                        else -> "attachment_upload_failed"
+                }
+}
 
 private fun DataOutputStream.writeMultipartField(boundary: String, name: String, value: String) {
     writeBytes("--$boundary\r\n")
