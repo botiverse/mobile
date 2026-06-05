@@ -57,6 +57,7 @@ internal data class WireMessage(
     val createdAt: String? = null,
     val attachments: List<WireAttachment> = emptyList(),
     val reactions: List<WireReaction> = emptyList(),
+    val threadSummary: WireThreadSummary? = null,
     val replyCount: Int? = null,
     val unreadReplyCount: Int? = null,
     val threadUnreadCount: Int? = null,
@@ -68,6 +69,14 @@ internal data class WireMessage(
     val taskAssigneeName: String? = null,
     val claimedByName: String? = null,
     val taskClaimedByName: String? = null,
+)
+
+@Serializable
+internal data class WireThreadSummary(
+    val threadChannelId: String? = null,
+    val replyCount: Int? = null,
+    val unreadCount: Int? = null,
+    val firstUnreadMessageId: String? = null,
 )
 
 @Serializable
@@ -163,6 +172,7 @@ internal fun appendSharedThreadSentMessageFromPage(
 private fun WireMessage.toMessageItem(currentUserId: String?): KuiklyThreadMessageItem {
     val resolvedName = senderName?.takeIf { it.isNotBlank() } ?: "Unknown"
     val isSystem = messageType.equals("system", ignoreCase = true)
+    val summary = threadSummary
     return KuiklyThreadMessageItem(
         id = id,
         authorId = senderId.ifBlank { "unknown" },
@@ -183,9 +193,10 @@ private fun WireMessage.toMessageItem(currentUserId: String?): KuiklyThreadMessa
         systemEventType = null,
         metadata = emptyMap(),
         body = content,
-        replyCount = replyCount ?: 0,
-        unreadReplyCount = unreadReplyCount ?: threadUnreadCount ?: 0,
-        firstUnreadReplyMessageId = firstUnreadReplyMessageId,
+        threadChannelId = firstNonBlank(threadId, summary?.threadChannelId),
+        replyCount = replyCount ?: summary?.replyCount ?: 0,
+        unreadReplyCount = unreadReplyCount ?: threadUnreadCount ?: summary?.unreadCount ?: 0,
+        firstUnreadReplyMessageId = firstNonBlank(firstUnreadReplyMessageId, summary?.firstUnreadMessageId),
         taskId = if (taskNumber != null || taskStatus != null) id else null,
         taskNumber = taskNumber,
         taskStatus = taskStatus,

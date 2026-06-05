@@ -18,6 +18,7 @@ import ai.slock.compose.data.ThreadMessagesPage
 import ai.slock.compose.data.WireAttachment
 import ai.slock.compose.data.WireMessage
 import ai.slock.compose.data.WireReaction
+import ai.slock.compose.data.WireThreadSummary
 import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesPage
 import ai.slock.compose.data.parseSharedThreadUploadedAttachments
@@ -357,9 +358,13 @@ class ThreadPayloadTest {
                                     messageType = "chat",
                                     content = "hello from shared route",
                                     createdAt = "2026-05-19T16:00:00Z",
-                                    replyCount = 3,
-                                    unreadReplyCount = 2,
-                                    firstUnreadReplyMessageId = "reply-2",
+                                    threadSummary =
+                                        WireThreadSummary(
+                                            threadChannelId = "thread-m1",
+                                            replyCount = 3,
+                                            unreadCount = 2,
+                                            firstUnreadMessageId = "reply-2"
+                                        ),
                                     taskStatus = "in_review",
                                     taskNumber = 42,
                                     claimedByName = "Android-Developer-2",
@@ -387,6 +392,7 @@ class ThreadPayloadTest {
         assertEquals("hello from shared route", payload.messages.first().body)
         assertEquals("Artin", payload.messages.first().authorName)
         assertEquals(true, payload.messages.first().isOwn)
+        assertEquals("thread-m1", payload.messages.first().threadChannelId)
         assertEquals(3, payload.messages.first().replyCount)
         assertEquals(2, payload.messages.first().unreadReplyCount)
         assertEquals("reply-2", payload.messages.first().firstUnreadReplyMessageId)

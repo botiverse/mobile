@@ -3254,7 +3254,7 @@ private fun ThreadReactionChip(
     reaction: KuiklyThreadReactionItem,
     onClick: (() -> Unit)? = null
 ) {
-    val background = if (reaction.selected) SlockColor.AccentPink else SlockColor.SurfaceWhite
+    val background = if (reaction.selected) SlockColor.AccentPink.copy(alpha = 0.2f) else Color(0xFFEEEDE6)
     val chipModifier = Modifier
             .border(SlockStroke.Thin, SlockColor.BorderBlack)
             .background(background)
@@ -3424,7 +3424,6 @@ private fun ThreadMessageFooterMeta(
                     onClick = onToggleReaction?.let { callback -> { callback(reaction.emoji) } }
                 )
             }
-            ThreadReactionAddChip(onShowActions)
         }
     }
 }
