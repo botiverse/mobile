@@ -23,6 +23,15 @@ import org.junit.Test
 
 class KmpVisualScreenshotCaptureTest {
     @Test
+    fun captureTokenPalette() {
+        captureKmpComponentCase(
+            caseId = "tokens.palette",
+            pageName = "compose_tokens_palette_visual",
+            crop = TOKEN_PALETTE_CROP
+        )
+    }
+
+    @Test
     fun captureHomeServerSwitcherOpen() {
         captureKmpHomeCase(
             caseId = "home.server-switcher.open",
@@ -730,6 +739,13 @@ class KmpVisualScreenshotCaptureTest {
                 captureMethod = "full-screen-takeScreenshot-viewport-density-resize"
             )
         private val HOME_SAVED_RESULTS_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 620
+            )
+        private val TOKEN_PALETTE_CROP =
             VisualCrop(
                 leftDp = 0,
                 topDp = 0,
