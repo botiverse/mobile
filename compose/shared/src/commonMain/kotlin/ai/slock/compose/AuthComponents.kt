@@ -27,6 +27,7 @@ import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -195,6 +196,7 @@ internal fun AuthTextField(
     isError: Boolean = false,
     errorText: String? = null,
     forceFocused: Boolean = false,
+    focusRequester: FocusRequester? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default
 ) {
@@ -238,7 +240,8 @@ internal fun AuthTextField(
                     maxLines = 1,
                     keyboardOptions = keyboardOptions,
                     keyboardActions = keyboardActions,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    focusRequester = focusRequester ?: remember { FocusRequester() }
                 )
             }
         }

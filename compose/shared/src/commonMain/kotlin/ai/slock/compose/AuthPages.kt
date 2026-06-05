@@ -29,6 +29,7 @@ import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
+import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -307,6 +308,7 @@ internal fun LoginContent(
 ) {
     var emailDraft by remember { mutableStateOf(email) }
     var passwordDraft by remember { mutableStateOf(password) }
+    val passwordFocusRequester = remember { FocusRequester() }
     LaunchedEffect(email) {
         if (email != emailDraft) {
             emailDraft = email
@@ -342,7 +344,7 @@ internal fun LoginContent(
                 required = true,
                 enabled = !formBusy,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions.Default
+                keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() })
             )
             AuthTextField(
                 value = passwordDraft,
@@ -353,6 +355,7 @@ internal fun LoginContent(
                 label = "Password",
                 required = true,
                 enabled = !formBusy,
+                focusRequester = passwordFocusRequester,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { submitIfReady() })
             )
@@ -412,6 +415,8 @@ internal fun RegisterContent(
 ) {
     val formEnabled = !submitting
     var termsAccepted by remember { mutableStateOf(false) }
+    val emailFocusRequester = remember { FocusRequester() }
+    val passwordFocusRequester = remember { FocusRequester() }
     AuthScaffold {
         AuthCenterMark()
         Text(
@@ -420,8 +425,27 @@ internal fun RegisterContent(
             color = SlockColor.TextBlack
         )
         AuthFormColumn {
-            AuthTextField(name, onNameChange, "Name", placeholder = "Letters, numbers, hyphens, underscores", required = true, enabled = formEnabled, forceFocused = forceNameFocused)
-            AuthTextField(email, onEmailChange, "Email", required = true, enabled = formEnabled, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next))
+            AuthTextField(
+                name,
+                onNameChange,
+                "Name",
+                placeholder = "Letters, numbers, hyphens, underscores",
+                required = true,
+                enabled = formEnabled,
+                forceFocused = forceNameFocused,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { emailFocusRequester.requestFocus() })
+            )
+            AuthTextField(
+                email,
+                onEmailChange,
+                "Email",
+                required = true,
+                enabled = formEnabled,
+                focusRequester = emailFocusRequester,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() })
+            )
             AuthTextField(
                 password,
                 onPasswordChange,
@@ -429,6 +453,7 @@ internal fun RegisterContent(
                 placeholder = "Min 8 characters",
                 required = true,
                 enabled = formEnabled,
+                focusRequester = passwordFocusRequester,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { onSubmit() })
             )
