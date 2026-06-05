@@ -59,17 +59,22 @@ internal object SlockSize {
     val BottomBarHeight = 53.dp
 }
 
-// Discrete weight files registered in a single FontFamily.
-// Kuikly does not resolve variable font wght axis from a single entry;
-// each weight needs its own KuiklyFont entry so the resolver can pick the closest match.
-// See SlockKuiklyFontAdapter for the platform-side name → R.font mapping.
-private val SpaceGrotesk = FontFamily(
-    KuiklyFont("space_grotesk_bold", FontWeight.Bold, FontStyle.Normal),
-    KuiklyFont("space_grotesk_semibold", FontWeight.SemiBold, FontStyle.Normal),
-    KuiklyFont("space_grotesk_medium", FontWeight.Medium, FontStyle.Normal),
-    KuiklyFont("space_grotesk_regular", FontWeight.Normal, FontStyle.Normal),
-    KuiklyFont("space_grotesk_light", FontWeight.Light, FontStyle.Normal),
-)
+// Kuikly serializes FontFamily as comma-joined font names WITHOUT weight info.
+// A single FontFamily with multiple weights would always pick the first entry.
+// We must use one FontFamily per weight and manually dispatch.
+// See KuiklyTextExtension.toKuiklyFontFamily() for the serialization constraint.
+private val SpaceGroteskBold = FontFamily(KuiklyFont("space_grotesk_bold", FontWeight.Bold, FontStyle.Normal))
+private val SpaceGroteskSemiBold = FontFamily(KuiklyFont("space_grotesk_semibold", FontWeight.SemiBold, FontStyle.Normal))
+private val SpaceGroteskMedium = FontFamily(KuiklyFont("space_grotesk_medium", FontWeight.Medium, FontStyle.Normal))
+private val SpaceGroteskRegular = FontFamily(KuiklyFont("space_grotesk_regular", FontWeight.Normal, FontStyle.Normal))
+
+private fun spaceGroteskFamily(fontWeight: FontWeight): FontFamily =
+    when {
+        fontWeight >= FontWeight.Bold -> SpaceGroteskBold
+        fontWeight >= FontWeight.SemiBold -> SpaceGroteskSemiBold
+        fontWeight >= FontWeight.Medium -> SpaceGroteskMedium
+        else -> SpaceGroteskRegular
+    }
 
 private fun slockTextStyle(
     fontWeight: FontWeight,
@@ -78,7 +83,7 @@ private fun slockTextStyle(
     letterSpacing: TextUnit
 ): TextStyle =
     TextStyle(
-        fontFamily = SpaceGrotesk,
+        fontFamily = spaceGroteskFamily(fontWeight),
         fontWeight = fontWeight,
         fontSize = fontSize,
         lineHeight = lineHeight,
@@ -86,7 +91,7 @@ private fun slockTextStyle(
     )
 
 internal fun TextStyle.withSlockFontWeight(fontWeight: FontWeight): TextStyle =
-    copy(fontFamily = SpaceGrotesk, fontWeight = fontWeight)
+    copy(fontFamily = spaceGroteskFamily(fontWeight), fontWeight = fontWeight)
 
 internal object SlockType {
     val PageTitle = slockTextStyle(FontWeight.SemiBold, 20.sp, 24.sp, 0.sp)
