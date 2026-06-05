@@ -198,3 +198,134 @@ cd /Users/artin/AndroidStudioProjects/Slock
   is waiting or active. Already-started background requests are not preemptively
   cancelled; page/server cancellation is handled by the caller scope and stale-result
   guards.
+
+## Shared MVI + Repository/DataSource Layered Contract
+
+The project enforces a strict unidirectional data-flow chain for all feature pages:
+
+```
+UI -> Store -> UseCase/Interactor -> Repository -> DataSource/API/HostCapability
+```
+
+Core constraints every agent must follow:
+
+- **UI layer**: only reads `State`, only emits `Intent`, only receives one-shot
+  `Effect`. Never calls Repository/DataSource directly.
+- **Store layer**: owns the reducer, concurrency/debounce/stale-token, in-flight
+  idempotency guard, no-op equality gate, and typed result/error mapping.
+  Same snapshot must not re-emit; local patches must not cause full-page refresh.
+- **Repository layer**: exposes typed domain results (`DataResult<T>` / `DomainError`).
+  Never leaks raw HTTP response, token, headers, or platform-specific payloads upward.
+- **Success path**: patch only the affected entity slice. Do not replace the whole
+  state tree.
+- **Failure path**: keep the previous state intact and attach a route/action error.
+  Never clear content on failure.
+- **Cache / realtime**: must flow back through the Store reducer. Never bypass MVI
+  to directly mutate UI state from a socket event or local cache read.
+- **Shared MVI runtime**: `ai.slock.compose.mvi` provides the lightweight foundation
+  (`Intent`, `State`, `Effect`, `Store`, `dispatch`, `no-op gate`, `single-flight`,
+  `stale token`, `transition log`, `test harness`). Feature stores (Home, Thread,
+  Settings, Tasks) extend this contract, but keep their own state shape, selectors,
+  and snapshot granularity.
+
+## Compose ViewModel Lifecycle Rule
+
+This rule prevents a real production crash (white screen on launch).
+
+- **Never** access `viewModelScope`, `pagerId`, `Utils.bridgeModule(pagerId)`, or
+  any Pager/runtime-context-dependent object inside a ViewModel constructor,
+  property initializer, or `init {}` block.
+- Kuikly may not have finished Pager initialization when the ViewModel is
+  constructed. Premature access triggers `lateinit property pagerId has not been
+  initialized` and blocks the first frame.
+- **Correct pattern**: save pure dependencies (repository, auth store, data source,
+  configuration) in the constructor. Defer creation of `Store` / `Effect` / coroutine
+  jobs that need `viewModelScope` to a `lazy { ... }` block, or to an explicit
+  `start` / `attach` / `dispatch(Start)` call after composition begins.
+- In `onCleared()`, check `isInitialized()` before touching lazy stores to avoid
+  triggering initialization during cleanup.
+
+Example:
+
+```kotlin
+class SharedExampleViewModel(
+    private val dataSource: SharedExampleDataSource
+) : ViewModel() {
+    private val storeDelegate = lazy {
+        SharedExampleStore(dataSource = dataSource, scope = viewModelScope)
+    }
+    private val store: SharedExampleStore by storeDelegate
+
+    val state: StateFlow<SharedExampleState>
+        get() = store.state
+
+    fun dispatch(intent: SharedExampleIntent) {
+        store.dispatch(intent)
+    }
+
+    override fun onCleared() {
+        if (storeDelegate.isInitialized()) store.clear()
+        super.onCleared()
+    }
+}
+```
+
+## Kuikly Compose API Quick Reference
+
+For the full specification, read `.agents/rules/kuiklyComposeDSL.mdc`. This is the
+minimal "don't-use" list that covers ~80% of compile/runtime errors:
+
+| ❌ Do NOT use | ✅ Use instead |
+|---|---|
+| `OutlinedTextField(...)` | `TextField(...)` with custom `shape` / `colors` |
+| `Modifier.verticalScroll(state)` | `LazyColumn` wrapping a single `item {}` |
+| `Modifier.horizontalScroll(state)` | `LazyRow` wrapping a single `item {}` |
+| `Modifier.imePadding()` / `WindowInsets.ime` | Delete — keyboard is handled by the native layer |
+| `Icon` / `IconImage` | `Image` with `painterResource` |
+| `reverseLayout` / `flingBehavior` on LazyColumn/LazyRow | Delete these params |
+| `PullToRefreshBox` | `pullToRefreshItem()` as the first item in LazyList |
+| `pointerInput(Unit) { ... }` reading mutable state | `pointerInput(state1, state2) { ... }` — all captured state must be a key |
+| `PasswordVisualTransformation()` | `KeyboardOptions(keyboardType = KeyboardType.Password)` |
+| `BasicTextField2` / `TextFieldState` | `BasicTextField(value, onValueChange)` legacy API |
+| `Modifier.animateItem()` in LazyColumn/LazyRow | Delete — not supported (OK in Grid/StaggeredGrid) |
+| `TopAppBar(scrollBehavior = ...)` | Fixed `TopAppBar`; scroll collapse is not supported |
+
+Import rules: only `androidx.compose.runtime.*` uses the official package; everything
+else (UI, foundation, material3, animation) imports from `com.tencent.kuikly.compose.*`.
+
+## Multi-Platform Build Validation
+
+After any shared-layer change, validate all target platforms before handoff:
+
+```bash
+# 1. Shared Android compile + publish to mavenLocal
+cd /Users/artin/AndroidStudioProjects/Slock/compose
+./gradlew :shared:compileDebugKotlinAndroid :shared:publishAndroidReleasePublicationToMavenLocal
+
+# 2. Shared OHOS compile (Kotlin/Native cross-check)
+cd /Users/artin/AndroidStudioProjects/Slock/compose
+./gradlew -c settings.ohos.gradle.kts :shared:compileKotlinOhosArm64
+
+# 3. Android app compile + assemble
+cd /Users/artin/AndroidStudioProjects/Slock
+./gradlew :app:compileDebugKotlin :app:assembleDebug
+
+# 4. OHOS HAP (requires DevEco Studio)
+cd /Users/artin/AndroidStudioProjects/Slock/compose
+sh ohosApp/runOhosApp.sh
+
+# 5. Focused unit tests (run from repo root)
+cd /Users/artin/AndroidStudioProjects/Slock
+./gradlew :app:testDebugUnitTest \
+  --tests "ai.slock.android.core.data.quality.NetworkPriorityCallSiteTest*" \
+  --tests "ai.slock.android.core.data.mock.MockRepositoryTest*"
+```
+
+Key invariants:
+- If step 1 is skipped, the Android app compiles against a stale shared snapshot
+  and new parsers/types appear to "not exist".
+- Step 2 must pass even if you only changed commonMain; Kotlin/Native catches
+  expect/actual mismatches, missing `ohosArm64` source sets, and
+  platform-incompatible dependencies.
+- Step 4 may emit warnings from `@kuikly-open/render` `.d.ets` strict-typing
+  comments; treat them as warnings unless Hvigor reports a hard compile error.
