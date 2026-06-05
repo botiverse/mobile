@@ -2,6 +2,7 @@ package ai.slock.compose
 
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockAnchoredToolbarChip
 import ai.slock.compose.components.SlockBrutalPanelShell
 import ai.slock.compose.components.SlockBrutalSearchField
@@ -5123,17 +5124,12 @@ private fun SharedHomeSavedHeader(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (onClose != null) {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(34.dp)
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .clickable(onClick = onClose),
-                    contentAlignment = Alignment.Center
-                ) {
-                    SlockLucideIcon("arrow-left", color = "#FF000000", modifier = Modifier.size(16.dp))
-                }
+                SlockBrutalIconButton(
+                    iconName = "arrow-left",
+                    onClick = onClose,
+                    size = 34.dp,
+                    shadowOffset = 3.dp
+                )
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
@@ -5563,17 +5559,12 @@ private fun SharedHomeSavedResultCard(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        Box(
-            modifier =
-                Modifier
-                    .size(31.dp)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .clickable(onClick = onUnsave),
-            contentAlignment = Alignment.Center
-        ) {
-            SlockLucideIcon("bookmark", color = "#FF000000", modifier = Modifier.size(15.dp))
-        }
+        SlockBrutalIconButton(
+            iconName = "bookmark",
+            onClick = onUnsave,
+            size = 31.dp,
+            shadowOffset = 3.dp
+        )
     }
 }
 
@@ -5916,23 +5907,15 @@ private fun SharedHomeLoadMoreRow(
                 .fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .clickable(onClick = onClick)
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = if (loading) "Loading..." else label,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
-                color = if (loading) SlockColor.TextMutedGray else SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        SlockBrutalActionButton(
+            label = if (loading) "Loading..." else label,
+            enabled = !loading,
+            minWidth = 0.dp,
+            minHeight = 30.dp,
+            shadowOffset = 3.dp,
+            textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
+            onClick = onClick
+        )
     }
 }
 
