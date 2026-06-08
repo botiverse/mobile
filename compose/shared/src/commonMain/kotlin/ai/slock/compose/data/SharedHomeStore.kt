@@ -52,31 +52,33 @@ class SharedHomeStore(
                 )
             SharedHomeIntent.Refresh -> {
                 val nextSwitch = _state.value.serverSwitchState.refresh()
-                _state.value = _state.value.copy(serverSwitchState = nextSwitch)
+                reduceState(_state.value.copy(serverSwitchState = nextSwitch))
                 load(nextSwitch, showRefreshAffordance = true)
             }
             SharedHomeIntent.ToggleServerSwitcher ->
-                _state.value = _state.value.copy(serverSwitcherExpanded = !_state.value.serverSwitcherExpanded)
+                reduceState(_state.value.copy(serverSwitcherExpanded = !_state.value.serverSwitcherExpanded))
             SharedHomeIntent.DismissServerSwitcher ->
-                _state.value = _state.value.copy(serverSwitcherExpanded = false)
+                reduceState(_state.value.copy(serverSwitcherExpanded = false))
             is SharedHomeIntent.SelectConversation ->
-                _state.value =
+                reduceState(
                     _state.value.copy(
                         selectedConversationId = intent.threadId,
                         selectedTopAction = null
                     )
+                )
             is SharedHomeIntent.SelectTopAction ->
-                _state.value =
+                reduceState(
                     _state.value.copy(
                         selectedConversationId = null,
                         selectedTopAction = intent.action
                     )
+                )
             is SharedHomeIntent.ApplyRealtimeEvent ->
                 applyRealtimeEvent(ServerId(intent.serverId), intent.event)
             is SharedHomeIntent.DismissNotification ->
                 dismissNotification(intent.id)
             is SharedHomeIntent.ChannelCreated ->
-                _state.value = _state.value.withCreatedChannel(intent.channel)
+                reduceState(_state.value.withCreatedChannel(intent.channel))
             is SharedHomeIntent.SelectServer -> {
                 val currentServerId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
                 val nextSwitch =
@@ -85,13 +87,14 @@ class SharedHomeStore(
                     } else {
                         _state.value.serverSwitchState.select(intent.serverId)
                     }
-                _state.value =
+                reduceState(
                     _state.value.copy(
                         serverSwitcherExpanded = false,
                         serverSwitchState = nextSwitch,
                         selectedConversationId = null,
                         selectedTopAction = null
                     )
+                )
                 load(nextSwitch, showRefreshAffordance = true)
             }
         }
@@ -131,7 +134,7 @@ class SharedHomeStore(
         }
         if (event is DirectMessageCreated) {
             val nextSwitch = _state.value.serverSwitchState.refresh()
-            _state.value = _state.value.copy(serverSwitchState = nextSwitch)
+            reduceState(_state.value.copy(serverSwitchState = nextSwitch))
             load(nextSwitch, showRefreshAffordance = false)
             return
         }
@@ -139,7 +142,7 @@ class SharedHomeStore(
             val session = currentContent?.session
                 ?: authStore.readSession()
                 ?: return
-            _state.value =
+            reduceState(
                 _state.value.copy(
                     content =
                         SharedHomeContentState.Content(
@@ -148,6 +151,7 @@ class SharedHomeStore(
                             contentRefreshing = currentContent?.contentRefreshing == true
                         )
                 )
+            )
         }
     }
 
@@ -156,20 +160,22 @@ class SharedHomeStore(
         showRefreshAffordance: Boolean
     ) {
         val previous = _state.value.content
-        _state.value =
+        reduceState(
             _state.value.copy(
                 content = previous.asRefreshing(showRefreshAffordance = showRefreshAffordance)
             )
+        )
         try {
             val session = authStore.readSession()
             if (session == null) {
-                _state.value = _state.value.copy(content = SharedHomeContentState.Error("unauthenticated"))
+                reduceState(_state.value.copy(content = SharedHomeContentState.Error("unauthenticated")))
                 return
             }
-            _state.value =
+            reduceState(
                 _state.value.copy(
                     content = previous.asRefreshing(session, showRefreshAffordance)
                 )
+            )
 
             val requestedServerId = request.selectedServerId
             requestedServerId?.let { serverId ->
@@ -178,10 +184,11 @@ class SharedHomeStore(
             }
 
             val activeSession = authStore.readSession() ?: session
-            _state.value =
+            reduceState(
                 _state.value.copy(
                     content = _state.value.content.asRefreshing(activeSession, showRefreshAffordance)
                 )
+            )
             val activeServerId = requestedServerId ?: activeSession.currentServerId
             val activeServer = activeServerId?.let(::ServerId)
             when (val cached = dataSource.readCachedHome(serverId = activeServer)) {
@@ -190,7 +197,7 @@ class SharedHomeStore(
                     val cachedServerId = cached.data.server.id
                     if (latestSwitch.isCurrent(request.requestGeneration, cachedServerId)) {
                         val previousSnapshot = (_state.value.content as? SharedHomeContentState.Content)?.snapshot
-                        _state.value =
+                        reduceState(
                             _state.value.copy(
                                 content =
                                     SharedHomeContentState.Content(
@@ -200,6 +207,7 @@ class SharedHomeStore(
                                     ),
                                 serverSwitchState = latestSwitch.complete(request.requestGeneration, cachedServerId)
                             )
+                        )
                     }
                 }
                 is DataResult.Empty,
@@ -222,7 +230,7 @@ class SharedHomeStore(
                         val previousSnapshot = (_state.value.content as? SharedHomeContentState.Content)?.snapshot
                         content.copy(snapshot = content.snapshot.preserveStableRowsFrom(previousSnapshot))
                     } ?: result
-                _state.value =
+                reduceState(
                     _state.value.copy(
                         content = nextContent,
                         serverSwitchState =
@@ -232,21 +240,22 @@ class SharedHomeStore(
                                 latestSwitch
                             }
                     )
+                )
                 loadNotifications()
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
-            _state.value = _state.value.copy(content = _state.value.content.asRefreshFailed("home_network"))
+            reduceState(_state.value.copy(content = _state.value.content.asRefreshFailed("home_network")))
         }
     }
 
     private suspend fun loadNotifications() {
         when (val result = dataSource.loadNotifications()) {
             is DataResult.Content ->
-                _state.value = _state.value.copy(notifications = result.data)
+                reduceState(_state.value.copy(notifications = result.data))
             is DataResult.Empty ->
-                _state.value = _state.value.copy(notifications = emptyList())
+                reduceState(_state.value.copy(notifications = emptyList()))
             is DataResult.Error,
             is DataResult.NoPermission -> Unit
         }
@@ -256,14 +265,20 @@ class SharedHomeStore(
         val previous = _state.value.notifications
         val next = previous.filterNot { it.id == id }
         if (next == previous) return
-        _state.value = _state.value.copy(notifications = next)
+        reduceState(_state.value.copy(notifications = next))
         when (dataSource.dismissNotification(id)) {
             is DataResult.Content,
             is DataResult.Empty -> Unit
             is DataResult.Error,
             is DataResult.NoPermission ->
-                _state.value = _state.value.copy(notifications = previous)
+                reduceState(_state.value.copy(notifications = previous))
         }
+    }
+
+    private fun reduceState(nextState: SharedHomeState): Boolean {
+        if (nextState == _state.value) return false
+        _state.value = nextState
+        return true
     }
 }
 

@@ -855,10 +855,10 @@ internal class SharedThreadStore(
                     }
             }
             is SharedThreadIntent.SetPayload -> {
-                _state.value = _state.value.copy(payload = intent.payload)
-                dataSource.cachePayload(intent.payload)
-                scope.launch {
-                    dataSource.writeCachedPayload(intent.payload)
+                if (reducePayload(intent.payload, cachePayload = true)) {
+                    scope.launch {
+                        dataSource.writeCachedPayload(intent.payload)
+                    }
                 }
             }
             is SharedThreadIntent.ApplyRealtimeEvent -> {
@@ -889,9 +889,11 @@ internal class SharedThreadStore(
             is SharedThreadIntent.Start -> start(intent.payload)
             SharedThreadIntent.Refresh -> refresh(_state.value.payload)
             is SharedThreadIntent.SetPayload -> {
-                _state.value = _state.value.copy(payload = intent.payload)
-                dataSource.cachePayload(intent.payload)
-                dataSource.writeCachedPayload(intent.payload)
+                reducePayloadAndWriteCache(
+                    payload = intent.payload,
+                    cachePayload = true,
+                    writeCachedPayload = true
+                )
             }
             is SharedThreadIntent.ApplyRealtimeEvent ->
                 applyRealtimeEvent(
@@ -923,15 +925,16 @@ internal class SharedThreadStore(
                 } else {
                     initialPayload.copy(status = "loading", errorCode = null)
                 }
-        _state.value =
+        reduceState(
             SharedThreadState(
                 payload = visiblePayload,
                 highlightedMentions = emptySet()
             )
+        )
         delay(SharedThreadFirstFrameDelayMillis)
         val session = dataSource.readSession()
         if (threadId == null || _state.value.payload.sourceThreadId == threadId) {
-            _state.value = _state.value.copy(highlightedMentions = session.threadSelfMentionNames())
+            reduceState(_state.value.copy(highlightedMentions = session.threadSelfMentionNames()))
         }
         if (threadId == null) {
             return
@@ -939,7 +942,7 @@ internal class SharedThreadStore(
         if (cached == null && current == null && !visiblePayload.hasRenderableThreadContent()) {
             val persistentCached = dataSource.readCachedPayload(initialPayload)
             if (persistentCached != null && _state.value.payload.sourceThreadId == threadId) {
-                _state.value = _state.value.copy(payload = persistentCached.withRouteContext(initialPayload))
+                reducePayload(persistentCached.withRouteContext(initialPayload))
             }
         }
         refresh(initialPayload)
@@ -954,7 +957,7 @@ internal class SharedThreadStore(
             } else {
                 basePayload.copy(status = "loading", errorCode = null)
             }
-        _state.value = _state.value.copy(payload = loadingBase)
+        reducePayload(loadingBase)
         if (!hasRenderableContent) {
             delay(SharedThreadFirstFrameDelayMillis)
         }
@@ -964,17 +967,18 @@ internal class SharedThreadStore(
                 ?.data
                 ?.withRouteContext(basePayload)
                 ?.preserveStableTimelineFrom(_state.value.payload)
-        _state.value =
+        val nextPayload =
             when (result) {
                 is DataResult.Content ->
-                    _state.value.copy(payload = visiblePayload ?: result.data.withRouteContext(basePayload))
+                    visiblePayload ?: result.data.withRouteContext(basePayload)
                 is DataResult.Empty ->
-                    _state.value.copy(payload = _state.value.payload.asRefreshFailed("empty_thread"))
+                    _state.value.payload.asRefreshFailed("empty_thread")
                 is DataResult.Error ->
-                    _state.value.copy(payload = _state.value.payload.asRefreshFailed(result.error.code))
+                    _state.value.payload.asRefreshFailed(result.error.code)
                 is DataResult.NoPermission ->
-                    _state.value.copy(payload = _state.value.payload.asRefreshFailed(result.blocker.code))
+                    _state.value.payload.asRefreshFailed(result.blocker.code)
             }
+        reducePayload(nextPayload)
         if (visiblePayload != null) {
             dataSource.cachePayload(visiblePayload)
             writeCachedPayloadAfterFrame(visiblePayload)
@@ -986,8 +990,7 @@ internal class SharedThreadStore(
         if (existing.sourceThreadId.isNullOrBlank()) return
         val enrichedPayload = dataSource.enrichThreadMembers(existing)
         if (enrichedPayload == existing) return
-        _state.value = _state.value.copy(payload = enrichedPayload)
-        dataSource.cachePayload(enrichedPayload)
+        reducePayload(enrichedPayload, cachePayload = true)
     }
 
     private fun writeCachedPayloadAfterFrame(payload: KuiklyThreadScreenPayload) {
@@ -1010,11 +1013,11 @@ internal class SharedThreadStore(
             )
         dataSource.writeRealtimeEvent(event)
         val stableMerged = merged.preserveStableTimelineFrom(existing)
-        if (stableMerged != existing) {
-            _state.value = _state.value.copy(payload = stableMerged)
-            dataSource.cachePayload(stableMerged)
-            dataSource.writeCachedPayload(stableMerged)
-        }
+        reducePayloadAndWriteCache(
+            payload = stableMerged,
+            cachePayload = true,
+            writeCachedPayload = true
+        )
     }
 
     private suspend fun markVisibleReadAll() {
@@ -1027,30 +1030,31 @@ internal class SharedThreadStore(
         if (!existing.canLoadMoreBefore || existing.olderMessagesStatus == "loading") return
         val beforeSeq = existing.messages.mapNotNull { it.seq }.minOrNull()
         if (beforeSeq == null) {
-            _state.value = _state.value.copy(payload = existing.copy(olderMessagesStatus = "error", errorCode = "missing_before_seq"))
+            reducePayload(existing.copy(olderMessagesStatus = "error", errorCode = "missing_before_seq"))
             return
         }
-        _state.value = _state.value.copy(payload = existing.copy(olderMessagesStatus = "loading", errorCode = null))
+        reducePayload(existing.copy(olderMessagesStatus = "loading", errorCode = null))
         val result = dataSource.fetchOlderThreadPayload(existing, beforeSeq)
-        _state.value =
+        val nextPayload =
             when (result) {
                 is DataResult.Content -> {
                     val current = _state.value.payload
-                    val merged =
-                        current
-                            .mergePagedMessages(result.data.messages, before = true)
-                            .preserveStableTimelineFrom(current)
-                    _state.value.copy(payload = merged)
+                    current
+                        .mergePagedMessages(result.data.messages, before = true)
+                        .preserveStableTimelineFrom(current)
                 }
                 is DataResult.Empty ->
-                    _state.value.copy(payload = _state.value.payload.copy(canLoadMoreBefore = false, olderMessagesStatus = "idle"))
+                    _state.value.payload.copy(canLoadMoreBefore = false, olderMessagesStatus = "idle")
                 is DataResult.Error ->
-                    _state.value.copy(payload = _state.value.payload.copy(olderMessagesStatus = "error", errorCode = result.error.code))
+                    _state.value.payload.copy(olderMessagesStatus = "error", errorCode = result.error.code)
                 is DataResult.NoPermission ->
-                    _state.value.copy(payload = _state.value.payload.copy(olderMessagesStatus = "error", errorCode = result.blocker.code))
+                    _state.value.payload.copy(olderMessagesStatus = "error", errorCode = result.blocker.code)
             }
-        dataSource.cachePayload(_state.value.payload)
-        dataSource.writeCachedPayload(_state.value.payload)
+        reducePayloadAndWriteCache(
+            payload = nextPayload,
+            cachePayload = true,
+            writeCachedPayload = true
+        )
     }
 
     private suspend fun loadNewer() {
@@ -1058,30 +1062,60 @@ internal class SharedThreadStore(
         if (!existing.canLoadMoreAfter || existing.newerMessagesStatus == "loading") return
         val afterSeq = existing.messages.mapNotNull { it.seq }.maxOrNull()
         if (afterSeq == null) {
-            _state.value = _state.value.copy(payload = existing.copy(newerMessagesStatus = "error", errorCode = "missing_after_seq"))
+            reducePayload(existing.copy(newerMessagesStatus = "error", errorCode = "missing_after_seq"))
             return
         }
-        _state.value = _state.value.copy(payload = existing.copy(newerMessagesStatus = "loading", errorCode = null))
+        reducePayload(existing.copy(newerMessagesStatus = "loading", errorCode = null))
         val result = dataSource.fetchNewerThreadPayload(existing, afterSeq)
-        _state.value =
+        val nextPayload =
             when (result) {
                 is DataResult.Content -> {
                     val current = _state.value.payload
-                    val merged =
-                        current
-                            .mergePagedMessages(result.data.messages, before = false)
-                            .preserveStableTimelineFrom(current)
-                    _state.value.copy(payload = merged)
+                    current
+                        .mergePagedMessages(result.data.messages, before = false)
+                        .preserveStableTimelineFrom(current)
                 }
                 is DataResult.Empty ->
-                    _state.value.copy(payload = _state.value.payload.copy(canLoadMoreAfter = false, newerMessagesStatus = "idle"))
+                    _state.value.payload.copy(canLoadMoreAfter = false, newerMessagesStatus = "idle")
                 is DataResult.Error ->
-                    _state.value.copy(payload = _state.value.payload.copy(newerMessagesStatus = "error", errorCode = result.error.code))
+                    _state.value.payload.copy(newerMessagesStatus = "error", errorCode = result.error.code)
                 is DataResult.NoPermission ->
-                    _state.value.copy(payload = _state.value.payload.copy(newerMessagesStatus = "error", errorCode = result.blocker.code))
+                    _state.value.payload.copy(newerMessagesStatus = "error", errorCode = result.blocker.code)
             }
-        dataSource.cachePayload(_state.value.payload)
-        dataSource.writeCachedPayload(_state.value.payload)
+        reducePayloadAndWriteCache(
+            payload = nextPayload,
+            cachePayload = true,
+            writeCachedPayload = true
+        )
+    }
+
+    private fun reduceState(nextState: SharedThreadState): Boolean {
+        if (nextState == _state.value) return false
+        _state.value = nextState
+        return true
+    }
+
+    private suspend fun reducePayloadAndWriteCache(
+        payload: KuiklyThreadScreenPayload,
+        cachePayload: Boolean = false,
+        writeCachedPayload: Boolean = false
+    ): Boolean {
+        val emitted = reducePayload(payload, cachePayload = cachePayload)
+        if (emitted && writeCachedPayload) {
+            dataSource.writeCachedPayload(payload)
+        }
+        return emitted
+    }
+
+    private fun reducePayload(
+        payload: KuiklyThreadScreenPayload,
+        cachePayload: Boolean = false
+    ): Boolean {
+        val emitted = reduceState(_state.value.copy(payload = payload))
+        if (emitted && cachePayload) {
+            dataSource.cachePayload(payload)
+        }
+        return emitted
     }
 }
 

@@ -146,6 +146,44 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun setPayloadPatchesOnlyPayloadSliceAndNoopsWhenEquivalent() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        val before = store.state.value
+        store.accept(SharedThreadIntent.SetPayload(before.payload))
+        assertTrue(before === store.state.value)
+
+        val optimisticPayload =
+            before.payload.copy(
+                messages =
+                    before.payload.messages +
+                        before.payload.messages.single().copy(
+                            id = "local-send-1",
+                            body = "optimistic send body",
+                            seq = null
+                        )
+            )
+        store.accept(SharedThreadIntent.SetPayload(optimisticPayload))
+
+        val patched = store.state.value
+        assertTrue(before !== patched)
+        assertEquals(before.highlightedMentions, patched.highlightedMentions)
+        assertEquals(listOf("cached body", "optimistic send body"), patched.payload.messages.map { it.body })
+
+        store.accept(SharedThreadIntent.SetPayload(optimisticPayload))
+        assertTrue(patched === store.state.value)
+        scope.cancel()
+    }
+
+    @Test
     fun loadMembersEnrichesThreadMembersFromRepository() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
@@ -615,6 +653,7 @@ class SharedThreadStoreTest {
         dataSource.cachePayload(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
+        val before = store.state.value
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
@@ -631,6 +670,7 @@ class SharedThreadStoreTest {
             )
         )
 
+        assertTrue(before === store.state.value)
         assertEquals(listOf("cached body"), store.state.value.payload.messages.map { it.body })
         scope.cancel()
     }

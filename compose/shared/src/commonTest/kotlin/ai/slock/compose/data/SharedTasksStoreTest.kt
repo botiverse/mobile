@@ -22,6 +22,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class SharedTasksStoreTest {
     @Test
@@ -221,6 +222,35 @@ class SharedTasksStoreTest {
             ),
             transitions.single()
         )
+        scope.cancel()
+    }
+
+    @Test
+    fun sharedTasksStoreNoopsEquivalentSeedContentSnapshot() {
+        val transitions = mutableListOf<MviTransition<SharedTasksIntent>>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val snapshot =
+            TaskSnapshot(
+                tasks = listOf(task("task-1", TaskStatus.Todo)),
+                summaryCounts = mapOf(TaskStatus.Todo to 1)
+            )
+        val store =
+            SharedTasksStore(
+                initialState = TasksUiState(ScreenLoadState.Loading),
+                scope = scope,
+                transitionLogger = transitions::add
+            )
+        val seed = SharedTasksIntent.SetContent(snapshot, selectedFilter = TaskStatus.Todo)
+
+        assertTrue(store.accept(seed))
+        val seeded = store.state.value
+        assertFalse(store.accept(seed))
+
+        assertTrue(seeded === store.state.value)
+        assertEquals(true, transitions.first().emitted)
+        assertEquals(null, transitions.first().reason)
+        assertEquals(false, transitions.last().emitted)
+        assertEquals("unchanged", transitions.last().reason)
         scope.cancel()
     }
 
