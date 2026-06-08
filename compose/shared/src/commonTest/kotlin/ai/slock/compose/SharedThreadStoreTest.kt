@@ -130,7 +130,7 @@ class SharedThreadStoreTest {
 
         store.accept(SharedThreadIntent.Start(basePayload()))
         store.accept(
-            SharedThreadIntent.SetPayload(
+            SharedThreadIntent.ApplyThreadPatch(
                 store.state.value.payload.copy(
                     canLoadMoreBefore = true,
                     canLoadMoreAfter = true
@@ -142,6 +142,105 @@ class SharedThreadStoreTest {
 
         assertEquals(listOf(10, 10), api.channelMessageLimits)
         assertEquals(listOf(10), api.syncLimits)
+        scope.cancel()
+    }
+
+    @Test
+    fun threadPatchPreservesReadableRouteHeaderForSameThread() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val routePayload =
+            basePayload().copy(
+                title = "Product UX",
+                subtitle = "Product and design decisions"
+            )
+        val incomingPayload =
+            contentPayload("sent body").copy(
+                title = "channel-1",
+                subtitle = null,
+                sourceThreadId = "channel-1"
+            )
+
+        store.accept(SharedThreadIntent.Start(routePayload))
+        store.accept(SharedThreadIntent.ApplyThreadPatch(incomingPayload))
+
+        val payload = store.state.value.payload
+        assertEquals("Product UX", payload.title)
+        assertEquals("Product and design decisions", payload.subtitle)
+        assertEquals("sent body", payload.messages.single().body)
+        scope.cancel()
+    }
+
+    @Test
+    fun threadPatchDoesNotSwitchRoutes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val nextPayload =
+            contentPayload("other body").copy(
+                title = "Engineering",
+                sourceThreadId = "channel-2"
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload().copy(title = "Product UX")))
+        store.accept(SharedThreadIntent.ApplyThreadPatch(nextPayload))
+
+        val payload = store.state.value.payload
+        assertEquals("Product UX", payload.title)
+        assertEquals("channel-1", payload.sourceThreadId)
+        assertEquals(emptyList(), payload.messages)
+        scope.cancel()
+    }
+
+    @Test
+    fun appendSentPagePreservesReadableRouteHeaderForSameThread() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val routePayload =
+            basePayload().copy(
+                title = "Product UX",
+                subtitle = "Product and design decisions",
+                status = "content"
+            )
+        val sentPage =
+            ThreadMessagesPage(
+                messages =
+                    listOf(
+                        WireMessage(
+                            id = "sent-1",
+                            channelId = "channel-1",
+                            senderType = "user",
+                            senderId = "u1",
+                            senderName = "Artin",
+                            content = "sent body",
+                            seq = 2
+                        )
+                    ),
+                canLoadMoreBefore = null,
+                canLoadMoreAfter = null
+            )
+
+        store.accept(SharedThreadIntent.Start(routePayload))
+        store.accept(SharedThreadIntent.AppendSentPage(sentPage))
+
+        val payload = store.state.value.payload
+        assertEquals("Product UX", payload.title)
+        assertEquals("Product and design decisions", payload.subtitle)
+        assertEquals("sent body", payload.messages.single().body)
         scope.cancel()
     }
 
@@ -791,57 +890,74 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun setMessageReactionAddsReactionToCachedPayload() = runBlocking {
+    fun setMessageReactionReturnsMutationSummary() = runBlocking {
         val api = FakeThreadApi()
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
-        dataSource.cachePayload(contentPayload("reactable body"))
 
         val result = dataSource.setMessageReaction("m1", "🔥", selected = true)
 
-        val updated = (result as DataResult.Content).data
-        val reaction = updated.messages.single().reactions.single()
+        val summary = (result as DataResult.Content).data
         assertEquals(listOf("m1" to "🔥"), api.addedReactions)
-        assertEquals("🔥", reaction.emoji)
-        assertEquals(1, reaction.count)
-        assertEquals(true, reaction.selected)
+        assertEquals("m1", summary.messageId)
+        assertEquals("🔥", summary.reactions.single().emoji)
+        assertEquals(1, summary.reactions.single().count)
     }
 
     @Test
-    fun setMessageReactionRemovesReactionFromCachedPayload() = runBlocking {
+    fun storeAppliesMessageMutationSummaryToVisiblePayloadAndCache() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi()
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
-        val message = contentPayload("reactable body").messages.single()
-        dataSource.cachePayload(
-            contentPayload("reactable body").copy(
-                messages = listOf(message.copy(reactions = listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = true))))
-            )
-        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
-        val result = dataSource.setMessageReaction("m1", "🔥", selected = false)
+        store.accept(SharedThreadIntent.Start(contentPayload("reactable body")))
+        val result = dataSource.setMessageReaction("m1", "🔥", selected = true)
+        store.accept(SharedThreadIntent.ApplyMessageMutation((result as DataResult.Content).data))
 
-        val updated = (result as DataResult.Content).data
-        assertEquals(listOf("m1" to "🔥"), api.removedReactions)
-        assertEquals(emptyList(), updated.messages.single().reactions)
+        val reaction = store.state.value.payload.messages.single().reactions.single()
+        assertEquals("🔥", reaction.emoji)
+        assertEquals(1, reaction.count)
+        assertEquals(true, reaction.selected)
+        scope.cancel()
     }
 
     @Test
-    fun updateTaskStatusUpdatesCachedPayloadAndPersistentSnapshot() = runBlocking {
-        val localStore = InMemoryComposeLocalDataStore()
+    fun setMessageReactionRemoveReturnsMutationSummary() = runBlocking {
         val api = FakeThreadApi()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+
+        val result = dataSource.setMessageReaction("m1", "🔥", selected = false)
+
+        val summary = (result as DataResult.Content).data
+        assertEquals(listOf("m1" to "🔥"), api.removedReactions)
+        assertEquals("m1", summary.messageId)
+        assertEquals(emptyList(), summary.reactions)
+    }
+
+    @Test
+    fun storeSetTaskStatusUpdatesVisiblePayloadAndPersistentSnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val api = FakeThreadApi(failChannelMessages = true)
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val payload =
             contentPayload("task body").copy(
                 messages =
@@ -861,14 +977,29 @@ class SharedThreadStoreTest {
                         )
                     )
             )
-        dataSource.cachePayload(payload)
 
-        val result = dataSource.updateTaskStatus("task-1", TaskStatus.Done)
+        store.accept(SharedThreadIntent.Start(payload))
+        store.accept(SharedThreadIntent.SetTaskStatus("task-1", TaskStatus.Done))
 
-        val updated = (result as DataResult.Content).data
+        val updated = store.state.value.payload
         assertEquals("Done", updated.messages.single().taskStatus)
         assertEquals("Done", updated.tasks.single().status)
         assertEquals("Done", localStore.readThread(ThreadId("channel-1"))?.tasks?.single()?.status?.name)
+        scope.cancel()
+    }
+
+    @Test
+    fun updateTaskStatusCallsThreadApi() = runBlocking {
+        val api = FakeThreadApi()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+
+        val result = dataSource.updateTaskStatus("task-1", TaskStatus.Done)
+
+        assertTrue(result is DataResult.Content)
         assertEquals(listOf("task-1" to TaskStatus.Done), api.updatedTaskStatuses)
     }
 

@@ -26,6 +26,7 @@ import ai.slock.compose.data.ThreadSnapshot
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.data.ThreadAttachmentOpenTarget
 import ai.slock.compose.data.ThreadMessagesPage
+import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.map
 import ai.slock.compose.model.Attachment
 import ai.slock.compose.model.AttachmentId
@@ -496,45 +497,34 @@ internal class SharedThreadDataSource(
         return response.toUnitDataResult("thread_save_network")
     }
 
-        suspend fun setMessageReaction(messageId: String, emoji: String, selected: Boolean): DataResult<KuiklyThreadScreenPayload> {
-            val cleanMessageId = messageId.trim()
-            val cleanEmoji = emoji.trim()
-            if (cleanMessageId.isBlank()) {
-                return DataResult.Error(ScreenError(code = "message_id_missing", retryable = false))
-            }
-            if (cleanEmoji.isBlank()) {
-                return DataResult.Error(ScreenError(code = "message_reaction_missing", retryable = false))
-            }
-            val response =
-                try {
-                    if (selected) {
-                        api.addReaction(cleanMessageId, cleanEmoji)
-                    } else {
-                        api.removeReaction(cleanMessageId, cleanEmoji)
-                    }
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    return DataResult.Error(ScreenError(code = "thread_reaction_network", retryable = true))
-                }
-            return when (response) {
-                is ThreadApiResult.Success -> {
-                    val currentUserId = readSession()?.user?.id
-                    val currentPayload = payloadCache.values.firstOrNull { payload ->
-                        payload.messages.any { it.id == cleanMessageId } || payload.originMessage?.id == cleanMessageId
-                    }
-                    val updatedPayload = currentPayload?.withMessageMutationSummary(response.data, currentUserId)
-                    if (updatedPayload != null) {
-                        cachePayload(updatedPayload)
-                        writeCachedPayload(updatedPayload)
-                    }
-                    DataResult.Content(updatedPayload ?: KuiklyThreadScreenPayload())
-                }
-                is ThreadApiResult.Failure -> response.toThreadDataError("thread_reaction_network")
-            }
+    suspend fun setMessageReaction(messageId: String, emoji: String, selected: Boolean): DataResult<MessageMutationSummary> {
+        val cleanMessageId = messageId.trim()
+        val cleanEmoji = emoji.trim()
+        if (cleanMessageId.isBlank()) {
+            return DataResult.Error(ScreenError(code = "message_id_missing", retryable = false))
         }
+        if (cleanEmoji.isBlank()) {
+            return DataResult.Error(ScreenError(code = "message_reaction_missing", retryable = false))
+        }
+        val response =
+            try {
+                if (selected) {
+                    api.addReaction(cleanMessageId, cleanEmoji)
+                } else {
+                    api.removeReaction(cleanMessageId, cleanEmoji)
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return DataResult.Error(ScreenError(code = "thread_reaction_network", retryable = true))
+            }
+        return when (response) {
+            is ThreadApiResult.Success -> DataResult.Content(response.data)
+            is ThreadApiResult.Failure -> response.toThreadDataError("thread_reaction_network")
+        }
+    }
 
-    suspend fun updateTaskStatus(taskId: String, status: TaskStatus): DataResult<KuiklyThreadScreenPayload> {
+    suspend fun updateTaskStatus(taskId: String, status: TaskStatus): DataResult<Unit> {
         if (taskId.isBlank()) {
             return DataResult.Error(ScreenError(code = "task_id_missing", retryable = false))
         }
@@ -547,19 +537,7 @@ internal class SharedThreadDataSource(
                 return DataResult.Error(ScreenError(code = "thread_task_status_network", retryable = true))
             }
         return when (response) {
-            is ThreadApiResult.Success -> {
-                val currentPayload = payloadCache.values.firstOrNull { payload ->
-                    payload.messages.any { it.taskId == taskId } ||
-                        payload.originMessage?.taskId == taskId ||
-                        payload.tasks.any { it.id == taskId }
-                }
-                val updatedPayload = currentPayload?.withTaskStatus(taskId, status)
-                if (updatedPayload != null) {
-                    cachePayload(updatedPayload)
-                    writeCachedPayload(updatedPayload)
-                }
-                DataResult.Content(updatedPayload ?: KuiklyThreadScreenPayload())
-            }
+            is ThreadApiResult.Success -> DataResult.Content(Unit)
             is ThreadApiResult.Failure -> response.toThreadDataError("thread_task_status_network")
         }
     }
@@ -827,7 +805,17 @@ internal data class SharedThreadState(
 internal sealed interface SharedThreadIntent {
     data class Start(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
     data object Refresh : SharedThreadIntent
-    data class SetPayload(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
+    data class ApplyThreadPatch(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
+    data class AppendSentPage(val page: ThreadMessagesPage) : SharedThreadIntent
+    data class SetMessageReaction(val messageId: String, val emoji: String, val selected: Boolean) : SharedThreadIntent
+    data class ApplyMessageMutation(val summary: MessageMutationSummary) : SharedThreadIntent
+    data class SetTaskStatus(val taskId: String, val status: TaskStatus) : SharedThreadIntent
+    data class SetAddMemberStatus(val status: String, val errorCode: String? = null) : SharedThreadIntent
+    data class SetRemoveMemberStatus(
+        val status: String,
+        val memberId: String? = null,
+        val errorCode: String? = null
+    ) : SharedThreadIntent
     data class ApplyRealtimeEvent(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
         SharedThreadIntent
     data object MarkVisibleReadAll : SharedThreadIntent
@@ -854,13 +842,6 @@ internal class SharedThreadStore(
                         accept(intent)
                     }
             }
-            is SharedThreadIntent.SetPayload -> {
-                _state.value = _state.value.copy(payload = intent.payload)
-                dataSource.cachePayload(intent.payload)
-                scope.launch {
-                    dataSource.writeCachedPayload(intent.payload)
-                }
-            }
             is SharedThreadIntent.ApplyRealtimeEvent -> {
                 scope.launch {
                     applyRealtimeEvent(
@@ -881,6 +862,9 @@ internal class SharedThreadStore(
             SharedThreadIntent.LoadNewer -> {
                 scope.launch { loadNewer() }
             }
+            else -> {
+                scope.launch { accept(intent) }
+            }
         }
     }
 
@@ -888,11 +872,39 @@ internal class SharedThreadStore(
         when (intent) {
             is SharedThreadIntent.Start -> start(intent.payload)
             SharedThreadIntent.Refresh -> refresh(_state.value.payload)
-            is SharedThreadIntent.SetPayload -> {
-                _state.value = _state.value.copy(payload = intent.payload)
-                dataSource.cachePayload(intent.payload)
-                dataSource.writeCachedPayload(intent.payload)
+            is SharedThreadIntent.ApplyThreadPatch ->
+                updatePayload { current -> current.mergeThreadPatch(intent.payload) }
+            is SharedThreadIntent.AppendSentPage ->
+                appendSentPage(intent.page)
+            is SharedThreadIntent.SetMessageReaction ->
+                updatePayload { current ->
+                    current.withMessageReaction(
+                        messageId = intent.messageId,
+                        emoji = intent.emoji,
+                        selected = intent.selected
+                    )
+                }
+            is SharedThreadIntent.ApplyMessageMutation -> {
+                val currentUserId = dataSource.readSession()?.user?.id
+                updatePayload { current -> current.withMessageMutationSummary(intent.summary, currentUserId) }
             }
+            is SharedThreadIntent.SetTaskStatus ->
+                updatePayload { current -> current.withTaskStatus(intent.taskId, intent.status) }
+            is SharedThreadIntent.SetAddMemberStatus ->
+                updatePayload { current ->
+                    current.copy(
+                        addMemberStatus = intent.status,
+                        addMemberErrorCode = intent.errorCode
+                    )
+                }
+            is SharedThreadIntent.SetRemoveMemberStatus ->
+                updatePayload { current ->
+                    current.copy(
+                        removeMemberStatus = intent.status,
+                        removingMemberId = intent.memberId,
+                        removeMemberErrorCode = intent.errorCode
+                    )
+                }
             is SharedThreadIntent.ApplyRealtimeEvent ->
                 applyRealtimeEvent(
                     event = intent.event,
@@ -995,6 +1007,27 @@ internal class SharedThreadStore(
             delay(SharedThreadFirstFrameDelayMillis)
             dataSource.writeCachedPayload(payload)
         }
+    }
+
+    private suspend fun appendSentPage(page: ThreadMessagesPage) {
+        val current = _state.value.payload
+        val session = dataSource.readSession()
+        val sentPatch =
+            appendSharedThreadSentMessageFromPage(
+                basePayload = current,
+                page = page,
+                session = session
+            )
+        updatePayload { payload -> payload.mergeThreadPatch(sentPatch) }
+    }
+
+    private suspend fun updatePayload(block: (KuiklyThreadScreenPayload) -> KuiklyThreadScreenPayload) {
+        val existing = _state.value.payload
+        val updated = block(existing).preserveStableTimelineFrom(existing)
+        if (updated == existing) return
+        _state.value = _state.value.copy(payload = updated)
+        dataSource.cachePayload(updated)
+        dataSource.writeCachedPayload(updated)
     }
 
     private suspend fun applyRealtimeEvent(
@@ -1134,6 +1167,76 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
         emptyTitle = base.emptyTitle,
         emptyDetail = base.emptyDetail
     )
+
+private fun KuiklyThreadScreenPayload.mergeThreadPatch(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+    if (!patch.isSameThreadRouteAs(this)) return this
+    val patchReadableTitle =
+        patch.title.takeIf { it.isReadableThreadTitle(patch) }
+    val hasMemberPatch =
+        patch.members.isNotEmpty() ||
+            patch.memberCandidates.isNotEmpty() ||
+            patch.membersCount > 0 ||
+            patch.canAddMembers != canAddMembers ||
+            patch.addMemberStatus != addMemberStatus ||
+            patch.addMemberErrorCode != addMemberErrorCode ||
+            patch.removeMemberStatus != removeMemberStatus ||
+            patch.removingMemberId != removingMemberId ||
+            patch.removeMemberErrorCode != removeMemberErrorCode
+    return copy(
+        title = patchReadableTitle ?: title,
+        subtitle = patch.subtitle ?: subtitle,
+        status = patch.status,
+        messages = patch.messages,
+        originMessage = patch.originMessage,
+        originPreview = patch.originPreview,
+        originParentMessageId = patch.originParentMessageId,
+        originStatus = patch.originStatus,
+        originErrorCode = patch.originErrorCode,
+        tasks = patch.tasks,
+        canLoadMoreBefore = patch.canLoadMoreBefore,
+        canLoadMoreAfter = patch.canLoadMoreAfter,
+        olderMessagesStatus = patch.olderMessagesStatus,
+        newerMessagesStatus = patch.newerMessagesStatus,
+        errorCode = patch.errorCode,
+        membersCount = if (hasMemberPatch) patch.membersCount else membersCount,
+        members = if (hasMemberPatch) patch.members else members,
+        memberCandidates = if (hasMemberPatch) patch.memberCandidates else memberCandidates,
+        canAddMembers = if (hasMemberPatch) patch.canAddMembers else canAddMembers,
+        addMemberStatus = if (hasMemberPatch) patch.addMemberStatus else addMemberStatus,
+        addMemberErrorCode = if (hasMemberPatch) patch.addMemberErrorCode else addMemberErrorCode,
+        removeMemberStatus = if (hasMemberPatch) patch.removeMemberStatus else removeMemberStatus,
+        removingMemberId = if (hasMemberPatch) patch.removingMemberId else removingMemberId,
+        removeMemberErrorCode = if (hasMemberPatch) patch.removeMemberErrorCode else removeMemberErrorCode,
+        settingsActions = patch.settingsActions.ifEmpty { settingsActions },
+        joined = patch.joined,
+        canSend = patch.canSend,
+        joinLabel = patch.joinLabel
+    )
+}
+
+private fun KuiklyThreadScreenPayload.isSameThreadRouteAs(other: KuiklyThreadScreenPayload): Boolean {
+    val threadId = sourceThreadId?.takeIf { it.isNotBlank() }
+    val otherThreadId = other.sourceThreadId?.takeIf { it.isNotBlank() }
+    if (threadId != null || otherThreadId != null) {
+        return threadId != null && threadId == otherThreadId
+    }
+    return instanceId.isNotBlank() && instanceId == other.instanceId
+}
+
+private fun String.isReadableThreadTitle(payload: KuiklyThreadScreenPayload): Boolean =
+    trim().takeIf { it.isNotBlank() && it != "Thread" }?.let { !it.looksLikeThreadIdentity(payload) } == true
+
+private fun String.looksLikeThreadIdentity(payload: KuiklyThreadScreenPayload): Boolean {
+    val value = trim()
+    if (value.isBlank()) return true
+    return value == payload.sourceThreadId ||
+        value == payload.instanceId ||
+        value == payload.originParentMessageId ||
+        value.matches(UuidTitlePattern)
+}
+
+private val UuidTitlePattern =
+    Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
     previous: KuiklyThreadScreenPayload

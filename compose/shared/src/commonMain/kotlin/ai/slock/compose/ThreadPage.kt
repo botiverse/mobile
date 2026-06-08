@@ -7,7 +7,6 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
 import ai.slock.compose.data.BridgeThreadApi
 import ai.slock.compose.data.BridgeTasksApi
-import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.parseSharedThreadUploadedAttachments
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KuiklyAuthSessionStore
@@ -1137,9 +1136,14 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     val nextSelected = currentMessage.reactions.firstOrNull { it.emoji == tab }?.selected != true
-                    val optimisticPayload = previousPayload.withMessageReaction(itemId, tab, selected = nextSelected)
                     pendingReactionKeys = pendingReactionKeys + reactionKey
-                    threadViewModel.dispatch(SharedThreadIntent.SetPayload(optimisticPayload))
+                    threadViewModel.dispatch(
+                        SharedThreadIntent.SetMessageReaction(
+                            messageId = itemId,
+                            emoji = tab,
+                            selected = nextSelected
+                        )
+                    )
                     bridge.log(
                         "thread_reaction_toggle messageId=$itemId emoji=$tab selected=$nextSelected"
                     )
@@ -1147,13 +1151,18 @@ internal fun SharedThreadRouteContent(
                         try {
                             when (val result = dataSource.setMessageReaction(itemId, tab, selected = nextSelected)) {
                                 is DataResult.Content -> {
-                                    val nextPayload = result.data.takeIf { it.instanceId.isNotBlank() } ?: optimisticPayload
-                                    threadViewModel.dispatch(SharedThreadIntent.SetPayload(nextPayload))
+                                    threadViewModel.dispatch(SharedThreadIntent.ApplyMessageMutation(result.data))
                                 }
                                 is DataResult.Empty,
                                 is DataResult.Error,
                                 is DataResult.NoPermission -> {
-                                    threadViewModel.dispatch(SharedThreadIntent.SetPayload(previousPayload))
+                                    threadViewModel.dispatch(
+                                        SharedThreadIntent.SetMessageReaction(
+                                            messageId = itemId,
+                                            emoji = tab,
+                                            selected = !nextSelected
+                                        )
+                                    )
                                     bridge.toast("Unable to update reaction")
                                 }
                             }
@@ -1218,14 +1227,12 @@ internal fun SharedThreadRouteContent(
                 action == "submitAddMember" && !itemId.isNullOrBlank() -> {
                     val previousPayload = renderedPayload
                     threadViewModel.dispatch(
-                        SharedThreadIntent.SetPayload(
-                            previousPayload.copy(addMemberStatus = "adding", addMemberErrorCode = null)
-                        )
+                        SharedThreadIntent.SetAddMemberStatus(status = "adding", errorCode = null)
                     )
                     coroutineScope.launch {
                         when (val result = dataSource.addChannelMember(previousPayload, itemId, tab)) {
                             is DataResult.Content -> {
-                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(result.data))
+                                threadViewModel.dispatch(SharedThreadIntent.ApplyThreadPatch(result.data))
                                 bridge.toast("Member added")
                             }
                             is DataResult.Empty,
@@ -1233,9 +1240,7 @@ internal fun SharedThreadRouteContent(
                             is DataResult.NoPermission -> {
                                 val errorCode = result.threadActionErrorCode("member_add_failed")
                                 threadViewModel.dispatch(
-                                    SharedThreadIntent.SetPayload(
-                                        previousPayload.copy(addMemberStatus = "failed", addMemberErrorCode = errorCode)
-                                    )
+                                    SharedThreadIntent.SetAddMemberStatus(status = "failed", errorCode = errorCode)
                                 )
                                 bridge.toast("Unable to add member")
                             }
@@ -1246,18 +1251,16 @@ internal fun SharedThreadRouteContent(
                     val previousPayload = renderedPayload
                     val member = previousPayload.members.firstOrNull { it.id == itemId }
                     threadViewModel.dispatch(
-                        SharedThreadIntent.SetPayload(
-                            previousPayload.copy(
-                                removeMemberStatus = "removing",
-                                removingMemberId = itemId,
-                                removeMemberErrorCode = null
-                            )
+                        SharedThreadIntent.SetRemoveMemberStatus(
+                            status = "removing",
+                            memberId = itemId,
+                            errorCode = null
                         )
                     )
                     coroutineScope.launch {
                         when (val result = dataSource.removeChannelMember(previousPayload, itemId, member?.kind)) {
                             is DataResult.Content -> {
-                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(result.data))
+                                threadViewModel.dispatch(SharedThreadIntent.ApplyThreadPatch(result.data))
                                 bridge.toast("Member removed")
                             }
                             is DataResult.Empty,
@@ -1265,12 +1268,10 @@ internal fun SharedThreadRouteContent(
                             is DataResult.NoPermission -> {
                                 val errorCode = result.threadActionErrorCode("member_remove_failed")
                                 threadViewModel.dispatch(
-                                    SharedThreadIntent.SetPayload(
-                                        previousPayload.copy(
-                                            removeMemberStatus = "failed",
-                                            removingMemberId = itemId,
-                                            removeMemberErrorCode = errorCode
-                                        )
+                                    SharedThreadIntent.SetRemoveMemberStatus(
+                                        status = "failed",
+                                        memberId = itemId,
+                                        errorCode = errorCode
                                     )
                                 )
                                 bridge.toast("Unable to remove member")
@@ -1316,20 +1317,17 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     val previousPayload = renderedPayload
-                    threadViewModel.dispatch(SharedThreadIntent.SetPayload(previousPayload.withTaskStatus(itemId, status)))
+                    val previousStatus = previousPayload.taskStatusFor(itemId)
+                    threadViewModel.dispatch(SharedThreadIntent.SetTaskStatus(itemId, status))
                     coroutineScope.launch {
                         when (val result = dataSource.updateTaskStatus(itemId, status)) {
                             is DataResult.Content -> {
-                                val nextPayload =
-                                    result.data.takeIf { it.instanceId.isNotBlank() }
-                                        ?: previousPayload.withTaskStatus(itemId, status)
-                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(nextPayload))
                                 bridge.toast("Task updated")
                             }
                             is DataResult.Empty,
                             is DataResult.Error,
                             is DataResult.NoPermission -> {
-                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(previousPayload))
+                                previousStatus?.let { threadViewModel.dispatch(SharedThreadIntent.SetTaskStatus(itemId, it)) }
                                 bridge.toast("Unable to update task")
                             }
                         }
@@ -1337,20 +1335,17 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "markTaskDone" && !itemId.isNullOrBlank() -> {
                     val previousPayload = renderedPayload
-                    threadViewModel.dispatch(SharedThreadIntent.SetPayload(previousPayload.withTaskStatus(itemId, TaskStatus.Done)))
+                    val previousStatus = previousPayload.taskStatusFor(itemId)
+                    threadViewModel.dispatch(SharedThreadIntent.SetTaskStatus(itemId, TaskStatus.Done))
                     coroutineScope.launch {
                         when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Done)) {
                             is DataResult.Content -> {
-                                val nextPayload =
-                                    result.data.takeIf { it.instanceId.isNotBlank() }
-                                        ?: previousPayload.withTaskStatus(itemId, TaskStatus.Done)
-                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(nextPayload))
                                 bridge.toast("Task updated")
                             }
                             is DataResult.Empty,
                             is DataResult.Error,
                             is DataResult.NoPermission -> {
-                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(previousPayload))
+                                previousStatus?.let { threadViewModel.dispatch(SharedThreadIntent.SetTaskStatus(itemId, it)) }
                                 bridge.toast("Unable to update task")
                             }
                         }
@@ -1358,20 +1353,17 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "reopenTask" && !itemId.isNullOrBlank() -> {
                     val previousPayload = renderedPayload
-                    threadViewModel.dispatch(SharedThreadIntent.SetPayload(previousPayload.withTaskStatus(itemId, TaskStatus.Todo)))
+                    val previousStatus = previousPayload.taskStatusFor(itemId)
+                    threadViewModel.dispatch(SharedThreadIntent.SetTaskStatus(itemId, TaskStatus.Todo))
                     coroutineScope.launch {
                         when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Todo)) {
                             is DataResult.Content -> {
-                                val nextPayload =
-                                    result.data.takeIf { it.instanceId.isNotBlank() }
-                                        ?: previousPayload.withTaskStatus(itemId, TaskStatus.Todo)
-                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(nextPayload))
                                 bridge.toast("Task updated")
                             }
                             is DataResult.Empty,
                             is DataResult.Error,
                             is DataResult.NoPermission -> {
-                                threadViewModel.dispatch(SharedThreadIntent.SetPayload(previousPayload))
+                                previousStatus?.let { threadViewModel.dispatch(SharedThreadIntent.SetTaskStatus(itemId, it)) }
                                 bridge.toast("Unable to update task")
                             }
                         }
@@ -1484,18 +1476,9 @@ internal fun SharedThreadRouteContent(
                                 dataSource.fetchThreadPayload(payload)
                             }.getOrNull()
                         if (refreshed is ai.slock.compose.data.DataResult.Content) {
-                            threadViewModel.dispatch(SharedThreadIntent.SetPayload(refreshed.data))
+                            threadViewModel.dispatch(SharedThreadIntent.ApplyThreadPatch(refreshed.data))
                         } else if (sentPage.messages.isNotEmpty()) {
-                            val session = dataSource.readSession()
-                            threadViewModel.dispatch(
-                                SharedThreadIntent.SetPayload(
-                                    appendSharedThreadSentMessageFromPage(
-                                        basePayload = payload,
-                                        page = sentPage,
-                                        session = session
-                                    )
-                                )
-                            )
+                            threadViewModel.dispatch(SharedThreadIntent.AppendSentPage(sentPage))
                         } else {
                             threadViewModel.dispatch(SharedThreadIntent.Refresh)
                         }
@@ -1997,6 +1980,11 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
 
 private fun KuiklyThreadFilesPayload.shouldFetchInitialFiles(): Boolean =
     status == "loading" || (status == "error" && items.isEmpty())
+
+private fun KuiklyThreadScreenPayload.taskStatusFor(taskId: String): TaskStatus? =
+    tasks.firstOrNull { it.id == taskId }?.status?.toSharedThreadTaskStatus()
+        ?: messages.firstOrNull { it.taskId == taskId }?.taskStatus?.toSharedThreadTaskStatus()
+        ?: originMessage?.takeIf { it.taskId == taskId }?.taskStatus?.toSharedThreadTaskStatus()
 
 private fun String.toSharedThreadTaskStatus(): TaskStatus? =
     when (trim().lowercase().replace("-", "").replace("_", "").replace(" ", "")) {
