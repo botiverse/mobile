@@ -26,7 +26,10 @@ class HomeDataSourceTest {
                 api = FakeHomeApi(),
                 localWriteThrough = writeThrough,
                 parseHome = { payload, session ->
-                    assertTrue(payload.isSuccessful)
+                    assertEquals(emptyList(), payload.channels)
+                    assertEquals(emptyList(), payload.directMessages)
+                    assertEquals(emptyMap(), payload.unreadCounts)
+                    assertEquals(emptyList(), payload.serverUnreadSummary)
                     DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
                 }
             )
@@ -89,7 +92,7 @@ class HomeDataSourceTest {
         val result = source.loadHome(priority = DataRequestPriority.Visible)
 
         assertTrue(result is DataResult.Error)
-        assertEquals("home_network", (result as DataResult.Error).error.code)
+        assertEquals("home_network", result.error.code)
     }
 
     @Test
@@ -104,7 +107,7 @@ class HomeDataSourceTest {
         val result = source.loadHome(priority = DataRequestPriority.Visible)
 
         assertTrue(result is DataResult.Error)
-        assertEquals("home_channels_contract_mismatch", (result as DataResult.Error).error.code)
+        assertEquals("home_channels_contract_mismatch", result.error.code)
     }
 
     @Test
@@ -119,7 +122,7 @@ class HomeDataSourceTest {
         val result = source.loadHome(priority = DataRequestPriority.Visible)
 
         assertTrue(result is DataResult.Error)
-        assertEquals("home_direct_messages_contract_mismatch", (result as DataResult.Error).error.code)
+        assertEquals("home_direct_messages_contract_mismatch", result.error.code)
     }
 
     @Test
@@ -134,7 +137,7 @@ class HomeDataSourceTest {
         val result = source.loadHome(priority = DataRequestPriority.Visible)
 
         assertTrue(result is DataResult.Error)
-        assertEquals("home_unread_counts_contract_mismatch", (result as DataResult.Error).error.code)
+        assertEquals("home_unread_counts_contract_mismatch", result.error.code)
     }
 
     @Test
@@ -149,7 +152,7 @@ class HomeDataSourceTest {
         val result = source.loadHome(priority = DataRequestPriority.Visible)
 
         assertTrue(result is DataResult.Error)
-        assertEquals("home_server_unread_summary_contract_mismatch", (result as DataResult.Error).error.code)
+        assertEquals("home_server_unread_summary_contract_mismatch", result.error.code)
     }
 
     @Test

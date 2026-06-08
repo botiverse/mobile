@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
@@ -10,9 +11,12 @@ import ai.slock.compose.model.TaskCreated
 import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadUpdated
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
 
 private val homeApiJson = Json { ignoreUnknownKeys = true }
 
@@ -174,18 +178,11 @@ interface SlockHomeApi {
 
 data class HomeNetworkPayload(
     val serverId: ServerId,
-    val channels: HomeNetworkResponse,
-    val directMessages: HomeNetworkResponse,
-    val unreadCounts: HomeNetworkResponse,
-    val serverUnreadSummary: HomeNetworkResponse
-) {
-    val isSuccessful: Boolean
-        get() =
-            channels.isSuccessful &&
-                directMessages.isSuccessful &&
-                unreadCounts.isSuccessful &&
-                serverUnreadSummary.isSuccessful
-}
+    val channels: List<HomeChannelWireDto>,
+    val directMessages: List<HomeDirectMessageWireDto>,
+    val unreadCounts: Map<ChannelId, Int>,
+    val serverUnreadSummary: List<HomeServerUnreadSummaryWireDto>
+)
 
 data class HomeNetworkResponse(
     val code: Int,
@@ -203,14 +200,58 @@ internal class SlockHomeApiClient(
         serverId: ServerId,
         priority: DataRequestPriority
     ): DataResult<HomeNetworkPayload> {
-        val channels = transport.channels(serverId, priority)
-        channels.validateHomeBody("home_channels_contract_mismatch", ::isJsonArray)?.let { return it }
-        val directMessages = transport.directMessages(serverId, priority)
-        directMessages.validateHomeBody("home_direct_messages_contract_mismatch", ::isJsonArray)?.let { return it }
-        val unreadCounts = transport.channelUnreadCounts(serverId, priority)
-        unreadCounts.validateHomeBody("home_unread_counts_contract_mismatch", ::isJsonObject)?.let { return it }
-        val serverUnreadSummary = transport.serverUnreadSummary(serverId, priority)
-        serverUnreadSummary.validateHomeBody("home_server_unread_summary_contract_mismatch", ::isJsonArray)?.let { return it }
+        val channels =
+            when (
+                val result =
+                    transport.channels(serverId, priority).decodeHomeBody(
+                        contractCode = "home_channels_contract_mismatch",
+                        serializer = ListSerializer(HomeChannelWireDto.serializer())
+                    )
+            ) {
+                is DataResult.Content -> result.data
+                is DataResult.Empty -> return DataResult.Empty(result.reason)
+                is DataResult.Error -> return DataResult.Error(result.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
+            }
+        val directMessages =
+            when (
+                val result =
+                    transport.directMessages(serverId, priority).decodeHomeBody(
+                        contractCode = "home_direct_messages_contract_mismatch",
+                        serializer = ListSerializer(HomeDirectMessageWireDto.serializer())
+                    )
+            ) {
+                is DataResult.Content -> result.data
+                is DataResult.Empty -> return DataResult.Empty(result.reason)
+                is DataResult.Error -> return DataResult.Error(result.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
+            }
+        val unreadCounts =
+            when (
+                val result =
+                    transport.channelUnreadCounts(serverId, priority).decodeHomeBody(
+                        contractCode = "home_unread_counts_contract_mismatch",
+                        serializer = MapSerializer(String.serializer(), Int.serializer())
+                    )
+            ) {
+                is DataResult.Content -> result.data.mapKeys { (key, _) -> ChannelId(key) }
+                is DataResult.Empty -> return DataResult.Empty(result.reason)
+                is DataResult.Error -> return DataResult.Error(result.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
+            }
+        val serverUnreadSummary =
+            when (
+                val result =
+                    transport.serverUnreadSummary(serverId, priority).decodeHomeBody(
+                        contractCode = "home_server_unread_summary_contract_mismatch",
+                        serializer = ListSerializer(HomeServerUnreadSummaryWireDto.serializer())
+                    )
+            ) {
+                is DataResult.Content -> result.data
+                is DataResult.Empty -> return DataResult.Empty(result.reason)
+                is DataResult.Error -> return DataResult.Error(result.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
+            }
         return DataResult.Content(
             HomeNetworkPayload(
                 serverId = serverId,
@@ -223,20 +264,25 @@ internal class SlockHomeApiClient(
     }
 }
 
-private fun HomeNetworkResponse.validateHomeBody(
+private fun <T> HomeNetworkResponse.decodeHomeBody(
     contractCode: String,
-    predicate: (String) -> Boolean
-): DataResult<HomeNetworkPayload>? {
-    if (!isSuccessful) return null
+    serializer: KSerializer<T>
+): DataResult<T> {
+    if (!isSuccessful) return toHomeApiFailure()
     val body = bodyText?.trim().orEmpty()
-    if (body.isBlank() || !predicate(body)) {
-        return DataResult.Error(ScreenError(code = contractCode, retryable = false))
+    if (body.isBlank()) return DataResult.Error(ScreenError(code = contractCode, retryable = false))
+    return try {
+        DataResult.Content(homeApiJson.decodeFromString(serializer, body))
+    } catch (_: SerializationException) {
+        DataResult.Error(ScreenError(code = contractCode, retryable = false))
+    } catch (_: IllegalArgumentException) {
+        DataResult.Error(ScreenError(code = contractCode, retryable = false))
     }
-    return null
 }
 
-private fun isJsonArray(body: String): Boolean =
-    runCatching { homeApiJson.parseToJsonElement(body) is JsonArray }.getOrDefault(false)
-
-private fun isJsonObject(body: String): Boolean =
-    runCatching { homeApiJson.parseToJsonElement(body) is JsonObject }.getOrDefault(false)
+private fun <T> HomeNetworkResponse.toHomeApiFailure(): DataResult<T> =
+    if (code == 401 || code == 403) {
+        DataResult.NoPermission(PermissionBlocker(code = "home_http_$code"))
+    } else {
+        DataResult.Error(ScreenError(code = "home_http_$code", retryable = true))
+    }

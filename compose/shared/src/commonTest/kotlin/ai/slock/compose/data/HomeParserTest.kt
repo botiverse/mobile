@@ -1,5 +1,6 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ServerId
 import kotlin.test.Test
@@ -9,58 +10,39 @@ import kotlin.test.assertTrue
 
 class HomeParserTest {
     @Test
-    fun parsesCanonicalChannelsDmsAndUnreadCounts() {
+    fun parsesTypedChannelsDmsAndUnreadCounts() {
         val result =
             parseSlockHome(
                 payload =
-                    HomeNetworkPayload(
-                        serverId = ServerId("server-1"),
+                    homePayload(
                         channels =
-                            HomeNetworkResponse(
-                                code = 200,
-                                bodyText =
-                                    """
-                                    [
-                                      {
-                                        "id": "channel-1",
-                                        "serverId": "server-1",
-                                        "name": "native",
-                                        "type": "channel",
-                                        "description": "Native client work",
-                                        "joined": true,
-                                        "archivedAt": null,
-                                        "lastMessageAt": "2024-09-01T00:00:00.000Z"
-                                      }
-                                    ]
-                                    """.trimIndent()
+                            listOf(
+                                HomeChannelWireDto(
+                                    id = "channel-1",
+                                    name = "native",
+                                    type = "channel",
+                                    description = "Native client work",
+                                    joined = true,
+                                    archivedAt = null,
+                                    lastMessageAt = "2024-09-01T00:00:00.000Z"
+                                )
                             ),
                         directMessages =
-                            HomeNetworkResponse(
-                                code = 200,
-                                bodyText =
-                                    """
-                                    [
-                                      {
-                                        "id": "dm-1",
-                                        "name": "agent-one",
-                                        "type": "dm",
-                                        "description": null,
-                                        "peerType": "agent",
-                                        "peerId": "agent-1",
-                                        "peerName": "agent-one",
-                                        "peerDisplayName": "Agent One",
-                                        "peerGravatarHash": "abc123",
-                                        "peerAvatarUrl": null
-                                      }
-                                    ]
-                                    """.trimIndent()
+                            listOf(
+                                HomeDirectMessageWireDto(
+                                    id = "dm-1",
+                                    name = "agent-one",
+                                    type = "dm",
+                                    description = null,
+                                    peerType = "agent",
+                                    peerId = "agent-1",
+                                    peerName = "agent-one",
+                                    peerDisplayName = "Agent One",
+                                    peerGravatarHash = "abc123",
+                                    peerAvatarUrl = null
+                                )
                             ),
-                        unreadCounts =
-                            HomeNetworkResponse(
-                                code = 200,
-                                bodyText = """{"channel-1":4,"dm-1":2}"""
-                            ),
-                        serverUnreadSummary = HomeNetworkResponse(code = 200, bodyText = "[]")
+                        unreadCounts = mapOf(ChannelId("channel-1") to 4, ChannelId("dm-1") to 2)
                     ),
                 session = sampleSession()
             )
@@ -88,36 +70,27 @@ class HomeParserTest {
         val result =
             parseSlockHome(
                 payload =
-                    HomeNetworkPayload(
-                        serverId = ServerId("server-1"),
+                    homePayload(
                         channels =
-                            HomeNetworkResponse(
-                                code = 200,
-                                bodyText =
-                                    """
-                                    [
-                                      {"id":"channel-1","name":"native","type":"channel","joined":true}
-                                    ]
-                                    """.trimIndent()
+                            listOf(
+                                HomeChannelWireDto(
+                                    id = "channel-1",
+                                    name = "native",
+                                    type = "channel",
+                                    joined = true
+                                )
                             ),
-                        directMessages = HomeNetworkResponse(code = 200, bodyText = "[]"),
-                        unreadCounts = HomeNetworkResponse(code = 200, bodyText = """{"channel-1":4}"""),
+                        unreadCounts = mapOf(ChannelId("channel-1") to 4),
                         serverUnreadSummary =
-                            HomeNetworkResponse(
-                                code = 200,
-                                bodyText =
-                                    """
-                                    [
-                                      {
-                                        "serverId": "server-1",
-                                        "totalUnreadCount": 9,
-                                        "channelUnreadCount": 4,
-                                        "directMessageUnreadCount": 1,
-                                        "mentionCount": 2,
-                                        "taskUnreadCount": 3
-                                      }
-                                    ]
-                                    """.trimIndent()
+                            listOf(
+                                HomeServerUnreadSummaryWireDto(
+                                    serverId = "server-1",
+                                    totalUnreadCount = 9,
+                                    channelUnreadCount = 4,
+                                    directMessageUnreadCount = 1,
+                                    mentionCount = 2,
+                                    taskUnreadCount = 3
+                                )
                             )
                     ),
                 session = sampleSession()
@@ -134,22 +107,24 @@ class HomeParserTest {
         val result =
             parseSlockHome(
                 payload =
-                    HomeNetworkPayload(
-                        serverId = ServerId("server-1"),
+                    homePayload(
                         channels =
-                            HomeNetworkResponse(
-                                code = 200,
-                                bodyText =
-                                    """
-                                    [
-                                      {"id":"c1","name":"all","type":"channel","joined":true,"archivedAt":null},
-                                      {"id":"c2","name":"old","type":"channel","joined":true,"archivedAt":"2024-01-01T00:00:00.000Z"}
-                                    ]
-                                    """.trimIndent()
-                            ),
-                        directMessages = HomeNetworkResponse(code = 200, bodyText = "[]"),
-                        unreadCounts = HomeNetworkResponse(code = 200, bodyText = "{}"),
-                        serverUnreadSummary = HomeNetworkResponse(code = 200, bodyText = "[]")
+                            listOf(
+                                HomeChannelWireDto(
+                                    id = "c1",
+                                    name = "all",
+                                    type = "channel",
+                                    joined = true,
+                                    archivedAt = null
+                                ),
+                                HomeChannelWireDto(
+                                    id = "c2",
+                                    name = "old",
+                                    type = "channel",
+                                    joined = true,
+                                    archivedAt = "2024-01-01T00:00:00.000Z"
+                                )
+                            )
                     ),
                 session = sampleSession()
             )
@@ -163,31 +138,21 @@ class HomeParserTest {
         val result =
             parseSlockHome(
                 payload =
-                    HomeNetworkPayload(
-                        serverId = ServerId("server-1"),
-                        channels = HomeNetworkResponse(code = 200, bodyText = "[]"),
+                    homePayload(
                         directMessages =
-                            HomeNetworkResponse(
-                                code = 200,
-                                bodyText =
-                                    """
-                                    [
-                                      {
-                                        "id":"dm-1",
-                                        "name":"agent-one",
-                                        "type":"dm",
-                                        "peerType":"agent",
-                                        "peerId":"agent-1",
-                                        "peerName":"agent-one",
-                                        "peerDisplayName":"Agent One",
-                                        "peerAvatarUrl":"https://cdn.slock.ai/a.png",
-                                        "peerGravatarHash":"abc"
-                                      }
-                                    ]
-                                    """.trimIndent()
-                            ),
-                        unreadCounts = HomeNetworkResponse(code = 200, bodyText = "{}"),
-                        serverUnreadSummary = HomeNetworkResponse(code = 200, bodyText = "[]")
+                            listOf(
+                                HomeDirectMessageWireDto(
+                                    id = "dm-1",
+                                    name = "agent-one",
+                                    type = "dm",
+                                    peerType = "agent",
+                                    peerId = "agent-1",
+                                    peerName = "agent-one",
+                                    peerDisplayName = "Agent One",
+                                    peerAvatarUrl = "https://cdn.slock.ai/a.png",
+                                    peerGravatarHash = "abc"
+                                )
+                            )
                     ),
                 session = sampleSession()
             )
@@ -201,23 +166,37 @@ class HomeParserTest {
         val result =
             parseSlockHome(
                 payload =
-                    HomeNetworkPayload(
-                        serverId = ServerId("server-1"),
-                        channels = HomeNetworkResponse(code = 200, bodyText = "[]"),
+                    homePayload(
                         directMessages =
-                            HomeNetworkResponse(
-                                code = 200,
-                                bodyText =
-                                    """
-                                    [
-                                      {"id":"dm-a","name":"chan-a","type":"dm","peerType":"agent","peerId":"a","peerName":"alpha","peerDisplayName":"Alpha"},
-                                      {"id":"dm-b","name":"chan-b","type":"dm","peerType":"user","peerId":"b","peerName":"bravo","peerDisplayName":null},
-                                      {"id":"dm-c","name":"chan-c","type":"dm","peerType":"user","peerId":"c","peerName":"","peerDisplayName":null}
-                                    ]
-                                    """.trimIndent()
-                            ),
-                        unreadCounts = HomeNetworkResponse(code = 200, bodyText = "{}"),
-                        serverUnreadSummary = HomeNetworkResponse(code = 200, bodyText = "[]")
+                            listOf(
+                                HomeDirectMessageWireDto(
+                                    id = "dm-a",
+                                    name = "chan-a",
+                                    type = "dm",
+                                    peerType = "agent",
+                                    peerId = "a",
+                                    peerName = "alpha",
+                                    peerDisplayName = "Alpha"
+                                ),
+                                HomeDirectMessageWireDto(
+                                    id = "dm-b",
+                                    name = "chan-b",
+                                    type = "dm",
+                                    peerType = "user",
+                                    peerId = "b",
+                                    peerName = "bravo",
+                                    peerDisplayName = null
+                                ),
+                                HomeDirectMessageWireDto(
+                                    id = "dm-c",
+                                    name = "chan-c",
+                                    type = "dm",
+                                    peerType = "user",
+                                    peerId = "c",
+                                    peerName = "",
+                                    peerDisplayName = null
+                                )
+                            )
                     ),
                 session = sampleSession()
             )
@@ -232,21 +211,18 @@ class HomeParserTest {
         val result =
             parseSlockHome(
                 payload =
-                    HomeNetworkPayload(
-                        serverId = ServerId("server-1"),
-                        channels = HomeNetworkResponse(code = 200, bodyText = "[]"),
+                    homePayload(
                         directMessages =
-                            HomeNetworkResponse(
-                                code = 200,
-                                bodyText =
-                                    """
-                                    [
-                                      {"id":"dm-1","name":"agent-one","type":"dm","peerType":"agent","peerId":"agent-1","peerName":"agent-one"}
-                                    ]
-                                    """.trimIndent()
-                            ),
-                        unreadCounts = HomeNetworkResponse(code = 200, bodyText = "{}"),
-                        serverUnreadSummary = HomeNetworkResponse(code = 200, bodyText = "[]")
+                            listOf(
+                                HomeDirectMessageWireDto(
+                                    id = "dm-1",
+                                    name = "agent-one",
+                                    type = "dm",
+                                    peerType = "agent",
+                                    peerId = "agent-1",
+                                    peerName = "agent-one"
+                                )
+                            )
                     ),
                 session = sampleSession(),
                 warningLogger = warnings::add
@@ -261,20 +237,28 @@ class HomeParserTest {
     fun missingSessionServerReturnsEmpty() {
         val result =
             parseSlockHome(
-                payload =
-                    HomeNetworkPayload(
-                        serverId = ServerId("unknown-server"),
-                        channels = HomeNetworkResponse(code = 200, bodyText = "[]"),
-                        directMessages = HomeNetworkResponse(code = 200, bodyText = "[]"),
-                        unreadCounts = HomeNetworkResponse(code = 200, bodyText = "{}"),
-                        serverUnreadSummary = HomeNetworkResponse(code = 200, bodyText = "[]")
-                    ),
+                payload = homePayload(serverId = ServerId("unknown-server")),
                 session = sampleSession()
             )
 
         assertTrue(result is DataResult.Empty)
         assertEquals(EmptyReason.NoChannels, result.reason)
     }
+
+    private fun homePayload(
+        serverId: ServerId = ServerId("server-1"),
+        channels: List<HomeChannelWireDto> = emptyList(),
+        directMessages: List<HomeDirectMessageWireDto> = emptyList(),
+        unreadCounts: Map<ChannelId, Int> = emptyMap(),
+        serverUnreadSummary: List<HomeServerUnreadSummaryWireDto> = emptyList()
+    ): HomeNetworkPayload =
+        HomeNetworkPayload(
+            serverId = serverId,
+            channels = channels,
+            directMessages = directMessages,
+            unreadCounts = unreadCounts,
+            serverUnreadSummary = serverUnreadSummary
+        )
 
     private fun sampleSession(): StoredAuthSession =
         StoredAuthSession(
