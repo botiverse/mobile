@@ -5,6 +5,9 @@ import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -14,6 +17,7 @@ import ai.slock.compose.markdown.ThreadMarkdownTagKind
 import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
+import ai.slock.compose.data.TasksUiState
 import ai.slock.compose.data.ThreadMessagesPage
 import ai.slock.compose.data.WireAttachment
 import ai.slock.compose.data.WireMessage
@@ -434,7 +438,7 @@ class ThreadPayloadTest {
         assertEquals(42, payload.messages.first().taskNumber)
         assertEquals("in_review", payload.messages.first().taskStatus)
         assertEquals("Android-Developer-2", payload.messages.first().taskAssigneeName)
-        assertEquals("#42 @Android-Developer-2", threadMessageTaskMetaLabel(payload.messages.first()))
+        assertEquals("#42", threadMessageTaskMetaLabel(payload.messages.first()))
         assertEquals("3 replies · 2 new", threadMessageRepliesMetaLabel(payload.messages.first()))
         assertEquals("👍", payload.messages.first().reactions.first().emoji)
         assertEquals(2, payload.messages.first().reactions.first().count)
@@ -648,12 +652,12 @@ class ThreadPayloadTest {
         assertEquals("InReview", message.taskStatus)
         assertEquals("Android-Developer-2", message.taskAssigneeName)
         assertEquals(2, message.replyCount)
-        assertEquals("#163 @Android-Developer-2", threadMessageTaskMetaLabel(message))
+        assertEquals("#163", threadMessageTaskMetaLabel(message))
         assertEquals("2 replies", threadMessageRepliesMetaLabel(message))
     }
 
     @Test
-    fun resolvesThreadMentionAndAssigneeDisplayNamesFromMembers() {
+    fun resolvesThreadMentionsFromMembersButTaskFooterUsesLinkedTaskAssignee() {
         val payload =
             parseThreadScreenPayload(
                 payload =
@@ -702,12 +706,102 @@ class ThreadPayloadTest {
         )
         assertEquals("Android Developer", payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName))
         assertEquals(
-            "#10 @Android Developer",
+            "#10",
             threadMessageTaskMetaLabel(
                 message,
-                payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName)
+                resolvedTaskAssigneeName = null
             )
         )
+        assertEquals(
+            "#10 @Tasks Claimed Name",
+            threadMessageTaskMetaLabel(
+                message.withLinkedTask(
+                    TaskSummary(
+                        id = TaskId("task-1"),
+                        title = "ship task",
+                        status = TaskStatus.InReview,
+                        taskNumber = 10,
+                        messageId = MessageId("m1"),
+                        assignee =
+                            MemberProfile(
+                                id = MemberId("agent_android"),
+                                displayName = "Tasks Claimed Name",
+                                handle = "Tasks-Claimed-Name",
+                                kind = MemberKind.Agent
+                            ),
+                        updatedAtLabel = ""
+                    )
+                ),
+                "Tasks Claimed Name"
+            )
+        )
+    }
+
+    @Test
+    fun linkedTasksAreResolvedByMessageIdAndHideRawIds() {
+        val assigneeId = "9d2a923b-7d46-43c3-bf5f-d12a6df8ef12"
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-240",
+                authorId = "user_artin",
+                authorName = "Artin",
+                body = "ship task",
+                taskId = "task-240",
+                taskNumber = 240,
+                taskStatus = "InReview",
+                taskAssigneeId = assigneeId,
+                taskAssigneeName = assigneeId
+            )
+        val linkedTasks =
+            TasksUiState(
+                loadState =
+                    ai.slock.compose.data.ScreenLoadState.Content(
+                        ai.slock.compose.data.TasksContent(
+                            summaryCounts = emptyMap(),
+                            tasks =
+                                listOf(
+                                    TaskSummary(
+                                        id = TaskId("task-240"),
+                                        title = "ship task",
+                                        status = TaskStatus.InReview,
+                                        taskNumber = 240,
+                                        messageId = MessageId("message-240"),
+                                        assignee =
+                                            MemberProfile(
+                                                id = MemberId(assigneeId),
+                                                displayName = "Android Developer",
+                                                handle = "Android-Developer",
+                                                kind = MemberKind.Agent
+                                            ),
+                                        updatedAtLabel = ""
+                                    ),
+                                    TaskSummary(
+                                        id = TaskId("task-uuid-only"),
+                                        title = "uuid only",
+                                        status = TaskStatus.Todo,
+                                        taskNumber = 241,
+                                        messageId = MessageId("message-241"),
+                                        assignee =
+                                            MemberProfile(
+                                                id = MemberId(assigneeId),
+                                                displayName = assigneeId,
+                                                handle = assigneeId,
+                                                kind = MemberKind.Human
+                                            ),
+                                        updatedAtLabel = ""
+                                    )
+                                )
+                        )
+                    )
+            ).threadLinkedTasksByMessageId()
+
+        val linkedMessage = message.withLinkedTask(linkedTasks[message.id])
+        assertEquals("Android Developer", linkedMessage.taskAssigneeName)
+        assertEquals("#240 @Android Developer", threadMessageTaskMetaLabel(linkedMessage, linkedMessage.taskAssigneeName))
+
+        val uuidOnlyMessage = message.copy(id = "message-241", taskNumber = 241).withLinkedTask(linkedTasks["message-241"])
+        assertEquals(null, uuidOnlyMessage.taskAssigneeName)
+        assertEquals("#241", threadMessageTaskMetaLabel(uuidOnlyMessage, uuidOnlyMessage.taskAssigneeName))
     }
 
     @Test
@@ -798,10 +892,10 @@ class ThreadPayloadTest {
         assertEquals(assigneeId, message.taskAssigneeId)
         assertEquals("Android Developer", payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName, message.taskAssigneeId))
         assertEquals(
-            "#236 @Android Developer",
+            "#236",
             threadMessageTaskMetaLabel(
                 message,
-                payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName, message.taskAssigneeId)
+                resolvedTaskAssigneeName = null
             )
         )
     }

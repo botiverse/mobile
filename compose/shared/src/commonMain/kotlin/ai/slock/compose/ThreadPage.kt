@@ -17,6 +17,7 @@ import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealConversationRepository
 import ai.slock.compose.data.RealMemberRepository
 import ai.slock.compose.data.ScreenError
+import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.ThreadApiResult
@@ -39,6 +40,7 @@ import ai.slock.compose.markdown.ThreadMarkdownTag
 import ai.slock.compose.markdown.ThreadMarkdownTagKind
 import ai.slock.compose.markdown.threadMarkdownTagDisplayLabel
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -321,6 +323,7 @@ internal data class KuiklyThreadTaskItem(
     val title: String,
     val status: String,
     val taskNumber: Int? = null,
+    val messageId: String? = null,
     val assigneeId: String? = null,
     val assigneeName: String? = null,
     val updatedAtLabel: String = ""
@@ -386,6 +389,33 @@ internal fun KuiklyThreadScreenPayload.resolveTaskAssigneeDisplayName(
             }
     return member?.displayName?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
         ?: normalizedValue?.takeIf { it.isDisplaySafeTaskAssigneeName(normalizedId) }
+}
+
+internal fun TaskSummary.threadLinkedTaskAssigneeDisplayName(): String? {
+    val assignee = assignee ?: return null
+    val assigneeId = assignee.id.value.trim().removePrefix("@").takeIf { it.isNotBlank() }
+    val displayName = assignee.displayName.trim().removePrefix("@").takeIf { it.isNotBlank() } ?: return null
+    if (assigneeId != null && displayName.equals(assigneeId, ignoreCase = true)) return null
+    return displayName.takeIf { it.isDisplaySafeTaskAssigneeName(assigneeId) }
+}
+
+internal fun KuiklyThreadMessageItem.withLinkedTask(linkedTask: TaskSummary?): KuiklyThreadMessageItem {
+    linkedTask ?: return this
+    return copy(
+        taskId = linkedTask.id.value,
+        taskNumber = linkedTask.taskNumber ?: taskNumber,
+        taskStatus = linkedTask.status.name,
+        taskAssigneeId = linkedTask.assignee?.id?.value,
+        taskAssigneeName = linkedTask.threadLinkedTaskAssigneeDisplayName()
+    )
+}
+
+internal fun TasksUiState.threadLinkedTasksByMessageId(): Map<String, TaskSummary> {
+    val content = (loadState as? ScreenLoadState.Content)?.data ?: return emptyMap()
+    return content.tasks.mapNotNull { task ->
+        val messageId = task.messageId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        messageId to task
+    }.toMap()
 }
 
 private fun KuiklyThreadScreenPayload.findMarkdownTaskId(tag: ThreadMarkdownTag): String? {
@@ -2158,10 +2188,11 @@ private fun ThreadPageContent(
                     }
                 )
             }
-            LaunchedEffect(selectedTab, taskChannelId) {
-                if (selectedTab == KuiklyThreadTab.Tasks) {
-                    onTasksIntent(SharedTasksRouteIntent.Start)
-                }
+            LaunchedEffect(taskChannelId) {
+                onTasksIntent(SharedTasksRouteIntent.Start)
+            }
+            val linkedTasksByMessageId = remember(tasksState.loadState) {
+                tasksState.threadLinkedTasksByMessageId()
             }
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)
@@ -2171,6 +2202,7 @@ private fun ThreadPageContent(
                         ThreadChatTab(
                             payload = payload,
                             composerKeyboardInsetDp = composerKeyboardInsetDp,
+                            linkedTasksByMessageId = linkedTasksByMessageId,
                             highlightedMentions = highlightedMentions,
                             onThreadEvent = onThreadEvent,
                             onOpenMarkdownTag = openMarkdownTag,
@@ -2450,6 +2482,7 @@ private val ThreadTabHeight = 32.dp
 private fun ThreadChatTab(
     payload: KuiklyThreadScreenPayload,
     composerKeyboardInsetDp: Float,
+    linkedTasksByMessageId: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
@@ -2471,6 +2504,7 @@ private fun ThreadChatTab(
                 ThreadMessagesList(
                     payload = payload,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
+                    linkedTasksByMessageId = linkedTasksByMessageId,
                     highlightedMentions = highlightedMentions,
                     onThreadEvent = onThreadEvent,
                     onOpenMarkdownTag = onOpenMarkdownTag,
@@ -2484,6 +2518,7 @@ private fun ThreadChatTab(
             ThreadMessagesList(
                 payload = payload,
                 composerKeyboardInsetDp = composerKeyboardInsetDp,
+                linkedTasksByMessageId = linkedTasksByMessageId,
                 highlightedMentions = highlightedMentions,
                 onThreadEvent = onThreadEvent,
                 onOpenMarkdownTag = onOpenMarkdownTag,
@@ -2497,6 +2532,7 @@ private fun ThreadChatTab(
 private fun ThreadMessagesList(
     payload: KuiklyThreadScreenPayload,
     composerKeyboardInsetDp: Float,
+    linkedTasksByMessageId: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
@@ -2721,16 +2757,16 @@ private fun ThreadMessagesList(
             }
             items(payload.messages.size, key = { payload.messages[it].messageListItemKey() }) { index ->
                 val message = payload.messages[index]
+                val linkedTask = linkedTasksByMessageId[message.id]
+                val displayMessage = message.withLinkedTask(linkedTask)
+                val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
                 if (message.isSystemMessage()) {
                     ThreadSystemMessageRow(
-                        message = message,
+                        message = displayMessage,
                         highlightedMentions = highlightedMentions,
                         showReplyAction = payload.showReplyActions,
                         timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
-                        resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
-                            value = message.taskAssigneeName,
-                            id = message.taskAssigneeId
-                        ),
+                        resolvedTaskAssigneeName = linkedTaskAssigneeName,
                         resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
                         taskOpenEnabled = payload.showTaskOpenActions,
                         taskStatusActionsEnabled = payload.showTaskStatusActions,
@@ -2745,14 +2781,11 @@ private fun ThreadMessagesList(
                     )
                 } else {
                     ThreadMessageCard(
-                        message = message,
+                        message = displayMessage,
                         highlightedMentions = highlightedMentions,
                         alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                         showReplyAction = payload.showReplyActions,
-                        resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
-                            value = message.taskAssigneeName,
-                            id = message.taskAssigneeId
-                        ),
+                        resolvedTaskAssigneeName = linkedTaskAssigneeName,
                         resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
                         taskOpenEnabled = payload.showTaskOpenActions,
                         taskStatusActionsEnabled = payload.showTaskStatusActions,
@@ -3606,10 +3639,6 @@ internal fun threadMessageTaskMetaLabel(
             ?.trim()
             ?.removePrefix("@")
             ?.takeIf { it.isNotBlank() }
-            ?: message.taskAssigneeName
-                ?.trim()
-                ?.removePrefix("@")
-                ?.takeIf { it.isDisplaySafeTaskAssigneeName(message.taskAssigneeId) }
     if (number == null && assignee == null && message.taskStatus.isNullOrBlank() && message.taskId.isNullOrBlank()) {
         return null
     }
@@ -4544,6 +4573,7 @@ private fun KuiklyThreadTaskItem.toTaskSummary(): TaskSummary =
         title = title,
         status = status.toSharedThreadTaskStatus() ?: TaskStatus.Todo,
         taskNumber = taskNumber,
+        messageId = messageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         assignee =
             assigneeName?.trim()?.takeIf { it.isNotBlank() }?.let { displayName ->
                 MemberProfile(

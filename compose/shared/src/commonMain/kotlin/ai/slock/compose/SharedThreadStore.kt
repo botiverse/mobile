@@ -1906,6 +1906,7 @@ private fun KuiklyThreadMessageItem.toTaskItemOrNull(): KuiklyThreadTaskItem? {
         title = body.ifBlank { taskNumber?.let { "Task #$it" } ?: "Task" },
         status = taskStatus ?: TaskStatus.Todo.name,
         taskNumber = taskNumber,
+        messageId = id,
         assigneeId = taskAssigneeId,
         assigneeName = taskAssigneeName,
         updatedAtLabel = timestampLabel
@@ -2145,6 +2146,7 @@ private fun TaskSummary.toKuiklyThreadTaskItem(): KuiklyThreadTaskItem =
         title = title,
         status = status.name,
         taskNumber = taskNumber,
+        messageId = messageId?.value,
         assigneeId = assignee?.id?.value,
         assigneeName = assignee?.displayName,
         updatedAtLabel = updatedAtLabel
