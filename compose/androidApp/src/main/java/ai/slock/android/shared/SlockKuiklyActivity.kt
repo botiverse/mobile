@@ -122,6 +122,9 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
+private const val SHARED_AUTH_SESSION_KEY = "auth_session"
+private const val SLOCK_SHARED_DATABASE_NAME = "slock_shared.db"
+
 class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDelegate {
 
     private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
@@ -133,6 +136,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private var realtimeLastSeq: Long = 0L
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
+    private val authSessionGson = Gson()
     private val googleSocialAuthGateway = GoogleSocialAuthGateway()
     private val threadImageAttachmentPickerLauncher: ActivityResultLauncher<String> =
             registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
@@ -390,6 +394,23 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private fun uploadThreadAttachments(channelId: String, uris: List<Uri>): Map<String, Any> {
         val sessionStore = EncryptedAuthSessionStore(applicationContext)
         val tokenRefresher = AuthTokenRefresher(sessionStore)
+        runBlocking {
+            val encryptedSession = sessionStore.readSession()
+            val encryptedSessionUsable =
+                    !encryptedSession?.accessToken.isNullOrBlank() &&
+                            !encryptedSession.currentServerId.isNullOrBlank()
+            if (!encryptedSessionUsable) {
+                readSharedAuthSessionFromRelationalStore()?.let { sharedSession ->
+                    if (sharedSession.accessToken.isNotBlank() && !sharedSession.currentServerId.isNullOrBlank()) {
+                        sessionStore.saveSession(sharedSession)
+                        SlockDiagnosticsLogger.record(
+                                "SlockAttachmentUpload",
+                                "session_source=shared_relational serverId=${sharedSession.currentServerId?.take(8).orEmpty()}"
+                        )
+                    }
+                }
+            }
+        }
         val session =
                 runBlocking {
                     tokenRefresher.refreshIfExpiringSoon(clearOnUnauthorized = false)
@@ -430,6 +451,26 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 "errorBodyText" to if (response.isSuccessful) "" else response.errorBodyText.orEmpty()
         )
     }
+
+    private fun readSharedAuthSessionFromRelationalStore(): AuthSession? =
+            runCatching {
+                        val db =
+                                openOrCreateDatabase(
+                                        SLOCK_SHARED_DATABASE_NAME,
+                                        Context.MODE_PRIVATE,
+                                        null
+                                )
+                        db.rawQuery(
+                                        "SELECT value FROM slock_kv WHERE key = ?",
+                                        arrayOf(SHARED_AUTH_SESSION_KEY)
+                                )
+                                .use { cursor ->
+                                    if (!cursor.moveToFirst()) return@runCatching null
+                                    val encoded = cursor.getString(0).orEmpty()
+                                    if (encoded.isBlank()) null else authSessionGson.fromJson(encoded, AuthSession::class.java)
+                                }
+                    }
+                    .getOrNull()
 
     private fun readPickedThreadAttachment(uri: Uri): PickedThreadAttachment? {
         val fileName = queryPickedFileName(uri) ?: uri.lastPathSegment ?: "attachment"
