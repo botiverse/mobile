@@ -12,6 +12,19 @@ plugins {
 
 val KEY_PAGE_NAME = "pageName"
 
+fun ohosSqliteProviderLibDir(): File {
+    providers.environmentVariable("SLOCK_OHOS_SQLITE_LIB_DIR").orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return file(it) }
+    providers.environmentVariable("SLOCK_OHOS_SQLITE_WORKDIR").orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return file("$it/ohos-arm64/lib") }
+    providers.environmentVariable("SLOCK_THIRD_PARTY_WORKDIR").orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return file("$it/ohos-sqlite/ohos-arm64/lib") }
+    return rootProject.file("../third_party/.workdirs/ohos-sqlite/ohos-arm64/lib")
+}
+
 kotlin {
     androidTarget {
         compilations.all {
@@ -41,7 +54,9 @@ kotlin {
     // }
 
     ohosArm64 {
+        val sqliteLibDir = ohosSqliteProviderLibDir()
         binaries.sharedLib {
+            linkerOpts("-L${sqliteLibDir.absolutePath}")
         }
     }
 

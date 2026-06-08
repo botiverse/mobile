@@ -19,6 +19,29 @@ pluginManagement {
         }
     }
 
+    fun ohosSqliteProviderLibDir(): File {
+        System.getenv("SLOCK_OHOS_SQLITE_LIB_DIR")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return File(it) }
+        System.getenv("SLOCK_OHOS_SQLITE_WORKDIR")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return File(it, "ohos-arm64/lib") }
+        System.getenv("SLOCK_THIRD_PARTY_WORKDIR")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return File(it, "ohos-sqlite/ohos-arm64/lib") }
+        return File(slockRoot, "third_party/.workdirs/ohos-sqlite/ohos-arm64/lib")
+    }
+
+    fun ensureOhosSqliteProvider() {
+        val libFile = File(ohosSqliteProviderLibDir(), "libsqlite3.a")
+        if (!libFile.isFile) {
+            runChecked(slockRoot, "scripts/prepare_ohos_sqlite_provider.sh")
+        }
+        check(libFile.isFile) {
+            "Missing OHOS SQLite provider after preparation: ${libFile.absolutePath}"
+        }
+    }
+
     fun ensureSubmodule(path: String) {
         val dir = File(slockRoot, path)
         if (!File(dir, "gradlew").isFile) {
@@ -48,6 +71,8 @@ pluginManagement {
             !mavenArtifactExists("app/cash/sqldelight", "runtime", sqldelightVersion) ||
             !mavenArtifactExists("app/cash/sqldelight", "runtime-ohosarm64", sqldelightVersion) ||
             !mavenArtifactExists("app/cash/sqldelight", "native-driver-ohosarm64", sqldelightVersion)
+
+    ensureOhosSqliteProvider()
 
     if (needsStately) {
         ensureSubmodule("third_party/stately")
