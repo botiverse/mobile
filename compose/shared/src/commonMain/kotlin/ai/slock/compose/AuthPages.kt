@@ -141,7 +141,7 @@ private fun LoginScreen() {
         val effect = pendingLogin ?: return@LaunchedEffect
         val result =
             runCatching { authDataSource.login(effect.email, effect.password) }
-                .getOrElse { SharedAuthResult.Failure(ai.slock.compose.data.SharedAuthErrorCode.Network, "Network unavailable. Check your connection.") }
+                .getOrElse { SharedAuthResult.Failure(ai.slock.compose.data.SharedAuthErrorCode.Unknown, "Sign in could not finish setup. Try again.") }
         pendingLogin = null
         when (result) {
             is SharedAuthResult.Success -> {

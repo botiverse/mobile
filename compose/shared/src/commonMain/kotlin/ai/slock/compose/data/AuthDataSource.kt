@@ -39,7 +39,19 @@ class SharedAuthDataSource(
 
         diagnosticsLogger("auth_login_start provider=password")
         val login =
-            when (val response = api.login(email = email.trim(), password = password)) {
+            when (
+                val response =
+                    runCatching { api.login(email = email.trim(), password = password) }
+                        .getOrElse { throwable ->
+                            diagnosticsLogger(
+                                "auth_login_result provider=password result=failure stage=login_request errorType=${throwable.safeDiagnosticsType()} mapped=network"
+                            )
+                            return SharedAuthResult.Failure(
+                                SharedAuthErrorCode.Network,
+                                "Could not reach Slock. Check your connection and try again."
+                            )
+                        }
+            ) {
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> {
                     val failure = response.toSharedAuthFailure()
@@ -47,15 +59,33 @@ class SharedAuthDataSource(
                     return failure
                 }
             }
+        diagnosticsLogger("auth_login_result provider=password result=success parsed=true")
         val servers =
-            when (val response = api.servers("Bearer ${login.accessToken}")) {
-                is AuthApiResult.Success -> response.data
+            when (
+                val response =
+                    runCatching { api.servers("Bearer ${login.accessToken}") }
+                        .getOrElse { throwable ->
+                            diagnosticsLogger(
+                                "auth_login_servers_result result=failure stage=servers_request errorType=${throwable.safeDiagnosticsType()} mapped=network fallback=empty"
+                            )
+                            AuthApiResult.Failure(code = 0)
+                        }
+            ) {
+                is AuthApiResult.Success -> {
+                    diagnosticsLogger("auth_login_servers_result result=success stage=servers_parse serversCount=${response.data.size}")
+                    response.data
+                }
                 is AuthApiResult.Failure -> {
-                    diagnosticsLogger("auth_login_servers_result result=failure code=${response.toSharedAuthFailure().code}")
+                    val failure = response.toSharedAuthFailure()
+                    diagnosticsLogger("auth_login_servers_result result=failure stage=servers_parse code=${failure.code} contract=${response.contractCode ?: "none"} fallback=empty")
+                    if (response.contractCode != null) {
+                        return loginStageFailure("servers_parse", failure.message)
+                    }
                     emptyList()
                 }
             }
         val selectedServer = servers.firstOrNull()
+        diagnosticsLogger("auth_selected_server_persist_start serverIdPresent=${selectedServer != null}")
         val session =
             StoredAuthSession(
                 user = login.user,
@@ -65,7 +95,16 @@ class SharedAuthDataSource(
                 selectedServerSlug = selectedServer?.slug,
                 servers = servers
             )
-        sessionStore.saveSession(session)
+        diagnosticsLogger("auth_session_persist_start userPresent=${login.user.id.isNotBlank()} serversCount=${servers.size} selectedServer=${selectedServer != null}")
+        runCatching { sessionStore.saveSession(session) }
+            .getOrElse { throwable ->
+                diagnosticsLogger(
+                    "auth_session_persist_result result=failure stage=session_persist errorType=${throwable.safeDiagnosticsType()} mapped=post_login_setup"
+                )
+                return loginStageFailure("session_persist")
+            }
+        diagnosticsLogger("auth_session_persist_result result=success stage=session_persist")
+        diagnosticsLogger("auth_selected_server_persist_result result=success serverIdPresent=${selectedServer != null}")
         diagnosticsLogger(
             "auth_login_result provider=password result=success serversCount=${servers.size} selectedServer=${selectedServer != null}"
         )
@@ -448,6 +487,20 @@ class SharedAuthDataSource(
 
 private fun SharedAuthResult.Failure.isRecoverableRestoreFailure(): Boolean =
     code == SharedAuthErrorCode.Network || code == SharedAuthErrorCode.Server
+
+private fun loginStageFailure(stage: String, detail: String? = null): SharedAuthResult.Failure =
+    SharedAuthResult.Failure(
+        SharedAuthErrorCode.Unknown,
+        buildString {
+            append("Sign in succeeded, but Slock could not finish setup at ")
+            append(stage)
+            append(". Try again.")
+            if (!detail.isNullOrBlank()) {
+                append(" ")
+                append(detail)
+            }
+        }
+    )
 
 private fun Throwable.safeDiagnosticsType(): String =
     this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"

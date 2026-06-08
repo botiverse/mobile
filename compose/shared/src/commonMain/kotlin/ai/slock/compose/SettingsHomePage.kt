@@ -3529,7 +3529,7 @@ private fun AppShellAuthGateContent(
         val effect = pendingLogin ?: return@LaunchedEffect
         val result =
             runCatching { authDataSource.login(effect.email, effect.password) }
-                .getOrElse { SharedAuthResult.Failure(SharedAuthErrorCode.Network, "Network unavailable. Check your connection.") }
+                .getOrElse { SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Sign in could not finish setup. Try again.") }
         pendingLogin = null
         when (result) {
             is SharedAuthResult.Success -> {
