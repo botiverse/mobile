@@ -22,7 +22,8 @@ interface OhosPickedThreadAttachment {
   fileName: string;
   mimeType: string;
   previewUri: string;
-  bytes: Uint8Array;
+  fileRef: string;
+  sizeBytes: number;
 }
 
 interface OhosDiagnosticEntryPayload {
@@ -680,8 +681,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
 
       const files = this.readPickedThreadAttachments(uris, imageOnly);
-      const byteCount = files.reduce((sum: number, file: OhosPickedThreadAttachment) => sum + file.bytes.byteLength, 0);
-      SlockOhosDiagnostics.record("ThreadAttachmentUpload", `read_files count=${files.length} bytes=${byteCount}`);
+      const byteCount = files.reduce((sum: number, file: OhosPickedThreadAttachment) => sum + file.sizeBytes, 0);
+      SlockOhosDiagnostics.record("ThreadAttachmentUpload", `picked_file_refs count=${files.length} bytes=${byteCount}`);
       if (files.length === 0) {
         callback(this.threadAttachmentError(400, "attachment_read_failed", "No readable attachments"));
         return;
@@ -770,13 +771,12 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
       try {
         const stat = fs.statSync(file.fd);
-        const buffer = new ArrayBuffer(stat.size);
-        const readLength = fs.readSync(file.fd, buffer);
         files.push({
           fileName: this.fileNameFromUri(uri, index, imageOnly),
           mimeType: this.mimeTypeFromName(uri, imageOnly),
           previewUri: uri,
-          bytes: new Uint8Array(buffer, 0, readLength)
+          fileRef: uri,
+          sizeBytes: stat.size
         });
       } finally {
         fs.closeSync(file);
@@ -786,7 +786,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   }
 
   private threadPickedAttachmentFiles(files: Array<OhosPickedThreadAttachment>): Record<string, Object> {
-    const base64Helper = new util.Base64Helper();
     return {
       "code": 200,
       "bodyText": "",
@@ -795,9 +794,9 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           "id": `picked-${Date.now()}-${index}`,
           "fileName": file.fileName,
           "mimeType": file.mimeType,
-          "sizeBytes": file.bytes.byteLength,
+          "sizeBytes": file.sizeBytes,
           "previewUri": file.previewUri,
-          "bodyBase64": base64Helper.encodeToStringSync(file.bytes, util.Type.BASIC)
+          "fileRef": file.fileRef
         };
       })
     };

@@ -87,7 +87,8 @@ data class AttachmentUploadFile(
     val mimeType: String? = null,
     val sizeBytes: Long? = null,
     val previewUri: String? = null,
-    val bytes: ByteArray
+    val bytes: ByteArray = ByteArray(0),
+    val fileRef: String? = null
 )
 
 data class AttachmentUploadResult(

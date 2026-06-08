@@ -98,7 +98,6 @@ import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 import com.caverock.androidsvg.SVG
 import com.google.gson.Gson
 import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -380,7 +379,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     private fun readThreadAttachmentUploadFiles(uris: List<Uri>): Map<String, Any> {
-        val files = uris.mapNotNull(::readPickedThreadAttachment)
+        val files = uris.mapIndexed { index, uri -> pickedThreadAttachmentRef(uri, index) }
         if (files.isEmpty()) {
             return mapOf(
                     "code" to 400,
@@ -396,9 +395,9 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                             .put("id", "picked-${System.nanoTime()}-$index")
                             .put("fileName", file.fileName)
                             .put("mimeType", file.mimeType)
-                            .put("sizeBytes", file.bytes.size)
+                            .put("sizeBytes", file.sizeBytes)
                             .put("previewUri", file.previewUri)
-                            .put("bodyBase64", Base64.encodeToString(file.bytes, Base64.NO_WRAP))
+                            .put("fileRef", file.fileRef)
             )
         }
         return mapOf(
@@ -408,20 +407,16 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         )
     }
 
-    private fun readPickedThreadAttachment(uri: Uri): PickedThreadAttachment? {
+    private fun pickedThreadAttachmentRef(uri: Uri, index: Int): PickedThreadAttachment {
         val fileName = queryPickedFileName(uri) ?: uri.lastPathSegment ?: "attachment"
         val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-        val bytes = contentResolver.openInputStream(uri)?.use { input ->
-            ByteArrayOutputStream().use { output ->
-                input.copyTo(output)
-                output.toByteArray()
-            }
-        } ?: return null
+        val sizeBytes = queryPickedFileSize(uri)
         return PickedThreadAttachment(
+                fileRef = uri.toString(),
                 fileName = fileName,
                 mimeType = mimeType,
                 previewUri = uri.toString(),
-                bytes = bytes
+                sizeBytes = sizeBytes
         )
     }
 
@@ -430,6 +425,16 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                     ?.use { cursor ->
                         if (cursor.moveToFirst()) {
                             cursor.getString(0)
+                        } else {
+                            null
+                        }
+                    }
+
+    private fun queryPickedFileSize(uri: Uri): Long? =
+            contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)
+                    ?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            cursor.getLong(0).takeIf { it > 0L }
                         } else {
                             null
                         }
@@ -831,10 +836,11 @@ private data class PendingThreadAttachmentUpload(
 )
 
 private data class PickedThreadAttachment(
+        val fileRef: String,
         val fileName: String,
         val mimeType: String,
         val previewUri: String,
-        val bytes: ByteArray
+        val sizeBytes: Long?
 )
 
 private object SlockKuiklyRouterAdapter : IKRRouterAdapter {

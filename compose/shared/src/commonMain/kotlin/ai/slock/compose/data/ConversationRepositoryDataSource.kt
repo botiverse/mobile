@@ -743,7 +743,9 @@ private fun AttachmentUploadFile.toMultipartFile(): MultipartFile =
         name = "files",
         fileName = fileName,
         mimeType = mimeType ?: "application/octet-stream",
-        bytes = bytes
+        bytes = bytes,
+        fileRef = fileRef,
+        sizeBytes = sizeBytes
     )
 
 private suspend fun <T> executeConversation(

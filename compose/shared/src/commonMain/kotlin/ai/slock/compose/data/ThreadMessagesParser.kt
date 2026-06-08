@@ -144,17 +144,20 @@ internal fun parseSharedThreadPickedAttachmentFiles(
             val fileJson = filesJson.optJSONObject(index) ?: continue
             val fileName = fileJson.optString("fileName").takeIf { it.isNotBlank() }
                 ?: "attachment-${index + 1}"
-            val encoded = fileJson.optString("bodyBase64").takeIf { it.isNotBlank() } ?: continue
-            val bytes = runCatching { Base64.decode(encoded) }.getOrNull() ?: continue
+            val fileRef = fileJson.optString("fileRef").takeIf { it.isNotBlank() }
+            val encoded = fileJson.optString("bodyBase64").takeIf { it.isNotBlank() }
+            val bytes = encoded?.let { runCatching { Base64.decode(it) }.getOrNull() }
+            if (fileRef == null && bytes == null) continue
             add(
                 AttachmentUploadFile(
                     id = fileJson.optString("id").takeIf { it.isNotBlank() }
                         ?: "picked-${index + 1}",
                     fileName = fileName,
                     mimeType = fileJson.optString("mimeType").takeIf { it.isNotBlank() },
-                    sizeBytes = fileJson.optLong("sizeBytes", bytes.size.toLong()).takeIf { it > 0L },
+                    sizeBytes = fileJson.optLong("sizeBytes", bytes?.size?.toLong() ?: 0L).takeIf { it > 0L },
                     previewUri = fileJson.optString("previewUri").takeIf { it.isNotBlank() },
-                    bytes = bytes
+                    bytes = bytes ?: ByteArray(0),
+                    fileRef = fileRef
                 )
             )
         }

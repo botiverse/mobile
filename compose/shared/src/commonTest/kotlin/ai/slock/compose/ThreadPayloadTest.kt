@@ -1018,9 +1018,8 @@ class ThreadPayloadTest {
         assertEquals("application/pdf", attachments.first().mimeType)
     }
 
-    @OptIn(ExperimentalEncodingApi::class)
     @Test
-    fun parsesPickedAttachmentFilesForSharedUpload() {
+    fun parsesPickedAttachmentFileRefsForSharedUpload() {
         val files =
             parseSharedThreadPickedAttachmentFiles(
                 JSONObject().apply {
@@ -1034,7 +1033,7 @@ class ThreadPayloadTest {
                                     put("mimeType", "text/plain")
                                     put("sizeBytes", 5L)
                                     put("previewUri", "content://picked/report.txt")
-                                    put("bodyBase64", Base64.encode("hello".encodeToByteArray()))
+                                    put("fileRef", "content://picked/report.txt")
                                 }
                             )
                         }
@@ -1048,6 +1047,33 @@ class ThreadPayloadTest {
         assertEquals("text/plain", files.first().mimeType)
         assertEquals(5L, files.first().sizeBytes)
         assertEquals("content://picked/report.txt", files.first().previewUri)
+        assertEquals("content://picked/report.txt", files.first().fileRef)
+        assertEquals(0, files.first().bytes.size)
+    }
+
+    @OptIn(ExperimentalEncodingApi::class)
+    @Test
+    fun parsesPickedAttachmentBase64FallbackForSharedUpload() {
+        val files =
+            parseSharedThreadPickedAttachmentFiles(
+                JSONObject().apply {
+                    put(
+                        "files",
+                        JSONArray().apply {
+                            put(
+                                JSONObject().apply {
+                                    put("id", "picked-1")
+                                    put("fileName", "report.txt")
+                                    put("bodyBase64", Base64.encode("hello".encodeToByteArray()))
+                                }
+                            )
+                        }
+                    )
+                }
+            )
+
+        assertEquals(1, files.size)
         assertEquals("hello", files.first().bytes.decodeToString())
+        assertEquals(null, files.first().fileRef)
     }
 }

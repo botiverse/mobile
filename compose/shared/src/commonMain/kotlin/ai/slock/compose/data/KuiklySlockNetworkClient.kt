@@ -8,6 +8,7 @@ import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.network.SlockRequestPriority
 import ai.slock.compose.network.SlockRequestScheduler
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
@@ -53,15 +54,25 @@ class KuiklySlockNetworkClient(
         ) {
             val tokens = sessionStore.readSession()?.toAuthTokens()
             val boundary = "slock-${channelId.value}-${files.size}"
+            val headers =
+                authHeaders(
+                    tokens = tokens,
+                    serverIdOverride = null,
+                    contentType = "multipart/form-data; boundary=$boundary"
+                )
+            if (files.any { it.fileRef != null && it.bytes.isEmpty() }) {
+                return@run networkModule.requestMultipartRaw(
+                    url = absoluteUrl("attachments/upload"),
+                    method = "POST",
+                    headers = headers,
+                    fields = mapOf("channelId" to channelId.value),
+                    files = files
+                )
+            }
             networkModule.requestRaw(
                 url = absoluteUrl("attachments/upload"),
                 method = "POST",
-                headers =
-                    authHeaders(
-                        tokens = tokens,
-                        serverIdOverride = null,
-                        contentType = "multipart/form-data; boundary=$boundary"
-                    ),
+                headers = headers,
                 bodyBytes =
                     buildMultipartBody(
                         boundary = boundary,
@@ -114,6 +125,53 @@ class KuiklySlockNetworkClient(
                     put("headers", headers)
                     bodyText?.let { put("bodyText", it) }
                     bodyBytes?.let { put("bodyBase64", Base64.Default.encode(it)) }
+                    put("timeoutMillis", 30_000)
+                }
+            )
+        val body = response.bodyText
+        val code = response.code
+        return if (code in 200..299) {
+            HomeNetworkResponse(code = code, bodyText = body, errorBodyText = null)
+        } else {
+            HomeNetworkResponse(
+                code = code,
+                bodyText = null,
+                errorBodyText = response.errorBodyText.ifBlank { response.message }
+            )
+        }
+    }
+
+    @OptIn(ExperimentalEncodingApi::class)
+    private suspend fun SlockNetworkModule.requestMultipartRaw(
+        url: String,
+        method: String,
+        headers: JSONObject,
+        fields: Map<String, String>,
+        files: List<MultipartFile>
+    ): HomeNetworkResponse {
+        val response =
+            request(
+                JSONObject().apply {
+                    put("url", url)
+                    put("method", method)
+                    put("headers", headers)
+                    put("multipartFields", JSONObject().apply {
+                        fields.forEach { (key, value) -> put(key, value) }
+                    })
+                    put("multipartFiles", JSONArray().apply {
+                        files.forEach { file ->
+                            put(JSONObject().apply {
+                                put("name", file.name)
+                                put("fileName", file.fileName)
+                                put("mimeType", file.mimeType)
+                                file.fileRef?.let { put("fileRef", it) }
+                                file.sizeBytes?.let { put("sizeBytes", it) }
+                                if (file.bytes.isNotEmpty()) {
+                                    put("bodyBase64", Base64.Default.encode(file.bytes))
+                                }
+                            })
+                        }
+                    })
                     put("timeoutMillis", 30_000)
                 }
             )
