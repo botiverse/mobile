@@ -232,7 +232,6 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.base.BackPressCallback
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
@@ -749,7 +748,7 @@ private fun SlockAppShellContent() {
             kuiklyNotificationPreferenceRepository(pager, notificationPreferenceEvents)
         }
     val notificationPreferenceScope = rememberCoroutineScope()
-    val appShellScope = rememberCoroutineScope()
+    val appShellCoroutineScope = rememberCoroutineScope()
     var notificationPreferenceSnapshot by remember {
         mutableStateOf(NotificationPreferenceSnapshot(enabled = false))
     }
@@ -819,7 +818,7 @@ private fun SlockAppShellContent() {
         }
     val settingsState by settingsViewModel.state.collectAsState()
     val navController = rememberNavController()
-    val bottomSafeArea = slockBottomSafeAreaPadding()
+    val shellScope = rememberSlockAppShellScope()
     val realtimeEventMapper = remember { RealtimeEventMapper() }
     var realtimeLastSeq by remember { mutableStateOf(0L) }
     var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
@@ -1035,15 +1034,8 @@ private fun SlockAppShellContent() {
         }
     }
 
-    DisposableEffect(pager, navController) {
-        val callback =
-            object : BackPressCallback() {
-                override fun handleOnBackPressed() {
-                    handleAppShellBack()
-                }
-            }
-        pager.getBackPressHandler().addCallback(callback)
-        onDispose { pager.getBackPressHandler().removeCallback(callback) }
+    SlockAppShellRootBackHandler {
+        handleAppShellBack()
     }
 
     LaunchedEffect(selectedTab) {
@@ -1054,7 +1046,7 @@ private fun SlockAppShellContent() {
 
     fun loadCreateChannelMembers() {
         createChannelMembersLoading = true
-        appShellScope.launch {
+        appShellCoroutineScope.launch {
             try {
                 val session = authStore.readSession()
                 val serverId = session?.currentServerId
@@ -1100,7 +1092,7 @@ private fun SlockAppShellContent() {
         }
         createChannelSubmitting = true
         createChannelError = null
-        appShellScope.launch {
+        appShellCoroutineScope.launch {
             try {
                 when (
                     val result =
@@ -1183,7 +1175,7 @@ private fun SlockAppShellContent() {
                                 currentMemberHandle = readySession?.user?.email
                             )
                         if (request != null) {
-                            appShellScope.launch {
+                            appShellCoroutineScope.launch {
                                 val result = settingsCapabilities.postUnreadNotification(request)
                                 if (!result.ok) {
                                     bridge.log("system_unread_notification_failed code=${result.code} message=${result.message}")
@@ -1233,7 +1225,7 @@ private fun SlockAppShellContent() {
                             } else {
                                 val loadingPayload = appShellParentMessageContextLoadingPayload(messageId)
                                 openThreadPayload(loadingPayload)
-                                appShellScope.launch {
+                                appShellCoroutineScope.launch {
                                     when (val result = threadDataSource.openMessageContext(messageId, loadingPayload)) {
                                         is DataResult.Content -> openThreadPayload(result.data, pushCurrent = false)
                                         is DataResult.Empty,
@@ -1255,8 +1247,20 @@ private fun SlockAppShellContent() {
             }
         }
         composable(AppShellRouteMain) {
-            Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-                Box(modifier = Modifier.fillMaxSize()) {
+            SlockAppShellSurface(
+                shellScope = shellScope,
+                bottomTabs = appShellBottomTabs(selectedTab),
+                onBottomTabSelected = {
+                    selectedTab = it
+                    if (it == "home") {
+                        selectedHomeDestination = null
+                    }
+                    if (it != "settings") {
+                        selectedSettingsDestination = SettingsDestinationHome
+                        selectedSettingsComputerId = null
+                    }
+                }
+            ) {
                     when (selectedTab) {
                         "settings" -> {
                             SettingsAppShellContent(
@@ -1292,7 +1296,7 @@ private fun SlockAppShellContent() {
                                 onSettingsAction = { action, itemId ->
                                     bridge.settingsEvent("shared-shell-settings", action, itemId)
                                 },
-                                bottomContentPadding = slockAppBottomTabBarContentInset(bottomSafeArea),
+                                bottomContentPadding = shellScope.bottomTabBarContentInset,
                                 onLogout = {
                                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
                                     realtimeLastSeq = 0L
@@ -1311,7 +1315,7 @@ private fun SlockAppShellContent() {
                             state = tasksState,
                             onIntent = tasksViewModel::dispatch,
                             onOpenTask = { task ->
-                                appShellScope.launch {
+                                appShellCoroutineScope.launch {
                                     openAppShellTaskThread(
                                         task = task,
                                         dataSource = threadDataSource,
@@ -1355,7 +1359,7 @@ private fun SlockAppShellContent() {
                                         threadBackStack = emptyList()
                                         navController.navigate(AppShellRouteThread)
                                     },
-                                    bottomContentPadding = slockAppBottomTabBarContentInset(bottomSafeArea)
+                                    bottomContentPadding = shellScope.bottomTabBarContentInset
                                 )
                             } else if (selectedHomeDestination == HomeDestinationActivity) {
                                 SharedHomeActivityScreen(
@@ -1369,7 +1373,8 @@ private fun SlockAppShellContent() {
                                         threadBackStack = emptyList()
                                         navController.navigate(AppShellRouteThread)
                                     },
-                                    bottomContentPadding = slockAppBottomTabBarContentInset(bottomSafeArea)
+                                    bottomContentPadding = shellScope.bottomTabBarContentInset,
+                                    shellScope = shellScope
                                 )
                             } else if (selectedHomeDestination == HomeDestinationSearch) {
                                 SharedHomeSearchPanel(
@@ -1403,7 +1408,8 @@ private fun SlockAppShellContent() {
                                             threadBackStack = emptyList()
                                         }
                                     },
-                                    bottomContentPadding = slockAppBottomTabBarContentInset(bottomSafeArea)
+                                    bottomContentPadding = shellScope.bottomTabBarContentInset,
+                                    shellScope = shellScope
                                 )
                             } else if (selectedHomeDestination == HomeDestinationSaved) {
                                 SharedHomeSavedPanel(
@@ -1417,30 +1423,15 @@ private fun SlockAppShellContent() {
                                         threadBackStack = emptyList()
                                         navController.navigate(AppShellRouteThread)
                                     },
-                                    bottomContentPadding = slockAppBottomTabBarContentInset(bottomSafeArea)
+                                    bottomContentPadding = shellScope.bottomTabBarContentInset,
+                                    shellScope = shellScope
                                 )
                             } else {
                                 SharedHomeDestinationPlaceholder(selectedHomeDestination ?: HomeDestinationActivity)
                             }
                     }
-                }
-                SlockAppBottomTabBarHost(
-                    items = appShellBottomTabs(selectedTab),
-                    onSelect = {
-                        selectedTab = it
-                        if (it == "home") {
-                            selectedHomeDestination = null
-                        }
-                        if (it != "settings") {
-                            selectedSettingsDestination = SettingsDestinationHome
-                            selectedSettingsComputerId = null
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter),
-                    bottomSafeArea = bottomSafeArea
-                )
+            }
+            Box(modifier = Modifier.fillMaxSize()) {
                 if (createChannelDialogOpen) {
                     SharedCreateChannelDialog(
                         submitting = createChannelSubmitting,
@@ -4608,6 +4599,7 @@ private fun SharedHomeSearchPanel(
     onOpenItem: (InboxItem) -> Unit,
     onOpenEntity: (SearchEntityResult) -> Unit,
     bottomContentPadding: Dp,
+    shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
     val channelFilters = remember(homeState) { homeSearchChannelFilters(homeState) }
@@ -4645,7 +4637,7 @@ private fun SharedHomeSearchPanel(
                     onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
                     onClose = onClose,
                     interactive = interactiveSearchField,
-                    includeTopSafeArea = includeTopSafeArea
+                    topSafeAreaPadding = shellScope.topInset(includeTopSafeArea)
                 )
             }
             item {
@@ -4822,9 +4814,9 @@ private fun SharedHomeSearchToolbar(
     onClear: () -> Unit,
     onClose: (() -> Unit)?,
     interactive: Boolean = true,
-    includeTopSafeArea: Boolean = true
+    topSafeAreaPadding: Dp = 0.dp
 ) {
-    SharedHomeSearchControlsRow(includeTopSafeArea = includeTopSafeArea) {
+    SharedHomeSearchControlsRow(topSafeAreaPadding = topSafeAreaPadding) {
         if (onClose != null) {
             SharedHomeSearchIconButton(
                 iconName = "arrow-left",
@@ -4855,7 +4847,7 @@ private fun SharedHomeSearchToolbar(
 
 @Composable
 private fun SharedHomeSearchControlsRow(
-    includeTopSafeArea: Boolean,
+    topSafeAreaPadding: Dp,
     content: @Composable RowScope.() -> Unit
 ) {
     Row(
@@ -4865,7 +4857,7 @@ private fun SharedHomeSearchControlsRow(
                 .background(SlockColor.SurfaceWhite)
                 .padding(
                     start = SearchControlsHorizontalPadding,
-                    top = (if (includeTopSafeArea) slockTopSafeAreaPadding() else 0.dp) + 12.dp,
+                    top = topSafeAreaPadding + 12.dp,
                     end = SearchControlsHorizontalPadding,
                     bottom = 12.dp
                 ),
@@ -4958,7 +4950,8 @@ private fun SharedHomeSavedPanel(
     onClose: (() -> Unit)? = null,
     onOpenItem: (InboxItem) -> Unit,
     bottomContentPadding: Dp,
-    includeTopSafeArea: Boolean = true
+    includeTopSafeArea: Boolean = true,
+    shellScope: SlockAppShellScope = rememberSlockAppShellScope()
 ) {
     LaunchedEffect(Unit) {
         onIntent(SharedHomeSearchSavedIntent.OpenSaved)
@@ -4974,7 +4967,7 @@ private fun SharedHomeSavedPanel(
             SharedHomeSavedHeader(
                 count = state.totalCount.takeIf { it > 0 } ?: state.items.size,
                 onClose = onClose,
-                includeTopSafeArea = includeTopSafeArea
+                topSafeAreaPadding = shellScope.topInset(includeTopSafeArea)
             )
         }
         item {
@@ -5016,9 +5009,8 @@ private fun SharedHomeSavedPanel(
 private fun SharedHomeSavedHeader(
     count: Int,
     onClose: (() -> Unit)?,
-    includeTopSafeArea: Boolean = true
+    topSafeAreaPadding: Dp = 0.dp
 ) {
-    val topPadding = if (includeTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     Column(
         modifier =
             Modifier
@@ -5029,7 +5021,7 @@ private fun SharedHomeSavedHeader(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, top = topPadding + 12.dp, end = 16.dp, bottom = 12.dp),
+                    .padding(start = 16.dp, top = topSafeAreaPadding + 12.dp, end = 16.dp, bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -6808,7 +6800,7 @@ private fun AppShellPlaceholderContent(
 
 @Composable
 private fun BottomTabBarSmokeContent() {
-    val bottomSafeArea = slockBottomSafeAreaPadding()
+    val shellScope = rememberSlockAppShellScope()
     var selectedTab by remember { mutableStateOf("tasks") }
     val smokeItems = bottomTabBarSmokeItems.map { item -> item.copy(selected = item.key == selectedTab) }
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
@@ -6904,7 +6896,7 @@ private fun BottomTabBarSmokeContent() {
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter),
-            bottomSafeArea = bottomSafeArea
+            bottomSafeArea = shellScope.bottomSafeArea
         )
     }
 }

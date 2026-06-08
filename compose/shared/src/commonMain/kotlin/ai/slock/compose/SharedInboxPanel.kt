@@ -71,6 +71,7 @@ internal fun SharedHomeActivityScreen(
     onClose: (() -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     includeTopSafeArea: Boolean = true,
+    shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     modifier: Modifier = Modifier
 ) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -171,7 +172,7 @@ internal fun SharedHomeActivityScreen(
             }
         },
         bottomContentPadding = bottomContentPadding,
-        includeTopSafeArea = includeTopSafeArea,
+        topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         modifier = modifier
     )
 }
@@ -184,6 +185,7 @@ internal fun SharedHomeActivityPanel(
     onClose: (() -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     includeTopSafeArea: Boolean = false,
+    shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     modifier: Modifier = Modifier
 ) {
     SharedActivityPanelContent(
@@ -196,7 +198,7 @@ internal fun SharedHomeActivityPanel(
         onClose = onClose,
         onMarkAllRead = {},
         bottomContentPadding = bottomContentPadding,
-        includeTopSafeArea = includeTopSafeArea,
+        topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         modifier = modifier
     )
 }
@@ -218,7 +220,7 @@ private fun SharedActivityPanelContent(
     onClose: (() -> Unit)?,
     onMarkAllRead: () -> Unit,
     bottomContentPadding: Dp,
-    includeTopSafeArea: Boolean,
+    topSafeAreaPadding: Dp,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -229,7 +231,7 @@ private fun SharedActivityPanelContent(
             totalCount = snapshot?.totalCount ?: 0,
             totalUnreadCount = snapshot?.totalUnreadCount ?: 0,
             onClose = onClose,
-            includeTopSafeArea = includeTopSafeArea
+            topSafeAreaPadding = topSafeAreaPadding
         )
         SharedActivityFilterBar(
             selectedFilter = selectedFilter,
@@ -281,18 +283,17 @@ private fun SharedActivityHeader(
     totalCount: Int,
     totalUnreadCount: Int,
     onClose: (() -> Unit)?,
-    includeTopSafeArea: Boolean
+    topSafeAreaPadding: Dp
 ) {
-    val topPadding = if (includeTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     Column(
-        modifier = Modifier.fillMaxWidth().height(62.dp + topPadding).background(SlockColor.SurfaceWhite)
+        modifier = Modifier.fillMaxWidth().height(62.dp + topSafeAreaPadding).background(SlockColor.SurfaceWhite)
     ) {
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(60.dp + topPadding)
-                    .padding(start = 20.dp, top = topPadding + 10.dp, end = 20.dp, bottom = 10.dp),
+                    .height(60.dp + topSafeAreaPadding)
+                    .padding(start = 20.dp, top = topSafeAreaPadding + 10.dp, end = 20.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
