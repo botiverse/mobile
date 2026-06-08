@@ -1,6 +1,8 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberProfile
 import androidx.compose.runtime.Composable
@@ -684,27 +686,19 @@ private fun ComposerIconButton(
     disabledAlpha: Float = 1f,
     onClick: () -> Unit
 ) {
-    val activeColor = if (enabled) backgroundColor else disabledBackgroundColor.copy(alpha = disabledAlpha)
-    val chromeColor = SlockColor.BorderBlack.copy(alpha = if (enabled) 1f else disabledAlpha)
-    val shadowColor = SlockColor.ShadowBlack.copy(alpha = if (enabled) 1f else disabledAlpha)
-    val iconColor = if (enabled) "#FF000000" else "#4D000000"
-    Box(
-        modifier = Modifier.size(30.dp)
-    ) {
-        Box(
-            modifier = Modifier.offset(x = 2f, y = 2f).size(28.dp).background(shadowColor)
-        )
-        Button(
-            onClick = if (enabled) onClick else ({}),
-            enabled = enabled,
-            modifier = Modifier
-                .size(28.dp)
-                .background(activeColor)
-                .border(SlockStroke.Default, chromeColor)
-        ) {
-            SlockLucideIcon(icon, modifier = Modifier.size(16.dp), color = iconColor)
-        }
-    }
+    SlockBrutalIconButton(
+        iconName = icon,
+        onClick = onClick,
+        enabled = enabled,
+        backgroundColor = backgroundColor,
+        disabledBackgroundColor = disabledBackgroundColor,
+        disabledAlpha = disabledAlpha,
+        disabledBorderColor = SlockColor.BorderBlack,
+        disabledShadowColor = SlockColor.ShadowBlack,
+        disabledIconColor = "#4D000000",
+        size = 28.dp,
+        shadowOffset = 2.dp
+    )
 }
 
 @Composable
@@ -755,16 +749,15 @@ private fun ComposerSendButton(
 
 @Composable
 private fun ComposerTextChip(text: String, onClick: () -> Unit) {
-    Button(
+    SlockBrutalActionButton(
+        label = text,
         onClick = onClick,
-        modifier = Modifier.background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 8.dp, vertical = 4.dp)
-    ) {
-        Text(
-            text = text,
-            style = SlockType.Caption.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
-        )
-    }
+        backgroundColor = SlockColor.SurfaceWhite,
+        minWidth = 0.dp,
+        minHeight = 26.dp,
+        shadowOffset = 2.dp,
+        textStyle = SlockType.Caption.copy(color = SlockColor.TextBlack)
+    )
 }
 
 private fun KuiklyPendingAttachmentItem.statusLabel(): String {

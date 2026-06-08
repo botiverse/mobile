@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.components.SlockBrutalActionButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -216,30 +217,19 @@ private fun SettingsStorageButton(
     loading: Boolean,
     onClick: () -> Unit
 ) {
-    Button(
-        onClick = if (enabled && !loading) onClick else ({}),
+    SlockBrutalActionButton(
+        label = if (loading) "$text..." else text,
+        leadingIcon = iconName,
+        onClick = onClick,
         enabled = enabled && !loading,
-        modifier = Modifier.fillMaxWidth()
-            .height(44.dp)
-            .background(if (enabled && !loading) SlockColor.SurfaceWhite else SlockColor.EmptyStateGray)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .padding(horizontal = 12.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SlockLucideIcon(iconName, modifier = Modifier.size(16.dp))
-            Text(
-                if (loading) "$text..." else text,
-                style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
+        modifier = Modifier.fillMaxWidth(),
+        backgroundColor = SlockColor.SurfaceWhite,
+        disabledBackgroundColor = SlockColor.EmptyStateGray,
+        minWidth = 0.dp,
+        minHeight = 44.dp,
+        shadowOffset = 2.dp,
+        textStyle = SlockType.Button.copy(color = SlockColor.TextBlack)
+    )
 }
 
 @Composable

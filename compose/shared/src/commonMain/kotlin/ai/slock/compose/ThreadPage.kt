@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.components.SlockAnchoredMetaChip
+import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
@@ -2368,19 +2369,15 @@ private fun ThreadMembersHeaderButton(count: Int, onClick: () -> Unit) {
 
 @Composable
 private fun ThreadHeaderAction(label: String, onClick: () -> Unit) {
-    Button(
+    SlockBrutalActionButton(
+        label = label,
         onClick = onClick,
-        modifier = Modifier.border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(SlockColor.SurfaceWhite)
-            .padding(horizontal = 8.dp, vertical = 6.dp)
-    ) {
-        Text(
-            text = label,
-            style = SlockType.Button.copy(fontSize = 12.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
-            maxLines = 1
-        )
-    }
+        backgroundColor = SlockColor.SurfaceWhite,
+        minWidth = 0.dp,
+        minHeight = 30.dp,
+        shadowOffset = 2.dp,
+        textStyle = SlockType.Button.copy(fontSize = 12.sp, color = SlockColor.TextBlack)
+    )
 }
 
 @Composable
@@ -2954,34 +2951,23 @@ private fun ThreadBackToBottomButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Box(modifier = modifier.padding(end = 4.dp, bottom = 4.dp)) {
-        Box(
-            modifier = Modifier.matchParentSize().offset(x = 4f, y = 4f).background(SlockColor.ShadowBlack)
-        )
-        Button(
-            onClick = onClick,
-            modifier = Modifier
-                .background(SlockColor.AccentCyan)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = SlockSpacing.Sm, vertical = 5.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-            ) {
-                Text(
-                    text = "Back to bottom",
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack
-                )
-                SlockLucideIcon(
-                    "chevron-down",
-                    modifier = Modifier.size(14.dp),
-                    color = "#FF000000"
-                )
-            }
+    SlockBrutalActionButton(
+        label = "Back to bottom",
+        onClick = onClick,
+        modifier = modifier,
+        backgroundColor = SlockColor.AccentCyan,
+        minWidth = 0.dp,
+        minHeight = 30.dp,
+        shadowOffset = 4.dp,
+        textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+        trailingContent = {
+            SlockLucideIcon(
+                "chevron-down",
+                modifier = Modifier.size(14.dp),
+                color = "#FF000000"
+            )
         }
-    }
+    )
 }
 
 private const val ThreadBackToBottomTolerancePx = 24
@@ -3092,18 +3078,16 @@ private fun ThreadSystemMessageExpandedContent(
 
 @Composable
 private fun ThreadInlineActionRow(label: String, onClick: () -> Unit) {
-    Button(
+    SlockBrutalActionButton(
+        label = label,
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth()
-            .background(SlockColor.SurfaceWhite)
-            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm)
-    ) {
-        Text(
-            text = label,
-            style = SlockType.Button.copy(fontSize = 12.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
-        )
-    }
+        modifier = Modifier.fillMaxWidth(),
+        backgroundColor = SlockColor.SurfaceWhite,
+        minWidth = 0.dp,
+        minHeight = 36.dp,
+        shadowOffset = 2.dp,
+        textStyle = SlockType.Button.copy(fontSize = 12.sp, color = SlockColor.TextBlack)
+    )
 }
 
 @Composable

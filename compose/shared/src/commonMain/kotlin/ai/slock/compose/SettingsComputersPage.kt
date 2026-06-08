@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.components.SlockBrutalActionButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import com.tencent.kuikly.compose.foundation.background
@@ -369,12 +370,16 @@ private fun SettingsInfoStrip(label: String, value: String) {
 
 @Composable
 private fun SettingsPrimaryButton(text: String, onClick: () -> Unit) {
-    Button(
+    SlockBrutalActionButton(
+        label = text,
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().height(44.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack)
-    ) {
-        Text(text, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
+        modifier = Modifier.fillMaxWidth(),
+        backgroundColor = SlockColor.BrandYellow,
+        minWidth = 0.dp,
+        minHeight = 44.dp,
+        shadowOffset = 2.dp,
+        textStyle = SlockType.Button.copy(color = SlockColor.TextBlack)
+    )
 }
 
 @Composable

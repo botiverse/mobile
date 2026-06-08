@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.components.SlockBrutalActionButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -326,18 +327,17 @@ private fun SettingsEmailField(
 
 @Composable
 private fun SettingsProfileSaveButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
-    Box(
-        modifier =
-            Modifier
-                .width(96.dp)
-                .height(32.dp)
-                .clickable(enabled = enabled, onClick = onClick)
-                .background(if (enabled) SlockColor.AccentPink else SlockColor.EmptyStateGray)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(text, style = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
+    SlockBrutalActionButton(
+        label = text,
+        onClick = onClick,
+        enabled = enabled,
+        backgroundColor = SlockColor.AccentPink,
+        disabledBackgroundColor = SlockColor.EmptyStateGray,
+        minWidth = 96.dp,
+        minHeight = 32.dp,
+        shadowOffset = 2.dp,
+        textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
+    )
 }
 
 @Composable
@@ -427,12 +427,16 @@ private fun SettingsDisclosureRow(iconName: String, title: String, subtitle: Str
 private fun SettingsLogoutAction(detail: String, label: String, onClick: () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(detail, style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
-        Button(
+        SlockBrutalActionButton(
+            label = label,
             onClick = onClick,
-            modifier = Modifier.fillMaxWidth().height(48.dp).background(SlockColor.AccentRed).border(SlockStroke.Default, SlockColor.BorderBlack)
-        ) {
-            Text(label, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
+            modifier = Modifier.fillMaxWidth(),
+            backgroundColor = SlockColor.AccentRed,
+            minWidth = 0.dp,
+            minHeight = 48.dp,
+            shadowOffset = 3.dp,
+            textStyle = SlockType.Button.copy(color = SlockColor.TextBlack)
+        )
     }
 }
 

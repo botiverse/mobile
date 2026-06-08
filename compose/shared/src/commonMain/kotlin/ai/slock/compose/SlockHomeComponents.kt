@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
 import androidx.compose.runtime.Composable
@@ -1011,18 +1012,15 @@ private fun HomeNotificationRow(notification: SlockHomeNotificationItem, onView:
 
 @Composable
 private fun HomeNotificationActionButton(text: String, color: Color, onClick: () -> Unit) {
-    Button(
+    SlockBrutalActionButton(
+        label = text,
         onClick = onClick,
-        modifier =
-            Modifier
-                .heightIn(min = 32.dp)
-                .widthIn(min = 72.dp)
-                .background(color)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = SlockSpacing.Sm)
-    ) {
-        Text(text, style = SlockType.Caption.withSlockFontWeight(FontWeight.Medium), color = SlockColor.TextBlack, maxLines = 1, textAlign = TextAlign.Center)
-    }
+        backgroundColor = color,
+        minWidth = 72.dp,
+        minHeight = 32.dp,
+        shadowOffset = 2.dp,
+        textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Medium)
+    )
 }
 
 private fun SlockHomeNotificationKind.notificationColor(): Color = when (this) {

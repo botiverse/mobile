@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.components.SlockBrutalActionButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -352,20 +353,18 @@ private fun PlanActionButton(
             enabled -> SlockColor.AccentPink
             else -> SlockColor.EmptyStateGray
     }
-    Button(
-        onClick = if (enabled) onClick else ({}),
+    SlockBrutalActionButton(
+        label = text,
+        onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(42.dp).background(background).border(SlockStroke.Default, SlockColor.BorderBlack)
-    ) {
-        Text(
-            text,
-            style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 12.dp)
-        )
-    }
+        modifier = Modifier.fillMaxWidth(),
+        backgroundColor = background,
+        disabledBackgroundColor = background,
+        minWidth = 0.dp,
+        minHeight = 42.dp,
+        shadowOffset = 2.dp,
+        textStyle = SlockType.ButtonBold.copy(color = SlockColor.TextBlack)
+    )
 }
 
 @Composable

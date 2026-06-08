@@ -1,6 +1,8 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.MemberId
@@ -587,25 +589,18 @@ private fun MembersDetailActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier
-            .heightIn(min = 42.dp)
-            .background(if (enabled) SlockColor.AccentPink else SlockColor.SurfaceCream)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-    ) {
-        SlockLucideIcon(iconName, Modifier.size(16.dp))
-        Text(
-            text = label,
-            style = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 16.sp),
-            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    SlockBrutalActionButton(
+        label = label,
+        leadingIcon = iconName,
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        backgroundColor = SlockColor.AccentPink,
+        minWidth = 0.dp,
+        minHeight = 42.dp,
+        shadowOffset = 2.dp,
+        textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 16.sp)
+    )
 }
 
 @Composable
@@ -670,9 +665,12 @@ private fun MembersPageHeader(title: String) {
 
 @Composable
 private fun MembersAddButton(onClick: () -> Unit) {
-    Box(modifier = Modifier.size(MembersActionSize).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-        SlockLucideIcon("plus", Modifier.size(MembersActionIconSize))
-    }
+    SlockBrutalIconButton(
+        iconName = "plus",
+        onClick = onClick,
+        size = MembersActionSize,
+        shadowOffset = 0.dp
+    )
 }
 
 @Composable

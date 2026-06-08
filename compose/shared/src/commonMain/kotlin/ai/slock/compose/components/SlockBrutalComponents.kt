@@ -524,6 +524,7 @@ internal fun SlockBrutalActionButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     backgroundColor: Color = SlockColor.SurfaceWhite,
+    disabledBackgroundColor: Color = SlockColor.SurfaceCream,
     minWidth: Dp = 82.dp,
     minHeight: Dp = 40.dp,
     leadingIcon: String? = null,
@@ -559,7 +560,7 @@ internal fun SlockBrutalActionButton(
                 Modifier
                     .widthIn(min = minWidth)
                     .heightIn(min = minHeight)
-                    .background(if (enabled) backgroundColor else SlockColor.SurfaceCream)
+                    .background(if (enabled) backgroundColor else disabledBackgroundColor)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .clickable(enabled = enabled, onClick = onClick)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -721,9 +722,21 @@ internal fun SlockBrutalIconButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     backgroundColor: Color = SlockColor.SurfaceWhite,
+    disabledBackgroundColor: Color = SlockColor.SurfaceCream,
+    disabledAlpha: Float = 1f,
+    borderColor: Color = SlockColor.BorderBlack,
+    disabledBorderColor: Color = SlockColor.BorderBlack,
+    shadowColor: Color = SlockColor.ShadowBlack,
+    disabledShadowColor: Color = SlockColor.ShadowBlack,
+    iconColor: String = "#FF000000",
+    disabledIconColor: String = "#FF000000",
     size: Dp = 32.dp,
     shadowOffset: Dp = 3.dp
 ) {
+    val resolvedBackground = if (enabled) backgroundColor else disabledBackgroundColor.copy(alpha = disabledAlpha)
+    val resolvedBorder = if (enabled) borderColor else disabledBorderColor.copy(alpha = disabledAlpha)
+    val resolvedShadow = if (enabled) shadowColor else disabledShadowColor.copy(alpha = disabledAlpha)
+    val resolvedIconColor = if (enabled) iconColor else disabledIconColor
     Box(
         modifier =
             modifier
@@ -734,18 +747,18 @@ internal fun SlockBrutalIconButton(
                 Modifier
                     .size(size)
                     .offset(x = shadowOffset, y = shadowOffset)
-                    .background(SlockColor.ShadowBlack)
+                    .background(resolvedShadow)
         )
         Box(
             modifier =
                 Modifier
                     .size(size)
-                    .background(if (enabled) backgroundColor else SlockColor.SurfaceCream)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .background(resolvedBackground)
+                    .border(SlockStroke.Default, resolvedBorder)
                     .clickable(enabled = enabled, onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            SlockLucideIcon(iconName, color = "#FF000000", modifier = Modifier.size((size.value * 0.5f).dp))
+            SlockLucideIcon(iconName, color = resolvedIconColor, modifier = Modifier.size((size.value * 0.5f).dp))
         }
     }
 }
