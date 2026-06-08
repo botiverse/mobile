@@ -12,6 +12,7 @@ import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.SyncResumeResponse
 import ai.slock.compose.model.TaskCreated
+import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadId
@@ -143,14 +144,8 @@ class ComposeLocalWriteThrough(
             is MessageUpdated -> writeRealtimeMessages(serverId, listOf(event.message), incrementUnread = false)
             is SyncResumeResponse -> writeRealtimeMessages(serverId, event.messages, incrementUnread = true)
             is ThreadUpdated -> writeThreadMetadata(serverId, event)
-            is TaskCreated -> {
-                writeRealtimeTasks(event.tasks)
-                false
-            }
-            is TaskUpdated -> {
-                writeRealtimeTasks(listOf(event.task))
-                false
-            }
+            is TaskCreated -> writeRealtimeTasks(event.tasks)
+            is TaskUpdated -> writeRealtimeTasks(listOf(event.task))
             is ai.slock.compose.model.MemberPresenceUpdated -> updateHomePresence(serverId, event)
             is Heartbeat -> {
                 logger("write_realtime_skip type=heartbeat seq=${event.seq}")
@@ -201,18 +196,56 @@ class ComposeLocalWriteThrough(
                         conversation = updatedSnapshot.conversation.copy(threadId = aliasThreadId)
                     )
                 }
-        val existingSnapshot = store.readThread(updatedSnapshot.conversation.threadId)
-        val existingAliasSnapshot = aliasSnapshot?.let { store.readThread(it.conversation.threadId) }
-        if (existingSnapshot == updatedSnapshot && (aliasSnapshot == null || existingAliasSnapshot == aliasSnapshot)) {
+        val wroteThread =
+            writeThreadPatch(
+                snapshot = updatedSnapshot,
+                source = source,
+                streamChannelId = streamChannelId,
+                rawMessageCount = snapshot.messages.size,
+                hasParent = resolvedParentMessage != null,
+                alias = false
+            )
+        val wroteAlias =
+            aliasSnapshot?.let { alias ->
+                writeThreadPatch(
+                    snapshot = alias,
+                    source = source,
+                    streamChannelId = streamChannelId,
+                    rawMessageCount = snapshot.messages.size,
+                    hasParent = resolvedParentMessage != null,
+                    alias = true
+                )
+            } ?: false
+        return wroteThread || wroteAlias
+    }
+
+    private suspend fun writeThreadPatch(
+        snapshot: ThreadSnapshot,
+        source: String,
+        streamChannelId: ChannelId,
+        rawMessageCount: Int,
+        hasParent: Boolean,
+        alias: Boolean = false
+    ): Boolean {
+        val existingSnapshot = store.readThread(snapshot.conversation.threadId)
+        val patch = snapshot.reduceThreadSnapshotFrom(existingSnapshot)
+        if (!patch.changed) {
             logger(
-                "write_thread_skip source=$source reason=unchanged threadId=${conversation.threadId.value} messages=${snapshot.messages.size} lastSeq=${updatedSnapshot.lastSeq}"
+                "write_thread_skip source=$source reason=unchanged threadId=${snapshot.conversation.threadId.value} " +
+                    "selectorMessages=${patch.selector.messageIds.size} selectorTasks=${patch.selector.taskIds.size} " +
+                    "lastSeq=${patch.selector.lastSeq} alias=$alias"
             )
             return false
         }
-        store.writeThread(updatedSnapshot)
-        aliasSnapshot?.let { store.writeThread(it) }
+        store.writeThread(patch.snapshot)
         logger(
-            "write_thread source=$source threadId=${conversation.threadId.value} streamChannelId=${streamChannelId.value} messages=${snapshot.messages.size} parent=${resolvedParentMessage != null} tasks=${snapshot.tasks.size} lastSeq=${updatedSnapshot.lastSeq}"
+            "thread_patch source=$source threadId=${snapshot.conversation.threadId.value} " +
+                "streamChannelId=${streamChannelId.value} timelineChanged=${patch.timelineChanged} " +
+                "changedMessages=${patch.changedMessageIds.size} changedMessageIds=${patch.changedMessageIds.logIds { it.value }} " +
+                "changedTasks=${patch.changedTaskIds.size} changedTaskIds=${patch.changedTaskIds.logIds { it.value }} " +
+                "originChanged=${patch.originChanged} selectorMessages=${patch.selector.messageIds.size} " +
+                "selectorTasks=${patch.selector.taskIds.size} lastSeq=${patch.selector.lastSeq} " +
+                "rawMessages=$rawMessageCount parent=$hasParent alias=$alias"
         )
         return true
     }
@@ -224,25 +257,33 @@ class ComposeLocalWriteThrough(
     ): Boolean {
         if (messages.isEmpty()) return false
         var wroteHome = false
+        var wroteThread = false
         messages.groupBy { message -> message.channelId ?: ChannelId(message.threadId.value) }
             .forEach { (streamChannelId, streamMessages) ->
                 val threadId = ThreadId(streamChannelId.value)
                 val existing = store.readThread(threadId)
                 if (existing != null) {
-                    store.writeThread(
+                    val updated =
                         existing.copy(
-                            messages = (existing.messages + streamMessages).dedupeAndSortMessages(),
+                            messages = existing.messages.mergeRealtimeMessages(streamMessages),
                             lastSeq =
                                 maxOf(
                                     existing.lastSeq,
                                     streamMessages.latestSeq()
                                 )
                         )
-                    )
+                    wroteThread =
+                        writeThreadPatch(
+                            snapshot = updated,
+                            source = "realtime_message",
+                            streamChannelId = streamChannelId,
+                            rawMessageCount = streamMessages.size,
+                            hasParent = updated.parentMessage != null
+                        ) || wroteThread
                 }
                 wroteHome = updateHomePreview(serverId, streamChannelId, streamMessages, incrementUnread) || wroteHome
             }
-        return wroteHome
+        return wroteHome || wroteThread
     }
 
     private suspend fun writeThreadMetadata(serverId: ServerId, event: ThreadUpdated): Boolean {
@@ -253,23 +294,50 @@ class ComposeLocalWriteThrough(
                 directMessages =
                     home.directMessages.map { conversation -> conversation.withThreadMetadata(event) }
             )
-        if (updatedHome == home) return false
-        store.writeHome(updatedHome)
-        logger(
-            "write_thread_metadata parentMessageId=${event.parentMessageId.value} threadChannelId=${event.threadChannelId.value} replyCount=${event.replyCount}"
-        )
-        return true
+        val wroteHome =
+            if (updatedHome != home) {
+                store.writeHome(updatedHome)
+                logger(
+                    "write_thread_metadata parentMessageId=${event.parentMessageId.value} threadChannelId=${event.threadChannelId.value} replyCount=${event.replyCount}"
+                )
+                true
+            } else {
+                false
+            }
+        var wroteThread = false
+        home.threadIdsForMetadata(event).forEach { threadId ->
+            val existing = store.readThread(threadId) ?: return@forEach
+            val patched = existing.withThreadMetadata(event)
+            val streamChannelId = patched.conversation.messageStreamChannelId()
+            wroteThread =
+                writeThreadPatch(
+                    snapshot = patched,
+                    source = "thread_metadata",
+                    streamChannelId = streamChannelId,
+                    rawMessageCount = patched.messages.size,
+                    hasParent = patched.parentMessage != null
+                ) || wroteThread
+        }
+        return wroteHome || wroteThread
     }
 
-    private suspend fun writeRealtimeTasks(tasks: List<ai.slock.compose.model.TaskSummary>) {
-        if (tasks.isEmpty()) return
+    private suspend fun writeRealtimeTasks(tasks: List<ai.slock.compose.model.TaskSummary>): Boolean {
+        if (tasks.isEmpty()) return false
+        var wroteThread = false
         tasks.groupBy { it.threadId }.forEach { (threadId, threadTasks) ->
             if (threadId == null) return@forEach
             val existing = store.readThread(threadId) ?: return@forEach
-            store.writeThread(
-                existing.copy(tasks = (existing.tasks + threadTasks).distinctBy { it.id })
-            )
+            val updated = existing.copy(tasks = existing.tasks.mergeThreadTasks(threadTasks))
+            wroteThread =
+                writeThreadPatch(
+                    snapshot = updated,
+                    source = "realtime_task",
+                    streamChannelId = updated.conversation.messageStreamChannelId(),
+                    rawMessageCount = updated.messages.size,
+                    hasParent = updated.parentMessage != null
+                ) || wroteThread
         }
+        return wroteThread
     }
 
     private suspend fun updateHomePresence(
@@ -326,6 +394,128 @@ class ComposeLocalWriteThrough(
         store.writeHome(updatedHome)
         return true
     }
+}
+
+private data class ThreadTimelineSelector(
+    val messageIds: List<MessageId>,
+    val taskIds: List<TaskId>,
+    val parentMessageId: MessageId?,
+    val lastSeq: Long
+)
+
+private data class ThreadSnapshotPatch(
+    val snapshot: ThreadSnapshot,
+    val selector: ThreadTimelineSelector,
+    val changed: Boolean,
+    val timelineChanged: Boolean,
+    val changedMessageIds: List<MessageId>,
+    val changedTaskIds: List<TaskId>,
+    val originChanged: Boolean
+)
+
+private data class StableEntityMerge<T, Id>(
+    val items: List<T>,
+    val changedIds: List<Id>
+)
+
+private fun ThreadSnapshot.reduceThreadSnapshotFrom(previous: ThreadSnapshot?): ThreadSnapshotPatch {
+    val selector = threadTimelineSelector()
+    if (previous == null) {
+        return ThreadSnapshotPatch(
+            snapshot = this,
+            selector = selector,
+            changed = true,
+            timelineChanged = true,
+            changedMessageIds = messages.map { it.id },
+            changedTaskIds = tasks.map { it.id },
+            originChanged = parentMessage != null
+        )
+    }
+    val previousSelector = previous.threadTimelineSelector()
+    val stableMessages =
+        messages.mergeStableThreadEntitiesFrom(previous.messages, keySelector = { message -> message.id })
+    val stableTasks =
+        tasks.mergeStableThreadEntitiesFrom(previous.tasks, keySelector = { task -> task.id })
+    val stableParentMessage =
+        when {
+            parentMessage == null -> null
+            parentMessage == previous.parentMessage -> previous.parentMessage
+            else -> parentMessage
+        }
+    val stableSnapshot =
+        copy(
+            messages = stableMessages.items,
+            parentMessage = stableParentMessage,
+            tasks = stableTasks.items
+        )
+    val originChanged = parentMessage != previous.parentMessage
+    val timelineChanged =
+        selector.messageIds != previousSelector.messageIds ||
+            selector.taskIds != previousSelector.taskIds ||
+            selector.parentMessageId != previousSelector.parentMessageId
+    return ThreadSnapshotPatch(
+        snapshot = stableSnapshot,
+        selector = selector,
+        changed = stableSnapshot != previous,
+        timelineChanged = timelineChanged,
+        changedMessageIds = stableMessages.changedIds,
+        changedTaskIds = stableTasks.changedIds,
+        originChanged = originChanged
+    )
+}
+
+private fun ThreadSnapshot.threadTimelineSelector(): ThreadTimelineSelector =
+    ThreadTimelineSelector(
+        messageIds = messages.map { it.id },
+        taskIds = tasks.map { it.id },
+        parentMessageId = parentMessage?.id,
+        lastSeq = lastSeq
+    )
+
+private inline fun <T, Id> List<T>.mergeStableThreadEntitiesFrom(
+    previous: List<T>,
+    keySelector: (T) -> Id
+): StableEntityMerge<T, Id> {
+    if (isEmpty()) {
+        return StableEntityMerge(
+            items = this,
+            changedIds = emptyList()
+        )
+    }
+    val previousByKey = previous.associateBy(keySelector)
+    val changedIds = mutableListOf<Id>()
+    var reusedAnyReference = false
+    val stableItems =
+        map { incoming ->
+            val id = keySelector(incoming)
+            val previousItem = previousByKey[id]
+            when {
+                previousItem == null -> {
+                    changedIds += id
+                    incoming
+                }
+                previousItem == incoming -> {
+                    reusedAnyReference = reusedAnyReference || previousItem !== incoming
+                    previousItem
+                }
+                else -> {
+                    changedIds += id
+                    incoming
+                }
+            }
+        }
+    val fullyMatchesPrevious =
+        stableItems.size == previous.size &&
+            stableItems.indices.all { index -> stableItems[index] === previous[index] }
+    return StableEntityMerge(
+        items =
+            when {
+                fullyMatchesPrevious -> previous
+                reusedAnyReference -> stableItems
+                else -> this
+            },
+        changedIds = changedIds
+    )
 }
 
 internal fun ConversationSummary.withResolvedReplyThreadMetadata(
@@ -513,6 +703,56 @@ private fun ConversationSummary.withThreadMetadata(event: ThreadUpdated): Conver
         this
     }
 
+private fun HomeSnapshot.threadIdsForMetadata(event: ThreadUpdated): List<ThreadId> =
+    (channels + directMessages)
+        .flatMap { conversation -> conversation.threadIdsForMetadata(event) }
+        .distinct()
+
+private fun ConversationSummary.threadIdsForMetadata(event: ThreadUpdated): List<ThreadId> {
+    val ids = mutableListOf<ThreadId>()
+    if (lastMessageId == event.parentMessageId || thread?.parentMessageId == event.parentMessageId) {
+        ids += threadId
+    }
+    val parentChannelId = channelId ?: thread?.parentChannelId
+    if (parentChannelId != null) {
+        ids += threadIdentity(parentChannelId, event.parentMessageId)
+    }
+    ids += ThreadId(event.threadChannelId.value)
+    return ids.distinct()
+}
+
+private fun ThreadSnapshot.withThreadMetadata(event: ThreadUpdated): ThreadSnapshot {
+    fun Message.withMetadata(): Message =
+        if (id == event.parentMessageId) {
+            copy(
+                threadChannelId = event.threadChannelId,
+                replyCount = event.replyCount,
+                unreadReplyCount = event.unreadCount ?: unreadReplyCount,
+                firstUnreadReplyMessageId = event.firstUnreadMessageId
+            )
+        } else {
+            this
+        }
+    return copy(
+        conversation = conversation.withThreadMetadata(event),
+        parentMessage = parentMessage?.withMetadata(),
+        messages = messages.map { message -> message.withMetadata() }
+    )
+}
+
+private fun List<ai.slock.compose.model.TaskSummary>.mergeThreadTasks(
+    incoming: List<ai.slock.compose.model.TaskSummary>
+): List<ai.slock.compose.model.TaskSummary> {
+    if (incoming.isEmpty()) return this
+    val incomingById = incoming.associateBy { it.id }
+    val replacedIds = mutableSetOf<TaskId>()
+    val merged =
+        map { task ->
+            incomingById[task.id]?.also { replacedIds += task.id } ?: task
+        } + incoming.filterNot { it.id in replacedIds }
+    return merged.distinctBy { it.id }
+}
+
 private fun List<Message>.dedupeAndSortMessages(): List<Message> =
     distinctBy { it.id }.sortedWith(
         compareBy<Message> { it.timestampLabel.isBlank() }
@@ -521,8 +761,17 @@ private fun List<Message>.dedupeAndSortMessages(): List<Message> =
             .thenBy { it.id.value }
     )
 
+private fun List<Message>.mergeRealtimeMessages(incoming: List<Message>): List<Message> {
+    val byId = associateBy { it.id }.toMutableMap()
+    incoming.forEach { message -> byId[message.id] = message }
+    return byId.values.toList().dedupeAndSortMessages()
+}
+
 private fun List<Message>.latestSeq(): Long =
     maxOfOrNull { it.seq ?: 0L } ?: 0L
+
+private inline fun <T> List<T>.logIds(crossinline value: (T) -> String): String =
+    take(8).joinToString(prefix = "[", postfix = if (size > 8) ",…]" else "]") { value(it) }
 
 private fun <T> DataResult<T>.localWriteSkipReason(): String =
     when (this) {

@@ -9,11 +9,16 @@ import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.ThreadId
+import ai.slock.compose.model.ThreadUpdated
+import ai.slock.compose.model.TaskId
+import ai.slock.compose.model.TaskStatus
+import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.threadIdentity
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -138,8 +143,75 @@ class ComposeLocalWriteThroughTest {
         writer.writeThreadResult(DataResult.Content(snapshot), source = "test_thread")
 
         assertEquals(snapshot.messages.single().id, store.readThread(ThreadId("channel-1"))?.messages?.single()?.id)
-        assertEquals(1, logs.count { it.startsWith("write_thread source=test_thread") })
+        assertEquals(1, logs.count { it.startsWith("thread_patch source=test_thread") })
         assertEquals(1, logs.count { it.startsWith("write_thread_skip source=test_thread reason=unchanged") })
+    }
+
+    @Test
+    fun threadSnapshotWriteReducesToChangedMessagePatchBeforeStoreWrite() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store, logger = logs::add)
+        val firstMessage = message("m1", "channel-1", "channel-1", seq = 1, body = "old body")
+        val secondMessage = message("m2", "channel-1", "channel-1", seq = 2, body = "same body")
+        store.writeThread(
+            ThreadSnapshot(
+                conversation = channel(),
+                messages = listOf(firstMessage, secondMessage),
+                lastSeq = 2
+            )
+        )
+        val incoming =
+            ThreadSnapshot(
+                conversation = channel(),
+                messages =
+                    listOf(
+                        firstMessage.copy(body = "edited body"),
+                        secondMessage.copy()
+                    ),
+                lastSeq = 2
+            )
+
+        writer.writeThreadResult(DataResult.Content(incoming), source = "test_thread")
+
+        val cachedMessages = store.readThread(ThreadId("channel-1"))?.messages.orEmpty()
+        assertEquals("edited body", cachedMessages[0].body)
+        assertTrue(cachedMessages[0] !== firstMessage)
+        assertTrue(cachedMessages[1] === secondMessage)
+        assertTrue(logs.any { it.contains("thread_patch source=test_thread") && it.contains("timelineChanged=false") && it.contains("changedMessageIds=[m1]") })
+    }
+
+    @Test
+    fun paginationAppendKeepsExistingMessageEntityReferences() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store, logger = logs::add)
+        val firstMessage = message("m1", "channel-1", "channel-1", seq = 1)
+        val secondMessage = message("m2", "channel-1", "channel-1", seq = 2)
+        store.writeThread(
+            ThreadSnapshot(
+                conversation = channel(),
+                messages = listOf(firstMessage),
+                lastSeq = 1
+            )
+        )
+
+        writer.writeThreadResult(
+            DataResult.Content(
+                ThreadSnapshot(
+                    conversation = channel(),
+                    messages = listOf(firstMessage.copy(), secondMessage),
+                    lastSeq = 2
+                )
+            ),
+            source = "test_pagination"
+        )
+
+        val cachedMessages = store.readThread(ThreadId("channel-1"))?.messages.orEmpty()
+        assertEquals(listOf("m1", "m2"), cachedMessages.map { it.id.value })
+        assertTrue(cachedMessages[0] === firstMessage)
+        assertTrue(cachedMessages[1] === secondMessage)
+        assertTrue(logs.any { it.contains("thread_patch source=test_pagination") && it.contains("timelineChanged=true") && it.contains("changedMessageIds=[m2]") })
     }
 
     @Test
@@ -165,6 +237,120 @@ class ComposeLocalWriteThroughTest {
         val homeChannel = store.readHome(serverId)?.channels?.single()
         assertEquals("new body", homeChannel?.lastMessagePreview)
         assertEquals(1, homeChannel?.unreadCount)
+    }
+
+    @Test
+    fun realtimeMessageUpdateUsesSameThreadPatchReducer() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store, logger = logs::add)
+        val firstMessage = message("m1", "channel-1", "channel-1", seq = 1, body = "old body")
+        val secondMessage = message("m2", "channel-1", "channel-1", seq = 2, body = "same body")
+        store.writeHome(home(channels = listOf(channel())))
+        store.writeThread(
+            ThreadSnapshot(
+                conversation = channel(),
+                messages = listOf(firstMessage, secondMessage),
+                lastSeq = 2
+            )
+        )
+
+        val wrote =
+            writer.writeRealtimeEvent(
+                serverId,
+                MessageUpdated(firstMessage.copy(body = "edited body"))
+            )
+
+        val cachedMessages = store.readThread(ThreadId("channel-1"))?.messages.orEmpty()
+        assertEquals(true, wrote)
+        assertEquals("edited body", cachedMessages[0].body)
+        assertTrue(cachedMessages[1] === secondMessage)
+        assertTrue(logs.any { it.contains("thread_patch source=realtime_message") && it.contains("changedMessageIds=[m1]") })
+    }
+
+    @Test
+    fun threadMetadataPatchesCachedParentMessageWithoutReplacingTimeline() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store, logger = logs::add)
+        val parent = message("parent-1", "channel-1", "channel-1", seq = 1, body = "parent")
+        val reply = message("reply-1", "thread-parent-1", "thread-parent-1", seq = 2, body = "reply")
+        val threadId = threadIdentity(ChannelId("channel-1"), MessageId("parent-1"))
+        store.writeHome(home(channels = listOf(channel().copy(lastMessageId = MessageId("parent-1")))))
+        store.writeThread(
+            ThreadSnapshot(
+                conversation =
+                    channel("thread-parent-1").copy(
+                        threadId = threadId,
+                        channelId = ChannelId("channel-1"),
+                        kind = ConversationKind.Thread
+                    ),
+                messages = listOf(parent, reply),
+                parentMessage = parent,
+                lastSeq = 2
+            )
+        )
+
+        val wrote =
+            writer.writeRealtimeEvent(
+                serverId,
+                ThreadUpdated(
+                    parentMessageId = MessageId("parent-1"),
+                    threadChannelId = ChannelId("thread-parent-1"),
+                    replyCount = 4,
+                    lastReplyAt = "12:05",
+                    participantIds = emptyList(),
+                    unreadCount = 2,
+                    firstUnreadMessageId = MessageId("reply-1")
+                )
+            )
+
+        val cached = store.readThread(threadId)
+        val cachedMessages = cached?.messages.orEmpty()
+        assertEquals(true, wrote)
+        assertEquals(4, cached?.parentMessage?.replyCount)
+        assertEquals(4, cachedMessages[0].replyCount)
+        assertTrue(cachedMessages[1] === reply)
+        assertTrue(logs.any { it.contains("thread_patch source=thread_metadata") && it.contains("timelineChanged=false") && it.contains("changedMessageIds=[parent-1]") })
+    }
+
+    @Test
+    fun realtimeTaskPatchKeepsExistingTaskReferences() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store, logger = logs::add)
+        val taskOne =
+            task(
+                id = "task-1",
+                title = "Old one",
+                status = TaskStatus.Todo
+            )
+        val taskTwo =
+            task(
+                id = "task-2",
+                title = "Same two",
+                status = TaskStatus.Todo
+            )
+        store.writeThread(
+            ThreadSnapshot(
+                conversation = channel(),
+                messages = listOf(message("m1", "channel-1", "channel-1", seq = 1)),
+                tasks = listOf(taskOne, taskTwo),
+                lastSeq = 1
+            )
+        )
+
+        writer.writeRealtimeEvent(
+            serverId,
+            ai.slock.compose.model.TaskUpdated(taskOne.copy(title = "Updated one", status = TaskStatus.Done))
+        )
+
+        val cachedTasks = store.readThread(ThreadId("channel-1"))?.tasks.orEmpty()
+        assertEquals("Updated one", cachedTasks[0].title)
+        assertEquals(TaskStatus.Done, cachedTasks[0].status)
+        assertTrue(cachedTasks[0] !== taskOne)
+        assertTrue(cachedTasks[1] === taskTwo)
+        assertTrue(logs.any { it.contains("thread_patch source=realtime_task") && it.contains("changedTaskIds=[task-1]") })
     }
 
     @Test
@@ -311,6 +497,21 @@ class ComposeLocalWriteThroughTest {
             timestampLabel = "12:00",
             body = body,
             replyCount = replyCount
+        )
+
+    private fun task(
+        id: String,
+        title: String,
+        status: TaskStatus,
+        threadId: String = "channel-1"
+    ): TaskSummary =
+        TaskSummary(
+            id = TaskId(id),
+            title = title,
+            status = status,
+            taskNumber = id.substringAfter("task-").toIntOrNull(),
+            threadId = ThreadId(threadId),
+            updatedAtLabel = "12:00"
         )
 
     private companion object {
