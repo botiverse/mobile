@@ -200,7 +200,8 @@ private fun WireMessage.toMessageItem(currentUserId: String?): KuiklyThreadMessa
         taskId = if (taskNumber != null || taskStatus != null) id else null,
         taskNumber = taskNumber,
         taskStatus = taskStatus,
-        taskAssigneeName = firstNonBlank(taskAssigneeName, claimedByName, taskClaimedByName, taskAssigneeId),
+        taskAssigneeId = taskAssigneeId?.trim()?.takeIf { it.isNotBlank() },
+        taskAssigneeName = firstNonBlank(taskAssigneeName, claimedByName, taskClaimedByName),
         reactions = reactions.map { it.toReactionItem(currentUserId) }.filter { it.count > 0 },
         attachments = attachments.mapIndexed { i, a -> a.toAttachmentItem(i) }
     )

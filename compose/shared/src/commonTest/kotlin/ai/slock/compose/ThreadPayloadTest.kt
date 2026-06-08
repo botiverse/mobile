@@ -707,6 +707,102 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun hidesRawUuidTaskAssigneeUntilMemberNameCanBeResolved() {
+        val assigneeId = "9d2a923b-7d46-43c3-bf5f-d12a6df8ef12"
+        val base =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "general",
+                sourceThreadId = "channel-1",
+                status = "loading"
+            )
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "artin@slock.ai"),
+                accessToken = "access",
+                refreshToken = "refresh"
+            )
+
+        val payload =
+            buildSharedThreadPayloadFromMessagesPage(
+                basePayload = base,
+                session = session,
+                page =
+                    ThreadMessagesPage(
+                        messages =
+                            listOf(
+                                WireMessage(
+                                    id = "m1",
+                                    channelId = "channel-1",
+                                    senderType = "user",
+                                    senderId = "u1",
+                                    senderName = "Artin",
+                                    content = "please ship #236",
+                                    taskNumber = 236,
+                                    taskStatus = "InReview",
+                                    taskAssigneeId = assigneeId
+                                )
+                            ),
+                        canLoadMoreBefore = false,
+                        canLoadMoreAfter = false
+                    )
+            )
+
+        val message = payload.messages.first()
+        assertEquals(assigneeId, message.taskAssigneeId)
+        assertEquals(null, message.taskAssigneeName)
+        assertEquals("#236", threadMessageTaskMetaLabel(message))
+    }
+
+    @Test
+    fun resolvesUuidTaskAssigneeIdFromThreadMembers() {
+        val assigneeId = "9d2a923b-7d46-43c3-bf5f-d12a6df8ef12"
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "thread-1",
+                      "members": [
+                        {
+                          "id": "$assigneeId",
+                          "displayName": "Android Developer",
+                          "handle": "Android-Developer",
+                          "kind": "agent"
+                        }
+                      ],
+                      "messages": [
+                        {
+                          "id": "m1",
+                          "authorId": "user_artin",
+                          "authorName": "Artin",
+                          "body": "ship task",
+                          "taskId": "task-236",
+                          "taskNumber": 236,
+                          "taskStatus": "InReview",
+                          "taskAssigneeId": "$assigneeId",
+                          "taskAssigneeName": "$assigneeId"
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                fallbackPageData = "{}",
+                instanceId = "fallback"
+            )
+
+        val message = payload.messages.first()
+        assertEquals(assigneeId, message.taskAssigneeId)
+        assertEquals("Android Developer", payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName, message.taskAssigneeId))
+        assertEquals(
+            "#236 @Android Developer",
+            threadMessageTaskMetaLabel(
+                message,
+                payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName, message.taskAssigneeId)
+            )
+        )
+    }
+
+    @Test
     fun threadListBoundsUseMeasuredItemsAndNeverNegativeBottomOffset() {
         assertEquals(0, threadMessagesBeyondBoundsItemCount(-1))
         assertEquals(1, threadMessagesBeyondBoundsItemCount(1))

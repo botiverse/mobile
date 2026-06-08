@@ -255,6 +255,7 @@ internal data class KuiklyThreadMessageItem(
     val taskId: String? = null,
     val taskNumber: Int? = null,
     val taskStatus: String? = null,
+    val taskAssigneeId: String? = null,
     val taskAssigneeName: String? = null,
     val reactions: List<KuiklyThreadReactionItem> = emptyList(),
     val attachments: List<KuiklyThreadAttachmentItem> = emptyList()
@@ -314,6 +315,7 @@ internal data class KuiklyThreadTaskItem(
     val title: String,
     val status: String,
     val taskNumber: Int? = null,
+    val assigneeId: String? = null,
     val assigneeName: String? = null,
     val updatedAtLabel: String = ""
 )
@@ -362,15 +364,22 @@ internal fun KuiklyThreadScreenPayload.resolveMarkdownTagDisplayLabel(tag: Threa
     }
 
 internal fun KuiklyThreadScreenPayload.resolveTaskAssigneeDisplayName(
-    value: String?
+    value: String?,
+    id: String? = null
 ): String? {
-    val normalized = value?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() } ?: return null
-    return members.firstOrNull { member ->
-        member.id.equals(normalized, ignoreCase = true) ||
-            member.handle.removePrefix("@").equals(normalized, ignoreCase = true) ||
-            member.displayName.equals(normalized, ignoreCase = true)
-    }?.displayName?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
-        ?: normalized
+    val normalizedId = id?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
+    val normalizedValue = value?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
+    val member =
+        listOfNotNull(normalizedId, normalizedValue)
+            .firstNotNullOfOrNull { candidate ->
+                members.firstOrNull { member ->
+                    member.id.equals(candidate, ignoreCase = true) ||
+                        member.handle.removePrefix("@").equals(candidate, ignoreCase = true) ||
+                        member.displayName.equals(candidate, ignoreCase = true)
+                }
+            }
+    return member?.displayName?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
+        ?: normalizedValue?.takeIf { it.isDisplaySafeTaskAssigneeName(normalizedId) }
 }
 
 private fun KuiklyThreadScreenPayload.findMarkdownTaskId(tag: ThreadMarkdownTag): String? {
@@ -538,7 +547,10 @@ private fun ThreadMessageVisualScreen() {
                 highlightedMentions = emptySet(),
                 alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                 showReplyAction = payload.showReplyActions,
-                resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName),
+                resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
+                    value = message.taskAssigneeName,
+                    id = message.taskAssigneeId
+                ),
                 resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
                 taskOpenEnabled = payload.showTaskOpenActions,
                 taskStatusActionsEnabled = payload.showTaskStatusActions,
@@ -2625,7 +2637,10 @@ private fun ThreadMessagesList(
                         highlightedMentions = highlightedMentions,
                         showReplyAction = payload.showReplyActions,
                         timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
-                        resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName),
+                        resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
+                            value = message.taskAssigneeName,
+                            id = message.taskAssigneeId
+                        ),
                         resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
                         taskOpenEnabled = payload.showTaskOpenActions,
                         taskStatusActionsEnabled = payload.showTaskStatusActions,
@@ -2644,7 +2659,10 @@ private fun ThreadMessagesList(
                         highlightedMentions = highlightedMentions,
                         alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                         showReplyAction = payload.showReplyActions,
-                        resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName),
+                        resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
+                            value = message.taskAssigneeName,
+                            id = message.taskAssigneeId
+                        ),
                         resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
                         taskOpenEnabled = payload.showTaskOpenActions,
                         taskStatusActionsEnabled = payload.showTaskStatusActions,
@@ -3426,7 +3444,10 @@ internal fun threadMessageTaskMetaLabel(
             ?.trim()
             ?.removePrefix("@")
             ?.takeIf { it.isNotBlank() }
-            ?: message.taskAssigneeName?.trim()?.takeIf { it.isNotBlank() }?.removePrefix("@")
+            ?: message.taskAssigneeName
+                ?.trim()
+                ?.removePrefix("@")
+                ?.takeIf { it.isDisplaySafeTaskAssigneeName(message.taskAssigneeId) }
     if (number == null && assignee == null && message.taskStatus.isNullOrBlank() && message.taskId.isNullOrBlank()) {
         return null
     }
@@ -3435,6 +3456,27 @@ internal fun threadMessageTaskMetaLabel(
         assignee?.let {
             append(" @")
             append(it)
+        }
+    }
+}
+
+internal fun String.isDisplaySafeTaskAssigneeName(assigneeId: String? = null): Boolean {
+    val trimmed = trim().removePrefix("@")
+    if (trimmed.isBlank()) return false
+    if (trimmed.isUuidLike()) return false
+    val normalizedId = assigneeId?.trim()?.removePrefix("@")
+    return normalizedId == null || !trimmed.equals(normalizedId, ignoreCase = true) || !normalizedId.isUuidLike()
+}
+
+private fun String.isUuidLike(): Boolean {
+    val trimmed = trim()
+    if (trimmed.length != 36) return false
+    val dashPositions = setOf(8, 13, 18, 23)
+    return trimmed.withIndex().all { (index, char) ->
+        if (index in dashPositions) {
+            char == '-'
+        } else {
+            char in '0'..'9' || char in 'a'..'f' || char in 'A'..'F'
         }
     }
 }

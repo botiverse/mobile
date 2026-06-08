@@ -1585,6 +1585,7 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(update: KuiklyThreadMess
         taskId = update.taskId ?: taskId,
         taskNumber = update.taskNumber ?: taskNumber,
         taskStatus = update.taskStatus ?: taskStatus,
+        taskAssigneeId = update.taskAssigneeId ?: taskAssigneeId,
         taskAssigneeName = update.taskAssigneeName ?: taskAssigneeName,
         reactions = update.reactions.ifEmpty { reactions },
         attachments = update.attachments.ifEmpty { attachments }
@@ -1659,6 +1660,7 @@ private fun KuiklyThreadMessageItem.toTaskItemOrNull(): KuiklyThreadTaskItem? {
         title = body.ifBlank { taskNumber?.let { "Task #$it" } ?: "Task" },
         status = taskStatus ?: TaskStatus.Todo.name,
         taskNumber = taskNumber,
+        assigneeId = taskAssigneeId,
         assigneeName = taskAssigneeName,
         updatedAtLabel = timestampLabel
     )
@@ -1670,12 +1672,13 @@ private fun KuiklyThreadMessageItem.withRealtimeTask(tasks: List<KuiklyThreadTas
         taskId = task.id,
         taskNumber = task.taskNumber ?: taskNumber,
         taskStatus = task.status,
+        taskAssigneeId = task.assigneeId ?: taskAssigneeId,
         taskAssigneeName = task.assigneeName ?: taskAssigneeName
     )
 }
 
 private fun KuiklyThreadMessageItem.withoutTask(): KuiklyThreadMessageItem =
-    copy(taskId = null, taskNumber = null, taskStatus = null, taskAssigneeName = null)
+    copy(taskId = null, taskNumber = null, taskStatus = null, taskAssigneeId = null, taskAssigneeName = null)
 
 private fun KuiklyThreadTaskItem.matchesMessage(message: KuiklyThreadMessageItem): Boolean =
     id == message.taskId ||
@@ -1770,9 +1773,10 @@ private fun KuiklyThreadMessageItem.toMessage(
                 messageId = MessageId(id),
                 channelId = channelId,
                 threadId = threadId,
-                assignee = taskAssigneeName?.takeIf { it.isNotBlank() }?.let { name ->
+                assignee = taskAssigneeId?.takeIf { it.isNotBlank() }?.let { id ->
+                    val name = taskAssigneeName?.takeIf { it.isDisplaySafeTaskAssigneeName(id) } ?: id
                     MemberProfile(
-                        id = MemberId(name),
+                        id = MemberId(id),
                         displayName = name,
                         handle = name.removePrefix("@"),
                         kind = MemberKind.Human
@@ -1849,6 +1853,7 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
         taskId = task?.id?.value,
         taskNumber = task?.taskNumber,
         taskStatus = task?.status?.name,
+        taskAssigneeId = task?.assignee?.id?.value,
         taskAssigneeName = task?.assignee?.displayName,
         attachments = attachments.map { attachment ->
             KuiklyThreadAttachmentItem(
@@ -1864,17 +1869,21 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
 private fun KuiklyThreadTaskItem.toTaskSummary(
     threadId: ThreadId,
     channelId: ChannelId
-): TaskSummary =
-    TaskSummary(
+): TaskSummary {
+    val assigneeKey =
+        assigneeId?.takeIf { it.isNotBlank() }
+            ?: assigneeName?.takeIf { it.isDisplaySafeTaskAssigneeName() }
+    return TaskSummary(
         id = TaskId(id),
         title = title,
         status = TaskStatus.fromWireValue(status) ?: TaskStatus.Todo,
         taskNumber = taskNumber,
         channelId = channelId,
         threadId = threadId,
-        assignee = assigneeName?.takeIf { it.isNotBlank() }?.let { name ->
+        assignee = assigneeKey?.let { id ->
+            val name = assigneeName?.takeIf { it.isDisplaySafeTaskAssigneeName(id) } ?: id
             MemberProfile(
-                id = MemberId(name),
+                id = MemberId(id),
                 displayName = name,
                 handle = name.removePrefix("@"),
                 kind = MemberKind.Human
@@ -1882,6 +1891,7 @@ private fun KuiklyThreadTaskItem.toTaskSummary(
         },
         updatedAtLabel = updatedAtLabel
     )
+}
 
 private fun TaskSummary.toKuiklyThreadTaskItem(): KuiklyThreadTaskItem =
     KuiklyThreadTaskItem(
@@ -1889,6 +1899,7 @@ private fun TaskSummary.toKuiklyThreadTaskItem(): KuiklyThreadTaskItem =
         title = title,
         status = status.name,
         taskNumber = taskNumber,
+        assigneeId = assignee?.id?.value,
         assigneeName = assignee?.displayName,
         updatedAtLabel = updatedAtLabel
     )
