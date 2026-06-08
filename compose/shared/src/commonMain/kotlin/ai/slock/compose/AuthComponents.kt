@@ -28,6 +28,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
+import com.tencent.kuikly.compose.ui.focus.focusProperties
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -59,6 +60,9 @@ private val AuthInputTextStyle =
     )
 
 private val AuthInputPlaceholderColor = SlockColor.TextBlack.copy(alpha = 0.4f)
+
+private fun Modifier.authStaticTextFocus(): Modifier =
+    focusProperties { canFocus = false }
 
 @Composable
 internal fun AuthScaffold(
@@ -137,7 +141,8 @@ internal fun AuthBrandBlock(modifier: Modifier = Modifier) {
                 color = SlockColor.TextBlack.copy(alpha = 0.52f)
             ),
             maxLines = 2,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.authStaticTextFocus()
         )
     }
 }
@@ -167,7 +172,8 @@ internal fun AuthLogoBadge(text: String, modifier: Modifier = Modifier) {
                     color = SlockColor.BrandYellow
                 ),
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.authStaticTextFocus()
             )
         }
     }
@@ -225,7 +231,8 @@ internal fun AuthTextField(
                         style = AuthInputTextStyle.copy(color = AuthInputPlaceholderColor),
                         color = AuthInputPlaceholderColor,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.authStaticTextFocus()
                     )
                 }
                 TextField(
@@ -249,7 +256,8 @@ internal fun AuthTextField(
             Text(
                 text = errorText,
                 style = SlockType.Caption.copy(color = SlockColor.AccentRed),
-                color = SlockColor.AccentRed
+                color = SlockColor.AccentRed,
+                modifier = Modifier.authStaticTextFocus()
             )
         }
     }
@@ -258,6 +266,7 @@ internal fun AuthTextField(
 @Composable
 internal fun AuthFieldLabel(label: String, required: Boolean = false, optional: Boolean = false) {
     Row(
+        modifier = Modifier.authStaticTextFocus(),
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -344,7 +353,8 @@ internal fun AuthDivider() {
         Text(
             text = "OR",
             style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.authStaticTextFocus()
         )
         Box(Modifier.weight(1f).height(SlockStroke.Default).background(SlockColor.BorderBlack))
     }
@@ -376,7 +386,8 @@ internal fun AuthInlineAction(leading: String, action: String, onClick: () -> Un
         Text(
             text = leading,
             style = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            color = SlockColor.TextBlack,
+            modifier = Modifier.authStaticTextFocus()
         )
         Spacer(Modifier.width(SlockSpacing.Xs))
         Text(
@@ -400,7 +411,8 @@ internal fun AuthError(message: String?) {
         Text(
             text = message,
             style = SlockType.Body.copy(fontSize = 16.sp, lineHeight = 22.sp, color = SlockColor.AccentRed),
-            color = SlockColor.AccentRed
+            color = SlockColor.AccentRed,
+            modifier = Modifier.authStaticTextFocus()
         )
     }
 }
@@ -418,12 +430,14 @@ internal fun AuthSuccessNotice(title: String, detail: String) {
         Text(
             text = title,
             style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            color = SlockColor.TextBlack,
+            modifier = Modifier.authStaticTextFocus()
         )
         Text(
             text = detail,
             style = SlockType.Body.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            color = SlockColor.TextBlack,
+            modifier = Modifier.authStaticTextFocus()
         )
     }
 }

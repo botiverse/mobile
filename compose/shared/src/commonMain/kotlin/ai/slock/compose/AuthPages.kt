@@ -30,6 +30,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
+import com.tencent.kuikly.compose.ui.focus.focusProperties
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -51,6 +52,9 @@ private const val AUTH_LOGIN_INPUTS_VISUAL_PAGE = "compose_auth_login_inputs"
 private const val AUTH_REGISTER_INPUTS_VISUAL_PAGE = "compose_auth_register_inputs"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 private const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
+
+private fun Modifier.authPageStaticTextFocus(): Modifier =
+    focusProperties { canFocus = false }
 
 @Page(LOGIN_PAGE, supportInLocal = true)
 internal class ComposeLoginPage : ai.slock.compose.base.BasePager() {
@@ -331,7 +335,8 @@ internal fun LoginContent(
         Text(
             text = "Sign in",
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            color = SlockColor.TextBlack,
+            modifier = Modifier.authPageStaticTextFocus()
         )
         AuthFormColumn {
             AuthTextField(
@@ -422,7 +427,8 @@ internal fun RegisterContent(
         Text(
             text = "Create account",
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            color = SlockColor.TextBlack,
+            modifier = Modifier.authPageStaticTextFocus()
         )
         AuthFormColumn {
             AuthTextField(
@@ -487,13 +493,15 @@ internal fun ForgotPasswordContent(
         Text(
             text = "Reset password",
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            color = SlockColor.TextBlack,
+            modifier = Modifier.authPageStaticTextFocus()
         )
         Text(
             text = "Enter your email and we’ll send you a link to\nreset your password.",
             style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            modifier = Modifier.authPageStaticTextFocus()
         )
         AuthFormColumn {
             AuthTextField(
@@ -545,12 +553,27 @@ private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> U
         Spacer(Modifier.width(10.dp))
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("I agree to the ", style = AuthTermsTextStyle, color = SlockColor.TextMutedGray)
+                Text(
+                    "I agree to the ",
+                    style = AuthTermsTextStyle,
+                    color = SlockColor.TextMutedGray,
+                    modifier = Modifier.authPageStaticTextFocus()
+                )
                 Text("Terms of Service", style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
-                Text(" and", style = AuthTermsTextStyle, color = SlockColor.TextMutedGray)
+                Text(
+                    " and",
+                    style = AuthTermsTextStyle,
+                    color = SlockColor.TextMutedGray,
+                    modifier = Modifier.authPageStaticTextFocus()
+                )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("acknowledge the ", style = AuthTermsTextStyle, color = SlockColor.TextMutedGray)
+                Text(
+                    "acknowledge the ",
+                    style = AuthTermsTextStyle,
+                    color = SlockColor.TextMutedGray,
+                    modifier = Modifier.authPageStaticTextFocus()
+                )
                 Text("Privacy Policy.", style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
             }
         }
