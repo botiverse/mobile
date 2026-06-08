@@ -18,14 +18,27 @@ The user-facing providers are `react`, `android`, and `harmony`. Providers rende
 The CLI defaults to:
 
 - tool / artifacts repo: the current Slock Compose Android checkout
-- React source repo: `/Users/artin/0Workspace/github.com/botiverse/slock`
+- React source repo: `third_party/slock-source` inside the current Slock
+  Compose Android checkout
 
-Override the React source repo when needed:
+Initialize the pinned React source before running commands that inspect React
+components:
+
+```bash
+git submodule update --init third_party/slock-source
+```
+
+Override the React source repo only for one-off debugging:
 
 ```bash
 node tools/visual-testing/src/cli.mjs scan --react-repo-dir ~/0Workspace/github.com/botiverse/slock
 SLOCK_REACT_REPO_DIR=~/0Workspace/github.com/botiverse/slock node tools/visual-testing/src/cli.mjs capture --providers react
 ```
+
+If the default `third_party/slock-source` checkout is missing or does not
+contain the React visual provider harness, commands fail with a clear error
+instead of silently falling back to another local web checkout. Canonical
+visual alignment should use the pinned `third_party/slock-source` revision.
 
 ## CLI
 

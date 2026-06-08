@@ -7,11 +7,12 @@ import { spawnSync } from "node:child_process";
 
 const packageRoot = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(process.env.SLOCK_VISUAL_REPO_ROOT || findRepoRoot(process.cwd()));
+const defaultReactRepoRoot = path.join(repoRoot, "third_party", "slock-source");
 const reactRepoRoot = path.resolve(
   initialFlagValue(["react-repo-dir", "reactRepoDir"]) ||
     process.env.SLOCK_REACT_REPO_DIR ||
     process.env.SLOCK_VISUAL_REACT_REPO_ROOT ||
-    "/Users/artin/0Workspace/github.com/botiverse/slock",
+    defaultReactRepoRoot,
 );
 const webRoot = path.join(reactRepoRoot, "packages", "web");
 const srcRoot = path.join(webRoot, "src");
@@ -201,6 +202,42 @@ function walk(dir, predicate, acc = []) {
   return acc;
 }
 
+function reactSourceLabel() {
+  const relative = path.relative(repoRoot, reactRepoRoot);
+  return relative && !relative.startsWith("..") ? relative : reactRepoRoot;
+}
+
+function assertReactSourceReady(reason) {
+  const requiredFiles = [
+    path.join(webRoot, "package.json"),
+    path.join(srcRoot, "index.css"),
+    path.join(srcRoot, "components"),
+  ];
+  const missing = requiredFiles.find((item) => !fs.existsSync(item));
+  if (!missing) return;
+
+  const defaultHint = path.resolve(reactRepoRoot) === path.resolve(defaultReactRepoRoot)
+    ? "Run `git submodule update --init third_party/slock-source` from the Android repo, or pass --react-repo-dir /path/to/slock."
+    : "Pass --react-repo-dir /path/to/slock or set SLOCK_REACT_REPO_DIR to a Slock web source checkout.";
+  throw new Error(
+    `React source repo is not ready for ${reason}: missing ${path.relative(reactRepoRoot, missing)} under ${reactSourceLabel()}. ${defaultHint}`,
+  );
+}
+
+function assertReactProviderHarnessReady() {
+  assertReactSourceReady("react capture");
+  const requiredFiles = [
+    path.join(webRoot, "playwright.visual-testing.config.ts"),
+    path.join(srcRoot, "visual-testing", "VisualTestingCases.tsx"),
+  ];
+  const missing = requiredFiles.find((item) => !fs.existsSync(item));
+  if (!missing) return;
+  throw new Error(
+    `React visual provider harness is missing from ${reactSourceLabel()}: ${path.relative(reactRepoRoot, missing)}. ` +
+      "The visual-testing CLI will not fall back to another web checkout; update third_party/slock-source to a revision with the provider harness or pass --react-repo-dir explicitly for a one-off run.",
+  );
+}
+
 function extractThemeTokens(css) {
   const themeMatch = css.match(/@theme\s*\{([\s\S]*?)\n\}/);
   if (!themeMatch) return {};
@@ -281,6 +318,7 @@ function normalizeVariants(item) {
 }
 
 function scanReact() {
+  assertReactSourceReady("scan");
   const componentFiles = walk(path.join(srcRoot, "components"), (file) => /\.(tsx|ts)$/.test(file));
   const inventory = componentFiles.map(extractReactComponent).filter(Boolean);
   const cssTokens = extractThemeTokens(fs.readFileSync(path.join(srcRoot, "index.css"), "utf8"));
@@ -446,6 +484,7 @@ function runExternalProvider(provider, command, visualCase) {
 }
 
 function runReactProvider(cases, flags) {
+  assertReactProviderHarnessReady();
   const env = {
     ...process.env,
     SLOCK_VISUAL_PROVIDER: "react",
@@ -1944,6 +1983,7 @@ ${unknownSections}
 }
 
 function tokenAudit(flags) {
+  assertReactSourceReady("token-audit");
   const androidRepoDir = path.resolve(flags["android-repo-dir"] || process.env.SLOCK_ANDROID_REPO_DIR || defaultAndroidRepoDir);
   const kmpTokenFile = path.join(androidRepoDir, flags["kmp-token-path"] || defaultKmpTokenPath);
   const sharedTokens = readJson(sharedTokensPath);
@@ -1980,6 +2020,7 @@ function tokenAudit(flags) {
     generatedAt: new Date().toISOString(),
     inputs: {
       sharedTokens: path.relative(repoRoot, sharedTokensPath),
+      reactRepoDir: reactRepoRoot,
       androidRepoDir,
       kmpTokenFile: path.relative(androidRepoDir, kmpTokenFile),
     },
@@ -2042,9 +2083,9 @@ function tokenAudit(flags) {
 
 function usage() {
   console.log(`Usage:
-  slock-visual scan
+  slock-visual scan [--react-repo-dir third_party/slock-source]
   slock-visual validate [--manifest artifacts/visual-testing/visual-testing-cases.json]
-  slock-visual token-audit [--android-repo-dir ~/AndroidStudioProjects/Slock] [--allow-token-drift] [--strict-usage]
+  slock-visual token-audit [--react-repo-dir third_party/slock-source] [--android-repo-dir ~/AndroidStudioProjects/Slock] [--allow-token-drift] [--strict-usage]
   slock-visual capture [--providers react,android] [--case case.id] [--command './capture-provider.sh']
   slock-visual capture --providers react
   slock-visual diff [--baseline react] [--current android] [--case case.id] [--category 'app/home/*'] [--include-pending]
@@ -2115,4 +2156,10 @@ function main() {
   }
 }
 
-main();
+try {
+  main();
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`visual-testing: ${message}`);
+  process.exitCode = 1;
+}
