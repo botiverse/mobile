@@ -503,6 +503,44 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun fetchThreadPayloadWithoutSessionReturnsAuthRequiredNoPermission() = runBlocking {
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore()
+            )
+
+        val result = dataSource.fetchThreadPayload(basePayload())
+        val blocker = (result as DataResult.NoPermission).blocker
+
+        assertEquals("auth_required", blocker.code)
+        assertEquals("auth_session", blocker.requiredCapability)
+        assertEquals(0, api.channelMessageCalls)
+    }
+
+    @Test
+    fun openMessageContextWithoutSessionReturnsAuthRequiredNoPermission() = runBlocking {
+        val repository =
+            FakeConversationRepository(
+                messageContextResult = DataResult.Content(threadSnapshot())
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
+                sessionStore = InMemorySlockAuthSessionStore(),
+                conversationRepository = repository
+            )
+
+        val result = dataSource.openMessageContext("message-1", basePayload())
+        val blocker = (result as DataResult.NoPermission).blocker
+
+        assertEquals("auth_required", blocker.code)
+        assertEquals("auth_session", blocker.requiredCapability)
+        assertEquals(0, repository.getMessageContextRequests.size)
+    }
+
+    @Test
     fun fetchThreadPayloadPrefersConversationRepositorySnapshotWhenAvailable() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository = FakeConversationRepository(
@@ -1359,6 +1397,7 @@ class SharedThreadStoreTest {
         var threadResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot()),
         var olderResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot(body = "older repo body", id = "m5", seq = 5)),
         var newerResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot(body = "newer repo body", id = "m12", seq = 12)),
+        var messageContextResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot()),
         var createThreadResult: DataResult<ThreadActionResult> =
             DataResult.Content(
                 ThreadActionResult(
@@ -1375,6 +1414,7 @@ class SharedThreadStoreTest {
         val olderLimits: MutableList<Int> = mutableListOf()
         val newerRequests: MutableList<Pair<ThreadId, Long>> = mutableListOf()
         val newerLimits: MutableList<Int> = mutableListOf()
+        val getMessageContextRequests: MutableList<MessageId> = mutableListOf()
         val createOrOpenRequests: MutableList<Pair<ChannelId, MessageId>> = mutableListOf()
 
         override suspend fun getThread(
@@ -1387,7 +1427,10 @@ class SharedThreadStoreTest {
             return threadResult
         }
 
-        override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> = error("unused")
+        override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> {
+            getMessageContextRequests += messageId
+            return messageContextResult
+        }
 
         override suspend fun loadOlderMessages(
             threadId: ThreadId,

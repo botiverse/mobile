@@ -27,6 +27,18 @@ data class PermissionBlocker(
     val requiredCapability: String? = null
 )
 
+fun PermissionBlocker.isAuthSessionBlocker(): Boolean =
+    code == "auth_required" || requiredCapability == "auth_session"
+
+fun ScreenError.isAuthSessionError(): Boolean =
+    code == "auth_required" || code == "auth_session" || code == "unauthenticated"
+
+fun String?.isAuthSessionErrorCode(): Boolean =
+    this == "auth_required" || this == "auth_session" || this == "unauthenticated"
+
+fun authSessionRequiredResult(): DataResult.NoPermission =
+    DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
+
 inline fun <T, R> DataResult<T>.map(transform: (T) -> R): DataResult<R> =
     when (this) {
         is DataResult.Content -> DataResult.Content(transform(data))

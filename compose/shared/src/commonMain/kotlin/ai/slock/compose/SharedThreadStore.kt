@@ -30,6 +30,7 @@ import ai.slock.compose.data.ThreadSnapshot
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.data.ThreadAttachmentOpenTarget
 import ai.slock.compose.data.ThreadMessagesPage
+import ai.slock.compose.data.authSessionRequiredResult
 import ai.slock.compose.data.map
 import ai.slock.compose.model.Attachment
 import ai.slock.compose.model.AttachmentId
@@ -140,7 +141,7 @@ internal class SharedThreadDataSource(
                 ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
         val session =
             readSession()
-                ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
+                ?: return authSessionRequiredResult()
         val payloadResult =
             if (conversationRepository != null) {
                 fetchThreadPayloadFromRepository(
@@ -196,7 +197,7 @@ internal class SharedThreadDataSource(
         }
         val session =
             readSession()
-                ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
+                ?: return authSessionRequiredResult()
         val contextResult =
             fetchThreadPayloadFromRepository(
                 session = session,
@@ -684,7 +685,7 @@ internal class SharedThreadDataSource(
             ?: return DataResult.Error(ScreenError(code = "thread_parent_message_missing", retryable = false))
         val session =
             readSession()
-                ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
+                ?: return authSessionRequiredResult()
         return fetchThreadPayloadFromRepository(
             session = session,
             fallbackCode = "thread_parent_context_network",
@@ -707,7 +708,7 @@ internal class SharedThreadDataSource(
                 ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
         val session =
             readSession()
-                ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
+                ?: return authSessionRequiredResult()
         return if (conversationRepository != null) {
             fetchThreadPayloadFromRepository(
                 session = session,

@@ -96,6 +96,7 @@ import ai.slock.compose.data.BridgeThreadApi
 import ai.slock.compose.data.CreateChannelRequest
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.isAuthSessionBlocker
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealConversationRepository
@@ -771,6 +772,8 @@ private fun SlockAppShellContent() {
         }
     var activeThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
     var threadBackStack by remember { mutableStateOf<List<KuiklyThreadScreenPayload>>(emptyList()) }
+    var pendingAuthReturnThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
+    var authGateMessage by remember { mutableStateOf<String?>(null) }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
     var createChannelDialogOpen by remember { mutableStateOf(false) }
     var createChannelSubmitting by remember { mutableStateOf(false) }
@@ -823,6 +826,35 @@ private fun SlockAppShellContent() {
     var realtimeLastSeq by remember { mutableStateOf(0L) }
     var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
 
+    fun resetAppShellSessionState(clearReturnThread: Boolean = false) {
+        realtimeLastSeq = 0L
+        realtimeSessionKey = null
+        selectedTab = "home"
+        selectedSettingsDestination = SettingsDestinationHome
+        selectedSettingsComputerId = null
+        selectedHomeDestination = null
+        selectedHomeConversationId = null
+        activeThreadPayload = null
+        threadBackStack = emptyList()
+        if (clearReturnThread) {
+            pendingAuthReturnThreadPayload = null
+        }
+    }
+
+    fun requireSessionReauth(returnPayload: KuiklyThreadScreenPayload? = activeThreadPayload) {
+        pendingAuthReturnThreadPayload =
+            returnPayload
+                ?.copy(status = "loading", errorCode = null)
+                ?: pendingAuthReturnThreadPayload
+        authGateMessage = "Session expired. Sign in again to continue."
+        authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
+        resetAppShellSessionState(clearReturnThread = false)
+        bridge.toast("Session expired")
+        appShellCoroutineScope.launch {
+            authStore.clearSession()
+        }
+    }
+
     LaunchedEffect(Unit) {
         authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
     }
@@ -846,14 +878,7 @@ private fun SlockAppShellContent() {
     LaunchedEffect(authStore) {
         authStore.sessionInvalidations.collect {
             authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
-            realtimeLastSeq = 0L
-            realtimeSessionKey = null
-            selectedTab = "home"
-            selectedSettingsDestination = SettingsDestinationHome
-            selectedSettingsComputerId = null
-            selectedHomeConversationId = null
-            activeThreadPayload = null
-            threadBackStack = emptyList()
+            resetAppShellSessionState(clearReturnThread = false)
         }
     }
 
@@ -865,7 +890,9 @@ private fun SlockAppShellContent() {
         SharedAuthGateState.AuthRequired -> {
             AppShellAuthGateContent(
                 authDataSource = authDataSource,
+                message = authGateMessage,
                 onSignedIn = { session ->
+                    authGateMessage = null
                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedIn(session))
                 }
             )
@@ -876,26 +903,14 @@ private fun SlockAppShellContent() {
                 session = gate.session,
                 authDataSource = authDataSource,
                 onReady = { session ->
+                    authGateMessage = null
                     authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session))
-                    selectedTab = "home"
-                    selectedSettingsDestination = SettingsDestinationHome
-                    selectedSettingsComputerId = null
-                    selectedHomeDestination = null
-                    selectedHomeConversationId = null
-                    activeThreadPayload = null
-                    threadBackStack = emptyList()
+                    resetAppShellSessionState(clearReturnThread = false)
                 },
                 onSignOut = {
+                    authGateMessage = null
                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
-                    realtimeLastSeq = 0L
-                    realtimeSessionKey = null
-                    selectedTab = "home"
-                    selectedSettingsDestination = SettingsDestinationHome
-                    selectedSettingsComputerId = null
-                    selectedHomeDestination = null
-                    selectedHomeConversationId = null
-                    activeThreadPayload = null
-                    threadBackStack = emptyList()
+                    resetAppShellSessionState(clearReturnThread = true)
                 }
             )
             return
@@ -970,6 +985,17 @@ private fun SlockAppShellContent() {
         if (navController.currentRoute != AppShellRouteThread) {
             navController.navigate(AppShellRouteThread)
         }
+    }
+
+    LaunchedEffect(
+        readySession?.accessToken,
+        readySession?.currentServerId,
+        pendingAuthReturnThreadPayload?.instanceId
+    ) {
+        val returnPayload = pendingAuthReturnThreadPayload ?: return@LaunchedEffect
+        if (readySession == null) return@LaunchedEffect
+        pendingAuthReturnThreadPayload = null
+        openThreadPayload(returnPayload, pushCurrent = false)
     }
 
     fun appShellThreadPayload(conversation: ConversationSummary): KuiklyThreadScreenPayload =
@@ -1213,6 +1239,7 @@ private fun SlockAppShellContent() {
                     onBack = { popThreadRoute() },
                     onOpenThreadPayload = { payload -> openThreadPayload(payload) },
                     onReplaceThreadPayload = { payload -> openThreadPayload(payload, pushCurrent = false) },
+                    onAuthRequired = { requireSessionReauth(payload) },
                     onOpenParentThread = {
                         if (threadBackStack.isNotEmpty()) {
                             activeThreadPayload = threadBackStack.last()
@@ -1229,8 +1256,18 @@ private fun SlockAppShellContent() {
                                     when (val result = threadDataSource.openMessageContext(messageId, loadingPayload)) {
                                         is DataResult.Content -> openThreadPayload(result.data, pushCurrent = false)
                                         is DataResult.Empty,
-                                        is DataResult.Error,
+                                        is DataResult.Error -> {
+                                            openThreadPayload(
+                                                loadingPayload.copy(status = "error", errorCode = "thread_parent_context_failed"),
+                                                pushCurrent = false
+                                            )
+                                            bridge.toast("Unable to open channel")
+                                        }
                                         is DataResult.NoPermission -> {
+                                            if (result.blocker.isAuthSessionBlocker()) {
+                                                requireSessionReauth(payload)
+                                                return@launch
+                                            }
                                             openThreadPayload(
                                                 loadingPayload.copy(status = "error", errorCode = "thread_parent_context_failed"),
                                                 pushCurrent = false
@@ -1298,16 +1335,9 @@ private fun SlockAppShellContent() {
                                 },
                                 bottomContentPadding = shellScope.bottomTabBarContentInset,
                                 onLogout = {
+                                    authGateMessage = null
                                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
-                                    realtimeLastSeq = 0L
-                                    realtimeSessionKey = null
-                                    selectedTab = "home"
-                                    selectedSettingsDestination = SettingsDestinationHome
-                                    selectedSettingsComputerId = null
-                                    selectedHomeDestination = null
-                                    selectedHomeConversationId = null
-                                    activeThreadPayload = null
-                                    threadBackStack = emptyList()
+                                    resetAppShellSessionState(clearReturnThread = true)
                                 }
                             )
                         }
@@ -1323,6 +1353,7 @@ private fun SlockAppShellContent() {
                                         alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                                         onOpenThreadPayload = { payload -> openThreadPayload(payload) },
                                         onReplaceThreadPayload = { payload -> openThreadPayload(payload, pushCurrent = false) },
+                                        onAuthRequired = { payload -> requireSessionReauth(payload) },
                                         onFailure = { bridge.toast("Unable to open task") }
                                     )
                                 }
@@ -3474,6 +3505,7 @@ private fun String.toSharedSettingsDestination(): SharedSettingsDestination? =
 @Composable
 private fun AppShellAuthGateContent(
     authDataSource: SharedAuthDataSource,
+    message: String? = null,
     onSignedIn: (StoredAuthSession) -> Unit
 ) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -3567,7 +3599,7 @@ private fun AppShellAuthGateContent(
                 email = state.email,
                 password = state.password,
                 submitting = state.submitting,
-                errorMessage = state.errorMessage,
+                errorMessage = state.errorMessage ?: message,
                 socialProviders = socialProviders,
                 socialSubmittingProvider = socialSubmittingProvider,
                 onEmailChange = { state = reducer.reduce(state, LoginFormEvent.EmailChanged(it)).state },
@@ -6428,6 +6460,7 @@ private suspend fun openAppShellTaskThread(
     alignOwnMessagesRight: Boolean,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit,
     onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit,
+    onAuthRequired: (KuiklyThreadScreenPayload) -> Unit = {},
     onFailure: () -> Unit
 ) {
     val loadingPayload = buildAppShellTaskThreadLoadingPayload(task, timeContext, alignOwnMessagesRight)
@@ -6462,6 +6495,10 @@ private suspend fun openAppShellTaskThread(
             is ai.slock.compose.data.DataResult.Empty,
             is ai.slock.compose.data.DataResult.Error,
             is ai.slock.compose.data.DataResult.NoPermission -> {
+                if (result is ai.slock.compose.data.DataResult.NoPermission && result.blocker.isAuthSessionBlocker()) {
+                    onAuthRequired(loadingPayload)
+                    return
+                }
                 onReplaceThreadPayload(loadingPayload.copy(status = "error", errorCode = "thread_task_open_failed"))
                 onFailure()
                 return

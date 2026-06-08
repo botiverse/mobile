@@ -30,6 +30,8 @@ import ai.slock.compose.data.SqlDelightRelationalStore
 import ai.slock.compose.data.TaskSnapshot
 import ai.slock.compose.data.TasksUiState
 import ai.slock.compose.data.createSlockSqlDatabase
+import ai.slock.compose.data.isAuthSessionBlocker
+import ai.slock.compose.data.isAuthSessionErrorCode
 import ai.slock.compose.data.summaryCounts
 import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.MemberId
@@ -832,7 +834,8 @@ internal fun SharedThreadRouteContent(
     onBack: () -> Unit,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
     onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit = onOpenThreadPayload,
-    onOpenParentThread: () -> Boolean = { false }
+    onOpenParentThread: () -> Boolean = { false },
+    onAuthRequired: (String) -> Unit = {}
 ) {
     val threadViewModel: SharedThreadViewModel =
         viewModel(key = "shared-thread-${initialPayload.sourceThreadId ?: initialPayload.instanceId}") {
@@ -865,6 +868,20 @@ internal fun SharedThreadRouteContent(
         mutableStateOf<List<SharedThreadComposerAttachment>>(emptyList())
     }
     val coroutineScope = rememberCoroutineScope()
+
+    fun routeAuthRequired(code: String? = null): Boolean {
+        if (!code.isAuthSessionErrorCode()) return false
+        onAuthRequired(code ?: "auth_required")
+        return true
+    }
+
+    fun routeAuthRequired(result: DataResult.NoPermission): Boolean =
+        if (result.blocker.isAuthSessionBlocker()) {
+            onAuthRequired(result.blocker.code)
+            true
+        } else {
+            false
+        }
 
     LaunchedEffect(initialPayload) {
         val composer = parseThreadComposerPayload(initialPayload.composerPayload, "{}", initialPayload.instanceId)
@@ -965,6 +982,26 @@ internal fun SharedThreadRouteContent(
         }
     val renderedPayload = remember(payload) {
         payload.withSharedShellEventCapabilities()
+    }
+    LaunchedEffect(
+        renderedPayload.status,
+        renderedPayload.errorCode,
+        renderedPayload.olderMessagesStatus,
+        renderedPayload.newerMessagesStatus
+    ) {
+        if (
+            renderedPayload.status == "no_permission" ||
+            renderedPayload.status == "error" ||
+            renderedPayload.olderMessagesStatus == "error" ||
+            renderedPayload.newerMessagesStatus == "error"
+        ) {
+            routeAuthRequired(renderedPayload.errorCode)
+        }
+    }
+    LaunchedEffect(filesPayload.status, filesPayload.errorCode) {
+        if (filesPayload.status == "no_permission" || filesPayload.status == "error") {
+            routeAuthRequired(filesPayload.errorCode)
+        }
     }
     fun loadThreadFiles(reason: String, cursor: String? = null) {
         if (filesRequestInFlight || (cursor != null && filesPayload.loadingMore)) return
@@ -1147,8 +1184,14 @@ internal fun SharedThreadRouteContent(
                         when (val result = dataSource.createOrOpenReplyThread(renderedPayload, parentMessage)) {
                             is DataResult.Content -> onReplaceThreadPayload(result.data)
                             is DataResult.Empty,
-                            is DataResult.Error,
+                            is DataResult.Error -> {
+                                onReplaceThreadPayload(
+                                    loadingPayload.copy(status = "error", errorCode = "thread_reply_open_failed")
+                                )
+                                bridge.toast("Unable to open replies")
+                            }
                             is DataResult.NoPermission -> {
+                                if (routeAuthRequired(result)) return@launch
                                 onReplaceThreadPayload(
                                     loadingPayload.copy(status = "error", errorCode = "thread_reply_open_failed")
                                 )
@@ -1164,11 +1207,14 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "saveMessage" && !itemId.isNullOrBlank() -> {
                     coroutineScope.launch {
-                        when (dataSource.saveMessage(itemId)) {
+                        when (val result = dataSource.saveMessage(itemId)) {
                             is DataResult.Content -> bridge.toast("Saved")
                             is DataResult.Empty -> bridge.toast("Unable to save message")
                             is DataResult.Error -> bridge.toast("Unable to save message")
-                            is DataResult.NoPermission -> bridge.toast("Unable to save message")
+                            is DataResult.NoPermission -> {
+                                if (routeAuthRequired(result)) return@launch
+                                bridge.toast("Unable to save message")
+                            }
                         }
                     }
                 }
@@ -1200,8 +1246,14 @@ internal fun SharedThreadRouteContent(
                                     threadViewModel.dispatch(SharedThreadIntent.ApplyMessageMutation(result.data))
                                 }
                                 is DataResult.Empty,
-                                is DataResult.Error,
+                                is DataResult.Error -> {
+                                    threadViewModel.dispatch(
+                                        SharedThreadIntent.ApplyMessageReactions(itemId, previousReactions)
+                                    )
+                                    bridge.toast("Unable to update reaction")
+                                }
                                 is DataResult.NoPermission -> {
+                                    if (routeAuthRequired(result)) return@launch
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyMessageReactions(itemId, previousReactions)
                                     )
@@ -1225,8 +1277,14 @@ internal fun SharedThreadRouteContent(
                         when (val result = dataSource.createOrOpenReplyThread(renderedPayload, parentMessage)) {
                             is DataResult.Content -> onReplaceThreadPayload(result.data)
                             is DataResult.Empty,
-                            is DataResult.Error,
+                            is DataResult.Error -> {
+                                onReplaceThreadPayload(
+                                    loadingPayload.copy(status = "error", errorCode = "thread_task_open_failed")
+                                )
+                                bridge.toast("Unable to open task")
+                            }
                             is DataResult.NoPermission -> {
+                                if (routeAuthRequired(result)) return@launch
                                 onReplaceThreadPayload(
                                     loadingPayload.copy(status = "error", errorCode = "thread_task_open_failed")
                                 )
@@ -1246,8 +1304,14 @@ internal fun SharedThreadRouteContent(
                             when (val result = dataSource.fetchWebLinkThreadPayload(loadingPayload, target)) {
                                 is DataResult.Content -> onReplaceThreadPayload(result.data)
                                 is DataResult.Empty,
-                                is DataResult.Error,
+                                is DataResult.Error -> {
+                                    onReplaceThreadPayload(
+                                        loadingPayload.copy(status = "error", errorCode = "thread_weblink_open_failed")
+                                    )
+                                    bridge.toast("Unable to open link")
+                                }
                                 is DataResult.NoPermission -> {
+                                    if (routeAuthRequired(result)) return@launch
                                     onReplaceThreadPayload(
                                         loadingPayload.copy(status = "error", errorCode = "thread_weblink_open_failed")
                                     )
@@ -1285,8 +1349,15 @@ internal fun SharedThreadRouteContent(
                                 bridge.toast("Member added")
                             }
                             is DataResult.Empty,
-                            is DataResult.Error,
+                            is DataResult.Error -> {
+                                val errorCode = result.threadActionErrorCode("member_add_failed")
+                                threadViewModel.dispatch(
+                                    SharedThreadIntent.SetAddMemberStatus(status = "failed", errorCode = errorCode)
+                                )
+                                bridge.toast("Unable to add member")
+                            }
                             is DataResult.NoPermission -> {
+                                if (routeAuthRequired(result)) return@launch
                                 val errorCode = result.threadActionErrorCode("member_add_failed")
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.SetAddMemberStatus(status = "failed", errorCode = errorCode)
@@ -1320,8 +1391,19 @@ internal fun SharedThreadRouteContent(
                                 bridge.toast("Member removed")
                             }
                             is DataResult.Empty,
-                            is DataResult.Error,
+                            is DataResult.Error -> {
+                                val errorCode = result.threadActionErrorCode("member_remove_failed")
+                                threadViewModel.dispatch(
+                                    SharedThreadIntent.SetRemoveMemberStatus(
+                                        status = "failed",
+                                        removingMemberId = itemId,
+                                        errorCode = errorCode
+                                    )
+                                )
+                                bridge.toast("Unable to remove member")
+                            }
                             is DataResult.NoPermission -> {
+                                if (routeAuthRequired(result)) return@launch
                                 val errorCode = result.threadActionErrorCode("member_remove_failed")
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.SetRemoveMemberStatus(
@@ -1341,28 +1423,34 @@ internal fun SharedThreadRouteContent(
                 action == "settingsAction" && itemId == "archive" -> {
                     val previousPayload = renderedPayload
                     coroutineScope.launch {
-                        when (dataSource.archiveChannel(previousPayload)) {
+                        when (val result = dataSource.archiveChannel(previousPayload)) {
                             is DataResult.Content -> {
                                 bridge.toast("Channel archived")
                                 onBack()
                             }
                             is DataResult.Empty,
-                            is DataResult.Error,
-                            is DataResult.NoPermission -> bridge.toast("Unable to archive channel")
+                            is DataResult.Error -> bridge.toast("Unable to archive channel")
+                            is DataResult.NoPermission -> {
+                                if (routeAuthRequired(result)) return@launch
+                                bridge.toast("Unable to archive channel")
+                            }
                         }
                     }
                 }
                 action == "settingsAction" && itemId == "delete" -> {
                     val previousPayload = renderedPayload
                     coroutineScope.launch {
-                        when (dataSource.deleteChannel(previousPayload)) {
+                        when (val result = dataSource.deleteChannel(previousPayload)) {
                             is DataResult.Content -> {
                                 bridge.toast("Channel deleted")
                                 onBack()
                             }
                             is DataResult.Empty,
-                            is DataResult.Error,
-                            is DataResult.NoPermission -> bridge.toast("Unable to delete channel")
+                            is DataResult.Error -> bridge.toast("Unable to delete channel")
+                            is DataResult.NoPermission -> {
+                                if (routeAuthRequired(result)) return@launch
+                                bridge.toast("Unable to delete channel")
+                            }
                         }
                     }
                 }
@@ -1381,8 +1469,12 @@ internal fun SharedThreadRouteContent(
                                 bridge.toast("Task updated")
                             }
                             is DataResult.Empty,
-                            is DataResult.Error,
+                            is DataResult.Error -> {
+                                threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
+                                bridge.toast("Unable to update task")
+                            }
                             is DataResult.NoPermission -> {
+                                if (routeAuthRequired(result)) return@launch
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
                                 bridge.toast("Unable to update task")
                             }
@@ -1399,8 +1491,12 @@ internal fun SharedThreadRouteContent(
                                 bridge.toast("Task updated")
                             }
                             is DataResult.Empty,
-                            is DataResult.Error,
+                            is DataResult.Error -> {
+                                threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
+                                bridge.toast("Unable to update task")
+                            }
                             is DataResult.NoPermission -> {
+                                if (routeAuthRequired(result)) return@launch
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
                                 bridge.toast("Unable to update task")
                             }
@@ -1417,8 +1513,12 @@ internal fun SharedThreadRouteContent(
                                 bridge.toast("Task updated")
                             }
                             is DataResult.Empty,
-                            is DataResult.Error,
+                            is DataResult.Error -> {
+                                threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
+                                bridge.toast("Unable to update task")
+                            }
                             is DataResult.NoPermission -> {
+                                if (routeAuthRequired(result)) return@launch
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
                                 bridge.toast("Unable to update task")
                             }
