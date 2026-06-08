@@ -41,6 +41,7 @@ import androidx.activity.ComponentActivity
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.lifecycleScope
 import ai.slock.android.R
@@ -1403,10 +1404,7 @@ internal class SlockKuiklyBridgeModule(
                             mapOf("status" to "ok")
                         }
                         "sendFeedback" -> {
-                            shareText(
-                                    subject = "Slock feedback",
-                                    text = buildFeedbackText()
-                            )
+                            shareFeedbackWithDiagnosticsFile()
                             SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_send_feedback")
                             mapOf("status" to "ok")
                         }
@@ -1801,7 +1799,7 @@ internal class SlockKuiklyBridgeModule(
         return mapOf("status" to "ok", "entries" to entries)
     }
 
-    private fun buildFeedbackText(): String =
+    private fun buildFeedbackText(diagnosticsFileName: String): String =
             buildString {
                 appendLine("## Slock feedback")
                 appendLine()
@@ -1809,8 +1807,58 @@ internal class SlockKuiklyBridgeModule(
                 appendLine()
                 appendLine("## Diagnostics")
                 appendLine()
-                append(SanitizedDiagnosticsLogBuffer.exportText())
+                appendLine("Sanitized diagnostics are attached as `$diagnosticsFileName`.")
             }
+
+    private fun shareFeedbackWithDiagnosticsFile() {
+        val diagnosticsFile = writeDiagnosticsFeedbackFile()
+        shareTextWithAttachment(
+                subject = "Slock feedback",
+                text = buildFeedbackText(diagnosticsFile.name),
+                attachment = diagnosticsFile,
+                attachmentMimeType = "text/plain"
+        )
+    }
+
+    private fun writeDiagnosticsFeedbackFile(): File {
+        val feedbackDir = File(appContext.cacheDir, "slock-feedback").apply { mkdirs() }
+        feedbackDir.listFiles()
+                ?.filter { it.isFile && it.name.startsWith("slock-feedback-") && it.name.endsWith(".txt") }
+                ?.sortedByDescending { it.lastModified() }
+                ?.drop(5)
+                ?.forEach { it.delete() }
+        val file = File(feedbackDir, "slock-feedback-${System.currentTimeMillis()}.txt")
+        file.writeText(SanitizedDiagnosticsLogBuffer.exportText(), StandardCharsets.UTF_8)
+        return file
+    }
+
+    private fun shareTextWithAttachment(
+            subject: String,
+            text: String,
+            attachment: File,
+            attachmentMimeType: String
+    ) {
+        val attachmentUri =
+                FileProvider.getUriForFile(appContext, "${appContext.packageName}.fileprovider", attachment)
+        val intent =
+                Intent(Intent.ACTION_SEND).apply {
+                    type = attachmentMimeType
+                    putExtra(Intent.EXTRA_SUBJECT, subject)
+                    putExtra(Intent.EXTRA_TEXT, text)
+                    putExtra(Intent.EXTRA_STREAM, attachmentUri)
+                    clipData = ClipData.newUri(appContext.contentResolver, attachment.name, attachmentUri)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+        runCatching {
+            appContext.startActivity(
+                    Intent.createChooser(intent, subject).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+            )
+        }.onFailure {
+            Toast.makeText(appContext, "Unable to open share sheet", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     private fun shareText(subject: String, text: String) {
         val intent =
