@@ -126,7 +126,8 @@ private fun LoginScreen() {
         remember {
             SharedAuthDataSource(
                 transport = BridgeAuthApi(bridge),
-                sessionStore = KuiklyAuthSessionStore(createSlockRelationalStore(bridge))
+                sessionStore = KuiklyAuthSessionStore(createSlockRelationalStore(bridge)),
+                diagnosticsLogger = { message -> bridge.log("shared_auth $message") }
             )
         }
     val reducer = remember { LoginFormReducer() }
@@ -140,7 +141,7 @@ private fun LoginScreen() {
         val effect = pendingLogin ?: return@LaunchedEffect
         val result =
             runCatching { authDataSource.login(effect.email, effect.password) }
-                .getOrElse { SharedAuthResult.Failure(ai.slock.compose.data.SharedAuthErrorCode.Network, "Network unavailable. Check your connection.") }
+                .getOrElse { SharedAuthResult.Failure(ai.slock.compose.data.SharedAuthErrorCode.Unknown, "Sign in could not finish setup. Try again.") }
         pendingLogin = null
         when (result) {
             is SharedAuthResult.Success -> {
@@ -422,6 +423,7 @@ private fun AuthDiagnosticsScreen() {
                     AuthDiagnosticsValue("App", about?.appName.orEmpty().ifBlank { "Slock" })
                     AuthDiagnosticsValue("Version", about?.versionLabel.orEmpty().ifBlank { "Unknown" })
                     AuthDiagnosticsValue("Build", about?.buildLabel.orEmpty().ifBlank { "Unknown" })
+                    AuthDiagnosticsValue("Source", about?.sourceLabel.orEmpty().ifBlank { "Unknown" })
                     AuthDiagnosticsValue("Package", about?.packageName.orEmpty().ifBlank { "Unknown" })
                     AuthDiagnosticsValue("Platform", about?.platformLabel.orEmpty().ifBlank { "Unknown" })
                     AuthDiagnosticsValue("Device", about?.deviceLabel.orEmpty().ifBlank { "Unknown" })
@@ -527,6 +529,7 @@ internal fun buildAuthDiagnosticsExportText(
             appendDiagnosticsLine("App", about?.appName ?: "Slock")
             appendDiagnosticsLine("Version", about?.versionLabel)
             appendDiagnosticsLine("Build", about?.buildLabel)
+            appendDiagnosticsLine("Source", about?.sourceLabel)
             appendDiagnosticsLine("Package", about?.packageName)
             appendDiagnosticsLine("Platform", about?.platformLabel)
             appendDiagnosticsLine("Device", about?.deviceLabel)

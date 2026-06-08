@@ -339,6 +339,7 @@ internal class BridgeSettingsPlatformCapabilities(
                 appName = response.optString("appName").ifBlank { "Slock" },
                 versionLabel = response.optString("versionLabel"),
                 buildLabel = response.optString("buildLabel"),
+                sourceLabel = response.optString("sourceLabel"),
                 packageName = response.optString("packageName"),
                 signedInUserLabel = response.optString("signedInUserLabel"),
                 selectedServerLabel = response.optString("selectedServerLabel"),

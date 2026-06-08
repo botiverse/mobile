@@ -25,9 +25,10 @@ class SharedHomeDataSource(
     private val api: SlockHomeApi,
     announcementsApi: SlockAnnouncementsRemindersApi? = null,
     private val localWriteThrough: ComposeLocalWriteThrough? = null,
-    private val parseHome: (HomeNetworkPayload, StoredAuthSession) -> DataResult<HomeSnapshot>
+    private val parseHome: (HomeNetworkPayload, StoredAuthSession) -> DataResult<HomeSnapshot>,
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) {
-    private val typedApi = SlockHomeApiClient(api)
+    private val typedApi = SlockHomeApiClient(api, diagnosticsLogger)
     private val typedAnnouncementsApi = announcementsApi?.let(::SlockAnnouncementsRemindersApiClient)
 
     suspend fun currentSessionSnapshot(): DataResult<ai.slock.compose.model.SessionSnapshot> {
@@ -42,12 +43,19 @@ class SharedHomeDataSource(
         priority: DataRequestPriority = DataRequestPriority.Visible
     ): DataResult<HomeSnapshot> {
         val session = sessionStore.readSession()
-            ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
+            ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false)).also {
+                diagnosticsLogger("home_bootstrap_result result=error code=unauthenticated stage=session")
+            }
         val resolvedServerId = serverId ?: session.currentServerId?.let(::ServerId)
-            ?: return DataResult.Empty(EmptyReason.NoChannels)
+            ?: return DataResult.Empty(EmptyReason.NoChannels).also {
+                diagnosticsLogger("home_bootstrap_result result=empty code=no_server stage=resolve_server")
+            }
+
+        diagnosticsLogger("home_bootstrap_start priority=$priority serverSelected=true")
 
         localWriteThrough?.readHomeSnapshot(resolvedServerId)?.let { cached ->
             if (priority == DataRequestPriority.Background) {
+                diagnosticsLogger("home_bootstrap_result result=content source=cache priority=$priority")
                 return DataResult.Content(cached)
             }
         }
@@ -56,16 +64,29 @@ class SharedHomeDataSource(
             try {
                 when (val payloadResult = typedApi.homePayload(resolvedServerId, priority)) {
                     is DataResult.Content -> payloadResult.data
-                    is DataResult.Empty -> return DataResult.Empty(payloadResult.reason)
-                    is DataResult.Error -> return DataResult.Error(payloadResult.error)
-                    is DataResult.NoPermission -> return DataResult.NoPermission(payloadResult.blocker)
+                    is DataResult.Empty -> {
+                        diagnosticsLogger("home_bootstrap_result result=empty code=${payloadResult.reason.name} stage=payload")
+                        return DataResult.Empty(payloadResult.reason)
+                    }
+                    is DataResult.Error -> {
+                        diagnosticsLogger("home_bootstrap_result result=error code=${payloadResult.error.code} stage=payload")
+                        return DataResult.Error(payloadResult.error)
+                    }
+                    is DataResult.NoPermission -> {
+                        diagnosticsLogger("home_bootstrap_result result=no_permission code=${payloadResult.blocker.code} stage=payload")
+                        return DataResult.NoPermission(payloadResult.blocker)
+                    }
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
-            } catch (_: Throwable) {
+            } catch (throwable: Throwable) {
+                diagnosticsLogger(
+                    "home_bootstrap_exception errorType=${throwable.safeHomeDiagnosticsType()} mapped=home_network"
+                )
                 return DataResult.Error(ScreenError(code = "home_network", retryable = true))
             }
         val result = parseHome(payload, session)
+        diagnosticsLogger("home_bootstrap_result ${result.homeDiagnosticsSummary()} stage=parse")
         localWriteThrough?.writeHomeResult(result, source = "shared_home_data_source")
         return result
     }
@@ -194,7 +215,8 @@ data class HomeNetworkResponse(
 }
 
 internal class SlockHomeApiClient(
-    private val transport: SlockHomeApi
+    private val transport: SlockHomeApi,
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) {
     suspend fun homePayload(
         serverId: ServerId,
@@ -203,10 +225,13 @@ internal class SlockHomeApiClient(
         val channels =
             when (
                 val result =
-                    transport.channels(serverId, priority).decodeHomeBody(
+                    requestHomeSection(
+                        category = "channels",
                         contractCode = "home_channels_contract_mismatch",
                         serializer = ListSerializer(HomeChannelWireDto.serializer())
-                    )
+                    ) {
+                        transport.channels(serverId, priority)
+                    }
             ) {
                 is DataResult.Content -> result.data
                 is DataResult.Empty -> return DataResult.Empty(result.reason)
@@ -216,10 +241,13 @@ internal class SlockHomeApiClient(
         val directMessages =
             when (
                 val result =
-                    transport.directMessages(serverId, priority).decodeHomeBody(
+                    requestHomeSection(
+                        category = "direct_messages",
                         contractCode = "home_direct_messages_contract_mismatch",
                         serializer = ListSerializer(HomeDirectMessageWireDto.serializer())
-                    )
+                    ) {
+                        transport.directMessages(serverId, priority)
+                    }
             ) {
                 is DataResult.Content -> result.data
                 is DataResult.Empty -> return DataResult.Empty(result.reason)
@@ -229,10 +257,13 @@ internal class SlockHomeApiClient(
         val unreadCounts =
             when (
                 val result =
-                    transport.channelUnreadCounts(serverId, priority).decodeHomeBody(
+                    requestHomeSection(
+                        category = "channel_unread_counts",
                         contractCode = "home_unread_counts_contract_mismatch",
                         serializer = MapSerializer(String.serializer(), Int.serializer())
-                    )
+                    ) {
+                        transport.channelUnreadCounts(serverId, priority)
+                    }
             ) {
                 is DataResult.Content -> result.data.mapKeys { (key, _) -> ChannelId(key) }
                 is DataResult.Empty -> return DataResult.Empty(result.reason)
@@ -242,10 +273,13 @@ internal class SlockHomeApiClient(
         val serverUnreadSummary =
             when (
                 val result =
-                    transport.serverUnreadSummary(serverId, priority).decodeHomeBody(
+                    requestHomeSection(
+                        category = "server_unread_summary",
                         contractCode = "home_server_unread_summary_contract_mismatch",
                         serializer = ListSerializer(HomeServerUnreadSummaryWireDto.serializer())
-                    )
+                    ) {
+                        transport.serverUnreadSummary(serverId, priority)
+                    }
             ) {
                 is DataResult.Content -> result.data
                 is DataResult.Empty -> return DataResult.Empty(result.reason)
@@ -261,6 +295,33 @@ internal class SlockHomeApiClient(
                 serverUnreadSummary = serverUnreadSummary
             )
         )
+    }
+
+    private suspend fun <T> requestHomeSection(
+        category: String,
+        contractCode: String,
+        serializer: KSerializer<T>,
+        request: suspend () -> HomeNetworkResponse
+    ): DataResult<T> {
+        val response =
+            try {
+                request()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                diagnosticsLogger(
+                    "home_endpoint category=$category result=exception errorType=${throwable.safeHomeDiagnosticsType()}"
+                )
+                throw throwable
+            }
+        val result = response.decodeHomeBody(
+            contractCode = contractCode,
+            serializer = serializer
+        )
+        diagnosticsLogger(
+            "home_endpoint category=$category code=${response.code} ${result.homeDiagnosticsSummary()}"
+        )
+        return result
     }
 }
 
@@ -286,3 +347,14 @@ private fun <T> HomeNetworkResponse.toHomeApiFailure(): DataResult<T> =
     } else {
         DataResult.Error(ScreenError(code = "home_http_$code", retryable = true))
     }
+
+private fun DataResult<*>.homeDiagnosticsSummary(): String =
+    when (this) {
+        is DataResult.Content -> "result=content"
+        is DataResult.Empty -> "result=empty code=${reason.name}"
+        is DataResult.Error -> "result=error code=${error.code}"
+        is DataResult.NoPermission -> "result=no_permission code=${blocker.code}"
+    }
+
+private fun Throwable.safeHomeDiagnosticsType(): String =
+    this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"

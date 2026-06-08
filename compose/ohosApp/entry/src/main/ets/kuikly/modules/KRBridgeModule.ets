@@ -71,6 +71,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly SETTINGS_CAPABILITY = "settingsCapability";
   static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
   static readonly AUTH_BASE_URL = "https://api.slock.ai/api/";
+  static readonly AUTH_DIAGNOSTICS_SOURCE_MARKER = "auth-bootstrap-diagnostics/e36bc138+";
 
   private rdbStores: Map<string, relationalStore.RdbStore> = new Map();
 
@@ -487,6 +488,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       "appName": "Slock",
       "versionLabel": bundleInfo.versionName,
       "buildLabel": `${bundleInfo.versionCode}`,
+      "sourceLabel": KRBridgeModule.AUTH_DIAGNOSTICS_SOURCE_MARKER,
       "packageName": bundleInfo.name,
       "signedInUserLabel": this.bestUserLabel(user),
       "selectedServerLabel": this.bestServerLabel(server),
@@ -535,8 +537,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         "reachable": responseCode > 0,
         "code": responseCode,
         "durationMillis": duration,
-        "statusLabel": responseCode > 0 ? "Reachable" : "Unavailable",
-        "detail": this.httpResultToString(response.result).slice(0, 160)
+        "statusLabel": responseCode > 0 ? "API host reachable" : "Network probe failed",
+        "detail": responseCode > 0 ? `Host responded with HTTP ${responseCode}` : "No HTTP response"
       };
     } catch (error) {
       const businessError = error as BusinessError;
@@ -551,7 +553,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         "reachable": false,
         "code": 0,
         "durationMillis": duration,
-        "statusLabel": "Network error",
+        "statusLabel": "Network probe failed",
         "detail": businessError.message ?? `${error}`
       };
     } finally {

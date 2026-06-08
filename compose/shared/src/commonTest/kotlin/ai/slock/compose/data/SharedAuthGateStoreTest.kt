@@ -5,6 +5,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -59,6 +60,7 @@ class SharedAuthGateStoreTest {
     @Test
     fun retryUsesSameRestoreStateMachine() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
+        val logs = mutableListOf<String>()
         var attempts = 0
         val store =
             SharedAuthGateStore(
@@ -70,7 +72,8 @@ class SharedAuthGateStoreTest {
                         SharedAuthResult.Success(storedSession(selectedServerId = "server-1"))
                     }
                 },
-                scope = scope
+                scope = scope,
+                diagnosticsLogger = logs::add
             )
 
         store.accept(SharedAuthGateIntent.Restore)
@@ -79,6 +82,29 @@ class SharedAuthGateStoreTest {
         store.accept(SharedAuthGateIntent.Retry)
 
         assertTrue(store.state.value is SharedAuthGateState.Ready)
+        assertContains(logs, "auth_gate_state source=restore_result state=error selectedServer=false")
+        assertContains(logs, "auth_gate_state source=restore_result state=ready selectedServer=true")
+        scope.cancel()
+    }
+
+    @Test
+    fun restoreExceptionUsesRecoverableMessageAndLogsMapping() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val logs = mutableListOf<String>()
+        val store =
+            SharedAuthGateStore(
+                restoreSession = { throw IllegalStateException("boom") },
+                scope = scope,
+                diagnosticsLogger = logs::add
+            )
+
+        store.accept(SharedAuthGateIntent.Restore)
+
+        val state = store.state.value
+        assertTrue(state is SharedAuthGateState.Error)
+        assertEquals("Could not restore session. Retry or sign in again.", state.message)
+        assertContains(logs, "auth_gate_restore_exception errorType=IllegalStateException mapped=restore_error")
+        assertContains(logs, "auth_gate_state source=restore_exception state=error selectedServer=false")
         scope.cancel()
     }
 

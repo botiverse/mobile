@@ -16,12 +16,18 @@ private val authJson = Json {
 
 class SharedAuthDataSource(
     private val api: SlockAuthApi,
-    private val sessionStore: SlockAuthSessionStore
+    private val sessionStore: SlockAuthSessionStore,
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) {
     constructor(
         transport: SlockAuthTransport,
-        sessionStore: SlockAuthSessionStore
-    ) : this(api = SlockAuthApiClient(transport), sessionStore = sessionStore)
+        sessionStore: SlockAuthSessionStore,
+        diagnosticsLogger: (String) -> Unit = {}
+    ) : this(api = SlockAuthApiClient(transport), sessionStore = sessionStore, diagnosticsLogger = diagnosticsLogger)
+
+    fun logDiagnostics(message: String) {
+        diagnosticsLogger(message)
+    }
 
     suspend fun login(email: String, password: String): SharedAuthResult<StoredAuthSession> {
         if (email.isBlank() || password.isBlank()) {
@@ -31,17 +37,55 @@ class SharedAuthDataSource(
             )
         }
 
+        diagnosticsLogger("auth_login_start provider=password")
         val login =
-            when (val response = api.login(email = email.trim(), password = password)) {
+            when (
+                val response =
+                    runCatching { api.login(email = email.trim(), password = password) }
+                        .getOrElse { throwable ->
+                            diagnosticsLogger(
+                                "auth_login_result provider=password result=failure stage=login_request errorType=${throwable.safeDiagnosticsType()} mapped=network"
+                            )
+                            return SharedAuthResult.Failure(
+                                SharedAuthErrorCode.Network,
+                                "Could not reach Slock. Check your connection and try again."
+                            )
+                        }
+            ) {
                 is AuthApiResult.Success -> response.data
-                is AuthApiResult.Failure -> return response.toSharedAuthFailure()
+                is AuthApiResult.Failure -> {
+                    val failure = response.toSharedAuthFailure()
+                    diagnosticsLogger("auth_login_result provider=password result=failure code=${failure.code}")
+                    return failure
+                }
             }
+        diagnosticsLogger("auth_login_result provider=password result=success parsed=true")
         val servers =
-            when (val response = api.servers("Bearer ${login.accessToken}")) {
-                is AuthApiResult.Success -> response.data
-                is AuthApiResult.Failure -> emptyList()
+            when (
+                val response =
+                    runCatching { api.servers("Bearer ${login.accessToken}") }
+                        .getOrElse { throwable ->
+                            diagnosticsLogger(
+                                "auth_login_servers_result result=failure stage=servers_request errorType=${throwable.safeDiagnosticsType()} mapped=network fallback=empty"
+                            )
+                            AuthApiResult.Failure(code = 0)
+                        }
+            ) {
+                is AuthApiResult.Success -> {
+                    diagnosticsLogger("auth_login_servers_result result=success stage=servers_parse serversCount=${response.data.size}")
+                    response.data
+                }
+                is AuthApiResult.Failure -> {
+                    val failure = response.toSharedAuthFailure()
+                    diagnosticsLogger("auth_login_servers_result result=failure stage=servers_parse code=${failure.code} contract=${response.contractCode ?: "none"} fallback=empty")
+                    if (response.contractCode != null) {
+                        return loginStageFailure("servers_parse", failure.message)
+                    }
+                    emptyList()
+                }
             }
         val selectedServer = servers.firstOrNull()
+        diagnosticsLogger("auth_selected_server_persist_start serverIdPresent=${selectedServer != null}")
         val session =
             StoredAuthSession(
                 user = login.user,
@@ -51,7 +95,19 @@ class SharedAuthDataSource(
                 selectedServerSlug = selectedServer?.slug,
                 servers = servers
             )
-        sessionStore.saveSession(session)
+        diagnosticsLogger("auth_session_persist_start userPresent=${login.user.id.isNotBlank()} serversCount=${servers.size} selectedServer=${selectedServer != null}")
+        runCatching { sessionStore.saveSession(session) }
+            .getOrElse { throwable ->
+                diagnosticsLogger(
+                    "auth_session_persist_result result=failure stage=session_persist errorType=${throwable.safeDiagnosticsType()} mapped=post_login_setup"
+                )
+                return loginStageFailure("session_persist")
+            }
+        diagnosticsLogger("auth_session_persist_result result=success stage=session_persist")
+        diagnosticsLogger("auth_selected_server_persist_result result=success serverIdPresent=${selectedServer != null}")
+        diagnosticsLogger(
+            "auth_login_result provider=password result=success serversCount=${servers.size} selectedServer=${selectedServer != null}"
+        )
         return SharedAuthResult.Success(session)
     }
 
@@ -185,52 +241,99 @@ class SharedAuthDataSource(
             ?: SharedAuthResult.Unauthenticated
 
     suspend fun restoreSession(): SharedAuthResult<StoredAuthSession> {
+        diagnosticsLogger("auth_restore_start")
         val session = runCatching { sessionStore.readSession() }.getOrNull()
-            ?: return SharedAuthResult.Unauthenticated
+            ?: run {
+                diagnosticsLogger("auth_restore_result result=unauthenticated reason=no_cached_session")
+                return SharedAuthResult.Unauthenticated
+            }
         val current =
             runCatching { currentUserWithSession(session, clearOnUnauthorized = false) }
-                .getOrElse { SharedAuthResult.Failure(SharedAuthErrorCode.Network, "Network unavailable. Check your connection.") }
+                .getOrElse { throwable ->
+                    diagnosticsLogger(
+                        "auth_restore_current_user_exception errorType=${throwable.safeDiagnosticsType()} mapped=network"
+                    )
+                    SharedAuthResult.Failure(SharedAuthErrorCode.Network, "Network unavailable. Check your connection.")
+                }
         return when (current) {
-            is SharedAuthResult.Success -> current
+            is SharedAuthResult.Success -> {
+                diagnosticsLogger("auth_restore_result result=success source=current_user selectedServer=${!current.data.selectedServerId.isNullOrBlank()}")
+                current
+            }
             SharedAuthResult.Unauthenticated -> {
+                diagnosticsLogger("auth_restore_current_user_result result=unauthenticated action=refresh")
                 val refreshed =
                     runCatching { refresh(session.refreshToken) }
-                        .getOrElse { SharedAuthResult.Failure(SharedAuthErrorCode.Network, "Network unavailable. Check your connection.") }
+                        .getOrElse { throwable ->
+                            diagnosticsLogger(
+                                "auth_restore_refresh_exception errorType=${throwable.safeDiagnosticsType()} mapped=network"
+                            )
+                            SharedAuthResult.Failure(SharedAuthErrorCode.Network, "Network unavailable. Check your connection.")
+                        }
                 when (refreshed) {
                     is SharedAuthResult.Success -> {
+                        diagnosticsLogger("auth_restore_refresh_result result=success")
                         val updated = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
                         when (val refreshedCurrent =
                             runCatching { currentUserWithSession(updated, clearOnUnauthorized = true) }
                                 .getOrElse {
+                                    diagnosticsLogger(
+                                        "auth_restore_refreshed_current_user_exception errorType=${it.safeDiagnosticsType()} mapped=network"
+                                    )
                                     SharedAuthResult.Failure(
                                         SharedAuthErrorCode.Network,
                                         "Network unavailable. Check your connection."
                                     )
                                 }
                         ) {
-                            is SharedAuthResult.Success -> refreshedCurrent
-                            SharedAuthResult.Unauthenticated -> SharedAuthResult.Unauthenticated
+                            is SharedAuthResult.Success -> {
+                                diagnosticsLogger(
+                                    "auth_restore_result result=success source=refresh_current_user selectedServer=${!refreshedCurrent.data.selectedServerId.isNullOrBlank()}"
+                                )
+                                refreshedCurrent
+                            }
+                            SharedAuthResult.Unauthenticated -> {
+                                diagnosticsLogger("auth_restore_result result=unauthenticated source=refresh_current_user")
+                                SharedAuthResult.Unauthenticated
+                            }
                             is SharedAuthResult.Failure ->
                                 if (refreshedCurrent.isRecoverableRestoreFailure()) {
+                                    diagnosticsLogger(
+                                        "auth_restore_result result=success source=cached_after_refresh_current_user_failure recoverableCode=${refreshedCurrent.code}"
+                                    )
                                     SharedAuthResult.Success(updated)
                                 } else {
+                                    diagnosticsLogger(
+                                        "auth_restore_result result=failure source=refresh_current_user code=${refreshedCurrent.code}"
+                                    )
                                     refreshedCurrent
                                 }
                         }
                     }
                     is SharedAuthResult.Failure ->
                         if (refreshed.isRecoverableRestoreFailure()) {
+                            diagnosticsLogger(
+                                "auth_restore_result result=success source=cached_after_refresh_failure recoverableCode=${refreshed.code}"
+                            )
                             SharedAuthResult.Success(session)
                         } else {
+                            diagnosticsLogger("auth_restore_result result=failure source=refresh code=${refreshed.code}")
                             refreshed
                         }
-                    SharedAuthResult.Unauthenticated -> SharedAuthResult.Unauthenticated
+                    SharedAuthResult.Unauthenticated -> {
+                        diagnosticsLogger("auth_restore_result result=unauthenticated source=refresh")
+                        SharedAuthResult.Unauthenticated
+                    }
                 }
             }
             is SharedAuthResult.Failure ->
                 if (current.isRecoverableRestoreFailure()) {
+                    diagnosticsLogger(
+                        "auth_restore_result result=success source=cached_after_current_user_failure recoverableCode=${current.code}"
+                    )
                     SharedAuthResult.Success(session)
                 } else {
+                    diagnosticsLogger("auth_restore_result result=failure source=current_user code=${current.code}")
                     current
                 }
         }
@@ -384,6 +487,23 @@ class SharedAuthDataSource(
 
 private fun SharedAuthResult.Failure.isRecoverableRestoreFailure(): Boolean =
     code == SharedAuthErrorCode.Network || code == SharedAuthErrorCode.Server
+
+private fun loginStageFailure(stage: String, detail: String? = null): SharedAuthResult.Failure =
+    SharedAuthResult.Failure(
+        SharedAuthErrorCode.Unknown,
+        buildString {
+            append("Sign in succeeded, but Slock could not finish setup at ")
+            append(stage)
+            append(". Try again.")
+            if (!detail.isNullOrBlank()) {
+                append(" ")
+                append(detail)
+            }
+        }
+    )
+
+private fun Throwable.safeDiagnosticsType(): String =
+    this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"
 
 /**
  * Typed auth/server boundary.

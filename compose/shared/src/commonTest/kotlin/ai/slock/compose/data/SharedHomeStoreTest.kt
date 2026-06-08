@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -122,10 +123,12 @@ class SharedHomeStoreTest {
     @Test
     fun unauthenticatedSessionBecomesErrorState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
         val store = SharedHomeStore(
             authStore = InMemorySlockAuthSessionStore(),
             dataSource = source(api = RecordingHomeApi()),
-            scope = scope
+            scope = scope,
+            diagnosticsLogger = logs::add
         )
 
         store.accept(SharedHomeIntent.Start)
@@ -133,6 +136,27 @@ class SharedHomeStoreTest {
         val content = store.state.value.content
         assertTrue(content is SharedHomeContentState.Error)
         assertEquals("unauthenticated", content.code)
+        assertContains(logs, "home_ui_error source=shared_home_load code=unauthenticated mapped=home_error_panel")
+        scope.cancel()
+    }
+
+    @Test
+    fun firstHomeNetworkFailureLogsErrorPanelMapping() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = ThrowingHomeApi()),
+            scope = scope,
+            diagnosticsLogger = logs::add
+        )
+
+        store.accept(SharedHomeIntent.Start)
+
+        val content = store.state.value.content
+        assertTrue(content is SharedHomeContentState.Error)
+        assertEquals("home_network", content.code)
+        assertContains(logs, "home_ui_error source=shared_home_load code=home_network mapped=home_error_panel")
         scope.cancel()
     }
 

@@ -77,6 +77,46 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun loginMapsSessionPersistenceFailureToPostLoginStage() = runBlocking {
+        val logs = mutableListOf<String>()
+        val source =
+            SharedAuthDataSource(
+                transport = FakeAuthApi(),
+                sessionStore = ThrowingSaveSessionStore(),
+                diagnosticsLogger = logs::add
+            )
+
+        val result = source.login("user@slock.ai", "password")
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals(SharedAuthErrorCode.Unknown, result.code)
+        assertTrue(result.message.contains("session_persist"))
+        assertTrue(logs.any { it.contains("auth_login_servers_result result=success stage=servers_parse serversCount=1") })
+        assertTrue(logs.any { it.contains("auth_session_persist_result result=failure stage=session_persist") })
+        assertTrue(logs.none { it.contains("Network unavailable") })
+    }
+
+    @Test
+    fun loginMapsServersContractFailureToServersParseStage() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store = InMemorySlockAuthSessionStore()
+        val source =
+            SharedAuthDataSource(
+                transport = FakeAuthApi(serversResponse = AuthNetworkResponse(200, """{"servers":[]}""")),
+                sessionStore = store,
+                diagnosticsLogger = logs::add
+            )
+
+        val result = source.login("user@slock.ai", "password")
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals(SharedAuthErrorCode.Unknown, result.code)
+        assertTrue(result.message.contains("servers_parse"))
+        assertEquals(null, store.readSession())
+        assertTrue(logs.any { it.contains("auth_login_servers_result result=failure stage=servers_parse") })
+    }
+
+    @Test
     fun googleSocialCompleteWritesStoredSessionAndFetchesServers() = runBlocking {
         val store = InMemorySlockAuthSessionStore()
         val api = FakeAuthApi()
@@ -388,5 +428,19 @@ class AuthDataSourceTest {
             createServerBody = bodyText
             return createServerResponse
         }
+    }
+
+    private class ThrowingSaveSessionStore : SlockAuthSessionStore {
+        override suspend fun readSession(): StoredAuthSession? = null
+
+        override suspend fun saveSession(session: StoredAuthSession) {
+            error("store unavailable")
+        }
+
+        override suspend fun updateTokens(accessToken: String, refreshToken: String) = Unit
+
+        override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) = Unit
+
+        override suspend fun clearSession() = Unit
     }
 }

@@ -11,6 +11,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.time.TimeSource
 
 class KuiklySlockNetworkClient(
     private val sessionStore: SlockAuthSessionStore,
@@ -32,14 +33,20 @@ class KuiklySlockNetworkClient(
             key = path,
             reason = method
         ) {
+            val startedAt = TimeSource.Monotonic.markNow()
+            val category = path.networkDiagnosticsCategory()
             val tokens = sessionStore.readSession()?.toAuthTokens()
-            networkModule.requestRaw(
+            val response = networkModule.requestRaw(
                 url = absoluteUrl(path, query),
                 method = method.uppercase(),
                 headers = authHeaders(tokens, serverIdOverride, contentType = bodyText?.let { "application/json" }),
                 bodyText = bodyText,
                 bodyBytes = null
             )
+            warningLogger(
+                "endpoint category=$category method=${method.uppercase()} code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} result=${response.networkDiagnosticsResult()}"
+            )
+            response
         }
 
     override suspend fun uploadAttachments(
@@ -52,6 +59,7 @@ class KuiklySlockNetworkClient(
             key = "attachments/upload",
             reason = "multipart"
         ) {
+            val startedAt = TimeSource.Monotonic.markNow()
             val tokens = sessionStore.readSession()?.toAuthTokens()
             val boundary = "slock-${channelId.value}-${files.size}"
             val headers =
@@ -67,9 +75,13 @@ class KuiklySlockNetworkClient(
                     headers = headers,
                     fields = mapOf("channelId" to channelId.value),
                     files = files
-                )
+                ).also { response ->
+                    warningLogger(
+                        "endpoint category=attachments_upload method=POST code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} result=${response.networkDiagnosticsResult()}"
+                    )
+                }
             }
-            networkModule.requestRaw(
+            val response = networkModule.requestRaw(
                 url = absoluteUrl("attachments/upload"),
                 method = "POST",
                 headers = headers,
@@ -81,6 +93,10 @@ class KuiklySlockNetworkClient(
                     ),
                 bodyText = null
             )
+            warningLogger(
+                "endpoint category=attachments_upload method=POST code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} result=${response.networkDiagnosticsResult()}"
+            )
+            response
         }
 
     private fun absoluteUrl(path: String, query: List<Pair<String, String>> = emptyList()): String {
@@ -218,6 +234,31 @@ private fun buildMultipartBody(
 
 private fun String.sanitizeMultipartFileName(): String =
     replace("\"", "'").replace("\r", "").replace("\n", "")
+
+private fun String.networkDiagnosticsCategory(): String {
+    val normalized = trim().trimStart('/')
+    return when {
+        normalized.startsWith("channels/dm") -> "direct_messages"
+        normalized.startsWith("channels/unread") -> "channel_unread_counts"
+        normalized.startsWith("channels") -> "channels"
+        normalized.startsWith("servers/unread-summary") -> "server_unread_summary"
+        normalized.startsWith("members") -> "members"
+        normalized.startsWith("messages/search") -> "message_search"
+        normalized.startsWith("saved") -> "saved_items"
+        normalized.startsWith("attachments/upload") -> "attachments_upload"
+        normalized.startsWith("tasks") -> "tasks"
+        normalized.startsWith("settings") -> "settings"
+        else -> normalized.substringBefore('/').ifBlank { "unknown" }
+    }
+}
+
+private fun HomeNetworkResponse.networkDiagnosticsResult(): String =
+    when {
+        code in 200..299 -> "success"
+        code == 0 -> "network_error"
+        code == 401 || code == 403 -> "auth_or_permission_error"
+        else -> "http_error"
+    }
 
 private fun String.percentEncode(): String {
     val bytes = encodeToByteArray()

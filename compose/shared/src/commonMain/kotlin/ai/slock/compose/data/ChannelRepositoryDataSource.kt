@@ -71,7 +71,8 @@ class RealChannelRepository(
             localWriteThrough = null,
             parseHome = { payload, session ->
                 parseSlockHome(payload, session, warningLogger)
-            }
+            },
+            diagnosticsLogger = { message -> warningLogger("home_data_source $message") }
         )
 
     override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> {

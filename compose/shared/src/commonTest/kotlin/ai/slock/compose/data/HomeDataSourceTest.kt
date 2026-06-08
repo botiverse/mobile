@@ -12,6 +12,7 @@ import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.ThreadId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -82,17 +83,46 @@ class HomeDataSourceTest {
 
     @Test
     fun visibleLoadMapsThrownNetworkFailureToError() = runBlocking {
+        val logs = mutableListOf<String>()
         val source =
             SharedHomeDataSource(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 api = ThrowingHomeApi(),
-                parseHome = { _, _ -> error("network failure should not parse") }
+                parseHome = { _, _ -> error("network failure should not parse") },
+                diagnosticsLogger = logs::add
             )
 
         val result = source.loadHome(priority = DataRequestPriority.Visible)
 
         assertTrue(result is DataResult.Error)
         assertEquals("home_network", result.error.code)
+        assertContains(logs, "home_endpoint category=channels result=exception errorType=IllegalStateException")
+        assertContains(logs, "home_bootstrap_exception errorType=IllegalStateException mapped=home_network")
+    }
+
+    @Test
+    fun loadHomeLogsEndpointCategoryAndContractMismatch() = runBlocking {
+        val logs = mutableListOf<String>()
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = FakeHomeApi(channelsBody = """{"channels":[]}"""),
+                parseHome = { _, _ -> error("typed home api should reject wrapper before parser") },
+                diagnosticsLogger = logs::add
+            )
+
+        val result = source.loadHome(priority = DataRequestPriority.Visible)
+
+        assertTrue(result is DataResult.Error)
+        assertEquals("home_channels_contract_mismatch", result.error.code)
+        assertContains(
+            logs,
+            "home_endpoint category=channels code=200 result=error code=home_channels_contract_mismatch"
+        )
+        assertContains(
+            logs,
+            "home_bootstrap_result result=error code=home_channels_contract_mismatch stage=payload"
+        )
     }
 
     @Test

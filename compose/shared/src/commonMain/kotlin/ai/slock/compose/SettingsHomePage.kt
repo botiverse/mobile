@@ -653,7 +653,8 @@ private fun SlockAppShellContent() {
         remember {
             SharedAuthDataSource(
                 transport = BridgeAuthApi(bridge),
-                sessionStore = authStore
+                sessionStore = authStore,
+                diagnosticsLogger = { message -> bridge.log("shared_auth $message") }
             )
         }
     val homeDataSource =
@@ -665,7 +666,8 @@ private fun SlockAppShellContent() {
                 localWriteThrough = localWriteThrough,
                 parseHome = { payload, session ->
                     parseSlockHome(payload, session) { message -> bridge.log(message) }
-                }
+                },
+                diagnosticsLogger = { message -> bridge.log("shared_home $message") }
             )
         }
     val membersApi = remember { BridgeMembersApi(bridge, authStore) }
@@ -790,7 +792,8 @@ private fun SlockAppShellContent() {
         viewModel(key = "shared-home") {
             SharedHomeViewModel(
                 authStore = authStore,
-                dataSource = homeDataSource
+                dataSource = homeDataSource,
+                diagnosticsLogger = { message -> bridge.log("shared_home $message") }
             )
         }
     val homeState by homeViewModel.state.collectAsState()
@@ -3526,7 +3529,7 @@ private fun AppShellAuthGateContent(
         val effect = pendingLogin ?: return@LaunchedEffect
         val result =
             runCatching { authDataSource.login(effect.email, effect.password) }
-                .getOrElse { SharedAuthResult.Failure(SharedAuthErrorCode.Network, "Network unavailable. Check your connection.") }
+                .getOrElse { SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Sign in could not finish setup. Try again.") }
         pendingLogin = null
         when (result) {
             is SharedAuthResult.Success -> {

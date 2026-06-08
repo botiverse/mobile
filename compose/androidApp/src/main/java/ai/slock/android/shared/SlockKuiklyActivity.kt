@@ -1744,6 +1744,7 @@ internal class SlockKuiklyBridgeModule(
                 "appName" to "Slock",
                 "versionLabel" to (packageInfo.versionName ?: "unknown"),
                 "buildLabel" to packageInfo.versionCodeCompat(),
+                "sourceLabel" to AUTH_DIAGNOSTICS_SOURCE_MARKER,
                 "packageName" to appContext.packageName,
                 "signedInUserLabel" to (session?.user?.bestDisplayName ?: "Signed out"),
                 "selectedServerLabel" to (selectedServer?.name ?: "No selected server"),
@@ -1796,8 +1797,8 @@ internal class SlockKuiklyBridgeModule(
                     "reachable" to (code > 0),
                     "code" to code,
                     "durationMillis" to duration,
-                    "statusLabel" to if (code > 0) "Reachable" else "Unavailable",
-                    "detail" to detail
+                    "statusLabel" to if (code > 0) "API host reachable" else "Network probe failed",
+                    "detail" to if (code > 0) "Host responded with HTTP $code${detail.takeIf { it.isNotBlank() }?.let { " $it" }.orEmpty()}" else "No HTTP response"
             )
         }.getOrElse { throwable ->
             val duration = System.currentTimeMillis() - startedAt
@@ -1812,7 +1813,7 @@ internal class SlockKuiklyBridgeModule(
                     "reachable" to false,
                     "code" to 0,
                     "durationMillis" to duration,
-                    "statusLabel" to "Network error",
+                    "statusLabel" to "Network probe failed",
                     "detail" to detail
             )
         }
@@ -2054,6 +2055,7 @@ internal class SlockKuiklyBridgeModule(
         private const val UNREAD_DM_NOTIFICATION_CHANNEL_ID = "slock-unread-dm-v1"
         private const val UNREAD_MENTION_NOTIFICATION_CHANNEL_ID = "slock-unread-mention-v1"
         private const val REQUEST_NOTIFICATIONS_CODE = 4207
+        private const val AUTH_DIAGNOSTICS_SOURCE_MARKER = "auth-bootstrap-diagnostics/e36bc138+"
     }
 }
 
