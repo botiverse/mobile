@@ -126,7 +126,8 @@ private fun LoginScreen() {
         remember {
             SharedAuthDataSource(
                 transport = BridgeAuthApi(bridge),
-                sessionStore = KuiklyAuthSessionStore(createSlockRelationalStore(bridge))
+                sessionStore = KuiklyAuthSessionStore(createSlockRelationalStore(bridge)),
+                diagnosticsLogger = { message -> bridge.log("shared_auth $message") }
             )
         }
     val reducer = remember { LoginFormReducer() }

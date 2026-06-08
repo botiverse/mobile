@@ -535,8 +535,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         "reachable": responseCode > 0,
         "code": responseCode,
         "durationMillis": duration,
-        "statusLabel": responseCode > 0 ? "Reachable" : "Unavailable",
-        "detail": this.httpResultToString(response.result).slice(0, 160)
+        "statusLabel": responseCode > 0 ? "API host reachable" : "Network probe failed",
+        "detail": responseCode > 0 ? `Host responded with HTTP ${responseCode}` : "No HTTP response"
       };
     } catch (error) {
       const businessError = error as BusinessError;
@@ -551,7 +551,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         "reachable": false,
         "code": 0,
         "durationMillis": duration,
-        "statusLabel": "Network error",
+        "statusLabel": "Network probe failed",
         "detail": businessError.message ?? `${error}`
       };
     } finally {

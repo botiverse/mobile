@@ -12,7 +12,8 @@ import kotlinx.coroutines.launch
 
 class SharedAuthGateStore(
     private val restoreSession: suspend () -> SharedAuthResult<StoredAuthSession>,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) {
     private val _state = MutableStateFlow<SharedAuthGateState>(SharedAuthGateState.Restoring)
     val state: StateFlow<SharedAuthGateState> = _state.asStateFlow()
@@ -30,13 +31,13 @@ class SharedAuthGateStore(
                     }
             }
             is SharedAuthGateIntent.SignedIn ->
-                _state.value = intent.session.asGateState()
+                setGateState(intent.session.asGateState(), source = "signed_in")
             is SharedAuthGateIntent.ServerReady ->
-                _state.value = SharedAuthGateState.Ready(intent.session)
+                setGateState(SharedAuthGateState.Ready(intent.session), source = "server_ready")
             SharedAuthGateIntent.ShowSignIn ->
-                _state.value = SharedAuthGateState.AuthRequired
+                setGateState(SharedAuthGateState.AuthRequired, source = "show_sign_in")
             SharedAuthGateIntent.SignedOut ->
-                _state.value = SharedAuthGateState.AuthRequired
+                setGateState(SharedAuthGateState.AuthRequired, source = "signed_out")
         }
     }
 
@@ -50,29 +51,44 @@ class SharedAuthGateStore(
             SharedAuthGateIntent.Restore,
             SharedAuthGateIntent.Retry -> restore()
             is SharedAuthGateIntent.SignedIn ->
-                _state.value = intent.session.asGateState()
+                setGateState(intent.session.asGateState(), source = "signed_in")
             is SharedAuthGateIntent.ServerReady ->
-                _state.value = SharedAuthGateState.Ready(intent.session)
+                setGateState(SharedAuthGateState.Ready(intent.session), source = "server_ready")
             SharedAuthGateIntent.ShowSignIn,
             SharedAuthGateIntent.SignedOut ->
-                _state.value = SharedAuthGateState.AuthRequired
+                setGateState(SharedAuthGateState.AuthRequired, source = intent.logSource)
         }
     }
 
     private suspend fun restore() {
-        _state.value = SharedAuthGateState.Restoring
+        setGateState(SharedAuthGateState.Restoring, source = "restore_start")
         try {
-            _state.value =
+            setGateState(
                 when (val result = restoreSession()) {
                     is SharedAuthResult.Success -> result.data.asGateState()
                     SharedAuthResult.Unauthenticated -> SharedAuthGateState.AuthRequired
                     is SharedAuthResult.Failure -> SharedAuthGateState.Error(result.message)
-                }
+                },
+                source = "restore_result"
+            )
         } catch (cancellation: CancellationException) {
             throw cancellation
-        } catch (_: Throwable) {
-            _state.value = SharedAuthGateState.Error("Network unavailable. Check your connection.")
+        } catch (throwable: Throwable) {
+            diagnosticsLogger(
+                "auth_gate_restore_exception errorType=${throwable.safeAuthGateDiagnosticsType()} mapped=restore_error"
+            )
+            setGateState(
+                SharedAuthGateState.Error("Could not restore session. Retry or sign in again."),
+                source = "restore_exception"
+            )
         }
+    }
+
+    private fun setGateState(nextState: SharedAuthGateState, source: String) {
+        _state.value = nextState
+        diagnosticsLogger(
+            "auth_gate_state source=$source state=${nextState.diagnosticsName()} selectedServer=${nextState.hasSelectedServer()}"
+        )
     }
 
     private fun StoredAuthSession.asGateState(): SharedAuthGateState =
@@ -90,7 +106,8 @@ class SharedAuthGateViewModel(
         lazy {
             SharedAuthGateStore(
                 restoreSession = { authDataSource.restoreSession() },
-                scope = viewModelScope
+                scope = viewModelScope,
+                diagnosticsLogger = { message -> authDataSource.logDiagnostics(message) }
             )
         }
     private val store: SharedAuthGateStore by storeDelegate
@@ -125,3 +142,35 @@ sealed interface SharedAuthGateState {
     data class Ready(val session: StoredAuthSession) : SharedAuthGateState
     data class Error(val message: String) : SharedAuthGateState
 }
+
+private val SharedAuthGateIntent.logSource: String
+    get() =
+        when (this) {
+            SharedAuthGateIntent.Restore -> "restore"
+            SharedAuthGateIntent.Retry -> "retry"
+            SharedAuthGateIntent.ShowSignIn -> "show_sign_in"
+            SharedAuthGateIntent.SignedOut -> "signed_out"
+            is SharedAuthGateIntent.SignedIn -> "signed_in"
+            is SharedAuthGateIntent.ServerReady -> "server_ready"
+        }
+
+private fun SharedAuthGateState.diagnosticsName(): String =
+    when (this) {
+        SharedAuthGateState.Restoring -> "restoring"
+        SharedAuthGateState.AuthRequired -> "auth_required"
+        is SharedAuthGateState.ServerRequired -> "server_required"
+        is SharedAuthGateState.Ready -> "ready"
+        is SharedAuthGateState.Error -> "error"
+    }
+
+private fun SharedAuthGateState.hasSelectedServer(): Boolean =
+    when (this) {
+        is SharedAuthGateState.Ready -> !session.selectedServerId.isNullOrBlank()
+        is SharedAuthGateState.ServerRequired -> !session.selectedServerId.isNullOrBlank()
+        SharedAuthGateState.AuthRequired,
+        is SharedAuthGateState.Error,
+        SharedAuthGateState.Restoring -> false
+    }
+
+private fun Throwable.safeAuthGateDiagnosticsType(): String =
+    this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"

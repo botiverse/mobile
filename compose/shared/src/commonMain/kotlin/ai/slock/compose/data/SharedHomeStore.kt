@@ -17,7 +17,8 @@ import kotlinx.coroutines.launch
 class SharedHomeStore(
     private val authStore: SlockAuthSessionStore,
     private val dataSource: SharedHomeDataSource,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) {
     private val _state = MutableStateFlow(SharedHomeState())
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
@@ -159,6 +160,7 @@ class SharedHomeStore(
         request: HomeServerSwitchState,
         showRefreshAffordance: Boolean
     ) {
+        diagnosticsLogger("home_ui_load_start refreshAffordance=$showRefreshAffordance")
         val previous = _state.value.content
         reduceState(
             _state.value.copy(
@@ -168,6 +170,7 @@ class SharedHomeStore(
         try {
             val session = authStore.readSession()
             if (session == null) {
+                diagnosticsLogger("home_ui_error source=shared_home_load code=unauthenticated mapped=home_error_panel")
                 reduceState(_state.value.copy(content = SharedHomeContentState.Error("unauthenticated")))
                 return
             }
@@ -218,8 +221,18 @@ class SharedHomeStore(
                 when (val result = dataSource.loadHome(serverId = activeServer, priority = DataRequestPriority.Visible)) {
                     is DataResult.Content -> SharedHomeContentState.Content(result.data, activeSession)
                     is DataResult.Empty -> SharedHomeContentState.Empty(activeSession)
-                    is DataResult.Error -> _state.value.content.asRefreshFailed(result.error.code)
-                    is DataResult.NoPermission -> _state.value.content.asRefreshFailed(result.blocker.code)
+                    is DataResult.Error -> {
+                        diagnosticsLogger(
+                            "home_ui_error source=shared_home_load code=${result.error.code} mapped=${_state.value.content.refreshFailureMapping()}"
+                        )
+                        _state.value.content.asRefreshFailed(result.error.code)
+                    }
+                    is DataResult.NoPermission -> {
+                        diagnosticsLogger(
+                            "home_ui_error source=shared_home_load code=${result.blocker.code} mapped=${_state.value.content.refreshFailureMapping()}"
+                        )
+                        _state.value.content.asRefreshFailed(result.blocker.code)
+                    }
                 }
             val resultServerId = (result as? SharedHomeContentState.Content)?.snapshot?.server?.id
                 ?: activeServerId?.let(::ServerId)
@@ -245,7 +258,10 @@ class SharedHomeStore(
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
-        } catch (_: Throwable) {
+        } catch (throwable: Throwable) {
+            diagnosticsLogger(
+                "home_ui_exception source=shared_home_load errorType=${throwable.safeHomeStoreDiagnosticsType()} mapped=${_state.value.content.refreshFailureMapping()} code=home_network"
+            )
             reduceState(_state.value.copy(content = _state.value.content.asRefreshFailed("home_network")))
         }
     }
@@ -284,11 +300,12 @@ class SharedHomeStore(
 
 class SharedHomeViewModel(
     authStore: SlockAuthSessionStore,
-    dataSource: SharedHomeDataSource
+    dataSource: SharedHomeDataSource,
+    diagnosticsLogger: (String) -> Unit = {}
 ) : ViewModel() {
     private val storeDelegate =
         lazy {
-            SharedHomeStore(authStore, dataSource, viewModelScope)
+            SharedHomeStore(authStore, dataSource, viewModelScope, diagnosticsLogger)
         }
     private val store: SharedHomeStore by storeDelegate
     val state: StateFlow<SharedHomeState>
@@ -376,3 +393,12 @@ private fun SharedHomeContentState.asRefreshFailed(code: String): SharedHomeCont
         is SharedHomeContentState.Content -> copy(contentRefreshing = false)
         else -> SharedHomeContentState.Error(code)
     }
+
+private fun SharedHomeContentState.refreshFailureMapping(): String =
+    when (this) {
+        is SharedHomeContentState.Content -> "keep_cached_content"
+        else -> "home_error_panel"
+    }
+
+private fun Throwable.safeHomeStoreDiagnosticsType(): String =
+    this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"
