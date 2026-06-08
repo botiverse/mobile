@@ -517,17 +517,29 @@ class SharedSettingsViewModel(
         lazy {
             SharedSettingsStore(dataSource = dataSource, scope = viewModelScope)
         }
-    private val store: SharedSettingsStore by storeDelegate
+    private val contractDelegate =
+        lazy {
+            SharedSettingsStoreContract(
+                store = storeDelegate.value,
+                scope = viewModelScope
+            )
+        }
     val state: StateFlow<SharedSettingsState>
-        get() = store.state
+        get() =
+            if (contractDelegate.isInitialized()) contractDelegate.value.state
+            else storeDelegate.value.state
 
     fun dispatch(intent: SharedSettingsIntent) {
-        store.dispatch(intent)
+        if (contractDelegate.isInitialized()) {
+            contractDelegate.value.dispatch(intent)
+        } else {
+            storeDelegate.value.dispatch(intent)
+        }
     }
 
     override fun onCleared() {
         if (storeDelegate.isInitialized()) {
-            store.clear()
+            storeDelegate.value.clear()
         }
         super.onCleared()
     }
