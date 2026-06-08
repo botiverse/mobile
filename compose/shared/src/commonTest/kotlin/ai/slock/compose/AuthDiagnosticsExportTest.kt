@@ -17,6 +17,7 @@ class AuthDiagnosticsExportTest {
                         appName = "Slock",
                         versionLabel = "1.2.3",
                         buildLabel = "42",
+                        sourceLabel = "auth-bootstrap-diagnostics/e36bc138+",
                         packageName = "ai.slock.compose",
                         signedInUserLabel = "artin@slock.ai",
                         selectedServerLabel = "Slock Team",
@@ -46,6 +47,7 @@ class AuthDiagnosticsExportTest {
 
         assertContains(text, "Slock auth diagnostics")
         assertContains(text, "Platform: HarmonyOS")
+        assertContains(text, "Source: auth-bootstrap-diagnostics/e36bc138+")
         assertContains(text, "Base URL: https://api.slock.ai/api/")
         assertContains(text, "Status: Network error")
         assertContains(text, "SlockAuthNetwork")

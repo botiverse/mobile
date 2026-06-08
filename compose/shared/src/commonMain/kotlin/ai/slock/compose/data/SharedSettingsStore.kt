@@ -83,6 +83,7 @@ data class SharedSettingsAboutSnapshot(
     val appName: String = "Slock",
     val versionLabel: String = "",
     val buildLabel: String = "",
+    val sourceLabel: String = "",
     val packageName: String = "",
     val signedInUserLabel: String = "",
     val selectedServerLabel: String = "",

@@ -1744,6 +1744,7 @@ internal class SlockKuiklyBridgeModule(
                 "appName" to "Slock",
                 "versionLabel" to (packageInfo.versionName ?: "unknown"),
                 "buildLabel" to packageInfo.versionCodeCompat(),
+                "sourceLabel" to AUTH_DIAGNOSTICS_SOURCE_MARKER,
                 "packageName" to appContext.packageName,
                 "signedInUserLabel" to (session?.user?.bestDisplayName ?: "Signed out"),
                 "selectedServerLabel" to (selectedServer?.name ?: "No selected server"),
@@ -2054,6 +2055,7 @@ internal class SlockKuiklyBridgeModule(
         private const val UNREAD_DM_NOTIFICATION_CHANNEL_ID = "slock-unread-dm-v1"
         private const val UNREAD_MENTION_NOTIFICATION_CHANNEL_ID = "slock-unread-mention-v1"
         private const val REQUEST_NOTIFICATIONS_CODE = 4207
+        private const val AUTH_DIAGNOSTICS_SOURCE_MARKER = "auth-bootstrap-diagnostics/e36bc138+"
     }
 }
 
