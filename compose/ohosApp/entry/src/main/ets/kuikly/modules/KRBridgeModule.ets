@@ -70,6 +70,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly MOTION_CAPABILITY = "motionCapability";
   static readonly SETTINGS_CAPABILITY = "settingsCapability";
   static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
+  static readonly AUTH_BASE_URL = "https://api.slock.ai/api/";
 
   private rdbStores: Map<string, relationalStore.RdbStore> = new Map();
 
@@ -282,10 +283,13 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
 
   private async authRequest(params: KRAny, callback: KuiklyRenderCallback) {
     const request = http.createHttp();
+    let url = "";
+    let methodName = "GET";
+    const startedAt = Date.now();
     try {
       const records = this.parseRecord(params);
-      const url = records["url"] as string;
-      const methodName = ((records["method"] as string) ?? "GET").toUpperCase();
+      url = records["url"] as string;
+      methodName = ((records["method"] as string) ?? "GET").toUpperCase();
       const bodyText = records["bodyText"] as string | undefined;
       const authorization = records["authorization"] as string | undefined;
       const serverId = records["serverId"] as string | undefined;
@@ -309,6 +313,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       });
       const responseCode = Number(response.responseCode ?? 0);
       const body = this.httpResultToString(response.result);
+      SlockOhosDiagnostics.record(
+        "SlockAuthNetwork",
+        `method=${methodName} url=${this.safeUrlForDiagnostics(url)} code=${responseCode} durationMs=${Date.now() - startedAt}`
+      );
       callback({
         "code": responseCode,
         "bodyText": responseCode >= 200 && responseCode < 300 ? body : "",
@@ -316,6 +324,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       });
     } catch (error) {
       const businessError = error as BusinessError;
+      SlockOhosDiagnostics.record(
+        "SlockAuthNetwork",
+        `method=${methodName} url=${this.safeUrlForDiagnostics(url)} failed=${businessError.code ?? "unknown"} durationMs=${Date.now() - startedAt}`
+      );
       callback({
         "code": 0,
         "bodyText": "",
@@ -346,6 +358,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         }
         case "loadDiagnostics": {
           callback(this.loadDiagnosticsCapability());
+          return;
+        }
+        case "probeNetwork": {
+          callback(await this.probeNetworkCapability());
           return;
         }
         case "copyDiagnostics": {
@@ -479,6 +495,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       "notificationStatusLabel": notificationsEnabled ? "Enabled" : "Disabled",
       "deviceLabel": `${deviceInfo.manufacture} ${deviceInfo.productModel}`.trim(),
       "platformLabel": `${deviceInfo.osFullName} / ${deviceInfo.displayVersion} / API ${deviceInfo.sdkApiVersion}`,
+      "baseUrl": KRBridgeModule.AUTH_BASE_URL,
       "filesDir": context.filesDir
     };
   }
@@ -492,6 +509,54 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       };
     });
     return { "status": "ok", "entries": entries };
+  }
+
+  private async probeNetworkCapability(): Promise<Record<string, Object>> {
+    const request = http.createHttp();
+    const startedAt = Date.now();
+    try {
+      const response = await request.request(KRBridgeModule.AUTH_BASE_URL, {
+        method: http.RequestMethod.GET,
+        header: {
+          "Accept": "application/json"
+        },
+        connectTimeout: 8000,
+        readTimeout: 8000
+      });
+      const responseCode = Number(response.responseCode ?? 0);
+      const duration = Date.now() - startedAt;
+      SlockOhosDiagnostics.record(
+        "SlockNetworkProbe",
+        `baseUrl=${this.safeUrlForDiagnostics(KRBridgeModule.AUTH_BASE_URL)} code=${responseCode} durationMs=${duration}`
+      );
+      return {
+        "status": "ok",
+        "baseUrl": KRBridgeModule.AUTH_BASE_URL,
+        "reachable": responseCode > 0,
+        "code": responseCode,
+        "durationMillis": duration,
+        "statusLabel": responseCode > 0 ? "Reachable" : "Unavailable",
+        "detail": this.httpResultToString(response.result).slice(0, 160)
+      };
+    } catch (error) {
+      const businessError = error as BusinessError;
+      const duration = Date.now() - startedAt;
+      SlockOhosDiagnostics.record(
+        "SlockNetworkProbe",
+        `baseUrl=${this.safeUrlForDiagnostics(KRBridgeModule.AUTH_BASE_URL)} failed=${businessError.code ?? "unknown"} durationMs=${duration}`
+      );
+      return {
+        "status": "ok",
+        "baseUrl": KRBridgeModule.AUTH_BASE_URL,
+        "reachable": false,
+        "code": 0,
+        "durationMillis": duration,
+        "statusLabel": "Network error",
+        "detail": businessError.message ?? `${error}`
+      };
+    } finally {
+      request.destroy();
+    }
   }
 
   private copyDiagnosticsCapability(): Record<string, Object> {
@@ -896,6 +961,15 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       return textDecoder.decodeWithStream(new Uint8Array(result));
     }
     return JSON.stringify(result);
+  }
+
+  private safeUrlForDiagnostics(rawUrl: string): string {
+    if (rawUrl.length === 0) {
+      return "";
+    }
+    const queryIndex = rawUrl.indexOf("?");
+    const withoutQuery = queryIndex >= 0 ? rawUrl.slice(0, queryIndex) : rawUrl;
+    return withoutQuery.slice(0, 160);
   }
 
   private parseRecord(params: KRAny): Record<string, Object> {

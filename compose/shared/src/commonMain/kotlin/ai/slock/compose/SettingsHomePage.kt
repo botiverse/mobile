@@ -233,6 +233,7 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
@@ -894,7 +895,8 @@ private fun SlockAppShellContent() {
                 onSignedIn = { session ->
                     authGateMessage = null
                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedIn(session))
-                }
+                },
+                onOpenDiagnostics = { pager.openAppShellAuthDiagnostics() }
             )
             return
         }
@@ -919,7 +921,8 @@ private fun SlockAppShellContent() {
             AppShellAuthErrorContent(
                 message = gate.message,
                 onRetry = { authGateViewModel.dispatch(SharedAuthGateIntent.Retry) },
-                onSignIn = { authGateViewModel.dispatch(SharedAuthGateIntent.ShowSignIn) }
+                onSignIn = { authGateViewModel.dispatch(SharedAuthGateIntent.ShowSignIn) },
+                onOpenDiagnostics = { pager.openAppShellAuthDiagnostics() }
             )
             return
         }
@@ -3506,7 +3509,8 @@ private fun String.toSharedSettingsDestination(): SharedSettingsDestination? =
 private fun AppShellAuthGateContent(
     authDataSource: SharedAuthDataSource,
     message: String? = null,
-    onSignedIn: (StoredAuthSession) -> Unit
+    onSignedIn: (StoredAuthSession) -> Unit,
+    onOpenDiagnostics: () -> Unit
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
@@ -3582,7 +3586,8 @@ private fun AppShellAuthGateContent(
                 onEmailChange = {},
                 onPasswordChange = {},
                 onSubmit = {},
-                onBackToSignIn = { mode = "login" }
+                onBackToSignIn = { mode = "login" },
+                onOpenDiagnostics = onOpenDiagnostics
             )
         "forgot" ->
             ForgotPasswordContent(
@@ -3592,7 +3597,8 @@ private fun AppShellAuthGateContent(
                 errorMessage = "Password reset will move into the shared app shell next.",
                 onEmailChange = {},
                 onSubmit = {},
-                onBackToSignIn = { mode = "login" }
+                onBackToSignIn = { mode = "login" },
+                onOpenDiagnostics = onOpenDiagnostics
             )
         else ->
             LoginContent(
@@ -3616,7 +3622,8 @@ private fun AppShellAuthGateContent(
                         )
                 },
                 onForgotPassword = { mode = "forgot" },
-                onCreateAccount = { mode = "register" }
+                onCreateAccount = { mode = "register" },
+                onOpenDiagnostics = onOpenDiagnostics
             )
     }
 }
@@ -3649,6 +3656,14 @@ private fun AuthProvider.appShellProviderId(): String =
         AuthProvider.Google -> "google"
         AuthProvider.GitHub -> "github"
     }
+
+private fun Pager.openAppShellAuthDiagnostics() {
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+        .openPage(
+            AUTH_DIAGNOSTICS_PAGE,
+            JSONObject().put("pageName", AUTH_DIAGNOSTICS_PAGE)
+        )
+}
 
 @Composable
 private fun AppShellServerGateContent(
@@ -3874,9 +3889,10 @@ private fun AppShellServerRow(
 private fun AppShellAuthErrorContent(
     message: String,
     onRetry: () -> Unit,
-    onSignIn: () -> Unit
+    onSignIn: () -> Unit,
+    onOpenDiagnostics: () -> Unit
 ) {
-    AuthScaffold {
+    AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics) {
         AuthLogoBadge("SLOCK")
         Text(
             text = "Session error",

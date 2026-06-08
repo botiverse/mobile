@@ -7,11 +7,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import ai.slock.compose.base.Utils
+import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.data.BridgeAuthApi
+import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
+import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.createSlockRelationalStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
+import ai.slock.compose.data.SharedSettingsAboutSnapshot
+import ai.slock.compose.data.SharedSettingsDiagnosticsEntry
+import ai.slock.compose.data.SharedSettingsNetworkProbeSnapshot
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -20,10 +27,14 @@ import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
@@ -33,9 +44,11 @@ import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.focus.focusProperties
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
+import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
 import com.tencent.kuikly.compose.ui.text.input.KeyboardType
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -48,6 +61,7 @@ import com.tencent.kuikly.core.pager.Pager
 const val LOGIN_PAGE = "compose_login"
 const val REGISTER_PAGE = "compose_register"
 const val FORGOT_PASSWORD_PAGE = "compose_forgot_password"
+const val AUTH_DIAGNOSTICS_PAGE = "compose_auth_diagnostics"
 private const val AUTH_LOGIN_INPUTS_VISUAL_PAGE = "compose_auth_login_inputs"
 private const val AUTH_REGISTER_INPUTS_VISUAL_PAGE = "compose_auth_register_inputs"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
@@ -77,6 +91,14 @@ internal class ComposeForgotPasswordPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { ForgotPasswordScreen() }
+    }
+}
+
+@Page(AUTH_DIAGNOSTICS_PAGE, supportInLocal = true)
+internal class ComposeAuthDiagnosticsPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { AuthDiagnosticsScreen() }
     }
 }
 
@@ -188,7 +210,8 @@ private fun LoginScreen() {
                 )
         },
         onForgotPassword = { pager.openAuthPage(FORGOT_PASSWORD_PAGE) },
-        onCreateAccount = { pager.openAuthPage(REGISTER_PAGE) }
+        onCreateAccount = { pager.openAuthPage(REGISTER_PAGE) },
+        onOpenDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) }
     )
 }
 
@@ -230,7 +253,8 @@ private fun RegisterScreen() {
                 null -> Unit
             }
         },
-        onBackToSignIn = { pager.openAuthPage(LOGIN_PAGE) }
+        onBackToSignIn = { pager.openAuthPage(LOGIN_PAGE) },
+        onOpenDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) }
     )
 }
 
@@ -258,9 +282,314 @@ private fun ForgotPasswordScreen() {
                 null -> Unit
             }
         },
-        onBackToSignIn = { pager.openAuthPage(LOGIN_PAGE) }
+        onBackToSignIn = { pager.openAuthPage(LOGIN_PAGE) },
+        onOpenDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) }
     )
 }
+
+private data class AuthDiagnosticsUiState(
+    val loading: Boolean = true,
+    val about: SharedSettingsAboutSnapshot? = null,
+    val probe: SharedSettingsNetworkProbeSnapshot? = null,
+    val entries: List<SharedSettingsDiagnosticsEntry> = emptyList(),
+    val errorMessage: String? = null
+)
+
+@Composable
+private fun AuthDiagnosticsScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
+    var refreshNonce by remember { mutableStateOf(0) }
+    var copyNonce by remember { mutableStateOf(0) }
+    var state by remember { mutableStateOf(AuthDiagnosticsUiState()) }
+
+    LaunchedEffect(refreshNonce) {
+        state = state.copy(loading = true, errorMessage = null)
+        val aboutResult = runCatching { settingsCapabilities.loadAbout() }.getOrElse {
+            DataResult.Error(ai.slock.compose.data.ScreenError("settings_about_exception"))
+        }
+        val diagnosticsResult = runCatching { settingsCapabilities.loadDiagnosticsHost() }.getOrElse {
+            DataResult.Error(ai.slock.compose.data.ScreenError("settings_diagnostics_exception"))
+        }
+        val probeResult = runCatching { settingsCapabilities.loadNetworkProbe() }.getOrElse {
+            DataResult.Error(ai.slock.compose.data.ScreenError("settings_network_probe_exception"))
+        }
+        state =
+            AuthDiagnosticsUiState(
+                loading = false,
+                about = (aboutResult as? DataResult.Content)?.data,
+                probe = (probeResult as? DataResult.Content)?.data,
+                entries = (diagnosticsResult as? DataResult.Content)?.data?.entries.orEmpty(),
+                errorMessage =
+                    listOf(
+                        aboutResult.authDiagnosticsErrorLabel("about"),
+                        diagnosticsResult.authDiagnosticsErrorLabel("diagnostics"),
+                        probeResult.authDiagnosticsErrorLabel("probe")
+                    ).filterNotNull().joinToString("; ").takeIf { it.isNotBlank() }
+            )
+    }
+
+    LaunchedEffect(copyNonce) {
+        if (copyNonce > 0) {
+            settingsCapabilities.bridgeCopyToClipboard(
+                buildAuthDiagnosticsExportText(
+                    about = state.about,
+                    probe = state.probe,
+                    entries = state.entries,
+                    errorMessage = state.errorMessage
+                )
+            )
+            bridge.toast("Diagnostics copied")
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        SlockTopPageHeader(
+            title = "Diagnostics",
+            subtitle = "Auth and network",
+            iconName = "activity",
+            leadingContent = {
+                SlockBrutalIconButton(
+                    iconName = "arrow-left",
+                    onClick = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
+                    size = 30.dp,
+                    shadowOffset = 2.dp
+                )
+            },
+            trailingContent = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SlockBrutalIconButton(
+                        iconName = "copy",
+                        onClick = { copyNonce += 1 },
+                        size = 30.dp,
+                        shadowOffset = 2.dp
+                    )
+                    SlockBrutalIconButton(
+                        iconName = "refresh-cw",
+                        onClick = { refreshNonce += 1 },
+                        enabled = !state.loading,
+                        size = 30.dp,
+                        shadowOffset = 2.dp
+                    )
+                }
+            }
+        )
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SlockBrutalActionButton(
+                        label = "Copy",
+                        leadingIcon = "copy",
+                        onClick = { copyNonce += 1 },
+                        backgroundColor = SlockColor.BrandYellow,
+                        minWidth = 94.dp
+                    )
+                    SlockBrutalActionButton(
+                        label = if (state.loading) "Loading" else "Refresh",
+                        leadingIcon = "refresh-cw",
+                        onClick = { refreshNonce += 1 },
+                        enabled = !state.loading,
+                        minWidth = 104.dp
+                    )
+                }
+            }
+            state.errorMessage?.let { error ->
+                item {
+                    AuthDiagnosticsPanel("Load status") {
+                        AuthDiagnosticsValue("Error", error)
+                    }
+                }
+            }
+            item {
+                AuthDiagnosticsPanel("Network probe") {
+                    val probe = state.probe
+                    AuthDiagnosticsValue("Status", probe?.statusLabel ?: if (state.loading) "Loading" else "Unavailable")
+                    AuthDiagnosticsValue("Base URL", probe?.baseUrl.orEmpty().ifBlank { "Unknown" })
+                    AuthDiagnosticsValue("HTTP code", probe?.code?.takeIf { it > 0 }?.toString() ?: "--")
+                    AuthDiagnosticsValue("Duration", probe?.durationMillis?.takeIf { it > 0L }?.let { "${it}ms" } ?: "--")
+                    probe?.detail?.takeIf { it.isNotBlank() }?.let { detail ->
+                        AuthDiagnosticsValue("Detail", detail)
+                    }
+                }
+            }
+            item {
+                AuthDiagnosticsPanel("Environment") {
+                    val about = state.about
+                    AuthDiagnosticsValue("App", about?.appName.orEmpty().ifBlank { "Slock" })
+                    AuthDiagnosticsValue("Version", about?.versionLabel.orEmpty().ifBlank { "Unknown" })
+                    AuthDiagnosticsValue("Build", about?.buildLabel.orEmpty().ifBlank { "Unknown" })
+                    AuthDiagnosticsValue("Package", about?.packageName.orEmpty().ifBlank { "Unknown" })
+                    AuthDiagnosticsValue("Platform", about?.platformLabel.orEmpty().ifBlank { "Unknown" })
+                    AuthDiagnosticsValue("Device", about?.deviceLabel.orEmpty().ifBlank { "Unknown" })
+                    AuthDiagnosticsValue("Session", about?.sessionStatusLabel.orEmpty().ifBlank { "Unknown" })
+                    AuthDiagnosticsValue("Server", about?.selectedServerLabel.orEmpty().ifBlank { "Unknown" })
+                }
+            }
+            item {
+                AuthDiagnosticsPanel("Recent logs") {
+                    if (state.entries.isEmpty()) {
+                        AuthDiagnosticsValue("Log", if (state.loading) "Loading" else "No recent entries")
+                    } else {
+                        state.entries.takeLast(80).forEach { entry ->
+                            AuthDiagnosticsLogEntry(entry)
+                        }
+                    }
+                }
+            }
+            item { Spacer(Modifier.height(20.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun AuthDiagnosticsPanel(title: String, content: @Composable () -> Unit) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = title.uppercase(),
+            style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        content()
+    }
+}
+
+@Composable
+private fun AuthDiagnosticsValue(label: String, value: String) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = label,
+            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 14.sp),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = value,
+            style = SlockType.Body.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+            color = SlockColor.TextBlack,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 16.dp)
+        )
+    }
+}
+
+@Composable
+private fun AuthDiagnosticsLogEntry(entry: SharedSettingsDiagnosticsEntry) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = "${entry.timestampLabel} ${entry.tag}",
+            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 13.sp),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = entry.message,
+            style = SlockType.Body.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+            color = SlockColor.TextBlack,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 16.dp)
+        )
+    }
+}
+
+private fun <T> DataResult<T>.authDiagnosticsErrorLabel(label: String): String? =
+    when (this) {
+        is DataResult.Content -> null
+        is DataResult.Empty -> "$label empty: ${reason.name}"
+        is DataResult.Error -> "$label error: ${error.code}"
+        is DataResult.NoPermission -> "$label blocked: ${blocker.code}"
+    }
+
+internal fun buildAuthDiagnosticsExportText(
+    about: SharedSettingsAboutSnapshot?,
+    probe: SharedSettingsNetworkProbeSnapshot?,
+    entries: List<SharedSettingsDiagnosticsEntry>,
+    errorMessage: String? = null
+): String =
+    redactAuthDiagnosticsText(
+        buildString {
+            appendLine("Slock auth diagnostics")
+            appendLine()
+            appendLine("Environment")
+            appendDiagnosticsLine("App", about?.appName ?: "Slock")
+            appendDiagnosticsLine("Version", about?.versionLabel)
+            appendDiagnosticsLine("Build", about?.buildLabel)
+            appendDiagnosticsLine("Package", about?.packageName)
+            appendDiagnosticsLine("Platform", about?.platformLabel)
+            appendDiagnosticsLine("Device", about?.deviceLabel)
+            appendDiagnosticsLine("Session", about?.sessionStatusLabel)
+            appendDiagnosticsLine("Signed in user", about?.signedInUserLabel)
+            appendDiagnosticsLine("Selected server", about?.selectedServerLabel)
+            appendLine()
+            appendLine("Network probe")
+            appendDiagnosticsLine("Base URL", probe?.baseUrl)
+            appendDiagnosticsLine("Status", probe?.statusLabel)
+            appendDiagnosticsLine("Reachable", probe?.reachable?.toString())
+            appendDiagnosticsLine("HTTP code", probe?.code?.takeIf { it > 0 }?.toString())
+            appendDiagnosticsLine("Duration", probe?.durationMillis?.takeIf { it > 0L }?.let { "${it}ms" })
+            appendDiagnosticsLine("Detail", probe?.detail)
+            errorMessage?.takeIf { it.isNotBlank() }?.let {
+                appendLine()
+                appendLine("Load errors")
+                appendDiagnosticsLine("Error", it)
+            }
+            appendLine()
+            appendLine("Recent logs")
+            if (entries.isEmpty()) {
+                appendLine("No recent entries")
+            } else {
+                entries.takeLast(120).forEach { entry ->
+                    appendLine("${entry.timestampLabel} ${entry.tag}: ${entry.message}")
+                }
+            }
+        }
+    )
+
+private fun StringBuilder.appendDiagnosticsLine(label: String, value: String?) {
+    append(label)
+    append(": ")
+    appendLine(value?.takeIf { it.isNotBlank() } ?: "--")
+}
+
+internal fun redactAuthDiagnosticsText(value: String): String {
+    var redacted = value
+    AuthDiagnosticsSensitivePatterns.forEach { pattern ->
+        redacted = pattern.replace(redacted, "$1[redacted]")
+    }
+    redacted =
+        AuthDiagnosticsEmailPattern.replace(redacted) { match ->
+            "${match.groupValues[1]}[redacted]${match.groupValues[2]}"
+        }
+    return redacted
+}
+
+private val AuthDiagnosticsSensitivePatterns =
+    listOf(
+        Regex("""(?i)(\bauthorization\s*[:=]\s*bearer\s+)[^\s,;]+"""),
+        Regex("""(?i)(\bbearer\s+)[^\s,;]+"""),
+        Regex("""(?i)(\baccess[_-]?token\s*[:=]\s*)[^\s,;]+"""),
+        Regex("""(?i)(\brefresh[_-]?token\s*[:=]\s*)[^\s,;]+"""),
+        Regex("""(?i)(\bpassword\s*[:=]\s*)[^\s,;]+"""),
+        Regex("""(?i)(\bcookie\s*[:=]\s*)[^\s,;]+"""),
+        Regex("""(?i)(\braw\s+(?:response|body)\s*[:=]\s*).+"""),
+        Regex("""\b((?:eyJ)[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.)[A-Za-z0-9_-]+\b""")
+    )
+
+private val AuthDiagnosticsEmailPattern =
+    Regex("""\b([A-Za-z0-9._%+-]{2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b""")
 
 @Composable
 private fun AuthLoginInputsVisualScreen() {
@@ -308,7 +637,8 @@ internal fun LoginContent(
     onSubmitValues: (String, String) -> Unit = { _, _ -> onSubmit() },
     onSocialSignIn: (AuthProvider) -> Unit = {},
     onForgotPassword: () -> Unit,
-    onCreateAccount: () -> Unit
+    onCreateAccount: () -> Unit,
+    onOpenDiagnostics: () -> Unit = {}
 ) {
     var emailDraft by remember { mutableStateOf(email) }
     var passwordDraft by remember { mutableStateOf(password) }
@@ -330,7 +660,7 @@ internal fun LoginContent(
             onSubmitValues(emailDraft, passwordDraft)
         }
     }
-    AuthScaffold {
+    AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics) {
         AuthCenterMark()
         Text(
             text = "Sign in",
@@ -416,13 +746,14 @@ internal fun RegisterContent(
     onPasswordChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onBackToSignIn: () -> Unit,
-    forceNameFocused: Boolean = true
+    forceNameFocused: Boolean = true,
+    onOpenDiagnostics: () -> Unit = {}
 ) {
     val formEnabled = !submitting
     var termsAccepted by remember { mutableStateOf(false) }
     val emailFocusRequester = remember { FocusRequester() }
     val passwordFocusRequester = remember { FocusRequester() }
-    AuthScaffold {
+    AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics) {
         AuthCenterMark()
         Text(
             text = "Create account",
@@ -486,9 +817,10 @@ internal fun ForgotPasswordContent(
     errorMessage: String?,
     onEmailChange: (String) -> Unit,
     onSubmit: () -> Unit,
-    onBackToSignIn: () -> Unit
+    onBackToSignIn: () -> Unit,
+    onOpenDiagnostics: () -> Unit = {}
 ) {
-    AuthScaffold {
+    AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics) {
         AuthCenterMark()
         Text(
             text = "Reset password",

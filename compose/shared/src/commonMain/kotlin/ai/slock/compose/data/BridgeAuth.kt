@@ -359,6 +359,23 @@ internal class BridgeSettingsPlatformCapabilities(
         return DataResult.Content(response.toDiagnosticsHostSnapshot())
     }
 
+    suspend fun loadNetworkProbe(): DataResult<SharedSettingsNetworkProbeSnapshot> {
+        val response = bridge.settingsCapability(JSONObject().put("action", "probeNetwork"))
+        if (response?.optString("status") != "ok") {
+            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_network_probe_unavailable" }))
+        }
+        return DataResult.Content(
+            SharedSettingsNetworkProbeSnapshot(
+                baseUrl = response.optString("baseUrl").ifBlank { AUTH_BASE_URL },
+                statusLabel = response.optString("statusLabel").ifBlank { if (response.optBoolean("reachable", false)) "Reachable" else "Unavailable" },
+                detail = response.optString("detail"),
+                reachable = response.optBoolean("reachable", false),
+                code = response.optInt("code", 0),
+                durationMillis = response.optLong("durationMillis", 0L)
+            )
+        )
+    }
+
     suspend fun copyDiagnostics(): Boolean =
         bridge.settingsCapability(JSONObject().put("action", "copyDiagnostics"))?.optString("status") == "ok"
 

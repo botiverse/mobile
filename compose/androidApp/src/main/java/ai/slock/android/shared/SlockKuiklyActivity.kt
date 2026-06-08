@@ -1355,6 +1355,7 @@ internal class SlockKuiklyBridgeModule(
                         "clearStorage" -> clearSettingsStorage(request.optString("target"))
                         "loadAbout" -> loadSettingsAbout()
                         "loadDiagnostics" -> loadSettingsDiagnostics()
+                        "probeNetwork" -> probeSettingsNetwork()
                         "copyDiagnostics" -> {
                             copyText("Slock diagnostics", SanitizedDiagnosticsLogBuffer.exportText())
                             SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_copy_logs")
@@ -1750,7 +1751,8 @@ internal class SlockKuiklyBridgeModule(
                 "socketStatusLabel" to "Host active",
                 "notificationStatusLabel" to "Managed by system settings",
                 "deviceLabel" to "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
-                "platformLabel" to "Android ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT}"
+                "platformLabel" to "Android ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT}",
+                "baseUrl" to AndroidAuthApiFactory.BASE_URL
         )
     }
 
@@ -1767,6 +1769,53 @@ internal class SlockKuiklyBridgeModule(
                     }
                 }
         return mapOf("status" to "ok", "entries" to entries)
+    }
+
+    private fun probeSettingsNetwork(): Map<String, Any> {
+        val startedAt = System.currentTimeMillis()
+        return runCatching {
+            val baseUrl = AndroidAuthApiFactory.BASE_URL
+            val connection =
+                    (URL(baseUrl).openConnection() as HttpURLConnection).apply {
+                        requestMethod = "GET"
+                        connectTimeout = 8_000
+                        readTimeout = 8_000
+                        setRequestProperty("Accept", "application/json")
+                    }
+            val code = connection.responseCode
+            val duration = System.currentTimeMillis() - startedAt
+            val detail = connection.responseMessage.orEmpty()
+            connection.disconnect()
+            SlockDiagnosticsLogger.record(
+                    "SlockNetworkProbe",
+                    "baseUrl=${safeUrlForDiagnostics(baseUrl)} code=$code durationMs=$duration"
+            )
+            mapOf(
+                    "status" to "ok",
+                    "baseUrl" to baseUrl,
+                    "reachable" to (code > 0),
+                    "code" to code,
+                    "durationMillis" to duration,
+                    "statusLabel" to if (code > 0) "Reachable" else "Unavailable",
+                    "detail" to detail
+            )
+        }.getOrElse { throwable ->
+            val duration = System.currentTimeMillis() - startedAt
+            val detail = throwable.message ?: throwable::class.java.simpleName
+            SlockDiagnosticsLogger.record(
+                    "SlockNetworkProbe",
+                    "baseUrl=${safeUrlForDiagnostics(AndroidAuthApiFactory.BASE_URL)} failed=${throwable::class.java.simpleName} durationMs=$duration"
+            )
+            mapOf(
+                    "status" to "ok",
+                    "baseUrl" to AndroidAuthApiFactory.BASE_URL,
+                    "reachable" to false,
+                    "code" to 0,
+                    "durationMillis" to duration,
+                    "statusLabel" to "Network error",
+                    "detail" to detail
+            )
+        }
     }
 
     private fun buildFeedbackText(diagnosticsFileName: String): String =
@@ -1933,12 +1982,15 @@ internal class SlockKuiklyBridgeModule(
 
     private fun authRequest(params: String?, callback: KuiklyRenderCallback?) {
         Thread {
+            val request = JSONObject(params ?: "{}")
+            val urlText = request.optString("url")
+            val method = request.optString("method").ifBlank { "GET" }
+            val startedAt = System.currentTimeMillis()
             val result =
                     runCatching {
-                        val request = JSONObject(params ?: "{}")
-                        val url = URL(request.optString("url"))
+                        val url = URL(urlText)
                         val connection = (url.openConnection() as HttpURLConnection).apply {
-                            requestMethod = request.optString("method").ifBlank { "GET" }
+                            requestMethod = method
                             connectTimeout = 30_000
                             readTimeout = 30_000
                             setRequestProperty("Accept", "application/json")
@@ -1960,12 +2012,22 @@ internal class SlockKuiklyBridgeModule(
                         val code = connection.responseCode
                         val stream = if (code in 200..299) connection.inputStream else connection.errorStream
                         val body = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
+                        val duration = System.currentTimeMillis() - startedAt
+                        SlockDiagnosticsLogger.record(
+                                "SlockAuthNetwork",
+                                "method=$method url=${safeUrlForDiagnostics(urlText)} code=$code durationMs=$duration"
+                        )
                         mapOf(
                                 "code" to code,
                                 "bodyText" to if (code in 200..299) body else "",
                                 "errorBodyText" to if (code in 200..299) "" else body
                         )
                     }.getOrElse { throwable ->
+                        val duration = System.currentTimeMillis() - startedAt
+                        SlockDiagnosticsLogger.record(
+                                "SlockAuthNetwork",
+                                "method=$method url=${safeUrlForDiagnostics(urlText)} failed=${throwable::class.java.simpleName} durationMs=$duration"
+                        )
                         mapOf(
                                 "code" to 0,
                                 "bodyText" to "",
@@ -1976,6 +2038,12 @@ internal class SlockKuiklyBridgeModule(
             callback?.invoke(result)
         }.start()
     }
+
+    private fun safeUrlForDiagnostics(rawUrl: String): String =
+            runCatching {
+                val url = URL(rawUrl)
+                "${url.protocol}://${url.host}${url.path}"
+            }.getOrDefault(rawUrl.substringBefore("?").take(160))
 
     companion object {
         const val MODULE_NAME = "HRBridgeModule"

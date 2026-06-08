@@ -67,15 +67,27 @@ private fun Modifier.authStaticTextFocus(): Modifier =
 @Composable
 internal fun AuthScaffold(
     modifier: Modifier = Modifier,
+    onDiagnosticsShortcut: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val statusBarHeight = LocalActivity.current.pageData.statusBarHeight
+    var diagnosticsTapCount by remember { mutableStateOf(0) }
+    val onBrandClick =
+        onDiagnosticsShortcut?.let { callback ->
+            {
+                diagnosticsTapCount += 1
+                if (diagnosticsTapCount >= 5) {
+                    diagnosticsTapCount = 0
+                    callback()
+                }
+            }
+        }
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        AuthTopBar(statusBarHeight)
+        AuthTopBar(statusBarHeight, onBrandClick)
         Box(
             modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 36.dp),
             contentAlignment = Alignment.TopCenter
@@ -94,7 +106,7 @@ internal fun AuthScaffold(
 }
 
 @Composable
-private fun AuthTopBar(statusBarHeight: Float) {
+private fun AuthTopBar(statusBarHeight: Float, onBrandClick: (() -> Unit)?) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -110,17 +122,24 @@ private fun AuthTopBar(statusBarHeight: Float) {
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AuthSmallBrand()
+            AuthSmallBrand(
+                modifier =
+                    if (onBrandClick != null) {
+                        Modifier.clickable { onBrandClick() }
+                    } else {
+                        Modifier
+                    }
+            )
         }
     }
 }
 
 @Composable
-private fun AuthSmallBrand() {
+private fun AuthSmallBrand(modifier: Modifier = Modifier) {
     SlockCachedImage(
         source = SlockLockupLightPngDataUri,
         contentDescription = null,
-        modifier = Modifier.width(143.dp).height(31.dp)
+        modifier = modifier.width(143.dp).height(31.dp)
     )
 }
 

@@ -93,6 +93,15 @@ data class SharedSettingsAboutSnapshot(
     val platformLabel: String = ""
 )
 
+data class SharedSettingsNetworkProbeSnapshot(
+    val baseUrl: String = "",
+    val statusLabel: String = "Not run",
+    val detail: String = "",
+    val reachable: Boolean = false,
+    val code: Int = 0,
+    val durationMillis: Long = 0L
+)
+
 data class SharedSettingsDiagnosticsSnapshot(
     val entries: List<SharedSettingsDiagnosticsEntry> = emptyList(),
     val profiler: SharedSettingsRecompositionProfilerSnapshot = SharedSettingsRecompositionProfilerSnapshot()
