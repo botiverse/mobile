@@ -416,56 +416,12 @@ function loadManifest(flags, { createIfMissing = true } = {}) {
   return readJson(manifestPath);
 }
 
-function loadTokens() {
-  if (!fs.existsSync(inventoryPath)) scanReact();
-  return readJson(inventoryPath).tokens || {};
-}
-
 function xmlEscape(value) {
   return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
-}
-
-function writeBuiltinDemoCapture(provider, visualCase, tokens) {
-  const providerDir = path.join(resultRoot, provider);
-  ensureDir(providerDir);
-  const width = visualCase.viewport?.width || 390;
-  const height = visualCase.viewport?.height || 844;
-  const ink = tokens["color-brutal-black"] || "#141111";
-  const yellow = tokens["color-brutal-yellow"] || "#FFD440";
-  const cream = tokens["color-brutal-cream"] || "#FFFAEF";
-  const pink = tokens["color-brutal-pink"] || "#FE7DA8";
-  const sourceHint = provider.includes("react") ? visualCase.reactPathHint : visualCase.androidCaseHint;
-  const imagePath = path.join(providerDir, `${visualCase.id}.svg`);
-  const metadataPath = path.join(providerDir, `${visualCase.id}.metadata.json`);
-  ensureDir(path.dirname(imagePath));
-  ensureDir(path.dirname(metadataPath));
-  const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <rect width="100%" height="100%" fill="#ffffff"/>
-  <rect x="18" y="18" width="${width - 36}" height="${height - 36}" fill="${cream}" stroke="${ink}" stroke-width="3"/>
-  <rect x="34" y="34" width="${width - 68}" height="64" fill="${yellow}" stroke="${ink}" stroke-width="3"/>
-  <text x="50" y="74" fill="${ink}" font-family="Space Grotesk, Arial, sans-serif" font-size="18" font-weight="700">${xmlEscape(visualCase.id)}</text>
-  <rect x="34" y="122" width="${width - 68}" height="118" fill="#ffffff" stroke="${ink}" stroke-width="2"/>
-  <text x="50" y="154" fill="${ink}" font-family="Space Grotesk, Arial, sans-serif" font-size="14" font-weight="600">provider: ${xmlEscape(provider)}</text>
-  <text x="50" y="180" fill="${ink}" font-family="Space Mono, monospace" font-size="12">${xmlEscape(visualCase.capture?.selector || visualCase.selector || "")}</text>
-  <text x="50" y="206" fill="${ink}" font-family="Space Mono, monospace" font-size="12">${xmlEscape(sourceHint)}</text>
-  <rect x="50" y="278" width="92" height="34" fill="${pink}" stroke="${ink}" stroke-width="2"/>
-  <text x="64" y="300" fill="${ink}" font-family="Space Grotesk, Arial, sans-serif" font-size="13" font-weight="700">Badge 24</text>
-</svg>
-`;
-  fs.writeFileSync(imagePath, svg);
-  writeJson(metadataPath, {
-    provider,
-    providerType: "builtin-demo",
-    caseId: visualCase.id,
-    image: path.relative(repoRoot, imagePath),
-    viewport: visualCase.viewport,
-    capturedAt: new Date().toISOString(),
-  });
 }
 
 function runExternalProvider(provider, command, visualCase) {
@@ -583,26 +539,21 @@ function caseMatchesFilter(visualCase, filter) {
 
 function capture(flags) {
   const manifest = loadManifest(flags);
-  const tokens = loadTokens();
-  const providers = String(flags.providers || "react,android-demo").split(",").map((item) => item.trim()).filter(Boolean);
+  const providers = String(flags.providers || "react").split(",").map((item) => item.trim()).filter(Boolean);
   const command = flags.command ? String(flags.command) : null;
   const cases = selectedCases(manifest, flags);
-  const builtinProviders = [];
   for (const provider of providers) {
     if (!command && provider === "react") {
       runReactProvider(cases, flags);
-    } else {
-      builtinProviders.push(provider);
+      continue;
     }
-  }
-  for (const visualCase of cases) {
-    for (const provider of builtinProviders) {
-      if (command) {
+    if (command) {
+      for (const visualCase of cases) {
         runExternalProvider(provider, command, visualCase);
-      } else {
-        writeBuiltinDemoCapture(provider, visualCase, tokens);
       }
+      continue;
     }
+    throw new Error(`provider ${provider} requires --command; built-in demo provider output is disabled for canonical visual testing`);
   }
   console.log(`capture: ${cases.length} cases x ${providers.length} providers`);
 }
@@ -625,6 +576,10 @@ function readMetadata(provider, caseId) {
   return fs.existsSync(file) ? readJson(file) : null;
 }
 
+function isCanonicalProviderCapture(provider, metadata) {
+  return !String(provider || "").endsWith("-demo") && (!metadata || metadata.providerType !== "builtin-demo");
+}
+
 function diff(flags) {
   const manifest = loadManifest(flags);
   const baseline = String(flags.baseline || "react");
@@ -633,10 +588,12 @@ function diff(flags) {
   const results = [];
   const comparisonDir = path.join(resultRoot, "diff", `${baseline}__${current}`);
   for (const visualCase of cases) {
-    const baselineImage = findImage(baseline, visualCase.id);
-    const currentImage = findImage(current, visualCase.id);
+    const rawBaselineImage = findImage(baseline, visualCase.id);
+    const rawCurrentImage = findImage(current, visualCase.id);
     const baselineMetadata = readMetadata(baseline, visualCase.id);
     const currentMetadata = readMetadata(current, visualCase.id);
+    const baselineImage = rawBaselineImage && isCanonicalProviderCapture(baseline, baselineMetadata) ? rawBaselineImage : null;
+    const currentImage = rawCurrentImage && isCanonicalProviderCapture(current, currentMetadata) ? rawCurrentImage : null;
     const entry = {
       id: visualCase.id,
       surface: visualCase.surface,
@@ -649,6 +606,12 @@ function diff(flags) {
       currentMetadata,
       status: "missing",
     };
+    const ignoredProviders = [];
+    if (rawBaselineImage && !baselineImage) ignoredProviders.push(baseline);
+    if (rawCurrentImage && !currentImage) ignoredProviders.push(current);
+    if (ignoredProviders.length > 0) {
+      entry.note = `Ignored non-real provider capture(s): ${ignoredProviders.join(", ")}`;
+    }
     if (baselineImage && currentImage) {
       const baselineHash = hashFile(baselineImage);
       const currentHash = hashFile(currentImage);
@@ -2086,8 +2049,8 @@ function usage() {
   slock-visual scan [--react-repo-dir third_party/slock-source]
   slock-visual validate [--manifest artifacts/visual-testing/visual-testing-cases.json]
   slock-visual token-audit [--react-repo-dir third_party/slock-source] [--android-repo-dir ~/AndroidStudioProjects/Slock] [--allow-token-drift] [--strict-usage]
-  slock-visual capture [--providers react,android] [--case case.id] [--command './capture-provider.sh']
   slock-visual capture --providers react
+  slock-visual capture --providers android [--case case.id] --command './capture-provider.sh'
   slock-visual diff [--baseline react] [--current android] [--case case.id] [--category 'app/home/*'] [--include-pending]
   slock-visual analyze [--baseline react] [--current android] [--model MODEL] [--force] [--skip-model]
   slock-visual report [--baseline react] [--current android] [--skip-analysis]

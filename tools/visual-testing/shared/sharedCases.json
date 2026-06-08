@@ -33,185 +33,6 @@
       }
     },
     {
-      "id": "components.buttons.states",
-      "title": "Button States",
-      "surface": "components",
-      "fixture": "fixtures/components.buttons.states.json",
-      "viewport": {
-        "width": 390,
-        "height": 844,
-        "density": 3
-      },
-      "theme": "light",
-      "locale": "zh-CN",
-      "variants": [
-        {
-          "id": "primary",
-          "name": "Primary",
-          "props": {
-            "button": "primary"
-          }
-        },
-        {
-          "id": "neutral",
-          "name": "Neutral",
-          "props": {
-            "button": "neutral"
-          }
-        },
-        {
-          "id": "disabled",
-          "name": "Disabled",
-          "props": {
-            "button": "disabled",
-            "disabled": true
-          }
-        },
-        {
-          "id": "selected",
-          "name": "Selected Segment",
-          "props": {
-            "segment": "chat",
-            "selected": true
-          }
-        }
-      ],
-      "capture": {
-        "selector": "[data-visual-case='components.buttons.states']",
-        "crop": "element",
-        "contract": "shell-canvas"
-      },
-      "tolerance": {
-        "pixelRatio": 0.02,
-        "layoutDp": 1,
-        "ignoreAntialiasing": true
-      }
-    },
-    {
-      "id": "components.input.states",
-      "title": "Input States",
-      "surface": "components",
-      "fixture": "fixtures/components.input.states.json",
-      "viewport": {
-        "width": 390,
-        "height": 844,
-        "density": 3
-      },
-      "theme": "light",
-      "locale": "zh-CN",
-      "variants": [
-        {
-          "id": "empty",
-          "name": "Empty",
-          "props": {
-            "value": "",
-            "placeholder": "Message title"
-          }
-        },
-        {
-          "id": "focused",
-          "name": "Focused",
-          "props": {
-            "value": "Focused value",
-            "forceFocused": true
-          },
-          "interactions": [
-            {
-              "type": "focus",
-              "target": "input-focused"
-            }
-          ]
-        },
-        {
-          "id": "filled",
-          "name": "Filled",
-          "props": {
-            "value": "Composer draft"
-          }
-        },
-        {
-          "id": "disabled-error",
-          "name": "Disabled / Error",
-          "props": {
-            "disabled": true,
-            "error": "Server URL is required"
-          }
-        },
-        {
-          "id": "multiline-composer-draft",
-          "name": "Multiline Composer Draft",
-          "props": {
-            "multiline": true,
-            "composerDraft": true
-          }
-        }
-      ],
-      "capture": {
-        "selector": "[data-visual-case='components.input.states']",
-        "crop": "element",
-        "contract": "shell-canvas"
-      },
-      "reactPathHint": "packages/web/src/components/ui/FormField.tsx",
-      "androidCaseHint": "compose_components_input_states",
-      "tolerance": {
-        "pixelRatio": 0.02,
-        "layoutDp": 1,
-        "ignoreAntialiasing": true
-      }
-    },
-    {
-      "id": "components.member-row.data",
-      "title": "Member Row Data",
-      "surface": "components",
-      "fixture": "fixtures/components.member-row.data.json",
-      "viewport": {
-        "width": 390,
-        "height": 844,
-        "density": 3
-      },
-      "theme": "light",
-      "locale": "zh-CN",
-      "variants": [
-        {
-          "id": "agent-active-unread",
-          "name": "Agent Active / Unread",
-          "props": {
-            "row": "agent",
-            "presence": "active",
-            "badge": 8
-          }
-        },
-        {
-          "id": "human-default",
-          "name": "Human Default",
-          "props": {
-            "row": "human"
-          }
-        },
-        {
-          "id": "agent-offline-draft",
-          "name": "Agent Offline / Draft",
-          "props": {
-            "row": "agent-offline",
-            "presence": "offline",
-            "badge": "draft"
-          }
-        }
-      ],
-      "capture": {
-        "selector": "[data-visual-case='components.member-row.data']",
-        "crop": "element",
-        "contract": "shell-canvas"
-      },
-      "reactPathHint": "packages/web/src/components/ui/AvatarListRow.tsx",
-      "androidCaseHint": "compose_components_member_row_data",
-      "tolerance": {
-        "pixelRatio": 0.02,
-        "layoutDp": 1,
-        "ignoreAntialiasing": true
-      }
-    },
-    {
       "id": "auth.login.inputs",
       "title": "Auth Login Inputs",
       "surface": "auth",
@@ -1139,21 +960,21 @@
           "path": "packages/web/src/visual-testing/VisualComponentCases.tsx",
           "fixture": "packages/web/src/visual-testing/sharedTokens.json"
         },
-    "android": {
-      "status": "active",
-      "components": [
-        "TokenPaletteVisualPage",
-        "SlockColor",
-        "SlockShadow",
-        "SlockType"
-      ],
-      "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/TokenPaletteVisualPage.kt",
-      "fixture": "Slock design token constants",
-      "source": "kmp-shared-android",
-      "route": "compose_tokens_palette_visual",
-      "sharedComponents": [
-        "SlockColor",
-        "SlockSpacing",
+        "android": {
+          "status": "active",
+          "components": [
+            "TokenPaletteVisualPage",
+            "SlockColor",
+            "SlockShadow",
+            "SlockType"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/TokenPaletteVisualPage.kt",
+          "fixture": "Slock design token constants",
+          "source": "kmp-shared-android",
+          "route": "compose_tokens_palette_visual",
+          "sharedComponents": [
+            "SlockColor",
+            "SlockSpacing",
             "SlockType"
           ],
           "sharedPath": "compose/shared/src/commonMain/kotlin/ai/slock/compose"
@@ -1167,136 +988,6 @@
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose",
           "reason": "Needs OHOS connected capture/Hypium provider.",
-          "source": "kmp-shared-ohos"
-        }
-      }
-    },
-    {
-      "id": "components.buttons.states",
-      "title": "Button States",
-      "surface": "components",
-      "group": "primitive",
-      "status": "active",
-      "notes": "Current baseline compares real React primitives against real Android native primitives. KMP/shared button parity is tracked separately as pending.",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "BrutalButton",
-            "SegmentedControl"
-          ],
-          "path": "packages/web/src/visual-testing/VisualComponentCases.tsx",
-          "fixture": "fixtures/components.buttons.states.json"
-        },
-        "android": {
-          "status": "active",
-          "components": [
-            "SlockButton",
-            "SlockSegmentOption"
-          ],
-          "path": "app/src/androidTest/java/ai/slock/android/visual/VisualScreenshotCases.kt",
-          "fixture": "VisualScreenshotCases.buttonStates",
-          "source": "android-native",
-          "sharedMigration": "Needs fixture-driven real shared button component capture.",
-          "sharedComponents": [
-            "shared button primitive"
-          ],
-          "sharedPath": "compose/shared/src/commonMain/kotlin/ai/slock/compose"
-        },
-        "harmony": {
-          "status": "pending",
-          "components": [
-            "shared button primitive"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose",
-          "reason": "Depends on the same shared provider plus OHOS capture.",
-          "source": "kmp-shared-ohos"
-        }
-      }
-    },
-    {
-      "id": "components.input.states",
-      "title": "Input States",
-      "surface": "components",
-      "group": "primitive",
-      "status": "active",
-      "notes": "Current Android baseline includes native text field/composer pieces; real KMP composer stays pending.",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "FormField",
-            "input-brutal",
-            "BrutalTextarea"
-          ],
-          "path": "packages/web/src/visual-testing/VisualComponentCases.tsx",
-          "fixture": "fixtures/components.input.states.json"
-        },
-        "android": {
-          "status": "active",
-          "components": [
-            "SlockTextField",
-            "SlockComposer"
-          ],
-          "path": "app/src/androidTest/java/ai/slock/android/visual/VisualScreenshotCases.kt",
-          "fixture": "VisualScreenshotCases.inputStates",
-          "source": "android-native",
-          "sharedMigration": "Needs full same-scale Kuikly/shared composer capture including toolbar/send/As Task.",
-          "sharedComponents": [
-            "ThreadComposerPage composer"
-          ],
-          "sharedPath": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt"
-        },
-        "harmony": {
-          "status": "pending",
-          "components": [
-            "ThreadComposerPage composer"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
-          "reason": "Needs OHOS real shared composer capture.",
-          "source": "kmp-shared-ohos"
-        }
-      }
-    },
-    {
-      "id": "components.member-row.data",
-      "title": "Member Row Data",
-      "surface": "components",
-      "group": "primitive",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "AvatarListRow",
-            "AvatarSlot",
-            "StatusDot",
-            "BrutalBadge"
-          ],
-          "path": "packages/web/src/visual-testing/VisualComponentCases.tsx",
-          "fixture": "fixtures/components.member-row.data.json"
-        },
-        "android": {
-          "status": "active",
-          "components": [
-            "SlockMemberRow"
-          ],
-          "path": "app/src/androidTest/java/ai/slock/android/visual/VisualScreenshotCases.kt",
-          "fixture": "VisualScreenshotCases.memberRowData",
-          "source": "android-native",
-          "sharedMigration": "Needs real shared row provider; selected/pressed variants remain out until real interaction state exists.",
-          "sharedComponents": [
-            "shared member row / DM row"
-          ],
-          "sharedPath": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt"
-        },
-        "harmony": {
-          "status": "pending",
-          "components": [
-            "shared member row / DM row"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
-          "reason": "Depends on the same shared provider plus OHOS capture.",
           "source": "kmp-shared-ohos"
         }
       }

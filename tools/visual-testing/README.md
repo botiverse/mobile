@@ -15,6 +15,11 @@ visual-testing boundary:
 
 The user-facing providers are `react`, `android`, and `harmony`. Providers render real components from the manifest and fixtures, then write raw screenshots and metadata under `visual-testing-results/<provider>/`. If Android or Harmony renders KMP/shared UI, record that as the provider `source`; do not expose `kmp-shared` as a fourth platform.
 
+Default runs compare only canonical real-provider captures. The CLI no longer
+generates built-in demo provider images for missing Android/Harmony captures;
+non-React providers must be produced by a real capture command and stale
+`providerType: "builtin-demo"` artifacts are ignored by diff.
+
 The CLI defaults to:
 
 - tool / artifacts repo: the current Slock Compose Android checkout
@@ -47,6 +52,7 @@ node tools/visual-testing/src/cli.mjs scan
 node tools/visual-testing/src/cli.mjs validate
 node tools/visual-testing/src/cli.mjs token-audit
 node tools/visual-testing/src/cli.mjs capture --providers react
+node tools/visual-testing/src/cli.mjs capture --providers android --command './scripts/capture-android-visuals.sh'
 node tools/visual-testing/src/cli.mjs diff --baseline react --current android
 node tools/visual-testing/src/cli.mjs report --baseline react --current android
 node tools/visual-testing/src/cli.mjs site --baseline react --current android
@@ -85,13 +91,12 @@ Each case may declare variants:
 
 ```json
 {
-  "id": "components.buttons.states",
+  "id": "thread.message.row",
   "variants": [
     {
-      "id": "pressed",
-      "name": "Pressed",
-      "props": { "forcePressed": true },
-      "interactions": [{ "type": "pointerDown", "target": "pressed-button" }]
+      "id": "own-right",
+      "name": "Own / Right Aligned",
+      "props": { "message": "own", "alignOwnMessagesRight": true }
     }
   ]
 }
