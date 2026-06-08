@@ -4,6 +4,9 @@ import android.content.Context
 import ai.slock.compose.base.BridgeModule
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 
+internal actual fun createSlockRelationalStore(bridge: BridgeModule): SlockRelationalStore =
+    SqlDelightRelationalStore(createSlockSqlDatabase(bridge))
+
 internal actual fun createSlockSqlDatabase(bridge: BridgeModule): SlockSqlDatabase =
     SlockSqlDatabase(
         AndroidSqliteDriver(

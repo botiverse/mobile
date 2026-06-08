@@ -97,6 +97,45 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun loginAddsSafeSqliteCategoryForSessionPersistenceFailure() = runBlocking {
+        val logs = mutableListOf<String>()
+        val source =
+            SharedAuthDataSource(
+                transport = FakeAuthApi(),
+                sessionStore =
+                    ThrowingSaveSessionStore(
+                        RelationalStoreException(
+                            code = 14800014,
+                            safeMessage = "no such table: slock_kv"
+                        )
+                    ),
+                diagnosticsLogger = logs::add
+            )
+
+        val result = source.login("user@slock.ai", "password")
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertTrue(result.message.contains("Could not save session locally."))
+        assertTrue(
+            logs.any {
+                it.contains("sqliteCategory=schema") &&
+                    it.contains("sqliteCode=14800014") &&
+                    it.contains("mapped=post_login_setup")
+            }
+        )
+    }
+
+    @Test
+    fun classifiesRelationalStoreFailuresWithoutRawDetails() {
+        assertEquals("schema", classifyRelationalStoreFailure(1, "no such table: slock_kv"))
+        assertEquals("lock", classifyRelationalStoreFailure(2, "database is locked"))
+        assertEquals("corrupt", classifyRelationalStoreFailure(3, "database disk image is malformed"))
+        assertEquals("permission", classifyRelationalStoreFailure(4, "attempt to write a readonly database"))
+        assertEquals("path", classifyRelationalStoreFailure(5, "unable to open database file"))
+        assertEquals("unknown_code", classifyRelationalStoreFailure(6, null))
+    }
+
+    @Test
     fun loginMapsServersContractFailureToServersParseStage() = runBlocking {
         val logs = mutableListOf<String>()
         val store = InMemorySlockAuthSessionStore()
@@ -430,11 +469,13 @@ class AuthDataSourceTest {
         }
     }
 
-    private class ThrowingSaveSessionStore : SlockAuthSessionStore {
+    private class ThrowingSaveSessionStore(
+        private val throwable: Throwable = IllegalStateException("store unavailable")
+    ) : SlockAuthSessionStore {
         override suspend fun readSession(): StoredAuthSession? = null
 
         override suspend fun saveSession(session: StoredAuthSession) {
-            error("store unavailable")
+            throw throwable
         }
 
         override suspend fun updateTokens(accessToken: String, refreshToken: String) = Unit

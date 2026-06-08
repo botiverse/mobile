@@ -99,9 +99,9 @@ class SharedAuthDataSource(
         runCatching { sessionStore.saveSession(session) }
             .getOrElse { throwable ->
                 diagnosticsLogger(
-                    "auth_session_persist_result result=failure stage=session_persist errorType=${throwable.safeDiagnosticsType()} mapped=post_login_setup"
+                    "auth_session_persist_result result=failure stage=session_persist ${throwable.persistenceDiagnostics()} mapped=post_login_setup"
                 )
-                return loginStageFailure("session_persist")
+                return loginStageFailure("session_persist", "Could not save session locally.")
             }
         diagnosticsLogger("auth_session_persist_result result=success stage=session_persist")
         diagnosticsLogger("auth_selected_server_persist_result result=success serverIdPresent=${selectedServer != null}")
@@ -504,6 +504,13 @@ private fun loginStageFailure(stage: String, detail: String? = null): SharedAuth
 
 private fun Throwable.safeDiagnosticsType(): String =
     this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"
+
+private fun Throwable.persistenceDiagnostics(): String =
+    when (this) {
+        is RelationalStoreException ->
+            "errorType=RelationalStoreException sqliteCategory=$category sqliteCode=${code ?: "none"}"
+        else -> "errorType=${safeDiagnosticsType()} sqliteCategory=unknown sqliteCode=none"
+    }
 
 /**
  * Typed auth/server boundary.
