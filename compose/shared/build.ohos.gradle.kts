@@ -12,6 +12,31 @@ plugins {
 
 val KEY_PAGE_NAME = "pageName"
 
+fun ohosSqliteProviderLibDir(): File {
+    providers.environmentVariable("SLOCK_OHOS_SQLITE_LIB_DIR").orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return file(it) }
+    providers.environmentVariable("SLOCK_OHOS_SQLITE_WORKDIR").orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return file("$it/ohos-arm64/lib") }
+    providers.environmentVariable("SLOCK_THIRD_PARTY_WORKDIR").orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return file("$it/ohos-sqlite/ohos-arm64/lib") }
+    return rootProject.file("../third_party/.workdirs/ohos-sqlite/ohos-arm64/lib")
+}
+
+val prepareOhosSqliteProvider by tasks.registering(Exec::class) {
+    val providerScript = rootProject.file("../scripts/prepare_ohos_sqlite_provider.sh")
+    val sqliteLibDir = ohosSqliteProviderLibDir()
+    val sqliteLib = sqliteLibDir.resolve("libsqlite3.a")
+
+    description = "Builds the pinned OHOS arm64 sqlite3 static library for SQLiter."
+    group = "build setup"
+    commandLine(providerScript.absolutePath)
+    inputs.file(providerScript)
+    outputs.file(sqliteLib)
+}
+
 kotlin {
     androidTarget {
         compilations.all {
@@ -41,7 +66,9 @@ kotlin {
     // }
 
     ohosArm64 {
+        val sqliteLibDir = ohosSqliteProviderLibDir()
         binaries.sharedLib {
+            linkerOpts("-L${sqliteLibDir.absolutePath}")
         }
     }
 
@@ -93,6 +120,12 @@ kotlin {
         //     iosArm64Test.dependsOn(this)
         //     iosSimulatorArm64Test.dependsOn(this)
         // }
+    }
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink>().configureEach {
+    if (name.endsWith("OhosArm64")) {
+        dependsOn(prepareOhosSqliteProvider)
     }
 }
 

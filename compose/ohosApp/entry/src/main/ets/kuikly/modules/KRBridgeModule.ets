@@ -26,6 +26,15 @@ interface OhosPickedThreadAttachment {
   sizeBytes: number;
 }
 
+interface OhosPickedThreadAttachmentPayload {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  previewUri: string;
+  fileRef: string;
+}
+
 interface OhosDiagnosticEntryPayload {
   timestampLabel: string;
   tag: string;
@@ -789,7 +798,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     return {
       "code": 200,
       "bodyText": "",
-      "files": files.map((file: OhosPickedThreadAttachment, index: number) => {
+      "files": files.map((file: OhosPickedThreadAttachment, index: number): OhosPickedThreadAttachmentPayload => {
         return {
           "id": `picked-${Date.now()}-${index}`,
           "fileName": file.fileName,
