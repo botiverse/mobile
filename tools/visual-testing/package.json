@@ -1,0 +1,31 @@
+{
+  "name": "@slock-compose/visual-testing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./cli": "./src/cli.mjs"
+  },
+  "bin": {
+    "slock-visual": "./src/cli.mjs",
+    "slock-visual-testing": "./src/cli.mjs"
+  },
+  "scripts": {
+    "scan": "node src/cli.mjs scan",
+    "validate": "node src/cli.mjs validate",
+    "capture:react": "node src/cli.mjs capture --providers react",
+    "diff": "node src/cli.mjs diff",
+    "report": "node src/cli.mjs report",
+    "site": "node src/cli.mjs site",
+    "publish": "node src/cli.mjs publish-gh-pages"
+  },
+  "files": [
+    "src"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "sharp": "^0.34.5"
+  }
+}

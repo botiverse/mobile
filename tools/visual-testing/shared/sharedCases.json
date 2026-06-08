@@ -1,0 +1,2124 @@
+{
+  "version": 1,
+  "name": "Slock Visual Testing",
+  "cases": [
+    {
+      "id": "tokens.palette",
+      "title": "Shared Tokens",
+      "surface": "tokens",
+      "fixture": "fixtures/tokens.palette.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='tokens.palette']",
+        "crop": "element",
+        "contract": "shell-canvas"
+      },
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "components.buttons.states",
+      "title": "Button States",
+      "surface": "components",
+      "fixture": "fixtures/components.buttons.states.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "primary",
+          "name": "Primary",
+          "props": {
+            "button": "primary"
+          }
+        },
+        {
+          "id": "neutral",
+          "name": "Neutral",
+          "props": {
+            "button": "neutral"
+          }
+        },
+        {
+          "id": "disabled",
+          "name": "Disabled",
+          "props": {
+            "button": "disabled",
+            "disabled": true
+          }
+        },
+        {
+          "id": "selected",
+          "name": "Selected Segment",
+          "props": {
+            "segment": "chat",
+            "selected": true
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='components.buttons.states']",
+        "crop": "element",
+        "contract": "shell-canvas"
+      },
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "components.input.states",
+      "title": "Input States",
+      "surface": "components",
+      "fixture": "fixtures/components.input.states.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "empty",
+          "name": "Empty",
+          "props": {
+            "value": "",
+            "placeholder": "Message title"
+          }
+        },
+        {
+          "id": "focused",
+          "name": "Focused",
+          "props": {
+            "value": "Focused value",
+            "forceFocused": true
+          },
+          "interactions": [
+            {
+              "type": "focus",
+              "target": "input-focused"
+            }
+          ]
+        },
+        {
+          "id": "filled",
+          "name": "Filled",
+          "props": {
+            "value": "Composer draft"
+          }
+        },
+        {
+          "id": "disabled-error",
+          "name": "Disabled / Error",
+          "props": {
+            "disabled": true,
+            "error": "Server URL is required"
+          }
+        },
+        {
+          "id": "multiline-composer-draft",
+          "name": "Multiline Composer Draft",
+          "props": {
+            "multiline": true,
+            "composerDraft": true
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='components.input.states']",
+        "crop": "element",
+        "contract": "shell-canvas"
+      },
+      "reactPathHint": "packages/web/src/components/ui/FormField.tsx",
+      "androidCaseHint": "compose_components_input_states",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "components.member-row.data",
+      "title": "Member Row Data",
+      "surface": "components",
+      "fixture": "fixtures/components.member-row.data.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "agent-active-unread",
+          "name": "Agent Active / Unread",
+          "props": {
+            "row": "agent",
+            "presence": "active",
+            "badge": 8
+          }
+        },
+        {
+          "id": "human-default",
+          "name": "Human Default",
+          "props": {
+            "row": "human"
+          }
+        },
+        {
+          "id": "agent-offline-draft",
+          "name": "Agent Offline / Draft",
+          "props": {
+            "row": "agent-offline",
+            "presence": "offline",
+            "badge": "draft"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='components.member-row.data']",
+        "crop": "element",
+        "contract": "shell-canvas"
+      },
+      "reactPathHint": "packages/web/src/components/ui/AvatarListRow.tsx",
+      "androidCaseHint": "compose_components_member_row_data",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "auth.login.inputs",
+      "title": "Auth Login Inputs",
+      "surface": "auth",
+      "fixture": "fixtures/auth.login.inputs.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='auth.login.inputs']",
+        "crop": "element",
+        "contract": "component-bounds",
+        "interactions": [
+          {
+            "type": "fill",
+            "target": "input[type='email']",
+            "value": "artin@slock.ai"
+          },
+          {
+            "type": "fill",
+            "target": "input[type='password']",
+            "value": "correct horse battery staple"
+          }
+        ]
+      },
+      "reactPathHint": "packages/web/src/components/auth/LoginPage.tsx",
+      "androidCaseHint": "compose_auth_login_inputs",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "auth.register.inputs",
+      "title": "Auth Register Inputs",
+      "surface": "auth",
+      "fixture": "fixtures/auth.register.inputs.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='auth.register.inputs']",
+        "crop": "element",
+        "contract": "component-bounds",
+        "interactions": [
+          {
+            "type": "fill",
+            "target": "input[type='text']",
+            "value": "Product UX Designer"
+          },
+          {
+            "type": "fill",
+            "target": "input[type='email']",
+            "value": "new@slock.ai"
+          },
+          {
+            "type": "fill",
+            "target": "input[type='password']",
+            "value": "correct horse battery staple"
+          }
+        ]
+      },
+      "reactPathHint": "packages/web/src/components/auth/RegisterPage.tsx",
+      "androidCaseHint": "compose_auth_register_inputs",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "navigation.tabbar.states",
+      "title": "Navigation Tabbar States",
+      "surface": "navigation",
+      "fixture": "fixtures/navigation.tabbar.states.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "home-selected",
+          "name": "Home Selected",
+          "props": {
+            "selected": "home"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='navigation.tabbar.states']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#MobileTabBarSurface",
+      "androidCaseHint": "compose_bottom_tabbar_smoke",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "thread.composer.states",
+      "title": "Thread Composer States",
+      "surface": "thread",
+      "fixture": "fixtures/thread.composer.states.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "draft-send-enabled",
+          "name": "Draft Send Enabled",
+          "props": {
+            "draft": "Review the Android composer crop before release.",
+            "showAsTaskToggle": true,
+            "enabled": true
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='thread.composer.states']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/message/MessageInput.tsx",
+      "androidCaseHint": "compose_thread_composer",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "thread.header.states",
+      "title": "Thread Header States",
+      "surface": "thread",
+      "fixture": "fixtures/thread.header.states.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "channel-description-tabs",
+          "name": "Channel Description + Tabs",
+          "props": {
+            "channelName": "首页专修",
+            "description": "Home shell, server badge, and bottom dock polish",
+            "activeTab": "chat"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='thread.header.states']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/message/ChatPanel.tsx#PanelHeader",
+      "androidCaseHint": "compose_thread_header_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "thread.message.row",
+      "title": "Thread Message Row",
+      "surface": "thread",
+      "fixture": "fixtures/thread.message.row.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "agent-message-task-replies",
+          "name": "Agent Message / Task / Replies",
+          "props": {
+            "messageId": "msg_agent_reply",
+            "replyCount": 5,
+            "taskNumber": 10
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='thread.message.row']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/message/MessageItem.tsx",
+      "androidCaseHint": "compose_thread_message_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "home.server-switcher.open",
+      "title": "Home Server Switcher Open",
+      "surface": "home",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/home.server-switcher.open.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "open-unread",
+          "name": "Open With Unread",
+          "props": {
+            "open": true,
+            "unread": true
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='home.server-switcher.open']",
+        "crop": "element",
+        "contract": "component-bounds",
+        "outset": {
+          "right": 4,
+          "bottom": 4
+        }
+      },
+      "reactPathHint": "packages/web/src/components/ui/ServerSwitcherMenu.tsx",
+      "androidCaseHint": "compose_home_server_switcher_open",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "home.channel-row.states",
+      "title": "Home Channel Row States",
+      "surface": "home",
+      "baselineStatus": "pending",
+      "pendingReason": "React visual provider currently uses a visual-local ChannelRowButton helper instead of the real Sidebar channel row path.",
+      "fixture": "fixtures/home.channel-row.states.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "selected-unread-joined",
+          "name": "Selected / Unread / Joined",
+          "props": {
+            "selected": "design",
+            "unread": 3
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='home.channel-row.states']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/layout/Sidebar.tsx",
+      "androidCaseHint": "compose_home_channel_row_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "home.titlebar.states",
+      "title": "Home Titlebar States",
+      "surface": "home",
+      "fixture": "fixtures/home.titlebar.states.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "server-unread-notification",
+          "name": "Server Unread / Notification Trigger",
+          "props": {
+            "serverName": "Slock Design",
+            "serverUnread": true,
+            "notifications": 2
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='home.titlebar.states']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/layout/Sidebar.tsx#HomeTitlebarSurface",
+      "androidCaseHint": "compose_home_titlebar_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "home.notification-center.states",
+      "title": "Home Notification Center States",
+      "surface": "home",
+      "fixture": "fixtures/home.notification-center.states.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "warning-info",
+          "name": "Warning / Info Notifications",
+          "props": {
+            "notifications": 2
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='home.notification-center.states']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/layout/NotificationCenter.tsx",
+      "androidCaseHint": "compose_home_notification_center_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "home.top-actions.states",
+      "title": "Home Top Actions States",
+      "surface": "home",
+      "baselineStatus": "pending",
+      "pendingReason": "React visual provider currently uses a visual-local TopActionButton helper instead of the real Sidebar top action path.",
+      "fixture": "fixtures/home.top-actions.states.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "counts",
+          "name": "Activity / Saved Counts",
+          "props": {
+            "activityUnread": 7,
+            "savedCount": 3
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='home.top-actions.states']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/layout/Sidebar.tsx",
+      "androidCaseHint": "compose_home_top_actions_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "home.search.results",
+      "title": "Home Search Results",
+      "surface": "home",
+      "fixture": "fixtures/home.search.results.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "filtered-results",
+          "name": "Filtered Search Results",
+          "props": {
+            "query": "android",
+            "sender": "artin",
+            "channel": "design",
+            "range": "7d",
+            "sort": "recent"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='home.search.results']",
+        "crop": "element",
+        "contract": "component-bounds",
+        "interactions": [
+          {
+            "type": "fill",
+            "target": "[data-visual-case='home.search.results'] input",
+            "value": "android"
+          },
+          {
+            "type": "wait",
+            "ms": 850
+          }
+        ]
+      },
+      "reactPathHint": "packages/web/src/components/search/MessageSearchPage.tsx",
+      "androidCaseHint": "compose_home_search_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "home.search.channel-dropdown",
+      "title": "Home Search Channel Dropdown",
+      "surface": "home",
+      "fixture": "fixtures/home.search.results.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "open",
+          "name": "Open Channel Dropdown",
+          "props": {
+            "query": "android"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='home.search.channel-dropdown']",
+        "crop": "element",
+        "contract": "component-bounds",
+        "interactions": [
+          {
+            "type": "fill",
+            "target": "[data-visual-case='home.search.channel-dropdown'] input",
+            "value": "android"
+          },
+          {
+            "type": "wait",
+            "ms": 850
+          },
+          {
+            "type": "click",
+            "target": "[data-visual-case='home.search.channel-dropdown'] [data-search-filter='channel']"
+          },
+          {
+            "type": "wait",
+            "ms": 250
+          }
+        ]
+      },
+      "reactPathHint": "packages/web/src/components/search/MessageSearchPage.tsx",
+      "androidCaseHint": "compose_home_search_channel_dropdown_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "home.saved.results",
+      "title": "Home Saved Results",
+      "surface": "home",
+      "fixture": "fixtures/home.saved.results.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "saved-messages",
+          "name": "Saved Messages List",
+          "props": {
+            "savedCount": 3,
+            "hasMore": true
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='home.saved.results']",
+        "crop": "element",
+        "contract": "component-bounds",
+        "interactions": [
+          {
+            "type": "wait",
+            "ms": 850
+          }
+        ]
+      },
+      "reactPathHint": "packages/web/src/components/saved/SavedPanel.tsx",
+      "androidCaseHint": "compose_home_saved_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "home.activity.results",
+      "title": "Home Activity Results",
+      "surface": "home",
+      "fixture": "fixtures/home.activity.results.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "activity-list",
+          "name": "Activity Inbox List",
+          "props": {
+            "totalCount": 3,
+            "totalUnreadCount": 3,
+            "filter": "all"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='home.activity.results']",
+        "crop": "element",
+        "contract": "component-bounds",
+        "interactions": [
+          {
+            "type": "wait",
+            "ms": 850
+          }
+        ]
+      },
+      "reactPathHint": "packages/web/src/components/thread/ThreadsInbox.tsx",
+      "androidCaseHint": "compose_home_activity_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "home.create-channel.dialog",
+      "title": "Home Create Channel Dialog",
+      "surface": "home",
+      "baselineStatus": "pending",
+      "pendingReason": "Android connected provider still renders the stale pre-unified create-channel dialog instead of the current SharedCreateChannelDialog/SlockUnifiedDialog route.",
+      "fixture": "fixtures/home.create-channel.dialog.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "prefilled-members",
+          "name": "Create Channel Prefilled Members",
+          "props": {
+            "name": "android-artifacts",
+            "description": "Build reports, screenshots, release blockers",
+            "selected": "human+agent"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "body",
+        "crop": "element",
+        "contract": "modal-viewport"
+      },
+      "reactPathHint": "packages/web/src/components/channel/CreateChannelDialog.tsx",
+      "androidCaseHint": "compose_home_create_channel_dialog_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "channel.members.panel",
+      "title": "Channel Members Panel",
+      "surface": "channel",
+      "fixture": "fixtures/channel.members.panel.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "open",
+          "name": "Open Members Panel",
+          "props": {
+            "channel": "design"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "body",
+        "crop": "element",
+        "contract": "modal-viewport",
+        "interactions": [
+          {
+            "type": "click",
+            "target": "button[title='View participants']"
+          },
+          {
+            "type": "wait",
+            "ms": 250
+          }
+        ]
+      },
+      "reactPathHint": "packages/web/src/components/agent/ChannelMembers.tsx",
+      "androidCaseHint": "compose_channel_members_panel_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "channel.settings.panel",
+      "title": "Channel Settings Panel",
+      "surface": "channel",
+      "fixture": "fixtures/channel.settings.panel.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "edit-channel",
+          "name": "Edit Channel Settings",
+          "props": {
+            "channel": "design"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "body",
+        "crop": "element",
+        "contract": "modal-viewport"
+      },
+      "reactPathHint": "packages/web/src/components/channel/EditChannelDialog.tsx",
+      "androidCaseHint": "compose_channel_settings_panel_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "channel.members.add-panel",
+      "title": "Channel Add Member Panel",
+      "surface": "channel",
+      "fixture": "fixtures/channel.members.add-panel.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "add-member",
+          "name": "Add Member Panel",
+          "props": {
+            "channel": "design"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "body",
+        "crop": "element",
+        "contract": "modal-viewport",
+        "interactions": [
+          {
+            "type": "click",
+            "target": "button[title='View participants']"
+          },
+          {
+            "type": "click",
+            "target": "button:has-text('Add Member')"
+          },
+          {
+            "type": "wait",
+            "ms": 250
+          }
+        ]
+      },
+      "reactPathHint": "packages/web/src/components/agent/ChannelMembers.tsx",
+      "androidCaseHint": "compose_channel_add_member_panel_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.row.states",
+      "title": "Settings Row States",
+      "surface": "settings",
+      "fixture": "fixtures/settings.row.states.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "account-selected",
+          "name": "Account Selected",
+          "props": {
+            "selected": "account"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.row.states']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/layout/Sidebar.tsx#SettingsSidebarItemButton",
+      "androidCaseHint": "compose_settings_row_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.page.states",
+      "title": "Settings Page States",
+      "surface": "settings",
+      "fixture": "fixtures/settings.page.states.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "account-page",
+          "name": "Account Page",
+          "props": {
+            "tab": "account"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.page.states']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx",
+      "androidCaseHint": "compose_settings_page_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    }
+  ],
+  "componentMatrix": [
+    {
+      "id": "auth.login.inputs",
+      "title": "Auth Login Inputs",
+      "surface": "auth",
+      "group": "product-auth",
+      "status": "baseline",
+      "notes": "Real React LoginPage auth input typography vs Android rendering of the shared KMP Login page.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "LoginPage",
+            "FormField"
+          ],
+          "path": "packages/web/src/components/auth/LoginPage.tsx",
+          "fixture": "fixtures/auth.login.inputs.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "AuthTextField",
+            "LoginContent"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/AuthComponents.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureAuthLoginInputs"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared",
+          "reason": "Needs OHOS real auth route capture."
+        }
+      ]
+    },
+    {
+      "id": "auth.register.inputs",
+      "title": "Auth Register Inputs",
+      "surface": "auth",
+      "group": "product-auth",
+      "status": "baseline",
+      "notes": "Real React RegisterPage auth input typography and placeholders vs Android rendering of the shared KMP Register page.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "RegisterPage",
+            "FormField"
+          ],
+          "path": "packages/web/src/components/auth/RegisterPage.tsx",
+          "fixture": "fixtures/auth.register.inputs.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "AuthTextField",
+            "RegisterContent"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/AuthComponents.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureAuthRegisterInputs"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared",
+          "reason": "Needs OHOS real auth route capture."
+        }
+      ]
+    },
+    {
+      "id": "tokens.palette",
+      "title": "Shared Tokens",
+      "surface": "tokens",
+      "group": "tokens",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "TokenPaletteCase",
+            "sharedTokens.json"
+          ],
+          "path": "packages/web/src/visual-testing/VisualComponentCases.tsx",
+          "fixture": "packages/web/src/visual-testing/sharedTokens.json"
+        },
+    "android": {
+      "status": "active",
+      "components": [
+        "TokenPaletteVisualPage",
+        "SlockColor",
+        "SlockShadow",
+        "SlockType"
+      ],
+      "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/TokenPaletteVisualPage.kt",
+      "fixture": "Slock design token constants",
+      "source": "kmp-shared-android",
+      "route": "compose_tokens_palette_visual",
+      "sharedComponents": [
+        "SlockColor",
+        "SlockSpacing",
+            "SlockType"
+          ],
+          "sharedPath": "compose/shared/src/commonMain/kotlin/ai/slock/compose"
+        },
+        "harmony": {
+          "status": "pending",
+          "components": [
+            "SlockColor",
+            "SlockSpacing",
+            "SlockType"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose",
+          "reason": "Needs OHOS connected capture/Hypium provider.",
+          "source": "kmp-shared-ohos"
+        }
+      }
+    },
+    {
+      "id": "components.buttons.states",
+      "title": "Button States",
+      "surface": "components",
+      "group": "primitive",
+      "status": "active",
+      "notes": "Current baseline compares real React primitives against real Android native primitives. KMP/shared button parity is tracked separately as pending.",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "BrutalButton",
+            "SegmentedControl"
+          ],
+          "path": "packages/web/src/visual-testing/VisualComponentCases.tsx",
+          "fixture": "fixtures/components.buttons.states.json"
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "SlockButton",
+            "SlockSegmentOption"
+          ],
+          "path": "app/src/androidTest/java/ai/slock/android/visual/VisualScreenshotCases.kt",
+          "fixture": "VisualScreenshotCases.buttonStates",
+          "source": "android-native",
+          "sharedMigration": "Needs fixture-driven real shared button component capture.",
+          "sharedComponents": [
+            "shared button primitive"
+          ],
+          "sharedPath": "compose/shared/src/commonMain/kotlin/ai/slock/compose"
+        },
+        "harmony": {
+          "status": "pending",
+          "components": [
+            "shared button primitive"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose",
+          "reason": "Depends on the same shared provider plus OHOS capture.",
+          "source": "kmp-shared-ohos"
+        }
+      }
+    },
+    {
+      "id": "components.input.states",
+      "title": "Input States",
+      "surface": "components",
+      "group": "primitive",
+      "status": "active",
+      "notes": "Current Android baseline includes native text field/composer pieces; real KMP composer stays pending.",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "FormField",
+            "input-brutal",
+            "BrutalTextarea"
+          ],
+          "path": "packages/web/src/visual-testing/VisualComponentCases.tsx",
+          "fixture": "fixtures/components.input.states.json"
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "SlockTextField",
+            "SlockComposer"
+          ],
+          "path": "app/src/androidTest/java/ai/slock/android/visual/VisualScreenshotCases.kt",
+          "fixture": "VisualScreenshotCases.inputStates",
+          "source": "android-native",
+          "sharedMigration": "Needs full same-scale Kuikly/shared composer capture including toolbar/send/As Task.",
+          "sharedComponents": [
+            "ThreadComposerPage composer"
+          ],
+          "sharedPath": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt"
+        },
+        "harmony": {
+          "status": "pending",
+          "components": [
+            "ThreadComposerPage composer"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "reason": "Needs OHOS real shared composer capture.",
+          "source": "kmp-shared-ohos"
+        }
+      }
+    },
+    {
+      "id": "components.member-row.data",
+      "title": "Member Row Data",
+      "surface": "components",
+      "group": "primitive",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "AvatarListRow",
+            "AvatarSlot",
+            "StatusDot",
+            "BrutalBadge"
+          ],
+          "path": "packages/web/src/visual-testing/VisualComponentCases.tsx",
+          "fixture": "fixtures/components.member-row.data.json"
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "SlockMemberRow"
+          ],
+          "path": "app/src/androidTest/java/ai/slock/android/visual/VisualScreenshotCases.kt",
+          "fixture": "VisualScreenshotCases.memberRowData",
+          "source": "android-native",
+          "sharedMigration": "Needs real shared row provider; selected/pressed variants remain out until real interaction state exists.",
+          "sharedComponents": [
+            "shared member row / DM row"
+          ],
+          "sharedPath": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt"
+        },
+        "harmony": {
+          "status": "pending",
+          "components": [
+            "shared member row / DM row"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "reason": "Depends on the same shared provider plus OHOS capture.",
+          "source": "kmp-shared-ohos"
+        }
+      }
+    },
+    {
+      "id": "home.server-switcher.open",
+      "title": "Home Server Switcher Open",
+      "surface": "home",
+      "group": "product",
+      "status": "active",
+      "notes": "React vs Android is active. Android currently renders this through the real KMP/shared Home route; native approximations are unsupported.",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "ServerSwitcherMenu"
+          ],
+          "path": "packages/web/src/components/ui/ServerSwitcherMenu.tsx",
+          "fixture": "fixtures/home.server-switcher.open.json"
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "SharedHomeStore",
+            "SlockHomeComponents server switcher"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.homeServerSwitcherPageData",
+          "reason": "Captured through real SlockKuiklyActivity PAGE_HOME with serverSwitcherExpanded=true, cropped to raw server switcher content.",
+          "source": "kmp-shared"
+        },
+        "harmony": {
+          "status": "pending",
+          "components": [
+            "SlockHomeComponents server switcher"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "reason": "Depends on KMP/shared fixture route and OHOS capture.",
+          "source": "kmp-shared-ohos"
+        }
+      }
+    },
+    {
+      "id": "thread.message.row",
+      "title": "Thread Message Row",
+      "surface": "thread",
+      "group": "product",
+      "status": "baseline",
+      "notes": "Real React MessageItem vs Android rendering of shared ThreadMessageCard with matching fixture text, reply count, and task metadata.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageItem"
+          ],
+          "path": "packages/web/src/components/message/MessageItem.tsx",
+          "fixture": "fixtures/thread.message.row.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageRow",
+          "source": "kmp-shared"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Depends on shared thread fixture route and OHOS capture.",
+          "source": "kmp-shared"
+        }
+      ]
+    },
+    {
+      "id": "thread.composer.states",
+      "title": "Thread Composer States",
+      "surface": "thread",
+      "group": "product",
+      "status": "baseline",
+      "notes": "Real React MessageInput draft state vs Android rendering of shared ThreadComposerPage. First baseline covers the complete composer shell with draft text, attachment buttons, As Task toggle, and Send button; pending variants remain out until deterministic hooks exist.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageInput"
+          ],
+          "path": "packages/web/src/components/message/MessageInput.tsx",
+          "fixture": "fixtures/thread.composer.states.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadComposerPage composer"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerStates",
+          "source": "kmp-shared"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadComposerPage composer"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "reason": "Depends on shared composer fixture route and OHOS capture.",
+          "source": "kmp-shared"
+        }
+      ]
+    },
+    {
+      "id": "thread.header.states",
+      "title": "Thread Header States",
+      "surface": "thread",
+      "group": "product-thread",
+      "status": "baseline",
+      "notes": "Real React ChatPanel top header/tabs with channel description vs Android rendering of shared ThreadPageHeader and ThreadPageTabs. Covers the subtitle rule: show channel description when present and omit the subtitle line when absent.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "PanelHeader",
+            "ReorderablePanelTabs"
+          ],
+          "path": "packages/web/src/components/message/ChatPanel.tsx",
+          "fixture": "fixtures/thread.header.states.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "ThreadPageHeader",
+            "ThreadPageTabs"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadHeaderStates"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "ThreadPageHeader",
+            "ThreadPageTabs"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "tasks.card.states",
+      "title": "Task Card States",
+      "surface": "tasks",
+      "group": "product",
+      "status": "pending",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "TasksPanel",
+            "Task card"
+          ],
+          "path": "packages/web/src/components/task/TasksPanel.tsx",
+          "fixture": "fixtures/tasks.card.states.json"
+        },
+        "android": {
+          "status": "pending",
+          "components": [
+            "SharedTasksPage",
+            "SharedTasksStore"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedTasksPage.kt",
+          "reason": "Needs shared Tasks visual fixture after recent MVI route migration stabilizes.",
+          "source": "kmp-shared"
+        },
+        "harmony": {
+          "status": "pending",
+          "components": [
+            "SharedTasksPage"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedTasksPage.kt",
+          "reason": "Depends on shared Tasks fixture route and OHOS capture.",
+          "source": "kmp-shared-ohos"
+        }
+      }
+    },
+    {
+      "id": "settings.row.states",
+      "title": "Settings Row States",
+      "surface": "settings",
+      "group": "product",
+      "status": "baseline",
+      "notes": "Real React Settings sidebar row item vs Android rendering of shared SettingsHomePage vertical tab rows. First baseline covers Account selected and adjacent settings rows.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "SettingsSidebarItemButton",
+            "Settings sidebar row"
+          ],
+          "path": "packages/web/src/components/layout/Sidebar.tsx",
+          "fixture": "fixtures/settings.row.states.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage",
+            "SlockVerticalTabBar"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsRowStates"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage shared settings sections"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Depends on Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "navigation.tabbar.states",
+      "title": "Navigation Tabbar States",
+      "surface": "navigation",
+      "group": "product-navigation",
+      "status": "baseline",
+      "notes": "Real React mobile tabbar surface vs Android rendering of shared SlockBottomTabBar. Provider captures component bounds, not full page navigation behavior.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MobileTabBarSurface"
+          ],
+          "path": "packages/web/src/components/layout/MainLayout.tsx",
+          "fixture": "fixtures/navigation.tabbar.states.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SlockBottomTabBar"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockTabBar.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureNavigationTabbarStates"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared",
+          "reason": "Needs Harmony/HDS real tabbar provider capture."
+        }
+      ]
+    },
+    {
+      "id": "home.channel-row.states",
+      "title": "Home Channel Row States",
+      "surface": "home",
+      "group": "product-home",
+      "status": "pending",
+      "notes": "Pending canonical provider: the current React case is a visual-local ChannelRowButton helper, not the real Sidebar channel row. Replace with the product Sidebar row provider before using this as a baseline.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "components": [
+            "Sidebar channel row / channel list row"
+          ],
+          "path": "packages/web/src/components/layout/Sidebar.tsx",
+          "fixture": "fixtures/home.channel-row.states.json",
+          "reason": "Current implementation in VisualTestingCases.tsx hand-builds ChannelRowButton instead of rendering the product Sidebar row."
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SlockHomeComponents channel row"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureHomeChannelRowStates"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SlockHomeComponents channel row"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "home.titlebar.states",
+      "title": "Home Titlebar States",
+      "surface": "home",
+      "group": "product-home",
+      "status": "baseline",
+      "notes": "Real React mobile Chat titlebar vs Android rendering of shared HomeWorkspaceHeader plus notification trigger. This replaces the narrower home.server-badge.states case.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "HomeTitlebarSurface",
+            "NotificationTrigger"
+          ],
+          "path": "packages/web/src/components/layout/Sidebar.tsx",
+          "fixture": "fixtures/home.titlebar.states.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "HomeWorkspaceHeader",
+            "HomeNotificationCenter"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureHomeTitlebarStates"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "HomeWorkspaceHeader",
+            "HomeNotificationCenter"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "home.notification-center.states",
+      "title": "Home Notification Center States",
+      "surface": "home",
+      "group": "product-home",
+      "status": "baseline",
+      "notes": "Real React notification-center adapter vs Android rendering of shared HomeNotificationPopover with warning/info entries.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "NotificationCenter"
+          ],
+          "path": "packages/web/src/components/layout/NotificationCenter.tsx",
+          "fixture": "fixtures/home.notification-center.states.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "HomeNotificationPopover"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureHomeNotificationCenterStates"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "HomeNotificationPopover"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "home.top-actions.states",
+      "title": "Home Top Actions States",
+      "surface": "home",
+      "group": "product-home",
+      "status": "pending",
+      "notes": "Pending canonical provider: the current React case is a visual-local TopActionButton helper, not the real Sidebar top action rows. Replace with the product Sidebar action provider before using this as a baseline.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "components": [
+            "Home sidebar/header action buttons"
+          ],
+          "path": "packages/web/src/components/layout/Sidebar.tsx",
+          "fixture": "fixtures/home.top-actions.states.json",
+          "reason": "Current implementation in VisualTestingCases.tsx hand-builds TopActionButton instead of rendering the product Sidebar action rows."
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SlockHomeComponents top action rows/buttons"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureHomeTopActionsStates"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SlockHomeComponents top action rows/buttons"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "home.search.results",
+      "title": "Home Search Results",
+      "surface": "home",
+      "group": "product-home",
+      "status": "baseline",
+      "notes": "Real React MessageSearchPage filtered results vs Android rendering of shared Home Search panel after Search/Saved parity. Covers query field, sender/channel/time/sort filters, entity results, grouped thread hits, and load-more affordance.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageSearchPage",
+            "SearchableFilterPopover",
+            "SegmentedControl"
+          ],
+          "path": "packages/web/src/components/search/MessageSearchPage.tsx",
+          "fixture": "fixtures/home.search.results.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SharedHomeSearchPanel",
+            "SlockFilterPopover",
+            "SharedHomeInboxResultRow"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureHomeSearchResults"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SharedHomeSearchPanel",
+            "SlockFilterPopover",
+            "SharedHomeInboxResultRow"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "home.search.channel-dropdown",
+      "title": "Home Search Channel Dropdown",
+      "surface": "home",
+      "group": "product-home",
+      "status": "baseline",
+      "notes": "Focused open-state canonical for the search channel filter. Covers trigger alignment, popover border/shadow, internal search input chrome, and channel option rows without DM leakage.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageSearchPage",
+            "SearchableFilterPopover"
+          ],
+          "path": "packages/web/src/components/search/MessageSearchPage.tsx",
+          "fixture": "fixtures/home.search.results.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SharedHomeSearchPanel",
+            "SlockFilterPopover"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureHomeSearchChannelDropdown"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SharedHomeSearchPanel",
+            "SlockFilterPopover"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "home.saved.results",
+      "title": "Home Saved Results",
+      "surface": "home",
+      "group": "product-home",
+      "status": "baseline",
+      "notes": "Real React SavedPanel saved-message list vs Android rendering of shared Home Saved panel after Search/Saved parity. Covers panel header, saved channel/thread/DM rows, sender avatar/meta, remove affordance, and load-more action.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "SavedPanel",
+            "SavedItem",
+            "PanelHeader"
+          ],
+          "path": "packages/web/src/components/saved/SavedPanel.tsx",
+          "fixture": "fixtures/home.saved.results.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SharedHomeSavedPanel",
+            "SharedHomeInboxResultRow",
+            "SharedHomeLoadMoreRow"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureHomeSavedResults"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SharedHomeSavedPanel",
+            "SharedHomeInboxResultRow",
+            "SharedHomeLoadMoreRow"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "home.activity.results",
+      "title": "Home Activity Results",
+      "surface": "home",
+      "group": "product-home",
+      "status": "baseline",
+      "notes": "Real React ThreadsInbox activity page vs Android rendering of shared Home Activity panel. Covers PanelHeader/back affordance, segmented filters, mark-all-read action, ConversationPreviewCard-like rows, unread/mention/task footer badges, and scroll body spacing.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "ThreadsInbox",
+            "PanelHeader",
+            "SegmentedControl",
+            "ConversationPreviewCard"
+          ],
+          "path": "packages/web/src/components/thread/ThreadsInbox.tsx",
+          "fixture": "fixtures/home.activity.results.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SharedHomeActivityScreen",
+            "SharedActivityHeader",
+            "SharedActivityRow",
+            "SegmentedControl"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedInboxPanel.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureHomeActivityResults"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SharedHomeActivityScreen"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedInboxPanel.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "home.create-channel.dialog",
+      "title": "Home Create Channel Dialog",
+      "surface": "home",
+      "group": "product-home",
+      "status": "pending",
+      "notes": "Pending Android provider: focused connected capture still renders the stale pre-unified Android create-channel dialog after shared mavenLocal refresh and rerun. Fix the KMP route/bundle so it renders SharedCreateChannelDialog/SlockUnifiedDialog before restoring this canonical baseline.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "CreateChannelDialog",
+            "FormField",
+            "SegmentedControl"
+          ],
+          "path": "packages/web/src/components/channel/CreateChannelDialog.tsx",
+          "fixture": "fixtures/home.create-channel.dialog.json"
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "kmp-shared",
+          "components": [
+            "SharedCreateChannelDialog",
+            "SharedCreateChannelField",
+            "SharedCreateChannelMemberPicker"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureHomeCreateChannelDialog",
+          "reason": "Connected screenshot route compose_home_create_channel_dialog_visual still shows old Create Channel UI, not the current shared unified dialog."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SharedCreateChannelDialog"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "channel.members.panel",
+      "title": "Channel Members Panel",
+      "surface": "channel",
+      "group": "product-channel",
+      "status": "baseline",
+      "notes": "Real React ChannelMembers modal opened from a channel header. Android/KMP provider uses the shared channel members modal route; Harmony capture remains pending.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "ChannelMembers",
+            "ChannelMemberListShell",
+            "ChannelMemberRow"
+          ],
+          "path": "packages/web/src/components/agent/ChannelMembers.tsx",
+          "fixture": "fixtures/channel.members.panel.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "ThreadMembersModal",
+            "Shared channel members panel"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureChannelMembersPanel"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "Shared channel members panel"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "channel.settings.panel",
+      "title": "Channel Settings Panel",
+      "surface": "channel",
+      "group": "product-channel",
+      "status": "baseline",
+      "notes": "Real React EditChannelDialog for the channel settings panel. Android/KMP provider uses the shared thread settings modal route; Harmony capture remains pending.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "EditChannelDialog",
+            "FormField"
+          ],
+          "path": "packages/web/src/components/channel/EditChannelDialog.tsx",
+          "fixture": "fixtures/channel.settings.panel.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "ThreadSettingsModal",
+            "Shared channel settings panel"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureChannelSettingsPanel"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "Shared channel settings panel"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "channel.members.add-panel",
+      "title": "Channel Add Member Panel",
+      "surface": "channel",
+      "group": "product-channel",
+      "status": "baseline",
+      "notes": "Real React ChannelMembers add-member modal opened from the channel members panel. Android/KMP provider uses the shared add-member modal route; Harmony capture remains pending.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "ChannelMembers",
+            "ChannelMemberListShell",
+            "ChannelMemberRow"
+          ],
+          "path": "packages/web/src/components/agent/ChannelMembers.tsx",
+          "fixture": "fixtures/channel.members.add-panel.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "ThreadAddMemberModal",
+            "Shared add-member panel"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureChannelAddMemberPanel"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "Shared add-member panel"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "settings.page.states",
+      "title": "Settings Page States",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "Real React SettingsPanel Account page vs Android rendering of shared SettingsDetailShell/SharedSettingsSectionContent. Rows remain separately tracked in settings.row.states.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "SettingsPanel"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.page.states.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "Shared Settings page",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsPageStates"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    }
+  ]
+}
