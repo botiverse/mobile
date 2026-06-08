@@ -980,6 +980,22 @@ private fun SlockAppShellContent() {
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right
         )
 
+    fun appShellParentMessageContextLoadingPayload(messageId: String): KuiklyThreadScreenPayload =
+        KuiklyThreadScreenPayload(
+            instanceId = "shared-shell-parent-message-$messageId",
+            title = "Channel",
+            status = "loading",
+            selectedTab = "chat",
+            navigationLabel = "Back",
+            showModeTabs = true,
+            showReplyActions = true,
+            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+            localOffsetMinutes = threadTimeContext?.localOffsetMinutes ?: 0,
+            todayEpochDay = threadTimeContext?.todayEpochDay,
+            emptyTitle = "Opening channel",
+            emptyDetail = "Locating the original message."
+        )
+
     fun popMainRoute(): Boolean {
         if (createChannelDialogOpen) {
             createChannelDialogOpen = false
@@ -1211,7 +1227,28 @@ private fun SlockAppShellContent() {
                             threadBackStack = threadBackStack.dropLast(1)
                             true
                         } else {
-                            false
+                            val messageId = activeThreadPayload?.originParentMessageId?.takeIf { it.isNotBlank() }
+                            if (messageId == null) {
+                                false
+                            } else {
+                                val loadingPayload = appShellParentMessageContextLoadingPayload(messageId)
+                                openThreadPayload(loadingPayload)
+                                appShellScope.launch {
+                                    when (val result = threadDataSource.openMessageContext(messageId, loadingPayload)) {
+                                        is DataResult.Content -> openThreadPayload(result.data, pushCurrent = false)
+                                        is DataResult.Empty,
+                                        is DataResult.Error,
+                                        is DataResult.NoPermission -> {
+                                            openThreadPayload(
+                                                loadingPayload.copy(status = "error", errorCode = "thread_parent_context_failed"),
+                                                pushCurrent = false
+                                            )
+                                            bridge.toast("Unable to open channel")
+                                        }
+                                    }
+                                }
+                                true
+                            }
                         }
                     }
                 )
@@ -6405,6 +6442,12 @@ private suspend fun openAppShellTaskThread(
     onOpenThreadPayload(loadingPayload)
     val channelId = task.channelId
     val parentMessage = task.toAppShellTaskParentMessage()
+    val containingThreadPayload =
+        buildAppShellTaskContainingThreadPayload(task, timeContext, alignOwnMessagesRight)
+    if (containingThreadPayload != null) {
+        onReplaceThreadPayload(containingThreadPayload)
+        return
+    }
     if (channelId != null && parentMessage != null) {
         val channelPayload =
             buildAppShellThreadPayload(
@@ -6441,6 +6484,37 @@ private suspend fun openAppShellTaskThread(
         onReplaceThreadPayload(loadingPayload.copy(status = "error", errorCode = "thread_task_open_failed"))
         onFailure()
     }
+}
+
+internal fun buildAppShellTaskContainingThreadPayload(
+    task: TaskSummary,
+    timeContext: AppShellThreadTimeContext?,
+    alignOwnMessagesRight: Boolean = false
+): KuiklyThreadScreenPayload? {
+    if (!task.isThreadTask) return null
+    val threadChannelId = task.channelId?.value?.takeIf { it.isNotBlank() }
+        ?: task.threadId?.value?.takeIf { it.isNotBlank() }
+        ?: return null
+    return buildAppShellThreadPayload(
+        ConversationSummary(
+            threadId = ThreadId(threadChannelId),
+            channelId = ChannelId(threadChannelId),
+            kind = ConversationKind.Thread,
+            name = task.channelName?.takeIf { it.isNotBlank() } ?: task.tasksDisplayTitleForAppShell(),
+            joined = true,
+            permissions = ConversationPermissions(canSend = true, canAttach = true, canCreateTask = true)
+        ),
+        timeContext,
+        alignOwnMessagesRight
+    ).copy(
+        instanceId = "shared-shell-task-thread-$threadChannelId",
+        showModeTabs = false,
+        showReplyActions = false,
+        showOpenInChannelAction = true,
+        originParentMessageId = task.parentMessageId?.value ?: task.messageId?.value,
+        emptyTitle = "Opening task",
+        emptyDetail = "Loading the task conversation."
+    )
 }
 
 internal fun buildAppShellTaskThreadLoadingPayload(

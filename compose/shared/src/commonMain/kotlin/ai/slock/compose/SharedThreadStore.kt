@@ -674,6 +674,26 @@ internal class SharedThreadDataSource(
         }
     }
 
+    suspend fun openMessageContext(
+        messageId: String,
+        basePayload: KuiklyThreadScreenPayload
+    ): DataResult<KuiklyThreadScreenPayload> {
+        val trimmedMessageId = messageId.takeIf { it.isNotBlank() }
+            ?: return DataResult.Error(ScreenError(code = "thread_parent_message_missing", retryable = false))
+        val session =
+            readSession()
+                ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
+        return fetchThreadPayloadFromRepository(
+            session = session,
+            fallbackCode = "thread_parent_context_network",
+            call = { repository -> repository.getMessageContext(MessageId(trimmedMessageId)) },
+            transform = { snapshot ->
+                snapshot.toKuiklyThreadPayload(basePayload, session.user.id)
+                    .copy(showOpenInChannelAction = false)
+            }
+        )
+    }
+
     private suspend fun fetchThreadPage(
         basePayload: KuiklyThreadScreenPayload,
         source: String,

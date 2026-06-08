@@ -296,6 +296,36 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadTaskBuildsContainingThreadPayloadInsteadOfReplyThreadPayload() {
+        val payload =
+            buildAppShellTaskContainingThreadPayload(
+                TaskSummary(
+                    id = TaskId("task-1"),
+                    title = "Fix slow route",
+                    status = TaskStatus.InProgress,
+                    taskNumber = 42,
+                    messageId = MessageId("message-1"),
+                    channelId = ChannelId("thread-channel-1"),
+                    isThreadTask = true,
+                    channelName = "bug triage",
+                    updatedAtLabel = "now"
+                ),
+                AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593),
+                alignOwnMessagesRight = true
+            )
+
+        requireNotNull(payload)
+        assertEquals("shared-shell-task-thread-thread-channel-1", payload.instanceId)
+        assertEquals("bug triage", payload.title)
+        assertEquals("loading", payload.status)
+        assertEquals("thread-channel-1", payload.sourceThreadId)
+        assertEquals("message-1", payload.originParentMessageId)
+        assertEquals(false, payload.showReplyActions)
+        assertEquals(true, payload.showOpenInChannelAction)
+        assertEquals(true, payload.alignOwnMessagesRight)
+    }
+
+    @Test
     fun buildsReplyThreadLoadingPayloadWithoutFetchingParentChannel() {
         val parent =
             KuiklyThreadMessageItem(
