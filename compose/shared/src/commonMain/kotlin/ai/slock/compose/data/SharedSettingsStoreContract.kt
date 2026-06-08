@@ -86,6 +86,7 @@ class SharedSettingsStoreContract(
         store.dispatch(intent)
 
         _transitions.tryEmit(MviTransition(intent = intent, emitted = true))
+        transitionLogger(MviTransition(intent = intent, emitted = true))
     }
 
     fun clear() {
