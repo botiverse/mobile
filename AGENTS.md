@@ -124,9 +124,30 @@ scripts/sync_kuikly_ai_skills.sh
   `EntryAbility`.
 - `hdc` may not be on `PATH`; the default DevEco path in this workspace is
   `/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc`.
+- Do not assume global `hvigor` or `hvigorw` commands exist on this machine.
+  Command-line OHOS builds should use DevEco Studio's bundled Node +
+  `hvigorw.js` and bundled `ohpm`.
+- The default DevEco installation path used by this project is
+  `/Applications/DevEco-Studio.app/Contents`. Override it in scripts with
+  `DEVECO_STUDIO_HOME` only when DevEco is installed elsewhere.
+- To sync and assemble a HAP without relying on global `hvigorw`, run:
+
+```bash
+cd /Users/artin/AndroidStudioProjects/Slock/compose/ohosApp
+/Applications/DevEco-Studio.app/Contents/tools/ohpm/bin/ohpm install --all
+/Applications/DevEco-Studio.app/Contents/tools/node/bin/node \
+  /Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw.js \
+  --sync -p product=default --analyze=normal --parallel
+/Applications/DevEco-Studio.app/Contents/tools/node/bin/node \
+  /Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw.js \
+  --mode module -p module=entry@default -p product=default \
+  -p requiredDeviceType=phone assembleHap --analyze=normal --parallel
+```
+
 - To build, install, and launch the OHOS app, run the wrapper from the Compose
-  project. The script is not guaranteed to have its executable bit set, so prefer
-  invoking it through `sh`:
+  project. It applies the same bundled DevEco toolchain path above, then installs
+  the signed HAP on a connected target. The script is not guaranteed to have its
+  executable bit set, so prefer invoking it through `sh`:
 
 ```bash
 cd /Users/artin/AndroidStudioProjects/Slock/compose
@@ -338,7 +359,7 @@ cd /Users/artin/AndroidStudioProjects/Slock/compose
 cd /Users/artin/AndroidStudioProjects/Slock/compose
 ./gradlew :androidApp:compileDebugKotlin :androidApp:assembleDebug
 
-# 4. OHOS HAP (requires DevEco Studio)
+# 4. OHOS HAP (requires DevEco Studio; uses bundled hvigorw.js, not a global CLI)
 cd /Users/artin/AndroidStudioProjects/Slock/compose
 sh ohosApp/runOhosApp.sh
 
