@@ -1,4 +1,5 @@
 import { bundleManager, common } from '@kit.AbilityKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import deviceInfo from '@ohos.deviceInfo';
 import fs from '@ohos.file.fs';
 import hilog from '@ohos.hilog';
@@ -61,9 +62,11 @@ export class SlockOhosBuglyDiagnostics {
 
     const appContext = context.getApplicationContext();
     const logDir = SlockOhosBuglyDiagnostics.tdLogDir(context);
+    let stage = 'mkdir_tdlog';
     try {
-      fs.mkdirSync(logDir, true);
+      SlockOhosBuglyDiagnostics.ensureDirectory(logDir);
 
+      stage = 'tdlog_init';
       const logBuilder = new TDLogBuilder();
       logBuilder.logDir = logDir;
       logBuilder.namePrefix = BUGLY_LOG_PREFIX;
@@ -74,6 +77,7 @@ export class SlockOhosBuglyDiagnostics {
       logBuilder.maxAliveTime = 7 * 24 * 60 * 60;
       TDLog.init(logBuilder);
 
+      stage = 'tddiag_init';
       const diagBuilder = new TDDiagBuilder();
       diagBuilder.appId = config.appId;
       diagBuilder.appKey = config.appKey;
@@ -91,7 +95,7 @@ export class SlockOhosBuglyDiagnostics {
       TDLog.i(TAG, 'bugly diagnostics initialized');
     } catch (error) {
       hilog.error(0x0000, TAG, 'Failed to initialize Bugly diagnostics: %{public}s', SlockOhosBuglyDiagnostics.safeString(error));
-      SlockOhosDiagnostics.record(TAG, `bugly_diagnostics_init_failed ${SlockOhosBuglyDiagnostics.safeString(error)}`);
+      SlockOhosDiagnostics.record(TAG, `bugly_diagnostics_init_failed stage=${stage} ${SlockOhosBuglyDiagnostics.safeString(error)}`);
     }
   }
 
@@ -220,7 +224,7 @@ export class SlockOhosBuglyDiagnostics {
 
   private static writeDiagnosticSnapshot(context: common.UIAbilityContext): string {
     const uploadDir = `${context.filesDir}/${DIAGNOSTIC_UPLOAD_DIR_NAME}`;
-    fs.mkdirSync(uploadDir, true);
+    SlockOhosBuglyDiagnostics.ensureDirectory(uploadDir);
     const path = `${uploadDir}/diagnostics-${Date.now()}.txt`;
     const file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.WRITE_ONLY);
     try {
@@ -259,6 +263,31 @@ export class SlockOhosBuglyDiagnostics {
     } catch (_error) {
       return false;
     }
+  }
+
+  private static ensureDirectory(path: string): void {
+    try {
+      fs.mkdirSync(path, true);
+      return;
+    } catch (error) {
+      if (SlockOhosBuglyDiagnostics.isFileExistsError(error) && SlockOhosBuglyDiagnostics.pathIsDirectory(path)) {
+        SlockOhosDiagnostics.record(TAG, `directory_already_exists ${path}`);
+        return;
+      }
+      throw new Error(SlockOhosBuglyDiagnostics.safeString(error));
+    }
+  }
+
+  private static pathIsDirectory(path: string): boolean {
+    try {
+      return fs.statSync(path).isDirectory();
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  private static isFileExistsError(error: Object): boolean {
+    return (error as BusinessError).code === 13900015;
   }
 
   private static safeString(value: Object): string {
