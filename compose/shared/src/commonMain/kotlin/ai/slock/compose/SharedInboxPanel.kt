@@ -50,7 +50,6 @@ import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -285,36 +284,39 @@ private fun SharedActivityHeader(
     includeTopSafeArea: Boolean
 ) {
     val topPadding = if (includeTopSafeArea) slockTopSafeAreaPadding() else 0.dp
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(62.dp + topPadding)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(start = 20.dp, top = topPadding + 10.dp, end = 20.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    Column(
+        modifier = Modifier.fillMaxWidth().height(62.dp + topPadding).background(SlockColor.SurfaceWhite)
     ) {
-        if (onClose != null) {
-            SlockBrutalIconButton(iconName = "arrow-left", onClick = onClose, size = 32.dp, shadowOffset = 2.dp)
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(60.dp + topPadding)
+                    .padding(start = 20.dp, top = topPadding + 10.dp, end = 20.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (onClose != null) {
+                SlockBrutalIconButton(iconName = "arrow-left", onClick = onClose, size = 32.dp, shadowOffset = 2.dp)
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "Activity",
+                    style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "$totalCount active" + if (totalUnreadCount > 0) " · $totalUnreadCount unread" else "",
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextBlack.copy(alpha = 0.52f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = "Activity",
-                style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = "$totalCount active" + if (totalUnreadCount > 0) " · $totalUnreadCount unread" else "",
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack.copy(alpha = 0.52f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
     }
 }
 
@@ -325,38 +327,40 @@ private fun SharedActivityFilterBar(
     onFilterSelected: (InboxFilter) -> Unit,
     onMarkAllRead: () -> Unit
 ) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        SegmentedControl(
-            selectedValue = selectedFilter.wireValue,
-            options =
-                InboxFilter.entries.map { filter ->
-                    SegmentedControlOption(value = filter.wireValue, label = filter.label)
+    Column(modifier = Modifier.fillMaxWidth().height(54.dp).background(SlockColor.SurfaceWhite)) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            SegmentedControl(
+                selectedValue = selectedFilter.wireValue,
+                options =
+                    InboxFilter.entries.map { filter ->
+                        SegmentedControlOption(value = filter.wireValue, label = filter.label)
+                    },
+                onValueSelected = { value ->
+                    InboxFilter.entries.firstOrNull { it.wireValue == value }?.let(onFilterSelected)
                 },
-            onValueSelected = { value ->
-                InboxFilter.entries.firstOrNull { it.wireValue == value }?.let(onFilterSelected)
-            },
-            modifier = Modifier.weight(1f)
-        )
-        if (totalUnreadCount > 0) {
-            SlockBrutalActionButton(
-                label = "Mark all read",
-                minHeight = 28.dp,
-                minWidth = 0.dp,
-                shadowOffset = 2.dp,
-                backgroundColor = SlockColor.SurfaceWhite,
-                textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 13.sp),
-                onClick = onMarkAllRead
+                modifier = Modifier.weight(1f)
             )
+            if (totalUnreadCount > 0) {
+                SlockBrutalActionButton(
+                    label = "Mark all read",
+                    minHeight = 28.dp,
+                    minWidth = 0.dp,
+                    shadowOffset = 2.dp,
+                    backgroundColor = SlockColor.SurfaceWhite,
+                    textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 13.sp),
+                    onClick = onMarkAllRead
+                )
+            }
         }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
     }
 }
 
@@ -541,17 +545,7 @@ private fun SharedActivitySmallIconButton(
     iconName: String,
     onClick: () -> Unit
 ) {
-    Box(
-        modifier =
-            Modifier
-                .background(SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Sm))
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .clickable { onClick() }
-                .padding(6.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        SlockLucideIcon(iconName, modifier = Modifier.size(14.dp), color = "#FF000000")
-    }
+    SlockBrutalIconButton(iconName = iconName, onClick = onClick, size = 32.dp, shadowOffset = 2.dp)
 }
 
 @Composable
