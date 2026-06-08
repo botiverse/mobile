@@ -29,6 +29,8 @@ import ai.slock.compose.data.InMemoryComposeLocalDataStore
 import ai.slock.compose.data.InMemorySlockAuthSessionStore
 import ai.slock.compose.data.MemberRepository
 import ai.slock.compose.data.MemberSnapshot
+import ai.slock.compose.data.MessageMutationSummary
+import ai.slock.compose.data.MessageReactionSummary
 import ai.slock.compose.data.RemoveChannelMemberRequest
 import ai.slock.compose.data.SendMessageResult
 import ai.slock.compose.data.SharedThreadNetworkApi
@@ -129,14 +131,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
-        store.accept(
-            SharedThreadIntent.SetPayload(
-                store.state.value.payload.copy(
-                    canLoadMoreBefore = true,
-                    canLoadMoreAfter = true
-                )
-            )
-        )
+        store.accept(SharedThreadIntent.SetPagingAvailability(canLoadMoreBefore = true, canLoadMoreAfter = true))
         store.accept(SharedThreadIntent.LoadOlder)
         store.accept(SharedThreadIntent.LoadNewer)
 
@@ -146,7 +141,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun setPayloadPatchesOnlyPayloadSliceAndNoopsWhenEquivalent() = runBlocking {
+    fun messageReactionIntentPatchesOnlyPayloadSliceAndNoopsWhenEquivalent() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource =
             SharedThreadDataSource(
@@ -158,28 +153,56 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         val before = store.state.value
-        store.accept(SharedThreadIntent.SetPayload(before.payload))
-        assertTrue(before === store.state.value)
-
-        val optimisticPayload =
-            before.payload.copy(
-                messages =
-                    before.payload.messages +
-                        before.payload.messages.single().copy(
-                            id = "local-send-1",
-                            body = "optimistic send body",
-                            seq = null
-                        )
-            )
-        store.accept(SharedThreadIntent.SetPayload(optimisticPayload))
+        store.accept(SharedThreadIntent.ApplyMessageReactionSelection("m1", "🔥", selected = true))
 
         val patched = store.state.value
         assertTrue(before !== patched)
         assertEquals(before.highlightedMentions, patched.highlightedMentions)
-        assertEquals(listOf("cached body", "optimistic send body"), patched.payload.messages.map { it.body })
+        assertEquals(listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = true)), patched.payload.messages.single().reactions)
 
-        store.accept(SharedThreadIntent.SetPayload(optimisticPayload))
+        store.accept(SharedThreadIntent.ApplyMessageReactionSelection("m1", "🔥", selected = true))
         assertTrue(patched === store.state.value)
+        scope.cancel()
+    }
+
+    @Test
+    fun appendSentPagePatchesTimelineAndPreservesHeaderIdentity() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload().copy(title = "Readable channel")))
+        store.accept(
+            SharedThreadIntent.AppendSentPage(
+                ThreadMessagesPage(
+                    messages =
+                        listOf(
+                            WireMessage(
+                                id = "sent-1",
+                                channelId = "channel-1",
+                                senderType = "user",
+                                senderId = "u1",
+                                senderName = "Artin",
+                                content = "sent body"
+                            )
+                        ),
+                    canLoadMoreBefore = null,
+                    canLoadMoreAfter = null
+                )
+            )
+        )
+
+        val payload = store.state.value.payload
+        assertEquals("Readable channel", payload.title)
+        assertEquals(listOf("cached body", "sent body"), payload.messages.map { it.body })
+        assertEquals("sent body", localStore.readThread(ThreadId("channel-1"))?.messages?.last()?.body)
         scope.cancel()
     }
 
@@ -831,49 +854,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun setMessageReactionAddsReactionToCachedPayload() = runBlocking {
-        val api = FakeThreadApi()
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
-            )
-        dataSource.cachePayload(contentPayload("reactable body"))
-
-        val result = dataSource.setMessageReaction("m1", "🔥", selected = true)
-
-        val updated = (result as DataResult.Content).data
-        val reaction = updated.messages.single().reactions.single()
-        assertEquals(listOf("m1" to "🔥"), api.addedReactions)
-        assertEquals("🔥", reaction.emoji)
-        assertEquals(1, reaction.count)
-        assertEquals(true, reaction.selected)
-    }
-
-    @Test
-    fun setMessageReactionRemovesReactionFromCachedPayload() = runBlocking {
-        val api = FakeThreadApi()
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
-            )
-        val message = contentPayload("reactable body").messages.single()
-        dataSource.cachePayload(
-            contentPayload("reactable body").copy(
-                messages = listOf(message.copy(reactions = listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = true))))
-            )
-        )
-
-        val result = dataSource.setMessageReaction("m1", "🔥", selected = false)
-
-        val updated = (result as DataResult.Content).data
-        assertEquals(listOf("m1" to "🔥"), api.removedReactions)
-        assertEquals(emptyList(), updated.messages.single().reactions)
-    }
-
-    @Test
-    fun updateTaskStatusUpdatesCachedPayloadAndPersistentSnapshot() = runBlocking {
+    fun setMessageReactionReturnsMutationSummaryWithoutWritingPayload() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         val api = FakeThreadApi()
         val dataSource =
@@ -882,34 +863,117 @@ class SharedThreadStoreTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
-        val payload =
-            contentPayload("task body").copy(
-                messages =
+        dataSource.cachePayload(contentPayload("reactable body"))
+
+        val result = dataSource.setMessageReaction("m1", "🔥", selected = true)
+
+        val mutation = (result as DataResult.Content).data
+        assertEquals(listOf("m1" to "🔥"), api.addedReactions)
+        assertEquals("m1", mutation.messageId)
+        assertEquals("🔥", mutation.reactions.single().emoji)
+        assertEquals(null, localStore.readThread(ThreadId("channel-1")))
+    }
+
+    @Test
+    fun applyMessageMutationWritesCachedPayloadAfterReducer() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        dataSource.cachePayload(contentPayload("reactable body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        val mutation =
+            MessageMutationSummary(
+                messageId = "m1",
+                reactions =
                     listOf(
-                        contentPayload("task body").messages.single().copy(
-                            taskId = "task-1",
-                            taskStatus = "Todo"
-                        )
-                    ),
-                tasks =
-                    listOf(
-                        KuiklyThreadTaskItem(
-                            id = "task-1",
-                            title = "#44 Task",
-                            status = "Todo",
-                            taskNumber = 44
+                        MessageReactionSummary(
+                            emoji = "🔥",
+                            count = 1,
+                            reactorIds = listOf("u1"),
+                            reactorNames = listOf("Artin")
                         )
                     )
             )
-        dataSource.cachePayload(payload)
+        store.accept(SharedThreadIntent.ApplyMessageMutation(mutation))
+
+        val reaction = store.state.value.payload.messages.single().reactions.single()
+        assertEquals("🔥", reaction.emoji)
+        assertEquals(1, reaction.count)
+        assertEquals(true, reaction.selected)
+        assertEquals("reactable body", localStore.readThread(ThreadId("channel-1"))?.messages?.single()?.body)
+        scope.cancel()
+    }
+
+    @Test
+    fun applyMessageReactionsRollsBackOptimisticSelection() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val originalReactions = listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = true))
+        val message = contentPayload("reactable body").messages.single()
+        dataSource.cachePayload(
+            contentPayload("reactable body").copy(
+                messages = listOf(message.copy(reactions = originalReactions))
+            )
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(SharedThreadIntent.ApplyMessageReactionSelection("m1", "🔥", selected = false))
+        store.accept(SharedThreadIntent.ApplyMessageReactions("m1", originalReactions))
+
+        assertEquals(originalReactions, store.state.value.payload.messages.single().reactions)
+        scope.cancel()
+    }
+
+    @Test
+    fun updateTaskStatusCallsThreadApiWithoutWritingPayload() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        val api = FakeThreadApi()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
 
         val result = dataSource.updateTaskStatus("task-1", TaskStatus.Done)
 
-        val updated = (result as DataResult.Content).data
-        assertEquals("Done", updated.messages.single().taskStatus)
-        assertEquals("Done", updated.tasks.single().status)
-        assertEquals("Done", localStore.readThread(ThreadId("channel-1"))?.tasks?.single()?.status?.name)
+        assertTrue(result is DataResult.Content)
         assertEquals(listOf("task-1" to TaskStatus.Done), api.updatedTaskStatuses)
+        assertEquals(null, localStore.readThread(ThreadId("channel-1")))
+    }
+
+    @Test
+    fun applyTaskStatusWritesPersistentSnapshotAfterReducer() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        dataSource.cachePayload(taskPayload())
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.ApplyTaskStatus("task-1", TaskStatus.Done.name))
+
+        assertEquals("Done", store.state.value.payload.messages.single().taskStatus)
+        assertEquals("Done", store.state.value.payload.tasks.single().status)
+        assertEquals("Done", localStore.readThread(ThreadId("channel-1"))?.tasks?.single()?.status?.name)
+        scope.cancel()
     }
 
     @Test
@@ -1399,6 +1463,26 @@ class SharedThreadStoreTest {
                 ),
             session = sampleSession()
         )
+
+    private fun taskPayload(): KuiklyThreadScreenPayload {
+        val message =
+            contentPayload("task body").messages.single().copy(
+                taskId = "task-1",
+                taskStatus = "Todo"
+            )
+        return contentPayload("task body").copy(
+            messages = listOf(message),
+            tasks =
+                listOf(
+                    KuiklyThreadTaskItem(
+                        id = "task-1",
+                        title = "#44 Task",
+                        status = "Todo",
+                        taskNumber = 44
+                    )
+                )
+        )
+    }
 
     private fun sampleSession(): StoredAuthSession =
         StoredAuthSession(

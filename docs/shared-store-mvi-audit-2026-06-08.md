@@ -5,9 +5,9 @@ Scope: Thread, Home, Settings, Tasks, and Members shared state paths.
 ## Changes landed
 
 - Thread: `SharedThreadStore` now emits state only through `reduceState` / `reducePayload`.
-  - Duplicate `SetPayload` no-ops do not emit and do not repeat cache/write-through.
+  - Duplicate semantic patch no-ops do not emit and do not repeat cache/write-through.
   - Refresh, member enrichment, realtime, and older/newer pagination all use the same payload reducer entry.
-  - `SetPayload` remains as a compatibility bridge for current `ThreadPage` optimistic send/action call sites, but it is no longer a raw `_state.value.copy(payload = ...)` write.
+  - Follow-up #116 removed the `SetPayload` compatibility bridge. `ThreadPage` now dispatches semantic send, reaction, task-status, member, refresh, and realtime intents/results; write-through happens after reducer acceptance.
 - Home: `SharedHomeStore` now emits state only through `reduceState`.
   - This preserves the existing `HomeSnapshot` repository contract while gating equivalent state emissions.
   - Existing stable-row preservation remains in the content-snapshot reducer path.
@@ -17,9 +17,15 @@ Scope: Thread, Home, Settings, Tasks, and Members shared state paths.
 
 ## Focused tests
 
-- `SharedThreadStoreTest.setPayloadPatchesOnlyPayloadSliceAndNoopsWhenEquivalent`
-  - Covers send-style optimistic payload patching.
-  - Proves duplicate payload reducer input keeps the same state object and preserves non-payload state.
+- `SharedThreadStoreTest.messageReactionIntentPatchesOnlyPayloadSliceAndNoopsWhenEquivalent`
+  - Covers semantic optimistic reaction patching.
+  - Proves duplicate semantic reducer input keeps the same state object and preserves non-payload state.
+- `SharedThreadStoreTest.appendSentPagePatchesTimelineAndPreservesHeaderIdentity`
+  - Covers send success patching without replacing the route/header identity.
+- `SharedThreadStoreTest.applyMessageMutationWritesCachedPayloadAfterReducer`
+  - Covers reaction mutation write-through after reducer application.
+- `SharedThreadStoreTest.applyTaskStatusWritesPersistentSnapshotAfterReducer`
+  - Covers task status write-through after reducer application.
 - `SharedThreadStoreTest.irrelevantRealtimeMessageDoesNotChangeVisibleThread`
   - Now also proves an irrelevant realtime message does not emit a new state object.
 - `SharedTasksStoreTest.sharedTasksStoreNoopsEquivalentSeedContentSnapshot`
@@ -43,10 +49,9 @@ rg -n "data class SetPayload|data class SetResult|data class SetContent|_state\\
 
 Current intentional hits:
 
-- `SharedThreadIntent.SetPayload`
-  - Compatibility bridge for current `ThreadPage` local optimistic patches.
-  - Safe under this task because the store reducer gates equivalent payloads and cache writes.
-  - Follow-up: split `ThreadPage` call sites into semantic intents such as send optimistic/success/failure, message action result, task status result, and refresh result.
+- Thread `SetPayload`
+  - Removed by follow-up #116.
+  - Source/test verification: `rg -n "SetPayload" compose/shared/src/commonMain/kotlin/ai/slock/compose compose/shared/src/commonTest/kotlin/ai/slock/compose` returns no matches.
 - `SharedTasksIntent.SetResult` / `SharedTasksIntent.SetContent`
   - Typed snapshot/result inputs into `MviStoreRuntime`; equivalent output is no-op gated.
   - `MergeRefreshResult` remains the partial refresh path.
@@ -65,6 +70,6 @@ Current intentional hits:
 
 ## Remaining risks / owners
 
-- Thread semantic-intent split: owner should be the Thread/KMP UI owner. This is larger than this safe reducer pass because `ThreadPage` currently uses `SetPayload` for optimistic sends, reactions, save, reply-thread open, task status, and refresh rollback.
+- Thread store follow-up after #116: continue toward normalized entity selectors if more cross-route Thread jank appears; the old `SetPayload` bridge is gone.
 - Settings central MVI runtime migration: owner should be Settings integration / KMP store owner. Current code is slice-oriented but lacks the standard transition logger/no-op reporting used by Tasks.
 - Members dedicated store: owner should be Product/KMP if Members needs the same store semantics as Home/Thread/Tasks; there is no existing store to patch without introducing new architecture.
