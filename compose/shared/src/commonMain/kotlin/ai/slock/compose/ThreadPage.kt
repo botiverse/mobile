@@ -4390,7 +4390,7 @@ private fun ThreadMembersModal(
     val agents = members.filter { it.kind.equals("agent", ignoreCase = true) }
     val humans = members.filter { !it.kind.equals("agent", ignoreCase = true) }
     SlockUnifiedDialog(
-        title = "Members (${membersCount.takeIf { it > 0 } ?: members.size})",
+        title = "MEMBERS (${membersCount.takeIf { it > 0 } ?: members.size})",
         onDismiss = onDismiss,
         minWidth = 300.dp,
         maxWidth = 332.dp,
@@ -4403,13 +4403,13 @@ private fun ThreadMembersModal(
                 if (members.isEmpty()) {
                     item {
                         ThreadModalEmptyState(
-                            title = "No members",
-                            detail = "Refresh this conversation and try again."
+                            title = "NO MEMBERS",
+                            detail = "REFRESH THIS CONVERSATION AND TRY AGAIN."
                         )
                     }
                 } else {
                     if (agents.isNotEmpty()) {
-                        item { SlockModalSectionHeader("Agents") }
+                        item { SlockModalSectionHeader("AGENTS") }
                         items(agents.size, key = { agents[it].memberKey }) { index ->
                             val member = agents[index]
                             SlockModalCompactMemberRow(
@@ -4425,7 +4425,7 @@ private fun ThreadMembersModal(
                         }
                     }
                     if (humans.isNotEmpty()) {
-                        item { SlockModalSectionHeader("Humans") }
+                        item { SlockModalSectionHeader("HUMANS") }
                         items(humans.size, key = { humans[it].memberKey }) { index ->
                             val member = humans[index]
                             SlockModalCompactMemberRow(
@@ -4443,7 +4443,7 @@ private fun ThreadMembersModal(
                 }
             }
             SlockModalFullWidthActionButton(
-                label = "Add Member",
+                label = "ADD MEMBER",
                 icon = "user-plus",
                 onClick = { if (canAddMembers) onAddMember() },
                 color = SlockColor.AccentPink,
@@ -4485,13 +4485,13 @@ private fun ThreadAddMemberModal(
     val adding = addMemberStatus == "adding"
     val errorText =
         when {
-            blocked -> "You do not have permission to add members."
-            localError -> "Select a member before adding."
-            addMemberStatus == "failed" -> "Unable to add member: ${addMemberErrorCode ?: "member_add_failed"}"
+            blocked -> "YOU DO NOT HAVE PERMISSION TO ADD MEMBERS."
+            localError -> "SELECT A MEMBER BEFORE ADDING."
+            addMemberStatus == "failed" -> "UNABLE TO ADD MEMBER: ${(addMemberErrorCode ?: "member_add_failed").uppercase()}"
             else -> null
         }
     SlockUnifiedDialog(
-        title = "Add Member",
+        title = "ADD MEMBER",
         onDismiss = onDismiss,
         minWidth = 300.dp,
         maxWidth = 332.dp,
@@ -4508,9 +4508,9 @@ private fun ThreadAddMemberModal(
                 )
             }
             SlockModalTextField(
-                label = "Search",
+                label = "SEARCH",
                 value = query,
-                placeholder = "Name",
+                placeholder = "NAME",
                 leadingIcon = "search",
                 enabled = !blocked,
                 onValueChange = {
@@ -4525,13 +4525,13 @@ private fun ThreadAddMemberModal(
                 if (filteredCandidates.isEmpty()) {
                     item {
                         ThreadModalEmptyState(
-                            title = if (candidates.isEmpty()) "No people loaded" else "No matching people",
-                            detail = if (candidates.isEmpty()) "Refresh this conversation and try again." else "Try a different search."
+                            title = if (candidates.isEmpty()) "NO PEOPLE LOADED" else "NO MATCHING PEOPLE",
+                            detail = if (candidates.isEmpty()) "REFRESH THIS CONVERSATION AND TRY AGAIN." else "TRY A DIFFERENT SEARCH."
                         )
                     }
                 } else {
                     if (agentCandidates.isNotEmpty()) {
-                        item { SlockModalSectionHeader("Agents") }
+                        item { SlockModalSectionHeader("AGENTS") }
                         items(agentCandidates.size, key = { agentCandidates[it].memberKey }) { index ->
                             val member = agentCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
@@ -4545,7 +4545,7 @@ private fun ThreadAddMemberModal(
                                 enabled = !blocked && !adding && !alreadyJoined,
                                 avatarSize = 26.dp,
                                 trailingIcon = if (member.id == selectedId) "check" else null,
-                                trailingText = if (alreadyJoined) "Joined" else "",
+                                trailingText = if (alreadyJoined) "JOINED" else "",
                                 onClick = {
                                     selectedId = member.id
                                     localError = false
@@ -4555,7 +4555,7 @@ private fun ThreadAddMemberModal(
                         }
                     }
                     if (humanCandidates.isNotEmpty()) {
-                        item { SlockModalSectionHeader("Humans") }
+                        item { SlockModalSectionHeader("HUMANS") }
                         items(humanCandidates.size, key = { humanCandidates[it].memberKey }) { index ->
                             val member = humanCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
@@ -4569,7 +4569,7 @@ private fun ThreadAddMemberModal(
                                 enabled = !blocked && !adding && !alreadyJoined,
                                 avatarSize = 26.dp,
                                 trailingIcon = if (member.id == selectedId) "check" else null,
-                                trailingText = if (alreadyJoined) "Joined" else "",
+                                trailingText = if (alreadyJoined) "JOINED" else "",
                                 onClick = {
                                     selectedId = member.id
                                     localError = false
@@ -4605,9 +4605,9 @@ private fun ThreadMemberDetailModal(
     val errorText =
         when {
             removeMemberStatus == "failed" && removingMemberId == member.id ->
-                "Unable to remove member: ${removeMemberErrorCode ?: "member_remove_failed"}"
+                "UNABLE TO REMOVE MEMBER: ${(removeMemberErrorCode ?: "member_remove_failed").uppercase()}"
             removeMemberStatus == "no_permission" && removingMemberId == member.id ->
-                "Unable to remove member: no permission"
+                "UNABLE TO REMOVE MEMBER: NO PERMISSION"
             else -> null
         }
     SlockUnifiedDialog(
@@ -4668,11 +4668,11 @@ private fun ThreadMemberDetailModal(
                 }
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SlockModalActionButton(label = "Back", icon = "arrow-left", onClick = onBack)
-                SlockModalActionButton(label = "Open profile", icon = "user", onClick = onOpenProfile)
+                SlockModalActionButton(label = "BACK", icon = "arrow-left", onClick = onBack)
+                SlockModalActionButton(label = "OPEN PROFILE", icon = "user", onClick = onOpenProfile)
                 if (member.kind.equals("agent", ignoreCase = true)) {
                     SlockModalActionButton(
-                        label = if (isRemoving) "Removing" else "Remove Agent",
+                        label = if (isRemoving) "REMOVING" else "REMOVE AGENT",
                         icon = "user-minus",
                         color = SlockColor.AccentRed,
                         onClick = { if (!isRemoving) onRemoveMember() }
