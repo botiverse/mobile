@@ -25,6 +25,18 @@ fun ohosSqliteProviderLibDir(): File {
     return rootProject.file("../third_party/.workdirs/ohos-sqlite/ohos-arm64/lib")
 }
 
+val prepareOhosSqliteProvider by tasks.registering(Exec::class) {
+    val providerScript = rootProject.file("../scripts/prepare_ohos_sqlite_provider.sh")
+    val sqliteLibDir = ohosSqliteProviderLibDir()
+    val sqliteLib = sqliteLibDir.resolve("libsqlite3.a")
+
+    description = "Builds the pinned OHOS arm64 sqlite3 static library for SQLiter."
+    group = "build setup"
+    commandLine(providerScript.absolutePath)
+    inputs.file(providerScript)
+    outputs.file(sqliteLib)
+}
+
 kotlin {
     androidTarget {
         compilations.all {
@@ -108,6 +120,12 @@ kotlin {
         //     iosArm64Test.dependsOn(this)
         //     iosSimulatorArm64Test.dependsOn(this)
         // }
+    }
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink>().configureEach {
+    if (name.endsWith("OhosArm64")) {
+        dependsOn(prepareOhosSqliteProvider)
     }
 }
 
