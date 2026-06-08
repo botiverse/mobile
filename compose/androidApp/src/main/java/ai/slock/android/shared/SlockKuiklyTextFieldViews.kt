@@ -55,7 +55,6 @@ internal class SlockKuiklyTextFieldView(
     }
 
     private fun applySlockInputMetrics() {
-        setIncludeFontPadding(false)
         val horizontalGravity = gravity and Gravity.HORIZONTAL_GRAVITY_MASK
         val verticalGravity = if (allowsMultipleLines) Gravity.TOP else Gravity.CENTER_VERTICAL
         gravity = horizontalGravity or verticalGravity
