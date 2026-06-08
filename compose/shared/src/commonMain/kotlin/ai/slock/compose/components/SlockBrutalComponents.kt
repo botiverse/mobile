@@ -608,7 +608,7 @@ internal fun SegmentedControl(
                 enabled = enabled,
                 minWidth = 0.dp,
                 minHeight = 28.dp,
-                shadowOffset = 2.dp,
+                shadowOffset = if (selected) 2.dp else 0.dp,
                 backgroundColor = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite,
                 textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp),
                 onClick = { onValueSelected(option.value) }
