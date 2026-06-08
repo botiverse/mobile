@@ -168,6 +168,73 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun restoreSessionKeepsCachedSessionWhenCurrentUserThrows() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession())
+        val source =
+            SharedAuthDataSource(
+                transport = FakeAuthApi(throwCurrentUser = true),
+                sessionStore = store
+            )
+
+        val result = source.restoreSession()
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("access-token", result.data.accessToken)
+        assertEquals("server-1", result.data.currentServerId)
+        assertEquals("access-token", store.readSession()?.accessToken)
+    }
+
+    @Test
+    fun restoreSessionKeepsCachedSessionWhenCurrentUserServerUnavailable() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession())
+        val source =
+            SharedAuthDataSource(
+                transport =
+                    FakeAuthApi(
+                        currentUserResponses =
+                            ArrayDeque(
+                                listOf(
+                                    AuthNetworkResponse(503, null, """{"message":"temporary outage"}""")
+                                )
+                            )
+                    ),
+                sessionStore = store
+            )
+
+        val result = source.restoreSession()
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("access-token", result.data.accessToken)
+        assertEquals("server-1", result.data.currentServerId)
+    }
+
+    @Test
+    fun restoreSessionKeepsCachedSessionWhenRefreshServerUnavailable() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession(accessToken = "expired-token"))
+        val source =
+            SharedAuthDataSource(
+                transport =
+                    FakeAuthApi(
+                        currentUserResponses =
+                            ArrayDeque(
+                                listOf(
+                                    AuthNetworkResponse(401, null)
+                                )
+                            ),
+                        refreshResponse = AuthNetworkResponse(503, null, """{"message":"temporary outage"}""")
+                    ),
+                sessionStore = store
+            )
+
+        val result = source.restoreSession()
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("expired-token", result.data.accessToken)
+        assertEquals("server-1", result.data.currentServerId)
+        assertEquals("expired-token", store.readSession()?.accessToken)
+    }
+
+    @Test
     fun selectServerPersistsSelectionInSharedLayer() = runBlocking {
         val store =
             InMemorySlockAuthSessionStore(
@@ -217,6 +284,16 @@ class AuthDataSourceTest {
         assertEquals(2, store.readSession()?.servers?.size)
     }
 
+    private fun storedSession(accessToken: String = "access-token"): StoredAuthSession =
+        StoredAuthSession(
+            user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+            accessToken = accessToken,
+            refreshToken = "refresh-token",
+            selectedServerId = "server-1",
+            selectedServerSlug = "slock",
+            servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
+        )
+
     private class FakeAuthApi(
         private val loginResponse: AuthNetworkResponse =
             AuthNetworkResponse(
@@ -249,7 +326,8 @@ class AuthDataSourceTest {
         private val logoutResponse: AuthNetworkResponse =
             AuthNetworkResponse(200, """{"ok":true}"""),
         private val createServerResponse: AuthNetworkResponse =
-            AuthNetworkResponse(201, """{"id":"server-2","name":"Ops","slug":"ops"}""")
+            AuthNetworkResponse(201, """{"id":"server-2","name":"Ops","slug":"ops"}"""),
+        private val throwCurrentUser: Boolean = false
     ) : SlockAuthTransport {
         var loginBody: String? = null
             private set
@@ -291,6 +369,7 @@ class AuthDataSourceTest {
 
         override suspend fun currentUser(authorization: String): AuthNetworkResponse {
             currentUserAuthorization = authorization
+            if (throwCurrentUser) error("bridge not ready")
             return if (currentUserResponses.size > 1) currentUserResponses.removeFirst() else currentUserResponses.first()
         }
 

@@ -185,17 +185,41 @@ class SharedAuthDataSource(
             ?: SharedAuthResult.Unauthenticated
 
     suspend fun restoreSession(): SharedAuthResult<StoredAuthSession> {
-        val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
-        return when (val current = currentUserWithSession(session, clearOnUnauthorized = false)) {
+        val session = runCatching { sessionStore.readSession() }.getOrNull()
+            ?: return SharedAuthResult.Unauthenticated
+        val current =
+            runCatching { currentUserWithSession(session, clearOnUnauthorized = false) }
+                .getOrElse { SharedAuthResult.Failure(SharedAuthErrorCode.Network, "Network unavailable. Check your connection.") }
+        return when (current) {
             is SharedAuthResult.Success -> current
             SharedAuthResult.Unauthenticated -> {
-                when (val refreshed = refresh(session.refreshToken)) {
+                val refreshed =
+                    runCatching { refresh(session.refreshToken) }
+                        .getOrElse { SharedAuthResult.Failure(SharedAuthErrorCode.Network, "Network unavailable. Check your connection.") }
+                when (refreshed) {
                     is SharedAuthResult.Success -> {
                         val updated = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
-                        currentUserWithSession(updated, clearOnUnauthorized = true)
+                        when (val refreshedCurrent =
+                            runCatching { currentUserWithSession(updated, clearOnUnauthorized = true) }
+                                .getOrElse {
+                                    SharedAuthResult.Failure(
+                                        SharedAuthErrorCode.Network,
+                                        "Network unavailable. Check your connection."
+                                    )
+                                }
+                        ) {
+                            is SharedAuthResult.Success -> refreshedCurrent
+                            SharedAuthResult.Unauthenticated -> SharedAuthResult.Unauthenticated
+                            is SharedAuthResult.Failure ->
+                                if (refreshedCurrent.isRecoverableRestoreFailure()) {
+                                    SharedAuthResult.Success(updated)
+                                } else {
+                                    refreshedCurrent
+                                }
+                        }
                     }
                     is SharedAuthResult.Failure ->
-                        if (refreshed.code == SharedAuthErrorCode.Network) {
+                        if (refreshed.isRecoverableRestoreFailure()) {
                             SharedAuthResult.Success(session)
                         } else {
                             refreshed
@@ -204,7 +228,7 @@ class SharedAuthDataSource(
                 }
             }
             is SharedAuthResult.Failure ->
-                if (current.code == SharedAuthErrorCode.Network) {
+                if (current.isRecoverableRestoreFailure()) {
                     SharedAuthResult.Success(session)
                 } else {
                     current
@@ -357,6 +381,9 @@ class SharedAuthDataSource(
         return SharedAuthResult.Success(updated)
     }
 }
+
+private fun SharedAuthResult.Failure.isRecoverableRestoreFailure(): Boolean =
+    code == SharedAuthErrorCode.Network || code == SharedAuthErrorCode.Server
 
 /**
  * Typed auth/server boundary.
