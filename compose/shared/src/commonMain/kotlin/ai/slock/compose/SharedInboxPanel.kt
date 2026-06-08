@@ -407,57 +407,47 @@ private fun SharedActivityRow(
         Column(modifier = Modifier.weight(1f)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
                     text = item.channelLabel(),
                     style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
                     color = SlockColor.TextBlack.copy(alpha = 0.52f),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    overflow = TextOverflow.Ellipsis
                 )
-                item.senderDisplayName()?.let { sender ->
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SlockAvatar(
-                            avatarWireValue = item.senderAvatarWireValue(),
-                            label = sender,
-                            avatarSize = 14.dp
-                        )
-                        Text(
-                            text = sender,
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
-                            color = SlockColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
                 Text(
                     text = item.activityTimeLabel(),
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = com.tencent.kuikly.compose.ui.text.font.FontFamily.Monospace),
                     color = SlockColor.TextBlack.copy(alpha = 0.4f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Text(
-                text = item.previewText(),
-                style =
-                    if (item.unreadCount > 0) {
-                        SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp)
-                    } else {
-                        SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp)
-                    },
-                color = if (item.kind == InboxItemKind.Thread && item.unreadCount == 0) SlockColor.TextBlack.copy(alpha = 0.5f) else SlockColor.TextBlack,
-                maxLines = if (item.kind == InboxItemKind.Thread) 2 else 3,
-                overflow = TextOverflow.Ellipsis
-            )
+            Spacer(Modifier.height(4.dp))
+            Row(
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (item.kind == InboxItemKind.Thread) {
+                    SlockLucideIcon("message-square", modifier = Modifier.size(13.dp), color = "#FFFF4B9B")
+                }
+                Text(
+                    text = item.primaryPreviewText(),
+                    style =
+                        if (item.unreadCount > 0) {
+                            SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp)
+                        } else {
+                            SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp)
+                        },
+                    color = if (item.kind == InboxItemKind.Thread && item.unreadCount == 0) SlockColor.TextBlack.copy(alpha = 0.5f) else SlockColor.TextBlack,
+                    maxLines = if (item.kind == InboxItemKind.Thread) 2 else 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
             item.secondaryPreviewText()?.let { secondary ->
+                Spacer(Modifier.height(4.dp))
                 Text(
                     text = secondary,
                     style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 15.sp),
@@ -475,9 +465,9 @@ private fun SharedActivityRow(
 @Composable
 private fun SharedActivityFooter(item: InboxItem) {
     Row(
-        modifier = Modifier.padding(top = 3.dp),
+        modifier = Modifier.padding(top = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (item.taskNumber != null && item.taskStatus != null) {
             SharedActivityTaskBadge(item)
@@ -491,7 +481,7 @@ private fun SharedActivityFooter(item: InboxItem) {
             )
         }
         if (item.hasMention && item.unreadCount > 0) {
-            SharedActivityCountPill("@ you", backgroundColor = SlockColor.BrandYellow, textColor = SlockColor.TextBlack)
+            SharedActivityCountPill("you", iconName = "at-sign", backgroundColor = SlockColor.BrandYellow, textColor = SlockColor.TextBlack)
         }
         if (item.unreadCount > 0) {
             SharedActivityCountPill("${item.unreadCount} new", backgroundColor = SlockColor.AccentPink, textColor = SlockColor.SurfaceWhite)
@@ -511,33 +501,55 @@ private fun SharedActivityTaskBadge(item: InboxItem) {
             null -> SlockColor.SurfaceWhite
         }
     SharedActivityCountPill(
-        text = "#${item.taskNumber}" + item.taskClaimedByName?.let { " @$it" }.orEmpty(),
+        text = "#${item.taskNumber}" + item.taskClaimedByName?.let { "\n@$it" }.orEmpty(),
+        iconName = item.taskStatus?.activityTaskIconName(),
         backgroundColor = background,
-        textColor = SlockColor.TextBlack
+        textColor = SlockColor.TextBlack,
+        modifier = item.taskClaimedByName?.let { Modifier.width(82.dp) } ?: Modifier
     )
 }
 
 @Composable
 private fun SharedActivityCountPill(
     text: String,
+    iconName: String? = null,
     backgroundColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.AccentPink,
-    textColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.TextBlack
+    textColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.TextBlack,
+    modifier: Modifier = Modifier
 ) {
     Box(
         modifier =
-            Modifier
+            modifier
                 .widthIn(min = 22.dp)
                 .background(backgroundColor)
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = text,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-            color = textColor,
-            maxLines = 1
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (iconName != null) 4.dp else 0.dp)
+        ) {
+            iconName?.let { name ->
+                if (name == "at-sign") {
+                    Text(
+                        text = "@",
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 10.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1
+                    )
+                } else {
+                    SlockLucideIcon(name, modifier = Modifier.size(10.dp), color = "#FF000000")
+                }
+            }
+            Text(
+                text = text,
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
+                color = textColor,
+                maxLines = if (text.contains('\n')) 4 else 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
@@ -546,7 +558,7 @@ private fun SharedActivitySmallIconButton(
     iconName: String,
     onClick: () -> Unit
 ) {
-    SlockBrutalIconButton(iconName = iconName, onClick = onClick, size = 32.dp, shadowOffset = 2.dp)
+    SlockBrutalIconButton(iconName = iconName, onClick = onClick, size = 28.dp, shadowOffset = 2.dp)
 }
 
 @Composable
@@ -717,12 +729,28 @@ private fun InboxItem.previewText(): String =
         lastMessagePreview ?: latestActivityPreview ?: "Conversation update"
     }
 
+private fun InboxItem.primaryPreviewText(): String =
+    if (kind == InboxItemKind.Thread) {
+        previewText()
+    } else {
+        senderDisplayName()?.let { "$it: ${previewText()}" } ?: previewText()
+    }
+
 private fun InboxItem.secondaryPreviewText(): String? =
     latestActivityPreview
         ?.takeIf { kind == InboxItemKind.Thread && replyCount > 0 && it != previewText() }
         ?.let { preview ->
             senderDisplayName()?.let { "$it: $preview" } ?: preview
         }
+
+private fun ai.slock.compose.model.TaskStatus.activityTaskIconName(): String =
+    when (this) {
+        ai.slock.compose.model.TaskStatus.Todo -> "circle"
+        ai.slock.compose.model.TaskStatus.InProgress -> "play"
+        ai.slock.compose.model.TaskStatus.InReview -> "eye"
+        ai.slock.compose.model.TaskStatus.Done -> "circle-check-big"
+        ai.slock.compose.model.TaskStatus.Closed -> "ban"
+    }
 
 private fun InboxItem.toConversationSummary(): ConversationSummary {
     val streamChannelId = threadChannelId ?: channelId

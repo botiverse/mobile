@@ -146,7 +146,7 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "home.activity.results",
             pageName = "compose_home_activity_visual",
-            crop = FULL_VIEWPORT_CROP,
+            crop = HOME_ACTIVITY_RESULTS_CROP,
             settleMs = 4_500
         )
     }
@@ -739,6 +739,13 @@ class KmpVisualScreenshotCaptureTest {
                 captureMethod = "full-screen-takeScreenshot-viewport-density-resize"
             )
         private val HOME_SAVED_RESULTS_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 620
+            )
+        private val HOME_ACTIVITY_RESULTS_CROP =
             VisualCrop(
                 leftDp = 0,
                 topDp = 0,
