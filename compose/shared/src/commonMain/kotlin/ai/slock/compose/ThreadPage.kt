@@ -2505,7 +2505,7 @@ private fun ThreadMessagesList(
     var pendingKeyboardBottomAnchor by remember(payload.instanceId) { mutableStateOf(false) }
     val latestItemIndex = remember(
         payload.originStatus,
-        payload.canLoadMoreBefore,
+        payload.messages.size,
         payload.messages
     ) {
         payload.latestMessageListItemIndex()
@@ -2527,11 +2527,13 @@ private fun ThreadMessagesList(
         ) {
             threadMessagesLazyItemCount(
                 originStatus = payload.originStatus,
-                canLoadMoreBefore = payload.canLoadMoreBefore,
+                showHistoryBoundary = payload.hasThreadHistoryBoundaryItem(),
                 messagesCount = payload.messages.size,
                 canLoadMoreAfter = payload.canLoadMoreAfter
             )
         }
+    var pendingOlderPageAnchor by remember(payload.instanceId) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
+    var previousOlderMessagesStatus by remember(payload.instanceId) { mutableStateOf(payload.olderMessagesStatus) }
     LaunchedEffect(payload.instanceId, latestItemIndex) {
         snapshotFlow {
             listState.isScrollInProgress to listState.isLatestItemAtRenderedBottom(latestItemIndex)
@@ -2542,6 +2544,51 @@ private fun ThreadMessagesList(
                 allowBottomAutoAnchor = true
             }
         }
+    }
+    LaunchedEffect(
+        payload.instanceId,
+        payload.canLoadMoreBefore,
+        payload.olderMessagesStatus,
+        initialBottomAnchorReady,
+        payload.messages.size
+    ) {
+        if (!initialBottomAnchorReady ||
+            !payload.canLoadMoreBefore ||
+            payload.olderMessagesStatus != "idle"
+        ) {
+            return@LaunchedEffect
+        }
+        val boundaryIndex = payload.threadHistoryBoundaryListItemIndex()
+        snapshotFlow { listState.isThreadOlderAutoLoadThreshold(boundaryIndex) }
+            .collect { shouldLoad ->
+                if (shouldLoad) {
+                    allowBottomAutoAnchor = false
+                    onThreadEvent("loadOlder", null, null, null)
+                }
+            }
+    }
+    LaunchedEffect(
+        payload.instanceId,
+        payload.olderMessagesStatus,
+        payload.messages.size,
+        payload.messages.firstOrNull()?.id
+    ) {
+        val previousStatus = previousOlderMessagesStatus
+        if (payload.olderMessagesStatus == "loading" && previousStatus != "loading") {
+            pendingOlderPageAnchor = listState.threadFirstVisibleMessageAnchor(payload)
+            allowBottomAutoAnchor = false
+        } else if (previousStatus == "loading" && payload.olderMessagesStatus != "loading") {
+            val anchor = pendingOlderPageAnchor
+            pendingOlderPageAnchor = null
+            allowBottomAutoAnchor = false
+            if (anchor != null) {
+                val targetIndex = payload.threadMessageListItemIndex(anchor.messageId)
+                if (targetIndex >= 0) {
+                    listState.scrollToItem(targetIndex, -anchor.offset)
+                }
+            }
+        }
+        previousOlderMessagesStatus = payload.olderMessagesStatus
     }
     LaunchedEffect(payload.instanceId, latestMessageLayoutKey, latestItemIndex, allowBottomAutoAnchor) {
         if (latestItemIndex < 0) return@LaunchedEffect
@@ -2621,23 +2668,25 @@ private fun ThreadMessagesList(
                     )
                 }
             }
-            if (payload.canLoadMoreBefore) {
+            if (payload.hasThreadHistoryBoundaryItem()) {
                 item(key = ThreadOlderMessagesListItemKey) {
-                    ThreadInlineActionRow(
-                        label = when (payload.olderMessagesStatus) {
-                            "loading" -> "Loading older messages…"
-                            "error" -> "Retry older messages"
-                            else -> "Load older messages"
-                        },
-                        onClick = {
-                            onThreadEvent(
-                                if (payload.olderMessagesStatus == "error") "retryLoadOlder" else "loadOlder",
-                                null,
-                                null,
-                                null
+                    when {
+                        payload.canLoadMoreBefore && payload.olderMessagesStatus == "error" ->
+                            ThreadInlineActionRow(
+                                label = "Retry older messages",
+                                onClick = { onThreadEvent("retryLoadOlder", null, null, null) }
                             )
-                        }
-                    )
+                        payload.canLoadMoreBefore ->
+                            ThreadHistoryStatusRow(
+                                label = "Loading older messages…",
+                                iconName = "loader-circle"
+                            )
+                        else ->
+                            ThreadHistoryStatusRow(
+                                label = "Beginning of conversation",
+                                iconName = "flag"
+                            )
+                    }
                 }
             }
             items(payload.messages.size, key = { payload.messages[it].messageListItemKey() }) { index ->
@@ -2802,12 +2851,12 @@ private const val ThreadNewerMessagesListItemKey = "thread-page:newer-messages"
 
 internal fun threadMessagesLazyItemCount(
     originStatus: String,
-    canLoadMoreBefore: Boolean,
+    showHistoryBoundary: Boolean,
     messagesCount: Int,
     canLoadMoreAfter: Boolean
 ): Int =
     (if (originStatus != "none") 1 else 0) +
-        (if (canLoadMoreBefore) 1 else 0) +
+        (if (showHistoryBoundary) 1 else 0) +
         messagesCount.coerceAtLeast(0) +
         (if (canLoadMoreAfter) 1 else 0)
 
@@ -2821,12 +2870,28 @@ private fun KuiklyThreadScreenPayload.originListItemKey(): String =
 private fun KuiklyThreadMessageItem.messageListItemKey(): String =
     "thread-page:message:$id"
 
-private fun KuiklyThreadScreenPayload.latestMessageListItemIndex(): Int {
-    if (messages.isEmpty()) return -1
+private fun KuiklyThreadScreenPayload.hasThreadHistoryBoundaryItem(): Boolean =
+    messages.isNotEmpty()
+
+private fun KuiklyThreadScreenPayload.threadHistoryBoundaryListItemIndex(): Int =
+    if (originStatus != "none") 1 else 0
+
+private fun KuiklyThreadScreenPayload.firstMessageListItemIndex(): Int {
     var index = 0
     if (originStatus != "none") index += 1
-    if (canLoadMoreBefore) index += 1
-    return index + messages.lastIndex
+    if (hasThreadHistoryBoundaryItem()) index += 1
+    return index
+}
+
+private fun KuiklyThreadScreenPayload.threadMessageListItemIndex(messageId: String): Int {
+    val messageIndex = messages.indexOfFirst { it.id == messageId }
+    if (messageIndex < 0) return -1
+    return firstMessageListItemIndex() + messageIndex
+}
+
+private fun KuiklyThreadScreenPayload.latestMessageListItemIndex(): Int {
+    if (messages.isEmpty()) return -1
+    return firstMessageListItemIndex() + messages.lastIndex
 }
 
 private fun KuiklyThreadScreenPayload.latestMessageLayoutKey(): String {
@@ -2835,7 +2900,7 @@ private fun KuiklyThreadScreenPayload.latestMessageLayoutKey(): String {
     return buildString {
         append(originStatus)
         append(':')
-        append(canLoadMoreBefore)
+        append(hasThreadHistoryBoundaryItem())
         append(':')
         append(canLoadMoreAfter)
         append(':')
@@ -2859,6 +2924,36 @@ internal fun KuiklyThreadScreenPayload.formatTimestampLabel(value: String): Stri
     todayEpochDay?.let { today ->
         formatSlockTimestampLabel(value, localOffsetMinutes, today)
     } ?: value
+
+private data class ThreadVisibleMessageAnchor(
+    val messageId: String,
+    val offset: Int
+)
+
+private fun LazyListState.threadFirstVisibleMessageAnchor(
+    payload: KuiklyThreadScreenPayload
+): ThreadVisibleMessageAnchor? {
+    val firstMessageListItemIndex = payload.firstMessageListItemIndex()
+    val messageCount = payload.messages.size
+    if (messageCount <= 0) return null
+    val item =
+        layoutInfo.visibleItemsInfo
+            .firstOrNull { item ->
+                item.index >= firstMessageListItemIndex &&
+                    item.index < firstMessageListItemIndex + messageCount
+            }
+            ?: return null
+    val message = payload.messages.getOrNull(item.index - firstMessageListItemIndex) ?: return null
+    return ThreadVisibleMessageAnchor(messageId = message.id, offset = item.offset)
+}
+
+private fun LazyListState.isThreadOlderAutoLoadThreshold(boundaryIndex: Int): Boolean {
+    if (boundaryIndex < 0) return false
+    val layoutInfo = layoutInfo
+    if (layoutInfo.totalItemsCount <= boundaryIndex) return false
+    val firstVisibleIndex = layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: return false
+    return firstVisibleIndex <= boundaryIndex + ThreadOlderAutoLoadVisibleItemThreshold
+}
 
 private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemIndex: Int) {
     if (latestItemIndex < 0) return
@@ -3007,6 +3102,7 @@ private const val ThreadLayoutStabilityMaxFrames = 30
 private const val ThreadLayoutStabilityRequiredFrames = 3
 private const val ThreadBackToBottomAnchorAttempts = 12
 private const val ThreadKeyboardBottomAnchorAttempts = 8
+private const val ThreadOlderAutoLoadVisibleItemThreshold = 1
 
 @Composable
 private fun ThreadSystemMessageRow(
@@ -3117,6 +3213,30 @@ private fun ThreadInlineActionRow(label: String, onClick: () -> Unit) {
         shadowOffset = 2.dp,
         textStyle = SlockType.Button.copy(fontSize = 12.sp, color = SlockColor.TextBlack)
     )
+}
+
+@Composable
+private fun ThreadHistoryStatusRow(
+    label: String,
+    iconName: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockLucideIcon(
+            iconName,
+            modifier = Modifier.size(14.dp),
+            color = "#FF6B7280"
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = label,
+            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+    }
 }
 
 @Composable

@@ -36,10 +36,10 @@ class ThreadPayloadTest {
     @Test
     fun threadMessagesLazyItemCountTracksDecoratedRows() {
         assertEquals(
-            3,
+            4,
             threadMessagesLazyItemCount(
                 originStatus = "none",
-                canLoadMoreBefore = false,
+                showHistoryBoundary = true,
                 messagesCount = 3,
                 canLoadMoreAfter = false
             )
@@ -48,7 +48,7 @@ class ThreadPayloadTest {
             6,
             threadMessagesLazyItemCount(
                 originStatus = "content",
-                canLoadMoreBefore = true,
+                showHistoryBoundary = true,
                 messagesCount = 3,
                 canLoadMoreAfter = true
             )
@@ -58,7 +58,7 @@ class ThreadPayloadTest {
             sharedListBeyondBoundsItemCount(
                 threadMessagesLazyItemCount(
                     originStatus = "none",
-                    canLoadMoreBefore = false,
+                    showHistoryBoundary = true,
                     messagesCount = 1,
                     canLoadMoreAfter = false
                 )
