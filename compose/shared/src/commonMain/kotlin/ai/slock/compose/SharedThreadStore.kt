@@ -4,6 +4,9 @@ import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.EmptyReason
 import ai.slock.compose.data.HomeSnapshot
 import ai.slock.compose.data.ThreadActionResult
+import ai.slock.compose.data.AttachmentUploadFile
+import ai.slock.compose.data.AttachmentUploadRequest
+import ai.slock.compose.data.AttachmentUploadResult
 import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesPage
 import ai.slock.compose.data.ChannelFilesSnapshot
@@ -437,6 +440,27 @@ internal class SharedThreadDataSource(
         attachmentIds: List<String> = emptyList()
     ): ThreadApiResult<ThreadMessagesPage> =
         api.sendMessage(channelId = channelId, body = body, asTask = asTask, attachmentIds = attachmentIds)
+
+    suspend fun uploadAttachments(
+        channelId: String,
+        files: List<AttachmentUploadFile>
+    ): DataResult<AttachmentUploadResult> {
+        val repository =
+            conversationRepository
+                ?: return DataResult.Error(ScreenError(code = "attachment_upload_unavailable", retryable = false))
+        if (channelId.isBlank()) {
+            return DataResult.Error(ScreenError(code = "missing_channel_id", retryable = false))
+        }
+        if (files.isEmpty()) {
+            return DataResult.Error(ScreenError(code = "attachment_read_failed", retryable = false))
+        }
+        return repository.uploadAttachments(
+            AttachmentUploadRequest(
+                channelId = ChannelId(channelId),
+                files = files
+            )
+        )
+    }
 
     suspend fun attachmentUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget> =
         api.attachmentUrl(attachmentId)

@@ -6,6 +6,8 @@ import ai.slock.compose.KuiklyThreadReactionItem
 import ai.slock.compose.KuiklyThreadScreenPayload
 import ai.slock.compose.SharedThreadComposerAttachment
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -130,6 +132,33 @@ internal fun parseSharedThreadUploadedAttachments(
             }
             .distinctBy { it.id }
     }.getOrElse { emptyList() }
+}
+
+@OptIn(ExperimentalEncodingApi::class)
+internal fun parseSharedThreadPickedAttachmentFiles(
+    response: JSONObject?
+): List<AttachmentUploadFile> {
+    val filesJson = response?.optJSONArray("files") ?: return emptyList()
+    return buildList {
+        for (index in 0 until filesJson.length()) {
+            val fileJson = filesJson.optJSONObject(index) ?: continue
+            val fileName = fileJson.optString("fileName").takeIf { it.isNotBlank() }
+                ?: "attachment-${index + 1}"
+            val encoded = fileJson.optString("bodyBase64").takeIf { it.isNotBlank() } ?: continue
+            val bytes = runCatching { Base64.decode(encoded) }.getOrNull() ?: continue
+            add(
+                AttachmentUploadFile(
+                    id = fileJson.optString("id").takeIf { it.isNotBlank() }
+                        ?: "picked-${index + 1}",
+                    fileName = fileName,
+                    mimeType = fileJson.optString("mimeType").takeIf { it.isNotBlank() },
+                    sizeBytes = fileJson.optLong("sizeBytes", bytes.size.toLong()).takeIf { it > 0L },
+                    previewUri = fileJson.optString("previewUri").takeIf { it.isNotBlank() },
+                    bytes = bytes
+                )
+            )
+        }
+    }
 }
 
 internal fun buildSharedThreadPayloadFromMessagesPage(

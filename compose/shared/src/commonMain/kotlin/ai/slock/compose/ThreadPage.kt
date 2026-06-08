@@ -7,7 +7,8 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
 import ai.slock.compose.data.BridgeThreadApi
 import ai.slock.compose.data.BridgeTasksApi
-import ai.slock.compose.data.parseSharedThreadUploadedAttachments
+import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
+import ai.slock.compose.data.parseSharedThreadPickedAttachmentFiles
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklySlockNetworkClient
@@ -1517,8 +1518,8 @@ internal fun SharedThreadRouteContent(
                                 channelId = channelId,
                                 imageOnly = action == "attachImage"
                             )
-                        val uploaded = parseSharedThreadUploadedAttachments(response)
-                        if (uploaded.isEmpty()) {
+                        val files = parseSharedThreadPickedAttachmentFiles(response)
+                        if (files.isEmpty()) {
                             val errorCode = response?.optString("errorCode")?.takeIf { it.isNotBlank() }
                             when {
                                 errorCode != null ->
@@ -1526,13 +1527,37 @@ internal fun SharedThreadRouteContent(
                                 response == null ->
                                     bridge.toast("Attachment picker unavailable")
                             }
-                        } else {
-                            uploadedAttachments =
-                                (uploadedAttachments + uploaded).distinctBy { attachment -> attachment.id }
-                            removedAttachmentIds =
-                                removedAttachmentIds - uploaded.map { attachment -> attachment.id }.toSet()
-                            composerFailureLabel = null
-                            composerSyncNonce += 1
+                            return@launch
+                        }
+                        when (val uploadResult = dataSource.uploadAttachments(channelId, files)) {
+                            is DataResult.Content -> {
+                                val uploaded =
+                                    uploadResult.data.attachments.map { attachment ->
+                                        SharedThreadComposerAttachment(
+                                            id = attachment.id.value,
+                                            fileName = attachment.name,
+                                            sizeLabel = attachment.sizeLabel,
+                                            mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
+                                            status = "ready"
+                                        )
+                                    }
+                                if (uploaded.isEmpty()) {
+                                    bridge.toast("Attachment upload failed: empty_upload_result")
+                                    return@launch
+                                }
+                                uploadedAttachments =
+                                    (uploadedAttachments + uploaded).distinctBy { attachment -> attachment.id }
+                                removedAttachmentIds =
+                                    removedAttachmentIds - uploaded.map { attachment -> attachment.id }.toSet()
+                                composerFailureLabel = null
+                                composerSyncNonce += 1
+                            }
+                            is DataResult.Error ->
+                                bridge.toast("Attachment upload failed: ${uploadResult.error.code}")
+                            is DataResult.NoPermission ->
+                                bridge.toast("Attachment upload failed: no_permission")
+                            is DataResult.Empty ->
+                                bridge.toast("Attachment upload failed: empty_upload_result")
                         }
                     }
                 }

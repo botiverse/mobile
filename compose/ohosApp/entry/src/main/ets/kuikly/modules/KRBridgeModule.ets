@@ -21,6 +21,7 @@ import { SlockOhosDiagnostics } from '../SlockOhosDiagnostics';
 interface OhosPickedThreadAttachment {
   fileName: string;
   mimeType: string;
+  previewUri: string;
   bytes: Uint8Array;
 }
 
@@ -678,18 +679,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         return;
       }
 
-      const session = await this.readStoredAuthSession();
-      const accessToken = ((session?.["accessToken"] as string | undefined) ?? "").trim();
-      const serverId = this.currentServerId(session);
-      if (accessToken.length === 0 || serverId.length === 0) {
-        SlockOhosDiagnostics.record(
-          "ThreadAttachmentUpload",
-          `auth_missing hasToken=${accessToken.length > 0} hasServer=${serverId.length > 0}`
-        );
-        callback(this.threadAttachmentError(401, "auth_required", "Auth required"));
-        return;
-      }
-
       const files = this.readPickedThreadAttachments(uris, imageOnly);
       const byteCount = files.reduce((sum: number, file: OhosPickedThreadAttachment) => sum + file.bytes.byteLength, 0);
       SlockOhosDiagnostics.record("ThreadAttachmentUpload", `read_files count=${files.length} bytes=${byteCount}`);
@@ -698,7 +687,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         return;
       }
 
-      callback(await this.uploadThreadAttachments(channelId, accessToken, serverId, files));
+      callback(this.threadPickedAttachmentFiles(files));
     } catch (error) {
       const businessError = error as BusinessError;
       const message = businessError.message ?? `${error}`;
@@ -746,21 +735,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
   }
 
-  private currentServerId(session: Record<string, Object> | null): string {
-    if (session == null) {
-      return "";
-    }
-    const selectedServerId = ((session["selectedServerId"] as string | undefined) ?? "").trim();
-    if (selectedServerId.length > 0) {
-      return selectedServerId;
-    }
-    const servers = (session["servers"] as Array<Record<string, Object>> | undefined) ?? [];
-    if (servers.length === 0) {
-      return "";
-    }
-    return ((servers[0]["id"] as string | undefined) ?? "").trim();
-  }
-
   private currentServer(session: Record<string, Object> | null): Record<string, Object> | null {
     if (session == null) {
       return null;
@@ -801,6 +775,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         files.push({
           fileName: this.fileNameFromUri(uri, index, imageOnly),
           mimeType: this.mimeTypeFromName(uri, imageOnly),
+          previewUri: uri,
           bytes: new Uint8Array(buffer, 0, readLength)
         });
       } finally {
@@ -810,84 +785,22 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     return files;
   }
 
-  private async uploadThreadAttachments(
-    channelId: string,
-    accessToken: string,
-    serverId: string,
-    files: Array<OhosPickedThreadAttachment>
-  ): Promise<Record<string, Object>> {
-    const boundary = `SlockBoundary${Date.now()}`;
-    const body = this.multipartThreadAttachmentBody(boundary, channelId, files);
-    const request = http.createHttp();
-    try {
-      SlockOhosDiagnostics.record(
-        "ThreadAttachmentUpload",
-        `upload_start files=${files.length} bytes=${body.byteLength}`
-      );
-      const response = await request.request("https://api.slock.ai/api/attachments/upload", {
-        method: http.RequestMethod.POST,
-        header: {
-          "Accept": "application/json",
-          "Authorization": `Bearer ${accessToken}`,
-          "X-Server-Id": serverId,
-          "Content-Type": `multipart/form-data; boundary=${boundary}`
-        },
-        extraData: body,
-        connectTimeout: 30000,
-        readTimeout: 60000
-      });
-      const responseCode = Number(response.responseCode ?? 0);
-      const responseBody = this.httpResultToString(response.result);
-      SlockOhosDiagnostics.record(
-        "ThreadAttachmentUpload",
-        `upload_result code=${responseCode} success=${responseCode >= 200 && responseCode < 300} bodyLength=${responseBody.length}`
-      );
-      return {
-        "code": responseCode,
-        "bodyText": responseCode >= 200 && responseCode < 300 ? responseBody : "",
-        "errorCode": responseCode >= 200 && responseCode < 300 ? "" : "attachment_upload_failed",
-        "errorBodyText": responseCode >= 200 && responseCode < 300 ? "" : responseBody
-      };
-    } finally {
-      request.destroy();
-    }
-  }
-
-  private multipartThreadAttachmentBody(
-    boundary: string,
-    channelId: string,
-    files: Array<OhosPickedThreadAttachment>
-  ): ArrayBuffer {
-    const chunks: Array<Uint8Array> = [];
-    chunks.push(this.utf8(`--${boundary}\r\n`));
-    chunks.push(this.utf8(`Content-Disposition: form-data; name="channelId"\r\n\r\n`));
-    chunks.push(this.utf8(`${channelId}\r\n`));
-    files.forEach((file: OhosPickedThreadAttachment) => {
-      chunks.push(this.utf8(`--${boundary}\r\n`));
-      chunks.push(this.utf8(
-        `Content-Disposition: form-data; name="files"; filename="${this.escapeMultipartValue(file.fileName)}"\r\n`
-      ));
-      chunks.push(this.utf8(`Content-Type: ${file.mimeType}\r\n\r\n`));
-      chunks.push(file.bytes);
-      chunks.push(this.utf8(`\r\n`));
-    });
-    chunks.push(this.utf8(`--${boundary}--\r\n`));
-    return this.concatBytes(chunks).buffer;
-  }
-
-  private utf8(value: string): Uint8Array {
-    return new util.TextEncoder('utf-8').encodeInto(value);
-  }
-
-  private concatBytes(chunks: Array<Uint8Array>): Uint8Array {
-    const total = chunks.reduce((sum: number, chunk: Uint8Array) => sum + chunk.length, 0);
-    const bytes = new Uint8Array(total);
-    let offset = 0;
-    chunks.forEach((chunk: Uint8Array) => {
-      bytes.set(chunk, offset);
-      offset += chunk.length;
-    });
-    return bytes;
+  private threadPickedAttachmentFiles(files: Array<OhosPickedThreadAttachment>): Record<string, Object> {
+    const base64Helper = new util.Base64Helper();
+    return {
+      "code": 200,
+      "bodyText": "",
+      "files": files.map((file: OhosPickedThreadAttachment, index: number) => {
+        return {
+          "id": `picked-${Date.now()}-${index}`,
+          "fileName": file.fileName,
+          "mimeType": file.mimeType,
+          "sizeBytes": file.bytes.byteLength,
+          "previewUri": file.previewUri,
+          "bodyBase64": base64Helper.encodeToStringSync(file.bytes, util.Type.BASIC)
+        };
+      })
+    };
   }
 
   private fileNameFromUri(uri: string, index: number, imageOnly: boolean): string {
@@ -913,10 +826,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     if (lower.endsWith(".pdf")) return "application/pdf";
     if (lower.endsWith(".txt")) return "text/plain";
     return "application/octet-stream";
-  }
-
-  private escapeMultipartValue(value: string): string {
-    return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
   }
 
   private threadAttachmentError(code: number, errorCode: string, message: string): Record<string, Object> {

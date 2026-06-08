@@ -21,10 +21,14 @@ import ai.slock.compose.data.WireReaction
 import ai.slock.compose.data.WireThreadSummary
 import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesPage
+import ai.slock.compose.data.parseSharedThreadPickedAttachmentFiles
 import ai.slock.compose.data.parseSharedThreadUploadedAttachments
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
+import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -1012,5 +1016,38 @@ class ThreadPayloadTest {
         assertEquals("att-1", attachments.first().id)
         assertEquals("report.pdf", attachments.first().fileName)
         assertEquals("application/pdf", attachments.first().mimeType)
+    }
+
+    @OptIn(ExperimentalEncodingApi::class)
+    @Test
+    fun parsesPickedAttachmentFilesForSharedUpload() {
+        val files =
+            parseSharedThreadPickedAttachmentFiles(
+                JSONObject().apply {
+                    put(
+                        "files",
+                        JSONArray().apply {
+                            put(
+                                JSONObject().apply {
+                                    put("id", "picked-1")
+                                    put("fileName", "report.txt")
+                                    put("mimeType", "text/plain")
+                                    put("sizeBytes", 5L)
+                                    put("previewUri", "content://picked/report.txt")
+                                    put("bodyBase64", Base64.encode("hello".encodeToByteArray()))
+                                }
+                            )
+                        }
+                    )
+                }
+            )
+
+        assertEquals(1, files.size)
+        assertEquals("picked-1", files.first().id)
+        assertEquals("report.txt", files.first().fileName)
+        assertEquals("text/plain", files.first().mimeType)
+        assertEquals(5L, files.first().sizeBytes)
+        assertEquals("content://picked/report.txt", files.first().previewUri)
+        assertEquals("hello", files.first().bytes.decodeToString())
     }
 }

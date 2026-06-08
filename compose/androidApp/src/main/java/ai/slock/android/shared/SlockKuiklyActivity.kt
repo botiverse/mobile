@@ -55,21 +55,16 @@ import ai.slock.android.core.data.auth.completeGoogleSocialAuth
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
-import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
 import ai.slock.android.core.data.storage.StorageClearTarget
 import ai.slock.android.core.data.storage.StorageManagementRepository
 import ai.slock.android.core.data.storage.StorageManagementSnapshot
 import ai.slock.android.core.data.realtime.SessionRealtimeRepository
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.android.core.data.realtime.SocketIoSocketTransport
-import ai.slock.compose.data.DataRequestPriority
-import ai.slock.compose.data.HomeNetworkResponse
 import ai.slock.compose.data.RealtimeRepository
 import ai.slock.compose.data.RealtimeSubscription
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
-import ai.slock.compose.model.ChannelId
-import ai.slock.compose.network.MultipartFile
 import ai.slock.android.core.model.DirectMessageCreated
 import ai.slock.android.core.model.Heartbeat
 import ai.slock.android.core.model.MemberKind
@@ -122,9 +117,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-private const val SHARED_AUTH_SESSION_KEY = "auth_session"
-private const val SLOCK_SHARED_DATABASE_NAME = "slock_shared.db"
-
 class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDelegate {
 
     private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
@@ -136,7 +128,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private var realtimeLastSeq: Long = 0L
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
-    private val authSessionGson = Gson()
     private val googleSocialAuthGateway = GoogleSocialAuthGateway()
     private val threadImageAttachmentPickerLauncher: ActivityResultLauncher<String> =
             registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
@@ -373,17 +364,14 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         Thread {
                     val result =
                             runCatching {
-                                        uploadThreadAttachments(
-                                                channelId = pending.channelId,
-                                                uris = uris
-                                        )
+                                        readThreadAttachmentUploadFiles(uris)
                                     }
                                     .getOrElse { throwable ->
                                         mapOf(
                                                 "code" to 0,
                                                 "bodyText" to "",
-                                                "errorCode" to "attachment_upload_failed",
-                                                "errorBodyText" to (throwable.message ?: "Attachment upload failed")
+                                                "errorCode" to "attachment_read_failed",
+                                                "errorBodyText" to (throwable.message ?: "Attachment read failed")
                                         )
                                     }
                     pending.callback?.invoke(result)
@@ -391,41 +379,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 .start()
     }
 
-    private fun uploadThreadAttachments(channelId: String, uris: List<Uri>): Map<String, Any> {
-        val sessionStore = EncryptedAuthSessionStore(applicationContext)
-        val tokenRefresher = AuthTokenRefresher(sessionStore)
-        runBlocking {
-            val encryptedSession = sessionStore.readSession()
-            val encryptedSessionUsable =
-                    !encryptedSession?.accessToken.isNullOrBlank() &&
-                            !encryptedSession.currentServerId.isNullOrBlank()
-            if (!encryptedSessionUsable) {
-                readSharedAuthSessionFromRelationalStore()?.let { sharedSession ->
-                    if (sharedSession.accessToken.isNotBlank() && !sharedSession.currentServerId.isNullOrBlank()) {
-                        sessionStore.saveSession(sharedSession)
-                        SlockDiagnosticsLogger.record(
-                                "SlockAttachmentUpload",
-                                "session_source=shared_relational serverId=${sharedSession.currentServerId?.take(8).orEmpty()}"
-                        )
-                    }
-                }
-            }
-        }
-        val session =
-                runBlocking {
-                    tokenRefresher.refreshIfExpiringSoon(clearOnUnauthorized = false)
-                            ?: sessionStore.readSession()
-                }
-        val token = session?.accessToken.orEmpty()
-        val serverId = session?.currentServerId.orEmpty()
-        if (token.isBlank() || serverId.isBlank()) {
-            return mapOf(
-                    "code" to 401,
-                    "bodyText" to "",
-                    "errorCode" to "auth_required",
-                    "errorBodyText" to "Auth required"
-            )
-        }
+    private fun readThreadAttachmentUploadFiles(uris: List<Uri>): Map<String, Any> {
         val files = uris.mapNotNull(::readPickedThreadAttachment)
         if (files.isEmpty()) {
             return mapOf(
@@ -435,42 +389,24 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                     "errorBodyText" to "No readable attachments"
             )
         }
-        val response =
-                runBlocking {
-                    RealSlockNetworkClientFactory.create(sessionStore, tokenRefresher = tokenRefresher)
-                            .uploadAttachments(
-                                    priority = DataRequestPriority.Foreground,
-                                    channelId = ChannelId(channelId),
-                                    files = files.map { it.toMultipartFile() }
-                            )
-                }
+        val filesJson = JSONArray()
+        files.forEachIndexed { index, file ->
+            filesJson.put(
+                    JSONObject()
+                            .put("id", "picked-${System.nanoTime()}-$index")
+                            .put("fileName", file.fileName)
+                            .put("mimeType", file.mimeType)
+                            .put("sizeBytes", file.bytes.size)
+                            .put("previewUri", file.previewUri)
+                            .put("bodyBase64", Base64.encodeToString(file.bytes, Base64.NO_WRAP))
+            )
+        }
         return mapOf(
-                "code" to response.code,
-                "bodyText" to response.bodyText.orEmpty(),
-                "errorCode" to response.uploadErrorCode(),
-                "errorBodyText" to if (response.isSuccessful) "" else response.errorBodyText.orEmpty()
+                "code" to 200,
+                "bodyText" to "",
+                "files" to filesJson
         )
     }
-
-    private fun readSharedAuthSessionFromRelationalStore(): AuthSession? =
-            runCatching {
-                        val db =
-                                openOrCreateDatabase(
-                                        SLOCK_SHARED_DATABASE_NAME,
-                                        Context.MODE_PRIVATE,
-                                        null
-                                )
-                        db.rawQuery(
-                                        "SELECT value FROM slock_kv WHERE key = ?",
-                                        arrayOf(SHARED_AUTH_SESSION_KEY)
-                                )
-                                .use { cursor ->
-                                    if (!cursor.moveToFirst()) return@runCatching null
-                                    val encoded = cursor.getString(0).orEmpty()
-                                    if (encoded.isBlank()) null else authSessionGson.fromJson(encoded, AuthSession::class.java)
-                                }
-                    }
-                    .getOrNull()
 
     private fun readPickedThreadAttachment(uri: Uri): PickedThreadAttachment? {
         val fileName = queryPickedFileName(uri) ?: uri.lastPathSegment ?: "attachment"
@@ -484,17 +420,10 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         return PickedThreadAttachment(
                 fileName = fileName,
                 mimeType = mimeType,
+                previewUri = uri.toString(),
                 bytes = bytes
         )
     }
-
-    private fun PickedThreadAttachment.toMultipartFile(): MultipartFile =
-            MultipartFile(
-                    name = "files",
-                    fileName = fileName,
-                    mimeType = mimeType,
-                    bytes = bytes
-            )
 
     private fun queryPickedFileName(uri: Uri): String? =
             contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
@@ -904,15 +833,9 @@ private data class PendingThreadAttachmentUpload(
 private data class PickedThreadAttachment(
         val fileName: String,
         val mimeType: String,
+        val previewUri: String,
         val bytes: ByteArray
 )
-
-private fun HomeNetworkResponse.uploadErrorCode(): String =
-        when {
-            isSuccessful -> ""
-            code == 401 -> "auth_required"
-            else -> "attachment_upload_failed"
-        }
 
 private object SlockKuiklyRouterAdapter : IKRRouterAdapter {
     override fun openPage(context: Context, pageName: String, pageData: JSONObject) {
