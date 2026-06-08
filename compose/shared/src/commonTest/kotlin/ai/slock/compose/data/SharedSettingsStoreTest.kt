@@ -1156,3 +1156,154 @@ class SharedSettingsStoreTest {
             sendTestEnabled = true
         )
 }
+
+class SharedSettingsStoreContractTest {
+    @Test
+    fun noOpGateSkipsEquivalentSnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedSettingsStore(
+                dataSource = SharedSettingsDataSource(InMemorySlockAuthSessionStore(sampleSession())),
+                scope = scope
+            )
+        val contract = SharedSettingsStoreContract(store, scope)
+
+        store.accept(SharedSettingsIntent.Start)
+        yield()
+
+        // First emission passes through
+        val first = contract.state.value
+        assertIs<ScreenLoadState.Content<SharedSettingsHomeSnapshot>>(first.home)
+
+        // Dispatch same intent — store may emit same state, but contract should skip
+        val emissionCount = collectEmissionCount(contract, scope) {
+            store.accept(SharedSettingsIntent.Start)
+            yield()
+        }
+
+        // No new emission if state is equivalent
+        assertEquals(0, emissionCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun transitionLogCapturesDispatch() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val log = mutableListOf<MviTransition<SharedSettingsIntent>>()
+        val store =
+            SharedSettingsStore(
+                dataSource = SharedSettingsDataSource(InMemorySlockAuthSessionStore(sampleSession())),
+                scope = scope
+            )
+        val contract = SharedSettingsStoreContract(store, scope, transitionLogger = { log.add(it) })
+
+        contract.dispatch(SharedSettingsIntent.Start)
+        yield()
+
+        assertEquals(1, log.size)
+        assertEquals(SharedSettingsIntent.Start, log[0].intent)
+        assertEquals(true, log[0].emitted)
+        scope.cancel()
+    }
+
+    @Test
+    fun inFlightGuardSkipsDuplicateMutation() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val skippedIntents = mutableListOf<SharedSettingsIntent>()
+        val repository =
+            FakeSettingsRepository(
+                profileResult =
+                    CompletableDeferred<DataResult<AccountSettingsSnapshot>>().also {
+                        it.complete(
+                            DataResult.Content(
+                                AccountSettingsSnapshot(
+                                    displayName = "alice",
+                                    email = "a@b.com",
+                                    timezone = "UTC"
+                                )
+                            )
+                        )
+                    }
+            )
+        val dataSource =
+            SharedSettingsDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                settingsRepository = repository
+            )
+        val store = SharedSettingsStore(dataSource, scope)
+        val contract =
+            SharedSettingsStoreContract(
+                store,
+                scope,
+                transitionLogger = { t ->
+                    if (!t.emitted) skippedIntents.add(t.intent)
+                }
+            )
+
+        // First mutation goes through
+        contract.dispatch(
+            SharedSettingsIntent.UpdateProfile(
+                AccountProfileUpdateRequest(displayName = "alice", email = "a@b.com")
+            )
+        )
+        yield()
+
+        // Second identical mutation should be guarded
+        contract.dispatch(
+            SharedSettingsIntent.UpdateProfile(
+                AccountProfileUpdateRequest(displayName = "alice", email = "a@b.com")
+            )
+        )
+        yield()
+
+        assertEquals(1, skippedIntents.size)
+        assertIs<SharedSettingsIntent.UpdateProfile>(skippedIntents[0])
+        scope.cancel()
+    }
+
+    @Test
+    fun failurePreservesOldContent() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val store =
+            SharedSettingsStore(
+                dataSource = SharedSettingsDataSource(sessionStore),
+                scope = scope
+            )
+        val contract = SharedSettingsStoreContract(store, scope)
+
+        // Load initial content
+        store.accept(SharedSettingsIntent.Start)
+        yield()
+        val beforeRefresh = contract.state.value
+        val homeBefore = assertIs<ScreenLoadState.Content<SharedSettingsHomeSnapshot>>(beforeRefresh.home)
+
+        // Refresh with no repository (empty result) — should preserve old content
+        store.accept(SharedSettingsIntent.Refresh)
+        yield()
+        val afterRefresh = contract.state.value
+
+        // Home should still be the same content (not replaced by empty/loading)
+        val homeAfter = assertIs<ScreenLoadState.Content<SharedSettingsHomeSnapshot>>(afterRefresh.home)
+        assertEquals(homeBefore.data.subtitle, homeAfter.data.subtitle)
+        scope.cancel()
+    }
+
+    private suspend fun collectEmissionCount(
+        contract: SharedSettingsStoreContract,
+        scope: CoroutineScope,
+        block: suspend () -> Unit
+    ): Int {
+        var count = 0
+        val job =
+            scope.launch {
+                contract.state.collect {
+                    count++
+                    if (count > 1) throw AssertionError("Unexpected emission")
+                }
+            }
+        block()
+        job.cancel()
+        return count
+    }
+}
