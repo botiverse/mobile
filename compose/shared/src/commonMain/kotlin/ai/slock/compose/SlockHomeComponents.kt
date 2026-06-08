@@ -846,7 +846,7 @@ private fun SlockLogoBadge(
             Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
             if (showDropdown) {
                 Spacer(Modifier.width(SlockSpacing.Xs))
-                SlockLucidePathIcon("chevron-down", Modifier.size(18.dp), color = "#FFFFD440")
+                SlockLucidePathIcon("chevron-down", Modifier.size(18.dp), color = SlockColor.BrandYellowArgb)
             }
         }
     }
@@ -896,7 +896,7 @@ private fun SlockRotatedLogoBadge(
             Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
             if (showDropdown) {
                 Spacer(Modifier.width(4.dp))
-                SlockLucidePathIcon("chevron-down", Modifier.size(15.dp).rotate(2f), color = "#FFFFD440")
+                SlockLucidePathIcon("chevron-down", Modifier.size(15.dp).rotate(2f), color = SlockColor.BrandYellowArgb)
             }
         }
         if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
@@ -1294,7 +1294,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                     SlockLucideIcon(
                         "hash",
                         Modifier.size(ChannelSymbolIconSize),
-                        color = if (joined) "#FF000000" else "#75000000"
+                        color = if (joined) SlockColor.TextBlackArgb else "#75000000"
                     )
                 } else {
                     Text(symbol, style = SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f), textAlign = TextAlign.Center)
@@ -1302,7 +1302,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             }
             Text(name, style = SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f), modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (badge != null) Spacer(Modifier.width(SlockSpacing.Sm)) else if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
-            if (hasDraft) SlockLucideIcon("pencil", Modifier.size(14.dp), color = "#FF737373")
+            if (hasDraft) SlockLucideIcon("pencil", Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
             if (badge != null) {
                 if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
                 if (joined) CountPill(badge, SlockColor.AccentPink) else DimmedUnreadCount(badge)
@@ -1380,7 +1380,7 @@ private fun DefaultUserAvatar(modifier: Modifier = Modifier, avatarSize: Dp = Ch
 
 @Composable
 private fun DefaultUserAvatarIcon(avatarSize: Dp) {
-    SlockLucideIcon("user", modifier = Modifier.size((avatarSize.value * 0.56f).dp), color = "#FF000000")
+    SlockLucideIcon("user", modifier = Modifier.size((avatarSize.value * 0.56f).dp), color = SlockColor.TextBlackArgb)
 }
 
 private val SlockPresence.homeRowColor: Color

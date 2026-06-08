@@ -47,7 +47,7 @@ internal class SlockLucideIconAttr : Attr() {
 internal fun SlockLucideIcon(
     name: String,
     modifier: Modifier = Modifier,
-    color: String = "#FF000000"
+    color: String = SlockColor.TextBlackArgb
 ) {
     MakeKuiklyComposeNode<SlockLucideIconView>(
         factory = { SlockLucideIconView() },
@@ -71,7 +71,7 @@ internal fun SlockLucideIcon(
 internal fun SlockLucidePathIcon(
     name: String,
     modifier: Modifier = Modifier,
-    color: String = "#FF000000"
+    color: String = SlockColor.TextBlackArgb
 ) {
     MakeKuiklyComposeNode<SlockLucidePathIconView>(
         factory = { SlockLucidePathIconView() },
