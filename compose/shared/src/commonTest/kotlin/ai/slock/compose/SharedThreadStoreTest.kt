@@ -991,6 +991,8 @@ class SharedThreadStoreTest {
 
         val payload = (result as DataResult.Content).data
         assertEquals("thread-m1", payload.sourceThreadId)
+        assertEquals("Threads", payload.title)
+        assertEquals(null, payload.subtitle)
         assertEquals("parent body", payload.originMessage?.body)
         assertEquals("m1", payload.originParentMessageId)
         assertEquals("reply body", payload.messages.single().body)
@@ -1039,6 +1041,8 @@ class SharedThreadStoreTest {
         assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
         assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests.takeLast(1))
         assertEquals(0, api.channelMessageCalls)
+        assertEquals("Threads", payload.title)
+        assertEquals(null, payload.subtitle)
         assertEquals(4, payload.originMessage?.replyCount)
         assertEquals("thread-m1", payload.originMessage?.threadChannelId)
         assertEquals(4, cached?.parentMessage?.replyCount)

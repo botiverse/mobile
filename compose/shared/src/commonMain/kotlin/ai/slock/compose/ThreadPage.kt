@@ -124,6 +124,7 @@ private const val CHANNEL_SETTINGS_PANEL_VISUAL_PAGE = "compose_channel_settings
 private const val CHANNEL_ADD_MEMBER_PANEL_VISUAL_PAGE = "compose_channel_add_member_panel_visual"
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
+internal const val ThreadReplyPageTitle = "Threads"
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 
 @Page(THREAD_PAGE, supportInLocal = true)
@@ -1999,8 +2000,8 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
 ): KuiklyThreadScreenPayload =
     copy(
         instanceId = "shared-shell-thread-pending-${parentMessage.id}",
-        title = "Message Threads",
-        subtitle = title,
+        title = ThreadReplyPageTitle,
+        subtitle = null,
         status = "loading",
         sourceThreadId = null,
         navigationLabel = "Close",
@@ -2465,7 +2466,20 @@ private fun ThreadChatTab(
                 onClick = { onThreadEvent("retryThreadLoad", null, null, null) }
             )
         "no_permission" -> ThreadStateMessage("No permission", payload.errorCode ?: "missing capability")
-        "empty" -> ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
+        "empty" ->
+            if (payload.originStatus != "none") {
+                ThreadMessagesList(
+                    payload = payload,
+                    composerKeyboardInsetDp = composerKeyboardInsetDp,
+                    highlightedMentions = highlightedMentions,
+                    onThreadEvent = onThreadEvent,
+                    onOpenMarkdownTag = onOpenMarkdownTag,
+                    onOpenMarkdownUrl = onOpenMarkdownUrl,
+                    diagnosticsLogger = diagnosticsLogger
+                )
+            } else {
+                ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
+            }
         else ->
             ThreadMessagesList(
                 payload = payload,
@@ -2489,7 +2503,7 @@ private fun ThreadMessagesList(
     onOpenMarkdownUrl: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {}
 ) {
-    if (payload.messages.isEmpty()) {
+    if (payload.messages.isEmpty() && payload.originStatus == "none") {
         ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
         return
     }
@@ -2518,19 +2532,21 @@ private fun ThreadMessagesList(
     ) {
         payload.latestMessageLayoutKey()
     }
+    val showReplyEmptyState = payload.messages.isEmpty() && payload.originStatus != "none"
     val lazyItemCount =
         remember(
             payload.originStatus,
             payload.canLoadMoreBefore,
             payload.messages.size,
-            payload.canLoadMoreAfter
+            payload.canLoadMoreAfter,
+            showReplyEmptyState
         ) {
             threadMessagesLazyItemCount(
                 originStatus = payload.originStatus,
                 showHistoryBoundary = payload.hasThreadHistoryBoundaryItem(),
                 messagesCount = payload.messages.size,
                 canLoadMoreAfter = payload.canLoadMoreAfter
-            )
+            ) + if (showReplyEmptyState) 1 else 0
         }
     var pendingOlderPageAnchor by remember(payload.instanceId) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
     var previousOlderMessagesStatus by remember(payload.instanceId) { mutableStateOf(payload.olderMessagesStatus) }
@@ -2646,28 +2662,37 @@ private fun ThreadMessagesList(
         }
         pendingKeyboardBottomAnchor = false
     }
-    Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize()
-                .padding(vertical = 2.dp)
-                .alpha(if (initialBottomAnchorReady) 1f else 0f)
-                .bouncesEnable(false),
-            verticalArrangement = Arrangement.Bottom,
-            beyondBoundsItemCount = threadMessagesBeyondBoundsItemCount(lazyItemCount)
-        ) {
-            if (payload.originStatus != "none") {
-                item(key = payload.originListItemKey()) {
-                    ThreadOriginCard(
-                        payload = payload,
-                        onOpenParentMessage = {
-                            payload.originParentMessageId?.let {
-                                onThreadEvent("openParentMessage", it, null, null)
-                            }
-                        }
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (payload.originStatus != "none") {
+            ThreadOriginCard(
+                payload = payload,
+                highlightedMentions = highlightedMentions,
+                onThreadEvent = onThreadEvent,
+                onShowActions = { message, anchor ->
+                    actionMenuAnchor = anchor
+                    actionMessageId = message.id
+                    diagnosticsLogger(
+                        "thread_origin_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
                     )
-                }
-            }
+                },
+                onOpenTaskStatusMenu = { message, anchor ->
+                    taskStatusMenuMessageId = message.id
+                    taskStatusMenuAnchor = anchor
+                },
+                onOpenMarkdownTag = onOpenMarkdownTag,
+                onOpenMarkdownUrl = onOpenMarkdownUrl
+            )
+        }
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize()
+                    .padding(vertical = 2.dp)
+                    .alpha(if (initialBottomAnchorReady || latestItemIndex < 0) 1f else 0f)
+                    .bouncesEnable(false),
+                verticalArrangement = Arrangement.Bottom,
+                beyondBoundsItemCount = threadMessagesBeyondBoundsItemCount(lazyItemCount)
+            ) {
             if (payload.hasThreadHistoryBoundaryItem()) {
                 item(key = ThreadOlderMessagesListItemKey) {
                     when {
@@ -2687,6 +2712,11 @@ private fun ThreadMessagesList(
                                 iconName = "flag"
                             )
                     }
+                }
+            }
+            if (showReplyEmptyState) {
+                item(key = ThreadReplyEmptyListItemKey) {
+                    ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
                 }
             }
             items(payload.messages.size, key = { payload.messages[it].messageListItemKey() }) { index ->
@@ -2791,7 +2821,7 @@ private fun ThreadMessagesList(
             )
         }
         actionMessageId?.let { messageId ->
-            payload.messages.firstOrNull { it.id == messageId }?.let { message ->
+            payload.threadActionMessage(messageId)?.let { message ->
                 ThreadMessageActionMenu(
                     message = message,
                     anchor = actionMenuAnchor,
@@ -2824,7 +2854,7 @@ private fun ThreadMessagesList(
             }
         }
         taskStatusMenuMessageId?.let { messageId ->
-            payload.messages.firstOrNull { it.id == messageId }?.let { message ->
+            payload.threadActionMessage(messageId)?.let { message ->
                 val selectedStatus = message.taskStatus.threadTaskStatusOption()
                 SlockBaseMenuOverlay(
                     anchor = taskStatusMenuAnchor,
@@ -2845,9 +2875,11 @@ private fun ThreadMessagesList(
         }
     }
 }
+}
 
 private const val ThreadOlderMessagesListItemKey = "thread-page:older-messages"
 private const val ThreadNewerMessagesListItemKey = "thread-page:newer-messages"
+private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
 
 internal fun threadMessagesLazyItemCount(
     originStatus: String,
@@ -2855,8 +2887,7 @@ internal fun threadMessagesLazyItemCount(
     messagesCount: Int,
     canLoadMoreAfter: Boolean
 ): Int =
-    (if (originStatus != "none") 1 else 0) +
-        (if (showHistoryBoundary) 1 else 0) +
+    (if (showHistoryBoundary) 1 else 0) +
         messagesCount.coerceAtLeast(0) +
         (if (canLoadMoreAfter) 1 else 0)
 
@@ -2864,21 +2895,21 @@ internal fun threadMessagesBeyondBoundsItemCount(itemCount: Int): Int =
     itemCount.coerceAtLeast(0)
         .coerceAtMost(ThreadMessagesMaxBeyondBoundsItemCount)
 
-private fun KuiklyThreadScreenPayload.originListItemKey(): String =
-    "thread-page:origin:${originParentMessageId ?: originMessage?.id ?: instanceId}"
-
 private fun KuiklyThreadMessageItem.messageListItemKey(): String =
     "thread-page:message:$id"
+
+private fun KuiklyThreadScreenPayload.threadActionMessage(messageId: String): KuiklyThreadMessageItem? =
+    messages.firstOrNull { it.id == messageId }
+        ?: originMessage?.takeIf { originStatus != "none" && it.id == messageId }
 
 private fun KuiklyThreadScreenPayload.hasThreadHistoryBoundaryItem(): Boolean =
     messages.isNotEmpty()
 
 private fun KuiklyThreadScreenPayload.threadHistoryBoundaryListItemIndex(): Int =
-    if (originStatus != "none") 1 else 0
+    0
 
 private fun KuiklyThreadScreenPayload.firstMessageListItemIndex(): Int {
     var index = 0
-    if (originStatus != "none") index += 1
     if (hasThreadHistoryBoundaryItem()) index += 1
     return index
 }
@@ -4066,81 +4097,102 @@ private fun ThreadMessageMenuDivider() {
 @Composable
 private fun ThreadOriginCard(
     payload: KuiklyThreadScreenPayload,
-    onOpenParentMessage: () -> Unit
+    highlightedMentions: Set<String>,
+    onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
+    onShowActions: (KuiklyThreadMessageItem, Offset) -> Unit,
+    onOpenTaskStatusMenu: (KuiklyThreadMessageItem, Offset) -> Unit,
+    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
+    onOpenMarkdownUrl: (String) -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
-            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            Text(
-                text = "Origin",
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.W700).copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
-                modifier = Modifier.weight(1f)
-            )
-            if (!payload.originParentMessageId.isNullOrBlank()) {
-                ThreadHeaderAction(
-                    label = "Open",
-                    onClick = onOpenParentMessage
-                )
-            }
-        }
         when (payload.originStatus) {
             "loading" -> {
                 Text(
                     text = "Refreshing original message...",
                     style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
+                    color = SlockColor.TextMutedGray,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm)
                 )
             }
             "missing" -> {
-                Text(
-                    text = payload.originPreview?.ifBlank { "Original message is unavailable." }
-                        ?: "Original message is unavailable.",
-                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack
-                )
-                payload.originErrorCode?.takeIf { it.isNotBlank() }?.let {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                ) {
                     Text(
-                        text = "Refresh failed: $it",
-                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray
+                        text = payload.originPreview?.ifBlank { "Original message is unavailable." }
+                            ?: "Original message is unavailable.",
+                        style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                        color = SlockColor.TextBlack
                     )
+                    payload.originErrorCode?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            text = "Refresh failed: $it",
+                            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                            color = SlockColor.TextMutedGray
+                        )
+                    }
                 }
             }
             else -> {
                 payload.originMessage?.let { origin ->
-                    ThreadMessageCard(
-                        message = origin,
-                        highlightedMentions = emptySet(),
-                        showReplyAction = false,
-                        onShowActions = {},
-                        onOpenMember = {},
-                        onOpenThread = {},
-                        onOpenTask = {},
-                        onOpenTaskStatusMenu = {},
-                        onToggleReaction = {},
-                        timestampLabel = payload.formatTimestampLabel(origin.timestampLabel),
-                        onOpenAttachment = {},
-                        onOpenMarkdownTag = {},
-                        onOpenMarkdownUrl = {}
-                    )
+                    if (origin.isSystemMessage()) {
+                        ThreadSystemMessageRow(
+                            message = origin,
+                            highlightedMentions = highlightedMentions,
+                            showReplyAction = false,
+                            timestampLabel = payload.formatTimestampLabel(origin.timestampLabel),
+                            resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
+                                value = origin.taskAssigneeName,
+                                id = origin.taskAssigneeId
+                            ),
+                            resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
+                            taskOpenEnabled = payload.showTaskOpenActions,
+                            taskStatusActionsEnabled = payload.showTaskStatusActions,
+                            onOpenThread = { onThreadEvent("openMessageThread", origin.id, null, null) },
+                            onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                            onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
+                            onOpenMarkdownTag = onOpenMarkdownTag,
+                            onOpenMarkdownUrl = onOpenMarkdownUrl
+                        )
+                    } else {
+                        ThreadMessageCard(
+                            message = origin,
+                            highlightedMentions = highlightedMentions,
+                            showReplyAction = false,
+                            resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
+                                value = origin.taskAssigneeName,
+                                id = origin.taskAssigneeId
+                            ),
+                            resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
+                            taskOpenEnabled = payload.showTaskOpenActions,
+                            taskStatusActionsEnabled = payload.showTaskStatusActions,
+                            onShowActions = { anchor -> onShowActions(origin, anchor) },
+                            onOpenMember = { onThreadEvent("openMember", it, null, null) },
+                            onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
+                            onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                            onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
+                            onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
+                            timestampLabel = payload.formatTimestampLabel(origin.timestampLabel),
+                            onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
+                            onOpenMarkdownTag = onOpenMarkdownTag,
+                            onOpenMarkdownUrl = onOpenMarkdownUrl
+                        )
+                    }
                 } ?: payload.originPreview?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
                         style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack
+                        color = SlockColor.TextBlack,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm)
                     )
                 }
             }
         }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
     }
 }
 

@@ -34,7 +34,7 @@ import kotlin.test.assertEquals
 
 class ThreadPayloadTest {
     @Test
-    fun threadMessagesLazyItemCountTracksDecoratedRows() {
+    fun threadMessagesLazyItemCountTracksScrollableRows() {
         assertEquals(
             4,
             threadMessagesLazyItemCount(
@@ -45,7 +45,7 @@ class ThreadPayloadTest {
             )
         )
         assertEquals(
-            6,
+            5,
             threadMessagesLazyItemCount(
                 originStatus = "content",
                 showHistoryBoundary = true,
@@ -348,8 +348,8 @@ class ThreadPayloadTest {
             ).replyThreadLoadingPayload(parent)
 
         assertEquals("shared-shell-thread-pending-message-1", payload.instanceId)
-        assertEquals("Message Threads", payload.title)
-        assertEquals("general", payload.subtitle)
+        assertEquals("Threads", payload.title)
+        assertEquals(null, payload.subtitle)
         assertEquals("loading", payload.status)
         assertEquals(null, payload.sourceThreadId)
         assertEquals("message-1", payload.originParentMessageId)
@@ -978,7 +978,7 @@ class ThreadPayloadTest {
         val payload =
             KuiklyThreadScreenPayload(
                 instanceId = "thread-reply-1",
-                title = "Message Threads",
+                title = "Threads",
                 showModeTabs = false,
                 showSettingsAction = true,
                 showOpenInChannelAction = true,

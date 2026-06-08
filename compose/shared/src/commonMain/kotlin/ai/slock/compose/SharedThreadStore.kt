@@ -612,8 +612,8 @@ internal class SharedThreadDataSource(
         val replyBase =
             basePayload.copy(
                 instanceId = "shared-shell-thread-$threadChannelId",
-                title = "Message Threads",
-                subtitle = basePayload.title,
+                title = ThreadReplyPageTitle,
+                subtitle = null,
                 status = "loading",
                 sourceThreadId = threadChannelId,
                 navigationLabel = "Close",
@@ -632,6 +632,8 @@ internal class SharedThreadDataSource(
             is DataResult.Content -> {
                 val payload =
                     loaded.data.copy(
+                        title = replyBase.title,
+                        subtitle = replyBase.subtitle,
                         originMessage = loaded.data.originMessage ?: resolvedOrigin,
                         originParentMessageId = loaded.data.originParentMessageId ?: action.parentMessageId?.value ?: parentMessage.id,
                         originStatus = if (loaded.data.originMessage != null) loaded.data.originStatus else "loaded"
