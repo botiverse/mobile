@@ -34,6 +34,7 @@ class SharedSettingsStoreTest {
                 SharedSettingsDestination.Computers,
                 SharedSettingsDestination.Server,
                 SharedSettingsDestination.Billing,
+                SharedSettingsDestination.LanguageRegion,
                 SharedSettingsDestination.Mobile,
                 SharedSettingsDestination.Storage,
                 SharedSettingsDestination.About
@@ -124,6 +125,49 @@ class SharedSettingsStoreTest {
             server.sections.map { it.key }
         )
         assertEquals(listOf("billing", "server"), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun languageRegionLoadsAndUpdatesTypedPreferences() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(
+                languageRegionResult = DataResult.Content(languageRegionSnapshot())
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.LanguageRegion))
+        val loaded = assertIs<ScreenLoadState.Content<SettingsLanguageRegionSnapshot>>(store.state.value.languageRegion).data
+        assertEquals("Asia/Shanghai", loaded.timezone.selectedKey)
+
+        store.accept(
+            SharedSettingsIntent.UpdateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(preferredTimezone = "Asia/Tokyo")
+            )
+        )
+        store.accept(SharedSettingsIntent.SetLanguageRegionServerTranslation(false))
+
+        val updated = assertIs<ScreenLoadState.Content<SettingsLanguageRegionSnapshot>>(store.state.value.languageRegion).data
+        assertEquals("Asia/Tokyo", updated.timezone.selectedKey)
+        assertEquals(false, updated.serverTranslation.enabled)
+        assertEquals(
+            listOf(
+                "languageRegion",
+                "updateLanguageRegionPreference:timezone=Asia/Tokyo",
+                "updateServerTranslation:false",
+                "languageRegion"
+            ),
+            repository.calls
+        )
         scope.cancel()
     }
 
@@ -681,6 +725,7 @@ class SharedSettingsStoreTest {
         var computerDetailResult: DataResult<SettingsComputerDetailSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var billingResult: DataResult<SettingsBillingSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var serverResult: DataResult<SettingsServerSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
+        var languageRegionResult: DataResult<SettingsLanguageRegionSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var mobileResult: DataResult<SettingsMobileSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
     ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
         val calls = mutableListOf<String>()
@@ -688,6 +733,18 @@ class SharedSettingsStoreTest {
         var createServerInviteBlock: BlockingCall? = null
         var deleteServerBlock: BlockingCall? = null
         var deleteServerResult: DataResult<SettingsServerActionResult> = DataResult.Content(SettingsServerActionResult(success = true))
+
+        private fun SettingsLanguageRegionPreferenceUpdateRequest.callLabel(): String =
+            when {
+                autoTranslationEnabled != null -> "auto=$autoTranslationEnabled"
+                preferredLanguage != null -> "language=$preferredLanguage"
+                clearPreferredLanguage -> "language=null"
+                preferredTimezone != null -> "timezone=$preferredTimezone"
+                clearPreferredTimezone -> "timezone=null"
+                preferredTimeFormat != null -> "timeFormat=$preferredTimeFormat"
+                clearPreferredTimeFormat -> "timeFormat=null"
+                else -> "empty"
+            }
 
         override suspend fun getAccount(): DataResult<AccountSettingsSnapshot> {
             calls += "account"
@@ -827,6 +884,29 @@ class SharedSettingsStoreTest {
             if (current != null) {
                 serverResult = DataResult.Content(current.copy(translation = translation))
             }
+            val currentLanguageRegion = (languageRegionResult as? DataResult.Content)?.data
+            if (currentLanguageRegion != null) {
+                languageRegionResult =
+                    DataResult.Content(
+                        currentLanguageRegion.copy(
+                            serverTranslation =
+                                currentLanguageRegion.serverTranslation.copy(
+                                    enabled = request.translationEnabled,
+                                    statusLabel = if (request.translationEnabled) "Enabled" else "Disabled"
+                                ),
+                            autoTranslation =
+                                currentLanguageRegion.autoTranslation.copy(
+                                    available = request.translationEnabled,
+                                    statusLabel =
+                                        if (request.translationEnabled) {
+                                            currentLanguageRegion.autoTranslation.statusLabel
+                                        } else {
+                                            "Server translation disabled"
+                                        }
+                                )
+                        )
+                    )
+            }
             return DataResult.Content(translation)
         }
 
@@ -882,6 +962,57 @@ class SharedSettingsStoreTest {
         override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> {
             calls += "mobile"
             return mobileResult
+        }
+
+        override suspend fun getLanguageRegionSettings(): DataResult<SettingsLanguageRegionSnapshot> {
+            calls += "languageRegion"
+            return languageRegionResult
+        }
+
+        override suspend fun updateLanguageRegionPreference(
+            request: SettingsLanguageRegionPreferenceUpdateRequest
+        ): DataResult<SettingsLanguageRegionSnapshot> {
+            calls += "updateLanguageRegionPreference:${request.callLabel()}"
+            val current =
+                (languageRegionResult as? DataResult.Content)?.data
+                    ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            languageRegionResult =
+                DataResult.Content(
+                    current.copy(
+                        autoTranslation =
+                            request.autoTranslationEnabled?.let {
+                                current.autoTranslation.copy(
+                                    enabled = it,
+                                    statusLabel = if (it) "Enabled" else "Disabled"
+                                )
+                            } ?: current.autoTranslation,
+                        browserLanguage =
+                            when {
+                                request.clearPreferredLanguage ->
+                                    current.browserLanguage.copy(selectedKey = "other", selectedLabel = "Others", statusLabel = "Others")
+                                request.preferredLanguage != null ->
+                                    current.browserLanguage.copy(
+                                        selectedKey = request.preferredLanguage,
+                                        selectedLabel = "English",
+                                        statusLabel = "English"
+                                    )
+                                else -> current.browserLanguage
+                            },
+                        timezone =
+                            request.preferredTimezone?.let {
+                                current.timezone.copy(selectedKey = it, selectedLabel = it, statusLabel = it)
+                            } ?: current.timezone,
+                        timeFormat =
+                            request.preferredTimeFormat?.let {
+                                current.timeFormat.copy(
+                                    selectedKey = it,
+                                    selectedLabel = if (it == "12h") "12-hour" else "24-hour",
+                                    statusLabel = if (it == "12h") "12-hour" else "24-hour"
+                                )
+                            } ?: current.timeFormat
+                    )
+                )
+            return languageRegionResult
         }
 
         override suspend fun setServerMute(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
@@ -1141,6 +1272,73 @@ class SharedSettingsStoreTest {
                 ),
             sidebarOrder = SettingsServerSidebarOrderSnapshot(channelSortMode = "manual")
         )
+
+    private fun languageRegionSnapshot(): SettingsLanguageRegionSnapshot =
+        SettingsLanguageRegionSnapshot(
+            serverTranslation =
+                SettingsMobileToggleSnapshot(
+                    enabled = true,
+                    available = true,
+                    statusLabel = "Enabled",
+                    detail = "Translation enabled."
+                ),
+            autoTranslation =
+                SettingsMobileToggleSnapshot(
+                    enabled = true,
+                    available = true,
+                    statusLabel = "Enabled",
+                    detail = "Auto translation enabled."
+                ),
+            browserLanguage =
+                SettingsMobileSelectionSnapshot(
+                    selectedKey = "en",
+                    selectedLabel = "English",
+                    statusLabel = "English",
+                    detail = "Translation target language.",
+                    options =
+                        listOf(
+                            SettingsMobileSelectionOptionSnapshot("other", "Others"),
+                            SettingsMobileSelectionOptionSnapshot("en", "English")
+                        )
+                ),
+            timezone =
+                SettingsMobileSelectionSnapshot(
+                    selectedKey = "Asia/Shanghai",
+                    selectedLabel = "UTC+08:00 Asia/Shanghai",
+                    statusLabel = "UTC+08:00 Asia/Shanghai",
+                    detail = "Stored on account.",
+                    options =
+                        listOf(
+                            SettingsMobileSelectionOptionSnapshot("UTC", "UTC+00:00 UTC"),
+                            SettingsMobileSelectionOptionSnapshot("Asia/Shanghai", "UTC+08:00 Asia/Shanghai"),
+                            SettingsMobileSelectionOptionSnapshot("Asia/Tokyo", "UTC+09:00 Asia/Tokyo")
+                        )
+                ),
+            timeFormat =
+                SettingsMobileSelectionSnapshot(
+                    selectedKey = "24h",
+                    selectedLabel = "24-hour",
+                    statusLabel = "24-hour",
+                    detail = "Clock preference.",
+                    options =
+                        listOf(
+                            SettingsMobileSelectionOptionSnapshot("12h", "12-hour"),
+                            SettingsMobileSelectionOptionSnapshot("24h", "24-hour")
+                        )
+                )
+        )
+
+    private fun SettingsLanguageRegionPreferenceUpdateRequest.callLabel(): String =
+        when {
+            autoTranslationEnabled != null -> "auto=$autoTranslationEnabled"
+            preferredLanguage != null -> "language=$preferredLanguage"
+            clearPreferredLanguage -> "language=null"
+            preferredTimezone != null -> "timezone=$preferredTimezone"
+            clearPreferredTimezone -> "timezone=null"
+            preferredTimeFormat != null -> "timeFormat=$preferredTimeFormat"
+            clearPreferredTimeFormat -> "timeFormat=null"
+            else -> "empty"
+        }
 
     private fun accountSnapshot(
         displayName: String = "Slock User",

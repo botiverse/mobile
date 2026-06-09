@@ -29,6 +29,11 @@ import ai.slock.compose.data.MOBILE_ACTION_PERMISSION
 import ai.slock.compose.data.MOBILE_ACTION_SERVER_MUTE
 import ai.slock.compose.data.MOBILE_ACTION_SETTINGS
 import ai.slock.compose.data.MOBILE_ACTION_TEST_NOTIFICATION
+import ai.slock.compose.data.LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
+import ai.slock.compose.data.LANGUAGE_REGION_ACTION_LANGUAGE
+import ai.slock.compose.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
+import ai.slock.compose.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
+import ai.slock.compose.data.LANGUAGE_REGION_ACTION_TIMEZONE
 import ai.slock.compose.data.MyMessageAlignmentPreference
 import ai.slock.compose.data.SERVER_ACTION_INVITE_CREATE
 import ai.slock.compose.data.SERVER_ACTION_INVITE_REVOKE
@@ -128,6 +133,8 @@ import ai.slock.compose.data.SettingsComputerWorkspaceSnapshot
 import ai.slock.compose.data.SettingsComputersSnapshot
 import ai.slock.compose.data.SettingsMobileSelectionSnapshot
 import ai.slock.compose.data.SettingsMobileSnapshot
+import ai.slock.compose.data.SettingsLanguageRegionPreferenceUpdateRequest
+import ai.slock.compose.data.SettingsLanguageRegionSnapshot
 import ai.slock.compose.data.SettingsServerAdminSnapshot
 import ai.slock.compose.data.SettingsServerDeleteRequest
 import ai.slock.compose.data.SettingsServerInviteCreateRequest
@@ -273,6 +280,7 @@ private const val SettingsDestinationComputers = "computers"
 private const val SettingsDestinationComputerDetail = "computerDetail"
 private const val SettingsDestinationServer = "server"
 private const val SettingsDestinationBilling = "billing"
+private const val SettingsDestinationLanguageRegion = "language-region"
 private const val SettingsDestinationMobile = "mobile"
 private const val SettingsDestinationStorage = "storage"
 private const val SettingsDestinationAbout = "about"
@@ -515,6 +523,12 @@ private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
             title = "Billing",
             subtitle = "Plan, usage, invoices",
             iconName = "shield-check"
+        ),
+        SlockTabItemPayload(
+            key = "language-region",
+            title = "Language & Region",
+            subtitle = "Language, timezone, translation",
+            iconName = "languages"
         ),
         SlockTabItemPayload(
             key = "mobile",
@@ -1725,6 +1739,54 @@ private fun SettingsAppShellContent(
                     settingsState.billing.toBillingPayload(session),
                     bottomContentPadding = bottomContentPadding
                 ) { _, _ -> }
+            SettingsDestinationLanguageRegion ->
+                SharedSettingsSectionContent(
+                    settingsState.languageRegion.toLanguageRegionPayload(
+                        actionState = settingsState.actionState,
+                        refreshing = settingsState.isRefreshing(SharedSettingsDestination.LanguageRegion)
+                    ),
+                    bottomContentPadding = bottomContentPadding
+                ) { action, itemId ->
+                    when (action) {
+                        LANGUAGE_REGION_ACTION_SERVER_TRANSLATION ->
+                            onSettingsIntent(SharedSettingsIntent.SetLanguageRegionServerTranslation(itemId == "true"))
+                        LANGUAGE_REGION_ACTION_AUTO_TRANSLATION ->
+                            onSettingsIntent(
+                                SharedSettingsIntent.UpdateLanguageRegionPreference(
+                                    SettingsLanguageRegionPreferenceUpdateRequest(autoTranslationEnabled = itemId == "true")
+                                )
+                            )
+                        LANGUAGE_REGION_ACTION_LANGUAGE ->
+                            itemId?.takeIf { it.isNotBlank() }?.let {
+                                onSettingsIntent(
+                                    SharedSettingsIntent.UpdateLanguageRegionPreference(
+                                        if (it == "other") {
+                                            SettingsLanguageRegionPreferenceUpdateRequest(clearPreferredLanguage = true)
+                                        } else {
+                                            SettingsLanguageRegionPreferenceUpdateRequest(preferredLanguage = it)
+                                        }
+                                    )
+                                )
+                            }
+                        LANGUAGE_REGION_ACTION_TIMEZONE ->
+                            itemId?.takeIf { it.isNotBlank() }?.let {
+                                onSettingsIntent(
+                                    SharedSettingsIntent.UpdateLanguageRegionPreference(
+                                        SettingsLanguageRegionPreferenceUpdateRequest(preferredTimezone = it)
+                                    )
+                                )
+                            }
+                        LANGUAGE_REGION_ACTION_TIME_FORMAT ->
+                            itemId?.takeIf { it.isNotBlank() }?.let {
+                                onSettingsIntent(
+                                    SharedSettingsIntent.UpdateLanguageRegionPreference(
+                                        SettingsLanguageRegionPreferenceUpdateRequest(preferredTimeFormat = it)
+                                    )
+                                )
+                            }
+                        else -> onSettingsAction(action, itemId)
+                    }
+                }
             SettingsDestinationServer ->
                 SharedSettingsServerContent(
                     payload = settingsState.server.toServerPayload(
@@ -2257,6 +2319,13 @@ private fun appShellSettingsHomePayload(
                     iconName = "shield-check",
                     value = session?.currentServerSummary()?.plan?.replaceFirstChar { it.uppercase() },
                     selected = selectedDestination == SettingsDestinationBilling
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationLanguageRegion,
+                    title = "Language & Region",
+                    subtitle = "Language, timezone, translation",
+                    iconName = "languages",
+                    selected = selectedDestination == SettingsDestinationLanguageRegion
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationMobile,
@@ -2987,6 +3056,134 @@ private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
     )
 }
 
+private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayload(
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    refreshing: Boolean
+): KuiklySharedSettingsPayload {
+    val languageRegion =
+        (this as? ScreenLoadState.Content<SettingsLanguageRegionSnapshot>)?.data
+            ?: return appShellLanguageRegionPlaceholderPayload(this, refreshing)
+    return KuiklySharedSettingsPayload(
+        instanceId = "shared-shell-settings-language-region",
+        title = "Language & Region",
+        heroIconName = "languages",
+        heroLabel = "Language & Region",
+        detail =
+            if (refreshing) {
+                "Refreshing language and region settings..."
+            } else {
+                "Language, timezone, and translation preferences are saved through shared Settings MVI."
+            },
+        sections =
+            listOf(
+                KuiklySharedSettingsSection(
+                    title = "Language",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow(
+                                key = LANGUAGE_REGION_ACTION_SERVER_TRANSLATION,
+                                iconName = "languages",
+                                title = "Enable message translation for this server",
+                                detail = languageRegion.serverTranslation.detail,
+                                value = (!languageRegion.serverTranslation.enabled).toString(),
+                                status =
+                                    actionState.statusFor(
+                                        LANGUAGE_REGION_ACTION_SERVER_TRANSLATION,
+                                        languageRegion.serverTranslation.statusLabel
+                                    ),
+                                enabled = languageRegion.serverTranslation.available && actionState?.inProgress != true
+                            ),
+                            KuiklySharedSettingsRow(
+                                key = LANGUAGE_REGION_ACTION_AUTO_TRANSLATION,
+                                iconName = "wand",
+                                title = "Auto-translate messages",
+                                detail = languageRegion.autoTranslation.detail,
+                                value = (!languageRegion.autoTranslation.enabled).toString(),
+                                status =
+                                    actionState.statusFor(
+                                        LANGUAGE_REGION_ACTION_AUTO_TRANSLATION,
+                                        languageRegion.autoTranslation.statusLabel
+                                    ),
+                                enabled = languageRegion.autoTranslation.available && actionState?.inProgress != true
+                            ),
+                            languageRegion.browserLanguage.toMobileSelectionRow(
+                                key = LANGUAGE_REGION_ACTION_LANGUAGE,
+                                iconName = "globe",
+                                title = "Browser language",
+                                fallbackStatus = "Others",
+                                actionState = actionState
+                            )
+                        )
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Date & Time",
+                    rows =
+                        listOf(
+                            languageRegion.timezone.toMobileSelectionRow(
+                                key = LANGUAGE_REGION_ACTION_TIMEZONE,
+                                iconName = "clock",
+                                title = "Timezone",
+                                fallbackStatus = "UTC",
+                                actionState = actionState
+                            ),
+                            languageRegion.timeFormat.toMobileSelectionRow(
+                                key = LANGUAGE_REGION_ACTION_TIME_FORMAT,
+                                iconName = "clock-3",
+                                title = "Time format",
+                                fallbackStatus = "24-hour",
+                                actionState = actionState
+                            )
+                        )
+                )
+            )
+    )
+}
+
+private fun appShellLanguageRegionPlaceholderPayload(
+    state: ScreenLoadState<SettingsLanguageRegionSnapshot>,
+    refreshing: Boolean
+): KuiklySharedSettingsPayload {
+    val status =
+        when (state) {
+            ScreenLoadState.Loading -> if (refreshing) "Refreshing" else "Loading"
+            is ScreenLoadState.Empty -> "Unavailable"
+            is ScreenLoadState.Error -> "Error"
+            is ScreenLoadState.NoPermission -> "No permission"
+            is ScreenLoadState.Content -> "Ready"
+        }
+    val detail =
+        when (state) {
+            is ScreenLoadState.Error -> state.error.code
+            is ScreenLoadState.NoPermission -> state.blocker.code
+            is ScreenLoadState.Empty -> state.reason.name
+            else -> "Loading shared language and region settings."
+        }
+    return KuiklySharedSettingsPayload(
+        instanceId = "shared-shell-settings-language-region-placeholder",
+        title = "Language & Region",
+        heroIconName = "languages",
+        heroLabel = "Language & Region",
+        detail = detail,
+        sections =
+            listOf(
+                KuiklySharedSettingsSection(
+                    title = "Status",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow(
+                                key = "languageRegionStatus",
+                                iconName = "languages",
+                                title = "Language & Region",
+                                detail = detail,
+                                status = status,
+                                enabled = false
+                            )
+                        )
+                )
+            )
+    )
+}
+
 private fun appShellMobilePlaceholderPayload(
     state: ScreenLoadState<SettingsMobileSnapshot>,
     refreshing: Boolean
@@ -3464,6 +3661,7 @@ private fun settingsDestinationTitle(destination: String): String =
         SettingsDestinationComputerDetail -> "Computer"
         SettingsDestinationServer -> "Server"
         SettingsDestinationBilling -> "Billing"
+        SettingsDestinationLanguageRegion -> "Language & Region"
         SettingsDestinationMobile -> "Mobile"
         SettingsDestinationStorage -> "Storage"
         SettingsDestinationAbout -> "About"
@@ -3478,6 +3676,7 @@ private fun settingsDestinationSubtitle(destination: String): String =
         SettingsDestinationComputerDetail -> "Machine details"
         SettingsDestinationServer -> "Workspace controls"
         SettingsDestinationBilling -> "Plan and usage"
+        SettingsDestinationLanguageRegion -> "Language, timezone, translation"
         SettingsDestinationMobile -> "Phone and language"
         SettingsDestinationStorage -> "Local cache"
         SettingsDestinationAbout -> "Diagnostics"
@@ -3492,6 +3691,7 @@ private fun settingsDestinationIcon(destination: String): String =
         SettingsDestinationComputerDetail -> "monitor"
         SettingsDestinationServer -> "users"
         SettingsDestinationBilling -> "shield-check"
+        SettingsDestinationLanguageRegion -> "languages"
         SettingsDestinationMobile -> "smartphone"
         SettingsDestinationStorage -> "archive"
         SettingsDestinationAbout -> "bug"
@@ -3506,6 +3706,7 @@ private fun String.toSharedSettingsDestination(): SharedSettingsDestination? =
         SettingsDestinationComputerDetail -> SharedSettingsDestination.ComputerDetail
         SettingsDestinationServer -> SharedSettingsDestination.Server
         SettingsDestinationBilling -> SharedSettingsDestination.Billing
+        SettingsDestinationLanguageRegion -> SharedSettingsDestination.LanguageRegion
         SettingsDestinationMobile -> SharedSettingsDestination.Mobile
         SettingsDestinationStorage -> SharedSettingsDestination.Storage
         SettingsDestinationAbout -> SharedSettingsDestination.About

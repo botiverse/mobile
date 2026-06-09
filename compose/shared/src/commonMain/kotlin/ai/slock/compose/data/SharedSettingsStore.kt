@@ -18,6 +18,7 @@ enum class SharedSettingsDestination {
     ComputerDetail,
     Server,
     Billing,
+    LanguageRegion,
     Mobile,
     Storage,
     About,
@@ -38,6 +39,7 @@ data class SharedSettingsState(
     val computerDetail: ScreenLoadState<SettingsComputerDetailSnapshot> = ScreenLoadState.Loading,
     val server: ScreenLoadState<SettingsServerSnapshot> = ScreenLoadState.Loading,
     val billing: ScreenLoadState<SettingsBillingSnapshot> = ScreenLoadState.Loading,
+    val languageRegion: ScreenLoadState<SettingsLanguageRegionSnapshot> = ScreenLoadState.Loading,
     val mobile: ScreenLoadState<SettingsMobileSnapshot> = ScreenLoadState.Loading,
     val storage: ScreenLoadState<SharedSettingsStorageSnapshot> = ScreenLoadState.Loading,
     val about: ScreenLoadState<SharedSettingsAboutSnapshot> = ScreenLoadState.Loading,
@@ -197,6 +199,10 @@ sealed interface SharedSettingsIntent {
     data class RequestServerConfirmation(val action: String, val itemId: String? = null) : SharedSettingsIntent
     data class SetNotificationPreference(val enabled: Boolean) : SharedSettingsIntent
     data class SetServerMute(val enabled: Boolean) : SharedSettingsIntent
+    data class SetLanguageRegionServerTranslation(val enabled: Boolean) : SharedSettingsIntent
+    data class UpdateLanguageRegionPreference(
+        val request: SettingsLanguageRegionPreferenceUpdateRequest
+    ) : SharedSettingsIntent
     data class CompleteSystemNotificationAction(
         val action: String,
         val result: SystemNotificationActionResult
@@ -341,6 +347,26 @@ class SharedSettingsDataSource(
 
     suspend fun loadBilling(): DataResult<SettingsBillingSnapshot> =
         settingsRepository?.getBilling() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun loadLanguageRegion(): DataResult<SettingsLanguageRegionSnapshot> =
+        settingsRepository?.getLanguageRegionSettings() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun updateLanguageRegionPreference(
+        request: SettingsLanguageRegionPreferenceUpdateRequest
+    ): DataResult<SettingsLanguageRegionSnapshot> =
+        settingsRepository?.updateLanguageRegionPreference(request)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun setLanguageRegionServerTranslation(enabled: Boolean): DataResult<SettingsLanguageRegionSnapshot> =
+        when (val result =
+            (settingsRepository as? SettingsServerManagementRepository)?.updateServerTranslationSettings(
+                SettingsServerTranslationUpdateRequest(enabled)
+            ) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)) {
+            is DataResult.Content -> loadLanguageRegion()
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> DataResult.Error(result.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+        }
 
     suspend fun loadMobile(): DataResult<SettingsMobileSnapshot> =
         when (val result = settingsRepository?.getMobileSettings() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)) {
@@ -776,6 +802,18 @@ class SharedSettingsStore(
                     )
                 dataSource.setServerMute(intent.enabled).applyMobileActionResult(MOBILE_ACTION_SERVER_MUTE)
             }
+            is SharedSettingsIntent.SetLanguageRegionServerTranslation -> {
+                runAction(LANGUAGE_REGION_ACTION_SERVER_TRANSLATION) {
+                    dataSource.setLanguageRegionServerTranslation(intent.enabled)
+                        .applyLanguageRegionActionResult(LANGUAGE_REGION_ACTION_SERVER_TRANSLATION)
+                }
+            }
+            is SharedSettingsIntent.UpdateLanguageRegionPreference -> {
+                val action = intent.request.toLanguageRegionAction()
+                runAction(action) {
+                    dataSource.updateLanguageRegionPreference(intent.request).applyLanguageRegionActionResult(action)
+                }
+            }
             is SharedSettingsIntent.SetLocale -> {
                 _state.value =
                     _state.value.copy(
@@ -871,6 +909,8 @@ class SharedSettingsStore(
                 dataSource.loadServer().applyToState(destination) { copy(server = it) }
             SharedSettingsDestination.Billing ->
                 dataSource.loadBilling().applyToState(destination) { copy(billing = it) }
+            SharedSettingsDestination.LanguageRegion ->
+                dataSource.loadLanguageRegion().applyToState(destination) { copy(languageRegion = it) }
             SharedSettingsDestination.Mobile ->
                 dataSource.loadMobile().applyToState(destination) { copy(mobile = it) }
             SharedSettingsDestination.Storage -> loadStorage()
@@ -994,6 +1034,25 @@ class SharedSettingsStore(
                         errorCode = nextMobile.routeErrorCode()
                     ),
                 routeErrorCode = nextMobile.routeErrorCode()
+            )
+    }
+
+    private fun DataResult<SettingsLanguageRegionSnapshot>.applyLanguageRegionActionResult(action: String) {
+        val nextLanguageRegion = toScreenLoadState()
+        _state.value =
+            _state.value.copy(
+                languageRegion =
+                    when (nextLanguageRegion) {
+                        is ScreenLoadState.Content -> nextLanguageRegion
+                        else -> _state.value.languageRegion
+                    },
+                actionState =
+                    SharedSettingsActionState(
+                        action = action,
+                        inProgress = false,
+                        errorCode = nextLanguageRegion.routeErrorCode()
+                    ),
+                routeErrorCode = nextLanguageRegion.routeErrorCode()
             )
     }
 
@@ -1145,6 +1204,8 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.RequestServerConfirmation,
             is SharedSettingsIntent.SetNotificationPreference,
             is SharedSettingsIntent.SetServerMute,
+            is SharedSettingsIntent.SetLanguageRegionServerTranslation,
+            is SharedSettingsIntent.UpdateLanguageRegionPreference,
             is SharedSettingsIntent.CompleteSystemNotificationAction,
             is SharedSettingsIntent.SetLocale,
             is SharedSettingsIntent.SetMessageAlignment,
@@ -1204,6 +1265,7 @@ private fun SharedSettingsState.hasContent(destination: SharedSettingsDestinatio
         SharedSettingsDestination.ComputerDetail -> computerDetail is ScreenLoadState.Content
         SharedSettingsDestination.Server -> server is ScreenLoadState.Content
         SharedSettingsDestination.Billing -> billing is ScreenLoadState.Content
+        SharedSettingsDestination.LanguageRegion -> languageRegion is ScreenLoadState.Content
         SharedSettingsDestination.Mobile -> mobile is ScreenLoadState.Content
         SharedSettingsDestination.Storage -> storage is ScreenLoadState.Content
         SharedSettingsDestination.About -> about is ScreenLoadState.Content
@@ -1218,6 +1280,11 @@ internal const val MOBILE_ACTION_SETTINGS = "openNotificationSettings"
 internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
+internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
+internal const val LANGUAGE_REGION_ACTION_AUTO_TRANSLATION = "languageRegionAutoTranslation"
+internal const val LANGUAGE_REGION_ACTION_LANGUAGE = "languageRegionLanguage"
+internal const val LANGUAGE_REGION_ACTION_TIMEZONE = "languageRegionTimezone"
+internal const val LANGUAGE_REGION_ACTION_TIME_FORMAT = "languageRegionTimeFormat"
 internal const val SERVER_ACTION_PROFILE_SAVE = "serverProfileSave"
 internal const val SERVER_ACTION_INVITE_CREATE = "serverInviteCreate"
 internal const val SERVER_ACTION_INVITE_REVOKE = "serverInviteRevoke"
@@ -1236,6 +1303,15 @@ internal const val DIAGNOSTICS_ACTION_PROFILER_STOP = "diagnosticsProfilerStop"
 internal const val DIAGNOSTICS_ACTION_PROFILER_RESET = "diagnosticsProfilerReset"
 internal const val DIAGNOSTICS_ACTION_PROFILER_REPORT = "diagnosticsProfilerReport"
 internal const val DIAGNOSTICS_ACTION_PROFILER_EXPORT = "diagnosticsProfilerExport"
+
+private fun SettingsLanguageRegionPreferenceUpdateRequest.toLanguageRegionAction(): String =
+    when {
+        autoTranslationEnabled != null -> LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
+        preferredLanguage != null || clearPreferredLanguage -> LANGUAGE_REGION_ACTION_LANGUAGE
+        preferredTimezone != null || clearPreferredTimezone -> LANGUAGE_REGION_ACTION_TIMEZONE
+        preferredTimeFormat != null || clearPreferredTimeFormat -> LANGUAGE_REGION_ACTION_TIME_FORMAT
+        else -> "languageRegionPreference"
+    }
 
 private fun LocaleSnapshot.toSettingsMobileSelectionSnapshot(): SettingsMobileSelectionSnapshot =
     SettingsMobileSelectionSnapshot(
@@ -1340,6 +1416,7 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(
                 nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", "monitor", null, selectedDestination),
                 nav(SharedSettingsDestination.Server, "Server", "Workspace profile, admins, invites, onboarding", "users", server?.role?.titleLabel(), selectedDestination),
                 nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", "shield-check", server?.plan?.titleLabel(), selectedDestination),
+                nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", "languages", null, selectedDestination),
                 nav(SharedSettingsDestination.Mobile, "Mobile", "Push notifications, language, layout", "smartphone", null, selectedDestination),
                 nav(SharedSettingsDestination.Storage, "Storage", "Local cache and diagnostics", "archive", null, selectedDestination),
                 nav(SharedSettingsDestination.About, "About", "Version, diagnostics, feedback", "bug", null, selectedDestination)

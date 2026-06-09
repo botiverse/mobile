@@ -52,6 +52,73 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
+    fun languageRegionCombinesAccountPreferencesAndServerTranslation() = runBlocking {
+        val repository =
+            RealSettingsRepository(
+                sampleStore(),
+                FakeSettingsNetworkClient(
+                    accountJson = """
+                        {
+                          "id":"user-1",
+                          "email":"user@slock.ai",
+                          "name":"slock-user",
+                          "preferredLanguage":"en",
+                          "preferredTimezone":"Asia/Shanghai",
+                          "autoTranslationEnabled":false,
+                          "preferredTimeFormat":"12h"
+                        }
+                    """.trimIndent(),
+                    translationJson = """{"translationEnabled":true,"translationAvailable":true,"canManageTranslation":true}"""
+                )
+            )
+
+        val languageRegion = repository.getLanguageRegionSettings()
+
+        assertTrue(languageRegion is DataResult.Content)
+        assertEquals(true, languageRegion.data.serverTranslation.enabled)
+        assertEquals(false, languageRegion.data.autoTranslation.enabled)
+        assertEquals(true, languageRegion.data.autoTranslation.available)
+        assertEquals("en", languageRegion.data.browserLanguage.selectedKey)
+        assertEquals("Asia/Shanghai", languageRegion.data.timezone.selectedKey)
+        assertEquals("12h", languageRegion.data.timeFormat.selectedKey)
+    }
+
+    @Test
+    fun languageRegionPreferenceUpdatesUseAuthMePatchBodies() = runBlocking {
+        val network =
+            FakeSettingsNetworkClient(
+                accountJson = """{"id":"user-1","email":"user@slock.ai","name":"slock-user","preferredTimezone":"Asia/Tokyo","preferredTimeFormat":"24h"}""",
+                translationJson = """{"translationEnabled":true,"translationAvailable":true,"canManageTranslation":true}"""
+            )
+        val repository = RealSettingsRepository(sampleStore(), network)
+
+        val timezone =
+            repository.updateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(preferredTimezone = "Asia/Tokyo")
+            )
+        val timeFormat =
+            repository.updateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(preferredTimeFormat = "24h")
+            )
+        val clearLanguage =
+            repository.updateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(clearPreferredLanguage = true)
+            )
+
+        assertTrue(timezone is DataResult.Content)
+        assertTrue(timeFormat is DataResult.Content)
+        assertTrue(clearLanguage is DataResult.Content)
+        assertEquals(
+            listOf(
+                """{"preferredTimezone":"Asia/Tokyo"}""",
+                """{"preferredTimeFormat":"24h"}""",
+                """{"preferredLanguage":null}"""
+            ),
+            network.accountUpdateBodies
+        )
+    }
+
+    @Test
     fun billingMapsReadablePlanStateAndRequiresOwnerPermission() = runBlocking {
         val billing =
             RealSettingsRepository(

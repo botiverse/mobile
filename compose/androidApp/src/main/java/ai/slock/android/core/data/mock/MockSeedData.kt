@@ -18,6 +18,9 @@ import ai.slock.compose.data.SettingsComputerDetailSnapshot
 import ai.slock.compose.data.SettingsComputerSnapshot
 import ai.slock.compose.data.SettingsComputerWorkspaceSnapshot
 import ai.slock.compose.data.SettingsComputersSnapshot
+import ai.slock.compose.data.SettingsLanguageRegionSnapshot
+import ai.slock.compose.data.SettingsMobileSelectionOptionSnapshot
+import ai.slock.compose.data.SettingsMobileSelectionSnapshot
 import ai.slock.compose.data.SettingsMobileSnapshot
 import ai.slock.compose.data.SettingsMobileToggleSnapshot
 import ai.slock.compose.data.SettingsPlanUsageSnapshot
@@ -548,5 +551,51 @@ object MockSeedData {
             detail = "Server mute is unavailable until the mobile settings endpoint is confirmed."
         ),
         sendTestEnabled = true
+    )
+
+    val settingsLanguageRegionSnapshot = SettingsLanguageRegionSnapshot(
+        serverTranslation = SettingsMobileToggleSnapshot(
+            enabled = true,
+            available = true,
+            statusLabel = "Enabled",
+            detail = "Server message translation is enabled."
+        ),
+        autoTranslation = SettingsMobileToggleSnapshot(
+            enabled = true,
+            available = true,
+            statusLabel = "Enabled",
+            detail = "Incoming messages can be translated automatically."
+        ),
+        browserLanguage = SettingsMobileSelectionSnapshot(
+            selectedKey = "en",
+            selectedLabel = "English",
+            statusLabel = "English",
+            detail = "Used as the target language for automatic translation.",
+            options = listOf(
+                SettingsMobileSelectionOptionSnapshot("other", "Others"),
+                SettingsMobileSelectionOptionSnapshot("en", "English")
+            )
+        ),
+        timezone = SettingsMobileSelectionSnapshot(
+            selectedKey = "Asia/Shanghai",
+            selectedLabel = "UTC+08:00 Asia/Shanghai",
+            statusLabel = "UTC+08:00 Asia/Shanghai",
+            detail = "Stored on your account and used for Settings date and time labels.",
+            options = listOf(
+                SettingsMobileSelectionOptionSnapshot("UTC", "UTC+00:00 UTC"),
+                SettingsMobileSelectionOptionSnapshot("Asia/Shanghai", "UTC+08:00 Asia/Shanghai"),
+                SettingsMobileSelectionOptionSnapshot("America/Los_Angeles", "UTC-08:00 America/Los_Angeles")
+            )
+        ),
+        timeFormat = SettingsMobileSelectionSnapshot(
+            selectedKey = "24h",
+            selectedLabel = "24-hour",
+            statusLabel = "24-hour",
+            detail = "Controls whether times render with 12-hour or 24-hour clocks.",
+            options = listOf(
+                SettingsMobileSelectionOptionSnapshot("12h", "12-hour"),
+                SettingsMobileSelectionOptionSnapshot("24h", "24-hour")
+            )
+        )
     )
 }

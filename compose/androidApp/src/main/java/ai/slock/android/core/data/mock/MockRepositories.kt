@@ -71,6 +71,8 @@ import ai.slock.compose.data.SettingsBillingPlanSnapshot
 import ai.slock.compose.data.SettingsBillingSnapshot
 import ai.slock.compose.data.SettingsPlanUsageSnapshot
 import ai.slock.compose.data.SettingsMobileSnapshot
+import ai.slock.compose.data.SettingsLanguageRegionPreferenceUpdateRequest
+import ai.slock.compose.data.SettingsLanguageRegionSnapshot
 import ai.slock.compose.data.SettingsComputerWorkspaceSnapshot
 import ai.slock.compose.data.SettingsRepository
 import ai.slock.compose.data.SettingsServerActionResult
@@ -293,6 +295,24 @@ class MockSettingsRepository(
 
     override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> =
         resultFor(scenario, EmptyReason.NoSettingsAvailable) { MockSeedData.settingsMobileSnapshot }
+
+    override suspend fun getLanguageRegionSettings(): DataResult<SettingsLanguageRegionSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) { MockSeedData.settingsLanguageRegionSnapshot }
+
+    override suspend fun updateLanguageRegionPreference(
+        request: SettingsLanguageRegionPreferenceUpdateRequest
+    ): DataResult<SettingsLanguageRegionSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            MockSeedData.settingsLanguageRegionSnapshot.copy(
+                autoTranslation =
+                    request.autoTranslationEnabled?.let {
+                        MockSeedData.settingsLanguageRegionSnapshot.autoTranslation.copy(
+                            enabled = it,
+                            statusLabel = if (it) "Enabled" else "Disabled"
+                        )
+                    } ?: MockSeedData.settingsLanguageRegionSnapshot.autoTranslation
+            )
+        }
 }
 
 class MockConversationRepository(

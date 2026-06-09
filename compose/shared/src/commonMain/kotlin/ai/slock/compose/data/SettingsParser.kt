@@ -28,6 +28,13 @@ private data class WireAccountUser(
     val description: String? = null,
     val avatarUrl: String? = null,
     val emailVerified: Boolean = false,
+    val preferredLanguage: String? = null,
+    val targetLanguage: String? = null,
+    val preferredTimezone: String? = null,
+    val timezone: String? = null,
+    val autoTranslationEnabled: Boolean? = null,
+    val preferredTimeFormat: String? = null,
+    val timeFormat: String? = null,
 )
 
 fun parseSharedAccountSettingsSnapshot(
@@ -57,6 +64,27 @@ fun parseSharedAccountSettingsSnapshot(
         canEditProfile = true,
     )
 }.getOrNull()
+
+fun parseSharedLanguageRegionAccountPreferences(
+    bodyText: String
+): SettingsLanguageRegionAccountPreferences? = runCatching {
+    val user = settingsJson.decodeFromString(WireAccountUser.serializer(), bodyText)
+    SettingsLanguageRegionAccountPreferences(
+        preferredLanguage = normalizeSharedLanguageRegionLanguage(user.preferredLanguage ?: user.targetLanguage),
+        preferredTimezone = normalizeSharedLanguageRegionTimezone(user.preferredTimezone ?: user.timezone),
+        autoTranslationEnabled = user.autoTranslationEnabled ?: true,
+        preferredTimeFormat = normalizeSharedLanguageRegionTimeFormat(user.preferredTimeFormat ?: user.timeFormat)
+    )
+}.getOrNull()
+
+private fun normalizeSharedLanguageRegionLanguage(value: String?): String? =
+    value?.trim()?.lowercase()?.takeIf { it == "en" }
+
+private fun normalizeSharedLanguageRegionTimezone(value: String?): String? =
+    value?.trim()?.takeIf { it.isNotBlank() }
+
+private fun normalizeSharedLanguageRegionTimeFormat(value: String?): String? =
+    value?.trim()?.lowercase()?.takeIf { it == "12h" || it == "24h" }
 
 @Serializable
 private data class WireSettingsAgent(

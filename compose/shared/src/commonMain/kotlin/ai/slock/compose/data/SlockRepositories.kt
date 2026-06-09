@@ -50,6 +50,10 @@ interface SettingsRepository {
     suspend fun createServerInvite(request: SettingsServerInviteCreateRequest): DataResult<SettingsServerActionResult>
     suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult>
     suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot>
+    suspend fun getLanguageRegionSettings(): DataResult<SettingsLanguageRegionSnapshot>
+    suspend fun updateLanguageRegionPreference(
+        request: SettingsLanguageRegionPreferenceUpdateRequest
+    ): DataResult<SettingsLanguageRegionSnapshot>
 }
 
 interface SettingsServerActionRepository {

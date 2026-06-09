@@ -5,6 +5,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 
 private val settingsRepositoryJson = Json {
     ignoreUnknownKeys = true
@@ -723,6 +726,51 @@ class RealSettingsRepository(
         )
     }
 
+    override suspend fun getLanguageRegionSettings(): DataResult<SettingsLanguageRegionSnapshot> {
+        sessionStore.readSession() ?: return authRequired()
+        val server = selectedServer() ?: return serverRequired()
+        val account = fetchLanguageRegionAccountPreferences(DataRequestPriority.Visible)
+        val translation = fetchServerTranslation(server.id)
+        return when (account) {
+            is DataResult.Content -> DataResult.Content(account.data.toLanguageRegionSnapshot(translation, server.canManageServer))
+            is DataResult.Empty -> DataResult.Empty(account.reason)
+            is DataResult.Error -> DataResult.Error(account.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(account.blocker)
+        }
+    }
+
+    override suspend fun updateLanguageRegionPreference(
+        request: SettingsLanguageRegionPreferenceUpdateRequest
+    ): DataResult<SettingsLanguageRegionSnapshot> {
+        sessionStore.readSession() ?: return authRequired()
+        val server = selectedServer() ?: return serverRequired()
+        if (!request.hasAtLeastOneField()) {
+            return DataResult.Error(ScreenError("settings_language_region_empty_update", retryable = false))
+        }
+        return when (val result =
+            executeSettings(
+                emptyReason = EmptyReason.NoSettingsAvailable,
+                source = "settings_language_region_account_update",
+                warningLogger = warningLogger,
+                block = {
+                    networkClient.updateSettingsAccount(
+                        DataRequestPriority.Foreground,
+                        buildSharedLanguageRegionPreferenceUpdateBody(request)
+                    )
+                },
+                mapper = { bodyText ->
+                    parseSharedLanguageRegionAccountPreferences(bodyText)
+                        ?: throw IllegalStateException("Language region account response missing preferences")
+                }
+            )) {
+            is DataResult.Content ->
+                DataResult.Content(result.data.toLanguageRegionSnapshot(fetchServerTranslation(server.id), server.canManageServer))
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> DataResult.Error(result.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+        }
+    }
+
     override suspend fun setServerMute(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val serverId = selectedServerId() ?: return serverRequired()
         return when (val result = settingsUpdateServerMute(serverId, enabled)) {
@@ -1111,6 +1159,20 @@ class RealSettingsRepository(
         val selectedId = session.currentServerId ?: return null
         return session.servers.firstOrNull { it.id == selectedId }
     }
+
+    private suspend fun fetchLanguageRegionAccountPreferences(
+        priority: DataRequestPriority
+    ): DataResult<SettingsLanguageRegionAccountPreferences> =
+        executeSettings(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            source = "settings_language_region_account",
+            warningLogger = warningLogger,
+            block = { networkClient.settingsAccount(priority) },
+            mapper = { bodyText ->
+                parseSharedLanguageRegionAccountPreferences(bodyText)
+                    ?: throw IllegalStateException("Language region account response missing preferences")
+            }
+        )
 
     private suspend fun settingsUpdateServerMute(serverId: String, enabled: Boolean): DataResult<Boolean> =
         executeTypedSettings(
@@ -1739,3 +1801,186 @@ data class SettingsServerMuteRequestBody(
 
 fun buildSharedSettingsServerMuteBody(enabled: Boolean): String =
     settingsRepositoryJson.encodeToString(SettingsServerMuteRequestBody(serverPushMuted = enabled))
+
+fun buildSharedLanguageRegionPreferenceUpdateBody(
+    request: SettingsLanguageRegionPreferenceUpdateRequest
+): String =
+    buildJsonObject {
+        if (request.clearPreferredLanguage) {
+            put("preferredLanguage", JsonNull)
+        } else {
+            request.preferredLanguage?.let { put("preferredLanguage", JsonPrimitive(it)) }
+        }
+        if (request.clearPreferredTimezone) {
+            put("preferredTimezone", JsonNull)
+        } else {
+            request.preferredTimezone?.let { put("preferredTimezone", JsonPrimitive(it)) }
+        }
+        request.autoTranslationEnabled?.let { put("autoTranslationEnabled", JsonPrimitive(it)) }
+        if (request.clearPreferredTimeFormat) {
+            put("preferredTimeFormat", JsonNull)
+        } else {
+            request.preferredTimeFormat?.let { put("preferredTimeFormat", JsonPrimitive(it)) }
+        }
+    }.toString()
+
+private fun SettingsLanguageRegionPreferenceUpdateRequest.hasAtLeastOneField(): Boolean =
+    preferredLanguage != null ||
+        clearPreferredLanguage ||
+        preferredTimezone != null ||
+        clearPreferredTimezone ||
+        autoTranslationEnabled != null ||
+        preferredTimeFormat != null ||
+        clearPreferredTimeFormat
+
+private fun SettingsLanguageRegionAccountPreferences.toLanguageRegionSnapshot(
+    translationResult: DataResult<SettingsServerTranslationSnapshot>,
+    canManageServer: Boolean
+): SettingsLanguageRegionSnapshot {
+    val translation = (translationResult as? DataResult.Content)?.data
+    val translationEnabled = translation?.translationEnabled ?: false
+    val providerAvailable = translation?.translationAvailable ?: false
+    val canManageTranslation = translation?.canManageTranslation ?: canManageServer
+    val translationStatus =
+        translation?.statusLabel
+            ?: when (translationResult) {
+                is DataResult.Empty -> "Unavailable"
+                is DataResult.Error -> "Error"
+                is DataResult.NoPermission -> "No permission"
+                is DataResult.Content -> "Ready"
+            }
+    val translationDetail =
+        translation?.detail
+            ?: when (translationResult) {
+                is DataResult.Empty -> "Server translation settings are unavailable."
+                is DataResult.Error -> "Server translation settings failed to load: ${translationResult.error.code}"
+                is DataResult.NoPermission -> "You do not have permission to manage server translation settings."
+                is DataResult.Content -> "Server message translation setting loaded."
+            }
+    val languageKey = preferredLanguage ?: "other"
+    val languageLabel = languageRegionLanguageOptions.firstOrNull { it.key == languageKey }?.label ?: "Others"
+    val timezoneKey = preferredTimezone ?: "UTC"
+    val timezoneOptions =
+        if (languageRegionTimezoneOptions.any { it.key == timezoneKey }) {
+            languageRegionTimezoneOptions
+        } else {
+            languageRegionTimezoneOptions + SettingsMobileSelectionOptionSnapshot(timezoneKey, timezoneKey)
+        }
+    val timezoneLabel = timezoneOptions.firstOrNull { it.key == timezoneKey }?.label ?: timezoneKey
+    val timeFormatKey = preferredTimeFormat ?: "24h"
+    val timeFormatLabel = if (timeFormatKey == "12h") "12-hour" else "24-hour"
+    return SettingsLanguageRegionSnapshot(
+        serverTranslation =
+            SettingsMobileToggleSnapshot(
+                enabled = translationEnabled,
+                available = canManageTranslation && translationResult !is DataResult.NoPermission,
+                statusLabel = translationStatus,
+                detail = translationDetail
+            ),
+        autoTranslation =
+            SettingsMobileToggleSnapshot(
+                enabled = autoTranslationEnabled,
+                available = translationEnabled && providerAvailable,
+                statusLabel =
+                    when {
+                        !translationEnabled -> "Server translation disabled"
+                        !providerAvailable -> "Provider unavailable"
+                        autoTranslationEnabled -> "Enabled"
+                        else -> "Disabled"
+                    },
+                detail =
+                    when {
+                        !translationEnabled -> "Enable message translation for this server before auto-translation can run."
+                        !providerAvailable -> "Translation provider is not configured for this deployment."
+                        autoTranslationEnabled -> "Incoming messages can be translated automatically."
+                        else -> "Automatic message translation is disabled."
+                    }
+            ),
+        browserLanguage =
+            SettingsMobileSelectionSnapshot(
+                selectedKey = languageKey,
+                selectedLabel = languageLabel,
+                statusLabel = languageLabel,
+                detail = "Used as the target language for automatic translation.",
+                options = languageRegionLanguageOptions,
+                available = true
+            ),
+        timezone =
+            SettingsMobileSelectionSnapshot(
+                selectedKey = timezoneKey,
+                selectedLabel = timezoneLabel,
+                statusLabel = timezoneLabel,
+                detail =
+                    if (preferredTimezone.isNullOrBlank()) {
+                        "No account timezone is saved yet; UTC is used until you choose one."
+                    } else {
+                        "Stored on your account and used for Settings date and time labels."
+                    },
+                options = timezoneOptions,
+                available = true
+            ),
+        timeFormat =
+            SettingsMobileSelectionSnapshot(
+                selectedKey = timeFormatKey,
+                selectedLabel = timeFormatLabel,
+                statusLabel = timeFormatLabel,
+                detail = "Controls whether times render with 12-hour or 24-hour clocks.",
+                options = languageRegionTimeFormatOptions,
+                available = true
+            )
+    )
+}
+
+private val languageRegionLanguageOptions =
+    listOf(
+        SettingsMobileSelectionOptionSnapshot("other", "Others"),
+        SettingsMobileSelectionOptionSnapshot("en", "English")
+    )
+
+private val languageRegionTimeFormatOptions =
+    listOf(
+        SettingsMobileSelectionOptionSnapshot("12h", "12-hour"),
+        SettingsMobileSelectionOptionSnapshot("24h", "24-hour")
+    )
+
+private val languageRegionTimezoneOptions =
+    listOf(
+        SettingsMobileSelectionOptionSnapshot("UTC", "UTC+00:00 UTC"),
+        SettingsMobileSelectionOptionSnapshot("America/Anchorage", "UTC-09:00 America/Anchorage"),
+        SettingsMobileSelectionOptionSnapshot("America/Los_Angeles", "UTC-08:00 America/Los_Angeles"),
+        SettingsMobileSelectionOptionSnapshot("America/Denver", "UTC-07:00 America/Denver"),
+        SettingsMobileSelectionOptionSnapshot("America/Phoenix", "UTC-07:00 America/Phoenix"),
+        SettingsMobileSelectionOptionSnapshot("America/Chicago", "UTC-06:00 America/Chicago"),
+        SettingsMobileSelectionOptionSnapshot("America/New_York", "UTC-05:00 America/New_York"),
+        SettingsMobileSelectionOptionSnapshot("America/Toronto", "UTC-05:00 America/Toronto"),
+        SettingsMobileSelectionOptionSnapshot("America/Mexico_City", "UTC-06:00 America/Mexico_City"),
+        SettingsMobileSelectionOptionSnapshot("America/Bogota", "UTC-05:00 America/Bogota"),
+        SettingsMobileSelectionOptionSnapshot("America/Lima", "UTC-05:00 America/Lima"),
+        SettingsMobileSelectionOptionSnapshot("America/Sao_Paulo", "UTC-03:00 America/Sao_Paulo"),
+        SettingsMobileSelectionOptionSnapshot("America/Argentina/Buenos_Aires", "UTC-03:00 America/Argentina/Buenos_Aires"),
+        SettingsMobileSelectionOptionSnapshot("Europe/London", "UTC+00:00 Europe/London"),
+        SettingsMobileSelectionOptionSnapshot("Europe/Dublin", "UTC+00:00 Europe/Dublin"),
+        SettingsMobileSelectionOptionSnapshot("Europe/Paris", "UTC+01:00 Europe/Paris"),
+        SettingsMobileSelectionOptionSnapshot("Europe/Berlin", "UTC+01:00 Europe/Berlin"),
+        SettingsMobileSelectionOptionSnapshot("Europe/Madrid", "UTC+01:00 Europe/Madrid"),
+        SettingsMobileSelectionOptionSnapshot("Europe/Rome", "UTC+01:00 Europe/Rome"),
+        SettingsMobileSelectionOptionSnapshot("Europe/Amsterdam", "UTC+01:00 Europe/Amsterdam"),
+        SettingsMobileSelectionOptionSnapshot("Europe/Zurich", "UTC+01:00 Europe/Zurich"),
+        SettingsMobileSelectionOptionSnapshot("Europe/Stockholm", "UTC+01:00 Europe/Stockholm"),
+        SettingsMobileSelectionOptionSnapshot("Europe/Warsaw", "UTC+01:00 Europe/Warsaw"),
+        SettingsMobileSelectionOptionSnapshot("Europe/Istanbul", "UTC+03:00 Europe/Istanbul"),
+        SettingsMobileSelectionOptionSnapshot("Europe/Moscow", "UTC+03:00 Europe/Moscow"),
+        SettingsMobileSelectionOptionSnapshot("Africa/Cairo", "UTC+02:00 Africa/Cairo"),
+        SettingsMobileSelectionOptionSnapshot("Africa/Johannesburg", "UTC+02:00 Africa/Johannesburg"),
+        SettingsMobileSelectionOptionSnapshot("Asia/Dubai", "UTC+04:00 Asia/Dubai"),
+        SettingsMobileSelectionOptionSnapshot("Asia/Kolkata", "UTC+05:30 Asia/Kolkata"),
+        SettingsMobileSelectionOptionSnapshot("Asia/Bangkok", "UTC+07:00 Asia/Bangkok"),
+        SettingsMobileSelectionOptionSnapshot("Asia/Singapore", "UTC+08:00 Asia/Singapore"),
+        SettingsMobileSelectionOptionSnapshot("Asia/Shanghai", "UTC+08:00 Asia/Shanghai"),
+        SettingsMobileSelectionOptionSnapshot("Asia/Hong_Kong", "UTC+08:00 Asia/Hong_Kong"),
+        SettingsMobileSelectionOptionSnapshot("Asia/Taipei", "UTC+08:00 Asia/Taipei"),
+        SettingsMobileSelectionOptionSnapshot("Asia/Tokyo", "UTC+09:00 Asia/Tokyo"),
+        SettingsMobileSelectionOptionSnapshot("Asia/Seoul", "UTC+09:00 Asia/Seoul"),
+        SettingsMobileSelectionOptionSnapshot("Australia/Sydney", "UTC+10:00 Australia/Sydney"),
+        SettingsMobileSelectionOptionSnapshot("Pacific/Auckland", "UTC+12:00 Pacific/Auckland")
+    )

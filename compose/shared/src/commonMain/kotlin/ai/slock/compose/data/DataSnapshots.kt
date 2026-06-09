@@ -639,6 +639,31 @@ data class SettingsMobileSelectionOptionSnapshot(
     val label: String
 )
 
+data class SettingsLanguageRegionSnapshot(
+    val serverTranslation: SettingsMobileToggleSnapshot,
+    val autoTranslation: SettingsMobileToggleSnapshot,
+    val browserLanguage: SettingsMobileSelectionSnapshot,
+    val timezone: SettingsMobileSelectionSnapshot,
+    val timeFormat: SettingsMobileSelectionSnapshot
+)
+
+data class SettingsLanguageRegionAccountPreferences(
+    val preferredLanguage: String? = null,
+    val preferredTimezone: String? = null,
+    val autoTranslationEnabled: Boolean = true,
+    val preferredTimeFormat: String? = null
+)
+
+data class SettingsLanguageRegionPreferenceUpdateRequest(
+    val preferredLanguage: String? = null,
+    val clearPreferredLanguage: Boolean = false,
+    val preferredTimezone: String? = null,
+    val clearPreferredTimezone: Boolean = false,
+    val autoTranslationEnabled: Boolean? = null,
+    val preferredTimeFormat: String? = null,
+    val clearPreferredTimeFormat: Boolean = false
+)
+
 enum class SettingsSectionAvailability {
     Available,
     Empty,
