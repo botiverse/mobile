@@ -1,14 +1,5 @@
-import webSocket from '@ohos.net.webSocket';
-import util from '@ohos.util';
+import { client_socket } from '@ohos/socketio';
 import { KRAny, KRRecord } from '@kuikly-open/render';
-
-const SOCKET_IO_PATH = '/socket.io/';
-const ENGINE_IO_OPEN = '0';
-const ENGINE_IO_PING = '2';
-const ENGINE_IO_PONG = '3';
-const SOCKET_IO_CONNECT = '40';
-const SOCKET_IO_EVENT = '42';
-const SOCKET_IO_CONNECT_ERROR = '44';
 
 export interface OhosSocketIoConnectParams {
   socketUrl: string;
@@ -23,24 +14,11 @@ export interface OhosSocketIoListener {
   onConnectError?: (message: string) => void;
 }
 
-interface WebSocketConnectOptions {
-  header: Record<string, string>;
-}
-
-interface WebSocketCloseOptions {
-  code: number;
-  reason: string;
-}
-
 export class OhosSocketIoClient {
-  private socket?: webSocket.WebSocket;
+  private socket?: client_socket;
   private connectParams?: OhosSocketIoConnectParams;
   private listener: OhosSocketIoListener = {};
   private connected: boolean = false;
-  private reconnectTimer?: number;
-  private reconnectAttempt: number = 0;
-  private manualDisconnect: boolean = false;
-  private readonly decoder: util.TextDecoder = new util.TextDecoder('utf-8');
 
   setListener(listener: OhosSocketIoListener): void {
     this.listener = listener;
@@ -52,22 +30,16 @@ export class OhosSocketIoClient {
 
   connect(params: OhosSocketIoConnectParams): void {
     this.connectParams = params;
-    this.manualDisconnect = false;
-    this.clearReconnectTimer();
     this.disconnectSocket('reconnect');
     this.openSocket(params);
   }
 
   disconnect(reason: string): void {
-    this.manualDisconnect = true;
     this.connectParams = undefined;
-    this.clearReconnectTimer();
     this.disconnectSocket(reason);
   }
 
   suspend(reason: string): void {
-    this.manualDisconnect = true;
-    this.clearReconnectTimer();
     this.disconnectSocket(reason);
   }
 
@@ -76,171 +48,215 @@ export class OhosSocketIoClient {
     if (params === undefined || this.connected || this.socket !== undefined) {
       return;
     }
-    this.manualDisconnect = false;
     this.openSocket(params);
   }
 
   emit(eventName: string, payload: KRAny): boolean {
-    if (!this.connected) {
+    const socket = this.socket;
+    if (!this.connected || socket === undefined || !socket.opened()) {
       return false;
     }
-    this.sendRaw(`${SOCKET_IO_EVENT}${JSON.stringify([eventName, payload])}`);
-    return true;
+    try {
+      socket.emit(eventName, payload as ESObject);
+      return true;
+    } catch (error) {
+      console.warn(`[OhosSocketIo] emit_failed event=${eventName} error=${error}`);
+      return false;
+    }
   }
 
   private openSocket(params: OhosSocketIoConnectParams): void {
-    const socket = webSocket.createWebSocket();
+    const socket = new client_socket();
     this.socket = socket;
     this.connected = false;
 
-    socket.on('open', () => {
-      console.info('[OhosSocketIo] websocket_open');
-    });
-    socket.on('message', (_error, data) => {
-      if (this.socket !== socket) {
-        return;
-      }
-      this.handleFrame(this.frameToString(data), params);
-    });
-    socket.on('close', (_error, closeResult) => {
-      if (this.socket !== socket) {
-        return;
-      }
-      this.connected = false;
-      const reason = closeResult?.reason ?? 'close';
-      console.info(`[OhosSocketIo] websocket_close code=${closeResult?.code ?? 0} reason=${reason}`);
-      this.listener.onDisconnected?.(reason);
-      if (!this.manualDisconnect) {
-        this.scheduleReconnect('close');
-      }
-    });
-    socket.on('error', (error) => {
-      if (this.socket !== socket) {
-        return;
-      }
-      this.connected = false;
-      const message = error?.message ?? 'unknown';
-      console.error(`[OhosSocketIo] websocket_error ${message}`);
-      this.listener.onDisconnected?.(message);
-      if (!this.manualDisconnect) {
-        this.scheduleReconnect('error');
-      }
-    });
+    socket.set_logs_default();
+    socket.set_reconnect_attempts(10);
+    socket.set_reconnect_delay(1000);
+    socket.set_reconnect_delay_max(30000);
+    this.applyHeaders(socket, params.headers);
+    this.applyAuthOptions(socket, params.auth);
+    this.registerListeners(socket);
 
-    const headers: Record<string, string> = params.headers ?? {};
-    const options: WebSocketConnectOptions = {
-      header: headers,
-    };
-    socket.connect(this.socketIoWebSocketUrl(params.socketUrl), options).catch((error: Error) => {
-      console.error(`[OhosSocketIo] websocket_connect_failed ${error.message}`);
-      this.listener.onConnectError?.(error.message);
-      if (!this.manualDisconnect) {
-        this.scheduleReconnect('connect_failed');
+    try {
+      socket.connect(this.normalizeSocketUrl(params.socketUrl));
+      console.info('[OhosSocketIo] client_socket_connect_requested');
+    } catch (error) {
+      console.error(`[OhosSocketIo] client_socket_connect_failed ${error}`);
+      this.listener.onConnectError?.(`${error}`);
+    }
+  }
+
+  private registerListeners(socket: client_socket): void {
+    socket.set_open_listener(() => {
+      if (this.socket !== socket) {
+        return;
       }
+      console.info('[OhosSocketIo] client_open');
+      this.connected = true;
+      this.listener.onConnected?.();
     });
+    socket.set_socket_open_listener((nsp: string) => {
+      if (this.socket !== socket) {
+        return;
+      }
+      console.info(`[OhosSocketIo] socket_open nsp=${nsp}`);
+      this.connected = true;
+      this.listener.onConnected?.();
+    });
+    socket.set_fail_listener(() => {
+      if (this.socket !== socket) {
+        return;
+      }
+      this.connected = false;
+      console.warn('[OhosSocketIo] client_fail');
+      this.listener.onConnectError?.('client_fail');
+    });
+    socket.set_reconnecting_listener(() => {
+      if (this.socket !== socket) {
+        return;
+      }
+      this.connected = false;
+      console.info('[OhosSocketIo] reconnecting');
+    });
+    socket.set_reconnect_listener(() => {
+      if (this.socket !== socket) {
+        return;
+      }
+      this.connected = true;
+      console.info('[OhosSocketIo] reconnect');
+      this.listener.onConnected?.();
+    });
+    socket.set_close_listener((reason: string) => {
+      if (this.socket !== socket) {
+        return;
+      }
+      this.connected = false;
+      const closeReason = reason.length > 0 ? reason : 'close';
+      console.info(`[OhosSocketIo] close reason=${closeReason}`);
+      this.listener.onDisconnected?.(closeReason);
+    });
+    socket.set_socket_close_listener((nsp: string) => {
+      if (this.socket !== socket) {
+        return;
+      }
+      this.connected = false;
+      console.info(`[OhosSocketIo] socket_close nsp=${nsp}`);
+      this.listener.onDisconnected?.('socket_close');
+    });
+    socket.on_error((message: string) => {
+      if (this.socket !== socket) {
+        return;
+      }
+      console.warn(`[OhosSocketIo] socket_error ${message}`);
+      this.listener.onConnectError?.(message);
+    });
+    socket.on('disconnect', (data: string) => {
+      if (this.socket !== socket) {
+        return;
+      }
+      this.connected = false;
+      const reason = data.length > 0 ? data : 'disconnect';
+      console.info(`[OhosSocketIo] disconnect event=${reason}`);
+      this.listener.onDisconnected?.(reason);
+    });
+    socket.on('ping_pong', (data: string) => {
+      if (this.socket !== socket) {
+        return;
+      }
+      console.info(`[OhosSocketIo] ping_pong ${data}`);
+    });
+    this.registerWireEventListeners(socket);
+  }
+
+  private registerWireEventListeners(socket: client_socket): void {
+    const eventNames: Array<string> = [
+      'rooms:joined',
+      'message:new',
+      'dm:new',
+      'message:updated',
+      'thread:updated',
+      'task:created',
+      'task:updated',
+      'task:deleted',
+      'agent:activity',
+      'server:member-added',
+      'server:member-updated',
+      'server:member:left',
+      'server:member-removed',
+      'sync:resume:response',
+      'heartbeat',
+    ];
+    eventNames.forEach((eventName) => {
+      socket.on(eventName, (eventJson: string) => {
+        if (this.socket !== socket) {
+          return;
+        }
+        this.connected = true;
+        this.listener.onEvent?.(eventName, this.decodePayload(eventName, eventJson));
+      });
+    });
+  }
+
+  private decodePayload(eventName: string, eventJson: string): KRAny {
+    if (eventJson.length === 0) {
+      return {};
+    }
+    try {
+      return JSON.parse(eventJson) as KRAny;
+    } catch (error) {
+      console.warn(`[OhosSocketIo] event_decode_failed event=${eventName} error=${error}`);
+      return eventJson;
+    }
+  }
+
+  private applyHeaders(socket: client_socket, headers?: Record<string, string>): void {
+    if (headers === undefined) {
+      return;
+    }
+    const headerLines = Object.entries(headers)
+      .filter((entry) => entry[0].length > 0 && entry[1].length > 0)
+      .map((entry) => `${entry[0]}: ${entry[1]}`);
+    if (headerLines.length === 0) {
+      return;
+    }
+    socket.set_headers(headerLines.join('\r\n'));
+  }
+
+  private applyAuthOptions(socket: client_socket, auth: KRRecord): void {
+    const token = auth['token'] as string;
+    const serverId = auth['serverId'] as string;
+    const queryParts: Array<string> = [];
+    if (token !== undefined && token.length > 0) {
+      queryParts.push(`token=${encodeURIComponent(token)}`);
+    }
+    if (serverId !== undefined && serverId.length > 0) {
+      queryParts.push(`serverId=${encodeURIComponent(serverId)}`);
+    }
+    if (queryParts.length > 0) {
+      socket.set_option(queryParts.join('&'));
+    }
   }
 
   private disconnectSocket(reason: string): void {
     const socket = this.socket;
     this.socket = undefined;
     this.connected = false;
-    if (socket !== undefined) {
-      const options: WebSocketCloseOptions = {
-        code: 1000,
-        reason: reason,
-      };
-      socket.close(options).catch(() => {});
-    }
-  }
-
-  private clearReconnectTimer(): void {
-    if (this.reconnectTimer !== undefined) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = undefined;
-    }
-  }
-
-  private scheduleReconnect(reason: string): void {
-    const params = this.connectParams;
-    if (params === undefined || this.reconnectTimer !== undefined) {
+    if (socket === undefined) {
       return;
     }
-    const delayMillis = Math.min(30000, 1000 * Math.pow(2, Math.min(this.reconnectAttempt, 5)));
-    this.reconnectAttempt += 1;
-    console.info(`[OhosSocketIo] reconnect_scheduled reason=${reason} delay=${delayMillis}`);
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = undefined;
-      this.openSocket(params);
-    }, delayMillis);
-  }
-
-  private handleFrame(frame: string, params: OhosSocketIoConnectParams): void {
-    if (frame.length === 0) {
-      return;
-    }
-    if (frame.startsWith(ENGINE_IO_OPEN)) {
-      this.sendSocketIoConnect(params.auth);
-      return;
-    }
-    if (frame === ENGINE_IO_PING) {
-      this.sendRaw(ENGINE_IO_PONG);
-      return;
-    }
-    if (frame.startsWith(SOCKET_IO_CONNECT)) {
-      this.connected = true;
-      this.reconnectAttempt = 0;
-      this.listener.onConnected?.();
-      return;
-    }
-    if (frame.startsWith(SOCKET_IO_CONNECT_ERROR)) {
-      const message = frame.substring(SOCKET_IO_CONNECT_ERROR.length);
-      console.warn(`[OhosSocketIo] socket_connect_error ${message}`);
-      this.listener.onConnectError?.(message);
-      return;
-    }
-    if (frame.startsWith(SOCKET_IO_EVENT)) {
-      this.handleSocketIoEvent(frame.substring(SOCKET_IO_EVENT.length));
-    }
-  }
-
-  private sendSocketIoConnect(auth: KRRecord): void {
-    this.sendRaw(`${SOCKET_IO_CONNECT}${JSON.stringify(auth)}`);
-  }
-
-  private handleSocketIoEvent(payload: string): void {
     try {
-      const values = JSON.parse(payload) as Array<KRAny>;
-      const eventName = values[0] as string;
-      if (eventName === undefined || eventName.length === 0) {
-        return;
-      }
-      this.listener.onEvent?.(eventName, values.length > 1 ? values[1] : {});
+      socket.clear_con_listeners();
+      socket.clear_socket_listeners();
+      socket.off_error();
+      socket.close();
+      console.info(`[OhosSocketIo] client_close_requested reason=${reason}`);
     } catch (error) {
-      console.warn(`[OhosSocketIo] event_decode_failed ${error}`);
+      console.warn(`[OhosSocketIo] client_close_failed reason=${reason} error=${error}`);
     }
   }
 
-  private sendRaw(text: string): void {
-    this.socket?.send(text).catch((error: Error) => {
-      console.warn(`[OhosSocketIo] send_failed ${error.message}`);
-    });
-  }
-
-  private frameToString(data: string | ArrayBuffer): string {
-    if (typeof data === 'string') {
-      return data;
-    }
-    return this.decoder.decodeWithStream(new Uint8Array(data));
-  }
-
-  private socketIoWebSocketUrl(socketUrl: string): string {
-    const withoutTrailingSlash = socketUrl.endsWith('/') ? socketUrl.substring(0, socketUrl.length - 1) : socketUrl;
-    const wsScheme =
-      withoutTrailingSlash.startsWith('https://')
-        ? `wss://${withoutTrailingSlash.substring('https://'.length)}`
-        : withoutTrailingSlash.startsWith('http://')
-          ? `ws://${withoutTrailingSlash.substring('http://'.length)}`
-          : withoutTrailingSlash;
-    return `${wsScheme}${SOCKET_IO_PATH}?EIO=4&transport=websocket`;
+  private normalizeSocketUrl(socketUrl: string): string {
+    return socketUrl.endsWith('/') ? socketUrl.substring(0, socketUrl.length - 1) : socketUrl;
   }
 }
