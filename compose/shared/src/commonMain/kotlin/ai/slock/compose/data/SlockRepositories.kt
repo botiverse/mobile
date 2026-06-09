@@ -484,7 +484,9 @@ data class RemoveChannelMemberRequest(
 data class AgentProfileUpdateRequest(
     val agentId: MemberId,
     val displayName: String,
-    val description: String?
+    val description: String?,
+    val avatarUrl: String? = null,
+    val includeAvatarUrl: Boolean = false
 )
 
 enum class AgentResetMode(val wireValue: String) {

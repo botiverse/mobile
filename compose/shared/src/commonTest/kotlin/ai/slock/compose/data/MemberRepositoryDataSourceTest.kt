@@ -27,8 +27,15 @@ class MemberRepositoryDataSourceTest {
         assertEquals("agent-1", detail.data.summary?.id)
         assertEquals("codex", detail.data.summary?.runtime)
         assertEquals("gpt-5", detail.data.summary?.model)
+        assertEquals("medium", detail.data.summary?.reasoning)
+        assertEquals("local", detail.data.summary?.executionMode)
         assertEquals("machine-1", detail.data.summary?.machineId)
         assertEquals("Mac Studio", detail.data.summary?.machineName)
+        assertEquals("0.57.1", detail.data.summary?.daemonVersion)
+        assertEquals("user-1", detail.data.summary?.creatorId)
+        assertEquals("human", detail.data.summary?.creatorType)
+        assertEquals(listOf("ANTHROPIC_API_KEY", "OPENAI_API_KEY"), detail.data.summary?.envVarNames)
+        assertEquals("Helper", detail.data.summary?.createdAgents?.single()?.displayName)
         assertEquals("idle", detail.data.summary?.activity)
         assertEquals(1, detail.data.directMessages.size)
         assertEquals(1, detail.data.reminders.size)
@@ -63,6 +70,44 @@ class MemberRepositoryDataSourceTest {
         )
     }
 
+    @Test
+    fun agentProfileUpdateBodyKeepsAvatarChangesExplicit() {
+        assertEquals(
+            """{"name":"Noel Bot","displayName":"Noel Bot","description":null}""",
+            buildSharedAgentProfileUpdateBody(
+                AgentProfileUpdateRequest(
+                    agentId = MemberId("agent-1"),
+                    displayName = " Noel Bot ",
+                    description = " "
+                )
+            )
+        )
+        assertEquals(
+            """{"name":"Noel Bot","displayName":"Noel Bot","description":"Runs tests","avatarUrl":"pixel:robot"}""",
+            buildSharedAgentProfileUpdateBody(
+                AgentProfileUpdateRequest(
+                    agentId = MemberId("agent-1"),
+                    displayName = "Noel Bot",
+                    description = " Runs tests ",
+                    avatarUrl = " pixel:robot ",
+                    includeAvatarUrl = true
+                )
+            )
+        )
+        assertEquals(
+            """{"name":"Noel Bot","displayName":"Noel Bot","description":null,"avatarUrl":null}""",
+            buildSharedAgentProfileUpdateBody(
+                AgentProfileUpdateRequest(
+                    agentId = MemberId("agent-1"),
+                    displayName = "Noel Bot",
+                    description = null,
+                    avatarUrl = null,
+                    includeAvatarUrl = true
+                )
+            )
+        )
+    }
+
     private class FakeMemberNetworkClient : SlockNetworkClient {
         val calls = mutableListOf<String>()
 
@@ -87,7 +132,12 @@ class MemberRepositoryDataSourceTest {
                           "status":"active",
                           "activity":"idle",
                           "activityDetail":"Ready",
-                          "runtimeProfile":{"current":{"machineId":"machine-1","machineName":"Mac Studio","runtime":"codex","model":"gpt-5"}}
+                          "creatorId":"user-1",
+                          "creatorType":"human",
+                          "daemonVersion":"0.57.1",
+                          "envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},
+                          "createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],
+                          "runtimeProfile":{"current":{"machineId":"machine-1","machineName":"Mac Studio","runtime":"codex","model":"gpt-5","reasoningEffort":"medium","executionMode":"local"}}
                         }
                         """.trimIndent()
                     )

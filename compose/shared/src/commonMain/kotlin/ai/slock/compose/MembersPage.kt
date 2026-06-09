@@ -3,6 +3,10 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
+import ai.slock.compose.components.SlockBrutalTextField
+import ai.slock.compose.data.AgentDetailSnapshot
+import ai.slock.compose.data.AgentProfileUpdateRequest
+import ai.slock.compose.data.DataResult
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.MemberId
@@ -16,6 +20,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -48,6 +53,7 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 const val MEMBERS_PAGE = "compose_members"
@@ -60,6 +66,37 @@ private val MemberRowMinHeight = 48.dp
 private val MemberStatusDotSize = 10.dp
 private val MembersActionSize = 30.dp
 private val MembersActionIconSize = 16.dp
+
+internal enum class MembersAgentDetailTab(
+    val label: String,
+    val iconName: String,
+    val privateSurface: Boolean = true
+) {
+    Profile("Profile", "bot", privateSurface = false),
+    Permissions("Permissions", "shield-check"),
+    Dms("DMs", "message-square"),
+    Reminders("Reminders", "bell-ring"),
+    Workspace("Workspace", "folder-open"),
+    Activity("Activity", "activity")
+}
+
+internal fun membersVisibleAgentTabs(canViewPrivateSurfaces: Boolean, deleted: Boolean): List<MembersAgentDetailTab> =
+    MembersAgentDetailTab.entries.filter { tab ->
+        when {
+            tab == MembersAgentDetailTab.Profile -> true
+            tab == MembersAgentDetailTab.Permissions && deleted -> false
+            else -> canViewPrivateSurfaces
+        }
+    }
+
+private sealed interface MembersAgentDetailLoadState {
+    data object Idle : MembersAgentDetailLoadState
+    data object Loading : MembersAgentDetailLoadState
+    data class Content(val detail: AgentDetailSnapshot) : MembersAgentDetailLoadState
+    data class NoPermission(val code: String) : MembersAgentDetailLoadState
+    data class Error(val code: String) : MembersAgentDetailLoadState
+    data object Empty : MembersAgentDetailLoadState
+}
 
 @Page(MEMBERS_SMOKE_PAGE, supportInLocal = true)
 internal class ComposeMembersSmokePage : ai.slock.compose.base.BasePager() {
@@ -262,14 +299,37 @@ internal fun MembersRouteContent(
     payload: KuiklyMembersPayload,
     onAddHuman: () -> Unit,
     onOpenDirectMessage: (MemberProfile) -> Unit,
-    onCopyMemberId: (MemberProfile) -> Unit
+    onCopyMemberId: (MemberProfile) -> Unit,
+    agentDetailLoader: (suspend (MemberId) -> DataResult<AgentDetailSnapshot>)? = null,
+    onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)? = null,
+    canViewPrivateAgentSurfaces: (MemberProfile, AgentDetailSnapshot?) -> Boolean = { _, _ -> false },
+    canManageAgent: (MemberProfile, AgentDetailSnapshot?) -> Boolean = { _, _ -> false },
+    onUnavailableAction: (String) -> Unit = {}
 ) {
     var selectedMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     val selectedMember = payload.members.firstOrNull { it.id.value == selectedMemberId }
+    var agentDetailState by remember(selectedMember?.id?.value) {
+        mutableStateOf<MembersAgentDetailLoadState>(MembersAgentDetailLoadState.Idle)
+    }
     LaunchedEffect(selectedMemberId, payload.members) {
         if (selectedMemberId != null && selectedMember == null) {
             selectedMemberId = null
         }
+    }
+    LaunchedEffect(selectedMember?.id?.value, selectedMember?.kind) {
+        val member = selectedMember
+        if (member == null || member.kind != MemberKind.Agent || agentDetailLoader == null) {
+            agentDetailState = MembersAgentDetailLoadState.Idle
+            return@LaunchedEffect
+        }
+        agentDetailState = MembersAgentDetailLoadState.Loading
+        agentDetailState =
+            when (val result = agentDetailLoader(member.id)) {
+                is DataResult.Content -> MembersAgentDetailLoadState.Content(result.data)
+                is DataResult.Empty -> MembersAgentDetailLoadState.Empty
+                is DataResult.NoPermission -> MembersAgentDetailLoadState.NoPermission(result.blocker.code)
+                is DataResult.Error -> MembersAgentDetailLoadState.Error(result.error.code)
+            }
     }
     SlockBackHandler(enabled = selectedMember != null) {
         selectedMemberId = null
@@ -277,9 +337,14 @@ internal fun MembersRouteContent(
     if (selectedMember != null) {
         MembersDetailContent(
             member = selectedMember,
+            agentDetailState = agentDetailState,
+            canViewPrivateAgentSurfaces = canViewPrivateAgentSurfaces,
+            canManageAgent = canManageAgent,
             onBack = { selectedMemberId = null },
             onOpenDirectMessage = { onOpenDirectMessage(selectedMember) },
-            onCopyMemberId = { onCopyMemberId(selectedMember) }
+            onCopyMemberId = { onCopyMemberId(selectedMember) },
+            onUpdateAgentProfile = onUpdateAgentProfile,
+            onUnavailableAction = onUnavailableAction
         )
     } else {
         MembersListContent(
@@ -418,59 +483,126 @@ internal fun membersLazyItemCount(
 @Composable
 private fun MembersDetailContent(
     member: MemberProfile,
+    agentDetailState: MembersAgentDetailLoadState,
+    canViewPrivateAgentSurfaces: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
+    canManageAgent: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
     onBack: () -> Unit,
     onOpenDirectMessage: () -> Unit,
-    onCopyMemberId: () -> Unit
+    onCopyMemberId: () -> Unit,
+    onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
+    onUnavailableAction: (String) -> Unit
 ) {
+    val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
+    val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
+    val canViewPrivate = member.kind == MemberKind.Agent && canViewPrivateAgentSurfaces(member, detail)
+    val canManage = member.kind == MemberKind.Agent && !deleted && canManageAgent(member, detail)
+    var selectedTab by remember(member.id.value) { mutableStateOf(MembersAgentDetailTab.Profile) }
+    val visibleTabs = remember(canViewPrivate, deleted, member.kind) {
+        if (member.kind == MemberKind.Agent) {
+            membersVisibleAgentTabs(canViewPrivateSurfaces = canViewPrivate, deleted = deleted)
+        } else {
+            listOf(MembersAgentDetailTab.Profile)
+        }
+    }
+    LaunchedEffect(visibleTabs, selectedTab) {
+        if (selectedTab !in visibleTabs) {
+            selectedTab = MembersAgentDetailTab.Profile
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        MembersDetailHeader(title = member.displayName, onBack = onBack)
+        MembersDetailHeader(
+            title = member.displayName,
+            subtitle = if (member.kind == MemberKind.Agent) "Agent profile" else "Member details",
+            onBack = onBack
+        )
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
-            beyondBoundsItemCount = sharedListBeyondBoundsItemCount(8)
+            beyondBoundsItemCount = sharedListBeyondBoundsItemCount(14)
         ) {
             item { Spacer(Modifier.height(SlockSpacing.Md)) }
             item {
                 MembersDetailSummary(
                     member = member,
+                    detail = detail,
+                    deleted = deleted,
                     modifier = Modifier.padding(horizontal = MembersPageInset)
                 )
             }
             item {
                 MembersDetailActions(
                     member = member,
+                    deleted = deleted,
                     onOpenDirectMessage = onOpenDirectMessage,
                     onCopyMemberId = onCopyMemberId,
                     modifier = Modifier.padding(horizontal = MembersPageInset)
                 )
             }
-            item {
-                MembersDetailSection(
-                    title = "PROFILE",
-                    modifier = Modifier.padding(horizontal = MembersPageInset)
-                ) {
-                    MembersDetailField("Kind", member.kind.name)
-                    MembersDetailField("Role", member.detailRoleLabel)
-                    MembersDetailField("Handle", member.detailHandle)
-                    MembersDetailField("Member ID", member.id.value)
+            if (member.kind == MemberKind.Agent) {
+                item {
+                    MembersAgentTabBar(
+                        tabs = visibleTabs,
+                        selectedTab = selectedTab,
+                        onSelectedTabChange = { selectedTab = it },
+                        modifier = Modifier.padding(horizontal = MembersPageInset)
+                    )
                 }
-            }
-            item {
-                MembersDetailSection(
-                    title = if (member.kind == MemberKind.Agent) "AGENT STATUS" else "STATUS",
-                    modifier = Modifier.padding(horizontal = MembersPageInset)
-                ) {
-                    MembersDetailField("Status", member.detailStatusLabel)
-                    if (member.permissionBadges.isNotEmpty()) {
-                        MembersDetailField("Access", member.permissionBadges.joinToString(", "))
+                item {
+                    MembersAgentDetailStateNotice(
+                        state = agentDetailState,
+                        canViewPrivate = canViewPrivate,
+                        modifier = Modifier.padding(horizontal = MembersPageInset)
+                    )
+                }
+                item {
+                    when (selectedTab) {
+                        MembersAgentDetailTab.Profile ->
+                            MembersAgentProfileTab(
+                                member = member,
+                                detail = detail,
+                                canManage = canManage,
+                                onUpdateAgentProfile = onUpdateAgentProfile,
+                                onUnavailableAction = onUnavailableAction,
+                                modifier = Modifier.padding(horizontal = MembersPageInset)
+                            )
+                        MembersAgentDetailTab.Permissions ->
+                            MembersAgentPlaceholderTab(
+                                title = "PERMISSIONS",
+                                detail = "No permission scopes available.",
+                                modifier = Modifier.padding(horizontal = MembersPageInset)
+                            )
+                        MembersAgentDetailTab.Dms ->
+                            MembersAgentDmsTab(
+                                detail = detail,
+                                modifier = Modifier.padding(horizontal = MembersPageInset)
+                            )
+                        MembersAgentDetailTab.Reminders ->
+                            MembersAgentRemindersTab(
+                                detail = detail,
+                                modifier = Modifier.padding(horizontal = MembersPageInset)
+                            )
+                        MembersAgentDetailTab.Workspace ->
+                            MembersAgentPlaceholderTab(
+                                title = "WORKSPACE",
+                                detail = "No workspace files available.",
+                                modifier = Modifier.padding(horizontal = MembersPageInset)
+                            )
+                        MembersAgentDetailTab.Activity ->
+                            MembersAgentActivityTab(
+                                detail = detail,
+                                modifier = Modifier.padding(horizontal = MembersPageInset)
+                            )
                     }
-                    MembersDetailField(
-                        "Description",
-                        member.description?.takeIf { it.isNotBlank() } ?: "No description available."
+                }
+            } else {
+                item {
+                    MembersHumanDetailSections(
+                        member = member,
+                        modifier = Modifier.padding(horizontal = MembersPageInset)
                     )
                 }
             }
@@ -480,10 +612,10 @@ private fun MembersDetailContent(
 }
 
 @Composable
-private fun MembersDetailHeader(title: String, onBack: () -> Unit) {
+private fun MembersDetailHeader(title: String, subtitle: String, onBack: () -> Unit) {
     SlockTopPageHeader(
         title = title,
-        subtitle = "Member details",
+        subtitle = subtitle,
         leadingContent = {
             Box(
                 modifier = Modifier
@@ -498,12 +630,26 @@ private fun MembersDetailHeader(title: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun MembersDetailSummary(member: MemberProfile, modifier: Modifier = Modifier) {
+private fun MembersDetailSummary(
+    member: MemberProfile,
+    detail: AgentDetailSnapshot?,
+    deleted: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val summary = detail?.summary
+    val statusLabel =
+        if (deleted) {
+            "Deleted"
+        } else {
+            summary?.activityDetail?.takeIf { it.isNotBlank() }
+                ?: summary?.activity?.takeIf { it.isNotBlank() }?.toMembersDisplayLabel()
+                ?: member.detailStatusLabel
+        }
     Row(
         modifier = modifier
             .fillMaxWidth()
             .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(SlockColor.SurfaceCream)
+            .background(if (deleted) SlockColor.EmptyStateGray else SlockColor.SurfaceCream)
             .padding(SlockSpacing.Md),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
@@ -535,6 +681,13 @@ private fun MembersDetailSummary(member: MemberProfile, modifier: Modifier = Mod
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
+            Text(
+                text = statusLabel,
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = if (deleted) SlockColor.AccentRed else SlockColor.TextMutedGray,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -542,6 +695,7 @@ private fun MembersDetailSummary(member: MemberProfile, modifier: Modifier = Mod
 @Composable
 private fun MembersDetailActions(
     member: MemberProfile,
+    deleted: Boolean,
     onOpenDirectMessage: () -> Unit,
     onCopyMemberId: () -> Unit,
     modifier: Modifier = Modifier
@@ -551,9 +705,9 @@ private fun MembersDetailActions(
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         MembersDetailActionButton(
-            label = "Direct message",
+            label = "Message",
             iconName = "message-square",
-            enabled = member.kind != MemberKind.System,
+            enabled = member.kind != MemberKind.System && !deleted,
             onClick = onOpenDirectMessage,
             modifier = Modifier.weight(1f)
         )
@@ -565,6 +719,339 @@ private fun MembersDetailActions(
             modifier = Modifier.weight(1f)
         )
     }
+}
+
+@Composable
+private fun MembersAgentTabBar(
+    tabs: List<MembersAgentDetailTab>,
+    selectedTab: MembersAgentDetailTab,
+    onSelectedTabChange: (MembersAgentDetailTab) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+        tabs.chunked(3).forEach { rowTabs ->
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+                rowTabs.forEach { tab ->
+                    val selected = tab == selectedTab
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(34.dp)
+                            .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .clickable { onSelectedTabChange(tab) }
+                            .padding(horizontal = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        SlockLucideIcon(tab.iconName, Modifier.size(13.dp))
+                        Text(
+                            text = tab.label,
+                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 13.sp)
+                                .withSlockFontWeight(FontWeight.Bold),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+                repeat(3 - rowTabs.size) {
+                    Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentDetailStateNotice(
+    state: MembersAgentDetailLoadState,
+    canViewPrivate: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val message =
+        when (state) {
+            MembersAgentDetailLoadState.Loading -> "Loading agent profile..."
+            MembersAgentDetailLoadState.Empty -> "Agent profile metadata is unavailable."
+            is MembersAgentDetailLoadState.Error -> "Could not load agent profile: ${state.code}"
+            is MembersAgentDetailLoadState.NoPermission -> "Private agent surfaces are hidden: ${state.code}"
+            MembersAgentDetailLoadState.Idle,
+            is MembersAgentDetailLoadState.Content -> null
+        }
+    val privateMessage =
+        if (!canViewPrivate && state is MembersAgentDetailLoadState.Content) {
+            "Profile is public. Permissions, DMs, Reminders, Workspace, and Activity are hidden for this account."
+        } else {
+            null
+        }
+    val resolved = message ?: privateMessage ?: return
+    Text(
+        text = resolved,
+        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withSlockFontWeight(FontWeight.Bold),
+        color = SlockColor.TextBlack,
+        modifier = modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceCream)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(SlockSpacing.Sm)
+    )
+}
+
+@Composable
+private fun MembersHumanDetailSections(member: MemberProfile, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
+        MembersDetailSection(title = "PROFILE") {
+            MembersDetailField("Kind", member.kind.name)
+            MembersDetailField("Role", member.detailRoleLabel)
+            MembersDetailField("Handle", member.detailHandle)
+            MembersDetailField("Member ID", member.id.value)
+        }
+        MembersDetailSection(title = "STATUS") {
+            MembersDetailField("Status", member.detailStatusLabel)
+            MembersDetailField("Description", member.description?.takeIf { it.isNotBlank() } ?: "No description available.")
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentProfileTab(
+    member: MemberProfile,
+    detail: AgentDetailSnapshot?,
+    canManage: Boolean,
+    onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
+    onUnavailableAction: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val summary = detail?.summary
+    val scope = rememberCoroutineScope()
+    var draftDisplayName by remember(member.id.value, member.displayName) { mutableStateOf(member.displayName) }
+    var draftDescription by remember(member.id.value, member.description) { mutableStateOf(member.description.orEmpty()) }
+    var actionLabel by remember(member.id.value) { mutableStateOf<String?>(null) }
+    val deleted = summary?.deletedAt?.isNotBlank() == true
+    val saving = actionLabel == "Saving"
+
+    fun saveProfile(avatarUrl: String? = null, includeAvatarUrl: Boolean = false) {
+        if (!canManage || onUpdateAgentProfile == null || saving) {
+            onUnavailableAction("Agent profile editing is not available.")
+            return
+        }
+        val displayName = draftDisplayName.trim()
+        if (displayName.isBlank()) {
+            actionLabel = "Display name is required"
+            return
+        }
+        scope.launch {
+            actionLabel = "Saving"
+            actionLabel =
+                when (val result = onUpdateAgentProfile(
+                    AgentProfileUpdateRequest(
+                        agentId = member.id,
+                        displayName = displayName,
+                        description = draftDescription.trim().takeIf { it.isNotBlank() },
+                        avatarUrl = avatarUrl,
+                        includeAvatarUrl = includeAvatarUrl
+                    )
+                )) {
+                    is DataResult.Content -> "Saved"
+                    is DataResult.Empty -> "Nothing changed"
+                    is DataResult.NoPermission -> "No permission: ${result.blocker.code}"
+                    is DataResult.Error -> "Save failed: ${result.error.code}"
+                }
+        }
+    }
+
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
+        if (deleted) {
+            MembersDetailSection(title = "DELETED") {
+                MembersDetailField("Status", "Deleted")
+                MembersDetailField("Deleted at", summary.deletedAt.orDash())
+            }
+        }
+        MembersDetailSection(title = "PROFILE") {
+            MembersDetailField("Agent ID", member.id.value)
+            MembersDetailField("Name", summary?.name?.takeIf { it.isNotBlank() } ?: member.handle)
+            MembersDetailField("Handle", member.detailHandle)
+            MembersDetailField("Creator", summary?.creatorLabel.orDash())
+            if (canManage && !deleted) {
+                SlockBrutalTextField(
+                    label = "Display name",
+                    value = draftDisplayName,
+                    placeholder = member.displayName,
+                    onValueChange = { draftDisplayName = it },
+                    enabled = !saving,
+                    required = true
+                )
+                SlockBrutalTextField(
+                    label = "Description",
+                    value = draftDescription,
+                    placeholder = "Describe this agent",
+                    onValueChange = { draftDescription = it },
+                    enabled = !saving,
+                    maxLines = 4,
+                    fieldMinHeight = 86.dp
+                )
+                SlockBrutalActionButton(
+                    label = actionLabel ?: "Save profile",
+                    leadingIcon = if (saving) "loader" else "check",
+                    onClick = { saveProfile() },
+                    enabled = !saving,
+                    backgroundColor = SlockColor.BrandYellow,
+                    minHeight = 40.dp
+                )
+            } else {
+                MembersDetailField("Display name", member.displayName)
+                MembersDetailField("Description", member.description?.takeIf { it.isNotBlank() } ?: "No description available.")
+            }
+        }
+        MembersDetailSection(title = "AVATAR") {
+            MembersDetailField("Current", member.avatarUrl ?: member.avatar?.wireValue ?: "Default")
+            if (canManage && !deleted) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+                    MembersSmallActionButton("Robot", "bot", enabled = !saving, modifier = Modifier.weight(1f)) {
+                        saveProfile(avatarUrl = "pixel:robot", includeAvatarUrl = true)
+                    }
+                    MembersSmallActionButton("Heart", "heart", enabled = !saving, modifier = Modifier.weight(1f)) {
+                        saveProfile(avatarUrl = "pixel:heart", includeAvatarUrl = true)
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+                    MembersSmallActionButton("Upload", "upload", enabled = !saving, modifier = Modifier.weight(1f)) {
+                        onUnavailableAction("Avatar upload is not available yet.")
+                    }
+                    MembersSmallActionButton("Clear", "x", enabled = !saving, modifier = Modifier.weight(1f)) {
+                        saveProfile(avatarUrl = null, includeAvatarUrl = true)
+                    }
+                }
+            }
+        }
+        MembersDetailSection(title = "RUNTIME") {
+            MembersDetailField("Status", if (deleted) "Deleted" else summary?.status?.toMembersDisplayLabel() ?: member.detailStatusLabel)
+            MembersDetailField("Runtime", summary?.runtime.orBadgeFallback(member.roleDescription))
+            MembersDetailField("Model", summary?.model.orDash())
+            MembersDetailField("Reasoning", summary?.reasoning.orDash())
+            MembersDetailField("Execution", summary?.executionMode.orDash())
+            MembersDetailField("Machine", summary?.machineName.orBadgeFallback(member.membersComputerName))
+            MembersDetailField("Machine ID", summary?.machineId.orBadgeFallback(member.membersComputerId))
+            MembersDetailField("Daemon", summary?.daemonVersion.orDash())
+        }
+        MembersDetailSection(title = "ENV VARS") {
+            if (summary?.envVarNames.orEmpty().isEmpty()) {
+                MembersDetailField("Variables", "No environment variables exposed.")
+            } else {
+                summary?.envVarNames.orEmpty().forEach { name ->
+                    MembersDetailField(name, "Configured")
+                }
+            }
+        }
+        MembersAgentSkillsSection(detail)
+        MembersAgentCreatedAgentsSection(detail)
+    }
+}
+
+@Composable
+private fun MembersAgentSkillsSection(detail: AgentDetailSnapshot?) {
+    MembersDetailSection(title = "SKILLS") {
+        val groups = detail?.skills?.groups.orEmpty()
+        if (groups.isEmpty()) {
+            MembersDetailField("Skills", "No skills exposed.")
+        } else {
+            groups.forEach { group ->
+                MembersDetailField(group.title, "${group.count} skills")
+                group.paths.flatMap { it.skills }.take(4).forEach { skill ->
+                    MembersDetailField(skill.name, skill.detail ?: "Available")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentCreatedAgentsSection(detail: AgentDetailSnapshot?) {
+    MembersDetailSection(title = "CREATED AGENTS") {
+        val createdAgents = detail?.summary?.createdAgents.orEmpty()
+        if (createdAgents.isEmpty()) {
+            MembersDetailField("Agents", "No created agents exposed.")
+        } else {
+            createdAgents.take(6).forEach { agent ->
+                MembersDetailField(
+                    agent.displayName?.takeIf { it.isNotBlank() } ?: agent.name,
+                    listOfNotNull(agent.runtime, agent.status?.toMembersDisplayLabel()).joinToString(" · ").ifBlank { agent.id }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentDmsTab(detail: AgentDetailSnapshot?, modifier: Modifier = Modifier) {
+    MembersDetailSection(title = "AGENT DMS", modifier = modifier) {
+        val rows = detail?.directMessages.orEmpty()
+        if (rows.isEmpty()) {
+            MembersDetailField("DMs", "No agent-to-agent DMs yet.")
+        } else {
+            rows.take(8).forEach { row ->
+                MembersDetailField(row.peerName, row.lastMessagePreview ?: row.lastMessageAt ?: row.id)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentRemindersTab(detail: AgentDetailSnapshot?, modifier: Modifier = Modifier) {
+    MembersDetailSection(title = "REMINDERS", modifier = modifier) {
+        val rows = detail?.reminders.orEmpty()
+        if (rows.isEmpty()) {
+            MembersDetailField("Reminders", "No scheduled reminders.")
+        } else {
+            rows.take(8).forEach { reminder ->
+                MembersDetailField(reminder.title, listOfNotNull(reminder.fireAt, reminder.status).joinToString(" · "))
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentActivityTab(detail: AgentDetailSnapshot?, modifier: Modifier = Modifier) {
+    MembersDetailSection(title = "ACTIVITY", modifier = modifier) {
+        val rows = detail?.activity.orEmpty()
+        if (rows.isEmpty()) {
+            MembersDetailField("Activity", "No activity events yet.")
+        } else {
+            rows.take(10).forEach { entry ->
+                MembersDetailField(entry.title, listOfNotNull(entry.body, entry.timestamp).joinToString(" · "))
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentPlaceholderTab(title: String, detail: String, modifier: Modifier = Modifier) {
+    MembersDetailSection(title = title, modifier = modifier) {
+        MembersDetailField("State", detail)
+    }
+}
+
+@Composable
+private fun MembersSmallActionButton(
+    label: String,
+    iconName: String,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    SlockBrutalActionButton(
+        label = label,
+        leadingIcon = iconName,
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        backgroundColor = SlockColor.SurfaceWhite,
+        minWidth = 0.dp,
+        minHeight = 34.dp,
+        shadowOffset = 1.dp,
+        textStyle = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 13.sp).withSlockFontWeight(FontWeight.Bold)
+    )
 }
 
 @Composable
@@ -786,6 +1273,37 @@ private val MemberProfile.detailStatusLabel: String
             MemberKind.Human -> "Human"
             MemberKind.System -> "System"
         }
+
+private val ai.slock.compose.data.AgentDetailSummary?.creatorLabel: String?
+    get() =
+        this?.creatorId?.takeIf { it.isNotBlank() }?.let { creatorId ->
+            listOfNotNull(creatorType?.takeIf { it.isNotBlank() }?.toMembersDisplayLabel(), creatorId)
+                .joinToString(": ")
+        }
+
+private val MemberProfile.membersComputerName: String?
+    get() =
+        permissionBadges.firstNotNullOfOrNull { badge ->
+            badge.removePrefix("computer:")
+                .takeIf { badge.startsWith("computer:") && it.isNotBlank() }
+        }
+
+private val MemberProfile.membersComputerId: String?
+    get() =
+        permissionBadges.firstNotNullOfOrNull { badge ->
+            badge.removePrefix("computer-id:")
+                .takeIf { badge.startsWith("computer-id:") && it.isNotBlank() }
+        }
+
+private fun String?.orDash(): String = this?.takeIf { it.isNotBlank() } ?: "—"
+
+private fun String?.orBadgeFallback(fallback: String?): String =
+    this?.takeIf { it.isNotBlank() } ?: fallback?.takeIf { it.isNotBlank() } ?: "—"
+
+private fun String.toMembersDisplayLabel(): String =
+    replace("_", " ")
+        .replace("-", " ")
+        .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 
 private data class MembersAgentGroup(
     val label: String,

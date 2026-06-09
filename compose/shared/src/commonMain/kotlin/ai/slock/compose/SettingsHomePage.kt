@@ -4144,13 +4144,13 @@ private fun SharedMembersScreen(
             val response = memberRepository.getMembers(DataRequestPriority.Visible, ServerId(serverId))
             state =
                 when (response) {
-                    is ai.slock.compose.data.DataResult.Content ->
-                        SharedMembersUiState.Content(response.data.server, response.data.members)
-                    is ai.slock.compose.data.DataResult.Empty ->
-                        SharedMembersUiState.Content(server, emptyList())
-                    is ai.slock.compose.data.DataResult.NoPermission ->
+                    is DataResult.Content ->
+                        SharedMembersUiState.Content(response.data.server, response.data.members, session.user.id)
+                    is DataResult.Empty ->
+                        SharedMembersUiState.Content(server, emptyList(), session.user.id)
+                    is DataResult.NoPermission ->
                         SharedMembersUiState.Error(response.blocker.code)
-                    is ai.slock.compose.data.DataResult.Error ->
+                    is DataResult.Error ->
                         SharedMembersUiState.Error(response.error.code)
                 }
         } catch (cancellation: CancellationException) {
@@ -4188,7 +4188,36 @@ private fun SharedMembersScreen(
                 onCopyMemberId = {
                     bridge.copyToPasteboard(it.id.value)
                     bridge.toast("Copied member id")
-                }
+                },
+                agentDetailLoader = { agentId ->
+                    memberRepository.getAgentDetail(DataRequestPriority.Visible, agentId)
+                },
+                onUpdateAgentProfile = { request ->
+                    val result = memberRepository.updateAgentProfile(DataRequestPriority.Foreground, request)
+                    if (result is DataResult.Content) {
+                        state =
+                            when (val latest = state) {
+                                is SharedMembersUiState.Content ->
+                                    latest.copy(
+                                        members =
+                                            latest.members.map { member ->
+                                                if (member.id == result.data.id) result.data else member
+                                            }
+                                    )
+                                else -> latest
+                            }
+                    }
+                    result
+                },
+                canViewPrivateAgentSurfaces = { _, detail ->
+                    current.server.permissions.canManageSettings ||
+                        detail?.summary?.creatorId == current.currentUserId
+                },
+                canManageAgent = { _, detail ->
+                    current.server.permissions.canManageSettings ||
+                        detail?.summary?.creatorId == current.currentUserId
+                },
+                onUnavailableAction = { bridge.toast(it) }
             )
     }
 }
@@ -4196,7 +4225,11 @@ private fun SharedMembersScreen(
 private sealed interface SharedMembersUiState {
     data object Loading : SharedMembersUiState
     data class Error(val code: String) : SharedMembersUiState
-    data class Content(val server: ServerSummary, val members: List<MemberProfile>) : SharedMembersUiState
+    data class Content(
+        val server: ServerSummary,
+        val members: List<MemberProfile>,
+        val currentUserId: String?
+    ) : SharedMembersUiState
 }
 
 internal fun parseSharedMembers(bodyText: String): List<MemberProfile> =

@@ -99,4 +99,33 @@ class SharedMembersParserTest {
         assertEquals(1, merged.size)
         assertEquals(MemberKind.Agent, merged.single().kind)
     }
+
+    @Test
+    fun agentDetailTabsHidePrivateSurfacesWithoutAccessAndDeletedPermissions() {
+        assertEquals(
+            listOf(MembersAgentDetailTab.Profile),
+            membersVisibleAgentTabs(canViewPrivateSurfaces = false, deleted = false)
+        )
+        assertEquals(
+            listOf(
+                MembersAgentDetailTab.Profile,
+                MembersAgentDetailTab.Permissions,
+                MembersAgentDetailTab.Dms,
+                MembersAgentDetailTab.Reminders,
+                MembersAgentDetailTab.Workspace,
+                MembersAgentDetailTab.Activity
+            ),
+            membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = false)
+        )
+        assertEquals(
+            listOf(
+                MembersAgentDetailTab.Profile,
+                MembersAgentDetailTab.Dms,
+                MembersAgentDetailTab.Reminders,
+                MembersAgentDetailTab.Workspace,
+                MembersAgentDetailTab.Activity
+            ),
+            membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = true)
+        )
+    }
 }

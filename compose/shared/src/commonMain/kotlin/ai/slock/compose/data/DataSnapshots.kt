@@ -145,11 +145,27 @@ data class AgentDetailSummary(
     val status: String? = null,
     val runtime: String? = null,
     val model: String? = null,
+    val reasoning: String? = null,
+    val executionMode: String? = null,
     val machineId: String? = null,
     val machineName: String? = null,
+    val daemonVersion: String? = null,
+    val creatorId: String? = null,
+    val creatorType: String? = null,
+    val envVarNames: List<String> = emptyList(),
+    val createdAgents: List<AgentCreatedSummary> = emptyList(),
     val activity: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null
+)
+
+data class AgentCreatedSummary(
+    val id: String,
+    val name: String,
+    val displayName: String? = null,
+    val avatarUrl: String? = null,
+    val runtime: String? = null,
+    val status: String? = null
 )
 
 data class AgentDmSnapshot(

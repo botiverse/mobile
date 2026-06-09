@@ -15,6 +15,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 private val memberRepositoryJson = Json {
     ignoreUnknownKeys = true
@@ -627,23 +630,28 @@ class RealMemberRepository(
     }
 }
 
-@Serializable
-data class AgentProfileUpdateRequestBody(
-    val name: String,
-    val displayName: String,
-    val description: String? = null
-)
-
 fun buildSharedAgentProfileUpdateBody(request: AgentProfileUpdateRequest): String {
     val displayName = request.displayName.trim()
     val description = request.description?.trim()?.takeIf { it.isNotBlank() }
-    return memberRepositoryJson.encodeToString(
-        AgentProfileUpdateRequestBody(
-            name = displayName,
-            displayName = displayName,
-            description = description
-        )
-    )
+    val body =
+        buildJsonObject {
+            put("name", displayName)
+            put("displayName", displayName)
+            if (description == null) {
+                put("description", JsonNull)
+            } else {
+                put("description", description)
+            }
+            if (request.includeAvatarUrl) {
+                val avatarUrl = request.avatarUrl?.trim()?.takeIf { it.isNotBlank() }
+                if (avatarUrl == null) {
+                    put("avatarUrl", JsonNull)
+                } else {
+                    put("avatarUrl", avatarUrl)
+                }
+            }
+        }
+    return body.toString()
 }
 
 @Serializable
@@ -687,8 +695,15 @@ private fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         status = status,
         runtime = runtime,
         model = model,
+        reasoning = reasoning,
+        executionMode = executionMode,
         machineId = machineId,
         machineName = machineName,
+        daemonVersion = daemonVersion,
+        creatorId = creatorId,
+        creatorType = creatorType,
+        envVarNames = envVarNames,
+        createdAgents = createdAgents,
         activity = activity,
         activityDetail = activityDetail,
         deletedAt = deletedAt

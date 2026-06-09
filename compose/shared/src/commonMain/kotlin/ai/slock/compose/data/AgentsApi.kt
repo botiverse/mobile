@@ -7,6 +7,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 
 private val agentsApiJson = Json {
     ignoreUnknownKeys = true
@@ -294,8 +295,15 @@ internal data class AgentSummary(
     val status: String?,
     val model: String?,
     val runtime: String?,
+    val reasoning: String?,
+    val executionMode: String?,
     val machineId: String?,
     val machineName: String?,
+    val daemonVersion: String?,
+    val creatorId: String?,
+    val creatorType: String?,
+    val envVarNames: List<String>,
+    val createdAgents: List<AgentCreatedSummary>,
     val activity: String?,
     val activityDetail: String?,
     val deletedAt: String?
@@ -360,7 +368,14 @@ private data class AgentWireDto(
     val status: String? = null,
     val model: String? = null,
     val runtime: String? = null,
+    val reasoningEffort: String? = null,
+    val executionMode: String? = null,
     val machineId: String? = null,
+    val creatorId: String? = null,
+    val creatorType: String? = null,
+    val daemonVersion: String? = null,
+    val envVars: Map<String, JsonElement> = emptyMap(),
+    val createdAgents: List<AgentCreatedWireDto> = emptyList(),
     val activity: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
@@ -377,12 +392,42 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         status = status,
         model = model ?: currentProfile?.model,
         runtime = runtime ?: currentProfile?.runtime,
+        reasoning = reasoningEffort ?: currentProfile?.reasoningEffort,
+        executionMode = executionMode ?: currentProfile?.executionMode,
         machineId = machineId ?: currentProfile?.machineId,
         machineName = currentProfile?.machineName,
+        daemonVersion = daemonVersion ?: currentProfile?.daemonVersion,
+        creatorId = creatorId,
+        creatorType = creatorType,
+        envVarNames = envVars.keys.filter { it.isNotBlank() }.sorted(),
+        createdAgents = createdAgents.mapNotNull { it.toDomain() },
         activity = activity,
         activityDetail = activityDetail,
         deletedAt = deletedAt
     )
+}
+
+@Serializable
+private data class AgentCreatedWireDto(
+    val id: String,
+    val name: String? = null,
+    val displayName: String? = null,
+    val avatarUrl: String? = null,
+    val runtime: String? = null,
+    val status: String? = null
+) {
+    fun toDomain(): AgentCreatedSummary? {
+        val resolvedName = displayName?.takeIf { it.isNotBlank() } ?: name?.takeIf { it.isNotBlank() }
+        if (id.isBlank() || resolvedName.isNullOrBlank()) return null
+        return AgentCreatedSummary(
+            id = id,
+            name = name ?: resolvedName,
+            displayName = displayName,
+            avatarUrl = avatarUrl,
+            runtime = runtime,
+            status = status
+        )
+    }
 }
 
 @Serializable
@@ -395,7 +440,10 @@ private data class AgentRuntimeProfileCurrentDto(
     val machineId: String? = null,
     val machineName: String? = null,
     val runtime: String? = null,
-    val model: String? = null
+    val model: String? = null,
+    val reasoningEffort: String? = null,
+    val executionMode: String? = null,
+    val daemonVersion: String? = null
 )
 
 @Serializable

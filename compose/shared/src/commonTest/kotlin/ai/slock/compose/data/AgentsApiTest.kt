@@ -19,6 +19,13 @@ class AgentsApiTest {
         assertEquals("Noel Bot", detail.displayName)
         assertEquals("machine-1", detail.machineId)
         assertEquals("codex", detail.runtime)
+        assertEquals("medium", detail.reasoning)
+        assertEquals("local", detail.executionMode)
+        assertEquals("0.57.1", detail.daemonVersion)
+        assertEquals("user-1", detail.creatorId)
+        assertEquals("human", detail.creatorType)
+        assertEquals(listOf("ANTHROPIC_API_KEY", "OPENAI_API_KEY"), detail.envVarNames)
+        assertEquals("Helper", detail.createdAgents.single().displayName)
         assertEquals("agent-2", assertIs<DataResult.Content<AgentSummary>>(client.createAgent("""{"name":"Noel"}""")).data.id)
         assertEquals("Agent One", assertIs<DataResult.Content<AgentSummary>>(client.updateAgent(agentId, """{"displayName":"Agent One"}""")).data.name)
         assertEquals(true, assertIs<DataResult.Content<AgentCommandResult>>(client.startAgent(agentId)).data.ok)
@@ -92,7 +99,7 @@ class AgentsApiTest {
 
     private class RecordingAgentsApi(
         private val agentsBody: String = """[{"id":"agent-1","name":"Noel","status":"active"}]""",
-        private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","status":"active","model":"gpt-5","runtime":"codex","machineId":"machine-1","activity":"idle","activityDetail":"Ready","deletedAt":null}""",
+        private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","status":"active","model":"gpt-5","runtime":"codex","machineId":"machine-1","reasoningEffort":"medium","executionMode":"local","creatorId":"user-1","creatorType":"human","daemonVersion":"0.57.1","envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},"createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],"activity":"idle","activityDetail":"Ready","deletedAt":null}""",
         private val createAgentBody: String = """{"id":"agent-2","name":"Noel","status":"active"}""",
         private val commandBody: String = """{"ok":true}""",
         private val agentDmsBody: String = """[{"id":"dm-1","name":"Agent chat"}]""",
