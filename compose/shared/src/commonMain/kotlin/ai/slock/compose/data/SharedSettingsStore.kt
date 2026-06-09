@@ -260,6 +260,7 @@ class SharedSettingsDataSource(
     private val localeRepository: LocaleRepository? = null,
     private val chatLayoutPreferenceRepository: ChatLayoutPreferenceRepository? = null,
     private val platformCapabilities: SharedSettingsPlatformCapabilities = object : SharedSettingsPlatformCapabilities {},
+    private val diagnosticsLogger: ((String) -> Unit)? = null,
     private val recompositionProfilerController: SharedSettingsRecompositionProfilerController =
         SharedSettingsRecompositionProfilerController()
 ) {
@@ -396,8 +397,22 @@ class SharedSettingsDataSource(
     suspend fun clearStorage(target: String): DataResult<SharedSettingsStorageSnapshot> =
         platformCapabilities.clearStorage(target)
 
-    suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> =
-        platformCapabilities.loadAbout()
+    suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> {
+        val sessionResult = runCatching { sessionStore.readSession() }
+        sessionResult.exceptionOrNull()?.let { throwable ->
+            val diagnostics = throwable.toPersistenceFailureDiagnostics()
+            diagnosticsLogger?.invoke(
+                "about_session result=failure stage=session_read " +
+                    "errorType=${diagnostics.errorType} sqliteCategory=${diagnostics.category} sqliteCode=${diagnostics.code ?: "none"}"
+            )
+        }
+        return when (val result = platformCapabilities.loadAbout()) {
+            is DataResult.Content -> DataResult.Content(result.data.withCanonicalSession(sessionResult))
+            is DataResult.Empty -> result
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
 
     suspend fun loadDiagnostics(): DataResult<SharedSettingsDiagnosticsSnapshot> =
         loadDiagnosticsSnapshot()
@@ -554,6 +569,42 @@ class SharedSettingsViewModel(
         super.onCleared()
     }
 }
+
+private fun SharedSettingsAboutSnapshot.withCanonicalSession(
+    sessionResult: Result<StoredAuthSession?>
+): SharedSettingsAboutSnapshot =
+    sessionResult.fold(
+        onSuccess = { session ->
+            if (session != null) {
+                copy(
+                    signedInUserLabel = session.user.bestDisplayName,
+                    selectedServerLabel = session.aboutServerLabel(),
+                    sessionStatusLabel = "Signed in"
+                )
+            } else {
+                copy(
+                    signedInUserLabel = "Signed out",
+                    selectedServerLabel = "No selected server",
+                    sessionStatusLabel = "Signed out"
+                )
+            }
+        },
+        onFailure = {
+            copy(
+                signedInUserLabel = "Local storage unavailable",
+                selectedServerLabel = "Local storage unavailable",
+                sessionStatusLabel = "Local storage unavailable"
+            )
+        }
+    )
+
+private fun StoredAuthSession.aboutServerLabel(): String =
+    selectedServerId
+        ?.let { serverId -> servers.firstOrNull { it.id == serverId }?.name?.takeIf { it.isNotBlank() } ?: serverId }
+        ?: selectedServerSlug
+            ?.let { serverSlug -> servers.firstOrNull { it.slug == serverSlug }?.name?.takeIf { it.isNotBlank() } ?: serverSlug }
+        ?: servers.firstOrNull()?.name?.takeIf { it.isNotBlank() }
+        ?: "No selected server"
 
 class SharedSettingsStore(
     private val dataSource: SharedSettingsDataSource,

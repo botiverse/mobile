@@ -21,9 +21,7 @@ import ai.slock.compose.data.buildSystemUnreadNotificationRequest
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
 import ai.slock.compose.data.KeyValueLocalePreferenceStore
-import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklyNotificationPreferenceEvents
-import ai.slock.compose.data.createSlockRelationalStore
 import ai.slock.compose.data.MOBILE_ACTION_LANGUAGE
 import ai.slock.compose.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import ai.slock.compose.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
@@ -48,7 +46,6 @@ import ai.slock.compose.data.SERVER_ACTION_TRANSLATION_TOGGLE
 import ai.slock.compose.data.NotificationPreferenceSnapshot
 import ai.slock.compose.data.PersistentChatLayoutPreferenceRepository
 import ai.slock.compose.data.PersistentLocaleRepository
-import ai.slock.compose.data.RelationalComposeLocalDataStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthErrorCode
 import ai.slock.compose.data.SharedAuthGateIntent
@@ -79,6 +76,8 @@ import ai.slock.compose.data.SharedSettingsState
 import ai.slock.compose.data.SharedSettingsStorageRow
 import ai.slock.compose.data.SharedSettingsStorageSnapshot
 import ai.slock.compose.data.SharedSettingsViewModel
+import ai.slock.compose.data.SlockAuthSessionStore
+import ai.slock.compose.data.SlockSharedStoreRegistry
 import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_EXPORT
 import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_REPORT
@@ -98,6 +97,7 @@ import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.isAuthSessionBlocker
 import ai.slock.compose.data.KuiklySlockNetworkClient
+import ai.slock.compose.data.MemberRepository
 import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealConversationRepository
 import ai.slock.compose.data.RealMemberRepository
@@ -640,12 +640,12 @@ private fun SlockAppShellContent() {
     var selectedHomeConversationId by remember { mutableStateOf<String?>(null) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val relationalStore = remember { createSlockRelationalStore(bridge) }
-    val authStore = remember { KuiklyAuthSessionStore(relationalStore) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val authStore = sharedStores.authStore
     val localWriteThrough =
         remember {
             ComposeLocalWriteThrough(
-                RelationalComposeLocalDataStore(relationalStore),
+                sharedStores.localDataStore,
                 logger = { message -> bridge.log("shared_home_cache $message") }
             )
         }
@@ -770,7 +770,8 @@ private fun SlockAppShellContent() {
                 notificationPreferenceRepository = notificationPreferenceRepository,
                 localeRepository = localeRepository,
                 chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
-                platformCapabilities = settingsCapabilities
+                platformCapabilities = settingsCapabilities,
+                diagnosticsLogger = { message -> bridge.log("shared_settings $message") }
             )
         }
     var activeThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
@@ -1365,7 +1366,12 @@ private fun SlockAppShellContent() {
                                 }
                             }
                         )
-                        "members" -> SharedMembersScreen(bridge)
+                        "members" ->
+                            SharedMembersScreen(
+                                bridge = bridge,
+                                authStore = authStore,
+                                memberRepository = memberRepository
+                            )
                         else ->
                             if (selectedHomeDestination == null) {
                                 SharedHomeScreen(
@@ -3909,22 +3915,11 @@ private fun AppShellAuthErrorContent(
 }
 
 @Composable
-private fun SharedMembersScreen(bridge: ai.slock.compose.base.BridgeModule) {
-    val authStore = remember { KuiklyAuthSessionStore(createSlockRelationalStore(bridge)) }
-    val pager = LocalActivity.current.getPager() as Pager
-    val memberRepository =
-        remember {
-            RealMemberRepository(
-                sessionStore = authStore,
-                networkClient =
-                    KuiklySlockNetworkClient(
-                        sessionStore = authStore,
-                        networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
-                        warningLogger = { message -> bridge.log("kuikly_network $message") }
-                    ),
-                logger = { message -> bridge.log("members_repository $message") }
-            )
-        }
+private fun SharedMembersScreen(
+    bridge: ai.slock.compose.base.BridgeModule,
+    authStore: SlockAuthSessionStore,
+    memberRepository: MemberRepository
+) {
     var state by remember { mutableStateOf<SharedMembersUiState>(SharedMembersUiState.Loading) }
 
     LaunchedEffect(Unit) {

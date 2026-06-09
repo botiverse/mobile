@@ -533,6 +533,44 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun aboutSessionLabelsComeFromCanonicalSessionStoreWhenHostLabelsAreBlank() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities =
+            FakeSettingsCapabilities(
+                aboutResult =
+                    DataResult.Content(
+                        SharedSettingsAboutSnapshot(
+                            appName = "Slock",
+                            versionLabel = "1.2.3",
+                            buildLabel = "456",
+                            packageName = "ai.slock.android",
+                            signedInUserLabel = "",
+                            selectedServerLabel = "",
+                            sessionStatusLabel = ""
+                        )
+                    )
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        platformCapabilities = capabilities
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
+
+        val about = assertIs<ScreenLoadState.Content<SharedSettingsAboutSnapshot>>(store.state.value.about).data
+        assertEquals("Artin", about.signedInUserLabel)
+        assertEquals("Slock Community", about.selectedServerLabel)
+        assertEquals("Signed in", about.sessionStatusLabel)
+        assertEquals(listOf("about"), capabilities.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun profilerActionsStayInSharedStoreAndOnlyReloadHostDiagnostics() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities = FakeSettingsCapabilities()
@@ -865,6 +903,17 @@ class SharedSettingsStoreTest {
     }
 
     private class FakeSettingsCapabilities(
+        private val aboutResult: DataResult<SharedSettingsAboutSnapshot> =
+            DataResult.Content(
+                SharedSettingsAboutSnapshot(
+                    appName = "Slock",
+                    versionLabel = "1.2.3",
+                    buildLabel = "456",
+                    packageName = "ai.slock.android",
+                    signedInUserLabel = "Artin",
+                    selectedServerLabel = "Slock Community"
+                )
+            ),
         private val diagnosticsResult: DataResult<SharedSettingsDiagnosticsHostSnapshot> =
             DataResult.Content(
                 SharedSettingsDiagnosticsHostSnapshot(
@@ -883,16 +932,7 @@ class SharedSettingsStoreTest {
 
         override suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> {
             calls += "about"
-            return DataResult.Content(
-                SharedSettingsAboutSnapshot(
-                    appName = "Slock",
-                    versionLabel = "1.2.3",
-                    buildLabel = "456",
-                    packageName = "ai.slock.android",
-                    signedInUserLabel = "Artin",
-                    selectedServerLabel = "Slock Community"
-                )
-            )
+            return aboutResult
         }
 
         override suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> {

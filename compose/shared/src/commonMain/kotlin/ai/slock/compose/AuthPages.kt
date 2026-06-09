@@ -12,15 +12,13 @@ import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.data.BridgeAuthApi
 import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
 import ai.slock.compose.data.DataResult
-import ai.slock.compose.data.KuiklyAuthSessionStore
-import ai.slock.compose.data.createSlockRelationalStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
 import ai.slock.compose.data.SharedSettingsAboutSnapshot
+import ai.slock.compose.data.SharedSettingsDataSource
 import ai.slock.compose.data.SharedSettingsDiagnosticsEntry
 import ai.slock.compose.data.SharedSettingsNetworkProbeSnapshot
-import ai.slock.compose.data.StoredAuthSession
-import ai.slock.compose.data.toPersistenceFailureDiagnostics
+import ai.slock.compose.data.SlockSharedStoreRegistry
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -124,11 +122,12 @@ internal class ComposeAuthRegisterInputsVisualPage : ai.slock.compose.base.BaseP
 private fun LoginScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authDataSource =
         remember {
             SharedAuthDataSource(
                 transport = BridgeAuthApi(bridge),
-                sessionStore = KuiklyAuthSessionStore(createSlockRelationalStore(bridge)),
+                sessionStore = sharedStores.authStore,
                 diagnosticsLogger = { message -> bridge.log("shared_auth $message") }
             )
         }
@@ -302,24 +301,24 @@ private data class AuthDiagnosticsUiState(
 private fun AuthDiagnosticsScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
-    val sessionStore = remember { KuiklyAuthSessionStore(createSlockRelationalStore(bridge)) }
+    val settingsDataSource =
+        remember {
+            SharedSettingsDataSource(
+                sessionStore = sharedStores.authStore,
+                platformCapabilities = settingsCapabilities,
+                diagnosticsLogger = { message -> bridge.log("compose_auth_diagnostics $message") }
+            )
+        }
     var refreshNonce by remember { mutableStateOf(0) }
     var copyNonce by remember { mutableStateOf(0) }
     var state by remember { mutableStateOf(AuthDiagnosticsUiState()) }
 
     LaunchedEffect(refreshNonce) {
         state = state.copy(loading = true, errorMessage = null)
-        val aboutResult = runCatching { settingsCapabilities.loadAbout() }.getOrElse {
+        val aboutResult = runCatching { settingsDataSource.loadAbout() }.getOrElse {
             DataResult.Error(ai.slock.compose.data.ScreenError("settings_about_exception"))
-        }
-        val sessionResult = runCatching { sessionStore.readSession() }
-        sessionResult.exceptionOrNull()?.let { throwable ->
-            val diagnostics = throwable.toPersistenceFailureDiagnostics()
-            bridge.log(
-                "compose_auth_diagnostics_session result=failure stage=session_read " +
-                    "errorType=${diagnostics.errorType} sqliteCategory=${diagnostics.category} sqliteCode=${diagnostics.code ?: "none"}"
-            )
         }
         val diagnosticsResult = runCatching { settingsCapabilities.loadDiagnosticsHost() }.getOrElse {
             DataResult.Error(ai.slock.compose.data.ScreenError("settings_diagnostics_exception"))
@@ -330,18 +329,12 @@ private fun AuthDiagnosticsScreen() {
         state =
             AuthDiagnosticsUiState(
                 loading = false,
-                about =
-                    (aboutResult as? DataResult.Content)?.data
-                        ?.withSharedAuthSession(
-                            session = sessionResult.getOrNull(),
-                            failure = sessionResult.exceptionOrNull()
-                        ),
+                about = (aboutResult as? DataResult.Content)?.data,
                 probe = (probeResult as? DataResult.Content)?.data,
                 entries = (diagnosticsResult as? DataResult.Content)?.data?.entries.orEmpty(),
                 errorMessage =
                     listOf(
                         aboutResult.authDiagnosticsErrorLabel("about"),
-                        sessionResult.exceptionOrNull()?.let { "session: local storage unavailable" },
                         diagnosticsResult.authDiagnosticsErrorLabel("diagnostics"),
                         probeResult.authDiagnosticsErrorLabel("probe")
                     ).filterNotNull().joinToString("; ").takeIf { it.isNotBlank() }
@@ -463,37 +456,6 @@ private fun AuthDiagnosticsScreen() {
         }
     }
 }
-
-private fun SharedSettingsAboutSnapshot.withSharedAuthSession(
-    session: StoredAuthSession?,
-    failure: Throwable?
-): SharedSettingsAboutSnapshot =
-    when {
-        failure != null ->
-            copy(
-                signedInUserLabel = "--",
-                selectedServerLabel = "--",
-                sessionStatusLabel = "Local storage unavailable"
-            )
-        session != null ->
-            copy(
-                signedInUserLabel = session.user.bestDisplayName,
-                selectedServerLabel = session.bestServerLabel(),
-                sessionStatusLabel = "Signed in"
-            )
-        else ->
-            copy(
-                signedInUserLabel = "--",
-                selectedServerLabel = "--",
-                sessionStatusLabel = "Signed out"
-            )
-    }
-
-private fun StoredAuthSession.bestServerLabel(): String =
-    servers.firstOrNull { it.id == currentServerId }?.name
-        ?: selectedServerSlug?.takeIf { it.isNotBlank() }
-        ?: selectedServerId?.takeIf { it.isNotBlank() }
-        ?: "--"
 
 @Composable
 private fun AuthDiagnosticsPanel(title: String, content: @Composable () -> Unit) {

@@ -10,9 +10,7 @@ import ai.slock.compose.data.BridgeTasksApi
 import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.parseSharedThreadPickedAttachmentFiles
 import ai.slock.compose.data.ComposeLocalWriteThrough
-import ai.slock.compose.data.KuiklyAuthSessionStore
 import ai.slock.compose.data.KuiklySlockNetworkClient
-import ai.slock.compose.data.RelationalComposeLocalDataStore
 import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealConversationRepository
 import ai.slock.compose.data.RealMemberRepository
@@ -25,11 +23,10 @@ import ai.slock.compose.data.SharedTasksDataSource
 import ai.slock.compose.data.SharedTasksRouteIntent
 import ai.slock.compose.data.SharedTasksScope
 import ai.slock.compose.data.SharedTasksViewModel
-import ai.slock.compose.data.SqlDelightComposeLocalDataStore
-import ai.slock.compose.data.SqlDelightRelationalStore
+import ai.slock.compose.data.SlockAuthSessionStore
+import ai.slock.compose.data.SlockSharedStoreRegistry
 import ai.slock.compose.data.TaskSnapshot
 import ai.slock.compose.data.TasksUiState
-import ai.slock.compose.data.createSlockSqlDatabase
 import ai.slock.compose.data.isAuthSessionBlocker
 import ai.slock.compose.data.isAuthSessionErrorCode
 import ai.slock.compose.data.summaryCounts
@@ -489,15 +486,11 @@ private fun ThreadPageScreen() {
             instanceId = instanceId
         )
     }
-    val sqlDatabase = remember { createSlockSqlDatabase(bridge) }
-    val relationalStore = remember(sqlDatabase) { SqlDelightRelationalStore(sqlDatabase) }
-    val authStore = remember(relationalStore) { KuiklyAuthSessionStore(relationalStore) }
-    val fallbackLocalStore = remember(relationalStore) { RelationalComposeLocalDataStore(relationalStore) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val authStore = sharedStores.authStore
     val threadLocalStore =
-        remember(sqlDatabase, fallbackLocalStore, authStore) {
-            SqlDelightComposeLocalDataStore(
-                database = sqlDatabase,
-                fallback = fallbackLocalStore,
+        remember(sharedStores, authStore) {
+            sharedStores.createThreadLocalDataStore(
                 currentServerId = {
                     authStore.readSession()
                         ?.currentServerId
@@ -829,7 +822,7 @@ internal fun SharedThreadRouteContent(
     initialPayload: KuiklyThreadScreenPayload,
     bridge: ai.slock.compose.base.BridgeModule,
     dataSource: SharedThreadDataSource,
-    authStore: KuiklyAuthSessionStore,
+    authStore: SlockAuthSessionStore,
     tasksDataSource: SharedTasksDataSource,
     onBack: () -> Unit,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
