@@ -8,11 +8,15 @@ import ai.slock.compose.data.AttachmentUploadFile
 import ai.slock.compose.data.AttachmentUploadRequest
 import ai.slock.compose.data.AttachmentUploadResult
 import ai.slock.compose.data.CreateAgentBody
+import ai.slock.compose.data.CreateChannelRequest
 import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesPage
 import ai.slock.compose.data.buildCreateAgentBody
 import ai.slock.compose.data.buildMarkAgentActionExecutedBody
+import ai.slock.compose.data.buildMarkChannelActionExecutedBody
+import ai.slock.compose.data.buildMarkChannelMembersActionExecutedBody
 import ai.slock.compose.data.ChannelFilesSnapshot
+import ai.slock.compose.data.ChannelMemberActionResult
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.ConversationRepository
 import ai.slock.compose.data.AddChannelMemberRequest
@@ -40,6 +44,8 @@ import ai.slock.compose.data.authSessionRequiredResult
 import ai.slock.compose.data.map
 import ai.slock.compose.data.toMessageMetadata
 import ai.slock.compose.data.withExecutedAgent
+import ai.slock.compose.data.withExecutedChannel
+import ai.slock.compose.data.withExecutedChannelMembers
 import ai.slock.compose.model.Attachment
 import ai.slock.compose.model.AttachmentId
 import ai.slock.compose.model.AvatarReference
@@ -150,6 +156,30 @@ internal class SharedThreadDataSource(
         messageId: String,
         card: ThreadActionCard
     ): DataResult<ThreadActionCard> {
+        return commitAgentCreateActionCardInternal(messageId, card)
+    }
+
+    suspend fun commitThreadActionCard(
+        payload: KuiklyThreadScreenPayload,
+        messageId: String,
+        card: ThreadActionCard
+    ): DataResult<ThreadActionCard> {
+        return when {
+            card.type.equals("agent:create", ignoreCase = true) ->
+                commitAgentCreateActionCardInternal(messageId, card)
+            card.type.equals("channel:create", ignoreCase = true) ->
+                commitChannelCreateActionCard(messageId, card)
+            card.type.equals("channel:add_member", ignoreCase = true) ->
+                commitChannelAddMembersActionCard(payload, messageId, card)
+            else ->
+                DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
+        }
+    }
+
+    private suspend fun commitAgentCreateActionCardInternal(
+        messageId: String,
+        card: ThreadActionCard
+    ): DataResult<ThreadActionCard> {
         if (!card.type.equals("agent:create", ignoreCase = true)) {
             return DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
         }
@@ -187,6 +217,136 @@ internal class SharedThreadDataSource(
             is DataResult.Error -> created
             is DataResult.NoPermission -> created
         }
+    }
+
+    private suspend fun commitChannelCreateActionCard(
+        messageId: String,
+        card: ThreadActionCard
+    ): DataResult<ThreadActionCard> {
+        if (!card.type.equals("channel:create", ignoreCase = true)) {
+            return DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
+        }
+        val channelName = card.name.trim()
+        if (channelName.isBlank()) {
+            return DataResult.Error(ScreenError(code = "action_card_channel_name_missing", retryable = false))
+        }
+        val repository =
+            channelRepository
+                ?: return DataResult.Error(ScreenError(code = "action_card_channel_repository_missing", retryable = false))
+        val actionsApi =
+            actionCardsApiClient
+                ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+        return when (
+            val created =
+                repository.createChannel(
+                    CreateChannelRequest(
+                        name = channelName,
+                        description = card.description?.trim()?.takeIf { it.isNotBlank() },
+                        visibility = card.visibility?.trim()?.takeIf { it.isNotBlank() } ?: "public",
+                        agentMemberIds = card.initialAgents.cleanActionCardIds(),
+                        userMemberIds = card.initialHumans.cleanActionCardIds()
+                    )
+                )
+        ) {
+            is DataResult.Content -> {
+                val channel = created.data.channel
+                val createdChannelId = channel.channelId?.value ?: channel.threadId.value
+                val createdChannelName = channel.name.takeIf { it.isNotBlank() } ?: channelName
+                val executedCard = card.withExecutedChannel(id = createdChannelId, name = createdChannelName)
+                actionsApi.markActionExecuted(
+                    MessageId(messageId),
+                    buildMarkChannelActionExecutedBody(channelId = createdChannelId, channelName = createdChannelName)
+                )
+                DataResult.Content(executedCard)
+            }
+            is DataResult.Empty ->
+                DataResult.Error(ScreenError(code = "channel_create_empty", retryable = true))
+            is DataResult.Error -> created
+            is DataResult.NoPermission -> created
+        }
+    }
+
+    private suspend fun commitChannelAddMembersActionCard(
+        payload: KuiklyThreadScreenPayload,
+        messageId: String,
+        card: ThreadActionCard
+    ): DataResult<ThreadActionCard> {
+        if (!card.type.equals("channel:add_member", ignoreCase = true)) {
+            return DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
+        }
+        val targetChannelId =
+            card.channel?.trim()?.takeIf { it.isNotBlank() }
+                ?: payload.sourceThreadId?.takeIf { it.isNotBlank() }
+                ?: return DataResult.Error(ScreenError(code = "action_card_channel_missing", retryable = false))
+        val humanIds = card.humans.cleanActionCardIds()
+        val agentIds = card.agents.cleanActionCardIds()
+        if (humanIds.isEmpty() && agentIds.isEmpty()) {
+            return DataResult.Error(ScreenError(code = "action_card_members_missing", retryable = false))
+        }
+        val repository =
+            memberRepository
+                ?: return DataResult.Error(ScreenError(code = "action_card_member_repository_missing", retryable = false))
+        val actionsApi =
+            actionCardsApiClient
+                ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+        val channelId = ChannelId(targetChannelId)
+        val addedHumans = mutableListOf<String>()
+        val addedAgents = mutableListOf<String>()
+        var firstFailure: DataResult<ChannelMemberActionResult>? = null
+
+        for (humanId in humanIds) {
+            val result =
+                repository.addChannelMember(
+                    DataRequestPriority.Foreground,
+                    AddChannelMemberRequest(channelId = channelId, memberId = MemberId(humanId), kind = MemberKind.Human)
+                )
+            if (result is DataResult.Content) {
+                addedHumans += humanId
+            } else if (firstFailure == null) {
+                firstFailure = result
+            }
+        }
+        for (agentId in agentIds) {
+            val result =
+                repository.addChannelMember(
+                    DataRequestPriority.Foreground,
+                    AddChannelMemberRequest(channelId = channelId, memberId = MemberId(agentId), kind = MemberKind.Agent)
+                )
+            if (result is DataResult.Content) {
+                addedAgents += agentId
+            } else if (firstFailure == null) {
+                firstFailure = result
+            }
+        }
+        if (addedHumans.isEmpty() && addedAgents.isEmpty()) {
+            return when (val failure = firstFailure) {
+                is DataResult.Empty -> DataResult.Empty(failure.reason)
+                is DataResult.Error -> failure
+                is DataResult.NoPermission -> failure
+                else -> DataResult.Error(ScreenError(code = "channel_members_add_failed", retryable = true))
+            }
+        }
+        val channelName =
+            payload.title.takeIf { targetChannelId == payload.sourceThreadId && it.isNotBlank() }
+                ?: card.resultChannelName?.takeIf { it.isNotBlank() }
+                ?: targetChannelId
+        val executedCard =
+            card.withExecutedChannelMembers(
+                channelId = targetChannelId,
+                channelName = channelName,
+                addedHumanIds = addedHumans,
+                addedAgentIds = addedAgents
+            )
+        actionsApi.markActionExecuted(
+            MessageId(messageId),
+            buildMarkChannelMembersActionExecutedBody(
+                channelId = targetChannelId,
+                channelName = channelName,
+                addedHumanIds = addedHumans,
+                addedAgentIds = addedAgents
+            )
+        )
+        return DataResult.Content(executedCard)
     }
 
     suspend fun fetchThreadPayload(
@@ -1731,6 +1891,11 @@ internal fun KuiklyThreadScreenPayload.withActionCard(messageId: String, card: T
 
 private fun KuiklyThreadMessageItem.withActionCard(card: ThreadActionCard): KuiklyThreadMessageItem =
     copy(metadata = metadata.filterKeys { !it.startsWith("actionCard.") } + card.toMessageMetadata())
+
+private fun List<String>.cleanActionCardIds(): List<String> =
+    map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
 
 internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
     copy(

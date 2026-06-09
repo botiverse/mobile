@@ -164,6 +164,37 @@ internal fun ThreadActionCard.withExecutedAgent(id: String, name: String, execut
         resultName = name
     )
 
+internal fun ThreadActionCard.withExecutedChannel(id: String, name: String, executedByUserName: String? = null): ThreadActionCard =
+    copy(
+        state = "executed",
+        executedByUserName = executedByUserName ?: this.executedByUserName,
+        resultKind = "channel",
+        resultId = id,
+        resultName = name
+    )
+
+internal fun ThreadActionCard.withExecutedChannelMembers(
+    channelId: String,
+    channelName: String,
+    addedHumanIds: List<String>,
+    addedAgentIds: List<String>,
+    executedByUserName: String? = null
+): ThreadActionCard =
+    copy(
+        state = "executed",
+        executedByUserName = executedByUserName ?: this.executedByUserName,
+        resultKind = "channel-members",
+        resultId = channelId,
+        resultChannelName = channelName,
+        resultAddedHumanIds = addedHumanIds,
+        resultAddedAgentIds = addedAgentIds
+    )
+
+internal fun ThreadActionCard.isSupportedCommitAction(): Boolean =
+    type.equals("agent:create", ignoreCase = true) ||
+        type.equals("channel:create", ignoreCase = true) ||
+        type.equals("channel:add_member", ignoreCase = true)
+
 private fun MutableMap<String, String>.putString(key: String, value: String?) {
     val normalized = value?.takeIf { it.isNotBlank() } ?: return
     put("$ActionCardMetadataPrefix$key", normalized)

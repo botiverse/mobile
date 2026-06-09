@@ -20,13 +20,23 @@ import ai.slock.compose.data.AttachmentUploadRequest
 import ai.slock.compose.data.AttachmentUploadResult
 import ai.slock.compose.data.ChannelMemberActionResult
 import ai.slock.compose.data.ChannelMemberSnapshot
+import ai.slock.compose.data.ChannelArchiveResult
 import ai.slock.compose.data.ChannelFilesSnapshot
+import ai.slock.compose.data.ChannelJoinResult
+import ai.slock.compose.data.ChannelLeaveResult
+import ai.slock.compose.data.ChannelDeleteResult
+import ai.slock.compose.data.ChannelRepository
+import ai.slock.compose.data.ChannelSnapshot
 import ai.slock.compose.data.ConversationRepository
+import ai.slock.compose.data.CreateChannelRequest
+import ai.slock.compose.data.CreateChannelResult
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.DirectMessageSnapshot
 import ai.slock.compose.data.HomeNetworkResponse
 import ai.slock.compose.data.HomeSnapshot
 import ai.slock.compose.data.InMemoryComposeLocalDataStore
 import ai.slock.compose.data.InMemorySlockAuthSessionStore
+import ai.slock.compose.data.OpenDirectMessageResult
 import ai.slock.compose.data.MemberRepository
 import ai.slock.compose.data.MemberSnapshot
 import ai.slock.compose.data.MessageMutationSummary
@@ -34,8 +44,11 @@ import ai.slock.compose.data.MessageReactionSummary
 import ai.slock.compose.data.RemoveChannelMemberRequest
 import ai.slock.compose.data.SendMessageResult
 import ai.slock.compose.data.SharedThreadNetworkApi
+import ai.slock.compose.data.SlockIntegrationsActionsPushApi
+import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
+import ai.slock.compose.data.ThreadActionCard
 import ai.slock.compose.data.ThreadActionResult
 import ai.slock.compose.data.ThreadMessagesPage
 import ai.slock.compose.data.ThreadSnapshot
@@ -316,6 +329,97 @@ class SharedThreadStoreTest {
         )
         assertEquals(listOf("u1", "agent-2"), payload.members.map { it.id })
         assertEquals(emptyList(), payload.memberCandidates.map { it.id })
+    }
+
+    @Test
+    fun channelCreateActionCardUsesTypedRepositoryAndMarksExecuted() = runBlocking {
+        val channelRepository = FakeChannelRepository()
+        val actionCardsApi = RecordingActionCardsApi()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                channelRepository = channelRepository,
+                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+            )
+        val card =
+            ThreadActionCard(
+                type = "channel:create",
+                name = "design-review",
+                description = "Coordinate visual review.",
+                visibility = "private",
+                initialHumans = listOf("u2", "u2"),
+                initialAgents = listOf("agent-2")
+            )
+
+        val result = dataSource.commitThreadActionCard(basePayload(), "m-card", card)
+        val executedCard = (result as DataResult.Content).data
+
+        assertEquals(
+            listOf(
+                CreateChannelRequest(
+                    name = "design-review",
+                    description = "Coordinate visual review.",
+                    visibility = "private",
+                    agentMemberIds = listOf("agent-2"),
+                    userMemberIds = listOf("u2")
+                )
+            ),
+            channelRepository.createRequests
+        )
+        assertEquals("executed", executedCard.state)
+        assertEquals("channel", executedCard.resultKind)
+        assertEquals("channel-created", executedCard.resultId)
+        assertEquals("design-review", executedCard.resultName)
+        assertEquals(
+            listOf(
+                """POST actions/m-card/mark-executed body={"result":{"kind":"channel","id":"channel-created","name":"design-review","channelId":null,"channelName":null,"addedHumanIds":null,"addedAgentIds":null}}"""
+            ),
+            actionCardsApi.calls
+        )
+    }
+
+    @Test
+    fun channelAddMembersActionCardUsesTypedRepositoryAndMarksExecuted() = runBlocking {
+        val memberRepository = FakeMemberRepository()
+        val actionCardsApi = RecordingActionCardsApi()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                memberRepository = memberRepository,
+                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+            )
+        val card =
+            ThreadActionCard(
+                type = "channel:add_member",
+                channel = "channel-2",
+                humans = listOf("u3", "u3"),
+                agents = listOf("agent-3"),
+                draftHint = "Bring owners in."
+            )
+
+        val result = dataSource.commitThreadActionCard(basePayload(), "m-card", card)
+        val executedCard = (result as DataResult.Content).data
+
+        assertEquals(
+            listOf(
+                AddChannelMemberRequest(ChannelId("channel-2"), MemberId("u3"), MemberKind.Human),
+                AddChannelMemberRequest(ChannelId("channel-2"), MemberId("agent-3"), MemberKind.Agent)
+            ),
+            memberRepository.addRequests
+        )
+        assertEquals("executed", executedCard.state)
+        assertEquals("channel-members", executedCard.resultKind)
+        assertEquals("channel-2", executedCard.resultId)
+        assertEquals(listOf("u3"), executedCard.resultAddedHumanIds)
+        assertEquals(listOf("agent-3"), executedCard.resultAddedAgentIds)
+        assertEquals(
+            listOf(
+                """POST actions/m-card/mark-executed body={"result":{"kind":"channel-members","id":null,"name":null,"channelId":"channel-2","channelName":"channel-2","addedHumanIds":["u3"],"addedAgentIds":["agent-3"]}}"""
+            ),
+            actionCardsApi.calls
+        )
     }
 
     @Test
@@ -1231,6 +1335,63 @@ class SharedThreadStoreTest {
             createdThreads += channelId to parentMessageId
             return HomeNetworkResponse(code = 200, bodyText = """{"threadChannelId":"thread-$parentMessageId","parentMessageId":"$parentMessageId","created":true}""")
         }
+    }
+
+    private class FakeChannelRepository : ChannelRepository {
+        val createRequests: MutableList<CreateChannelRequest> = mutableListOf()
+
+        override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> = error("unused")
+        override suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot> = error("unused")
+        override suspend fun getDirectMessages(serverId: ServerId): DataResult<DirectMessageSnapshot> = error("unused")
+        override suspend fun openAgentDirectMessage(agentId: MemberId): DataResult<OpenDirectMessageResult> = error("unused")
+        override suspend fun openUserDirectMessage(userId: MemberId): DataResult<OpenDirectMessageResult> = error("unused")
+
+        override suspend fun createChannel(request: CreateChannelRequest): DataResult<CreateChannelResult> {
+            createRequests += request
+            return DataResult.Content(
+                CreateChannelResult(
+                    channel =
+                        ConversationSummary(
+                            threadId = ThreadId("channel-created"),
+                            channelId = ChannelId("channel-created"),
+                            kind = ConversationKind.Channel,
+                            name = request.name
+                        ),
+                    addedAgentMemberIds = request.agentMemberIds,
+                    addedUserMemberIds = request.userMemberIds
+                )
+            )
+        }
+
+        override suspend fun joinChannel(channelId: ChannelId): DataResult<ChannelJoinResult> = error("unused")
+        override suspend fun leaveChannel(channelId: ChannelId): DataResult<ChannelLeaveResult> = error("unused")
+        override suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult> = error("unused")
+        override suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult> = error("unused")
+    }
+
+    private class RecordingActionCardsApi : SlockIntegrationsActionsPushApi {
+        val calls: MutableList<String> = mutableListOf()
+
+        override suspend fun integrationsOverview(): HomeNetworkResponse = error("unused")
+        override suspend fun integrationClients(): HomeNetworkResponse = error("unused")
+        override suspend fun createIntegrationClient(body: String): HomeNetworkResponse = error("unused")
+        override suspend fun approveIntegrationRequest(requestId: String, body: String): HomeNetworkResponse = error("unused")
+        override suspend fun denyIntegrationRequest(requestId: String): HomeNetworkResponse = error("unused")
+        override suspend fun revokeIntegrationGrant(grantId: String): HomeNetworkResponse = error("unused")
+        override suspend fun agentIntegrations(agentId: MemberId): HomeNetworkResponse = error("unused")
+        override suspend fun executeAction(messageId: MessageId, body: String): HomeNetworkResponse = error("unused")
+        override suspend fun emitActionEvent(messageId: MessageId, body: String): HomeNetworkResponse = error("unused")
+
+        override suspend fun markActionExecuted(messageId: MessageId, body: String): HomeNetworkResponse {
+            calls += "POST actions/${messageId.value}/mark-executed body=$body"
+            return HomeNetworkResponse(code = 200, bodyText = """{"messageId":"${messageId.value}","metadata":{"kind":"action-card"}}""")
+        }
+
+        override suspend fun pushVapidKey(): HomeNetworkResponse = error("unused")
+        override suspend fun recordPushPromptEvent(body: String): HomeNetworkResponse = error("unused")
+        override suspend fun subscribePush(body: String): HomeNetworkResponse = error("unused")
+        override suspend fun unsubscribePush(body: String): HomeNetworkResponse = error("unused")
+        override suspend fun testPush(): HomeNetworkResponse = error("unused")
     }
 
     private class FakeMemberRepository(

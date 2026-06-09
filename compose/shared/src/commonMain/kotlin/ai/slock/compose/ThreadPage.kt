@@ -35,6 +35,7 @@ import ai.slock.compose.data.TasksUiState
 import ai.slock.compose.data.isAuthSessionBlocker
 import ai.slock.compose.data.isAuthSessionErrorCode
 import ai.slock.compose.data.actionCardFromMessageMetadata
+import ai.slock.compose.data.isSupportedCommitAction
 import ai.slock.compose.data.summaryCounts
 import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.MemberId
@@ -1235,27 +1236,27 @@ internal fun SharedThreadRouteContent(
                         bridge.toast("Action is no longer available")
                         return@ThreadPageContent
                     }
-                    if (!actionCard.type.equals("agent:create", ignoreCase = true)) {
+                    if (!actionCard.isSupportedCommitAction()) {
                         bridge.toast("Action is not supported yet")
                         return@ThreadPageContent
                     }
                     pendingActionCardIds = pendingActionCardIds + itemId
                     coroutineScope.launch {
                         try {
-                            when (val result = dataSource.commitAgentCreateActionCard(itemId, actionCard)) {
+                            when (val result = dataSource.commitThreadActionCard(renderedPayload, itemId, actionCard)) {
                                 is DataResult.Content -> {
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyActionCard(itemId, result.data)
                                     )
-                                    bridge.toast("Agent created")
+                                    bridge.toast(actionCard.actionCardSuccessToast())
                                 }
                                 is DataResult.Empty,
                                 is DataResult.Error -> {
-                                    bridge.toast("Unable to create agent")
+                                    bridge.toast(actionCard.actionCardFailureToast())
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
-                                    bridge.toast("Unable to create agent")
+                                    bridge.toast(actionCard.actionCardFailureToast())
                                 }
                             }
                         } finally {
@@ -3679,9 +3680,9 @@ private fun ThreadActionCardView(
             }
         } else {
             SlockBrutalActionButton(
-                label = if (pending) "Creating..." else card.actionCardVerb(),
+                label = if (pending) card.actionCardPendingLabel() else card.actionCardVerb(),
                 onClick = onCommit,
-                enabled = !pending && card.type.equals("agent:create", ignoreCase = true),
+                enabled = !pending && card.isSupportedCommitAction(),
                 backgroundColor = SlockColor.AccentPink,
                 disabledBackgroundColor = SlockColor.SurfaceCream,
                 minWidth = 0.dp,
@@ -3720,6 +3721,28 @@ private fun ThreadActionCard.actionCardVerb(): String =
         "agent:create" -> "Create Agent"
         "channel:add_member" -> "Add Members"
         else -> "Action"
+    }
+
+private fun ThreadActionCard.actionCardPendingLabel(): String =
+    when (type) {
+        "channel:add_member" -> "Adding..."
+        else -> "Creating..."
+    }
+
+private fun ThreadActionCard.actionCardSuccessToast(): String =
+    when (type) {
+        "channel:create" -> "Channel created"
+        "agent:create" -> "Agent created"
+        "channel:add_member" -> "Members added"
+        else -> "Action completed"
+    }
+
+private fun ThreadActionCard.actionCardFailureToast(): String =
+    when (type) {
+        "channel:create" -> "Unable to create channel"
+        "agent:create" -> "Unable to create agent"
+        "channel:add_member" -> "Unable to add members"
+        else -> "Unable to complete action"
     }
 
 private fun ThreadActionCard.actionCardTitle(): String =

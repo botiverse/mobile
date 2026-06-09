@@ -415,6 +415,32 @@ internal fun buildMarkAgentActionExecutedBody(agentId: String, agentName: String
         )
     )
 
+internal fun buildMarkChannelActionExecutedBody(channelId: String, channelName: String): String =
+    integrationsActionsPushJson.encodeToString(
+        MarkActionExecutedBody(
+            result = ActionCardResultBody(kind = "channel", id = channelId, name = channelName)
+        )
+    )
+
+internal fun buildMarkChannelMembersActionExecutedBody(
+    channelId: String,
+    channelName: String,
+    addedHumanIds: List<String>,
+    addedAgentIds: List<String>
+): String =
+    integrationsActionsPushJson.encodeToString(
+        MarkActionExecutedBody(
+            result =
+                ActionCardResultBody(
+                    kind = "channel-members",
+                    channelId = channelId,
+                    channelName = channelName,
+                    addedHumanIds = addedHumanIds,
+                    addedAgentIds = addedAgentIds
+                )
+        )
+    )
+
 internal fun buildActionEventBody(
     eventType: String,
     metadata: JsonObject? = null,

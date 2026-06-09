@@ -511,6 +511,96 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun buildsSharedThreadPayloadPreservingChannelActionCardMetadata() {
+        val base =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "general",
+                sourceThreadId = "channel-1",
+                status = "loading"
+            )
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "artin@slock.ai"),
+                accessToken = "access",
+                refreshToken = "refresh"
+            )
+        val payload =
+            buildSharedThreadPayloadFromMessagesPage(
+                basePayload = base,
+                session = session,
+                page =
+                    ThreadMessagesPage(
+                        messages =
+                            listOf(
+                                WireMessage(
+                                    id = "m-channel-create",
+                                    channelId = "channel-1",
+                                    senderType = "agent",
+                                    senderId = "agent-cindy",
+                                    senderName = "Cindy",
+                                    messageType = "chat",
+                                    content = "Create channel action",
+                                    createdAt = "2026-06-09T03:00:00Z",
+                                    actionMetadata =
+                                        WireActionCardMetadata(
+                                            kind = "action-card",
+                                            state = "prepared",
+                                            action =
+                                                WireActionCardAction(
+                                                    type = "channel:create",
+                                                    name = "design-review",
+                                                    description = "Coordinate visual review.",
+                                                    visibility = "private",
+                                                    initialHumans = listOf("u2"),
+                                                    initialAgents = listOf("agent-2")
+                                                )
+                                        )
+                                ),
+                                WireMessage(
+                                    id = "m-channel-members",
+                                    channelId = "channel-1",
+                                    senderType = "agent",
+                                    senderId = "agent-cindy",
+                                    senderName = "Cindy",
+                                    messageType = "chat",
+                                    content = "Add members action",
+                                    createdAt = "2026-06-09T03:01:00Z",
+                                    actionMetadata =
+                                        WireActionCardMetadata(
+                                            kind = "action-card",
+                                            state = "prepared",
+                                            action =
+                                                WireActionCardAction(
+                                                    type = "channel:add_member",
+                                                    channel = "channel-2",
+                                                    humans = listOf("u3"),
+                                                    agents = listOf("agent-3"),
+                                                    draftHint = "Bring the review owners in."
+                                                )
+                                        )
+                                )
+                            ),
+                        canLoadMoreBefore = false,
+                        canLoadMoreAfter = null
+                    )
+            )
+
+        val createCard = actionCardFromMessageMetadata(payload.messages.first().metadata)
+        val addMembersCard = actionCardFromMessageMetadata(payload.messages.last().metadata)
+
+        assertEquals("channel:create", createCard?.type)
+        assertEquals("private", createCard?.visibility)
+        assertEquals(listOf("u2"), createCard?.initialHumans)
+        assertEquals(listOf("agent-2"), createCard?.initialAgents)
+        assertEquals("channel:add_member", addMembersCard?.type)
+        assertEquals("channel-2", addMembersCard?.channel)
+        assertEquals(listOf("u3"), addMembersCard?.humans)
+        assertEquals(listOf("agent-3"), addMembersCard?.agents)
+        assertEquals("Bring the review owners in.", addMembersCard?.draftHint)
+    }
+
+    @Test
     fun parsesCanonicalAuthorAndTimestampForOwnUserRow() {
         val base =
             KuiklyThreadScreenPayload(
