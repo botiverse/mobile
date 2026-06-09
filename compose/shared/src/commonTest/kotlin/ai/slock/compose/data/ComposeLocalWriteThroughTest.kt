@@ -219,6 +219,7 @@ class ComposeLocalWriteThroughTest {
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store)
         val channel = channel()
+        val otherMember = member.copy(id = MemberId("member-2"), displayName = "Cindy", handle = "cindy")
         store.writeHome(home(channels = listOf(channel)))
         store.writeThread(
             ThreadSnapshot(
@@ -229,7 +230,7 @@ class ComposeLocalWriteThroughTest {
 
         writer.writeRealtimeEvent(
             serverId,
-            MessageNew(message("new", "channel-1", "channel-1", seq = 2, body = "new body"))
+            MessageNew(message("new", "channel-1", "channel-1", seq = 2, body = "new body", author = otherMember))
         )
 
         val thread = store.readThread(ThreadId("channel-1"))
@@ -237,6 +238,66 @@ class ComposeLocalWriteThroughTest {
         val homeChannel = store.readHome(serverId)?.channels?.single()
         assertEquals("new body", homeChannel?.lastMessagePreview)
         assertEquals(1, homeChannel?.unreadCount)
+    }
+
+    @Test
+    fun syncResumeCountsOnlyNewNonSelfMessagesForHomeUnread() = runBlocking {
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store)
+        val channel = channel().copy(lastMessageId = MessageId("old"))
+        val otherMember = member.copy(id = MemberId("member-2"), displayName = "Cindy", handle = "cindy")
+        store.writeHome(home(channels = listOf(channel)))
+        store.writeThread(
+            ThreadSnapshot(
+                conversation = channel,
+                messages = listOf(message("old", "channel-1", "channel-1", seq = 1)),
+                lastSeq = 1
+            )
+        )
+
+        writer.writeRealtimeEvent(
+            serverId,
+            ai.slock.compose.model.SyncResumeResponse(
+                messages =
+                    listOf(
+                        message("old", "channel-1", "channel-1", seq = 1, body = "duplicate", author = otherMember),
+                        message("new-1", "channel-1", "channel-1", seq = 2, body = "first", author = otherMember),
+                        message("new-2", "channel-1", "channel-1", seq = 3, body = "self", author = member),
+                        message("new-3", "channel-1", "channel-1", seq = 4, body = "latest", author = otherMember)
+                    ),
+                currentSeq = 4,
+                hasMore = false
+            )
+        )
+
+        val cached = store.readHome(serverId)
+        val homeChannel = cached?.channels?.single()
+        assertEquals("latest", homeChannel?.lastMessagePreview)
+        assertEquals(2, homeChannel?.unreadCount)
+        assertEquals(2, cached?.unreadTotal)
+        assertEquals("new-1", homeChannel?.firstUnreadMessageId?.value)
+    }
+
+    @Test
+    fun activeConversationDoesNotIncrementHomeUnread() = runBlocking {
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store)
+        val channel = channel()
+        val otherMember = member.copy(id = MemberId("member-2"), displayName = "Cindy", handle = "cindy")
+        store.writeHome(home(channels = listOf(channel)))
+
+        writer.writeRealtimeEvent(
+            serverId,
+            MessageNew(message("new", "channel-1", "channel-1", seq = 2, body = "visible", author = otherMember)),
+            activeConversationId = "channel-1"
+        )
+
+        val cached = store.readHome(serverId)
+        val homeChannel = cached?.channels?.single()
+        assertEquals("visible", homeChannel?.lastMessagePreview)
+        assertEquals(0, homeChannel?.unreadCount)
+        assertEquals(false, homeChannel?.unreadCountKnown)
+        assertEquals(0, cached?.unreadTotal)
     }
 
     @Test
@@ -485,7 +546,8 @@ class ComposeLocalWriteThroughTest {
         threadChannelId: String? = null,
         seq: Long? = null,
         body: String = id,
-        replyCount: Int = 0
+        replyCount: Int = 0,
+        author: MemberProfile = member
     ): Message =
         Message(
             id = MessageId(id),
@@ -493,7 +555,7 @@ class ComposeLocalWriteThroughTest {
             channelId = ChannelId(channelId),
             threadChannelId = threadChannelId?.let(::ChannelId),
             seq = seq,
-            author = member,
+            author = author,
             timestampLabel = "12:00",
             body = body,
             replyCount = replyCount

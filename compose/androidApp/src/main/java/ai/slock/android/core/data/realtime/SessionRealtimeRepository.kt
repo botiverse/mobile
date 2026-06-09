@@ -11,12 +11,32 @@ import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.state.PermissionBlocker
+import kotlinx.coroutines.runBlocking
 
 class SessionRealtimeRepository(
     private val store: AuthSessionStore,
     private val client: SocketIoRealtimeClient,
     private val tokenRefresher: AuthTokenRefresher? = null
 ) : RealtimeRepository {
+    init {
+        if (tokenRefresher != null) {
+            client.setAuthRefreshProvider { reason ->
+                runBlocking {
+                    val refreshed =
+                        if (reason == "connect_error") {
+                            tokenRefresher.refreshIfCurrent(
+                                failedAccessToken = store.readSession()?.accessToken,
+                                clearOnUnauthorized = false
+                            )
+                        } else {
+                            tokenRefresher.refreshIfExpiringSoon(clearOnUnauthorized = false)
+                        }
+                    refreshed?.toRealtimeAuthForSelectedServer()
+                }
+            }
+        }
+    }
+
     override suspend fun connect(serverId: ServerId, lastSeq: Long): DataResult<Unit> {
         val session = if (tokenRefresher != null) {
             store.readSession()
@@ -54,4 +74,12 @@ class SessionRealtimeRepository(
 
     override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =
         client.observeEvents(listener)
+
+    private fun ai.slock.compose.data.StoredAuthSession.toRealtimeAuthForSelectedServer(): RealtimeAuth? {
+        val selectedServerId = currentServerId ?: return null
+        return RealtimeAuth(
+            token = accessToken,
+            serverId = ServerId(selectedServerId)
+        )
+    }
 }

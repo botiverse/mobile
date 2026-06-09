@@ -3,20 +3,35 @@ import { OhosSocketIoClient } from './OhosSocketIoClient';
 
 const REALTIME_EVENT_NAME = 'slockRealtimeEvent';
 const DEFAULT_SOCKET_URL = 'https://api.slock.ai';
+const HEARTBEAT_SILENCE_MILLIS = 90_000;
+const INBOUND_SILENCE_MILLIS = 120_000;
+const WATCHDOG_INTERVAL_MILLIS = 30_000;
 
 const WIRE_EVENTS: Array<string> = [
   'message:new',
   'dm:new',
   'message:updated',
   'thread:updated',
+  'channel:updated',
+  'channel:members-updated',
   'task:created',
   'task:updated',
   'task:deleted',
   'agent:activity',
+  'agent:created',
+  'agent:deleted',
+  'machine:status',
+  'machine:capabilities',
+  'machine:updated',
   'server:member-added',
   'server:member-updated',
   'server:member:left',
   'server:member-removed',
+  'server:membership-removed',
+  'announcement:new',
+  'reminder:fired',
+  'reminder:scheduled',
+  'reminder:canceled',
   'sync:resume:response',
   'heartbeat',
 ];
@@ -33,18 +48,25 @@ export class SlockOhosRealtimeBridge {
   private readonly socketIo: OhosSocketIoClient = new OhosSocketIoClient();
   private readonly joinedChannels: Set<string> = new Set();
   private connectParams?: RealtimeConnectParams;
+  private watchdogTimer?: number;
+  private lastHeartbeatAtMillis?: number;
+  private lastInboundEventAtMillis?: number;
 
   setController(controller?: KRNativeRenderController): void {
     this.controller = controller;
     this.socketIo.setListener({
       onConnected: () => {
+        this.markInbound();
+        this.startHeartbeatWatchdog();
         console.info('[SlockOhosRealtime] socket_io_connected');
         this.rejoinChannels('connect');
       },
       onDisconnected: (reason: string) => {
+        this.stopHeartbeatWatchdog();
         console.info(`[SlockOhosRealtime] socket_io_disconnected reason=${reason}`);
       },
       onConnectError: (message: string) => {
+        this.markInbound();
         console.warn(`[SlockOhosRealtime] socket_io_connect_error ${message}`);
       },
       onEvent: (eventName, payload) => {
@@ -97,6 +119,8 @@ export class SlockOhosRealtimeBridge {
       this.joinedChannels.clear();
     }
     this.connectParams = params;
+    this.lastHeartbeatAtMillis = undefined;
+    this.lastInboundEventAtMillis = undefined;
     if (this.socketIo.isConnected() && previous?.serverId === params.serverId && previous?.accessToken === params.accessToken) {
       return;
     }
@@ -119,10 +143,12 @@ export class SlockOhosRealtimeBridge {
       this.joinedChannels.clear();
       this.connectParams = undefined;
     }
+    this.stopHeartbeatWatchdog();
     this.socketIo.disconnect(reason);
   }
 
   private handleSocketIoEvent(eventName: string, payload: KRAny): void {
+    this.markInbound(eventName);
     if (eventName === 'rooms:joined') {
       this.onRoomsJoined();
       return;
@@ -173,6 +199,63 @@ export class SlockOhosRealtimeBridge {
     }
     console.info(`[SlockOhosRealtime] sync_resume_emit lastSeq=${lastSeq}`);
     this.socketIo.emit('sync:resume', { lastSeq: lastSeq });
+  }
+
+  private markInbound(eventName?: string): void {
+    const now = Date.now();
+    this.lastInboundEventAtMillis = now;
+    if (eventName === 'heartbeat') {
+      this.lastHeartbeatAtMillis = now;
+    }
+  }
+
+  private startHeartbeatWatchdog(): void {
+    if (this.watchdogTimer !== undefined) {
+      return;
+    }
+    this.watchdogTimer = setInterval(() => {
+      this.checkHeartbeatSilence();
+    }, WATCHDOG_INTERVAL_MILLIS);
+  }
+
+  private stopHeartbeatWatchdog(): void {
+    if (this.watchdogTimer !== undefined) {
+      clearInterval(this.watchdogTimer);
+      this.watchdogTimer = undefined;
+    }
+  }
+
+  private checkHeartbeatSilence(): void {
+    if (!this.socketIo.isConnected()) {
+      return;
+    }
+    const heartbeatAt = this.lastHeartbeatAtMillis;
+    const inboundAt = this.lastInboundEventAtMillis;
+    if (heartbeatAt === undefined || inboundAt === undefined) {
+      return;
+    }
+    const now = Date.now();
+    if (now - heartbeatAt <= HEARTBEAT_SILENCE_MILLIS || now - inboundAt <= INBOUND_SILENCE_MILLIS) {
+      return;
+    }
+    console.warn(`[SlockOhosRealtime] heartbeat_silence_reconnect lastHeartbeatAt=${heartbeatAt} lastInboundAt=${inboundAt}`);
+    const params = this.connectParams;
+    if (params === undefined) {
+      return;
+    }
+    this.lastHeartbeatAtMillis = undefined;
+    this.lastInboundEventAtMillis = now;
+    this.socketIo.connect({
+      socketUrl: params.socketUrl.length > 0 ? params.socketUrl : DEFAULT_SOCKET_URL,
+      auth: {
+        token: params.accessToken,
+        serverId: params.serverId,
+      },
+      headers: {
+        'Authorization': `Bearer ${params.accessToken}`,
+        'X-Server-Id': params.serverId,
+      }
+    });
   }
 }
 

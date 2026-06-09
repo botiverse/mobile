@@ -9,6 +9,7 @@ import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.RealtimeEvent
+import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.SyncResumeResponse
 import ai.slock.compose.model.TaskCreated
@@ -138,15 +139,23 @@ class ComposeLocalWriteThrough(
         logger("clear_home_unread source=$source channelId=${channelId.value}")
     }
 
-    suspend fun writeRealtimeEvent(serverId: ServerId, event: RealtimeEvent): Boolean =
+    suspend fun writeRealtimeEvent(
+        serverId: ServerId,
+        event: RealtimeEvent,
+        activeConversationId: String? = null
+    ): Boolean =
         when (event) {
-            is MessageNew -> writeRealtimeMessages(serverId, listOf(event.message), incrementUnread = true)
-            is MessageUpdated -> writeRealtimeMessages(serverId, listOf(event.message), incrementUnread = false)
-            is SyncResumeResponse -> writeRealtimeMessages(serverId, event.messages, incrementUnread = true)
+            is MessageNew -> writeRealtimeMessages(serverId, listOf(event.message), incrementUnread = true, activeConversationId)
+            is MessageUpdated -> writeRealtimeMessages(serverId, listOf(event.message), incrementUnread = false, activeConversationId)
+            is SyncResumeResponse -> writeRealtimeMessages(serverId, event.messages, incrementUnread = true, activeConversationId)
             is ThreadUpdated -> writeThreadMetadata(serverId, event)
             is TaskCreated -> writeRealtimeTasks(event.tasks)
             is TaskUpdated -> writeRealtimeTasks(listOf(event.task))
             is ai.slock.compose.model.MemberPresenceUpdated -> updateHomePresence(serverId, event)
+            is RealtimeRefreshRequired -> {
+                logger("write_realtime_refresh_required scope=${event.scope} reason=${event.reason} serverId=${event.serverId?.value.orEmpty()}")
+                true
+            }
             is Heartbeat -> {
                 logger("write_realtime_skip type=heartbeat seq=${event.seq}")
                 false
@@ -253,7 +262,8 @@ class ComposeLocalWriteThrough(
     private suspend fun writeRealtimeMessages(
         serverId: ServerId,
         messages: List<Message>,
-        incrementUnread: Boolean
+        incrementUnread: Boolean,
+        activeConversationId: String?
     ): Boolean {
         if (messages.isEmpty()) return false
         var wroteHome = false
@@ -262,6 +272,11 @@ class ComposeLocalWriteThrough(
             .forEach { (streamChannelId, streamMessages) ->
                 val threadId = ThreadId(streamChannelId.value)
                 val existing = store.readThread(threadId)
+                val existingMessageIds = existing?.messages.orEmpty().map { it.id }.toSet()
+                val unreadCandidateMessages =
+                    streamMessages
+                        .distinctBy { it.id }
+                        .filterNot { it.id in existingMessageIds }
                 if (existing != null) {
                     val updated =
                         existing.copy(
@@ -281,7 +296,15 @@ class ComposeLocalWriteThrough(
                             hasParent = updated.parentMessage != null
                         ) || wroteThread
                 }
-                wroteHome = updateHomePreview(serverId, streamChannelId, streamMessages, incrementUnread) || wroteHome
+                wroteHome =
+                    updateHomePreview(
+                        serverId = serverId,
+                        streamChannelId = streamChannelId,
+                        messages = streamMessages,
+                        unreadCandidateMessages = unreadCandidateMessages,
+                        incrementUnread = incrementUnread,
+                        activeConversationId = activeConversationId
+                    ) || wroteHome
             }
         return wroteHome || wroteThread
     }
@@ -369,26 +392,55 @@ class ComposeLocalWriteThrough(
         serverId: ServerId,
         streamChannelId: ChannelId,
         messages: List<Message>,
-        incrementUnread: Boolean
+        unreadCandidateMessages: List<Message>,
+        incrementUnread: Boolean,
+        activeConversationId: String?
     ): Boolean {
         val home = store.readHome(serverId) ?: return false
         val latest = messages.maxByOrNull { it.seq ?: Long.MIN_VALUE } ?: return false
+        var totalUnreadIncrement = 0
         fun ConversationSummary.updateIfMatches(): ConversationSummary {
             if (messageStreamChannelId() != streamChannelId) return this
+            val isActiveConversation =
+                activeConversationId != null &&
+                    (
+                        threadId.value == activeConversationId ||
+                            channelId?.value == activeConversationId ||
+                            messageStreamChannelId().value == activeConversationId
+                        )
+            val unreadIncrement =
+                if (!incrementUnread || isActiveConversation) {
+                    0
+                } else {
+                    unreadCandidateMessages.count { message ->
+                        message.id != lastMessageId &&
+                        message.author.id != home.currentMember.id
+                    }
+                }
+            totalUnreadIncrement += unreadIncrement
             return copy(
                 lastMessageId = latest.id,
                 lastMessagePreview = latest.body,
                 lastMessageAt = latest.timestampLabel,
                 lastMessageSenderName = latest.author.displayName,
-                unreadCount = if (incrementUnread) unreadCount + 1 else unreadCount,
-                unreadCountKnown = unreadCountKnown || incrementUnread
+                unreadCount = unreadCount + unreadIncrement,
+                firstUnreadMessageId =
+                    firstUnreadMessageId
+                        ?: unreadCandidateMessages
+                            .firstOrNull { message ->
+                                unreadIncrement > 0 &&
+                                    message.id != lastMessageId &&
+                                    message.author.id != home.currentMember.id
+                            }
+                            ?.id,
+                unreadCountKnown = unreadCountKnown || unreadIncrement > 0
             )
         }
         val updatedHome =
             home.copy(
                 channels = home.channels.map { it.updateIfMatches() },
                 directMessages = home.directMessages.map { it.updateIfMatches() },
-                unreadTotal = if (incrementUnread) home.unreadTotal + 1 else home.unreadTotal
+                unreadTotal = home.unreadTotal + totalUnreadIncrement
             )
         if (updatedHome == home) return false
         store.writeHome(updatedHome)

@@ -177,7 +177,10 @@ import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.RealtimeEvent
+import ai.slock.compose.model.RealtimeRefreshRequired
+import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ServerMembershipRemoved
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.SyncResumeResponse
 import ai.slock.compose.model.ThreadId
@@ -1216,11 +1219,32 @@ private fun SlockAppShellContent() {
                     if (pagerEvent != AppShellRealtimeEvent) return
                     val serverId = eventData.optString("serverId").takeIf { it.isNotBlank() } ?: return
                     val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return
+                    if (
+                        event is ServerMembershipRemoved &&
+                        event.serverId.value == readySession?.currentServerId
+                    ) {
+                        bridge.log("shared_realtime_server_membership_removed serverId=${event.serverId.value}")
+                        bridge.realtimeDisconnect("server_membership_removed")
+                        resetAppShellSessionState(clearReturnThread = true)
+                        appShellCoroutineScope.launch {
+                            authStore.updateSelectedServer(serverId = null, serverSlug = null)
+                            authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                        }
+                        return
+                    }
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
                     if (event is DirectMessageCreated) {
                         bridge.realtimeJoinChannel(event.channelId.value)
                     }
-                    if (event is MemberPresenceUpdated && event.kind == MemberKind.Agent) {
+                    if (
+                        event is MemberPresenceUpdated && event.kind == MemberKind.Agent ||
+                        event is RealtimeRefreshRequired &&
+                            (
+                                event.scope == RealtimeRefreshScope.ServerMembers ||
+                                    event.scope == RealtimeRefreshScope.Agents ||
+                                    event.scope == RealtimeRefreshScope.Machines
+                                )
+                    ) {
                         membersAgentDetailRefreshKey += 1
                     }
                     if (event is MessageNew && notificationPreferenceSnapshot.enabled) {
@@ -4330,7 +4354,7 @@ private fun JsonObject.explicitMemberKind(defaultKind: MemberKind?, profile: Jso
                 else -> null
             }
         }
-        ?: if (profile.boolean("isAgent") == true || boolean("isAgent") == true || firstObject("agent") != null) MemberKind.Agent else null
+        ?: (if (profile.boolean("isAgent") == true || boolean("isAgent") == true || firstObject("agent") != null) MemberKind.Agent else null)
         ?: defaultKind
         ?: MemberKind.Human
 
@@ -6949,6 +6973,23 @@ private fun parseSharedShellRealtimeEvent(payload: String): Result<RealtimeEvent
                     kind = json.optString("kind").toSharedMemberKind(),
                     agentStatus = AgentStatus.fromWireValue(json.optString("agentStatus")),
                     statusLabel = json.optString("statusLabel").takeIf { it.isNotBlank() }
+                )
+            "refresh_required" ->
+                RealtimeRefreshRequired(
+                    scope =
+                        json.optString("scope")
+                            .takeIf { it.isNotBlank() }
+                            ?.let { scope -> runCatching { RealtimeRefreshScope.valueOf(scope) }.getOrNull() }
+                            ?: RealtimeRefreshScope.Home,
+                    reason = json.optString("reason").takeIf { it.isNotBlank() } ?: "refresh_required",
+                    serverId = json.optString("serverId").takeIf { it.isNotBlank() }?.let(::ServerId),
+                    channelId = json.optString("channelId").takeIf { it.isNotBlank() }?.let(::ChannelId),
+                    memberId = json.optString("memberId").takeIf { it.isNotBlank() }?.let(::MemberId),
+                    subjectId = json.optString("subjectId").takeIf { it.isNotBlank() }
+                )
+            "server_membership_removed" ->
+                ServerMembershipRemoved(
+                    serverId = ServerId(json.optString("serverId"))
                 )
             "direct_message_created" -> DirectMessageCreated(ChannelId(json.optString("channelId")))
             "heartbeat" -> Heartbeat(json.optLong("seq", 0L))

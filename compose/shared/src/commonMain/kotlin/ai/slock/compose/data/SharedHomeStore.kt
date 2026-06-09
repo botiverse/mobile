@@ -4,6 +4,8 @@ import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.RealtimeEvent
+import ai.slock.compose.model.RealtimeRefreshRequired
+import ai.slock.compose.model.RealtimeRefreshScope
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -129,10 +131,18 @@ class SharedHomeStore(
         val current = _state.value.content
         val currentContent = current as? SharedHomeContentState.Content
         val visibleServerId = currentContent?.snapshot?.server?.id
-        val result = dataSource.applyRealtimeEvent(serverId, event)
         if (visibleServerId != null && visibleServerId != serverId) {
             return
         }
+        if (event is RealtimeRefreshRequired) {
+            applyRealtimeRefresh(event)
+            return
+        }
+        val result = dataSource.applyRealtimeEvent(
+            serverId = serverId,
+            event = event,
+            activeConversationId = _state.value.selectedConversationId
+        )
         if (event is DirectMessageCreated) {
             val nextSwitch = _state.value.serverSwitchState.refresh()
             reduceState(_state.value.copy(serverSwitchState = nextSwitch))
@@ -153,6 +163,26 @@ class SharedHomeStore(
                         )
                 )
             )
+        }
+    }
+
+    private suspend fun applyRealtimeRefresh(event: RealtimeRefreshRequired) {
+        when (event.scope) {
+            RealtimeRefreshScope.Announcements -> {
+                loadNotifications()
+            }
+            RealtimeRefreshScope.Home,
+            RealtimeRefreshScope.ChannelMembers,
+            RealtimeRefreshScope.ServerMembers,
+            RealtimeRefreshScope.Agents,
+            RealtimeRefreshScope.Machines,
+            RealtimeRefreshScope.Settings,
+            RealtimeRefreshScope.Reminders -> {
+                diagnosticsLogger("home_realtime_refresh scope=${event.scope} reason=${event.reason}")
+                val nextSwitch = _state.value.serverSwitchState.refresh()
+                reduceState(_state.value.copy(serverSwitchState = nextSwitch))
+                load(nextSwitch, showRefreshAffordance = false)
+            }
         }
     }
 

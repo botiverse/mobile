@@ -12,6 +12,8 @@ import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.Presence
+import ai.slock.compose.model.RealtimeRefreshRequired
+import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.ThreadId
@@ -203,6 +205,11 @@ class SharedHomeStoreTest {
             scope = scope
         )
         store.accept(SharedHomeIntent.Start)
+        val otherMember = sampleMember().copy(
+            id = MemberId("member-2"),
+            displayName = "Cindy",
+            handle = "cindy@slock.ai"
+        )
 
         store.accept(
             SharedHomeIntent.ApplyRealtimeEvent(
@@ -214,7 +221,7 @@ class SharedHomeStoreTest {
                             threadId = ThreadId("channel-1"),
                             channelId = ChannelId("channel-1"),
                             seq = 2,
-                            author = sampleMember(),
+                            author = otherMember,
                             timestampLabel = "12:01",
                             body = "live update"
                         )
@@ -313,6 +320,37 @@ class SharedHomeStoreTest {
         )
 
         assertEquals(listOf("write_realtime_skip type=heartbeat seq=42"), logs)
+        scope.cancel()
+    }
+
+    @Test
+    fun refreshRequiredReloadsHomeWithoutVisibleRefreshAffordance() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = RecordingHomeApi()
+        val logs = mutableListOf<String>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = api),
+            scope = scope,
+            diagnosticsLogger = logs::add
+        )
+        store.accept(SharedHomeIntent.Start)
+        api.calls.clear()
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    RealtimeRefreshRequired(
+                        scope = RealtimeRefreshScope.ServerMembers,
+                        reason = "server:member-updated",
+                        serverId = ServerId("server-1")
+                    )
+            )
+        )
+
+        assertEquals(listOf("channels:server-1", "dms:server-1", "unread:server-1", "summary:server-1"), api.calls)
+        assertContains(logs, "home_realtime_refresh scope=ServerMembers reason=server:member-updated")
         scope.cancel()
     }
 

@@ -27,7 +27,10 @@ import ai.slock.android.core.model.MessageNew
 import ai.slock.android.core.model.MessageType
 import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.RealtimeEvent
+import ai.slock.android.core.model.RealtimeRefreshRequired
+import ai.slock.android.core.model.RealtimeRefreshScope
 import ai.slock.android.core.model.ServerId
+import ai.slock.android.core.model.ServerMembershipRemoved
 import ai.slock.android.core.model.SyncResumeResponse
 import ai.slock.android.core.model.TaskStatus
 import ai.slock.android.core.model.TaskUpdated
@@ -97,6 +100,36 @@ class RealtimeRepositoryTest {
         assertTrue(result is DataResult.Content)
         assertEquals("socket-new-access", transport.lastAuth["token"])
         assertEquals("socket-new-access", store.session?.accessToken)
+    }
+
+    @Test
+    fun repositoryRefreshesSocketAuthOnReconnectAttempt() {
+        val transport = FakeRealtimeSocketTransport()
+        val store = InMemoryAuthSessionStore(sampleSession.copy(accessToken = "opaque-access"))
+        val repository = SessionRealtimeRepository(
+            store = store,
+            client = SocketIoRealtimeClient(transport),
+            tokenRefresher = AuthTokenRefresher(
+                store = store,
+                api = FakeAuthApi(
+                    responses =
+                        listOf(
+                            AuthRefreshResponse("socket-first-access", "socket-first-refresh"),
+                            AuthRefreshResponse("socket-retry-access", "socket-retry-refresh")
+                        )
+                ),
+                logger = {},
+                warningLogger = {}
+            )
+        )
+
+        runSuspend { repository.connect(ServerId("server-1"), lastSeq = 0) }
+        assertEquals("socket-first-access", transport.lastAuth["token"])
+
+        transport.receive(RealtimeSocketEvents.ReconnectAttempt, 1)
+
+        assertEquals("socket-retry-access", transport.lastAuth["token"])
+        assertEquals("socket-retry-access", store.session?.accessToken)
     }
 
     @Test
@@ -331,6 +364,28 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun clientForcesReconnectWhenAppHeartbeatAndInboundEventsAreSilent() {
+        var now = 1_000L
+        val transport = FakeRealtimeSocketTransport()
+        val client = SocketIoRealtimeClient(transport, clockMillis = { now })
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1"))
+            )
+        )
+        transport.receive(RealtimeSocketEvents.Connect)
+        transport.receive(RealtimeSocketEvents.Heartbeat, mapOf("seq" to 1))
+        val firstConnectCount = transport.connectCount
+
+        now += 121_000L
+        assertTrue(client.checkHeartbeatSilence(now))
+
+        assertEquals(firstConnectCount + 1, transport.connectCount)
+        assertEquals("sample-access", transport.lastAuth["token"])
+    }
+
+    @Test
     fun clientClearsJoinedChannelsWhenServerChanges() {
         val transport = FakeRealtimeSocketTransport()
         val client = SocketIoRealtimeClient(transport)
@@ -467,8 +522,8 @@ class RealtimeRepositoryTest {
         )
         // server:member-* events carry only `{ serverId, userId }` (see
         // packages/server/src/routes/servers.ts). They are membership-change
-        // notifications, not presence updates — mapper must drop them so
-        // consumers refetch membership rather than fabricate presence state.
+        // notifications, not presence updates — mapper emits a refresh intent
+        // so consumers refetch members instead of fabricating presence state.
         val memberUpdated = mapper.map(
             RealtimeSocketEvents.ServerMemberUpdated,
             mapOf(
@@ -484,7 +539,11 @@ class RealtimeRepositoryTest {
         assertEquals(AgentStatus.Working, agent.agentStatus)
         assertEquals(Presence.Active, agent.presence)
         assertEquals("Running tests", agent.statusLabel)
-        assertEquals(null, memberUpdated)
+        assertTrue(memberUpdated is RealtimeRefreshRequired)
+        val refresh = memberUpdated as RealtimeRefreshRequired
+        assertEquals(RealtimeRefreshScope.ServerMembers, refresh.scope)
+        assertEquals("server-1", refresh.serverId?.value)
+        assertEquals("user-2", refresh.memberId?.value)
 
         val disconnected = mapper.map(
             RealtimeSocketEvents.AgentActivity,
@@ -495,6 +554,33 @@ class RealtimeRepositoryTest {
         ) as MemberPresenceUpdated
         assertEquals(AgentStatus.Disconnected, disconnected.agentStatus)
         assertEquals(Presence.Offline, disconnected.presence)
+    }
+
+    @Test
+    fun mapperHandlesRefreshAndMembershipRemovalEvents() {
+        val mapper = RealtimeEventMapper()
+
+        val channelMembers = mapper.map(
+            RealtimeSocketEvents.ChannelMembersUpdated,
+            mapOf("serverId" to "server-1", "channelId" to "channel-1")
+        )
+        val membershipRemoved = mapper.map(
+            RealtimeSocketEvents.ServerMembershipRemoved,
+            mapOf("serverId" to "server-1")
+        )
+        val machineStatus = mapper.map(
+            RealtimeSocketEvents.MachineStatus,
+            mapOf("serverId" to "server-1", "machineId" to "machine-1", "status" to "online")
+        )
+
+        assertTrue(channelMembers is RealtimeRefreshRequired)
+        assertEquals(RealtimeRefreshScope.ChannelMembers, (channelMembers as RealtimeRefreshRequired).scope)
+        assertEquals("channel-1", channelMembers.channelId?.value)
+        assertTrue(membershipRemoved is ServerMembershipRemoved)
+        assertEquals("server-1", (membershipRemoved as ServerMembershipRemoved).serverId.value)
+        assertTrue(machineStatus is RealtimeRefreshRequired)
+        assertEquals(RealtimeRefreshScope.Machines, (machineStatus as RealtimeRefreshRequired).scope)
+        assertEquals("machine-1", machineStatus.subjectId)
     }
 
     @Test
@@ -665,8 +751,10 @@ class RealtimeRepositoryTest {
         val handlers = mutableMapOf<String, MutableList<(Any?) -> Unit>>()
         var lastAuth: Map<String, String> = emptyMap()
         val emitted = mutableListOf<Pair<String, Map<String, Any>>>()
+        var connectCount = 0
 
         override fun connect(auth: Map<String, String>) {
+            connectCount += 1
             lastAuth = auth
         }
 
@@ -709,8 +797,10 @@ class RealtimeRepositoryTest {
     }
 
     private class FakeAuthApi(
-        private val refreshFailure: Throwable? = null
+        private val refreshFailure: Throwable? = null,
+        private val responses: List<AuthRefreshResponse> = listOf(AuthRefreshResponse("socket-new-access", "socket-new-refresh"))
     ) : SlockAuthApi {
+        private var refreshIndex = 0
         override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
             AuthApiResult.Failure(404)
 
@@ -731,7 +821,9 @@ class RealtimeRepositoryTest {
 
         override suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse> {
             refreshFailure?.let { throw it }
-            return AuthApiResult.Success(AuthRefreshResponse("socket-new-access", "socket-new-refresh"))
+            val response = responses.getOrElse(refreshIndex) { responses.last() }
+            refreshIndex += 1
+            return AuthApiResult.Success(response)
         }
 
         override suspend fun logout(refreshToken: String): AuthApiResult<Unit> =

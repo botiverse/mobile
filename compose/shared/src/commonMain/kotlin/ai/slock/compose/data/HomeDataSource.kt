@@ -6,6 +6,8 @@ import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.RealtimeEvent
+import ai.slock.compose.model.RealtimeRefreshRequired
+import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.SyncResumeResponse
 import ai.slock.compose.model.TaskCreated
 import ai.slock.compose.model.TaskUpdated
@@ -101,8 +103,12 @@ class SharedHomeDataSource(
         return DataResult.Content(cached)
     }
 
-    suspend fun applyRealtimeEvent(serverId: ServerId, event: RealtimeEvent): DataResult<HomeSnapshot> {
-        val homeUpdated = localWriteThrough?.writeRealtimeEvent(serverId, event)
+    suspend fun applyRealtimeEvent(
+        serverId: ServerId,
+        event: RealtimeEvent,
+        activeConversationId: String? = null
+    ): DataResult<HomeSnapshot> {
+        val homeUpdated = localWriteThrough?.writeRealtimeEvent(serverId, event, activeConversationId)
             ?: return DataResult.Empty(EmptyReason.NoChannels)
         if (!homeUpdated || !event.updatesHomeSnapshot()) {
             return DataResult.Empty(EmptyReason.NoChannels)
@@ -137,6 +143,13 @@ private fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is TaskCreated,
         is TaskUpdated,
         is MemberPresenceUpdated -> true
+        is RealtimeRefreshRequired ->
+            this.scope == RealtimeRefreshScope.Home ||
+                this.scope == RealtimeRefreshScope.ChannelMembers ||
+                this.scope == RealtimeRefreshScope.ServerMembers ||
+                this.scope == RealtimeRefreshScope.Agents ||
+                this.scope == RealtimeRefreshScope.Machines ||
+                this.scope == RealtimeRefreshScope.Settings
         else -> false
     }
 

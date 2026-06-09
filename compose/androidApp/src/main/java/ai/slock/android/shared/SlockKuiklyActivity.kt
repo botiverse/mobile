@@ -73,7 +73,9 @@ import ai.slock.android.core.model.MessageNew
 import ai.slock.android.core.model.MessageUpdated
 import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.RealtimeEvent
+import ai.slock.android.core.model.RealtimeRefreshRequired
 import ai.slock.android.core.model.ServerId
+import ai.slock.android.core.model.ServerMembershipRemoved
 import ai.slock.android.core.model.SyncResumeResponse
 import ai.slock.android.core.model.ThreadUpdated
 import ai.slock.compose.data.SlockAndroidSqlDatabaseContext
@@ -753,6 +755,19 @@ private fun RealtimeEvent.toSharedShellJson(): JSONObject =
                             .put("kind", kind?.toWireValue())
                             .put("agentStatus", agentStatus?.name)
                             .put("statusLabel", statusLabel)
+            is RealtimeRefreshRequired ->
+                    JSONObject()
+                            .put("type", "refresh_required")
+                            .put("scope", scope.name)
+                            .put("reason", reason)
+                            .put("serverId", serverId?.value)
+                            .put("channelId", channelId?.value)
+                            .put("memberId", memberId?.value)
+                            .put("subjectId", subjectId)
+            is ServerMembershipRemoved ->
+                    JSONObject()
+                            .put("type", "server_membership_removed")
+                            .put("serverId", serverId.value)
             is DirectMessageCreated ->
                     JSONObject()
                             .put("type", "direct_message_created")

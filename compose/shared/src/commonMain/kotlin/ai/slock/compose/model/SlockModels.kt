@@ -388,6 +388,33 @@ data class MemberPresenceUpdated(
 ) : RealtimeEvent
 
 @Serializable
+data class RealtimeRefreshRequired(
+    val scope: RealtimeRefreshScope,
+    val reason: String,
+    val serverId: ServerId? = null,
+    val channelId: ChannelId? = null,
+    val memberId: MemberId? = null,
+    val subjectId: String? = null
+) : RealtimeEvent
+
+@Serializable
+data class ServerMembershipRemoved(
+    val serverId: ServerId
+) : RealtimeEvent
+
+@Serializable
+enum class RealtimeRefreshScope {
+    Home,
+    ChannelMembers,
+    ServerMembers,
+    Agents,
+    Machines,
+    Announcements,
+    Reminders,
+    Settings
+}
+
+@Serializable
 data class SyncResumeResponse(
     val messages: List<Message>,
     val currentSeq: Long,

@@ -17,6 +17,10 @@ import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.RealtimeEvent
+import ai.slock.compose.model.RealtimeRefreshRequired
+import ai.slock.compose.model.RealtimeRefreshScope
+import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ServerMembershipRemoved
 import ai.slock.compose.model.SyncResumeResponse
 import ai.slock.compose.model.TaskCreated
 import ai.slock.compose.model.TaskDeleted
@@ -103,6 +107,10 @@ class RealtimeEventMapper {
             RealtimeSocketEvents.DirectMessageNew -> decodeDirectMessageNew(element)
             RealtimeSocketEvents.ThreadUpdated ->
                 decodeOrNull(ThreadUpdatedDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.ChannelUpdated ->
+                decodeChannelRefresh(element, RealtimeRefreshScope.Home, RealtimeSocketEvents.ChannelUpdated)
+            RealtimeSocketEvents.ChannelMembersUpdated ->
+                decodeChannelRefresh(element, RealtimeRefreshScope.ChannelMembers, RealtimeSocketEvents.ChannelMembersUpdated)
             RealtimeSocketEvents.TaskCreated ->
                 decodeOrNull(TaskCreatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.TaskUpdated ->
@@ -111,14 +119,31 @@ class RealtimeEventMapper {
                 decodeOrNull(TaskDeletedDto.serializer(), element)?.let { TaskDeleted(TaskId(it.taskId)) }
             RealtimeSocketEvents.AgentActivity ->
                 decodeOrNull(AgentActivityDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.AgentCreated,
+            RealtimeSocketEvents.AgentDeleted ->
+                decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
+            RealtimeSocketEvents.MachineStatus,
+            RealtimeSocketEvents.MachineCapabilities,
+            RealtimeSocketEvents.MachineUpdated ->
+                decodeSubjectRefresh(element, RealtimeRefreshScope.Machines, eventName)
             RealtimeSocketEvents.ServerMemberAdded,
             RealtimeSocketEvents.ServerMemberUpdated,
             RealtimeSocketEvents.ServerMemberLeft,
             RealtimeSocketEvents.ServerMemberRemoved ->
-                // Server emits only `{ serverId, userId }`. Membership-change
-                // events do not carry presence/profile data; consumers refetch
-                // /members. Return null so we don't fabricate presence state.
-                null
+                decodeServerMemberRefresh(element, eventName)
+            RealtimeSocketEvents.ServerMembershipRemoved ->
+                decodeOrNull(ServerMembershipRemovedDto.serializer(), element)?.serverId?.let {
+                    ServerMembershipRemoved(ServerId(it))
+                }
+            RealtimeSocketEvents.AnnouncementNew ->
+                RealtimeRefreshRequired(
+                    scope = RealtimeRefreshScope.Announcements,
+                    reason = RealtimeSocketEvents.AnnouncementNew
+                )
+            RealtimeSocketEvents.ReminderFired,
+            RealtimeSocketEvents.ReminderScheduled,
+            RealtimeSocketEvents.ReminderCanceled ->
+                decodeSubjectRefresh(element, RealtimeRefreshScope.Reminders, eventName)
             RealtimeSocketEvents.SyncResumeResponse ->
                 decodeOrNull(SyncResumeResponseDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.Heartbeat ->
@@ -137,6 +162,51 @@ class RealtimeEventMapper {
             ?: return null
         return DirectMessageCreated(ChannelId(channelId))
     }
+
+    private fun decodeChannelRefresh(
+        element: JsonObject,
+        scope: RealtimeRefreshScope,
+        reason: String
+    ): RealtimeRefreshRequired =
+        RealtimeRefreshRequired(
+            scope = scope,
+            reason = reason,
+            serverId = stringField(element, "serverId")?.let(::ServerId),
+            channelId =
+                stringField(element, "channelId")
+                    ?.let(::ChannelId)
+                    ?: stringField(element, "id")?.let(::ChannelId)
+        )
+
+    private fun decodeServerMemberRefresh(element: JsonObject, reason: String): RealtimeRefreshRequired =
+        RealtimeRefreshRequired(
+            scope = RealtimeRefreshScope.ServerMembers,
+            reason = reason,
+            serverId = stringField(element, "serverId")?.let(::ServerId),
+            memberId =
+                stringField(element, "userId")
+                    ?.let(::MemberId)
+                    ?: stringField(element, "memberId")?.let(::MemberId)
+        )
+
+    private fun decodeSubjectRefresh(
+        element: JsonObject,
+        scope: RealtimeRefreshScope,
+        reason: String
+    ): RealtimeRefreshRequired =
+        RealtimeRefreshRequired(
+            scope = scope,
+            reason = reason,
+            serverId = stringField(element, "serverId")?.let(::ServerId),
+            subjectId =
+                stringField(element, "agentId")
+                    ?: stringField(element, "machineId")
+                    ?: stringField(element, "reminderId")
+                    ?: stringField(element, "id")
+        )
+
+    private fun stringField(element: JsonObject, name: String): String? =
+        (element[name] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
 
     private fun decodeMessageWire(element: JsonObject): MessageWireDto? =
         decodeOrNull(MessageWireDto.serializer(), element)
@@ -271,6 +341,11 @@ private data class AgentActivityDto(
     val detail: String? = null,
     val timestamp: String? = null,
     val serverSeq: Long? = null,
+)
+
+@Serializable
+private data class ServerMembershipRemovedDto(
+    val serverId: String,
 )
 
 @Serializable

@@ -3,6 +3,8 @@ package ai.slock.compose.network.realtime
 import ai.slock.compose.network.model.BackfillScope
 import ai.slock.compose.network.model.RealtimeConnectionPhase
 import ai.slock.compose.network.model.RealtimeConnectionState
+import ai.slock.compose.data.realtime.RealtimeHeartbeatWatchdog
+import ai.slock.compose.data.realtime.RealtimeHeartbeatWatchdogSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -78,5 +80,29 @@ class RealtimeConnectionReducerTest {
 
         assertEquals(45L, result.state.lastSeq)
         assertEquals(45L, result.state.serverMaxSeq)
+    }
+
+    @Test
+    fun heartbeatWatchdogRequiresHeartbeatAndInboundSilence() {
+        assertFalse(
+            RealtimeHeartbeatWatchdog.shouldForceReconnect(
+                RealtimeHeartbeatWatchdogSnapshot(
+                    connected = true,
+                    lastHeartbeatAtMillis = 1_000L,
+                    lastInboundEventAtMillis = 80_000L
+                ),
+                nowMillis = 125_000L
+            )
+        )
+        assertTrue(
+            RealtimeHeartbeatWatchdog.shouldForceReconnect(
+                RealtimeHeartbeatWatchdogSnapshot(
+                    connected = true,
+                    lastHeartbeatAtMillis = 1_000L,
+                    lastInboundEventAtMillis = 1_000L
+                ),
+                nowMillis = 125_000L
+            )
+        )
     }
 }

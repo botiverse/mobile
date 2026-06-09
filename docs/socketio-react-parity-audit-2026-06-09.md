@@ -8,13 +8,17 @@ Scope: React/web Socket.IO source, server Socket.IO contract, Android/KMP realti
 
 The OHOS bridge is not missing the basic Engine.IO ping/pong. `OhosSocketIoClient.ets` handles Engine.IO ping packet `"2"` and replies with pong packet `"3"` (`compose/ohosApp/entry/src/main/ets/kuikly/OhosSocketIoClient.ets:181-187`). So if the question is strictly "does OHOS answer the Socket.IO transport heartbeat?", the source says yes.
 
-The mobile stack is still not truly aligned with React. The highest-risk gaps are above the low-level ping/pong layer:
+At audit time the mobile stack was not truly aligned with React. The highest-risk gaps were above the low-level ping/pong layer:
 
-1. KMP decodes `message:new` / `message:updated` as `{ message: ... }`, but server and React use the raw enriched message object directly. This can make live messages silently drop on Android/OHOS while heartbeat still looks healthy.
-2. Mobile advances resume `lastSeq` from `heartbeat.seq`. React does not. React treats heartbeat seq as "server has newer data" and triggers gap sync; mobile can move the resume cursor past missed messages, making later resume skip the missing rows.
-3. React has a heartbeat-silence circuit breaker; Android/KMP and OHOS do not currently have equivalent forced reconnect when app-layer heartbeat stops but the socket remains logically connected.
-4. React listens to more realtime events than mobile: channel updates, channel member updates, machine status/capabilities, agent created/deleted, server membership removal, announcements, reminders, and server plan changes are missing or mapped to no-op on mobile.
-5. Home merge state can be wrong even when the socket itself is alive, because `SyncResumeResponse`/live message writes increment unread and previews in a simplified way, and because live `message:new` may not decode at all.
+1. KMP decoded `message:new` / `message:updated` as `{ message: ... }`, while server and React use the raw enriched message object directly.
+2. Mobile advanced resume `lastSeq` from `heartbeat.seq`, which could move the applied cursor past messages that were never decoded.
+3. Mobile lacked React's app-layer heartbeat-silence forced reconnect.
+4. Mobile listened to fewer refresh events than React: channel updates, channel member updates, machine status/capabilities, agent create/delete, server membership removal, announcements, and reminders.
+5. Home merge state counted realtime/resume unread too simply and did not account for dedupe, self-authored messages, or the currently visible conversation.
+
+Task #65 now closes those product-risk paths in source: raw message rows decode, heartbeat server max is separate from applied resume cursor, resume waits for `rooms:joined`, Android/OHOS share the same heartbeat watchdog thresholds, Android refreshes Socket.IO auth during reconnect/auth failures, the missing React refresh events are wired to typed refresh intents, server membership removal exits the current server, and Home preview/unread merge now dedupes by message id and suppresses self/current-conversation unread increments.
+
+Remaining audit caveats after Task #65: no real-device OHOS proof yet, OHOS still does not have a true refreshed-token handoff before reconnect, legacy `daemon:status` and `server:plan-updated` are not wired, and reminder/announcement handling is a conservative refresh/reload path rather than full surface-specific local mutation.
 
 ## 2026-06-09 OHOS Socket.IO Pitfall Record
 
@@ -163,15 +167,14 @@ It must own:
 - resume after room setup;
 - diagnostics that distinguish transport health from app-event health.
 
-It does not yet need full generic Socket.IO coverage if Slock does not use those features, but the missing pieces must be explicit:
+It does not yet need full generic Socket.IO coverage if Slock does not use those features, but the remaining missing pieces must be explicit:
 
 - no binary event packets;
 - no ack packet support;
 - no namespace support beyond default namespace;
-- no Engine.IO close packet handling;
-- no app-layer heartbeat watchdog;
-- no reconnect token refresh parity;
-- limited diagnostics for ping/pong and auth connect payload.
+- no full parser/fixture test suite around Engine.IO close / Socket.IO disconnect / reconnect;
+- no OHOS-side refreshed-token handoff before reconnect;
+- no real-device proof that the newly wired refresh events and watchdog path behave on device.
 
 That is acceptable only if we treat this bridge as a Slock-specific client and add tests/diagnostics around the supported subset.
 
@@ -181,30 +184,18 @@ There are two different categories of gaps. The third-party package detour only 
 
 ### A. OHOS Transport / Bridge Gaps
 
-The hand-written OHOS bridge currently sends the right Socket.IO auth payload, and it has basic ping/pong. What it still lacks:
+The hand-written OHOS bridge sends the right Socket.IO auth payload and has basic ping/pong. Task #65 also added field diagnostics and the app heartbeat watchdog. What it still lacks:
 
 - parser coverage for Engine.IO close and Socket.IO disconnect;
 - parser/fixture tests for open, ping, pong, connect error, event, reconnect;
-- field logs for ping interval/timeout, ping received, pong sent, auth connect sent, app heartbeat received;
-- heartbeat-silence reconnect watchdog;
-- refreshed-token reconnect path;
+- refreshed-token reconnect handoff from shared session state;
 - real-device proof that `rooms:joined`, `heartbeat`, `message:new`, and `sync:resume:response` all traverse the bridge after login.
 
 ### B. Shared Realtime / React Parity Gaps
 
-Even with a perfect OHOS transport, mobile remains behind React until these are fixed:
+Task #65 fixed the shared/mobile parity gaps that could lose messages or leave Home stale: raw message payloads decode, heartbeat no longer advances the applied cursor, resume waits for `rooms:joined`, heartbeat silence forces reconnect, Android refreshes auth on reconnect/auth failure, missing refresh events map to typed refresh intents, server membership removal exits the current server, and Home unread/preview merge dedupes and suppresses self/current-conversation increments.
 
-- `message:new` / `message:updated` must decode raw enriched message rows, not only `{ message: ... }`;
-- heartbeat `seq` must not advance applied resume `lastSeq`;
-- `sync:resume` should be gated on `rooms:joined` rather than raw socket connect;
-- mobile needs React-style app heartbeat silence recovery;
-- Android reconnect attempts need stale-token auth refresh parity;
-- missing React events need subscriptions and typed refresh behavior;
-- server membership removal must clear/navigate out like React;
-- `server:member-*` cannot stay silent no-op if member list/Home must refresh;
-- Home unread/preview merge must count deduped missed messages and account for current visible scope/self-authored messages.
-
-The most dangerous current combination is:
+The most dangerous original combination was:
 
 1. Mobile receives raw `message:new`.
 2. Mapper drops it because it expects `{ message: ... }`.
@@ -214,9 +205,11 @@ The most dangerous current combination is:
 
 That is why fixing payload shape and heartbeat cursor semantics has higher product impact than adding more low-level Socket.IO features.
 
+Remaining shared parity caveats: `daemon:status` and `server:plan-updated` are still not represented in the mobile event model, reminder and announcement events currently trigger conservative reloads rather than fine-grained local mutation, and durable agent activity / machine status recovery still uses refresh intents rather than the full React local merge policy.
+
 ## Implementation Update: Task #65
 
-Follow-up implementation on 2026-06-09 closed the highest-risk loss/skip path:
+Implementation on 2026-06-09 closed the highest-risk loss/skip and stale-Home paths:
 
 - KMP now accepts raw `message:new` / `message:updated` enriched message rows, while keeping the previous `{ message: ... }` envelope as a compatibility fallback.
 - Shared cursor policy now distinguishes applied resume cursor from server max seq. `heartbeat.seq` updates server max only; it no longer advances applied `lastSeq`.
@@ -224,8 +217,13 @@ Follow-up implementation on 2026-06-09 closed the highest-risk loss/skip path:
 - Shared realtime diagnostics now expose `serverMaxSeq`, emit heartbeat-gap backfill intents, and emit `sync:resume` only from a `rooms:joined` transition.
 - Android Socket.IO now replays rooms on connect/reconnect and gates `sync:resume` on `rooms:joined`.
 - OHOS bridge diagnostics now log Engine.IO open ping parameters, ping/pong, Socket.IO auth connect, Engine.IO close, Socket.IO disconnect, `rooms:joined`, app heartbeat, and `sync:resume`; OHOS room replay also moved to socket connect, with resume after `rooms:joined`.
+- Shared `RealtimeHeartbeatWatchdog` now mirrors React's conservative thresholds: heartbeat silence over 90s plus all inbound event silence over 120s while connected forces reconnect. Android and OHOS both use that policy.
+- Android refreshes/rebuilds Socket.IO auth on Manager `reconnect_attempt` and auth-related `connect_error`, so retry handshakes do not keep using a stale access token.
+- Mobile now subscribes/maps channel updates, channel-member updates, machine status/capabilities/updates, agent created/deleted, server member changes, server membership removal, announcement new, and reminder fired/scheduled/canceled into typed refresh intents.
+- Server membership removal for the current server disconnects realtime, clears selected server, and returns the app shell to auth/server restore flow instead of staying in stale server UI.
+- Home realtime merge now dedupes resume/live messages by message id, counts multiple missed non-self messages, avoids unread increments for self-authored messages, suppresses unread when the affected conversation is currently visible, and still updates the preview to the latest message.
 
-Remaining gaps from this audit are still open: heartbeat-silence forced reconnect, stale-token reconnect parity, broader React event coverage, server membership removal behavior, and the Home merge/unread correctness work.
+Remaining gaps from this audit after Task #65: OHOS refreshed-token reconnect handoff, real-device proof, legacy `daemon:status` / `server:plan-updated`, and finer local mutation for announcement/reminder/agent activity/machine status surfaces.
 
 ## React / Server Contract
 
@@ -358,27 +356,27 @@ Source: `third_party/slock-source/packages/web/src/components/layout/MainLayout.
 
 | Event | Server emit source | React behavior | Android/OHOS current status |
 | --- | --- | --- | --- |
-| `rooms:joined` | `packages/server/src/socket/index.ts` after room setup | Starts global `sync:resume`, visible-scope sync, unread/inbox refresh | Android/OHOS receive it, but Android also resumes on raw `connect` / `reconnect`; OHOS resumes only when `lastSeq > 0`. |
+| `rooms:joined` | `packages/server/src/socket/index.ts` after room setup | Starts global `sync:resume`, visible-scope sync, unread/inbox refresh | Android/OHOS now gate global resume on `rooms:joined`; room replay happens on socket connect/reconnect. |
 | `sync:resume:response` | `packages/server/src/socket/index.ts` | Batch-adds raw missed messages and advances `lastSeq` to `currentSeq` | Subscribed and decoded, but raw message DTO must be kept aligned with server shape. |
-| `heartbeat` | `packages/server/src/socket/index.ts` every 15s | Does not advance applied message cursor; triggers visible gap sync and silence watchdog | Subscribed, but advances mobile resume cursor and has no silence watchdog. |
-| `message:new` | `messageService.ts`, `routes/tasks.ts`, `actionCardsService.ts`, internal routes | Adds raw message row, reorders channel/DM, schedules inbox refresh | Subscribed, but mapper expects `{ message: ... }`; raw server rows can drop. |
-| `message:updated` | `routes/messages.ts`, `routes/tasks.ts`, `internalAgentApi.ts`, action-card/internal routes | Merge-only update of raw message row | Same envelope mismatch as `message:new`. |
+| `heartbeat` | `packages/server/src/socket/index.ts` every 15s | Does not advance applied message cursor; triggers visible gap sync and silence watchdog | Subscribed; now updates server max only, emits heartbeat-gap backfill intent, and shares React watchdog thresholds. |
+| `message:new` | `messageService.ts`, `routes/tasks.ts`, `actionCardsService.ts`, internal routes | Adds raw message row, reorders channel/DM, schedules inbox refresh | Subscribed; mapper now accepts raw server rows with `{ message: ... }` fallback. |
+| `message:updated` | `routes/messages.ts`, `routes/tasks.ts`, `internalAgentApi.ts`, action-card/internal routes | Merge-only update of raw message row | Subscribed; mapper now accepts raw server rows with `{ message: ... }` fallback. |
 | `dm:new` | `messageService.ts` | Joins DM room, refreshes DM channel list/inbox | Subscribed and maps to `DirectMessageCreated`; Android joins the channel after dispatch. |
 | `thread:updated` | `messageService.ts` | Updates thread summaries, followed-thread unread, inbox | Subscribed and decoded; Home/thread unread semantics are simpler than React. |
 | `task:created/updated/deleted` | `taskRealtimeEvents.ts`, `routes/tasks.ts`, internal task routes | Upserts/removes task-board rows; paired message events update chat flow | Subscribed and decoded for task store writes, but message update envelope bug can leave chat row stale. |
-| `agent:activity` | `agentOrchestrator.ts` | Updates status, live activity, trajectory, with `serverSeq` dedupe | Subscribed as member presence only; no durable activity trajectory recovery. |
-| `machine:status` | `agentOrchestrator.ts` | Updates machine status, forces attached agents offline on offline, reloads machines/agents on online | Not subscribed/mapped. |
-| `machine:capabilities` | `agentOrchestrator.ts` | Updates runtimes/host/os/daemon version | Not subscribed/mapped. |
-| `machine:updated` | `routes/servers.ts` | Reloads machines | Not subscribed/mapped. |
-| `daemon:status` | legacy transition event | Updates machine status | Not subscribed/mapped. |
-| `agent:created/deleted` | `routes/agents.ts` | Reloads agents | Not subscribed/mapped. |
-| `channel:updated` | `routes/channels.ts`, onboarding/action-card services | Reloads channel list; joined/private projections refresh via user/server rooms | Not subscribed/mapped. |
-| `channel:members-updated` | `routes/channels.ts`, internal membership routes | Reloads channel list globally and channel members in open member hooks | Not subscribed/mapped. |
-| `server:plan-updated` | `billingService.ts` | Reloads servers | Not subscribed/mapped. |
-| `server:member-added/left/removed/updated` | `routes/auth.ts`, `routes/servers.ts` | Reloads member list for active server | Android subscribes but maps to null; OHOS forwards raw fallback to mapper, which also returns null. |
-| `server:membership-removed` | `routes/servers.ts` | Reloads servers and exits the removed current server | Not subscribed/mapped. |
-| `announcement:new` | `routes/announcements.ts` | Inserts/dedupes account announcement | Not subscribed/mapped. |
-| `reminder:fired/scheduled/canceled` | `reminderScheduler.ts`, `agentOrchestrator.ts`, internal reminder routes | Agent detail updates/removes/schedules reminder rows and reloads on reconnect | Not subscribed globally; no scoped mobile Agent detail parity. |
+| `agent:activity` | `agentOrchestrator.ts` | Updates status, live activity, trajectory, with `serverSeq` dedupe | Still maps to member presence; durable activity trajectory recovery is not fully React-equivalent. |
+| `machine:status` | `agentOrchestrator.ts` | Updates machine status, forces attached agents offline on offline, reloads machines/agents on online | Subscribed/mapped to Machines refresh intent. |
+| `machine:capabilities` | `agentOrchestrator.ts` | Updates runtimes/host/os/daemon version | Subscribed/mapped to Machines refresh intent. |
+| `machine:updated` | `routes/servers.ts` | Reloads machines | Subscribed/mapped to Machines refresh intent. |
+| `daemon:status` | legacy transition event | Updates machine status | Still not subscribed/mapped. |
+| `agent:created/deleted` | `routes/agents.ts` | Reloads agents | Subscribed/mapped to Agents refresh intent. |
+| `channel:updated` | `routes/channels.ts`, onboarding/action-card services | Reloads channel list; joined/private projections refresh via user/server rooms | Subscribed/mapped to Home refresh intent. |
+| `channel:members-updated` | `routes/channels.ts`, internal membership routes | Reloads channel list globally and channel members in open member hooks | Subscribed/mapped to ChannelMembers refresh intent. |
+| `server:plan-updated` | `billingService.ts` | Reloads servers | Still not subscribed/mapped. |
+| `server:member-added/left/removed/updated` | `routes/auth.ts`, `routes/servers.ts` | Reloads member list for active server | Subscribed/mapped to ServerMembers refresh intent. |
+| `server:membership-removed` | `routes/servers.ts` | Reloads servers and exits the removed current server | Subscribed/mapped; current-server removal disconnects realtime and clears selected server. |
+| `announcement:new` | `routes/announcements.ts` | Inserts/dedupes account announcement | Subscribed/mapped to Announcements refresh/load path. |
+| `reminder:fired/scheduled/canceled` | `reminderScheduler.ts`, `agentOrchestrator.ts`, internal reminder routes | Agent detail updates/removes/schedules reminder rows and reloads on reconnect | Subscribed/mapped to Reminders refresh intent; still conservative reload rather than fine-grained Agent detail local mutation. |
 
 ## Android / KMP Implementation
 
@@ -404,9 +402,7 @@ Android refreshes token before realtime connect if the token is expired/near exp
 
 Source: `compose/androidApp/src/main/java/ai/slock/android/core/data/realtime/SessionRealtimeRepository.kt:20-25`; `compose/androidApp/src/main/java/ai/slock/android/core/data/auth/AuthTokenRefresher.kt:26-35`, `:57-90`.
 
-Gap vs React: Android does not mirror React's `reconnect_attempt` stale-token recovery. `SocketIoRealtimeClient` only logs reconnect attempts; it does not refresh auth before the Manager retry handshake.
-
-Source: `compose/androidApp/src/main/java/ai/slock/android/core/data/realtime/SocketIoRealtimeClient.kt:123-139`.
+Task #65 added React-style reconnect auth refresh: Android updates Socket.IO auth on Manager `reconnect_attempt`, and retries with refreshed auth on auth-related `connect_error`.
 
 ### KMP Event Names
 
@@ -424,43 +420,30 @@ KMP event constants include the core events:
 - `task:*`
 - `agent:activity`
 - `server:member-*`
-
-Source: `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/realtime/RealtimeSocketEvents.kt:9-34`.
-
-Android client subscribes only to:
-
-- message/direct-message/thread/task/activity/server-member/resume/heartbeat events
-
-Source: `compose/androidApp/src/main/java/ai/slock/android/core/data/realtime/SocketIoRealtimeClient.kt:197-212`.
-
-Missing vs React:
-
+- `channel:updated`
+- `channel:members-updated`
+- `agent:created`
+- `agent:deleted`
 - `machine:status`
 - `machine:capabilities`
 - `machine:updated`
-- `daemon:status`
-- `agent:created`
-- `agent:deleted`
-- `channel:updated`
-- `channel:members-updated`
-- `server:plan-updated`
 - `server:membership-removed`
 - `announcement:new`
 - `reminder:fired`
 - `reminder:scheduled`
 - `reminder:canceled`
 
-This means mobile can stay stale for machine status, channel membership/name/join state, agent list, server removal, announcements, and reminder changes unless another REST refresh happens.
+Source: `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/realtime/RealtimeSocketEvents.kt`.
+
+Android and OHOS now subscribe to the same expanded Slock event set above. Remaining missing vs React are `daemon:status` and `server:plan-updated`; both should be added if those events still matter for current server behavior.
 
 ### KMP Message Decode Mismatch
 
-KMP currently decodes `message:new` and `message:updated` through `MessageEnvelopeDto`, requiring a top-level `message` property.
+Original audit finding: KMP decoded `message:new` and `message:updated` through `MessageEnvelopeDto`, requiring a top-level `message` property, while server and React use raw message rows.
 
-Source: `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/realtime/RealtimeEventMapper.kt:97-103`, `:183-186`.
+Task #65 fixed this by decoding raw `MessageWireDto` first and keeping `{ message: ... }` as compatibility fallback.
 
-But the server emits raw message rows and React consumes raw message rows. Therefore current mobile live message decoding is likely wrong.
-
-The tests currently reinforce the wrong shape by sending:
+The old tests reinforced the wrong shape by sending:
 
 ```kotlin
 mapOf(
@@ -476,7 +459,7 @@ mapOf(
 
 Source: `compose/androidApp/src/test/java/ai/slock/android/core/data/realtime/RealtimeRepositoryTest.kt:285-306`.
 
-Expected canonical test shape should be the raw message row:
+Canonical tests now use the raw message row:
 
 ```json
 {
@@ -488,7 +471,7 @@ Expected canonical test shape should be the raw message row:
 }
 ```
 
-Impact:
+Original impact before Task #65:
 
 - Live `message:new` can be logged as received but map to null.
 - Home preview/unread is not updated by live message events.
@@ -497,7 +480,7 @@ Impact:
 
 ### KMP Heartbeat Cursor Mismatch
 
-KMP updates its resume cursor from heartbeat:
+Original audit finding: KMP updated its resume cursor from heartbeat:
 
 ```kotlin
 if (event is Heartbeat) lastSeq = maxOf(lastSeq, event.seq)
@@ -511,6 +494,8 @@ Source: `compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.
 
 React does not do this. React compares heartbeat server max seq to applied message seq and syncs visible scopes if the server is ahead.
 
+Task #65 fixed this with shared `RealtimeCursorPolicy`: heartbeat updates `serverMaxSeq` only, never the applied resume cursor.
+
 Impact:
 
 If mobile drops `message:new` because of the payload mismatch, a later `heartbeat.seq` can move `lastSeq` forward to the server max. On reconnect, mobile emits `sync:resume` using that advanced cursor and can skip the exact missing message forever.
@@ -521,11 +506,11 @@ React only emits global `sync:resume` after `rooms:joined`.
 
 Source: `third_party/slock-source/packages/web/src/components/layout/MainLayout.tsx:1069-1079`.
 
-KMP emits `sync:resume` on raw `connect`, on `rooms:joined`, and on `reconnect`:
+Original audit finding: KMP emitted `sync:resume` on raw `connect`, on `rooms:joined`, and on `reconnect`:
 
 Source: `compose/androidApp/src/main/java/ai/slock/android/core/data/realtime/SocketIoRealtimeClient.kt:87-99`, `:116-122`, `:170-174`.
 
-This can cause duplicate resume responses and differs from the server comment that room setup completion is the safe point for gap sync.
+Task #65 aligned mobile with React: global resume is now emitted from the `rooms:joined` transition.
 
 ### Home Merge Path
 
@@ -541,23 +526,16 @@ Live messages and resume messages flow through `writeRealtimeMessages(...)`.
 
 Source: `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/ComposeLocalWriteThrough.kt:253-286`.
 
-Home preview/unread update is simplified:
+Task #65 hardened Home preview/unread update:
 
-- it takes the latest message by seq
-- sets preview fields
-- increments unread by 1 if `incrementUnread = true`
-- increments Home unread total by 1
+- it still updates preview from the latest message by seq;
+- it dedupes unread candidates against cached thread messages by message id;
+- it counts multiple missed `sync:resume` messages per stream;
+- it excludes self-authored messages from unread increments;
+- it suppresses unread increments for the currently visible conversation;
+- it maps `server:member-*` to a refresh intent instead of a silent no-op.
 
-Source: `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/ComposeLocalWriteThrough.kt:368-395`.
-
-Risks:
-
-- `SyncResumeResponse` can contain many messages, but Home unread increments once per stream group, not by deduped message count.
-- There is no React-equivalent current-channel / near-bottom / visible-thread awareness in the Home write path.
-- If live `message:new` fails to decode, Home relies on later resume; but heartbeat can advance resume seq and skip the missing message.
-- `server:member-*` events are subscribed on Android but mapped to null, so membership changes do not trigger React-style member refresh.
-
-Source for server-member no-op: `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/realtime/RealtimeEventMapper.kt:114-121`.
+Remaining caveat: mobile still does not have every React near-bottom/read-receipt nuance. Current-conversation suppression is a conservative Home-level guard, not a full Thread scroll-position/read-state model.
 
 ## OHOS Implementation
 
@@ -613,12 +591,11 @@ It sends raw `join:channel` with a string payload and `sync:resume` with `{ last
 
 Source: `compose/ohosApp/entry/src/main/ets/kuikly/SlockOhosRealtimeBridge.ets:148-170`.
 
-Gaps vs Android/React:
+Current caveats vs Android/React:
 
 - OHOS does not forward `connect`, `disconnect`, `reconnect_attempt`, `reconnect_error`, or `reconnect_failed` to shared code. It logs only.
-- OHOS has custom exponential reconnect on WebSocket close/error, but no app-layer heartbeat-silence watchdog.
 - OHOS uses the access token passed from shared state; no source-visible reconnect-attempt token refresh equivalent exists in the ArkTS bridge.
-- OHOS inherits the same raw message payload mismatch when `decodeSharedShellRealtimeEvent` falls back to `RealtimeEventMapper.map(eventName, rawPayload)`.
+- OHOS now uses the shared app heartbeat-silence policy, but this still needs real-device proof.
 
 Source for raw fallback: `compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt:6883-6903`.
 
@@ -627,48 +604,45 @@ Source for raw fallback: `compose/shared/src/commonMain/kotlin/ai/slock/compose/
 | Area | React behavior | Android/KMP/OHOS behavior | Risk |
 | --- | --- | --- | --- |
 | Engine.IO ping/pong | Socket.IO client handles internally | Android library handles internally; OHOS replies `"2"` -> `"3"` | Basic transport heartbeat likely OK |
-| App heartbeat | `heartbeat.seq > messageLastSeq` triggers visible gap sync; silence watchdog reconnects | Heartbeat advances `lastSeq`; no silence watchdog | Missed messages can be skipped; wedged socket not self-healed |
-| Message payload | Raw enriched message object | Mapper expects `{ message: ... }` | Live messages dropped |
-| `message:updated` | Raw enriched message object | Mapper expects `{ message: ... }` | Task/reaction/action updates dropped |
-| Resume timing | Waits for `rooms:joined` | Emits on `connect`, `rooms:joined`, `reconnect` | Duplicate/out-of-order resume, not aligned with server safe point |
-| Auth on reconnect | Updates/refreshes auth before Manager retry | Android refreshes before explicit connect only; OHOS bridge has no visible refresh path | Stale-token reconnect wedges possible |
-| Channel updates | `channel:updated`, `channel:members-updated` reload channels | Not subscribed | Home/sidebar stale after rename/join/member changes |
-| Server membership removal | Clears current server and navigates out | Not subscribed | Removed user can remain in stale server UI |
-| Machine/agent status | Machine/agent events reload/update stores | Mostly absent except `agent:activity` -> member presence | Settings/Members status stale |
-| Announcements/reminders | Announcement and Agent detail reminder events handled | Not subscribed globally | Notifications/reminder surfaces stale |
-| Member events | React reloads members on `server:member-*` | Android subscribes but mapper returns null | Member list not refreshed |
-| Home unread merge | React counts deduped missed messages and knows current channel state | KMP increments simplified +1 per stream group and lacks visible-thread awareness | Unread/count drift |
+| App heartbeat | `heartbeat.seq > messageLastSeq` triggers visible gap sync; silence watchdog reconnects | Heartbeat updates server max only; Android/OHOS share watchdog thresholds | Needs real-device proof, source path aligned |
+| Message payload | Raw enriched message object | Mapper accepts raw row first, envelope fallback second | Source path aligned |
+| `message:updated` | Raw enriched message object | Mapper accepts raw row first, envelope fallback second | Source path aligned |
+| Resume timing | Waits for `rooms:joined` | Android/OHOS now gate global resume on `rooms:joined` | Source path aligned |
+| Auth on reconnect | Updates/refreshes auth before Manager retry | Android refreshes on reconnect/auth failure; OHOS still uses current token only | OHOS stale-token reconnect still possible |
+| Channel updates | `channel:updated`, `channel:members-updated` reload channels | Subscribed/mapped to refresh intents | Source path aligned |
+| Server membership removal | Clears current server and navigates out | Subscribed/mapped; current server is cleared/exited | Source path aligned |
+| Machine/agent status | Machine/agent events reload/update stores | Machine/agent create/update events map to refresh intents; `agent:activity` remains presence-only | Durable activity/local machine merge still not full React parity |
+| Announcements/reminders | Announcement and Agent detail reminder events handled | Subscribed/mapped to conservative refresh/load paths | Fine-grained local mutation still missing |
+| Member events | React reloads members on `server:member-*` | Mapped to ServerMembers refresh intent | Source path aligned |
+| Home unread merge | React counts deduped missed messages and knows current channel state | KMP counts deduped non-self messages and suppresses active conversation increments | Near-bottom/read-receipt nuance still not full React parity |
 
 ## Dual-End Missing Work
 
 This is the actionable split between Android-native, OHOS-native, and shared KMP. Most product-visible fixes belong in shared KMP; transport-only work is not enough.
 
-### Shared KMP Missing Work
+### Shared KMP Remaining Work
 
-- Accept canonical raw `message:new` / `message:updated` payloads and keep only a compatibility fallback for `{ message: ... }` if required by older tests.
-- Track applied message cursor separately from heartbeat server max seq; `heartbeat.seq` must never advance the resume cursor.
-- Add a shared "server ahead" signal so heartbeat can trigger gap sync/backfill for visible scopes without pretending messages were applied.
-- Expand `RealtimeSocketEvents` and the mapper/repository model for channel updates, channel member updates, server membership removal, machine status/capabilities/updated, agent created/deleted, server plan, announcements, and reminders.
-- Add refresh intents for events that are not self-contained (`server:member-*`, `channel:members-updated`, `machine:updated`, `agent:created/deleted`) instead of fabricating partial domain objects.
-- Make Home unread/preview merge dedupe by message id/seq and count missed messages per channel; include visible channel/thread and self-authored-message rules.
-- Add shared contract tests based on raw server payloads and React recovery semantics.
+Task #65 completed the shared payload/cursor/resume/refresh-intent/Home-unread work. Remaining shared items:
 
-### Android Missing Work
+- Add `daemon:status` and `server:plan-updated` if those events are still part of the active server contract.
+- Replace conservative refresh intents with finer local mutation where the product needs it, especially durable agent activity trajectory, machine online/offline merge, and Agent detail reminders.
+- Add broader shared contract tests based on pinned server payload fixtures beyond the focused raw-message/watchdog/Home tests already added.
+- Add real read-position / near-bottom awareness if Thread unread parity needs to go beyond current visible-conversation suppression.
 
-- Remove duplicate global `sync:resume` from raw `connect`; wait for `rooms:joined` or prove room setup before resume.
-- Refresh/update socket auth before Manager `reconnect_attempt`, using the same decision policy React has in `socketReconnectAuthRefresh.ts`.
-- Add an app-layer heartbeat watchdog using React's conservative thresholds: heartbeat silence over 90s plus all inbound event silence over 120s while connected should force reconnect.
-- Subscribe to the missing React events after the shared mapper/refresh-intent model exists.
-- Add diagnostics that log `rooms:joined`, resume reason, heartbeat server seq vs applied cursor, and dropped/unknown event names.
+### Android Remaining Work
 
-### OHOS Missing Work
+Task #65 completed the duplicate-resume, reconnect-auth, heartbeat-watchdog, event-subscription, and diagnostics work. Remaining Android items:
+
+- Device/network proof for stale-token reconnect and heartbeat-silence reconnect.
+- Add legacy `daemon:status` / `server:plan-updated` subscriptions if the shared model adds them.
+
+### OHOS Remaining Work
 
 - Add parser fixtures for Engine.IO open, ping, close; Socket.IO connect, connect error, event, disconnect; and reconnect-after-close.
-- Add field diagnostics for Engine.IO `pingInterval` / `pingTimeout`, ping received, pong sent, Socket.IO auth connect sent, app heartbeat received, and event parse failures.
 - Forward connection lifecycle events (`connect`, `disconnect`, reconnect attempt/error/failed or equivalent bridge states) into shared diagnostics.
-- Add app-layer heartbeat watchdog in ArkTS or shared shell, not just Engine.IO pong handling.
 - Add token-refresh/reconnect handoff. The bridge currently uses the token it was given; it needs a path to refresh or request a new access token before reconnect if the access token is near expiry/expired.
-- Once shared event coverage exists, subscribe/forward the same React event set as Android.
+- Add real-device proof for field diagnostics and heartbeat watchdog.
+- Add legacy `daemon:status` / `server:plan-updated` forwarding if the shared model adds them.
 
 ## Confirmation Plan
 
@@ -702,7 +676,7 @@ If Engine.IO ping/pong works but app `heartbeat` does not arrive, the issue is S
 
 Send one message from React or CLI while OHOS Home is open. Log raw event keys and mapper result.
 
-Expected today if the mismatch is active:
+Expected before Task #65 if the mismatch was active:
 
 - OHOS/Android receives event name `message:new`
 - raw payload top-level keys include `id`, `channelId`, `seq`, `content`
@@ -720,7 +694,7 @@ Reproduce with:
 4. Wait for heartbeat with higher `seq`.
 5. Reconnect.
 
-If mobile emits `sync:resume` with the heartbeat max seq rather than the last applied message seq, resume will skip the missed message. That is a cursor bug.
+If mobile emits `sync:resume` with the heartbeat max seq rather than the last applied message seq, resume will skip the missed message. Task #65 fixed the source path; this test is now a regression check.
 
 ### 5. Home Merge
 
@@ -732,65 +706,46 @@ After fixing decode/cursor first, retest Home:
 - DM creation reloads Home and joins room
 - thread reply updates parent reply count
 
-## Recommended Fix Order
+## Recommended Next Fix Order After Task #65
 
 ### P0
 
-1. Fix `RealtimeEventMapper` for canonical raw `message:new` and `message:updated`.
-   - Decode raw `MessageWireDto` first.
-   - Keep `{ message: ... }` fallback only if old local tests require it.
-   - Update tests to use server/React raw payload shape.
+1. Real-device proof for Android and OHOS realtime reconnect/resume.
+   - Prove `rooms:joined`, `heartbeat`, raw `message:new`, `sync:resume:response`, and heartbeat-silence reconnect on device.
+   - Prove Android stale-token reconnect updates Socket.IO auth before retry.
 
-2. Split heartbeat max seq from applied message resume seq.
-   - Track `serverMaxSeq` from heartbeat separately.
-   - Do not update resume `lastSeq` from heartbeat.
-   - If `heartbeat.seq > appliedLastSeq`, trigger a gap sync/backfill intent instead.
-
-3. Align resume timing to React.
-   - Emit global `sync:resume` after `rooms:joined`.
-   - Avoid duplicate `sync:resume` on raw `connect` before room setup.
-   - On reconnect, wait for the post-reconnect `rooms:joined` or explicitly prove rooms are joined before resume.
-
-4. Add app-layer heartbeat watchdog.
-   - Mirror React threshold: heartbeat silence > 90s and all inbound event silence > 120s while connected -> disconnect/connect.
-   - Add this for Android native transport and OHOS bridge.
+2. OHOS refreshed-token reconnect handoff.
+   - The bridge currently reconnects with the token it was given.
+   - It needs a way to request or receive a refreshed session before reconnect when the access token is near expiry/expired.
 
 ### P1
 
-5. Add reconnect-attempt token refresh parity.
-   - Android: refresh/update auth before Manager retry handshakes.
-   - OHOS: refresh or request refreshed session before reconnect when token is near expiry/expired, or reconnect through shared session refresh flow.
+3. Add remaining legacy event coverage if still used.
+   - `daemon:status`
+   - `server:plan-updated`
 
-6. Wire missing React events.
-   - At minimum: `channel:updated`, `channel:members-updated`, `server:membership-removed`, `machine:status`, `machine:capabilities`, `machine:updated`, `agent:created`, `agent:deleted`.
-   - For `server:member-*`, do not map to null silently; emit a refresh-members/reload-home signal.
+4. Replace conservative refresh intents where fine-grained local parity matters.
+   - durable agent activity trajectory
+   - machine online/offline merge
+   - Agent detail reminder rows
+   - announcement dedupe/local insertion
 
-7. Harden Home unread/preview merge.
-   - Count deduped resume messages per channel, not just +1.
-   - Avoid unread increments for current visible thread/channel and self-authored messages where appropriate.
-   - Keep message seq cursor based on applied/deduped messages only.
+5. Add OHOS Socket.IO parser tests.
+   - Engine.IO open/ping/pong/close
+   - Socket.IO connect/connect error/event/disconnect
+   - reconnect after close
 
 ### P2
 
-8. Add OHOS Socket.IO parser tests/diagnostics.
-   - Engine.IO open/ping/pong
-   - Socket.IO event packet
-   - connect error packet
-   - reconnect after close
-
-9. Add live contract tests against the pinned server source shape.
-   - Raw `message:new`
-   - Raw `message:updated`
-   - `sync:resume:response` raw messages list
+6. Expand live contract tests against pinned server payload fixtures.
+   - raw `message:new`
+   - raw `message:updated`
+   - raw messages in `sync:resume:response`
    - heartbeat must not advance applied resume cursor
+   - Home unread active/self/dedupe behavior
 
 ## Current Answer To The Original Question
 
-No, mobile is not fully aligned with React Socket.IO semantics.
+After Task #65, mobile source is aligned with the React Socket.IO semantics that were most likely to cause lost messages or stale Home state.
 
-The OHOS implementation does include the low-level Engine.IO ping/pong path, so the likely defect is not simply "ping/pong missing." The more likely causes of the observed OHOS realtime/Home problems are:
-
-1. live message events are dropped because the KMP mapper expects the wrong payload envelope;
-2. heartbeat seq advances mobile resume cursor and can hide the dropped messages from later `sync:resume`;
-3. mobile lacks React's heartbeat-silence reconnect guard;
-4. mobile does not subscribe/respond to several React realtime refresh events, so Home/Members/Settings can remain stale even when the socket is connected.
+The OHOS implementation did already include the low-level Engine.IO ping/pong path; the original likely defects were at the app Socket.IO layer: raw message decoding, heartbeat cursor handling, resume timing, app heartbeat silence recovery, missing refresh events, server removal handling, and Home unread merge. Those source paths are now fixed. Remaining work is proof and narrower parity: OHOS token refresh on reconnect, real-device verification, two legacy events, and finer local mutation for some refresh-driven surfaces.
