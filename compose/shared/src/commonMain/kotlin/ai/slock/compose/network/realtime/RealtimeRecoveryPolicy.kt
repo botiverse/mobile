@@ -72,7 +72,6 @@ class RealtimeRecoveryPolicy(
 
         val recoveryIntents = buildList {
             addAll(connectionResult.intents)
-            context.lastSeq?.takeIf { it > 0L }?.let { add(RealtimeConnectionIntent.ResumeSync(it)) }
             context.serverId?.let {
                 add(RealtimeConnectionIntent.BackfillRequired(BackfillScope.Home(it), reason))
             }

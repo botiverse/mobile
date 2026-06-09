@@ -60,6 +60,7 @@ import ai.slock.compose.data.SharedAuthResult
 import ai.slock.compose.data.SharedTasksDataSource
 import ai.slock.compose.data.SharedTasksRouteIntent
 import ai.slock.compose.data.SharedTasksViewModel
+import ai.slock.compose.data.realtime.RealtimeCursorPolicy
 import ai.slock.compose.data.SharedHomeContentState
 import ai.slock.compose.data.SharedHomeDataSource
 import ai.slock.compose.data.HomeSnapshot
@@ -6956,13 +6957,7 @@ private fun parseSharedShellRealtimeEvent(payload: String): Result<RealtimeEvent
     }
 
 private fun Long.updateFrom(event: RealtimeEvent): Long =
-    when (event) {
-        is Heartbeat -> maxOf(this, event.seq)
-        is SyncResumeResponse -> maxOf(this, event.currentSeq)
-        is MessageNew -> maxOf(this, event.message.seq ?: 0L)
-        is MessageUpdated -> maxOf(this, event.message.seq ?: 0L)
-        else -> this
-    }
+    RealtimeCursorPolicy.updateAppliedSeq(this, event)
 
 private fun JSONObject?.toSharedMessage(): Message {
     val json = this ?: JSONObject()

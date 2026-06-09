@@ -77,6 +77,7 @@ import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.SyncResumeResponse
 import ai.slock.android.core.model.ThreadUpdated
 import ai.slock.compose.data.SlockAndroidSqlDatabaseContext
+import ai.slock.compose.data.realtime.RealtimeCursorPolicy
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext
 import com.tencent.kuikly.core.render.android.adapter.HRImageLoadOption
@@ -724,13 +725,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 }
 
 private fun Long.updateFrom(event: RealtimeEvent): Long =
-        when (event) {
-            is Heartbeat -> maxOf(this, event.seq)
-            is SyncResumeResponse -> maxOf(this, event.currentSeq)
-            is MessageNew -> maxOf(this, event.message.seq ?: 0L)
-            is MessageUpdated -> maxOf(this, event.message.seq ?: 0L)
-            else -> this
-        }
+        RealtimeCursorPolicy.updateAppliedSeq(this, event)
 
 private fun RealtimeEvent.toSharedShellJson(): JSONObject =
         when (this) {

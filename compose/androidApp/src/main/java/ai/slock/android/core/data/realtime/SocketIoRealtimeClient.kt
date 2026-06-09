@@ -4,6 +4,8 @@ import ai.slock.compose.data.RealtimeSubscription
 import ai.slock.compose.data.realtime.RealtimeConnectRequest
 import ai.slock.compose.data.realtime.RealtimeConnectionState
 import ai.slock.compose.data.realtime.RealtimeClientDiagnostics
+import ai.slock.compose.data.realtime.RealtimeCursorPolicy
+import ai.slock.compose.data.realtime.RealtimeCursorState
 import ai.slock.compose.data.realtime.RealtimeResumeRequest
 import ai.slock.compose.data.realtime.RealtimeSocketTransport
 import ai.slock.compose.data.realtime.RealtimeSocketEvents
@@ -32,7 +34,7 @@ class SocketIoRealtimeClient(
     private val listeners = mutableSetOf<(RealtimeEvent) -> Unit>()
     private val transportSubscriptions = mutableListOf<RealtimeSubscription>()
     private val joinedChannels = linkedSetOf<ChannelId>()
-    private var lastSeq: Long = 0
+    private var cursor: RealtimeCursorState = RealtimeCursorPolicy.fromAppliedSeq(0)
     private var connectedServerId: String? = null
     // Deduplicate MemberPresenceUpdated: agent:activity fires multiple times per second for the
     // same agent. Skip dispatch when presence+kind is unchanged to avoid redundant recompositions.
@@ -46,7 +48,7 @@ class SocketIoRealtimeClient(
             joinedChannels.clear()
             connectedServerId = request.auth.serverId.value
         }
-        lastSeq = request.lastSeq
+        cursor = RealtimeCursorPolicy.fromAppliedSeq(request.lastSeq)
         state = RealtimeConnectionState.Connecting
         diagnostics?.onConnectRequested(request.auth.serverId, request.lastSeq)
         ensureTransportListeners()
@@ -86,15 +88,23 @@ class SocketIoRealtimeClient(
         if (transportSubscriptions.isNotEmpty()) return
         transportSubscriptions += transport.on(RealtimeSocketEvents.Connect) {
             state = RealtimeConnectionState.Connected
-            diagnostics?.onConnected(connectedServerId?.let(::ServerId), lastSeq.takeIf { it > 0L })
-            logger("client_connected serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size}")
+            diagnostics?.onConnected(connectedServerId?.let(::ServerId))
+            logger(
+                "client_connected serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size} " +
+                    "appliedSeq=${cursor.appliedLastSeq} serverMaxSeq=${cursor.serverMaxSeq}"
+            )
             rejoinChannels(reason = "connect")
-            emitSyncResume(reason = "connect")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.RoomsJoined) {
             state = RealtimeConnectionState.RoomsJoined
-            diagnostics?.onConnected(connectedServerId?.let(::ServerId), lastSeq.takeIf { it > 0L })
-            logger("rooms_joined serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size} lastSeq=$lastSeq")
+            diagnostics?.onRoomsJoined(
+                connectedServerId?.let(::ServerId),
+                cursor.resumeLastSeq.takeIf { it > 0L }
+            )
+            logger(
+                "rooms_joined serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size} " +
+                    "appliedSeq=${cursor.appliedLastSeq} serverMaxSeq=${cursor.serverMaxSeq}"
+            )
             emitSyncResume(reason = "rooms_joined")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.ConnectError) { payload ->
@@ -115,10 +125,12 @@ class SocketIoRealtimeClient(
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.Reconnect) {
             state = RealtimeConnectionState.Connected
-            diagnostics?.onConnected(connectedServerId?.let(::ServerId), lastSeq.takeIf { it > 0L })
-            logger("client_reconnected serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size} lastSeq=$lastSeq")
+            diagnostics?.onConnected(connectedServerId?.let(::ServerId))
+            logger(
+                "client_reconnected serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size} " +
+                    "appliedSeq=${cursor.appliedLastSeq} serverMaxSeq=${cursor.serverMaxSeq}"
+            )
             rejoinChannels(reason = "reconnect")
-            emitSyncResume(reason = "reconnect")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectAttempt) { payload ->
             logger("client_reconnect_attempt serverId=${connectedServerId.orEmpty()} payload=${payload?.toString().orEmpty()}")
@@ -168,16 +180,21 @@ class SocketIoRealtimeClient(
     }
 
     private fun emitSyncResume(reason: String) {
-        if (lastSeq <= 0) return
-        logger("sync_resume_emit serverId=${connectedServerId.orEmpty()} lastSeq=$lastSeq reason=$reason")
-        transport.emit(RealtimeSocketEvents.SyncResume, RealtimeResumeRequest(lastSeq).toWireMap())
+        val resumeLastSeq = cursor.resumeLastSeq
+        if (resumeLastSeq <= 0) return
+        logger("sync_resume_emit serverId=${connectedServerId.orEmpty()} lastSeq=$resumeLastSeq reason=$reason")
+        transport.emit(RealtimeSocketEvents.SyncResume, RealtimeResumeRequest(resumeLastSeq).toWireMap())
     }
 
     private fun dispatch(event: RealtimeEvent) {
-        if (event is Heartbeat) lastSeq = maxOf(lastSeq, event.seq)
-        if (event is MessageNew) event.message.seq?.let { lastSeq = maxOf(lastSeq, it) }
-        if (event is MessageUpdated) event.message.seq?.let { lastSeq = maxOf(lastSeq, it) }
-        if (event is SyncResumeResponse) lastSeq = maxOf(lastSeq, event.currentSeq)
+        val cursorUpdate = RealtimeCursorPolicy.updateFromEvent(cursor, event)
+        cursor = cursorUpdate.state
+        if (event is Heartbeat && cursorUpdate.serverAhead) {
+            logger(
+                "heartbeat_gap_detected serverId=${connectedServerId.orEmpty()} " +
+                    "serverSeq=${event.seq} appliedSeq=${cursor.appliedLastSeq}"
+            )
+        }
         if (event is MemberPresenceUpdated) {
             val key = event.memberId.value
             val next = event.presence to event.kind
@@ -187,7 +204,11 @@ class SocketIoRealtimeClient(
             }
             lastPresenceByMember[key] = next
         }
-        logger("event_dispatch type=${event.realtimeDiagnosticName()} seq=$lastSeq listeners=${listeners.size}")
+        diagnostics?.onEvent(event, connectedServerId?.let(::ServerId), visibleThreadId = null)
+        logger(
+            "event_dispatch type=${event.realtimeDiagnosticName()} appliedSeq=${cursor.appliedLastSeq} " +
+                "serverMaxSeq=${cursor.serverMaxSeq} listeners=${listeners.size}"
+        )
         listeners.toList().forEach { it(event) }
     }
 

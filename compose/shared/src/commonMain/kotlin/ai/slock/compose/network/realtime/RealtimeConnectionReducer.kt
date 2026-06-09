@@ -18,6 +18,8 @@ sealed class RealtimeConnectionEvent {
     data class Connected(val nowMillis: Long, val serverSeq: Long? = null) :
         RealtimeConnectionEvent()
 
+    data class RoomsJoined(val nowMillis: Long) : RealtimeConnectionEvent()
+
     data class Disconnected(
         val nowMillis: Long,
         val reason: String,
@@ -71,9 +73,7 @@ class RealtimeConnectionReducer(
                 )
 
             is RealtimeConnectionEvent.Connected -> {
-                val resumeSeq = current.lastSeq
                 val intents = buildList {
-                    if (resumeSeq != null) add(RealtimeConnectionIntent.ResumeSync(resumeSeq))
                     serverId?.let { add(RealtimeConnectionIntent.ReplayRooms("reconnected")) }
                     serverId?.let {
                         add(RealtimeConnectionIntent.BackfillRequired(BackfillScope.Home(it), "reconnected"))
@@ -86,13 +86,29 @@ class RealtimeConnectionReducer(
                     state = current.copy(
                         phase = RealtimeConnectionPhase.Connected,
                         reconnectAttempt = 0,
-                        lastSeq = event.serverSeq ?: current.lastSeq,
+                        serverMaxSeq = maxSeq(current.serverMaxSeq, event.serverSeq),
                         lastConnectedAtMillis = event.nowMillis,
                         lastDisconnectReason = null,
                         nextRetryDelayMillis = null,
                         issue = null
                     ),
                     intents = intents
+                )
+            }
+
+            is RealtimeConnectionEvent.RoomsJoined -> {
+                val resumeSeq = current.lastSeq
+                RealtimeReducerResult(
+                    state = current.copy(
+                        phase = RealtimeConnectionPhase.Connected,
+                        nextRetryDelayMillis = null,
+                        issue = null
+                    ),
+                    intents =
+                        resumeSeq
+                            ?.takeIf { it > 0L }
+                            ?.let { listOf(RealtimeConnectionIntent.ResumeSync(it)) }
+                            ?: emptyList()
                 )
             }
 
@@ -112,15 +128,30 @@ class RealtimeConnectionReducer(
                     issue = event.issue
                 )
 
-            is RealtimeConnectionEvent.Heartbeat ->
+            is RealtimeConnectionEvent.Heartbeat -> {
+                val appliedSeq = current.lastSeq
+                val serverAhead =
+                    if (appliedSeq != null) event.seq > appliedSeq else event.seq > 0L
+                val intents = buildList {
+                    if (serverAhead) {
+                        serverId?.let {
+                            add(RealtimeConnectionIntent.BackfillRequired(BackfillScope.Home(it), "heartbeat_gap"))
+                        }
+                        visibleThreadId?.let {
+                            add(RealtimeConnectionIntent.BackfillRequired(BackfillScope.Thread(it), "heartbeat_gap"))
+                        }
+                    }
+                }
                 RealtimeReducerResult(
                     state = current.copy(
                         phase = RealtimeConnectionPhase.Connected,
-                        lastSeq = maxSeq(current.lastSeq, event.seq),
+                        serverMaxSeq = maxSeq(current.serverMaxSeq, event.seq),
                         lastHeartbeatAtMillis = event.nowMillis,
                         issue = null
-                    )
+                    ),
+                    intents = intents
                 )
+            }
 
             is RealtimeConnectionEvent.EventEnvelope -> {
                 val expected = current.lastSeq?.plus(1)
@@ -136,7 +167,10 @@ class RealtimeConnectionReducer(
                     }
                 }
                 RealtimeReducerResult(
-                    state = current.copy(lastSeq = maxSeq(current.lastSeq, event.seq)),
+                    state = current.copy(
+                        lastSeq = maxSeq(current.lastSeq, event.seq),
+                        serverMaxSeq = maxSeq(current.serverMaxSeq, event.seq)
+                    ),
                     intents = intents
                 )
             }
@@ -231,4 +265,7 @@ class RealtimeConnectionReducer(
 
     private fun maxSeq(current: Long?, next: Long): Long =
         current?.let { maxOf(it, next) } ?: next
+
+    private fun maxSeq(current: Long?, next: Long?): Long? =
+        next?.let { maxSeq(current, it) } ?: current
 }

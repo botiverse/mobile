@@ -39,6 +39,7 @@ export class SlockOhosRealtimeBridge {
     this.socketIo.setListener({
       onConnected: () => {
         console.info('[SlockOhosRealtime] socket_io_connected');
+        this.rejoinChannels('connect');
       },
       onDisconnected: (reason: string) => {
         console.info(`[SlockOhosRealtime] socket_io_disconnected reason=${reason}`);
@@ -129,6 +130,10 @@ export class SlockOhosRealtimeBridge {
     if (WIRE_EVENTS.indexOf(eventName) < 0) {
       return;
     }
+    if (eventName === 'heartbeat') {
+      const heartbeat = payload as KRRecord;
+      console.info(`[SlockOhosRealtime] app_heartbeat_received seq=${Number(heartbeat['seq'] ?? 0)}`);
+    }
     const serverId = this.connectParams?.serverId ?? '';
     this.controller?.sendEvent(REALTIME_EVENT_NAME, {
       serverId: serverId,
@@ -138,8 +143,8 @@ export class SlockOhosRealtimeBridge {
   }
 
   private onRoomsJoined(): void {
-    this.rejoinChannels('rooms_joined');
     const lastSeq = this.connectParams?.lastSeq ?? 0;
+    console.info(`[SlockOhosRealtime] rooms_joined joinedRooms=${this.joinedChannels.size} lastSeq=${lastSeq}`);
     if (lastSeq > 0) {
       this.syncResume(lastSeq);
     }
@@ -166,6 +171,7 @@ export class SlockOhosRealtimeBridge {
     if (lastSeq <= 0) {
       return;
     }
+    console.info(`[SlockOhosRealtime] sync_resume_emit lastSeq=${lastSeq}`);
     this.socketIo.emit('sync:resume', { lastSeq: lastSeq });
   }
 }

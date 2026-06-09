@@ -164,6 +164,7 @@ data class RealtimeConnectionState(
     val phase: RealtimeConnectionPhase = RealtimeConnectionPhase.Disconnected,
     val reconnectAttempt: Int = 0,
     val lastSeq: Long? = null,
+    val serverMaxSeq: Long? = null,
     val lastHeartbeatAtMillis: Long? = null,
     val lastConnectedAtMillis: Long? = null,
     val lastDisconnectedAtMillis: Long? = null,
@@ -262,6 +263,7 @@ data class NetworkDiagnosticsSnapshot(
             appendLine("realtime_phase=${health.realtime.phase}")
             appendLine("realtime_attempt=${health.realtime.reconnectAttempt}")
             appendLine("last_seq=${health.realtime.lastSeq ?: ""}")
+            appendLine("server_max_seq=${health.realtime.serverMaxSeq ?: ""}")
             appendLine("last_heartbeat_at=${health.realtime.lastHeartbeatAtMillis ?: ""}")
             appendLine("last_disconnect_reason=${health.realtime.lastDisconnectReason.orEmpty()}")
             appendLine("last_api_issue=${health.lastApiIssue?.diagnosticCode.orEmpty()}")

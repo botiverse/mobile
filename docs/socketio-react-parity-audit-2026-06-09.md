@@ -214,6 +214,19 @@ The most dangerous current combination is:
 
 That is why fixing payload shape and heartbeat cursor semantics has higher product impact than adding more low-level Socket.IO features.
 
+## Implementation Update: Task #65
+
+Follow-up implementation on 2026-06-09 closed the highest-risk loss/skip path:
+
+- KMP now accepts raw `message:new` / `message:updated` enriched message rows, while keeping the previous `{ message: ... }` envelope as a compatibility fallback.
+- Shared cursor policy now distinguishes applied resume cursor from server max seq. `heartbeat.seq` updates server max only; it no longer advances applied `lastSeq`.
+- Android and shared app-shell cursor updates use the same shared policy, so Android/KMP and OHOS-fed KMP events do not diverge on heartbeat handling.
+- Shared realtime diagnostics now expose `serverMaxSeq`, emit heartbeat-gap backfill intents, and emit `sync:resume` only from a `rooms:joined` transition.
+- Android Socket.IO now replays rooms on connect/reconnect and gates `sync:resume` on `rooms:joined`.
+- OHOS bridge diagnostics now log Engine.IO open ping parameters, ping/pong, Socket.IO auth connect, Engine.IO close, Socket.IO disconnect, `rooms:joined`, app heartbeat, and `sync:resume`; OHOS room replay also moved to socket connect, with resume after `rooms:joined`.
+
+Remaining gaps from this audit are still open: heartbeat-silence forced reconnect, stale-token reconnect parity, broader React event coverage, server membership removal behavior, and the Home merge/unread correctness work.
+
 ## React / Server Contract
 
 ### Connection Setup

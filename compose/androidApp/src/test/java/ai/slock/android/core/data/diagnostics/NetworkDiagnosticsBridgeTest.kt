@@ -12,6 +12,7 @@ import ai.slock.android.core.model.MessageNew
 import ai.slock.android.core.model.ServerId
 import ai.slock.android.core.model.ThreadId
 import ai.slock.android.core.state.ScreenError
+import ai.slock.compose.network.model.BackfillScope
 import ai.slock.compose.network.model.NetworkStatus
 import ai.slock.compose.network.model.RealtimeConnectionPhase
 import ai.slock.compose.network.realtime.RealtimeConnectionIntent
@@ -48,8 +49,50 @@ class NetworkDiagnosticsBridgeTest {
         assertEquals("server-1", snapshot.serverId)
         assertEquals(RealtimeConnectionPhase.Connected, snapshot.health.realtime.phase)
         assertEquals(43L, snapshot.health.realtime.lastSeq)
+        assertEquals(43L, snapshot.health.realtime.serverMaxSeq)
         assertEquals(3_000L, snapshot.health.realtime.lastHeartbeatAtMillis)
-        assertTrue(logs.any { it.contains("realtime=Connected") && it.contains("lastSeq=43") })
+        assertTrue(
+                logs.any {
+                    it.contains("realtime=Connected") &&
+                            it.contains("lastSeq=43") &&
+                            it.contains("serverMaxSeq=43")
+                }
+        )
+    }
+
+    @Test
+    fun heartbeatGapDoesNotAdvanceResumeSeqAndQueuesBackfill() {
+        var now = 1_000L
+        val bridge = NetworkDiagnosticsBridge(nowMillis = { now }, logger = {})
+        val serverId = ServerId("server-1")
+
+        bridge.onConnectRequested(serverId, lastSeq = 41)
+        bridge.onConnected(serverId, serverSeq = null)
+        bridge.drainPendingIntents()
+        now = 2_000L
+        bridge.onEvent(Heartbeat(seq = 44), serverId, visibleThreadId = "thread-1")
+
+        val snapshot = bridge.snapshot()
+        val intents = bridge.drainPendingIntents()
+
+        assertEquals(41L, snapshot.health.realtime.lastSeq)
+        assertEquals(44L, snapshot.health.realtime.serverMaxSeq)
+        assertTrue(
+                intents.contains(
+                        RealtimeConnectionIntent.BackfillRequired(
+                                BackfillScope.Home("server-1"),
+                                "heartbeat_gap"
+                        )
+                )
+        )
+        assertTrue(
+                intents.contains(
+                        RealtimeConnectionIntent.BackfillRequired(
+                                BackfillScope.Thread("thread-1"),
+                                "heartbeat_gap"
+                        )
+                )
+        )
     }
 
     @Test

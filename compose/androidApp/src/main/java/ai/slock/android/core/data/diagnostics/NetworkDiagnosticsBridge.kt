@@ -109,6 +109,14 @@ class NetworkDiagnosticsBridge(
         )
     }
 
+    override fun onRoomsJoined(serverId: ServerId?, lastSeq: Long?) {
+        applyRealtimeEvent(
+                event = RealtimeConnectionEvent.RoomsJoined(nowMillis()),
+                serverId = serverId,
+                lastSeq = lastSeq
+        )
+    }
+
     override fun onIntentionalDisconnect(reason: String, serverId: ServerId?) {
         update { current ->
             current.copy(
@@ -189,7 +197,12 @@ class NetworkDiagnosticsBridge(
     ) {
         update { current ->
             val seededRealtime =
-                    lastSeq?.takeIf { it > 0L }?.let { current.realtime.copy(lastSeq = it) }
+                    lastSeq?.takeIf { it > 0L }?.let {
+                        current.realtime.copy(
+                                lastSeq = maxOf(current.realtime.lastSeq ?: 0L, it),
+                                serverMaxSeq = maxOf(current.realtime.serverMaxSeq ?: 0L, it)
+                        )
+                    }
                             ?: current.realtime
             val result =
                     reducer.reduce(
@@ -276,6 +289,7 @@ private fun NetworkDiagnosticsSnapshot.toLogLine(): String =
                 "apiReachable=${health.apiReachable} " +
                 "realtime=${health.realtime.phase} " +
                 "lastSeq=${health.realtime.lastSeq ?: 0L} " +
+                "serverMaxSeq=${health.realtime.serverMaxSeq ?: 0L} " +
                 "heartbeatAt=${health.realtime.lastHeartbeatAtMillis ?: 0L} " +
                 "issue=${health.realtime.issue?.diagnosticCode ?: health.lastApiIssue?.diagnosticCode.orEmpty()} " +
                 "sync=${lastSyncResult.orEmpty()}"

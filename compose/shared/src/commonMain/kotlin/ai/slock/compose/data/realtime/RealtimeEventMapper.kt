@@ -97,9 +97,9 @@ class RealtimeEventMapper {
     private fun mapElement(eventName: String, element: JsonObject): RealtimeEvent? = try {
         when (eventName) {
             RealtimeSocketEvents.MessageNew ->
-                decodeOrNull(MessageEnvelopeDto.serializer(), element)?.message?.toDomain()?.let(::MessageNew)
+                decodeMessageWire(element)?.toDomain()?.let(::MessageNew)
             RealtimeSocketEvents.MessageUpdated ->
-                decodeOrNull(MessageEnvelopeDto.serializer(), element)?.message?.toDomain()?.let(::MessageUpdated)
+                decodeMessageWire(element)?.toDomain()?.let(::MessageUpdated)
             RealtimeSocketEvents.DirectMessageNew -> decodeDirectMessageNew(element)
             RealtimeSocketEvents.ThreadUpdated ->
                 decodeOrNull(ThreadUpdatedDto.serializer(), element)?.toDomain()
@@ -130,13 +130,17 @@ class RealtimeEventMapper {
     }
 
     private fun decodeDirectMessageNew(element: JsonObject): RealtimeEvent? {
-        decodeOrNull(MessageEnvelopeDto.serializer(), element)?.message?.toDomain()
+        decodeMessageWire(element)?.toDomain()
             ?.let { return MessageNew(it) }
         val channelId = (element["channelId"] as? JsonPrimitive)?.contentOrNull
             ?: (element["id"] as? JsonPrimitive)?.contentOrNull
             ?: return null
         return DirectMessageCreated(ChannelId(channelId))
     }
+
+    private fun decodeMessageWire(element: JsonObject): MessageWireDto? =
+        decodeOrNull(MessageWireDto.serializer(), element)
+            ?: decodeOrNull(MessageEnvelopeDto.serializer(), element)?.message
 
     private fun <T> decodeOrNull(
         serializer: kotlinx.serialization.KSerializer<T>,

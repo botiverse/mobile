@@ -4,9 +4,11 @@ import { KRAny, KRRecord } from '@kuikly-open/render';
 
 const SOCKET_IO_PATH = '/socket.io/';
 const ENGINE_IO_OPEN = '0';
+const ENGINE_IO_CLOSE = '1';
 const ENGINE_IO_PING = '2';
 const ENGINE_IO_PONG = '3';
 const SOCKET_IO_CONNECT = '40';
+const SOCKET_IO_DISCONNECT = '41';
 const SOCKET_IO_EVENT = '42';
 const SOCKET_IO_CONNECT_ERROR = '44';
 
@@ -179,17 +181,38 @@ export class OhosSocketIoClient {
       return;
     }
     if (frame.startsWith(ENGINE_IO_OPEN)) {
+      this.logEngineOpen(frame.substring(ENGINE_IO_OPEN.length));
       this.sendSocketIoConnect(params.auth);
       return;
     }
+    if (frame.startsWith(ENGINE_IO_CLOSE)) {
+      console.info('[OhosSocketIo] engine_close');
+      this.disconnectSocket('engine_io_close');
+      this.listener.onDisconnected?.('engine_io_close');
+      if (!this.manualDisconnect) {
+        this.scheduleReconnect('engine_io_close');
+      }
+      return;
+    }
     if (frame === ENGINE_IO_PING) {
+      console.info('[OhosSocketIo] engine_ping_received');
       this.sendRaw(ENGINE_IO_PONG);
+      console.info('[OhosSocketIo] engine_pong_sent');
       return;
     }
     if (frame.startsWith(SOCKET_IO_CONNECT)) {
       this.connected = true;
       this.reconnectAttempt = 0;
       this.listener.onConnected?.();
+      return;
+    }
+    if (frame.startsWith(SOCKET_IO_DISCONNECT)) {
+      console.info('[OhosSocketIo] socket_disconnect');
+      this.disconnectSocket('socket_disconnect');
+      this.listener.onDisconnected?.('socket_disconnect');
+      if (!this.manualDisconnect) {
+        this.scheduleReconnect('socket_disconnect');
+      }
       return;
     }
     if (frame.startsWith(SOCKET_IO_CONNECT_ERROR)) {
@@ -203,7 +226,19 @@ export class OhosSocketIoClient {
     }
   }
 
+  private logEngineOpen(payload: string): void {
+    try {
+      const values = JSON.parse(payload) as KRRecord;
+      const pingInterval = Number(values['pingInterval'] ?? 0);
+      const pingTimeout = Number(values['pingTimeout'] ?? 0);
+      console.info(`[OhosSocketIo] engine_open pingInterval=${pingInterval} pingTimeout=${pingTimeout}`);
+    } catch (error) {
+      console.info('[OhosSocketIo] engine_open');
+    }
+  }
+
   private sendSocketIoConnect(auth: KRRecord): void {
+    console.info(`[OhosSocketIo] socket_auth_connect_sent authKeys=${Object.keys(auth).join(',')}`);
     this.sendRaw(`${SOCKET_IO_CONNECT}${JSON.stringify(auth)}`);
   }
 

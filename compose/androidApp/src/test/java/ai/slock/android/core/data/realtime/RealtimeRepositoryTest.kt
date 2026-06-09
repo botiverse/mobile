@@ -38,6 +38,7 @@ import kotlin.coroutines.startCoroutine
 import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -142,16 +143,14 @@ class RealtimeRepositoryTest {
         transport.receive(
             RealtimeSocketEvents.MessageNew,
             mapOf(
-                "message" to mapOf(
-                    "id" to "message-1",
-                    "threadId" to "thread-1",
-                    "channelId" to "channel-1",
-                    "seq" to 13,
-                    "content" to "Hello",
-                    "senderType" to "user",
-                    "senderId" to "user-1",
-                    "senderName" to "Artin"
-                )
+                "id" to "message-1",
+                "threadId" to "thread-1",
+                "channelId" to "channel-1",
+                "seq" to 13,
+                "content" to "Hello",
+                "senderType" to "user",
+                "senderId" to "user-1",
+                "senderName" to "Artin"
             )
         )
         transport.receive(
@@ -275,10 +274,28 @@ class RealtimeRepositoryTest {
             transport.emitted
                 .filter { it.first == RealtimeSocketEvents.JoinChannel }
                 .map { it.second["channelId"] }
-        val resume = transport.emitted.single { it.first == RealtimeSocketEvents.SyncResume }
         assertEquals(listOf("channel-1", "thread-1"), joinRooms)
-        assertEquals(88L, resume.second["lastSeq"])
+        assertFalse(transport.emitted.any { it.first == RealtimeSocketEvents.SyncResume })
         assertTrue(events.single() is Heartbeat)
+    }
+
+    @Test
+    fun clientDoesNotAdvanceResumeCursorFromHeartbeat() {
+        val transport = FakeRealtimeSocketTransport()
+        val client = SocketIoRealtimeClient(transport)
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1")),
+                lastSeq = 41
+            )
+        )
+        transport.receive(RealtimeSocketEvents.Heartbeat, mapOf("seq" to 88))
+
+        transport.receive(RealtimeSocketEvents.RoomsJoined)
+
+        val resume = transport.emitted.single { it.first == RealtimeSocketEvents.SyncResume }
+        assertEquals(41L, resume.second["lastSeq"])
     }
 
     @Test
@@ -295,18 +312,19 @@ class RealtimeRepositoryTest {
         transport.receive(
             RealtimeSocketEvents.MessageNew,
             mapOf(
-                "message" to mapOf(
-                    "id" to "message-1",
-                    "threadId" to "channel-1",
-                    "channelId" to "channel-1",
-                    "seq" to 89,
-                    "content" to "Realtime body"
-                )
+                "id" to "message-1",
+                "threadId" to "channel-1",
+                "channelId" to "channel-1",
+                "seq" to 89,
+                "content" to "Realtime body"
             )
         )
         transport.emitted.clear()
 
         transport.receive(RealtimeSocketEvents.Reconnect)
+
+        assertFalse(transport.emitted.any { it.first == RealtimeSocketEvents.SyncResume })
+        transport.receive(RealtimeSocketEvents.RoomsJoined)
 
         val resume = transport.emitted.single { it.first == RealtimeSocketEvents.SyncResume }
         assertEquals(89L, resume.second["lastSeq"])
@@ -351,15 +369,13 @@ class RealtimeRepositoryTest {
             RealtimeSocketEvents.MessageNew,
             mapOf(
                 "serverId" to "server-2",
-                "message" to mapOf(
-                    "id" to "message-1",
-                    "threadId" to "thread-1",
-                    "channelId" to "channel-1",
-                    "content" to "Wrong server",
-                    "senderType" to "user",
-                    "senderId" to "user-1",
-                    "senderName" to "Artin"
-                )
+                "id" to "message-1",
+                "threadId" to "thread-1",
+                "channelId" to "channel-1",
+                "content" to "Wrong server",
+                "senderType" to "user",
+                "senderId" to "user-1",
+                "senderName" to "Artin"
             )
         )
 
@@ -489,16 +505,14 @@ class RealtimeRepositoryTest {
             JSONObject(
                 """
                 {
-                  "message": {
-                    "id": "message-json",
-                    "threadId": "thread-json",
-                    "channelId": "channel-json",
-                    "seq": 77,
-                    "content": "Socket payload",
-                    "senderType": "user",
-                    "senderId": "user-json",
-                    "senderName": "Socket User"
-                  }
+                  "id": "message-json",
+                  "threadId": "thread-json",
+                  "channelId": "channel-json",
+                  "seq": 77,
+                  "content": "Socket payload",
+                  "senderType": "user",
+                  "senderId": "user-json",
+                  "senderName": "Socket User"
                 }
                 """.trimIndent()
             )
@@ -515,7 +529,7 @@ class RealtimeRepositoryTest {
     }
 
     @Test
-    fun mapperPreservesSocketIoMessageAttachments() {
+    fun mapperKeepsLegacyMessageEnvelopeFallback() {
         val mapper = RealtimeEventMapper()
         val event = mapper.map(
             RealtimeSocketEvents.MessageNew,
@@ -523,26 +537,53 @@ class RealtimeRepositoryTest {
                 """
                 {
                   "message": {
-                    "id": "message-with-attachments",
-                    "threadId": "thread-json",
-                    "channelId": "channel-json",
-                    "content": "Images from socket",
-                    "attachments": [
-                      {
-                        "id": "image-1",
-                        "filename": "preview.png",
-                        "mimeType": "image/png",
-                        "sizeBytes": 43008,
-                        "thumbnailUrl": "https://cdn.example/thumbs/image-1.png"
-                      },
-                      {
-                        "id": "file-1",
-                        "filename": "report.pdf",
-                        "mimeType": "application/pdf",
-                        "sizeBytes": 2048
-                      }
-                    ]
+                    "id": "message-envelope",
+                    "threadId": "thread-envelope",
+                    "channelId": "channel-envelope",
+                    "content": "Envelope fallback",
+                    "senderType": "user",
+                    "senderId": "user-envelope",
+                    "senderName": "Envelope User"
                   }
+                }
+                """.trimIndent()
+            )
+        )
+
+        assertTrue(event is MessageNew)
+        val message = (event as MessageNew).message
+        assertEquals("message-envelope", message.id.value)
+        assertEquals("Envelope fallback", message.body)
+        assertEquals("Envelope User", message.author.displayName)
+    }
+
+    @Test
+    fun mapperPreservesSocketIoMessageAttachments() {
+        val mapper = RealtimeEventMapper()
+        val event = mapper.map(
+            RealtimeSocketEvents.MessageNew,
+            JSONObject(
+                """
+                {
+                  "id": "message-with-attachments",
+                  "threadId": "thread-json",
+                  "channelId": "channel-json",
+                  "content": "Images from socket",
+                  "attachments": [
+                    {
+                      "id": "image-1",
+                      "filename": "preview.png",
+                      "mimeType": "image/png",
+                      "sizeBytes": 43008,
+                      "thumbnailUrl": "https://cdn.example/thumbs/image-1.png"
+                    },
+                    {
+                      "id": "file-1",
+                      "filename": "report.pdf",
+                      "mimeType": "application/pdf",
+                      "sizeBytes": 2048
+                    }
+                  ]
                 }
                 """.trimIndent()
             )
@@ -570,17 +611,15 @@ class RealtimeRepositoryTest {
             JSONObject(
                 """
                 {
-                  "message": {
-                    "id": "message-agent-description",
-                    "threadId": "thread-agent",
-                    "channelId": "channel-agent",
-                    "content": "Agent payload",
-                    "senderType": "agent",
-                    "senderId": "agent-1",
-                    "senderName": "API Integration",
-                    "senderDescription": "Data contracts",
-                    "roleDescription": "agent"
-                  }
+                  "id": "message-agent-description",
+                  "threadId": "thread-agent",
+                  "channelId": "channel-agent",
+                  "content": "Agent payload",
+                  "senderType": "agent",
+                  "senderId": "agent-1",
+                  "senderName": "API Integration",
+                  "senderDescription": "Data contracts",
+                  "roleDescription": "agent"
                 }
                 """.trimIndent()
             )
@@ -602,14 +641,12 @@ class RealtimeRepositoryTest {
             JSONObject(
                 """
                 {
-                  "message": {
-                    "id": "system-message-json",
-                    "threadId": "thread-json",
-                    "channelId": "channel-json",
-                    "seq": 78,
-                    "messageType": "system",
-                    "content": "Task moved to Review"
-                  }
+                  "id": "system-message-json",
+                  "threadId": "thread-json",
+                  "channelId": "channel-json",
+                  "seq": 78,
+                  "messageType": "system",
+                  "content": "Task moved to Review"
                 }
                 """.trimIndent()
             )
