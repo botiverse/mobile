@@ -102,22 +102,6 @@ internal class BridgeModule : Module() {
             }
         }
 
-    fun composerEvent(
-        instanceId: String,
-        action: String,
-        value: String? = null,
-        asTask: Boolean? = null,
-        attachmentId: String? = null
-    ) {
-        val methodArgs = JSONObject()
-        methodArgs.put("instanceId", instanceId)
-        methodArgs.put("action", action)
-        value?.let { methodArgs.put("value", it) }
-        asTask?.let { methodArgs.put("asTask", it) }
-        attachmentId?.let { methodArgs.put("attachmentId", it) }
-        callNativeMethod("composerEvent", methodArgs, null)
-    }
-
     suspend fun motionCapability(command: JSONObject): JSONObject? =
         suspendCoroutine { continuation ->
             callNativeMethod(MOTION_CAPABILITY, command) {

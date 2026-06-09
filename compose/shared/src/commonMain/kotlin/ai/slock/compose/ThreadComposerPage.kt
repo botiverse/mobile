@@ -258,13 +258,9 @@ private fun ThreadComposerScreen() {
             "thread_composer_render instanceId=${payload.instanceId} syncNonce=${payload.syncNonce} attachments=${payload.pendingAttachments.size} mode=${payload.composerMode}"
         )
     }
-    ThreadComposerContent(payload = payload, onEvent = { action, value, asTask, attachmentId ->
-        bridge.composerEvent(
-            instanceId = payload.instanceId,
-            action = action,
-            value = value,
-            asTask = asTask,
-            attachmentId = attachmentId
+    ThreadComposerContent(payload = payload, onEvent = { action, _, _, attachmentId ->
+        bridge.log(
+            "thread_composer_visual_event instanceId=${payload.instanceId} action=$action attachmentId=${attachmentId.orEmpty()}"
         )
     })
 }

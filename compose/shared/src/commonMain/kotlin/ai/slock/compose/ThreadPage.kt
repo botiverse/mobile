@@ -1602,6 +1602,7 @@ internal fun SharedThreadRouteContent(
                 }
             },
             onComposerEvent = { action, value, asTask, attachmentId ->
+                val composerInstanceId = composerPayload.instanceId.ifBlank { payload.instanceId }
                 when (action) {
                 "change" -> {
                     if (composerSending) {
@@ -1750,13 +1751,14 @@ internal fun SharedThreadRouteContent(
                         composerSyncNonce += 1
                     }
                 }
+                "blur" -> {
+                    bridge.log(
+                        "thread_composer_blur instanceId=$composerInstanceId"
+                    )
+                }
                 else -> {
-                    bridge.composerEvent(
-                        instanceId = composerPayload.instanceId.ifBlank { payload.instanceId },
-                        action = action,
-                        value = value,
-                        asTask = asTask,
-                        attachmentId = attachmentId
+                    bridge.log(
+                        "thread_composer_event_unsupported instanceId=$composerInstanceId action=$action attachmentId=${attachmentId.orEmpty()}"
                     )
                 }
                 }
