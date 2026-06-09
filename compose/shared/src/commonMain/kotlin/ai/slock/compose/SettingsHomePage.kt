@@ -852,10 +852,12 @@ private fun SlockAppShellContent() {
     val realtimeEventMapper = remember { RealtimeEventMapper() }
     var realtimeLastSeq by remember { mutableStateOf(0L) }
     var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
+    var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
 
     fun resetAppShellSessionState(clearReturnThread: Boolean = false) {
         realtimeLastSeq = 0L
         realtimeSessionKey = null
+        membersAgentDetailRefreshKey = 0
         selectedTab = "home"
         selectedSettingsDestination = SettingsDestinationHome
         selectedSettingsComputerId = null
@@ -1217,6 +1219,9 @@ private fun SlockAppShellContent() {
                     if (event is DirectMessageCreated) {
                         bridge.realtimeJoinChannel(event.channelId.value)
                     }
+                    if (event is MemberPresenceUpdated && event.kind == MemberKind.Agent) {
+                        membersAgentDetailRefreshKey += 1
+                    }
                     if (event is MessageNew && notificationPreferenceSnapshot.enabled) {
                         val conversation = homeState.systemNotificationConversation(event.message)
                         val request =
@@ -1392,7 +1397,8 @@ private fun SlockAppShellContent() {
                             SharedMembersScreen(
                                 bridge = bridge,
                                 authStore = authStore,
-                                memberRepository = memberRepository
+                                memberRepository = memberRepository,
+                                agentDetailRefreshKey = membersAgentDetailRefreshKey
                             )
                         else ->
                             if (selectedHomeDestination == null) {
@@ -4127,7 +4133,8 @@ private fun AppShellAuthErrorContent(
 private fun SharedMembersScreen(
     bridge: ai.slock.compose.base.BridgeModule,
     authStore: SlockAuthSessionStore,
-    memberRepository: MemberRepository
+    memberRepository: MemberRepository,
+    agentDetailRefreshKey: Int
 ) {
     var state by remember { mutableStateOf<SharedMembersUiState>(SharedMembersUiState.Loading) }
 
@@ -4192,6 +4199,7 @@ private fun SharedMembersScreen(
                 agentDetailLoader = { agentId ->
                     memberRepository.getAgentDetail(DataRequestPriority.Visible, agentId)
                 },
+                agentDetailRefreshKey = agentDetailRefreshKey,
                 onUpdateAgentProfile = { request ->
                     val result = memberRepository.updateAgentProfile(DataRequestPriority.Foreground, request)
                     if (result is DataResult.Content) {

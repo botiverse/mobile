@@ -256,7 +256,13 @@ data class AgentActivityEntry(
     val title: String,
     val body: String? = null,
     val timestamp: String? = null,
-    val details: List<Pair<String, String>> = emptyList()
+    val details: List<Pair<String, String>> = emptyList(),
+    val toolName: String? = null,
+    val toolInput: String? = null,
+    val statusActivity: String? = null,
+    val statusDetail: String? = null,
+    val expandable: Boolean = false,
+    val refTextEnabled: Boolean = false
 )
 
 data class ChannelMemberSnapshot(

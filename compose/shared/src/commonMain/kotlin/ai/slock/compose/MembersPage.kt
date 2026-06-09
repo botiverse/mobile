@@ -4,9 +4,11 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalTextField
+import ai.slock.compose.data.AgentActivityEntry
 import ai.slock.compose.data.AgentDetailSnapshot
 import ai.slock.compose.data.AgentProfileUpdateRequest
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.MemberId
@@ -14,6 +16,8 @@ import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
+import ai.slock.compose.model.formatSlockTimestampLabel
+import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -22,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -38,6 +43,8 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.foundation.lazy.LazyListState
+import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
@@ -301,6 +308,7 @@ internal fun MembersRouteContent(
     onOpenDirectMessage: (MemberProfile) -> Unit,
     onCopyMemberId: (MemberProfile) -> Unit,
     agentDetailLoader: (suspend (MemberId) -> DataResult<AgentDetailSnapshot>)? = null,
+    agentDetailRefreshKey: Any? = Unit,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)? = null,
     canViewPrivateAgentSurfaces: (MemberProfile, AgentDetailSnapshot?) -> Boolean = { _, _ -> false },
     canManageAgent: (MemberProfile, AgentDetailSnapshot?) -> Boolean = { _, _ -> false },
@@ -316,20 +324,23 @@ internal fun MembersRouteContent(
             selectedMemberId = null
         }
     }
-    LaunchedEffect(selectedMember?.id?.value, selectedMember?.kind) {
+    LaunchedEffect(selectedMember?.id?.value, selectedMember?.kind, agentDetailRefreshKey) {
         val member = selectedMember
         if (member == null || member.kind != MemberKind.Agent || agentDetailLoader == null) {
             agentDetailState = MembersAgentDetailLoadState.Idle
             return@LaunchedEffect
         }
-        agentDetailState = MembersAgentDetailLoadState.Loading
-        agentDetailState =
+        if (agentDetailState !is MembersAgentDetailLoadState.Content) {
+            agentDetailState = MembersAgentDetailLoadState.Loading
+        }
+        val nextState =
             when (val result = agentDetailLoader(member.id)) {
                 is DataResult.Content -> MembersAgentDetailLoadState.Content(result.data)
                 is DataResult.Empty -> MembersAgentDetailLoadState.Empty
                 is DataResult.NoPermission -> MembersAgentDetailLoadState.NoPermission(result.blocker.code)
                 is DataResult.Error -> MembersAgentDetailLoadState.Error(result.error.code)
             }
+        agentDetailState = nextState
     }
     SlockBackHandler(enabled = selectedMember != null) {
         selectedMemberId = null
@@ -1014,12 +1025,132 @@ private fun MembersAgentRemindersTab(detail: AgentDetailSnapshot?, modifier: Mod
 @Composable
 private fun MembersAgentActivityTab(detail: AgentDetailSnapshot?, modifier: Modifier = Modifier) {
     MembersDetailSection(title = "ACTIVITY", modifier = modifier) {
-        val rows = detail?.activity.orEmpty()
+        val rows =
+            remember(detail?.agentId, detail?.activity) {
+                detail?.activity.orEmpty()
+                    .filterNot { it.type == "tool_start" && it.toolName?.normalizedMembersToolName() == "send_message" }
+                    .sortedWith(compareBy<AgentActivityEntry> { it.timestamp.membersActivitySortKey() }.thenBy { it.id })
+            }
         if (rows.isEmpty()) {
-            MembersDetailField("Activity", "No activity events yet.")
+            MembersDetailField("Activity", "No activity yet. Start the agent to see its activity log.")
         } else {
-            rows.take(10).forEach { entry ->
-                MembersDetailField(entry.title, listOfNotNull(entry.body, entry.timestamp).joinToString(" · "))
+            val listState = rememberLazyListState()
+            var allowBottomAnchor by remember(detail?.agentId) { mutableStateOf(true) }
+            LaunchedEffect(detail?.agentId, rows.size) {
+                snapshotFlow {
+                    listState.isScrollInProgress to listState.isMembersActivityAtBottom(rows.lastIndex)
+                }.collect { (isScrollInProgress, isAtBottom) ->
+                    if (isScrollInProgress && !isAtBottom) {
+                        allowBottomAnchor = false
+                    } else if (isAtBottom) {
+                        allowBottomAnchor = true
+                    }
+                }
+            }
+            LaunchedEffect(detail?.agentId, rows.size, rows.lastOrNull()?.activityTimelineKey()) {
+                if (rows.isNotEmpty() && allowBottomAnchor && !listState.isScrollInProgress) {
+                    listState.scrollToItem(rows.lastIndex)
+                }
+            }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 220.dp, max = 520.dp),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
+            ) {
+                items(rows.size, key = { rows[it].activityTimelineKey() }) { index ->
+                    MembersAgentActivityRow(rows[index])
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentActivityRow(activity: AgentActivityEntry) {
+    val key = activity.activityTimelineKey()
+    var expanded by remember(key) { mutableStateOf(false) }
+    val body = activity.activityPrimaryDetail().orEmpty()
+    val longBody = body.length > 200 || body.count { it == '\n' } > 2
+    val displayBody =
+        if (!expanded && longBody) {
+            body.take(200).trimEnd() + "…"
+        } else {
+            body
+        }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .padding(SlockSpacing.Sm),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Text(
+            text = activity.timestamp.membersActivityDisplayTime(),
+            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            modifier = Modifier.width(74.dp)
+        )
+        Box(
+            modifier = Modifier
+                .padding(top = 5.dp)
+                .size(9.dp)
+                .background(activity.type.membersActivityAccentColor())
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = activity.title,
+                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 17.sp)
+                        .withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = activity.type.membersActivityTypeLabel(),
+                    style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1
+                )
+            }
+            if (displayBody.isNotBlank()) {
+                if (activity.refTextEnabled) {
+                    SlockMarkdownBody(
+                        body = displayBody,
+                        textStyle = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    )
+                } else {
+                    Text(
+                        text = displayBody,
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = if (expanded) 12 else 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (longBody) {
+                Text(
+                    text = if (expanded) "Show less" else "Show more",
+                    style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
+                        .withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    modifier = Modifier.clickable { expanded = !expanded }
+                )
             }
         }
     }
@@ -1304,6 +1435,55 @@ private fun String.toMembersDisplayLabel(): String =
     replace("_", " ")
         .replace("-", " ")
         .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+private fun AgentActivityEntry.activityPrimaryDetail(): String? =
+    body?.takeIf { it.isNotBlank() }
+        ?: details.firstOrNull()?.let { (_, value) -> value.takeIf { it.isNotBlank() } }
+
+private fun AgentActivityEntry.activityTimelineKey(): String =
+    id.ifBlank { "${type}:${timestamp.orEmpty()}:${body.orEmpty()}:${toolName.orEmpty()}" }
+
+private fun String?.membersActivitySortKey(): Long =
+    parseSlockTimestampEpochMillisOrNull(this) ?: Long.MIN_VALUE
+
+private fun String?.membersActivityDisplayTime(): String =
+    formatSlockTimestampLabel(this, localOffsetMinutes = 0, todayEpochDay = 0)
+        .takeIf { it.isNotBlank() }
+        ?: "No time"
+
+private fun String.membersActivityTypeLabel(): String =
+    when (this) {
+        "tool_start" -> "Tool"
+        "slock_action" -> "Action"
+        "compaction_started",
+        "compaction_finished" -> "Compaction"
+        else -> toMembersDisplayLabel().ifBlank { "Activity" }
+    }
+
+private fun String.membersActivityAccentColor(): Color =
+    when (this.lowercase()) {
+        "error", "failed", "failure" -> SlockColor.AccentRed
+        "tool_start", "tool", "working" -> SlockColor.AccentCyan
+        "thinking", "running", "active", "online", "compaction_finished" -> SlockColor.AccentLime
+        "text", "message", "system" -> SlockColor.AccentLavender
+        "slock_action", "compaction_started" -> SlockColor.BrandYellow
+        else -> SlockColor.BrandYellow
+    }
+
+private fun String.normalizedMembersToolName(): String =
+    trim()
+        .substringAfterLast("__")
+        .substringAfterLast("/")
+        .substringAfterLast(".")
+        .ifBlank { trim() }
+
+private fun LazyListState.isMembersActivityAtBottom(lastIndex: Int): Boolean {
+    if (lastIndex <= 0) return true
+    if (!canScrollForward) return true
+    return layoutInfo.visibleItemsInfo.any { item ->
+        item.index == lastIndex && item.offset + item.size <= layoutInfo.viewportEndOffset + 4
+    }
+}
 
 private data class MembersAgentGroup(
     val label: String,

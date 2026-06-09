@@ -1,5 +1,7 @@
 package ai.slock.compose
 
+import ai.slock.compose.data.parseSharedAgentActivity
+import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -127,5 +129,39 @@ class SharedMembersParserTest {
             ),
             membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = true)
         )
+    }
+
+    @Test
+    fun agentActivityLogParsesTrajectoryEntriesAndHidesTransientSendTools() {
+        val snapshot =
+            parseSharedAgentActivity(
+                """
+                [
+                  {"timestamp":1710000000000,"entry":{"kind":"thinking","text":"Checking plan"}},
+                  {"timestamp":1710000001000,"entry":{"kind":"tool_start","toolName":"mcp__slock__send_message","toolInput":"hello"}},
+                  {"timestamp":1710000002000,"entry":{"kind":"tool_start","toolName":"mcp__fs__read_file","toolInput":{"path":"/repo/README.md","authorization":"Bearer secret"}}},
+                  {"timestamp":1710000003000,"entry":{"kind":"text","text":"free-form #1 output"}},
+                  {"timestamp":1710000004000,"entry":{"kind":"slock_action","title":"Claimed task","text":"task #32 in #members专修:fbd27c76"}},
+                  {"timestamp":1710000005000,"entry":{"kind":"system","title":"Reminder","text":"Check #all:aa97eb79"}},
+                  {"timestamp":1710000006000,"entry":{"kind":"status","activity":"offline","detail":"Machine disconnected"}},
+                  {"timestamp":1710000007000,"entry":{"kind":"compaction_started"}}
+                ]
+                """.trimIndent(),
+                MemberId("agent-1")
+            )
+
+        val entries = snapshot?.activity.orEmpty()
+
+        assertEquals(7, entries.size)
+        assertTrue(entries.none { it.toolName == "mcp__slock__send_message" })
+        assertEquals("Thinking", entries[0].title)
+        assertEquals("Read file", entries[1].title)
+        assertEquals("Structured input: path", entries[1].body)
+        assertEquals("Output", entries[2].title)
+        assertEquals(false, entries[2].refTextEnabled)
+        assertEquals("Claimed task", entries[3].title)
+        assertEquals(true, entries[3].refTextEnabled)
+        assertEquals("Disconnected", entries[5].title)
+        assertEquals("Context Compaction Started", entries[6].title)
     }
 }
