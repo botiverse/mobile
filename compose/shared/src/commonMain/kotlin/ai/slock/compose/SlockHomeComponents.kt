@@ -66,10 +66,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 const val SLOCK_HOME_PAGE = "compose_home"
-private const val HOME_CHANNEL_ROW_VISUAL_PAGE = "compose_home_channel_row_visual"
 private const val HOME_TITLEBAR_VISUAL_PAGE = "compose_home_titlebar_visual"
 private const val HOME_NOTIFICATION_CENTER_VISUAL_PAGE = "compose_home_notification_center_visual"
-private const val HOME_TOP_ACTIONS_VISUAL_PAGE = "compose_home_top_actions_visual"
 private const val HOME_PAGE_DATA_EVENT = "slockPageData"
 
 private val SidebarActionIconSize = 14.dp
@@ -107,14 +105,6 @@ internal class ComposeSlockHomePage : ai.slock.compose.base.BasePager() {
     }
 }
 
-@Page(HOME_CHANNEL_ROW_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeHomeChannelRowVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { HomeChannelRowVisualScreen() }
-    }
-}
-
 @Page(HOME_TITLEBAR_VISUAL_PAGE, supportInLocal = true)
 internal class ComposeHomeTitlebarVisualPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
@@ -128,14 +118,6 @@ internal class ComposeHomeNotificationCenterVisualPage : ai.slock.compose.base.B
     override fun willInit() {
         super.willInit()
         setContent { HomeNotificationCenterVisualScreen() }
-    }
-}
-
-@Page(HOME_TOP_ACTIONS_VISUAL_PAGE, supportInLocal = true)
-internal class ComposeHomeTopActionsVisualPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { HomeTopActionsVisualScreen() }
     }
 }
 
@@ -330,64 +312,6 @@ private fun HomeNotificationCenterVisualScreen() {
             onView = {},
             onDismiss = {},
             modifier = Modifier.align(Alignment.TopStart)
-        )
-    }
-}
-
-@Composable
-private fun HomeTopActionsVisualScreen() {
-    Column(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .background(SlockColor.SurfaceWhite)
-                .padding(top = 48.dp)
-                .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        SidebarActionRow("search", "Search")
-        SidebarActivityRow("Activity", "7", selected = false)
-        SidebarActionRow("bookmark", "Saved", trailingText = "3")
-    }
-}
-
-@Composable
-private fun HomeChannelRowVisualScreen() {
-    Column(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .background(SlockColor.SurfaceWhite)
-                .padding(top = 48.dp)
-                .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        SidebarSectionHeader(
-            label = "Channels",
-            count = 2,
-            expanded = true,
-            onExpandedChange = {},
-            onSortClick = {},
-            action = {
-                HeaderIconAction("plus", "Add channel") {}
-            }
-        )
-        ChannelRow(
-            name = "design",
-            badge = "3",
-            joined = true,
-            interactionState = ChannelRowInteractionState.Selected
-        )
-        ChannelRow(
-            name = "android-artifacts",
-            joined = true,
-            interactionState = ChannelRowInteractionState.Default
-        )
-        ChannelRow(
-            name = "release-gate",
-            badge = "12",
-            joined = false,
-            interactionState = ChannelRowInteractionState.Default
         )
     }
 }

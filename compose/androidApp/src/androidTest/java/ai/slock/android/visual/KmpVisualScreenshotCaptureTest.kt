@@ -76,15 +76,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureHomeChannelRowStates() {
-        captureKmpComponentCase(
-            caseId = "home.channel-row.states",
-            pageName = "compose_home_channel_row_visual",
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
-    @Test
     fun captureHomeTitlebarStates() {
         captureKmpComponentCase(
             caseId = "home.titlebar.states",
@@ -98,15 +89,6 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "home.notification-center.states",
             pageName = "compose_home_notification_center_visual",
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
-    @Test
-    fun captureHomeTopActionsStates() {
-        captureKmpComponentCase(
-            caseId = "home.top-actions.states",
-            pageName = "compose_home_top_actions_visual",
             crop = FULL_VIEWPORT_CROP
         )
     }

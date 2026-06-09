@@ -308,43 +308,6 @@
       }
     },
     {
-      "id": "home.channel-row.states",
-      "title": "Home Channel Row States",
-      "surface": "home",
-      "baselineStatus": "pending",
-      "pendingReason": "React visual provider currently uses a visual-local ChannelRowButton helper instead of the real Sidebar channel row path.",
-      "fixture": "fixtures/home.channel-row.states.json",
-      "viewport": {
-        "width": 390,
-        "height": 844,
-        "density": 3
-      },
-      "theme": "light",
-      "locale": "zh-CN",
-      "variants": [
-        {
-          "id": "selected-unread-joined",
-          "name": "Selected / Unread / Joined",
-          "props": {
-            "selected": "design",
-            "unread": 3
-          }
-        }
-      ],
-      "capture": {
-        "selector": "[data-visual-case='home.channel-row.states']",
-        "crop": "element",
-        "contract": "component-bounds"
-      },
-      "reactPathHint": "packages/web/src/components/layout/Sidebar.tsx",
-      "androidCaseHint": "compose_home_channel_row_visual",
-      "tolerance": {
-        "pixelRatio": 0.02,
-        "layoutDp": 1,
-        "ignoreAntialiasing": true
-      }
-    },
-    {
       "id": "home.titlebar.states",
       "title": "Home Titlebar States",
       "surface": "home",
@@ -408,43 +371,6 @@
       },
       "reactPathHint": "packages/web/src/components/layout/NotificationCenter.tsx",
       "androidCaseHint": "compose_home_notification_center_visual",
-      "tolerance": {
-        "pixelRatio": 0.02,
-        "layoutDp": 1,
-        "ignoreAntialiasing": true
-      }
-    },
-    {
-      "id": "home.top-actions.states",
-      "title": "Home Top Actions States",
-      "surface": "home",
-      "baselineStatus": "pending",
-      "pendingReason": "React visual provider currently uses a visual-local TopActionButton helper instead of the real Sidebar top action path.",
-      "fixture": "fixtures/home.top-actions.states.json",
-      "viewport": {
-        "width": 390,
-        "height": 844,
-        "density": 3
-      },
-      "theme": "light",
-      "locale": "zh-CN",
-      "variants": [
-        {
-          "id": "counts",
-          "name": "Activity / Saved Counts",
-          "props": {
-            "activityUnread": 7,
-            "savedCount": 3
-          }
-        }
-      ],
-      "capture": {
-        "selector": "[data-visual-case='home.top-actions.states']",
-        "crop": "element",
-        "contract": "component-bounds"
-      },
-      "reactPathHint": "packages/web/src/components/layout/Sidebar.tsx",
-      "androidCaseHint": "compose_home_top_actions_visual",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
@@ -640,8 +566,6 @@
       "id": "home.create-channel.dialog",
       "title": "Home Create Channel Dialog",
       "surface": "home",
-      "baselineStatus": "pending",
-      "pendingReason": "Android connected provider still renders the stale pre-unified create-channel dialog instead of the current SharedCreateChannelDialog/SlockUnifiedDialog route.",
       "fixture": "fixtures/home.create-channel.dialog.json",
       "viewport": {
         "width": 390,
@@ -1264,46 +1188,6 @@
       ]
     },
     {
-      "id": "home.channel-row.states",
-      "title": "Home Channel Row States",
-      "surface": "home",
-      "group": "product-home",
-      "status": "pending",
-      "notes": "Pending canonical provider: the current React case is a visual-local ChannelRowButton helper, not the real Sidebar channel row. Replace with the product Sidebar row provider before using this as a baseline.",
-      "providers": [
-        {
-          "id": "react",
-          "status": "pending",
-          "components": [
-            "Sidebar channel row / channel list row"
-          ],
-          "path": "packages/web/src/components/layout/Sidebar.tsx",
-          "fixture": "fixtures/home.channel-row.states.json",
-          "reason": "Current implementation in VisualTestingCases.tsx hand-builds ChannelRowButton instead of rendering the product Sidebar row."
-        },
-        {
-          "id": "android",
-          "status": "ready",
-          "source": "kmp-shared",
-          "components": [
-            "SlockHomeComponents channel row"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
-          "fixture": "KmpVisualScreenshotCaptureTest.captureHomeChannelRowStates"
-        },
-        {
-          "id": "harmony",
-          "status": "pending",
-          "source": "kmp-shared-ohos",
-          "components": [
-            "SlockHomeComponents channel row"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
-          "reason": "Needs Harmony real-device/provider capture."
-        }
-      ]
-    },
-    {
       "id": "home.titlebar.states",
       "title": "Home Titlebar States",
       "surface": "home",
@@ -1378,46 +1262,6 @@
           "source": "kmp-shared-ohos",
           "components": [
             "HomeNotificationPopover"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
-          "reason": "Needs Harmony real-device/provider capture."
-        }
-      ]
-    },
-    {
-      "id": "home.top-actions.states",
-      "title": "Home Top Actions States",
-      "surface": "home",
-      "group": "product-home",
-      "status": "pending",
-      "notes": "Pending canonical provider: the current React case is a visual-local TopActionButton helper, not the real Sidebar top action rows. Replace with the product Sidebar action provider before using this as a baseline.",
-      "providers": [
-        {
-          "id": "react",
-          "status": "pending",
-          "components": [
-            "Home sidebar/header action buttons"
-          ],
-          "path": "packages/web/src/components/layout/Sidebar.tsx",
-          "fixture": "fixtures/home.top-actions.states.json",
-          "reason": "Current implementation in VisualTestingCases.tsx hand-builds TopActionButton instead of rendering the product Sidebar action rows."
-        },
-        {
-          "id": "android",
-          "status": "ready",
-          "source": "kmp-shared",
-          "components": [
-            "SlockHomeComponents top action rows/buttons"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
-          "fixture": "KmpVisualScreenshotCaptureTest.captureHomeTopActionsStates"
-        },
-        {
-          "id": "harmony",
-          "status": "pending",
-          "source": "kmp-shared-ohos",
-          "components": [
-            "SlockHomeComponents top action rows/buttons"
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockHomeComponents.kt",
           "reason": "Needs Harmony real-device/provider capture."
@@ -1606,8 +1450,8 @@
       "title": "Home Create Channel Dialog",
       "surface": "home",
       "group": "product-home",
-      "status": "pending",
-      "notes": "Pending Android provider: focused connected capture still renders the stale pre-unified Android create-channel dialog after shared mavenLocal refresh and rerun. Fix the KMP route/bundle so it renders SharedCreateChannelDialog/SlockUnifiedDialog before restoring this canonical baseline.",
+      "status": "baseline",
+      "notes": "Real React CreateChannelDialog vs Android rendering of the shared SharedCreateChannelDialog/SlockUnifiedDialog route.",
       "providers": [
         {
           "id": "react",
@@ -1622,7 +1466,7 @@
         },
         {
           "id": "android",
-          "status": "pending",
+          "status": "ready",
           "source": "kmp-shared",
           "components": [
             "SharedCreateChannelDialog",
@@ -1630,8 +1474,7 @@
             "SharedCreateChannelMemberPicker"
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "fixture": "KmpVisualScreenshotCaptureTest.captureHomeCreateChannelDialog",
-          "reason": "Connected screenshot route compose_home_create_channel_dialog_visual still shows old Create Channel UI, not the current shared unified dialog."
+          "fixture": "KmpVisualScreenshotCaptureTest.captureHomeCreateChannelDialog"
         },
         {
           "id": "harmony",
