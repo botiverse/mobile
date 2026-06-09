@@ -242,11 +242,21 @@ class SharedAuthDataSource(
 
     suspend fun restoreSession(): SharedAuthResult<StoredAuthSession> {
         diagnosticsLogger("auth_restore_start")
-        val session = runCatching { sessionStore.readSession() }.getOrNull()
-            ?: run {
-                diagnosticsLogger("auth_restore_result result=unauthenticated reason=no_cached_session")
-                return SharedAuthResult.Unauthenticated
-            }
+        val session =
+            runCatching { sessionStore.readSession() }
+                .getOrElse { throwable ->
+                    diagnosticsLogger(
+                        "auth_restore_result result=failure stage=session_restore ${throwable.persistenceDiagnostics()} mapped=local_setup"
+                    )
+                    return SharedAuthResult.Failure(
+                        SharedAuthErrorCode.Unknown,
+                        "Could not restore local session. Local storage setup failed."
+                    )
+                }
+                ?: run {
+                    diagnosticsLogger("auth_restore_result result=unauthenticated reason=no_cached_session")
+                    return SharedAuthResult.Unauthenticated
+                }
         val current =
             runCatching { currentUserWithSession(session, clearOnUnauthorized = false) }
                 .getOrElse { throwable ->
@@ -502,14 +512,9 @@ private fun loginStageFailure(stage: String, detail: String? = null): SharedAuth
         }
     )
 
-private fun Throwable.safeDiagnosticsType(): String =
-    this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"
-
 private fun Throwable.persistenceDiagnostics(): String =
-    when (this) {
-        is RelationalStoreException ->
-            "errorType=RelationalStoreException sqliteCategory=$category sqliteCode=${code ?: "none"}"
-        else -> "errorType=${safeDiagnosticsType()} sqliteCategory=unknown sqliteCode=none"
+    toPersistenceFailureDiagnostics().let { diagnostics ->
+        "errorType=${diagnostics.errorType} sqliteCategory=${diagnostics.category} sqliteCode=${diagnostics.code ?: "none"}"
     }
 
 /**

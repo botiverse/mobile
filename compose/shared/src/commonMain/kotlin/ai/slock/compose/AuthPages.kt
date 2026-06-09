@@ -19,6 +19,8 @@ import ai.slock.compose.data.SharedAuthResult
 import ai.slock.compose.data.SharedSettingsAboutSnapshot
 import ai.slock.compose.data.SharedSettingsDiagnosticsEntry
 import ai.slock.compose.data.SharedSettingsNetworkProbeSnapshot
+import ai.slock.compose.data.StoredAuthSession
+import ai.slock.compose.data.toPersistenceFailureDiagnostics
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -301,6 +303,7 @@ private fun AuthDiagnosticsScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
+    val sessionStore = remember { KuiklyAuthSessionStore(createSlockRelationalStore(bridge)) }
     var refreshNonce by remember { mutableStateOf(0) }
     var copyNonce by remember { mutableStateOf(0) }
     var state by remember { mutableStateOf(AuthDiagnosticsUiState()) }
@@ -309,6 +312,14 @@ private fun AuthDiagnosticsScreen() {
         state = state.copy(loading = true, errorMessage = null)
         val aboutResult = runCatching { settingsCapabilities.loadAbout() }.getOrElse {
             DataResult.Error(ai.slock.compose.data.ScreenError("settings_about_exception"))
+        }
+        val sessionResult = runCatching { sessionStore.readSession() }
+        sessionResult.exceptionOrNull()?.let { throwable ->
+            val diagnostics = throwable.toPersistenceFailureDiagnostics()
+            bridge.log(
+                "compose_auth_diagnostics_session result=failure stage=session_read " +
+                    "errorType=${diagnostics.errorType} sqliteCategory=${diagnostics.category} sqliteCode=${diagnostics.code ?: "none"}"
+            )
         }
         val diagnosticsResult = runCatching { settingsCapabilities.loadDiagnosticsHost() }.getOrElse {
             DataResult.Error(ai.slock.compose.data.ScreenError("settings_diagnostics_exception"))
@@ -319,12 +330,18 @@ private fun AuthDiagnosticsScreen() {
         state =
             AuthDiagnosticsUiState(
                 loading = false,
-                about = (aboutResult as? DataResult.Content)?.data,
+                about =
+                    (aboutResult as? DataResult.Content)?.data
+                        ?.withSharedAuthSession(
+                            session = sessionResult.getOrNull(),
+                            failure = sessionResult.exceptionOrNull()
+                        ),
                 probe = (probeResult as? DataResult.Content)?.data,
                 entries = (diagnosticsResult as? DataResult.Content)?.data?.entries.orEmpty(),
                 errorMessage =
                     listOf(
                         aboutResult.authDiagnosticsErrorLabel("about"),
+                        sessionResult.exceptionOrNull()?.let { "session: local storage unavailable" },
                         diagnosticsResult.authDiagnosticsErrorLabel("diagnostics"),
                         probeResult.authDiagnosticsErrorLabel("probe")
                     ).filterNotNull().joinToString("; ").takeIf { it.isNotBlank() }
@@ -446,6 +463,37 @@ private fun AuthDiagnosticsScreen() {
         }
     }
 }
+
+private fun SharedSettingsAboutSnapshot.withSharedAuthSession(
+    session: StoredAuthSession?,
+    failure: Throwable?
+): SharedSettingsAboutSnapshot =
+    when {
+        failure != null ->
+            copy(
+                signedInUserLabel = "--",
+                selectedServerLabel = "--",
+                sessionStatusLabel = "Local storage unavailable"
+            )
+        session != null ->
+            copy(
+                signedInUserLabel = session.user.bestDisplayName,
+                selectedServerLabel = session.bestServerLabel(),
+                sessionStatusLabel = "Signed in"
+            )
+        else ->
+            copy(
+                signedInUserLabel = "--",
+                selectedServerLabel = "--",
+                sessionStatusLabel = "Signed out"
+            )
+    }
+
+private fun StoredAuthSession.bestServerLabel(): String =
+    servers.firstOrNull { it.id == currentServerId }?.name
+        ?: selectedServerSlug?.takeIf { it.isNotBlank() }
+        ?: selectedServerId?.takeIf { it.isNotBlank() }
+        ?: "--"
 
 @Composable
 private fun AuthDiagnosticsPanel(title: String, content: @Composable () -> Unit) {

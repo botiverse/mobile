@@ -1,6 +1,5 @@
 import { bundleManager, common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { relationalStore } from '@kit.ArkData';
 import { picker, fileUri } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { http } from '@kit.NetworkKit';
@@ -66,14 +65,11 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly DATE_FORMATTER = "dateFormatter";
   static readonly READ_ASSET_FILE = "readAssetFile";
   static readonly AUTH_REQUEST = "authRequest";
-  static readonly RELATIONAL_STORE = "relationalStore";
   static readonly MOTION_CAPABILITY = "motionCapability";
   static readonly SETTINGS_CAPABILITY = "settingsCapability";
   static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
   static readonly AUTH_BASE_URL = "https://api.slock.ai/api/";
   static readonly AUTH_DIAGNOSTICS_SOURCE_MARKER = "auth-bootstrap-diagnostics/e36bc138+";
-
-  private rdbStores: Map<string, relationalStore.RdbStore> = new Map();
 
   syncMode(): boolean {
     return false;
@@ -134,10 +130,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.AUTH_REQUEST: {
         this.authRequest(params, callback);
-        break;
-      }
-      case KRBridgeModule.RELATIONAL_STORE: {
-        this.relationalStore(params, callback);
         break;
       }
       case KRBridgeModule.MOTION_CAPABILITY: {
@@ -247,39 +239,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   private dateFormatter(params: KRAny): string {
     console.log(`========== ${params}`)
     return "";
-  }
-
-  private async relationalStore(params: KRAny, callback: KuiklyRenderCallback) {
-    try {
-      const records = this.parseRecord(params);
-      const action = records["action"] as string;
-      const sql = records["sql"] as string;
-      const bindArgs = (records["bindArgs"] as relationalStore.ValueType[]) ?? [];
-      const store = await this.rdbStore(
-        (records["databaseName"] as string) ?? "slock_shared.db",
-        Number(records["version"] ?? 1)
-      );
-
-      if (action === "query") {
-        const resultSet = await store.querySql(sql, bindArgs);
-        try {
-          callback(this.resultSetToResponse(resultSet));
-        } finally {
-          resultSet.close();
-        }
-        return;
-      }
-
-      await store.executeSql(sql, bindArgs);
-      callback({ "status": "ok" });
-    } catch (error) {
-      const businessError = error as BusinessError;
-      callback({
-        "status": "error",
-        "code": businessError.code ?? -1,
-        "message": businessError.message ?? `${error}`
-      });
-    }
   }
 
   private async authRequest(params: KRAny, callback: KuiklyRenderCallback) {
@@ -479,9 +438,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   private async loadAboutCapability(): Promise<Record<string, Object>> {
     const context = getContext(this) as common.UIAbilityContext;
     const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
-    const session = await this.readStoredAuthSession().catch((_error: BusinessError) => null);
-    const user = (session?.["user"] as Record<string, Object> | undefined) ?? null;
-    const server = this.currentServer(session);
     const notificationsEnabled = await notificationManager.isNotificationEnabled().catch((_error: BusinessError) => false);
     return {
       "status": "ok",
@@ -490,9 +446,9 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       "buildLabel": `${bundleInfo.versionCode}`,
       "sourceLabel": KRBridgeModule.AUTH_DIAGNOSTICS_SOURCE_MARKER,
       "packageName": bundleInfo.name,
-      "signedInUserLabel": this.bestUserLabel(user),
-      "selectedServerLabel": this.bestServerLabel(server),
-      "sessionStatusLabel": session == null ? "Signed out" : "Signed in",
+      "signedInUserLabel": "",
+      "selectedServerLabel": "",
+      "sessionStatusLabel": "",
       "socketStatusLabel": "Shared shell",
       "notificationStatusLabel": notificationsEnabled ? "Enabled" : "Disabled",
       "deviceLabel": `${deviceInfo.manufacture} ${deviceInfo.productModel}`.trim(),
@@ -795,52 +751,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     return await new picker.DocumentViewPicker(getContext(this) as common.UIAbilityContext).select(options);
   }
 
-  private async readStoredAuthSession(): Promise<Record<string, Object> | null> {
-    const store = await this.rdbStore("slock_shared.db", 1);
-    const resultSet = await store.querySql("SELECT value FROM slock_kv WHERE key = ?", ["auth_session"]);
-    try {
-      if (!resultSet.goToNextRow()) {
-        return null;
-      }
-      const encoded = resultSet.getString(0);
-      if (encoded.length === 0) {
-        return null;
-      }
-      return JSON.parse(encoded) as Record<string, Object>;
-    } finally {
-      resultSet.close();
-    }
-  }
-
-  private currentServer(session: Record<string, Object> | null): Record<string, Object> | null {
-    if (session == null) {
-      return null;
-    }
-    const servers = (session["servers"] as Array<Record<string, Object>> | undefined) ?? [];
-    if (servers.length === 0) {
-      return null;
-    }
-    const selectedServerId = ((session["selectedServerId"] as string | undefined) ?? "").trim();
-    return servers.find((server: Record<string, Object>) => {
-      return ((server["id"] as string | undefined) ?? "") === selectedServerId;
-    }) ?? servers[0];
-  }
-
-  private bestUserLabel(user: Record<string, Object> | null): string {
-    if (user == null) {
-      return "";
-    }
-    return ((user["name"] as string | undefined) ?? (user["displayName"] as string | undefined) ??
-      (user["email"] as string | undefined) ?? "").trim();
-  }
-
-  private bestServerLabel(server: Record<string, Object> | null): string {
-    if (server == null) {
-      return "";
-    }
-    return ((server["name"] as string | undefined) ?? (server["id"] as string | undefined) ?? "").trim();
-  }
-
   private readPickedThreadAttachments(uris: Array<string>, imageOnly: boolean): Array<OhosPickedThreadAttachment> {
     const files: Array<OhosPickedThreadAttachment> = [];
     uris.forEach((uri: string, index: number) => {
@@ -910,48 +820,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       "errorCode": errorCode,
       "errorBodyText": message
     };
-  }
-
-  private async rdbStore(databaseName: string, version: number): Promise<relationalStore.RdbStore> {
-    const cached = this.rdbStores.get(databaseName);
-    if (cached !== undefined) {
-      return cached;
-    }
-
-    const context = getContext(this) as common.UIAbilityContext;
-    const store = await relationalStore.getRdbStore(context, {
-      name: databaseName,
-      securityLevel: relationalStore.SecurityLevel.S1
-    });
-    if (store.version < version) {
-      store.version = version;
-    }
-    this.rdbStores.set(databaseName, store);
-    return store;
-  }
-
-  private resultSetToResponse(resultSet: relationalStore.ResultSet): Record<string, Object> {
-    const columns = resultSet.columnNames;
-    const rows: Array<Array<Object | null>> = [];
-    while (resultSet.goToNextRow()) {
-      const row: Array<Object | null> = [];
-      for (let index = 0; index < columns.length; index++) {
-        row.push(this.valueAt(resultSet, index));
-      }
-      rows.push(row);
-    }
-    return {
-      "status": "ok",
-      "columns": columns,
-      "rows": rows
-    };
-  }
-
-  private valueAt(resultSet: relationalStore.ResultSet, index: number): Object | null {
-    if (resultSet.isColumnNull(index)) {
-      return null;
-    }
-    return resultSet.getString(index);
   }
 
   private httpResultToString(result: string | ArrayBuffer | Object): string {

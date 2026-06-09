@@ -126,6 +126,60 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun loginAddsSafeSqliteCategoryForNativeSessionPersistenceFailure() = runBlocking {
+        val logs = mutableListOf<String>()
+        val source =
+            SharedAuthDataSource(
+                transport = FakeAuthApi(),
+                sessionStore =
+                    ThrowingSaveSessionStore(
+                        IllegalStateException("SQLite error code=14 unable to open database file")
+                    ),
+                diagnosticsLogger = logs::add
+            )
+
+        val result = source.login("user@slock.ai", "password")
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertTrue(
+            logs.any {
+                it.contains("sqliteCategory=path") &&
+                    it.contains("sqliteCode=14") &&
+                    it.contains("mapped=post_login_setup")
+            }
+        )
+    }
+
+    @Test
+    fun restoreSessionReportsLocalReadFailureInsteadOfNoCachedSession() = runBlocking {
+        val logs = mutableListOf<String>()
+        val source =
+            SharedAuthDataSource(
+                transport = FakeAuthApi(),
+                sessionStore =
+                    ThrowingReadSessionStore(
+                        IllegalStateException("SQLite error code=14 unable to open database file")
+                    ),
+                diagnosticsLogger = logs::add
+            )
+
+        val result = source.restoreSession()
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals(SharedAuthErrorCode.Unknown, result.code)
+        assertTrue(result.message.contains("Local storage setup failed."))
+        assertTrue(
+            logs.any {
+                it.contains("auth_restore_result result=failure stage=session_restore") &&
+                    it.contains("sqliteCategory=path") &&
+                    it.contains("sqliteCode=14") &&
+                    it.contains("mapped=local_setup")
+            }
+        )
+        assertTrue(logs.none { it.contains("reason=no_cached_session") })
+    }
+
+    @Test
     fun classifiesRelationalStoreFailuresWithoutRawDetails() {
         assertEquals("schema", classifyRelationalStoreFailure(1, "no such table: slock_kv"))
         assertEquals("lock", classifyRelationalStoreFailure(2, "database is locked"))
@@ -477,6 +531,22 @@ class AuthDataSourceTest {
         override suspend fun saveSession(session: StoredAuthSession) {
             throw throwable
         }
+
+        override suspend fun updateTokens(accessToken: String, refreshToken: String) = Unit
+
+        override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) = Unit
+
+        override suspend fun clearSession() = Unit
+    }
+
+    private class ThrowingReadSessionStore(
+        private val throwable: Throwable
+    ) : SlockAuthSessionStore {
+        override suspend fun readSession(): StoredAuthSession? {
+            throw throwable
+        }
+
+        override suspend fun saveSession(session: StoredAuthSession) = Unit
 
         override suspend fun updateTokens(accessToken: String, refreshToken: String) = Unit
 

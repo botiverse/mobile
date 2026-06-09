@@ -142,13 +142,6 @@ internal class BridgeModule : Module() {
         callNativeMethod("composerEvent", methodArgs, null)
     }
 
-    suspend fun relationalStore(command: JSONObject): JSONObject? =
-        suspendCoroutine { continuation ->
-            callNativeMethod(RELATIONAL_STORE, command) {
-                continuation.resume(it)
-            }
-        }
-
     suspend fun motionCapability(command: JSONObject): JSONObject? =
         suspendCoroutine { continuation ->
             callNativeMethod(MOTION_CAPABILITY, command) {
@@ -506,7 +499,6 @@ internal class BridgeModule : Module() {
         const val REPORT_REALTIME = "reportRealTime"
         const val AUTH_REQUEST = "authRequest"
         const val SOCIAL_AUTH = "socialAuth"
-        const val RELATIONAL_STORE = "relationalStore"
         const val MOTION_CAPABILITY = "motionCapability"
         const val MOTION_EVENT = "slockMotionEvent"
         const val REPORT_PAGE_COST_TIME_FOR_CACHE = "reportPageCostTimeForCache"
