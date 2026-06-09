@@ -12,7 +12,6 @@ This notes the current gap between Kuikly's default Android host/router implemen
 - Kuikly upstream Android router: `androidApp/src/main/java/com/tencent/kuikly/android/demo/adapter/KRRouterAdapter.kt`
 - Slock Android host: `compose/androidApp/src/main/java/ai/slock/android/shared/SlockKuiklyActivity.kt`
 - Slock Android host contract: `compose/androidApp/src/main/java/ai/slock/android/shared/SlockKuiklyHostContract.kt`
-- Slock Android island host: `compose/androidApp/src/main/java/ai/slock/android/shared/SlockKuiklyIsland.kt`
 - Slock OHOS host: `compose/ohosApp/entry/src/main/ets/pages/Index.ets`
 - Slock OHOS router: `compose/ohosApp/entry/src/main/ets/kuikly/adapter/RouterAdapter.ets`
 - Shared safe area consumer: `compose/shared/src/commonMain/kotlin/ai/slock/compose/SlockSafeArea.kt`
@@ -59,7 +58,7 @@ Slock's Android host is close but not equivalent:
 - Back forwarding was recently added in `SlockKuiklyActivity.onBackPressed()`, matching the intent of the upstream demo.
 - Immersive mode is simpler than upstream: it uses deprecated system UI flags and does not currently mirror `setDecorFitsSystemWindows(false)`, cutout mode, or navigation bar contrast handling.
 - Adapter registration is always assigned once through `SlockKuiklyAdapters.init(...)`. This is acceptable for the app process, but it differs from upstream's "only set if null" pattern and could matter if tests/demo host and app host coexist.
-- `SlockKuiklyIslandHost` embeds multiple Kuikly pages inside Android Compose using separate `KuiklyRenderViewBaseDelegator` instances. This was useful during migration, but it is the opposite of the long-term "one shared shell/router container" direction.
+- The old Android Compose Kuikly island host has been removed. Current Thread work should stay in the shared shell/page route instead of reintroducing local Android page islands.
 
 Slock's OHOS host is also custom:
 
@@ -80,7 +79,7 @@ Slock's OHOS host is also custom:
 | Back handling | `dispatchKeyEvent` delegates to Kuikly | `onBackPressed` now delegates | Low | Current fix is acceptable; consider modern `OnBackPressedDispatcher` later. |
 | Adapter registration | Set adapters only when null | Slock sets once using its own guard | Low/Medium | Keep Slock-specific adapters, but avoid overwriting external/demo adapters in mixed debug processes. |
 | Error UI | Demo has loading/error placeholders | Slock root only has container; Kuikly exceptions may surface in shared overlay/OHOS text | Medium | Add a controlled host error surface that logs diagnostics but does not expose raw stack to users. |
-| Island usage | Demo opens pages via router/activity | Slock still has Android Compose islands | High for perf/navigation | Continue removing islands in favor of `compose_slock_app_shell` single container/router. |
+| Island usage | Demo opens pages via router/activity | Android Compose islands have been removed | Low | Keep the island path retired; do not add new local Android page islands for product routes. |
 | OHOS safe area | Android render has root fields | OHOS host manually injects px fields | Medium | Keep OHOS bridge, but name/convert explicitly so shared code cannot confuse px and dp. |
 | Native HDS tabbar | Not part of Android default | OHOS host injects capability renderer | Medium | Keep renderer seam in shared; host should only inject when capability is present. |
 
@@ -214,9 +213,9 @@ Recommendation:
    - Keep PAG/APNG/video as explicit "not needed yet" unless attachments/media require them.
    - Avoid overwriting global adapters in mixed debug/demo contexts.
 
-6. **Reduce Android islands.**
+6. **Keep Android islands retired.**
    - Use `compose_slock_app_shell` + shared router for Home -> Thread -> Settings/Members.
-   - Keep `SlockKuiklyPageIsland` only for temporary migration slices or isolated previews.
+   - Add future previews as explicit visual/debug harnesses, not product-looking local Android page islands.
 
 7. **Add host parity smoke tests/checks.**
    - Android app shell launch receives non-zero root safe area from Kuikly render.

@@ -53,7 +53,7 @@ class KmpVisualScreenshotCaptureTest {
     fun captureThreadComposerStates() {
         captureKmpComponentCase(
             caseId = "thread.composer.states",
-            pageName = "compose_thread_composer",
+            pageName = "compose_thread_composer_visual",
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-composer")

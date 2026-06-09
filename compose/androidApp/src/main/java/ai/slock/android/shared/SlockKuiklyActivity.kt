@@ -664,9 +664,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         const val PAGE_REGISTER = SlockKuiklyPages.REGISTER
         const val PAGE_FORGOT_PASSWORD = SlockKuiklyPages.FORGOT_PASSWORD
         const val PAGE_APP_SHELL = SlockKuiklyPages.APP_SHELL
-        const val PAGE_THREAD = SlockKuiklyPages.THREAD
-        const val PAGE_THREAD_FILES = SlockKuiklyPages.THREAD_FILES
-        const val PAGE_THREAD_COMPOSER = SlockKuiklyPages.THREAD_COMPOSER
         const val PAGE_HOME = SlockKuiklyPages.HOME
         const val PAGE_MEMBERS = SlockKuiklyPages.MEMBERS
         const val PAGE_SETTINGS_HOME = SlockKuiklyPages.SETTINGS_HOME

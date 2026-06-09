@@ -188,7 +188,7 @@
         "contract": "component-bounds"
       },
       "reactPathHint": "packages/web/src/components/message/MessageInput.tsx",
-      "androidCaseHint": "compose_thread_composer",
+      "androidCaseHint": "compose_thread_composer_visual",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
@@ -999,7 +999,7 @@
       "surface": "thread",
       "group": "product",
       "status": "baseline",
-      "notes": "Real React MessageInput draft state vs Android rendering of shared ThreadComposerPage. First baseline covers the complete composer shell with draft text, attachment buttons, As Task toggle, and Send button; pending variants remain out until deterministic hooks exist.",
+      "notes": "Real React MessageInput draft state vs Android connected visual-only rendering of ThreadComposerContent. First baseline covers the complete composer shell with draft text, attachment buttons, As Task toggle, and Send button; pending variants remain out until deterministic hooks exist.",
       "providers": [
         {
           "id": "react",
@@ -1014,7 +1014,7 @@
           "id": "android",
           "status": "ready",
           "components": [
-            "ThreadComposerPage composer"
+            "ThreadComposerContent visual-only page"
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerStates",

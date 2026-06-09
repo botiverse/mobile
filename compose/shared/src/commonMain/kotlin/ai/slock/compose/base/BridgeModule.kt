@@ -78,36 +78,12 @@ internal class BridgeModule : Module() {
         callNativeMethod("openUrl", methodArgs, null)
     }
 
-    fun filesEvent(instanceId: String, action: String, attachmentId: String? = null) {
-        val methodArgs = JSONObject()
-        methodArgs.put("instanceId", instanceId)
-        methodArgs.put("action", action)
-        attachmentId?.let { methodArgs.put("attachmentId", it) }
-        callNativeMethod("filesEvent", methodArgs, null)
-    }
-
     fun settingsEvent(instanceId: String, action: String, itemId: String? = null) {
         val methodArgs = JSONObject()
         methodArgs.put("instanceId", instanceId)
         methodArgs.put("action", action)
         itemId?.let { methodArgs.put("itemId", it) }
         callNativeMethod("settingsEvent", methodArgs, null)
-    }
-
-    fun threadEvent(
-        instanceId: String,
-        action: String,
-        itemId: String? = null,
-        attachmentId: String? = null,
-        tab: String? = null
-    ) {
-        val methodArgs = JSONObject()
-        methodArgs.put("instanceId", instanceId)
-        methodArgs.put("action", action)
-        itemId?.let { methodArgs.put("itemId", it) }
-        attachmentId?.let { methodArgs.put("attachmentId", it) }
-        tab?.let { methodArgs.put("tab", it) }
-        callNativeMethod("threadEvent", methodArgs, null)
     }
 
     suspend fun authRequest(command: JSONObject): JSONObject? =

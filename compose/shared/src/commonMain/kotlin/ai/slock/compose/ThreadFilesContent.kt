@@ -1,8 +1,6 @@
 package ai.slock.compose
 
-import ai.slock.compose.base.Utils
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -19,28 +17,14 @@ import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.layout.ContentScale
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.pager.Pager
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-
-internal const val THREAD_FILES_PAGE = "compose_thread_files"
-
-@Page(THREAD_FILES_PAGE, supportInLocal = true)
-internal class ComposeThreadFilesPage : ai.slock.compose.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { ThreadFilesScreen() }
-    }
-}
 
 @Serializable
 internal data class KuiklyThreadFilesPayload(
@@ -65,41 +49,6 @@ internal data class KuiklyThreadFileItem(
     val mimeType: String = "",
     val thumbnailUrl: String? = null
 )
-
-@Composable
-private fun ThreadFilesScreen() {
-    val pager = LocalActivity.current.getPager() as Pager
-    val bridge = Utils.bridgeModule(pager.pagerId)
-    val payload =
-        rememberThreadFilesPayload(
-            payload = pager.pageData.params.optString("payload"),
-            instanceId = pager.pageData.params.optString("instanceId")
-        )
-    LaunchedEffect(payload) {
-        bridge.log(
-            "thread_files_compose_render instanceId=${payload.instanceId} status=${payload.status} items=${payload.items.size} hasMore=${payload.hasMore} loadingMore=${payload.loadingMore} error=${payload.errorCode.orEmpty()}"
-        )
-    }
-    ThreadFilesContent(
-        payload = payload,
-        onEvent = { action, attachmentId ->
-            bridge.log(
-                "thread_files_compose_event instanceId=${payload.instanceId} action=$action attachmentId=${attachmentId.orEmpty()}"
-            )
-            bridge.filesEvent(
-                instanceId = payload.instanceId,
-                action = action,
-                attachmentId = attachmentId
-            )
-        }
-    )
-}
-
-@Composable
-private fun rememberThreadFilesPayload(payload: String, instanceId: String): KuiklyThreadFilesPayload =
-    androidx.compose.runtime.remember(payload, instanceId) {
-        parseThreadFilesPayload(payload, instanceId)
-    }
 
 internal fun parseThreadFilesPayload(
     payload: String,

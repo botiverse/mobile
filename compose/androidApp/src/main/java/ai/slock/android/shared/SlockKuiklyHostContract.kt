@@ -11,8 +11,7 @@ internal object SlockKuiklyPages {
     const val FORGOT_PASSWORD = "compose_forgot_password"
     const val APP_SHELL = "compose_slock_app_shell"
     const val THREAD = "compose_thread"
-    const val THREAD_FILES = "compose_thread_files"
-    const val THREAD_COMPOSER = "compose_thread_composer"
+    const val THREAD_COMPOSER_VISUAL = "compose_thread_composer_visual"
     const val HOME = "compose_home"
     const val MEMBERS = "compose_members"
     const val SETTINGS_HOME = "compose_settings_home"
@@ -70,7 +69,7 @@ internal class SlockKuiklyPageData private constructor(
 
 internal fun slockKuiklyPageIsOpaque(pageName: String): Boolean =
         pageName == SlockKuiklyPages.THREAD ||
-                pageName == SlockKuiklyPages.THREAD_COMPOSER ||
+                pageName == SlockKuiklyPages.THREAD_COMPOSER_VISUAL ||
                 pageName == SlockKuiklyPages.APP_SHELL
 
 private const val SLOCK_KUIKLY_APP_ID = 1

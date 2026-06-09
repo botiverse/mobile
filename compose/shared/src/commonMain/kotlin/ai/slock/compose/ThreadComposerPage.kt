@@ -48,12 +48,13 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-internal const val THREAD_COMPOSER_PAGE = "compose_thread_composer"
+private const val THREAD_COMPOSER_VISUAL_PAGE = "compose_thread_composer_visual"
 private const val THREAD_COMPOSER_PAGE_DATA_EVENT = "slockPageData"
 private val threadComposerJson = Json { ignoreUnknownKeys = true }
 
-@Page(THREAD_COMPOSER_PAGE, supportInLocal = true)
-internal class ComposeThreadComposerPage : ai.slock.compose.base.BasePager() {
+// Connected visual-test entry only. Product Thread renders ThreadComposerContent inside ThreadPage.
+@Page(THREAD_COMPOSER_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeThreadComposerVisualPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { ThreadComposerScreen() }

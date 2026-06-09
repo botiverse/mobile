@@ -101,7 +101,7 @@ These methods exist because Slock still has migration-era Android islands or dem
 
 | Method | Current use | Android | OHOS | Direction |
 | --- | --- | --- | --- | --- |
-| `filesEvent` / `settingsEvent` / `threadEvent` / `composerEvent` | Android island event dispatch | Implemented | Not implemented | Retire as pages move into shared shell. |
+| `settingsEvent` / `composerEvent` | Standalone shared page compatibility events | Implemented where still used by direct page harnesses | Not implemented | Retire after remaining direct page visual/debug harnesses move into shared shell contracts. |
 | `closePage` | Close current Kuikly page | Implemented | Stub | Prefer shared router/back handling; implement host close only if page-level close remains necessary. |
 | `openPage` | Demo-style page open | Not implemented in Slock Android bridge | Stub | Use Kuikly `RouterModule` or shared `NavHost` for app routes. |
 | `toast` | User-visible host toast | Implemented | Stub | Optional until product decides shared toast behavior. |
@@ -118,3 +118,8 @@ OHOS production registration now exports only Slock-owned capabilities:
 - `SlockOhosHdsTabBarView`
 
 The demo `KRMyModule` and `KRMyView` are removed from OHOS production registration and source. Future smoke/demo components should live in a debug-only host or a sample app, not in the production Slock host delegate.
+
+## Retired Transitional Methods
+
+- `threadEvent` was removed after full shared Thread stopped using the legacy Android island event path.
+- `filesEvent` was removed with the standalone `compose_thread_files` page. Product Thread renders `ThreadFilesContent` inside `compose_thread` and routes file actions through the shared Thread route/data-source.
