@@ -216,11 +216,11 @@ export class OhosSocketIoClient {
     }
     const headerLines = Object.entries(headers)
       .filter((entry) => entry[0].length > 0 && entry[1].length > 0)
-      .map((entry) => `${entry[0]}:${entry[1]}`);
+      .map((entry) => `${entry[0]}: ${entry[1]}`);
     if (headerLines.length === 0) {
       return;
     }
-    socket.set_headers(headerLines.join(','));
+    socket.set_headers(headerLines.join('\r\n'));
   }
 
   private applyAuthOptions(socket: client_socket, auth: KRRecord): void {
@@ -228,13 +228,13 @@ export class OhosSocketIoClient {
     const serverId = auth['serverId'] as string;
     const queryParts: Array<string> = [];
     if (token !== undefined && token.length > 0) {
-      queryParts.push(`token:${token}`);
+      queryParts.push(`token=${encodeURIComponent(token)}`);
     }
     if (serverId !== undefined && serverId.length > 0) {
-      queryParts.push(`serverId:${serverId}`);
+      queryParts.push(`serverId=${encodeURIComponent(serverId)}`);
     }
     if (queryParts.length > 0) {
-      socket.set_option(`{${queryParts.join(',')}}`);
+      socket.set_option(queryParts.join('&'));
     }
   }
 
