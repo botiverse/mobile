@@ -129,17 +129,19 @@ After confirming the gap, we prepared a fork-side upstream candidate:
 
 - fork: `git@gitcode.com:gcw_wXOEWo30/openharmony_tpc_samples.git`
 - branch: `fix/socketio-auth-payload`
-- commit: `120b008c feat: support socketio auth payload`
-- merge request URL from GitCode: `https://gitcode.com/gcw_wXOEWo30/openharmony_tpc_samples/merge_requests/new?source_branch=fix/socketio-auth-payload`
+- current commit: `909e6ede docs: simplify socketio auth sample`
+- merge request URL from GitCode: `https://gitcode.com/CPF-ApplicationTPC/openharmony_tpc_samples/merge_requests/3003`
 
-The fork patch adds an additive `set_auth(auth)` API:
+The fork patch adds an additive `set_auth(auth)` API, but the final public contract is intentionally object-only:
 
-- ArkTS `client_socket.set_auth(auth: string | ESObject)`;
+- ArkTS `client_socket.set_auth(auth: ESObject)`;
 - NAPI `SocketIOClient::set_auth`;
 - native optional `g_authMessage`;
 - `connect(uri)` still preserves old behavior when auth is not set;
 - if auth is set, native connect calls `clientInstance.connect(uri, g_optionMap, g_headerMap, g_authMessage)`;
-- README/README_zh/CHANGELOG and Demo 009 were updated to show that `set_headers`, `set_option`, and `set_auth` are distinct.
+- README/README_zh/CHANGELOG and Demo 009 were updated to show that `set_headers`, `set_option`, and `set_auth` are distinct;
+- Demo 009 now passes a generic object payload such as `{ token }`, not a Slock-specific `serverId` example;
+- the earlier string-auth parser path was removed because the package's `parseConfigString`-style parsing coerces values through strings and is not equivalent to Socket.IO JS `auth: { ... }` for numbers, booleans, or nested objects.
 
 This makes the package capable of sending the Socket.IO CONNECT auth payload read by Node.js as `socket.handshake.auth`, without requiring Slock server to accept header/query fallback.
 
@@ -252,6 +254,25 @@ The server emits app-layer `heartbeat` every 15s with `{ seq: maxSeq, ts }`.
 
 Source: `third_party/slock-source/packages/server/src/socket/index.ts:154-158`.
 
+### React Socket.IO Source Inventory
+
+React Socket.IO behavior is not isolated to one file. The current web contract is spread across these client-side sources:
+
+| Source | Socket.IO responsibility | Mobile parity implication |
+| --- | --- | --- |
+| `packages/web/src/api/socket.ts` | Creates the singleton socket, uses websocket-only `forceNew`, builds `auth: { token, serverId }`, handles `connect_error`, destroys/recreates sockets after login/server switch, and refreshes auth on `reconnect_attempt`. | Android has equivalent websocket/auth basics but lacks reconnect-attempt token refresh; OHOS has only the token passed at bridge connect time. |
+| `packages/web/src/components/layout/MainLayout.tsx` | Owns the global listener set for messages, tasks, agents, machines, channels, members, server membership, announcements, rooms, resume, heartbeat, and browser live-session recovery. | This is the canonical event coverage list mobile should compare against. |
+| `packages/web/src/App.tsx` + `utils/browserRecoveryPolicy.ts` | On browser `online` / visible signals, retries auth restore and reloads live state when a stored session exists. | Android/OHOS need foreground/online recovery semantics at the shared shell level, not only socket reconnect. |
+| `packages/web/src/store/channelStore.ts` | Emits `join:channel` as a raw channel id after channel create/open/join/DM open. | Android's transport matches this by special-casing `join:channel` to a raw string; OHOS also sends a string. |
+| `packages/web/src/components/message/ThreadPanel.tsx` | Joins/leaves thread rooms, re-joins on socket `connect`, listens to raw `message:new` / `message:updated`, and keeps thread-local new-message state. | Mobile should treat thread room joins as a per-thread lifecycle, and should not rely only on server auto-joined channel rooms. |
+| `packages/web/src/hooks/useChannelMembers.ts` | Listens to `channel:members-updated` for the currently open channel and refetches channel members. | Mobile has no typed event/refresh path for this event today. |
+| `packages/web/src/components/agent/AgentDetailPanel.tsx` | Agent detail listens to `reminder:fired`, `reminder:scheduled`, `reminder:canceled`, and reloads reminders on reconnect. | Mobile reminder surfaces will stay stale unless this scoped listener pattern is added. |
+| `packages/web/src/utils/activityTrajectoryRecovery.ts` | Reloads durable agent activity logs after socket reconnect while an agent activity tab is open. | Mobile `agent:activity` should distinguish live presence from durable activity history and refetch on reconnect where a detail screen is open. |
+| `packages/web/src/utils/machineStatusRecovery.ts` | Applies machine offline quickly, forces attached agents offline, and reloads machines/agents on machine online. | Mobile cannot simply map `machine:status` to a local field; online needs authoritative reload to unstick agents. |
+| `packages/web/src/utils/socketAuthRecovery.ts`, `socketReconnectAuthRefresh.ts`, `socketSessionPolicy.ts` | Encodes auth-error and Manager-reconnect token-refresh policy in tested pure helpers. | Mobile should port the policy shape rather than only checking token expiry before explicit connect. |
+
+React also has tests around these decisions (`socketAuthRecovery.test.ts`, `socketReconnectAuthRefresh.test.ts`, `socketSessionPolicy.test.ts`, `browserRecoveryPolicy.test.ts`, `mainLayoutSocketEffectDeps.test.ts`, `messageWindowGapRecovery.test.ts`, `channelRealtimeSync.test.ts`, `agentStatusRecovery.test.ts`, `machineStatusMerge.test.ts`). Mobile needs equivalent shared tests for the same contract edges, not just transport connection tests.
+
 ### React Listeners And Recovery Semantics
 
 React listens for the main message/task/member/activity events in `MainLayout`:
@@ -319,6 +340,32 @@ Source examples:
 React receives `message:updated` as `msg` and merges directly.
 
 Source: `third_party/slock-source/packages/web/src/components/layout/MainLayout.tsx:843-847`.
+
+### Server Event Inventory And Mobile Status
+
+| Event | Server emit source | React behavior | Android/OHOS current status |
+| --- | --- | --- | --- |
+| `rooms:joined` | `packages/server/src/socket/index.ts` after room setup | Starts global `sync:resume`, visible-scope sync, unread/inbox refresh | Android/OHOS receive it, but Android also resumes on raw `connect` / `reconnect`; OHOS resumes only when `lastSeq > 0`. |
+| `sync:resume:response` | `packages/server/src/socket/index.ts` | Batch-adds raw missed messages and advances `lastSeq` to `currentSeq` | Subscribed and decoded, but raw message DTO must be kept aligned with server shape. |
+| `heartbeat` | `packages/server/src/socket/index.ts` every 15s | Does not advance applied message cursor; triggers visible gap sync and silence watchdog | Subscribed, but advances mobile resume cursor and has no silence watchdog. |
+| `message:new` | `messageService.ts`, `routes/tasks.ts`, `actionCardsService.ts`, internal routes | Adds raw message row, reorders channel/DM, schedules inbox refresh | Subscribed, but mapper expects `{ message: ... }`; raw server rows can drop. |
+| `message:updated` | `routes/messages.ts`, `routes/tasks.ts`, `internalAgentApi.ts`, action-card/internal routes | Merge-only update of raw message row | Same envelope mismatch as `message:new`. |
+| `dm:new` | `messageService.ts` | Joins DM room, refreshes DM channel list/inbox | Subscribed and maps to `DirectMessageCreated`; Android joins the channel after dispatch. |
+| `thread:updated` | `messageService.ts` | Updates thread summaries, followed-thread unread, inbox | Subscribed and decoded; Home/thread unread semantics are simpler than React. |
+| `task:created/updated/deleted` | `taskRealtimeEvents.ts`, `routes/tasks.ts`, internal task routes | Upserts/removes task-board rows; paired message events update chat flow | Subscribed and decoded for task store writes, but message update envelope bug can leave chat row stale. |
+| `agent:activity` | `agentOrchestrator.ts` | Updates status, live activity, trajectory, with `serverSeq` dedupe | Subscribed as member presence only; no durable activity trajectory recovery. |
+| `machine:status` | `agentOrchestrator.ts` | Updates machine status, forces attached agents offline on offline, reloads machines/agents on online | Not subscribed/mapped. |
+| `machine:capabilities` | `agentOrchestrator.ts` | Updates runtimes/host/os/daemon version | Not subscribed/mapped. |
+| `machine:updated` | `routes/servers.ts` | Reloads machines | Not subscribed/mapped. |
+| `daemon:status` | legacy transition event | Updates machine status | Not subscribed/mapped. |
+| `agent:created/deleted` | `routes/agents.ts` | Reloads agents | Not subscribed/mapped. |
+| `channel:updated` | `routes/channels.ts`, onboarding/action-card services | Reloads channel list; joined/private projections refresh via user/server rooms | Not subscribed/mapped. |
+| `channel:members-updated` | `routes/channels.ts`, internal membership routes | Reloads channel list globally and channel members in open member hooks | Not subscribed/mapped. |
+| `server:plan-updated` | `billingService.ts` | Reloads servers | Not subscribed/mapped. |
+| `server:member-added/left/removed/updated` | `routes/auth.ts`, `routes/servers.ts` | Reloads member list for active server | Android subscribes but maps to null; OHOS forwards raw fallback to mapper, which also returns null. |
+| `server:membership-removed` | `routes/servers.ts` | Reloads servers and exits the removed current server | Not subscribed/mapped. |
+| `announcement:new` | `routes/announcements.ts` | Inserts/dedupes account announcement | Not subscribed/mapped. |
+| `reminder:fired/scheduled/canceled` | `reminderScheduler.ts`, `agentOrchestrator.ts`, internal reminder routes | Agent detail updates/removes/schedules reminder rows and reloads on reconnect | Not subscribed globally; no scoped mobile Agent detail parity. |
 
 ## Android / KMP Implementation
 
@@ -578,6 +625,37 @@ Source for raw fallback: `compose/shared/src/commonMain/kotlin/ai/slock/compose/
 | Announcements/reminders | Announcement and Agent detail reminder events handled | Not subscribed globally | Notifications/reminder surfaces stale |
 | Member events | React reloads members on `server:member-*` | Android subscribes but mapper returns null | Member list not refreshed |
 | Home unread merge | React counts deduped missed messages and knows current channel state | KMP increments simplified +1 per stream group and lacks visible-thread awareness | Unread/count drift |
+
+## Dual-End Missing Work
+
+This is the actionable split between Android-native, OHOS-native, and shared KMP. Most product-visible fixes belong in shared KMP; transport-only work is not enough.
+
+### Shared KMP Missing Work
+
+- Accept canonical raw `message:new` / `message:updated` payloads and keep only a compatibility fallback for `{ message: ... }` if required by older tests.
+- Track applied message cursor separately from heartbeat server max seq; `heartbeat.seq` must never advance the resume cursor.
+- Add a shared "server ahead" signal so heartbeat can trigger gap sync/backfill for visible scopes without pretending messages were applied.
+- Expand `RealtimeSocketEvents` and the mapper/repository model for channel updates, channel member updates, server membership removal, machine status/capabilities/updated, agent created/deleted, server plan, announcements, and reminders.
+- Add refresh intents for events that are not self-contained (`server:member-*`, `channel:members-updated`, `machine:updated`, `agent:created/deleted`) instead of fabricating partial domain objects.
+- Make Home unread/preview merge dedupe by message id/seq and count missed messages per channel; include visible channel/thread and self-authored-message rules.
+- Add shared contract tests based on raw server payloads and React recovery semantics.
+
+### Android Missing Work
+
+- Remove duplicate global `sync:resume` from raw `connect`; wait for `rooms:joined` or prove room setup before resume.
+- Refresh/update socket auth before Manager `reconnect_attempt`, using the same decision policy React has in `socketReconnectAuthRefresh.ts`.
+- Add an app-layer heartbeat watchdog using React's conservative thresholds: heartbeat silence over 90s plus all inbound event silence over 120s while connected should force reconnect.
+- Subscribe to the missing React events after the shared mapper/refresh-intent model exists.
+- Add diagnostics that log `rooms:joined`, resume reason, heartbeat server seq vs applied cursor, and dropped/unknown event names.
+
+### OHOS Missing Work
+
+- Add parser fixtures for Engine.IO open, ping, close; Socket.IO connect, connect error, event, disconnect; and reconnect-after-close.
+- Add field diagnostics for Engine.IO `pingInterval` / `pingTimeout`, ping received, pong sent, Socket.IO auth connect sent, app heartbeat received, and event parse failures.
+- Forward connection lifecycle events (`connect`, `disconnect`, reconnect attempt/error/failed or equivalent bridge states) into shared diagnostics.
+- Add app-layer heartbeat watchdog in ArkTS or shared shell, not just Engine.IO pong handling.
+- Add token-refresh/reconnect handoff. The bridge currently uses the token it was given; it needs a path to refresh or request a new access token before reconnect if the access token is near expiry/expired.
+- Once shared event coverage exists, subscribe/forward the same React event set as Android.
 
 ## Confirmation Plan
 
