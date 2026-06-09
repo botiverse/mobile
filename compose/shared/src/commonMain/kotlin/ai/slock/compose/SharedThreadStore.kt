@@ -7,8 +7,11 @@ import ai.slock.compose.data.ThreadActionResult
 import ai.slock.compose.data.AttachmentUploadFile
 import ai.slock.compose.data.AttachmentUploadRequest
 import ai.slock.compose.data.AttachmentUploadResult
+import ai.slock.compose.data.CreateAgentBody
 import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesPage
+import ai.slock.compose.data.buildCreateAgentBody
+import ai.slock.compose.data.buildMarkAgentActionExecutedBody
 import ai.slock.compose.data.ChannelFilesSnapshot
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.ConversationRepository
@@ -21,17 +24,22 @@ import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.MemberRepository
 import ai.slock.compose.data.MessageMutationSummary
 import ai.slock.compose.data.MessageReactionSummary
+import ai.slock.compose.data.SlockAgentsApiClient
 import ai.slock.compose.data.SlockAuthSessionStore
+import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.SlockThreadApi
 import ai.slock.compose.data.SlockThreadApiClient
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.SharedThreadNetworkApi
+import ai.slock.compose.data.ThreadActionCard
 import ai.slock.compose.data.ThreadSnapshot
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.data.ThreadAttachmentOpenTarget
 import ai.slock.compose.data.ThreadMessagesPage
 import ai.slock.compose.data.authSessionRequiredResult
 import ai.slock.compose.data.map
+import ai.slock.compose.data.toMessageMetadata
+import ai.slock.compose.data.withExecutedAgent
 import ai.slock.compose.model.Attachment
 import ai.slock.compose.model.AttachmentId
 import ai.slock.compose.model.AvatarReference
@@ -80,7 +88,9 @@ internal class SharedThreadDataSource(
     private val localWriteThrough: ComposeLocalWriteThrough? = null,
     private val memberRepository: MemberRepository? = null,
     private val conversationRepository: ConversationRepository? = null,
-    private val channelRepository: ChannelRepository? = null
+    private val channelRepository: ChannelRepository? = null,
+    private val agentsApiClient: SlockAgentsApiClient? = null,
+    private val actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null
 ) {
     constructor(
         networkApi: SharedThreadNetworkApi,
@@ -88,14 +98,18 @@ internal class SharedThreadDataSource(
         localWriteThrough: ComposeLocalWriteThrough? = null,
         memberRepository: MemberRepository? = null,
         conversationRepository: ConversationRepository? = null,
-        channelRepository: ChannelRepository? = null
+        channelRepository: ChannelRepository? = null,
+        agentsApiClient: SlockAgentsApiClient? = null,
+        actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null
     ) : this(
         api = SlockThreadApiClient(networkApi),
         sessionStore = sessionStore,
         localWriteThrough = localWriteThrough,
         memberRepository = memberRepository,
         conversationRepository = conversationRepository,
-        channelRepository = channelRepository
+        channelRepository = channelRepository,
+        agentsApiClient = agentsApiClient,
+        actionCardsApiClient = actionCardsApiClient
     )
 
     private val payloadCache = mutableMapOf<String, KuiklyThreadScreenPayload>()
@@ -130,6 +144,49 @@ internal class SharedThreadDataSource(
             fallbackHeader = snapshot.conversation,
             fallbackParentMessage = snapshot.parentMessage
         )
+    }
+
+    suspend fun commitAgentCreateActionCard(
+        messageId: String,
+        card: ThreadActionCard
+    ): DataResult<ThreadActionCard> {
+        if (!card.type.equals("agent:create", ignoreCase = true)) {
+            return DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
+        }
+        val agentName = card.name.trim()
+        if (agentName.isBlank()) {
+            return DataResult.Error(ScreenError(code = "action_card_agent_name_missing", retryable = false))
+        }
+        val agentsApi = agentsApiClient
+            ?: return DataResult.Error(ScreenError(code = "action_card_agents_api_missing", retryable = false))
+        val actionsApi = actionCardsApiClient
+            ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+
+        return when (
+            val created =
+                agentsApi.createAgent(
+                    buildCreateAgentBody(
+                        CreateAgentBody(
+                            name = agentName.removePrefix("@"),
+                            description = card.description?.takeIf { it.isNotBlank() }
+                        )
+                    )
+                )
+        ) {
+            is DataResult.Content -> {
+                val resultName = created.data.name.takeIf { it.isNotBlank() } ?: agentName.removePrefix("@")
+                val executedCard = card.withExecutedAgent(id = created.data.id, name = resultName)
+                actionsApi.markActionExecuted(
+                    MessageId(messageId),
+                    buildMarkAgentActionExecutedBody(agentId = created.data.id, agentName = resultName)
+                )
+                DataResult.Content(executedCard)
+            }
+            is DataResult.Empty ->
+                DataResult.Error(ScreenError(code = "agent_create_empty", retryable = true))
+            is DataResult.Error -> created
+            is DataResult.NoPermission -> created
+        }
     }
 
     suspend fun fetchThreadPayload(
@@ -841,6 +898,7 @@ internal sealed interface SharedThreadIntent {
         val reactions: List<KuiklyThreadReactionItem>
     ) : SharedThreadIntent
     data class ApplyMessageMutation(val summary: MessageMutationSummary) : SharedThreadIntent
+    data class ApplyActionCard(val messageId: String, val card: ThreadActionCard) : SharedThreadIntent
     data class ApplyTaskStatus(val taskId: String, val statusLabel: String?) : SharedThreadIntent
     data class ApplyMembersPatch(
         val membersCount: Int,
@@ -893,6 +951,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyMessageReactionSelection,
             is SharedThreadIntent.ApplyMessageReactions,
             is SharedThreadIntent.ApplyMessageMutation,
+            is SharedThreadIntent.ApplyActionCard,
             is SharedThreadIntent.ApplyTaskStatus,
             is SharedThreadIntent.ApplyMembersPatch,
             is SharedThreadIntent.SetAddMemberStatus,
@@ -932,6 +991,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyMessageReactions ->
                 applyMessageReactions(intent.messageId, intent.reactions)
             is SharedThreadIntent.ApplyMessageMutation -> applyMessageMutation(intent.summary)
+            is SharedThreadIntent.ApplyActionCard -> applyActionCard(intent.messageId, intent.card)
             is SharedThreadIntent.ApplyTaskStatus -> applyTaskStatus(intent.taskId, intent.statusLabel)
             is SharedThreadIntent.ApplyMembersPatch -> applyMembersPatch(intent)
             is SharedThreadIntent.SetAddMemberStatus -> setAddMemberStatus(intent.status, intent.errorCode)
@@ -1171,6 +1231,13 @@ internal class SharedThreadStore(
             cachePayload = true,
             writeCachedPayload = true
         ) { payload -> payload.withMessageMutationSummary(summary, currentUserId) }
+    }
+
+    private suspend fun applyActionCard(messageId: String, card: ThreadActionCard) {
+        reducePayloadPatchAndWriteCache(
+            cachePayload = true,
+            writeCachedPayload = true
+        ) { payload -> payload.withActionCard(messageId, card) }
     }
 
     private suspend fun applyTaskStatus(taskId: String, statusLabel: String?) {
@@ -1651,6 +1718,19 @@ internal fun KuiklyThreadScreenPayload.withTaskStatusLabel(taskId: String, statu
             if (task.id == taskId && statusLabel != null) task.copy(status = statusLabel) else task
         }
     )
+
+internal fun KuiklyThreadScreenPayload.withActionCard(messageId: String, card: ThreadActionCard): KuiklyThreadScreenPayload =
+    copy(
+        messages = messages.map { message ->
+            if (message.id == messageId) message.withActionCard(card) else message
+        },
+        originMessage = originMessage?.let { message ->
+            if (message.id == messageId) message.withActionCard(card) else message
+        }
+    )
+
+private fun KuiklyThreadMessageItem.withActionCard(card: ThreadActionCard): KuiklyThreadMessageItem =
+    copy(metadata = metadata.filterKeys { !it.startsWith("actionCard.") } + card.toMessageMetadata())
 
 internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
     copy(

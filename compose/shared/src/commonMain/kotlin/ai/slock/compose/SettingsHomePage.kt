@@ -113,6 +113,10 @@ import ai.slock.compose.data.SearchIsoBounds
 import ai.slock.compose.data.SearchSort
 import ai.slock.compose.data.SearchSenderFilterItem
 import ai.slock.compose.data.SearchTimeRange
+import ai.slock.compose.data.SlockAgentsApiClient
+import ai.slock.compose.data.SlockAgentsNetworkApi
+import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
+import ai.slock.compose.data.SlockIntegrationsActionsPushNetworkApi
 import ai.slock.compose.data.SharedHomeSavedPanelState
 import ai.slock.compose.data.SharedHomeSearchPanelState
 import ai.slock.compose.data.SharedHomeSearchSavedIntent
@@ -725,7 +729,11 @@ private fun SlockAppShellContent() {
                 localWriteThrough = localWriteThrough,
                 memberRepository = memberRepository,
                 conversationRepository = conversationRepository,
-                channelRepository = channelRepository
+                channelRepository = channelRepository,
+                agentsApiClient = SlockAgentsApiClient(SlockAgentsNetworkApi(appShellNetworkClient)),
+                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(
+                    SlockIntegrationsActionsPushNetworkApi(appShellNetworkClient)
+                )
             )
         }
     val savedRepository =

@@ -19,10 +19,13 @@ import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.TasksUiState
 import ai.slock.compose.data.ThreadMessagesPage
+import ai.slock.compose.data.WireActionCardAction
+import ai.slock.compose.data.WireActionCardMetadata
 import ai.slock.compose.data.WireAttachment
 import ai.slock.compose.data.WireMessage
 import ai.slock.compose.data.WireReaction
 import ai.slock.compose.data.WireThreadSummary
+import ai.slock.compose.data.actionCardFromMessageMetadata
 import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesPage
 import ai.slock.compose.data.parseSharedThreadPickedAttachmentFiles
@@ -445,6 +448,66 @@ class ThreadPayloadTest {
         assertEquals(true, payload.messages.first().reactions.first().selected)
         assertEquals("log.txt", payload.messages.first().attachments.first().name)
         assertEquals("https://cdn.example/screen.png", payload.messages.first().attachments[1].thumbnailUrl)
+    }
+
+    @Test
+    fun buildsSharedThreadPayloadPreservingActionCardMetadata() {
+        val base =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "general",
+                sourceThreadId = "channel-1",
+                status = "loading"
+            )
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "artin@slock.ai"),
+                accessToken = "access",
+                refreshToken = "refresh"
+            )
+
+        val payload =
+            buildSharedThreadPayloadFromMessagesPage(
+                basePayload = base,
+                session = session,
+                page =
+                    ThreadMessagesPage(
+                        messages =
+                            listOf(
+                                WireMessage(
+                                    id = "m-action",
+                                    channelId = "channel-1",
+                                    senderType = "agent",
+                                    senderId = "agent-cindy",
+                                    senderName = "Cindy",
+                                    messageType = "chat",
+                                    content = "Create agent action",
+                                    createdAt = "2026-06-09T03:00:00Z",
+                                    actionMetadata =
+                                        WireActionCardMetadata(
+                                            kind = "action-card",
+                                            state = "prepared",
+                                            action =
+                                                WireActionCardAction(
+                                                    type = "agent:create",
+                                                    name = "Pi-Frontend-Chrome插件专家",
+                                                    description = "负责 Chrome 插件前端工程与视觉对齐。",
+                                                    draftHint = "请创建这个专家 agent"
+                                                )
+                                        )
+                                )
+                            ),
+                        canLoadMoreBefore = false,
+                        canLoadMoreAfter = null
+                    )
+            )
+
+        val card = actionCardFromMessageMetadata(payload.messages.single().metadata)
+        assertEquals("agent:create", card?.type)
+        assertEquals("prepared", card?.state)
+        assertEquals("Pi-Frontend-Chrome插件专家", card?.name)
+        assertEquals("负责 Chrome 插件前端工程与视觉对齐。", card?.description)
+        assertEquals("请创建这个专家 agent", card?.draftHint)
     }
 
     @Test

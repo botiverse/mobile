@@ -26,6 +26,9 @@ import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadUpdated
+import ai.slock.compose.data.WireActionCardMetadata
+import ai.slock.compose.data.toThreadActionCard
+import ai.slock.compose.data.toMessageMetadata
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -198,6 +201,7 @@ private data class MessageWireDto(
     val senderDescription: String? = null,
     val roleDescription: String? = null,
     val attachments: List<AttachmentWireDto> = emptyList(),
+    val actionMetadata: WireActionCardMetadata? = null,
 )
 
 @Serializable
@@ -307,7 +311,7 @@ private fun MessageWireDto.toDomain(): Message {
         body = content,
         messageType = if (messageType == "system") MessageType.System else MessageType.Chat,
         systemEventType = null,
-        metadata = emptyMap(),
+        metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
         attachments = attachments.map { it.toDomain() },
         replyCount = 0,
         parentMessageId = null,

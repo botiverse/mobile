@@ -85,6 +85,7 @@ private data class MessagesWireMessage(
     val unreadReplyCount: Int? = null,
     val threadUnreadCount: Int? = null,
     val firstUnreadReplyMessageId: String? = null,
+    val actionMetadata: WireActionCardMetadata? = null,
 )
 
 @Serializable
@@ -235,6 +236,7 @@ private fun MessagesWireMessage.toDomain(fallbackThreadId: ThreadId): Message {
         } else {
             MessageType.Chat
         },
+        metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
         attachments = attachments.map { it.toDomain() },
         deliveryState = MessageDeliveryState.Sent,
         task = task,

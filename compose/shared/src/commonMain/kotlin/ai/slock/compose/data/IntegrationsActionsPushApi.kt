@@ -46,6 +46,55 @@ internal interface SlockIntegrationsActionsPushApi {
     suspend fun testPush(): HomeNetworkResponse
 }
 
+internal class SlockIntegrationsActionsPushNetworkApi(
+    private val networkClient: SlockNetworkClient
+) : SlockIntegrationsActionsPushApi {
+    override suspend fun integrationsOverview(): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Visible, "integrations/overview")
+
+    override suspend fun integrationClients(): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Visible, "integrations/clients")
+
+    override suspend fun createIntegrationClient(body: String): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "integrations/clients", method = "POST", bodyText = body)
+
+    override suspend fun approveIntegrationRequest(requestId: String, body: String): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "integrations/requests/$requestId/approve", method = "POST", bodyText = body)
+
+    override suspend fun denyIntegrationRequest(requestId: String): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "integrations/requests/$requestId/deny", method = "POST")
+
+    override suspend fun revokeIntegrationGrant(grantId: String): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "integrations/grants/$grantId/revoke", method = "POST")
+
+    override suspend fun agentIntegrations(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Visible, "integrations/agents/${agentId.value}")
+
+    override suspend fun executeAction(messageId: MessageId, body: String): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "actions/${messageId.value}/execute", method = "POST", bodyText = body)
+
+    override suspend fun emitActionEvent(messageId: MessageId, body: String): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Background, "actions/${messageId.value}/event", method = "POST", bodyText = body)
+
+    override suspend fun markActionExecuted(messageId: MessageId, body: String): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "actions/${messageId.value}/mark-executed", method = "POST", bodyText = body)
+
+    override suspend fun pushVapidKey(): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Visible, "push/vapid-key")
+
+    override suspend fun recordPushPromptEvent(body: String): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Background, "push/prompt-events", method = "POST", bodyText = body)
+
+    override suspend fun subscribePush(body: String): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "push/subscribe", method = "POST", bodyText = body)
+
+    override suspend fun unsubscribePush(body: String): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "push/subscribe", method = "DELETE", bodyText = body)
+
+    override suspend fun testPush(): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "push/test", method = "POST")
+}
+
 internal class SlockIntegrationsActionsPushApiClient(
     private val transport: SlockIntegrationsActionsPushApi
 ) {
@@ -305,6 +354,20 @@ internal data class ApproveIntegrationRequestBody(val remember: Boolean)
 internal data class ExecuteActionBody(val expectedState: String? = null)
 
 @Serializable
+internal data class MarkActionExecutedBody(val result: ActionCardResultBody)
+
+@Serializable
+internal data class ActionCardResultBody(
+    val kind: String,
+    val id: String? = null,
+    val name: String? = null,
+    val channelId: String? = null,
+    val channelName: String? = null,
+    val addedHumanIds: List<String>? = null,
+    val addedAgentIds: List<String>? = null,
+)
+
+@Serializable
 internal data class ActionEventBody(
     val eventType: String,
     val metadata: JsonObject? = null,
@@ -344,6 +407,13 @@ internal fun buildApproveIntegrationRequestBody(remember: Boolean): String =
 
 internal fun buildExecuteActionBody(expectedState: String? = null): String =
     integrationsActionsPushJson.encodeToString(ExecuteActionBody(expectedState = expectedState))
+
+internal fun buildMarkAgentActionExecutedBody(agentId: String, agentName: String): String =
+    integrationsActionsPushJson.encodeToString(
+        MarkActionExecutedBody(
+            result = ActionCardResultBody(kind = "agent", id = agentId, name = agentName)
+        )
+    )
 
 internal fun buildActionEventBody(
     eventType: String,

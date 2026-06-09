@@ -19,6 +19,11 @@ import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.ThreadApiResult
+import ai.slock.compose.data.SlockAgentsApiClient
+import ai.slock.compose.data.SlockAgentsNetworkApi
+import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
+import ai.slock.compose.data.SlockIntegrationsActionsPushNetworkApi
+import ai.slock.compose.data.ThreadActionCard
 import ai.slock.compose.data.SharedTasksDataSource
 import ai.slock.compose.data.SharedTasksRouteIntent
 import ai.slock.compose.data.SharedTasksScope
@@ -29,6 +34,7 @@ import ai.slock.compose.data.TaskSnapshot
 import ai.slock.compose.data.TasksUiState
 import ai.slock.compose.data.isAuthSessionBlocker
 import ai.slock.compose.data.isAuthSessionErrorCode
+import ai.slock.compose.data.actionCardFromMessageMetadata
 import ai.slock.compose.data.summaryCounts
 import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.MemberId
@@ -535,7 +541,11 @@ private fun ThreadPageScreen() {
                         sessionStore = authStore,
                         networkClient = networkClient,
                         warningLogger = { message -> bridge.log("thread_channel_repository $message") }
-                    )
+                    ),
+                agentsApiClient = SlockAgentsApiClient(SlockAgentsNetworkApi(networkClient)),
+                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(
+                    SlockIntegrationsActionsPushNetworkApi(networkClient)
+                )
             )
         }
     val tasksDataSource =
@@ -857,6 +867,7 @@ internal fun SharedThreadRouteContent(
     var composerFailureLabel by remember(initialPayload.instanceId) { mutableStateOf<String?>(null) }
     var removedAttachmentIds by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingReactionKeys by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingActionCardIds by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
     var uploadedAttachments by remember(initialPayload.instanceId) {
         mutableStateOf<List<SharedThreadComposerAttachment>>(emptyList())
     }
@@ -884,6 +895,7 @@ internal fun SharedThreadRouteContent(
         composerSending = false
         composerFailureLabel = null
         removedAttachmentIds = emptySet()
+        pendingActionCardIds = emptySet()
         uploadedAttachments = emptyList()
         threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
     }
@@ -1128,6 +1140,7 @@ internal fun SharedThreadRouteContent(
             onTasksIntent = tasksViewModel::dispatch,
             highlightedMentions = threadState.highlightedMentions,
             diagnosticsLogger = { bridge.log(it) },
+            pendingActionCardIds = pendingActionCardIds,
             onBack = onBack,
             onThreadEvent = { action, itemId, attachmentId, tab ->
                 when {
@@ -1208,6 +1221,45 @@ internal fun SharedThreadRouteContent(
                                 if (routeAuthRequired(result)) return@launch
                                 bridge.toast("Unable to save message")
                             }
+                        }
+                    }
+                }
+                action == "commitActionCard" && !itemId.isNullOrBlank() -> {
+                    if (itemId in pendingActionCardIds) {
+                        return@ThreadPageContent
+                    }
+                    val actionCard =
+                        renderedPayload.messages.firstOrNull { it.id == itemId }?.threadActionCard()
+                            ?: renderedPayload.originMessage?.takeIf { it.id == itemId }?.threadActionCard()
+                    if (actionCard == null) {
+                        bridge.toast("Action is no longer available")
+                        return@ThreadPageContent
+                    }
+                    if (!actionCard.type.equals("agent:create", ignoreCase = true)) {
+                        bridge.toast("Action is not supported yet")
+                        return@ThreadPageContent
+                    }
+                    pendingActionCardIds = pendingActionCardIds + itemId
+                    coroutineScope.launch {
+                        try {
+                            when (val result = dataSource.commitAgentCreateActionCard(itemId, actionCard)) {
+                                is DataResult.Content -> {
+                                    threadViewModel.dispatch(
+                                        SharedThreadIntent.ApplyActionCard(itemId, result.data)
+                                    )
+                                    bridge.toast("Agent created")
+                                }
+                                is DataResult.Empty,
+                                is DataResult.Error -> {
+                                    bridge.toast("Unable to create agent")
+                                }
+                                is DataResult.NoPermission -> {
+                                    if (routeAuthRequired(result)) return@launch
+                                    bridge.toast("Unable to create agent")
+                                }
+                            }
+                        } finally {
+                            pendingActionCardIds = pendingActionCardIds - itemId
                         }
                     }
                 }
@@ -2207,6 +2259,7 @@ private fun ThreadPageContent(
     onTasksIntent: (SharedTasksRouteIntent) -> Unit,
     highlightedMentions: Set<String>,
     diagnosticsLogger: (String) -> Unit = {},
+    pendingActionCardIds: Set<String> = emptySet(),
     onBack: () -> Unit,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
@@ -2297,6 +2350,7 @@ private fun ThreadPageContent(
                             composerKeyboardInsetDp = composerKeyboardInsetDp,
                             linkedTasksByMessageId = linkedTasksByMessageId,
                             highlightedMentions = highlightedMentions,
+                            pendingActionCardIds = pendingActionCardIds,
                             onThreadEvent = onThreadEvent,
                             onOpenMarkdownTag = openMarkdownTag,
                             onOpenMarkdownUrl = openMarkdownUrl,
@@ -2577,6 +2631,7 @@ private fun ThreadChatTab(
     composerKeyboardInsetDp: Float,
     linkedTasksByMessageId: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
+    pendingActionCardIds: Set<String> = emptySet(),
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
@@ -2599,6 +2654,7 @@ private fun ThreadChatTab(
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
                     linkedTasksByMessageId = linkedTasksByMessageId,
                     highlightedMentions = highlightedMentions,
+                    pendingActionCardIds = pendingActionCardIds,
                     onThreadEvent = onThreadEvent,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -2613,6 +2669,7 @@ private fun ThreadChatTab(
                 composerKeyboardInsetDp = composerKeyboardInsetDp,
                 linkedTasksByMessageId = linkedTasksByMessageId,
                 highlightedMentions = highlightedMentions,
+                pendingActionCardIds = pendingActionCardIds,
                 onThreadEvent = onThreadEvent,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -2627,6 +2684,7 @@ private fun ThreadMessagesList(
     composerKeyboardInsetDp: Float,
     linkedTasksByMessageId: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
+    pendingActionCardIds: Set<String> = emptySet(),
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
@@ -2796,6 +2854,7 @@ private fun ThreadMessagesList(
             ThreadOriginCard(
                 payload = payload,
                 highlightedMentions = highlightedMentions,
+                pendingActionCardIds = pendingActionCardIds,
                 onThreadEvent = onThreadEvent,
                 onShowActions = { message, anchor ->
                     actionMenuAnchor = anchor
@@ -2853,7 +2912,7 @@ private fun ThreadMessagesList(
                 val linkedTask = linkedTasksByMessageId[message.id]
                 val displayMessage = message.withLinkedTask(linkedTask)
                 val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
-                if (message.isSystemMessage()) {
+                if (message.isSystemMessage() && message.threadActionCard() == null) {
                     ThreadSystemMessageRow(
                         message = displayMessage,
                         highlightedMentions = highlightedMentions,
@@ -2899,6 +2958,8 @@ private fun ThreadMessagesList(
                         onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
                         timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
                         onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
+                        pendingActionCardIds = pendingActionCardIds,
+                        onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
                         onOpenMarkdownTag = onOpenMarkdownTag,
                         onOpenMarkdownUrl = onOpenMarkdownUrl
                     )
@@ -3023,6 +3084,9 @@ internal fun threadMessagesBeyondBoundsItemCount(itemCount: Int): Int =
 
 private fun KuiklyThreadMessageItem.messageListItemKey(): String =
     "thread-page:message:$id"
+
+internal fun KuiklyThreadMessageItem.threadActionCard(): ThreadActionCard? =
+    actionCardFromMessageMetadata(metadata)
 
 private fun KuiklyThreadScreenPayload.threadActionMessage(messageId: String): KuiklyThreadMessageItem? =
     messages.firstOrNull { it.id == messageId }
@@ -3414,10 +3478,13 @@ private fun ThreadMessageCard(
     onOpenTaskStatusMenu: (Offset) -> Unit,
     onToggleReaction: (String) -> Unit,
     onOpenAttachment: (String) -> Unit,
+    pendingActionCardIds: Set<String> = emptySet(),
+    onCommitActionCard: (String) -> Unit = {},
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Md
 ) {
+    val actionCard = message.threadActionCard()
     val horizontalArrangement =
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
     val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start
@@ -3490,7 +3557,14 @@ private fun ThreadMessageCard(
                             )
                         }
                     }
-                    if (message.body.isNotBlank()) {
+                    if (actionCard != null) {
+                        ThreadActionCardView(
+                            card = actionCard,
+                            pending = message.id in pendingActionCardIds,
+                            modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                            onCommit = { onCommitActionCard(message.id) }
+                        )
+                    } else if (message.body.isNotBlank()) {
                         Button(
                             modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
                                 .background(Color.Transparent),
@@ -3542,6 +3616,149 @@ private fun ThreadMessageCard(
         }
     }
 }
+
+@Composable
+private fun ThreadActionCardView(
+    card: ThreadActionCard,
+    pending: Boolean,
+    modifier: Modifier = Modifier,
+    onCommit: () -> Unit
+) {
+    Column(
+        modifier =
+            modifier
+                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
+                .background(SlockColor.SurfaceWhite)
+                .padding(SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            Text(
+                text = card.actionCardTitle(),
+                style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
+                color = SlockColor.TextBlack,
+                modifier = Modifier.weight(1f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (card.isExecuted) {
+                ThreadActionCardDoneBadge()
+            }
+        }
+        val details = card.actionCardDetails()
+        if (details.isNotBlank()) {
+            Text(
+                text = details,
+                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray
+            )
+        }
+        card.draftHint?.takeIf { it.isNotBlank() }?.let { hint ->
+            Text(
+                text = hint,
+                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
+                        .padding(SlockSpacing.Xs)
+            )
+        }
+        if (card.isExecuted) {
+            val committed = card.actionCardCommittedLabel()
+            if (committed.isNotBlank()) {
+                Text(
+                    text = committed,
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
+                )
+            }
+        } else {
+            SlockBrutalActionButton(
+                label = if (pending) "Creating..." else card.actionCardVerb(),
+                onClick = onCommit,
+                enabled = !pending && card.type.equals("agent:create", ignoreCase = true),
+                backgroundColor = SlockColor.AccentPink,
+                disabledBackgroundColor = SlockColor.SurfaceCream,
+                minWidth = 0.dp,
+                minHeight = 34.dp,
+                shadowOffset = 2.dp,
+                textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadActionCardDoneBadge() {
+    Row(
+        modifier =
+            Modifier
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .background(SlockColor.AccentLime)
+                .padding(horizontal = 6.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        SlockLucideIcon("check", modifier = Modifier.size(10.dp), color = "#FF000000")
+        Text(
+            text = "Done",
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1
+        )
+    }
+}
+
+private fun ThreadActionCard.actionCardVerb(): String =
+    when (type) {
+        "channel:create" -> "Create Channel"
+        "agent:create" -> "Create Agent"
+        "channel:add_member" -> "Add Members"
+        else -> "Action"
+    }
+
+private fun ThreadActionCard.actionCardTitle(): String =
+    when (type) {
+        "channel:create" -> "Create ${visibility ?: "public"} channel #$name"
+        "agent:create" -> "Create Agent @${name.removePrefix("@")}"
+        "channel:add_member" -> {
+            val count = humans.size + agents.size
+            "Add $count member${if (count == 1) "" else "s"} to ${channel?.let { "#${it.removePrefix("#")}" } ?: "channel"}"
+        }
+        else -> actionCardVerb()
+    }
+
+private fun ThreadActionCard.actionCardDetails(): String =
+    buildList {
+        description?.takeIf { it.isNotBlank() }?.let { add("Description: $it") }
+        if (initialHumans.isNotEmpty()) add("Humans: ${initialHumans.joinToString(", ")}")
+        if (initialAgents.isNotEmpty()) add("Agents: ${initialAgents.joinToString(", ")}")
+        if (humans.isNotEmpty()) add("Humans: ${humans.joinToString(", ")}")
+        if (agents.isNotEmpty()) add("Agents: ${agents.joinToString(", ")}")
+    }.joinToString("\n")
+
+private fun ThreadActionCard.actionCardCommittedLabel(): String =
+    buildString {
+        executedByUserName?.takeIf { it.isNotBlank() }?.let { append("Committed by $it") }
+        val result = when (resultKind) {
+            "agent" -> resultName?.let { "@${it.removePrefix("@")}" }
+            "channel" -> resultName?.let { "#${it.removePrefix("#")}" }
+            "channel-members" -> {
+                val total = resultAddedHumanIds.size + resultAddedAgentIds.size
+                resultChannelName?.let { "$total added to #${it.removePrefix("#")}" }
+            }
+            else -> null
+        }
+        if (!result.isNullOrBlank()) {
+            if (isNotBlank()) append(" -> ") else append("Result: ")
+            append(result)
+        }
+    }
 
 @Composable
 private fun ThreadReactionChip(
@@ -4220,6 +4437,7 @@ private fun ThreadMessageMenuDivider() {
 private fun ThreadOriginCard(
     payload: KuiklyThreadScreenPayload,
     highlightedMentions: Set<String>,
+    pendingActionCardIds: Set<String> = emptySet(),
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onShowActions: (KuiklyThreadMessageItem, Offset) -> Unit,
     onOpenTaskStatusMenu: (KuiklyThreadMessageItem, Offset) -> Unit,
@@ -4261,7 +4479,7 @@ private fun ThreadOriginCard(
             }
             else -> {
                 payload.originMessage?.let { origin ->
-                    if (origin.isSystemMessage()) {
+                    if (origin.isSystemMessage() && origin.threadActionCard() == null) {
                         ThreadSystemMessageRow(
                             message = origin,
                             highlightedMentions = highlightedMentions,
@@ -4300,6 +4518,8 @@ private fun ThreadOriginCard(
                             onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
                             timestampLabel = payload.formatTimestampLabel(origin.timestampLabel),
                             onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
+                            pendingActionCardIds = pendingActionCardIds,
+                            onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
                             onOpenMarkdownTag = onOpenMarkdownTag,
                             onOpenMarkdownUrl = onOpenMarkdownUrl
                         )

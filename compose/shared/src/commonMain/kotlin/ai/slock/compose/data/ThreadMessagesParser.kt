@@ -71,6 +71,7 @@ internal data class WireMessage(
     val taskAssigneeName: String? = null,
     val claimedByName: String? = null,
     val taskClaimedByName: String? = null,
+    val actionMetadata: WireActionCardMetadata? = null,
 )
 
 @Serializable
@@ -223,7 +224,7 @@ private fun WireMessage.toMessageItem(currentUserId: String?): KuiklyThreadMessa
         seq = seq,
         messageType = if (isSystem) "System" else "Chat",
         systemEventType = null,
-        metadata = emptyMap(),
+        metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
         body = content,
         threadChannelId = firstNonBlank(threadId, summary?.threadChannelId),
         replyCount = replyCount ?: summary?.replyCount ?: 0,
