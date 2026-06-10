@@ -7037,21 +7037,23 @@ private fun decodeSharedShellRealtimeEvent(
     mapper: RealtimeEventMapper,
     log: (String) -> Unit
 ): RealtimeEvent? {
+    // Raw path: eventName + rawPayload -> common mapper (canonical for Android & OHOS)
+    val eventName = eventData.optString("eventName").takeIf { it.isNotBlank() }
+    val rawPayload = eventData.optString("rawPayload").takeIf { it.isNotBlank() }
+    if (eventName != null && rawPayload != null) {
+        val event = mapper.map(eventName, rawPayload)
+        if (event == null) {
+            log("shared_realtime_raw_decode_failed eventName=$eventName")
+        }
+        return event
+    }
+    // Legacy payload path: deprecated, Android no longer sends this format
     val typedPayload = eventData.optString("payload").takeIf { it.isNotBlank() }
     if (typedPayload != null) {
-        return parseSharedShellRealtimeEvent(typedPayload).getOrElse { throwable ->
-            log("shared_realtime_decode_failed ${throwable.message.orEmpty()}")
-            null
-        }
+        log("shared_realtime_legacy_payload_deprecated")
+        return null
     }
-
-    val eventName = eventData.optString("eventName").takeIf { it.isNotBlank() } ?: return null
-    val rawPayload = eventData.optString("rawPayload").takeIf { it.isNotBlank() } ?: return null
-    val event = mapper.map(eventName, rawPayload)
-    if (event == null) {
-        log("shared_realtime_raw_decode_failed eventName=$eventName")
-    }
-    return event
+    return null
 }
 
 private fun parseSharedShellRealtimeEvent(payload: String): Result<RealtimeEvent> =

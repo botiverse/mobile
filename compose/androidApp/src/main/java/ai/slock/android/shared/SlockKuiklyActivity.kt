@@ -128,6 +128,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
     private var realtimeRepository: RealtimeRepository? = null
     private var realtimeSubscription: RealtimeSubscription? = null
+    private var realtimeRawSubscription: RealtimeSubscription? = null
     private var realtimeConnectJob: Job? = null
     private var realtimeServerId: ServerId? = null
     private var realtimeSessionKey: String? = null
@@ -576,7 +577,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 val serverId = realtimeServerId ?: return@launch
                 sendRawRealtimeEvent(serverId, eventName, rawPayload)
             }
-        }
+        }.also { realtimeRawSubscription = it }
         return repository
     }
 
@@ -651,6 +652,8 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         realtimeConnectJob = null
         realtimeSubscription?.close()
         realtimeSubscription = null
+        realtimeRawSubscription?.close()
+        realtimeRawSubscription = null
         realtimeRepository?.disconnect()
         realtimeRepository = null
         realtimeServerId = null
