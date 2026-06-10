@@ -463,7 +463,9 @@ data class CreateChannelRequest(
     val description: String? = null,
     val visibility: String = "public",
     val agentMemberIds: List<String> = emptyList(),
-    val userMemberIds: List<String> = emptyList()
+    val userMemberIds: List<String> = emptyList(),
+    val targetServerSlug: String? = null,
+    val invitedPeople: List<String> = emptyList()
 )
 
 data class AddChannelMemberRequest(

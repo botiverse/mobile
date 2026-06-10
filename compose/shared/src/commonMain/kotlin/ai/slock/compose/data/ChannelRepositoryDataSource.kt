@@ -45,13 +45,6 @@ private suspend fun SlockNetworkClient.archiveChannel(priority: DataRequestPrior
 private suspend fun SlockNetworkClient.deleteChannel(priority: DataRequestPriority, channelId: ChannelId): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}", method = "DELETE")
 
-private suspend fun SlockNetworkClient.addChannelMember(
-    priority: DataRequestPriority,
-    channelId: ChannelId,
-    bodyText: String
-): HomeNetworkResponse =
-    request(priority, "channels/${channelId.value}/members", method = "POST", bodyText = bodyText)
-
 private suspend fun SlockNetworkClient.openDirectMessage(priority: DataRequestPriority, bodyText: String): HomeNetworkResponse =
     request(priority, "channels/dm", method = "POST", bodyText = bodyText)
 
@@ -128,44 +121,10 @@ class RealChannelRepository(
                 }
             )
         if (createResult !is DataResult.Content) return createResult
-        val channelId =
-            createResult.data.channel.channelId
-                ?: ChannelId(createResult.data.channel.threadId.value)
         rememberConversationSummaries(context.server.id, listOf(createResult.data.channel))
-        val addedAgents = mutableListOf<String>()
-        val addedUsers = mutableListOf<String>()
-        for (agentId in request.agentMemberIds.distinct().filter { it.isNotBlank() }) {
-            when (
-                val result =
-                    addChannelMember(
-                        channelId,
-                        buildAddAgentChannelMemberBody(MemberId(agentId)),
-                        source = "channel_member_add_agent"
-                    )
-            ) {
-                is DataResult.Content -> addedAgents += agentId
-                else -> return result.mapError()
-            }
-        }
-        for (userId in request.userMemberIds.distinct().filter { it.isNotBlank() }) {
-            when (
-                val result =
-                    addChannelMember(
-                        channelId,
-                        buildAddUserChannelMemberBody(MemberId(userId)),
-                        source = "channel_member_add_user"
-                    )
-            ) {
-                is DataResult.Content -> addedUsers += userId
-                else -> return result.mapError()
-            }
-        }
-        val updatedChannel =
-            createResult.data.channel.copy(
-                memberCount =
-                    (addedAgents.size + addedUsers.size).takeIf { it > 0 }
-                        ?: createResult.data.channel.memberCount
-            )
+        val addedAgents = request.agentMemberIds.cleanCreateChannelIds()
+        val addedUsers = request.userMemberIds.cleanCreateChannelIds()
+        val updatedChannel = createResult.data.channel
         rememberConversationSummaries(context.server.id, listOf(updatedChannel))
         return DataResult.Content(
             createResult.data.copy(
@@ -247,18 +206,6 @@ class RealChannelRepository(
             }
         }
     }
-
-    private suspend fun addChannelMember(
-        channelId: ChannelId,
-        bodyText: String,
-        source: String
-    ): DataResult<Unit> =
-        executeChannel(
-            emptyReason = EmptyReason.NoMembers,
-            block = { networkClient.addChannelMember(DataRequestPriority.Foreground, channelId, bodyText) },
-            source = source,
-            mapper = { Unit }
-        )
 
     private suspend fun fetchChannels(context: SharedChannelServerContext): DataResult<ChannelSnapshot> =
         executeChannel(
@@ -458,7 +405,11 @@ internal class NetworkSlockHomeApi(
 data class CreateChannelRequestBody(
     val name: String,
     val description: String? = null,
-    val visibility: String = "public"
+    val visibility: String = "public",
+    val agentIds: List<String> = emptyList(),
+    val userIds: List<String> = emptyList(),
+    val targetServerSlug: String? = null,
+    val invitedPeople: List<String> = emptyList()
 )
 
 private fun buildCreateChannelBody(request: CreateChannelRequest): String =
@@ -466,7 +417,11 @@ private fun buildCreateChannelBody(request: CreateChannelRequest): String =
         CreateChannelRequestBody(
             name = request.name.trim(),
             description = request.description?.trim()?.takeIf { it.isNotBlank() },
-            visibility = request.visibility.trim().ifBlank { "public" }
+            visibility = request.visibility.trim().ifBlank { "public" },
+            agentIds = request.agentMemberIds.cleanCreateChannelIds(),
+            userIds = request.userMemberIds.cleanCreateChannelIds(),
+            targetServerSlug = request.targetServerSlug?.trim()?.takeIf { it.isNotBlank() },
+            invitedPeople = request.invitedPeople.cleanCreateChannelIds()
         )
     )
 
@@ -483,16 +438,10 @@ private fun buildOpenUserDirectMessageBody(userId: MemberId): String =
     channelRepositoryJson.encodeToString(OpenUserDirectMessageRequestBody(userId.value))
 
 @Serializable
-data class ChannelAddAgentMemberRequestBody(val agentId: String)
-
-@Serializable
-data class ChannelAddUserMemberRequestBody(val userId: String)
-
-private fun buildAddAgentChannelMemberBody(agentId: MemberId): String =
-    channelRepositoryJson.encodeToString(ChannelAddAgentMemberRequestBody(agentId.value))
-
-private fun buildAddUserChannelMemberBody(userId: MemberId): String =
-    channelRepositoryJson.encodeToString(ChannelAddUserMemberRequestBody(userId.value))
+private data class ChannelErrorBody(
+    val code: String? = null,
+    val error: String? = null
+)
 
 private data class SharedChannelServerContext(
     val session: StoredAuthSession,
@@ -512,18 +461,28 @@ private fun <T> authRequired(): DataResult<T> =
 private fun <T> HomeNetworkResponse.toChannelDataError(): DataResult<T> =
     when (code) {
         401 -> authRequired()
-        403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
+        403 -> DataResult.NoPermission(
+            PermissionBlocker(
+                code = channelErrorCode("server_forbidden"),
+                requiredCapability = "server_access"
+            )
+        )
         in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
-        else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
+        else -> DataResult.Error(ScreenError(code = channelErrorCode("http_$code"), retryable = false))
     }
 
-private fun <T> DataResult<*>.mapError(): DataResult<T> =
-    when (this) {
-        is DataResult.Empty -> this
-        is DataResult.Error -> this
-        is DataResult.NoPermission -> this
-        is DataResult.Content -> error("Cannot map content as error.")
-    }
+private fun HomeNetworkResponse.channelErrorCode(fallback: String): String {
+    val payload = bodyText ?: errorBodyText ?: return fallback
+    return runCatching {
+        channelRepositoryJson.decodeFromString(ChannelErrorBody.serializer(), payload)
+            .code
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }.getOrNull() ?: fallback
+}
+
+private fun List<String>.cleanCreateChannelIds(): List<String> =
+    mapNotNull { it.trim().takeIf(String::isNotBlank) }.distinct()
 
 private fun mergeDirectMessages(
     existing: List<ConversationSummary>,
