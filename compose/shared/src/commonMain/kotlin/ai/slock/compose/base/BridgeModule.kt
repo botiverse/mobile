@@ -1,5 +1,6 @@
 package ai.slock.compose.base
 
+import ai.slock.compose.data.SLOCK_SOCKET_BASE_URL
 import com.tencent.kuikly.core.base.toInt
 import com.tencent.kuikly.core.module.CallbackFn
 import com.tencent.kuikly.core.module.Module
@@ -231,7 +232,7 @@ internal class BridgeModule : Module() {
     fun realtimeConnect(
         serverId: String,
         accessToken: String,
-        socketUrl: String = "https://api.slock.ai",
+        socketUrl: String = SLOCK_SOCKET_BASE_URL,
         lastSeq: Long = 0L
     ) {
         val methodArgs = JSONObject()

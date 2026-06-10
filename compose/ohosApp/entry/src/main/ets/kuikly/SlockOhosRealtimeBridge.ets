@@ -1,8 +1,9 @@
 import { KRAny, KRNativeRenderController, KRRecord } from '@kuikly-open/render';
 import { OhosSocketIoClient } from './OhosSocketIoClient';
+import { SLOCK_SOCKET_BASE_URL } from './SlockOhosApiConfig';
 
 const REALTIME_EVENT_NAME = 'slockRealtimeEvent';
-const DEFAULT_SOCKET_URL = 'https://api.slock.ai';
+const DEFAULT_SOCKET_URL = SLOCK_SOCKET_BASE_URL;
 const HEARTBEAT_SILENCE_MILLIS = 90_000;
 const INBOUND_SILENCE_MILLIS = 120_000;
 const WATCHDOG_INTERVAL_MILLIS = 30_000;

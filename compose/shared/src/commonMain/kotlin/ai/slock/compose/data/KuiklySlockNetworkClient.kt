@@ -16,7 +16,7 @@ import kotlin.time.TimeSource
 class KuiklySlockNetworkClient(
     private val sessionStore: SlockAuthSessionStore,
     private val networkModule: SlockNetworkModule,
-    private val baseUrl: String = "https://api.slock.ai/api/",
+    private val baseUrl: String = SLOCK_API_BASE_URL,
     private val warningLogger: (String) -> Unit = {},
     private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler()
 ) : SlockNetworkClient {

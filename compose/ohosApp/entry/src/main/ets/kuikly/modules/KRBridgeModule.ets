@@ -16,6 +16,7 @@ import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
 import { SlockOhosClipboard } from '../SlockOhosClipboard';
 import { SlockOhosDiagnostics } from '../SlockOhosDiagnostics';
+import { SLOCK_API_BASE_URL } from '../SlockOhosApiConfig';
 
 interface OhosPickedThreadAttachment {
   fileName: string;
@@ -69,7 +70,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly MOTION_CAPABILITY = "motionCapability";
   static readonly SETTINGS_CAPABILITY = "settingsCapability";
   static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
-  static readonly AUTH_BASE_URL = "https://api.slock.ai/api/";
+  static readonly AUTH_BASE_URL = SLOCK_API_BASE_URL;
   static readonly AUTH_DIAGNOSTICS_SOURCE_MARKER = "auth-bootstrap-diagnostics/e36bc138+";
 
   syncMode(): boolean {

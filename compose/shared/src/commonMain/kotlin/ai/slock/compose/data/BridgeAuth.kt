@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-private const val AUTH_BASE_URL = "https://api.slock.ai/api/"
 private const val SESSION_KEY = "auth_session"
 
 private val bridgeAuthJson = Json {
@@ -22,7 +21,7 @@ private val bridgeAuthJson = Json {
 
 internal class BridgeAuthApi(
     private val bridge: BridgeModule,
-    private val baseUrl: String = AUTH_BASE_URL
+    private val baseUrl: String = SLOCK_API_BASE_URL
 ) : SlockAuthTransport {
     override suspend fun login(bodyText: String): AuthNetworkResponse =
         request(path = "auth/login", method = "POST", bodyText = bodyText)
@@ -80,12 +79,12 @@ internal class BridgeAuthenticatedRequestExecutor(
     private val sessionStore: SlockAuthSessionStore,
     private val authApi: SlockAuthApi,
     private val request: suspend (BridgeAuthenticatedRequest) -> HomeNetworkResponse,
-    private val baseUrl: String = AUTH_BASE_URL
+    private val baseUrl: String = SLOCK_API_BASE_URL
 ) {
     constructor(
         bridge: BridgeModule,
         sessionStore: SlockAuthSessionStore,
-        baseUrl: String = AUTH_BASE_URL
+        baseUrl: String = SLOCK_API_BASE_URL
     ) : this(
         sessionStore = sessionStore,
         authApi = SlockAuthApiClient(BridgeAuthApi(bridge, baseUrl)),
@@ -169,7 +168,7 @@ internal class BridgeAuthenticatedRequestExecutor(
 internal class BridgeSlockNetworkClient(
     private val bridge: BridgeModule,
     sessionStore: SlockAuthSessionStore,
-    baseUrl: String = AUTH_BASE_URL
+    baseUrl: String = SLOCK_API_BASE_URL
 ) : SlockNetworkClient {
     private val executor = BridgeAuthenticatedRequestExecutor(bridge, sessionStore, baseUrl)
 
@@ -213,7 +212,7 @@ internal data class BridgeAuthenticatedRequest(
 internal class BridgeAnnouncementsRemindersApi(
     bridge: BridgeModule,
     sessionStore: SlockAuthSessionStore,
-    baseUrl: String = AUTH_BASE_URL
+    baseUrl: String = SLOCK_API_BASE_URL
 ) : SlockAnnouncementsRemindersApi {
     private val executor = BridgeAuthenticatedRequestExecutor(bridge, sessionStore, baseUrl)
 
@@ -236,7 +235,7 @@ internal class BridgeAnnouncementsRemindersApi(
 internal class BridgeMembersApi(
     bridge: BridgeModule,
     sessionStore: SlockAuthSessionStore,
-    baseUrl: String = AUTH_BASE_URL
+    baseUrl: String = SLOCK_API_BASE_URL
 ) {
     private val networkClient =
         BridgeSlockNetworkClient(
@@ -331,7 +330,7 @@ internal class BridgeSettingsPlatformCapabilities(
         }
         return DataResult.Content(
             SharedSettingsNetworkProbeSnapshot(
-                baseUrl = response.optString("baseUrl").ifBlank { AUTH_BASE_URL },
+                baseUrl = response.optString("baseUrl").ifBlank { SLOCK_API_BASE_URL },
                 statusLabel = response.optString("statusLabel").ifBlank { if (response.optBoolean("reachable", false)) "Reachable" else "Unavailable" },
                 detail = response.optString("detail"),
                 reachable = response.optBoolean("reachable", false),
@@ -455,7 +454,7 @@ internal class BridgeSettingsPlatformCapabilities(
 internal class BridgeTasksApi(
     private val bridge: BridgeModule,
     private val sessionStore: SlockAuthSessionStore,
-    private val baseUrl: String = AUTH_BASE_URL
+    private val baseUrl: String = SLOCK_API_BASE_URL
 ) : SlockTasksApi {
     private val executor = BridgeAuthenticatedRequestExecutor(bridge, sessionStore, baseUrl)
 
@@ -537,7 +536,7 @@ internal interface SharedThreadNetworkApi {
 internal class BridgeThreadApi(
     private val bridge: BridgeModule,
     private val sessionStore: SlockAuthSessionStore,
-    private val baseUrl: String = AUTH_BASE_URL
+    private val baseUrl: String = SLOCK_API_BASE_URL
 ) : SharedThreadNetworkApi {
     private val executor = BridgeAuthenticatedRequestExecutor(bridge, sessionStore, baseUrl)
 

@@ -1,6 +1,7 @@
 package ai.slock.android.core.data.realtime
 
 import ai.slock.compose.data.RealtimeSubscription
+import ai.slock.compose.data.SLOCK_SOCKET_BASE_URL
 import ai.slock.compose.data.realtime.RealtimeAuth
 import ai.slock.compose.data.realtime.RealtimeConnectRequest
 import ai.slock.compose.data.realtime.RealtimeConnectionState
@@ -323,7 +324,7 @@ class SocketIoRealtimeClient(
     }
 
     companion object {
-        const val DEFAULT_SOCKET_URL = "https://api.slock.ai"
+        const val DEFAULT_SOCKET_URL = SLOCK_SOCKET_BASE_URL
 
         val RealtimeWireEventNames = listOf(
             RealtimeSocketEvents.MessageNew,
