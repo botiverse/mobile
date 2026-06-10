@@ -16,6 +16,27 @@ import kotlinx.serialization.json.Json
 
 class SlockApiClientContractTest {
     @Test
+    fun authenticatedRequestUsesExplicitServerOverrideHeader() = runBlocking {
+        val requests = mutableListOf<HttpRequestData>()
+        val client =
+            apiClient(
+                requests = requests,
+                tokens = AuthTokens(accessToken = "access-token", selectedServerId = "session-server")
+            )
+
+        client.authenticatedRequest(
+            priority = SlockRequestPriority.Visible,
+            method = "GET",
+            path = "servers/override-server/members",
+            serverIdOverride = "override-server"
+        )
+
+        val request = requests.single()
+        assertEquals("Bearer access-token", request.headers[HttpHeaders.Authorization])
+        assertEquals("override-server", request.headers[HEADER_SERVER_ID])
+    }
+
+    @Test
     fun memberProfileUsesServerScopedUpstreamRoute() = runBlocking {
         val requests = mutableListOf<HttpRequestData>()
         val client = apiClient(requests)
@@ -235,7 +256,10 @@ class SlockApiClientContractTest {
         assertEquals("/api/messages/message-1/reactions", requests[1].url.encodedPath)
     }
 
-    private fun apiClient(requests: MutableList<HttpRequestData>): SlockApiClient {
+    private fun apiClient(
+        requests: MutableList<HttpRequestData>,
+        tokens: AuthTokens? = null
+    ): SlockApiClient {
         val engine = MockEngine { request ->
             requests += request
             respond(
@@ -257,7 +281,7 @@ class SlockApiClientContractTest {
                 AuthenticatedKtorTransport(
                     tokenProvider =
                         object : AuthTokenProvider {
-                            override suspend fun currentTokens(): AuthTokens? = null
+                            override suspend fun currentTokens(): AuthTokens? = tokens
                             override suspend fun refreshTokens(failedAccessToken: String): AuthTokens? = null
                             override suspend fun onUnauthorized(failedAccessToken: String?) = Unit
                         }

@@ -20,6 +20,12 @@ class KuiklySlockNetworkClient(
     private val warningLogger: (String) -> Unit = {},
     private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler()
 ) : SlockNetworkClient {
+    private val authMiddleware =
+        SlockNetworkAuthMiddleware(
+            sessionStore = sessionStore,
+            authApi = SlockAuthApiClient(KuiklySlockAuthTransport(networkModule, baseUrl))
+        )
+
     override suspend fun request(
         priority: DataRequestPriority,
         path: String,
@@ -35,14 +41,16 @@ class KuiklySlockNetworkClient(
         ) {
             val startedAt = TimeSource.Monotonic.markNow()
             val category = path.networkDiagnosticsCategory()
-            val tokens = sessionStore.readSession()?.toAuthTokens()
-            val response = networkModule.requestRaw(
-                url = absoluteUrl(path, query),
-                method = method.uppercase(),
-                headers = authHeaders(tokens, serverIdOverride, contentType = bodyText?.let { "application/json" }),
-                bodyText = bodyText,
-                bodyBytes = null
-            )
+            val response =
+                authMiddleware.request(serverIdOverride) { auth ->
+                    networkModule.requestRaw(
+                        url = absoluteUrl(path, query),
+                        method = method.uppercase(),
+                        headers = authHeaders(auth, contentType = bodyText?.let { "application/json" }),
+                        bodyText = bodyText,
+                        bodyBytes = null
+                    )
+                }
             warningLogger(
                 "endpoint category=$category method=${method.uppercase()} code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} result=${response.networkDiagnosticsResult()}"
             )
@@ -60,39 +68,36 @@ class KuiklySlockNetworkClient(
             reason = "multipart"
         ) {
             val startedAt = TimeSource.Monotonic.markNow()
-            val tokens = sessionStore.readSession()?.toAuthTokens()
             val boundary = "slock-${channelId.value}-${files.size}"
-            val headers =
-                authHeaders(
-                    tokens = tokens,
-                    serverIdOverride = null,
-                    contentType = "multipart/form-data; boundary=$boundary"
-                )
-            if (files.any { it.fileRef != null && it.bytes.isEmpty() }) {
-                return@run networkModule.requestMultipartRaw(
-                    url = absoluteUrl("attachments/upload"),
-                    method = "POST",
-                    headers = headers,
-                    fields = mapOf("channelId" to channelId.value),
-                    files = files
-                ).also { response ->
-                    warningLogger(
-                        "endpoint category=attachments_upload method=POST code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} result=${response.networkDiagnosticsResult()}"
+            val response =
+                authMiddleware.request { auth ->
+                    val headers =
+                        authHeaders(
+                            auth = auth,
+                            contentType = "multipart/form-data; boundary=$boundary"
+                        )
+                    if (files.any { it.fileRef != null && it.bytes.isEmpty() }) {
+                        return@request networkModule.requestMultipartRaw(
+                            url = absoluteUrl("attachments/upload"),
+                            method = "POST",
+                            headers = headers,
+                            fields = mapOf("channelId" to channelId.value),
+                            files = files
+                        )
+                    }
+                    networkModule.requestRaw(
+                        url = absoluteUrl("attachments/upload"),
+                        method = "POST",
+                        headers = headers,
+                        bodyBytes =
+                            buildMultipartBody(
+                                boundary = boundary,
+                                fields = mapOf("channelId" to channelId.value),
+                                files = files
+                            ),
+                        bodyText = null
                     )
                 }
-            }
-            val response = networkModule.requestRaw(
-                url = absoluteUrl("attachments/upload"),
-                method = "POST",
-                headers = headers,
-                bodyBytes =
-                    buildMultipartBody(
-                        boundary = boundary,
-                        fields = mapOf("channelId" to channelId.value),
-                        files = files
-                    ),
-                bodyText = null
-            )
             warningLogger(
                 "endpoint category=attachments_upload method=POST code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} result=${response.networkDiagnosticsResult()}"
             )
@@ -106,15 +111,12 @@ class KuiklySlockNetworkClient(
     }
 
     private fun authHeaders(
-        tokens: StoredAuthTokens?,
-        serverIdOverride: ServerId?,
+        auth: SlockAuthenticatedRequestContext,
         contentType: String?
     ): JSONObject =
         JSONObject().apply {
-            tokens?.accessToken?.takeIf { it.isNotBlank() }?.let { put("Authorization", "Bearer $it") }
-            (serverIdOverride?.value ?: tokens?.selectedServerId)
-                ?.takeIf { it.isNotBlank() }
-                ?.let { put(HEADER_SERVER_ID, it) }
+            put("Authorization", auth.authorization)
+            put(HEADER_SERVER_ID, auth.serverId)
             contentType?.let { put("Content-Type", it) }
         }
 
@@ -202,6 +204,65 @@ class KuiklySlockNetworkClient(
                 errorBodyText = response.errorBodyText.ifBlank { response.message }
             )
         }
+    }
+}
+
+private class KuiklySlockAuthTransport(
+    private val networkModule: SlockNetworkModule,
+    private val baseUrl: String
+) : SlockAuthTransport {
+    override suspend fun login(bodyText: String): AuthNetworkResponse =
+        request(path = "auth/login", method = "POST", bodyText = bodyText)
+
+    override suspend fun completeSocialLogin(provider: String, bodyText: String): AuthNetworkResponse =
+        request(path = "auth/${provider.trim().lowercase()}/complete", method = "POST", bodyText = bodyText)
+
+    override suspend fun register(bodyText: String): AuthNetworkResponse =
+        request(path = "auth/register", method = "POST", bodyText = bodyText)
+
+    override suspend fun forgotPassword(bodyText: String): AuthNetworkResponse =
+        request(path = "auth/forgot-password", method = "POST", bodyText = bodyText)
+
+    override suspend fun currentUser(authorization: String): AuthNetworkResponse =
+        request(path = "auth/me", method = "GET", authorization = authorization)
+
+    override suspend fun refresh(bodyText: String): AuthNetworkResponse =
+        request(path = "auth/refresh", method = "POST", bodyText = bodyText)
+
+    override suspend fun logout(bodyText: String): AuthNetworkResponse =
+        request(path = "auth/logout", method = "POST", bodyText = bodyText)
+
+    override suspend fun servers(authorization: String): AuthNetworkResponse =
+        request(path = "servers", method = "GET", authorization = authorization)
+
+    override suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse =
+        request(path = "servers", method = "POST", authorization = authorization, bodyText = bodyText)
+
+    private suspend fun request(
+        path: String,
+        method: String,
+        authorization: String? = null,
+        bodyText: String? = null
+    ): AuthNetworkResponse {
+        val response =
+            networkModule.request(
+                JSONObject().apply {
+                    put("url", "${baseUrl.trimEnd('/')}/${path.trimStart('/')}")
+                    put("method", method)
+                    put("headers", JSONObject().apply {
+                        authorization?.let { put("Authorization", it) }
+                        bodyText?.let { put("Content-Type", "application/json") }
+                    })
+                    bodyText?.let { put("bodyText", it) }
+                    put("timeoutMillis", 30_000)
+                }
+            )
+        return AuthNetworkResponse(
+            code = response.code,
+            bodyText = response.bodyText.takeUnless { it.isBlank() },
+            errorBodyText = response.errorBodyText.takeUnless { it.isBlank() }
+                ?: response.message.takeUnless { it.isBlank() }
+        )
     }
 }
 

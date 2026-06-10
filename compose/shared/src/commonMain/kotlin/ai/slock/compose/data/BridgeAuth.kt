@@ -81,6 +81,8 @@ internal class BridgeAuthenticatedRequestExecutor(
     private val request: suspend (BridgeAuthenticatedRequest) -> HomeNetworkResponse,
     private val baseUrl: String = SLOCK_API_BASE_URL
 ) {
+    private val authMiddleware = SlockNetworkAuthMiddleware(sessionStore, authApi)
+
     constructor(
         bridge: BridgeModule,
         sessionStore: SlockAuthSessionStore,
@@ -100,44 +102,10 @@ internal class BridgeAuthenticatedRequestExecutor(
         serverIdOverride: String? = null,
         method: String = "GET",
         bodyText: String? = null
-    ): HomeNetworkResponse {
-        val session = sessionStore.readSession()
-            ?: return HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = SESSION_EXPIRED_ERROR)
-        val serverId = serverIdOverride ?: session.currentServerId.orEmpty()
-        if (session.accessToken.isBlank() || serverId.isBlank()) {
-            return HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = SESSION_EXPIRED_ERROR)
+    ): HomeNetworkResponse =
+        authMiddleware.request(serverIdOverride?.takeIf { it.isNotBlank() }?.let(::ServerId)) { auth ->
+            request(buildRequest(path, query, auth.serverId, auth.accessToken, method, bodyText))
         }
-        val first = request(buildRequest(path, query, serverId, session.accessToken, method, bodyText))
-        if (!first.requiresTokenRefresh()) return first
-
-        val refreshed = refreshSession(session)
-        if (refreshed == null) {
-            sessionStore.clearSession()
-            return first.asSessionExpired()
-        }
-        val retry = request(buildRequest(path, query, serverId, refreshed.accessToken, method, bodyText))
-        if (retry.requiresTokenRefresh()) {
-            sessionStore.clearSession()
-            return retry.asSessionExpired()
-        }
-        return retry
-    }
-
-    private suspend fun refreshSession(session: StoredAuthSession): StoredAuthSession? {
-        val refreshToken = session.refreshToken.takeIf { it.isNotBlank() } ?: return null
-        return when (val refreshed = authApi.refresh(refreshToken)) {
-            is AuthApiResult.Success -> {
-                val next =
-                    session.copy(
-                        accessToken = refreshed.data.accessToken,
-                        refreshToken = refreshed.data.refreshToken
-                    )
-                sessionStore.saveSession(next)
-                next
-            }
-            is AuthApiResult.Failure -> null
-        }
-    }
 
     private fun buildRequest(
         path: String,
@@ -692,8 +660,6 @@ private fun RelationalValue.asText(): String? =
         RelationalValue.Null -> null
     }
 
-private const val SESSION_EXPIRED_ERROR = """{"error":"session_expired"}"""
-
 private fun JSONObject?.toHomeNetworkResponse(): HomeNetworkResponse =
     HomeNetworkResponse(
         code = this?.optString("code").orEmpty().toIntOrNull() ?: 0,
@@ -701,22 +667,4 @@ private fun JSONObject?.toHomeNetworkResponse(): HomeNetworkResponse =
         errorBodyText =
             this?.optString("errorBodyText").takeUnless { it.isNullOrBlank() }
                 ?: this?.optString("message").takeUnless { it.isNullOrBlank() }
-    )
-
-private fun HomeNetworkResponse.requiresTokenRefresh(): Boolean =
-    code == 401 || errorBodyText.isExpiredTokenText()
-
-private fun String?.isExpiredTokenText(): Boolean {
-    val normalized = this?.lowercase().orEmpty()
-    return normalized.contains("expiredtoken") ||
-        normalized.contains("expired_token") ||
-        normalized.contains("token_expired") ||
-        normalized.contains("jwt expired")
-}
-
-private fun HomeNetworkResponse.asSessionExpired(): HomeNetworkResponse =
-    HomeNetworkResponse(
-        code = 401,
-        bodyText = null,
-        errorBodyText = errorBodyText.takeUnless { it.isNullOrBlank() } ?: SESSION_EXPIRED_ERROR
     )

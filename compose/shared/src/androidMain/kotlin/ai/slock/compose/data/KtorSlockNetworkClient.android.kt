@@ -23,6 +23,7 @@ class KtorSlockNetworkClient(
             method = method,
             path = path,
             query = query,
+            serverIdOverride = serverIdOverride?.value,
             body = bodyText
         ).toHomeNetworkResponse()
 

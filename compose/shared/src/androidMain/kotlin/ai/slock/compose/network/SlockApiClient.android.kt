@@ -240,9 +240,10 @@ class SlockApiClient(
         method: String,
         path: String,
         query: List<Pair<String, String>> = emptyList(),
+        serverIdOverride: String? = null,
         body: String? = null
     ): KmpHttpResponse =
-        request(priority, HttpMethod(method), path, query, body)
+        request(priority, HttpMethod(method), path, query, body, serverIdOverride)
 
     private suspend fun post(priority: SlockRequestPriority, path: String, body: String? = null): KmpHttpResponse =
         request(priority, HttpMethod.Post, path, body = body)
@@ -258,7 +259,8 @@ class SlockApiClient(
         method: HttpMethod,
         path: String,
         query: List<Pair<String, String>> = emptyList(),
-        body: String? = null
+        body: String? = null,
+        serverIdOverride: String? = null
     ): KmpHttpResponse {
         return requestScheduler.run(
             priority = priority,
@@ -266,7 +268,7 @@ class SlockApiClient(
             reason = method.value
         ) {
             authTransport.executeWithAuthRetry { tokens ->
-                executeKtor(priority.httpClient(), method, path, query, body, tokens)
+                executeKtor(priority.httpClient(), method, path, query, body, tokens.withServerOverride(serverIdOverride))
             }
         }.toKmpHttpResponse()
     }
@@ -289,6 +291,11 @@ class SlockApiClient(
             SlockRequestPriority.Visible -> visibleHttpClient
             SlockRequestPriority.Background -> backgroundHttpClient
         }
+
+    private fun AuthTokens?.withServerOverride(serverIdOverride: String?): AuthTokens? {
+        val serverId = serverIdOverride?.takeIf { it.isNotBlank() } ?: return this
+        return this?.copy(selectedServerId = serverId)
+    }
 
     private suspend fun executeKtor(
         client: HttpClient,
