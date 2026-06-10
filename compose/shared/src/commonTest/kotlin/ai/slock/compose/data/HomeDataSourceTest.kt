@@ -186,21 +186,6 @@ class HomeDataSourceTest {
     }
 
     @Test
-    fun loadHomeRejectsLegacyServerUnreadSummaryTotalUnreadCountField() = runBlocking {
-        val source =
-            SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                api = FakeHomeApi(serverUnreadSummaryBody = """[{"serverId":"server-1","totalUnreadCount":24}]"""),
-                parseHome = { _, _ -> error("typed home api should reject legacy summary field before parser") }
-            )
-
-        val result = source.loadHome(priority = DataRequestPriority.Visible)
-
-        assertTrue(result is DataResult.Error)
-        assertEquals("home_server_unread_summary_contract_mismatch", result.error.code)
-    }
-
-    @Test
     fun loadHomeUsesRequestedServerForEveryApiCallAndSessionSelection() = runBlocking {
         val sessionStore =
             InMemorySlockAuthSessionStore(

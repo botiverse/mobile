@@ -90,7 +90,7 @@ class HomeParserTest {
                         unreadCounts = mapOf(ChannelId("channel-1") to 4),
                         serverUnreadSummary =
                             listOf(
-                                HomeServerUnreadSummaryWireDto(
+                                ServerUnreadSummaryDto(
                                     serverId = "server-1",
                                     unreadCount = 9
                                 )
@@ -109,7 +109,7 @@ class HomeParserTest {
     fun decodesServerUnreadSummaryUnreadCountFromServerContract() {
         val serverUnreadSummary =
             json.decodeFromString(
-                ListSerializer(HomeServerUnreadSummaryWireDto.serializer()),
+                ListSerializer(ServerUnreadSummaryDto.serializer()),
                 """[{"serverId":"server-1","unreadCount":12}]"""
             )
 
@@ -286,7 +286,7 @@ class HomeParserTest {
         channels: List<HomeChannelWireDto> = emptyList(),
         directMessages: List<HomeDirectMessageWireDto> = emptyList(),
         unreadCounts: Map<ChannelId, Int> = emptyMap(),
-        serverUnreadSummary: List<HomeServerUnreadSummaryWireDto> = emptyList()
+        serverUnreadSummary: List<ServerUnreadSummaryDto> = emptyList()
     ): HomeNetworkPayload =
         HomeNetworkPayload(
             serverId = serverId,

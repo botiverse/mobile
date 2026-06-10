@@ -1,46 +1,44 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 class UnreadParserTest {
     @Test
-    fun parsesServerUnreadSummaryFromServersRouteContract() {
+    fun parsesChannelUnreadCountsFromChannelsRouteContract() {
         val snapshot =
-            parseServerUnreadSummarySnapshot(
+            parseChannelUnreadSnapshot(
                 bodyText = """
-                    [
-                      {"serverId":"server-1","unreadCount":7},
-                      {"serverId":"server-2","unreadCount":3}
-                    ]
+                    {
+                      "channel-1": 7,
+                      "dm-1": 3
+                    }
                 """.trimIndent(),
-                selectedServer = ServerSummary(id = ServerId("server-1"), name = "Slock")
+                server = ServerSummary(id = ServerId("server-1"), name = "Slock")
             )
 
         requireNotNull(snapshot)
-        assertEquals(2, snapshot.summaries.size)
         assertEquals(10, snapshot.totalUnreadCount)
-        assertEquals(7, snapshot.selectedServerUnreadCount)
-        assertEquals(7, snapshot.server.unreadCount)
-        assertEquals(0, snapshot.mentionCount)
+        assertEquals(10, snapshot.server.unreadCount)
+        assertEquals(7, snapshot.unreadCounts[ChannelId("channel-1")])
+        assertEquals(3, snapshot.unreadCounts[ChannelId("dm-1")])
     }
 
     @Test
-    fun rejectsLegacyServerUnreadSummaryEnvelope() {
-        val snapshot =
-            parseServerUnreadSummarySnapshot(
-                bodyText = """
-                    {
-                      "servers": [{"serverId":"server-1","totalUnreadCount":7}],
-                      "totalUnreadCount": 7
-                    }
-                """.trimIndent(),
-                selectedServer = ServerSummary(id = ServerId("server-1"), name = "Slock")
+    fun parsesReadAllReceiptFromChannelsRouteContract() {
+        val result =
+            parseReadReceiptResult(
+                bodyText = """{"ok":true,"seq":42}""",
+                fallbackChannelId = ChannelId("channel-1")
             )
 
-        assertNull(snapshot)
+        requireNotNull(result)
+        assertEquals(ChannelId("channel-1"), result.channelId)
+        assertEquals(42, result.seq)
+        assertEquals(0, result.unreadCount)
+        assertEquals(true, result.changed)
     }
 }

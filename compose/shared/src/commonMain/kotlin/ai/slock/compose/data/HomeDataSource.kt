@@ -215,7 +215,7 @@ data class HomeNetworkPayload(
     val channels: List<HomeChannelWireDto>,
     val directMessages: List<HomeDirectMessageWireDto>,
     val unreadCounts: Map<ChannelId, Int>,
-    val serverUnreadSummary: List<HomeServerUnreadSummaryWireDto>
+    val serverUnreadSummary: List<ServerUnreadSummaryDto>
 )
 
 data class HomeNetworkResponse(
@@ -289,7 +289,7 @@ internal class SlockHomeApiClient(
                     requestHomeSection(
                         category = "server_unread_summary",
                         contractCode = "home_server_unread_summary_contract_mismatch",
-                        serializer = ListSerializer(HomeServerUnreadSummaryWireDto.serializer())
+                        serializer = ListSerializer(ServerUnreadSummaryDto.serializer())
                     ) {
                         transport.serverUnreadSummary(serverId, priority)
                     }

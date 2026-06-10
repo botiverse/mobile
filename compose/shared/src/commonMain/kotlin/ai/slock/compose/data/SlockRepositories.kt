@@ -334,10 +334,6 @@ enum class SearchSort {
             }
 }
 
-interface ServerUnreadRepository {
-    suspend fun getUnreadSummary(serverId: ServerId): DataResult<ServerUnreadSummarySnapshot>
-}
-
 interface RealtimeRepository {
     suspend fun connect(serverId: ServerId, lastSeq: Long = 0): DataResult<Unit>
     fun disconnect()

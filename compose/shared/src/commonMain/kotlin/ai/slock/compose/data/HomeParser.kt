@@ -59,12 +59,6 @@ data class HomeDirectMessageWireDto(
     val peerGravatarHash: String? = null
 )
 
-@Serializable
-data class HomeServerUnreadSummaryWireDto(
-    val serverId: String,
-    val unreadCount: Int
-)
-
 fun parseSlockHome(
     payload: HomeNetworkPayload,
     session: StoredAuthSession,

@@ -368,25 +368,6 @@ data class SearchSnapshot(
     val nextOffset: Int? = null
 )
 
-data class ServerUnreadSummarySnapshot(
-    val server: ServerSummary,
-    val summaries: List<ServerUnreadSummary>,
-    val selectedServerSummary: ServerUnreadSummary?,
-    val totalUnreadCount: Int,
-    val selectedServerUnreadCount: Int = selectedServerSummary?.totalUnreadCount ?: server.unreadCount,
-    val mentionCount: Int = selectedServerSummary?.mentionCount ?: 0
-)
-
-data class ServerUnreadSummary(
-    val serverId: ServerId,
-    val totalUnreadCount: Int,
-    val channelUnreadCount: Int = 0,
-    val directMessageUnreadCount: Int = 0,
-    val mentionCount: Int = 0,
-    val taskUnreadCount: Int = 0,
-    val updatedAt: String? = null
-)
-
 data class SettingsSnapshot(
     val settings: SettingsSummary
 )
